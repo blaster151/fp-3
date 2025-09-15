@@ -4,10 +4,10 @@
     "rootDir": "./",
     "outDir": "./dist",
 
-    // Environment Settings
-    "target": "ES2019",
-    "module": "ES2020",
-    "lib": ["ES2019", "DOM"],
+    // Environment Settings - Latest standards
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["ESNext", "DOM"],
     "types": ["node"],
 
     // Other Outputs
@@ -16,16 +16,16 @@
     "declarationMap": true,
 
     // Stricter Typechecking Options
-    "noUncheckedIndexedAccess": false,
-    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
 
-    // Style Options
-    "noImplicitReturns": false,
-    "noImplicitOverride": false,
+    // Style Options - Strict (except unused variables for now)
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
-    "noPropertyAccessFromIndexSignature": false,
+    "noPropertyAccessFromIndexSignature": true,
 
     // Recommended Options
     "strict": true,

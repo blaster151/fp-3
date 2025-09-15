@@ -575,7 +575,7 @@ export const paraArray =
   <A, B>(nil: B, cons: (head: A, tail: ReadonlyArray<A>, foldedTail: B) => B) =>
   (as: ReadonlyArray<A>): B => {
     const go = (xs: ReadonlyArray<A>): B =>
-      xs.length === 0 ? nil : cons(xs[0], xs.slice(1), go(xs.slice(1)))
+      xs.length === 0 ? nil : cons(xs[0]!, xs.slice(1), go(xs.slice(1)))
     return go(as)
   }
 
@@ -1216,7 +1216,7 @@ export const makeJsonStreamFolder = <B, AA, OA>(ALG: JsonStreamAlg<B, AA, OA>) =
       return Err(new Error('Object value without a key'))
     }
     top.acc   = ALG.Obj.step(top.acc, [top.lastKey, b] as const)
-    top.lastKey = undefined
+    top.lastKey = undefined as any
     top.expect  = 'key'
     return Ok(undefined)
   }
@@ -1236,7 +1236,7 @@ export const makeJsonStreamFolder = <B, AA, OA>(ALG: JsonStreamAlg<B, AA, OA>) =
       }
 
       case 'StartObj':
-        stack.push({ tag: 'obj', acc: ALG.Obj.begin(), expect: 'key', lastKey: undefined })
+        stack.push({ tag: 'obj', acc: ALG.Obj.begin(), expect: 'key', lastKey: undefined as any })
         return Ok(undefined)
 
       case 'EndObj': {
@@ -1364,7 +1364,7 @@ export const filter = <A>(as: ReadonlyArray<A>, p: Predicate<A>): ReadonlyArray<
 export const flatMap = <A, B>(as: ReadonlyArray<A>, f: (a: A) => ReadonlyArray<B>): ReadonlyArray<B> => as.flatMap(f)
 export const reduce = <A, B>(as: ReadonlyArray<A>, b: B, f: (b: B, a: A) => B): B => as.reduce(f, b)
 
-export const head = <A>(as: ReadonlyArray<A>): Option<A> => (as.length > 0 ? Some(as[0]) : None)
+export const head = <A>(as: ReadonlyArray<A>): Option<A> => (as.length > 0 ? Some(as[0]!) : None)
 export const tail = <A>(as: ReadonlyArray<A>): Option<ReadonlyArray<A>> => (as.length > 1 ? Some(as.slice(1)) : None)
 
 
@@ -1939,7 +1939,7 @@ export const eqSetBy = <A>(eqA: Eq<A>) =>
     outer: for (const av of a) {
       for (let i = 0; i < bs.length; i++) {
         if (used.has(i)) continue
-        if (eqA(av, bs[i])) { used.add(i); continue outer }
+        if (eqA(av, bs[i]!)) { used.add(i); continue outer }
       }
       return false
     }
@@ -1969,7 +1969,7 @@ export const eqMapBy = <K, V>(eqK: Eq<K>, eqV: Eq<V>) =>
     outer: for (const [ka, va] of a) {
       for (let i = 0; i < eb.length; i++) {
         if (used.has(i)) continue
-        const [kb, vb] = eb[i]
+        const [kb, vb] = eb[i]!
         if (eqK(ka, kb) && eqV(va, vb)) { used.add(i); continue outer }
       }
       return false
@@ -2789,7 +2789,7 @@ export const traverseArrayTRSeq = <E, A, B>(
 ): TaskResult<E, ReadonlyArray<B>> => async () => {
   const out: B[] = []
   for (let i = 0; i < as.length; i++) {
-    const r = await f(as[i], i)()
+    const r = await f(as[i]!, i)()
     if (isErr(r)) return r
     out.push((r as Ok<B>).value)
   }
@@ -2866,9 +2866,9 @@ export const optionalProp = <S>() => <K extends keyof S>(k: K): Optional<S, NonN
 )
 
 export const optionalIndex = <A>(i: number): Optional<ReadonlyArray<A>, A> => optional(
-  (as) => (i >= 0 && i < as.length ? Some(as[i]) : None),
-  (a, as) => (i >= 0 && i < as.length ? [...as.slice(0, i), a, ...as.slice(i + 1)] : as)
-)
+  (as) => (i >= 0 && i < as.length ? Some(as[i]!) : None),
+  (a, as) => (i >= 0 && i < as.length ? [...as.slice(0, i), a, ...as.slice(i + 1)] as readonly A[] : as)
+) as Optional<ReadonlyArray<A>, A>
 
 export const traversal = <S, A>(modify: (f: (a: A) => A) => (s: S) => S): Traversal<S, A> => ({ modify })
 
@@ -3419,7 +3419,7 @@ export const traverseArrayResult = <E, A, B>(
 ): Result<E, ReadonlyArray<B>> => {
   const out: B[] = []
   for (let i = 0; i < as.length; i++) {
-    const r = f(as[i], i)
+    const r = f(as[i]!, i)
     if (isErr(r)) return r
     out.push((r as Ok<B>).value)
   }
@@ -3455,7 +3455,7 @@ export const sequenceStructResult = <
   const out: Record<string, unknown> = {}
   for (const k in s) {
     const r = s[k]
-    if (isErr(r)) return r as any
+    if (isErr(r!)) return r as any
     out[k] = (r as Ok<any>).value
   }
   return Ok(out as { readonly [K in keyof S]: UnwrapResult<S[K]> })
@@ -3473,8 +3473,8 @@ export const sequenceStructValidation = <
   let errs: ReadonlyArray<E> | null = null
   for (const k in s) {
     const v = s[k]
-    if (isVOk(v)) out[k] = v.value
-    else errs = errs ? concat(errs, v.errors) : v.errors
+    if (isVOk(v!)) out[k] = v.value
+    else errs = errs ? concat(errs, (v as any).errors) : (v as any).errors
   }
   return errs
     ? VErr(...errs)
@@ -3631,7 +3631,7 @@ export const object =
     const out: any = {}
     const errs: string[] = []
     for (const k in shape) {
-      const r = shape[k](rec[k], `${p}.${k}`)
+      const r = shape[k]!(rec[k], `${p}.${k}`)
       if (isOk(r)) out[k] = r.value
       else errs.push(...r.error)
     }
@@ -4186,7 +4186,7 @@ export const traverseSRT =
     const out: B[] = []
     let s = s0
     for (let i = 0; i < items.length; i++) {
-      const [b, s1] = await f(items[i], i)(r)(s)
+      const [b, s1] = await f(items[i]!, i)(r)(s)
       out.push(b)
       s = s1
     }
@@ -4221,7 +4221,7 @@ export const traverseSRTResult =
     const out: B[] = []
     let s = s0
     for (let i = 0; i < items.length; i++) {
-      const [res, s1] = await f(items[i], i)(r)(s)
+      const [res, s1] = await f(items[i]!, i)(r)(s)
       if (isErr(res)) return [res, s1] as const
       out.push((res as Ok<B>).value)
       s = s1
@@ -4392,7 +4392,7 @@ export const allLimited =
     const workers = Array.from({ length: Math.max(1, limit) }, async () => {
       while (i < tasks.length) {
         const idx = i++
-        results[idx] = await tasks[idx]()
+        results[idx] = await tasks[idx]!()
       }
     })
     await Promise.all(workers)
@@ -4516,7 +4516,7 @@ export async function* tokenizeJSON(
       }
 
       // Numbers
-      if (ch === "-" || (ch >= "0" && ch <= "9")) {
+      if (ch === "-" || (ch! >= "0" && ch! <= "9")) {
         const num = readJSONNumber(buf, i)
         if (num.kind === "needMore") break parseLoop
         if (num.kind === "error") throw new Error(num.message)
@@ -4527,7 +4527,7 @@ export async function* tokenizeJSON(
       }
 
       // If we get here, it's invalid or we need more
-      if (isWS(ch)) { i++; continue } // defensive
+      if (isWS(ch!)) { i++; continue } // defensive
       throw new Error(`Unexpected character '${ch}' at offset ${i}`)
     }
 
@@ -5341,7 +5341,7 @@ const withApi = Reader.local<Env, { apiBase: string }>(
 const url: Reader<Env, string> = Reader.asks((env) => `${env.apiBase}/users/me`)
 
 const headersThenUrl = Reader.chain<Record<string, string>, string, Env>((h) =>
-  Reader.map<string, string>((u) => `${u}?auth=${!!h.Authorization}`)(url)
+  Reader.map<string, string>((u) => `${u}?auth=${!!h['Authorization']}`)(url)
 )(authHeader)
 
 // run
@@ -5427,7 +5427,7 @@ namespace TinyFpExamples {
   const url: Reader<Env, string> = Reader.asks((env) => `${env.apiBase}/users/me`)
 
   const headersThenUrl = Reader.chain<Record<string, string>, string, Env>((h) =>
-    Reader.map<string, string>((u) => `${u}?auth=${!!h.Authorization}`)(url)
+    Reader.map<string, string>((u) => `${u}?auth=${!!h['Authorization']}`)(url)
   )(authHeader)
 
   runReader(headersThenUrl, { apiBase: "https://api.example.com", token: "T" })
@@ -5916,46 +5916,5 @@ const bRT: ReaderTask<Env, number> = ReaderTask.map((n: number) => n * 2)(aRT)
 const L2RT = liftA2K2C<'ReaderTask', Env>(RT)(add)
 const sumRT = L2RT(aRT, bRT)          // (env) => Promise<number>
 
-}
-
-// ====================================================================
-// Usage Examples for Reusable JSON Algebras
-// ====================================================================
-
-namespace ReusableAlgebraExamples {
-  // Create a sample JSON structure
-  const sampleJson: Json = jObj([
-    ['name', jStr('Alice')],
-    ['age', jNum(30)],
-    ['hobbies', jArr([jStr('reading'), jStr('coding')])],
-    ['metadata', jObj([
-      ['created', jStr('2024-01-01')],
-      ['tags', jArr([jStr('user'), jStr('active')])]
-    ])]
-  ])
-
-  // Example 1: Individual algebra usage
-  const pretty = prettyJson(sampleJson)                    // string
-  const size = sizeJsonReusable(sampleJson)               // number
-  const strings = collectStrings(sampleJson)              // ReadonlyArray<string>
-  const sum = sumNumbersJson(sampleJson)                  // number
-  const cleaned = dropNulls(sampleJson)                   // Json
-
-  // Example 2: Multiple results in one traversal
-  const [prettyAndSizeResult] = prettyAndSize(sampleJson) // readonly [string, number]
-  
-  // Example 3: Custom product algebra
-  const customBoth = bothJson(Alg_Json_pretty, Alg_Json_collectStrings)
-  const [prettyAndStrings] = customBoth(sampleJson)       // readonly [string, ReadonlyArray<string>]
-
-  // Example 4: Expr algebra usage
-  const expr = add(lit(5), mul(lit(3), lit(2)))          // (5 + (3 * 2))
-  const result = evalExprReusable(expr)                   // 11
-  const exprPretty = showExprReusable(expr)               // "(5 + (3 * 2))"
-  const leaves = leavesExprReusable(expr)                 // [5, 3, 2]
-  
-  // Example 5: Tree generation
-  const tree = fullMulTreeReusable(3)                     // Full binary tree of depth 3
-  const treeValue = evalExprReusable(tree)                // 8 (2^3)
 }
 
