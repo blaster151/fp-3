@@ -32,7 +32,7 @@ import {
   fuseJson, coalgRangeUnary, coalgFullBinary, Alg_Json_pretty_fused, Alg_Json_sum_fused, Alg_Json_size_fused, Alg_Json_stats,
   sumRange_FUSED, prettyRange_FUSED, statsFullBinary_FUSED, prettyAndSize_FUSED,
   // Expr constructors
-  lit, add, mul, neg, evalExpr, showExpr,
+  lit, add, mul, neg, addN, mulN, evalExpr, showExpr, normalizeExprToNary,
   // Monoids
   MonoidArray
 } from './allTS'
@@ -469,18 +469,44 @@ namespace SafeASTEvolutionExamples {
   const pretty1 = showExpr(simpleNeg)  // "(-5)"
   const pretty2 = showExpr(complexExpr)  // "(-(2 + 3))"
   
+  // Example: N-ary operations for better associativity
+  const narySum = addN([lit(1), lit(2), lit(3), lit(4)])  // 1+2+3+4 = 10
+  const naryProduct = mulN([lit(2), lit(3), lit(4)])  // 2*3*4 = 24
+  const mixedExpr = addN([lit(1), neg(lit(2)), lit(3)])  // 1+(-2)+3 = 2
+  
+  const sumResult = evalExpr(narySum)  // 10
+  const productResult = evalExpr(naryProduct)  // 24
+  const mixedResult = evalExpr(mixedExpr)  // 2
+  
+  const sumPretty = showExpr(narySum)  // "(1 + 2 + 3 + 4)"
+  const productPretty = showExpr(naryProduct)  // "(2 * 3 * 4)"
+  const mixedPretty = showExpr(mixedExpr)  // "(1 + (-2) + 3)"
+  
+  // Example: Migration from binary to N-ary
+  const binaryChain = add(add(lit(1), lit(2)), add(lit(3), lit(4)))  // ((1+2)+(3+4))
+  const normalized = normalizeExprToNary(binaryChain)  // Converts to AddN
+  const normalizedResult = evalExpr(normalized)  // 10
+  const normalizedPretty = showExpr(normalized)  // "(1 + 2 + 3 + 4)"
+  
   // Example usage:
   // (() => {
   //   console.log('Simple negation:', result1, '→', pretty1)
   //   console.log('Complex negation:', result2, '→', pretty2)
+  //   console.log('N-ary sum:', sumResult, '→', sumPretty)
+  //   console.log('N-ary product:', productResult, '→', productPretty)
+  //   console.log('Mixed expression:', mixedResult, '→', mixedPretty)
+  //   console.log('Binary chain:', normalizedResult, '→', normalizedPretty)
   // })()
   
   // Why this is powerful:
-  // 1. Compiler safety: Adding Neg forced updates to all algebras
+  // 1. Compiler safety: Adding Neg/AddN/MulN forced updates to all algebras
   // 2. No recursion code to touch: cataExpr/anaExpr/hyloExpr stay the same
   // 3. Exhaustiveness: _exhaustive helper catches missing cases
   // 4. Uniform evolution: All algebras evolve together consistently
   // 5. Zero runtime cost: Pure type-level safety
+  // 6. Better associativity: N-ary operations flatten skewed trees
+  // 7. Migration support: normalizeExprToNary converts binary chains
+  // 8. Composable: Mix binary and N-ary operations seamlessly
 }
 
 // ====================================================================

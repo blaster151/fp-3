@@ -904,6 +904,8 @@ export type ExprF<A> =
   | { _tag: 'Add'; left: A; right: A }
   | { _tag: 'Mul'; left: A; right: A }
   | { _tag: 'Neg'; value: A }
+  | { _tag: 'AddN'; items: ReadonlyArray<A> }
+  | { _tag: 'MulN'; items: ReadonlyArray<A> }
 
 export const mapExprF =
   <A, B>(f: (a: A) => B) =>
@@ -913,6 +915,8 @@ export const mapExprF =
       case 'Add': return { _tag: 'Add', left: f(fa.left), right: f(fa.right) }
       case 'Mul': return { _tag: 'Mul', left: f(fa.left), right: f(fa.right) }
       case 'Neg': return { _tag: 'Neg', value: f(fa.value) }
+      case 'AddN': return { _tag: 'AddN', items: fa.items.map(f) }
+      case 'MulN': return { _tag: 'MulN', items: fa.items.map(f) }
     }
   }
 
@@ -928,6 +932,8 @@ export const lit = (n: number): Expr => ({ un: { _tag: 'Lit', value: n } })
 export const add = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Add', left: l, right: r } })
 export const mul = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Mul', left: l, right: r } })
 export const neg = (e: Expr): Expr => ({ un: { _tag: 'Neg', value: e } })
+export const addN = (items: ReadonlyArray<Expr>): Expr => ({ un: { _tag: 'AddN', items } })
+export const mulN = (items: ReadonlyArray<Expr>): Expr => ({ un: { _tag: 'MulN', items } })
 
 // --------- Examples for ExprF ---------
 
@@ -942,11 +948,15 @@ export const evalExpr: (e: Expr) => number =
       case 'Add': return f.left + f.right
       case 'Mul': return f.left * f.right
       case 'Neg': return -f.value
+      case 'AddN': return f.items.reduce((s, x) => s + x, 0)
+      case 'MulN': return f.items.reduce((p, x) => p * x, 1)
       default: return _exhaustive(f)
     }
   })
 // evalExpr(add(lit(2), mul(lit(3), lit(4)))) // 14
 // evalExpr(neg(add(lit(2), lit(3)))) // -5
+// evalExpr(addN([lit(1), lit(2), lit(3)])) // 6
+// evalExpr(mulN([lit(2), lit(3), lit(4)])) // 24
 
 // Pretty-print via cata
 export const showExpr: (e: Expr) => string =
@@ -956,6 +966,8 @@ export const showExpr: (e: Expr) => string =
       case 'Add': return `(${f.left} + ${f.right})`
       case 'Mul': return `(${f.left} * ${f.right})`
       case 'Neg': return `(-${f.value})`
+      case 'AddN': return `(${f.items.join(' + ')})`
+      case 'MulN': return `(${f.items.join(' * ')})`
       default: return _exhaustive(f)
     }
   })
@@ -980,6 +992,8 @@ export const Alg_Expr_eval: ExprAlg<number> = (f) => {
     case 'Add': return f.left + f.right
     case 'Mul': return f.left * f.right
     case 'Neg': return -f.value
+    case 'AddN': return f.items.reduce((s, x) => s + x, 0)
+    case 'MulN': return f.items.reduce((p, x) => p * x, 1)
     default: return _exhaustive(f)
   }
 }
@@ -991,6 +1005,8 @@ export const Alg_Expr_pretty: ExprAlg<string> = (f) => {
     case 'Add': return `(${f.left} + ${f.right})`
     case 'Mul': return `(${f.left} * ${f.right})`
     case 'Neg': return `(-${f.value})`
+    case 'AddN': return `(${f.items.join(' + ')})`
+    case 'MulN': return `(${f.items.join(' * ')})`
     default: return _exhaustive(f)
   }
 }
@@ -1003,10 +1019,30 @@ export const Alg_Expr_leaves: ExprAlg<ReadonlyArray<number>> = (f) => {
     case 'Add': return [...f.left, ...f.right]
     case 'Mul': return [...f.left, ...f.right]
     case 'Neg': return f.value
+    case 'AddN': return f.items.flat()
+    case 'MulN': return f.items.flat()
     default: return _exhaustive(f)
   }
 }
 export const leavesExprReusable = cataExpr(Alg_Expr_leaves)
+
+// ====================================================================
+// Migration fold: convert binary chains to N-ary for better associativity
+// ====================================================================
+
+// Normalize binary Add/Mul chains into N-ary forms
+export const normalizeExprToNary: (e: Expr) => Expr =
+  cataExpr<Expr>(fb => {
+    switch (fb._tag) {
+      case 'Lit':  return lit(fb.value)
+      case 'Neg':  return neg(fb.value)
+      case 'Add':  return { un: { _tag: 'AddN', items: [fb.left, fb.right] } }
+      case 'Mul':  return { un: { _tag: 'MulN', items: [fb.left, fb.right] } }
+      case 'AddN': return { un: { _tag: 'AddN', items: fb.items.flatMap(d => d.un._tag === 'AddN' ? d.un.items : [d]) } }
+      case 'MulN': return { un: { _tag: 'MulN', items: fb.items.flatMap(d => d.un._tag === 'MulN' ? d.un.items : [d]) } }
+      default:     return fb as never
+    }
+  })
 
 // ====================================================================
 // Ana & Hylo quickies (generation + fused transform)
