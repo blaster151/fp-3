@@ -903,6 +903,7 @@ export type ExprF<A> =
   | { _tag: 'Lit'; value: number }
   | { _tag: 'Add'; left: A; right: A }
   | { _tag: 'Mul'; left: A; right: A }
+  | { _tag: 'Neg'; value: A }
 
 export const mapExprF =
   <A, B>(f: (a: A) => B) =>
@@ -911,6 +912,7 @@ export const mapExprF =
       case 'Lit': return fa
       case 'Add': return { _tag: 'Add', left: f(fa.left), right: f(fa.right) }
       case 'Mul': return { _tag: 'Mul', left: f(fa.left), right: f(fa.right) }
+      case 'Neg': return { _tag: 'Neg', value: f(fa.value) }
     }
   }
 
@@ -925,8 +927,12 @@ export const { cata: cataExpr, ana: anaExpr, hylo: hyloExpr } = makeRecursionK1(
 export const lit = (n: number): Expr => ({ un: { _tag: 'Lit', value: n } })
 export const add = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Add', left: l, right: r } })
 export const mul = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Mul', left: l, right: r } })
+export const neg = (e: Expr): Expr => ({ un: { _tag: 'Neg', value: e } })
 
 // --------- Examples for ExprF ---------
+
+// Exhaustiveness guard helper
+const _exhaustive = (x: never): never => x
 
 // Evaluate expression via cata
 export const evalExpr: (e: Expr) => number =
@@ -935,9 +941,12 @@ export const evalExpr: (e: Expr) => number =
       case 'Lit': return f.value
       case 'Add': return f.left + f.right
       case 'Mul': return f.left * f.right
+      case 'Neg': return -f.value
+      default: return _exhaustive(f)
     }
   })
 // evalExpr(add(lit(2), mul(lit(3), lit(4)))) // 14
+// evalExpr(neg(add(lit(2), lit(3)))) // -5
 
 // Pretty-print via cata
 export const showExpr: (e: Expr) => string =
@@ -946,6 +955,8 @@ export const showExpr: (e: Expr) => string =
       case 'Lit': return String(f.value)
       case 'Add': return `(${f.left} + ${f.right})`
       case 'Mul': return `(${f.left} * ${f.right})`
+      case 'Neg': return `(-${f.value})`
+      default: return _exhaustive(f)
     }
   })
 
@@ -968,6 +979,8 @@ export const Alg_Expr_eval: ExprAlg<number> = (f) => {
     case 'Lit': return f.value
     case 'Add': return f.left + f.right
     case 'Mul': return f.left * f.right
+    case 'Neg': return -f.value
+    default: return _exhaustive(f)
   }
 }
 export const evalExprReusable = cataExpr(Alg_Expr_eval)
@@ -977,6 +990,8 @@ export const Alg_Expr_pretty: ExprAlg<string> = (f) => {
     case 'Lit': return String(f.value)
     case 'Add': return `(${f.left} + ${f.right})`
     case 'Mul': return `(${f.left} * ${f.right})`
+    case 'Neg': return `(-${f.value})`
+    default: return _exhaustive(f)
   }
 }
 export const showExprReusable = cataExpr(Alg_Expr_pretty)
@@ -987,6 +1002,8 @@ export const Alg_Expr_leaves: ExprAlg<ReadonlyArray<number>> = (f) => {
     case 'Lit': return [f.value]
     case 'Add': return [...f.left, ...f.right]
     case 'Mul': return [...f.left, ...f.right]
+    case 'Neg': return f.value
+    default: return _exhaustive(f)
   }
 }
 export const leavesExprReusable = cataExpr(Alg_Expr_leaves)

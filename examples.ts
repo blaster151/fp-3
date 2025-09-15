@@ -31,6 +31,8 @@ import {
   // Fused pipelines
   fuseJson, coalgRangeUnary, coalgFullBinary, Alg_Json_pretty_fused, Alg_Json_sum_fused, Alg_Json_size_fused, Alg_Json_stats,
   sumRange_FUSED, prettyRange_FUSED, statsFullBinary_FUSED, prettyAndSize_FUSED,
+  // Expr constructors
+  lit, add, mul, neg, evalExpr, showExpr,
   // Monoids
   MonoidArray
 } from './allTS'
@@ -449,6 +451,39 @@ namespace FusedPipelineExamples {
 }
 
 // ====================================================================
+// 11. SAFE AST EVOLUTION - Compiler-enforced refactoring
+// ====================================================================
+
+namespace SafeASTEvolutionExamples {
+  // This demonstrates the power of HKT + recursion schemes for safe AST evolution.
+  // When you add a new node type (like Neg), the compiler forces every algebra
+  // to handle it, preventing bugs and ensuring consistency.
+  
+  // Example: Using the new Neg constructor
+  const simpleNeg = neg(lit(5))  // -5
+  const complexExpr = neg(add(lit(2), lit(3)))  // -(2 + 3) = -5
+  
+  // All algebras automatically work with the new Neg node:
+  const result1 = evalExpr(simpleNeg)  // -5
+  const result2 = evalExpr(complexExpr)  // -5
+  const pretty1 = showExpr(simpleNeg)  // "(-5)"
+  const pretty2 = showExpr(complexExpr)  // "(-(2 + 3))"
+  
+  // Example usage:
+  // (() => {
+  //   console.log('Simple negation:', result1, '→', pretty1)
+  //   console.log('Complex negation:', result2, '→', pretty2)
+  // })()
+  
+  // Why this is powerful:
+  // 1. Compiler safety: Adding Neg forced updates to all algebras
+  // 2. No recursion code to touch: cataExpr/anaExpr/hyloExpr stay the same
+  // 3. Exhaustiveness: _exhaustive helper catches missing cases
+  // 4. Uniform evolution: All algebras evolve together consistently
+  // 5. Zero runtime cost: Pure type-level safety
+}
+
+// ====================================================================
 // RUNNER - Uncomment examples to test them
 // ====================================================================
 
@@ -473,6 +508,7 @@ async function runExamples() {
   // SequenceExamples
   // JsonStreamingExamples
   // FusedPipelineExamples
+  // SafeASTEvolutionExamples
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
@@ -493,7 +529,8 @@ export type {
   PartitionExamples,
   SequenceExamples,
   JsonStreamingExamples,
-  FusedPipelineExamples
+  FusedPipelineExamples,
+  SafeASTEvolutionExamples
 }
 
 // Run if this file is executed directly
