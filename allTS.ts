@@ -914,30 +914,17 @@ export const mapExprF =
     }
   }
 
-export type Expr = { un: ExprF<Expr> }
+// ---- HKT functor instance + fixpoint + derived recursion for Expr ----
+export const ExprFK: FunctorK1<'ExprF'> = { map: mapExprF }
+
+export type Expr = Fix1<'ExprF'>
+
+export const { cata: cataExpr, ana: anaExpr, hylo: hyloExpr } = makeRecursionK1(ExprFK)
 
 // Smart constructors
 export const lit = (n: number): Expr => ({ un: { _tag: 'Lit', value: n } })
 export const add = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Add', left: l, right: r } })
 export const mul = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Mul', left: l, right: r } })
-
-// cata / ana / hylo specialized to ExprF
-export const cataExpr =
-  <B>(alg: (fb: ExprF<B>) => B) =>
-  (t: Expr): B =>
-    alg(mapExprF(cataExpr(alg))(t.un))
-
-export const anaExpr =
-  <S>(coalg: (s: S) => ExprF<S>) =>
-  (s0: S): Expr =>
-    ({ un: mapExprF(anaExpr(coalg))(coalg(s0)) })
-
-export const hyloExpr =
-  <S, B>(coalg: (s: S) => ExprF<S>, alg: (fb: ExprF<B>) => B) =>
-  (s0: S): B => {
-    const go = (s: S): B => alg(mapExprF(go)(coalg(s)))
-    return go(s0)
-  }
 
 // --------- Examples for ExprF ---------
 
@@ -950,6 +937,7 @@ export const evalExpr: (e: Expr) => number =
       case 'Mul': return f.left * f.right
     }
   })
+// evalExpr(add(lit(2), mul(lit(3), lit(4)))) // 14
 
 // Pretty-print via cata
 export const showExpr: (e: Expr) => string =
