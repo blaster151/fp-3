@@ -1,0 +1,30 @@
+{
+  "name": "tiny-fp",
+  "version": "1.0.0",
+  "description": "A compact, practical functional programming toolkit for TypeScript",
+  "main": "dist/allTS.js",
+  "types": "dist/allTS.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "functional-programming",
+    "typescript",
+    "fp",
+    "monads",
+    "option",
+    "result",
+    "recursion-schemes"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^24.4.0",
+    "typescript": "^5.9.2"
+  }
+}
