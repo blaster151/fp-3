@@ -1013,6 +1013,149 @@ export const fullMulTreeReusable = anaExpr<number>(k =>
          : ({ _tag: 'Mul', left: k - 1, right: k - 1 })
 )
 
+// ====================================================================
+// Fused pipelines (hylo) for JsonF - Generate → Consume in one pass
+// ====================================================================
+//
+// This section demonstrates the power of hylomorphism: composing coalgebras
+// (generators) with algebras (consumers) to create deforested pipelines
+// that never build intermediate data structures. This is especially useful
+// for processing large or infinite data streams efficiently.
+
+// Convenience alias for fused pipelines (avoiding conflict with existing JsonAlgebra)
+export type JsonAlgFused<B> = (fb: JsonF<B>) => B
+
+// Generic "fuse" helper: pick any coalgebra + algebra, get a deforested pipeline
+export const fuseJson =
+  <S, B>(coalg: (s: S) => JsonF<S>, alg: JsonAlgFused<B>) =>
+  (s0: S): B =>
+    hyloJson<S, B>(coalg, alg)(s0)
+
+// ---------- Ready-to-use coalgebras ----------
+
+// Unfold a *unary* list-like array: [n-1, then (n-2), …, 0]
+export const coalgRangeUnary =
+  (n: number): JsonF<number> =>
+    n <= 0 ? ({ _tag: 'JArr', items: [] })
+           : ({ _tag: 'JArr', items: [n - 1] })
+
+// Unfold a *full binary* tree of given depth (leaves are 1s)
+export const coalgFullBinary =
+  (depth: number): JsonF<number> =>
+    depth <= 0 ? ({ _tag: 'JNum', value: 1 })
+               : ({ _tag: 'JArr', items: [depth - 1, depth - 1] })
+
+// ---------- Handy algebras you can swap in ----------
+
+// Pretty (compact) - fused pipeline version
+export const Alg_Json_pretty_fused: JsonAlgFused<string> = (f) => {
+  switch (f._tag) {
+    case 'JNull': return 'null'
+    case 'JBool': return String(f.value)
+    case 'JNum':  return String(f.value)
+    case 'JStr':  return JSON.stringify(f.value)
+    case 'JArr':  return `[${f.items.join(', ')}]`
+    case 'JObj':  return `{${f.entries.map(([k,v]) => JSON.stringify(k)+': '+v).join(', ')}}`
+  }
+}
+
+// Sum numbers (0 elsewhere) - fused pipeline version
+export const Alg_Json_sum_fused: JsonAlgFused<number> = (f) => {
+  switch (f._tag) {
+    case 'JNum':  return f.value
+    case 'JArr':  return f.items.reduce((s, n) => s + n, 0)
+    case 'JObj':  return f.entries.reduce((s, [,n]) => s + n, 0)
+    default:      return 0
+  }
+}
+
+// Count nodes - fused pipeline version
+export const Alg_Json_size_fused: JsonAlgFused<number> = (f) => {
+  switch (f._tag) {
+    case 'JNull':
+    case 'JBool':
+    case 'JNum':
+    case 'JStr':  return 1
+    case 'JArr':  return 1 + f.items.reduce((n, x) => n + x, 0)
+    case 'JObj':  return 1 + f.entries.reduce((n, [,v]) => n + v, 0)
+  }
+}
+
+// Stats record, combined in one pass (sum + count + max + height)
+export type JStats = { sum: number; count: number; max: number; height: number }
+export const Alg_Json_stats: JsonAlgFused<JStats> = (f) => {
+  switch (f._tag) {
+    case 'JNum':  return { sum: f.value, count: 1, max: f.value, height: 1 }
+    case 'JArr': {
+      if (f.items.length === 0) return { sum: 0, count: 1, max: -Infinity, height: 1 }
+      const xs = f.items
+      return {
+        sum:    xs.reduce((a, x) => a + x.sum, 0),
+        count:  1 + xs.reduce((a, x) => a + x.count, 0),
+        max:    xs.reduce((m, x) => Math.max(m, x.max), -Infinity),
+        height: 1 + Math.max(...xs.map(x => x.height)),
+      }
+    }
+    case 'JObj': {
+      const vs = f.entries.map(([,v]) => v)
+      return {
+        sum:    vs.reduce((a, x) => a + x.sum, 0),
+        count:  1 + vs.reduce((a, x) => a + x.count, 0),
+        max:    vs.reduce((m, x) => Math.max(m, x.max), -Infinity),
+        height: 1 + Math.max(0, ...vs.map(x => x.height)),
+      }
+    }
+    default: return { sum: 0, count: 1, max: -Infinity, height: 1 }
+  }
+}
+
+// ---------- Fused pipelines you can call directly ----------
+
+// 1) Range → (sum)   (unary-array unfold; no intermediate Json constructed)
+export const sumRange_FUSED = (n: number): number =>
+  fuseJson(coalgRangeUnary, Alg_Json_sum_fused)(n)
+
+// 2) Range → (pretty, in one pass)
+//    (Strictly illustrative: pretty-printing a unary array is a bit silly,
+//     but shows "generate → pretty" fused.)
+export const prettyRange_FUSED = (n: number): string =>
+  fuseJson(coalgRangeUnary, Alg_Json_pretty_fused)(n)
+
+// 3) Full binary(depth) → stats (sum/count/max/height) in one pass
+export const statsFullBinary_FUSED = (depth: number): JStats =>
+  fuseJson(coalgFullBinary, Alg_Json_stats)(depth)
+
+// 4) Full binary(depth) → *both* pretty and size in one pass via a product algebra
+//    If you already defined a product algebra elsewhere, feel free to reuse it;
+//    this local version avoids naming collisions.
+export const productJsonAlg2 =
+  <B, C>(algB: JsonAlgFused<B>, algC: JsonAlgFused<C>): JsonAlgFused<readonly [B, C]> =>
+  (fbc: JsonF<readonly [B, C]>) => {
+    switch (fbc._tag) {
+      case 'JNull': return [algB({ _tag:'JNull' }), algC({ _tag:'JNull' })] as const
+      case 'JBool': return [algB({ _tag:'JBool', value: fbc.value }),
+                            algC({ _tag:'JBool', value: fbc.value })] as const
+      case 'JNum':  return [algB({ _tag:'JNum',  value: fbc.value }),
+                            algC({ _tag:'JNum',  value: fbc.value })] as const
+      case 'JStr':  return [algB({ _tag:'JStr',  value: fbc.value }),
+                            algC({ _tag:'JStr',  value: fbc.value })] as const
+      case 'JArr': {
+        const bs = fbc.items.map(([b]) => b)
+        const cs = fbc.items.map(([,c]) => c)
+        return [algB({ _tag:'JArr', items: bs }), algC({ _tag:'JArr', items: cs })] as const
+      }
+      case 'JObj': {
+        const bs = fbc.entries.map(([k, bc]) => [k, bc[0]] as const)
+        const cs = fbc.entries.map(([k, bc]) => [k, bc[1]] as const)
+        return [algB({ _tag:'JObj', entries: bs }), algC({ _tag:'JObj', entries: cs })] as const
+      }
+    }
+  }
+
+export const prettyAndSize_FUSED =
+  (depth: number): readonly [string, number] =>
+    fuseJson(coalgFullBinary, productJsonAlg2(Alg_Json_pretty_fused, Alg_Json_size_fused))(depth)
+
 
 // ====================================================================
 // makeRecursion — generic cata/ana/hylo for any base functor

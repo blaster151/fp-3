@@ -28,6 +28,9 @@ import {
   partitionSet, partitionSetWith, productTR, zipWithTR, sequenceState, traverseSRT,
   // JSON streaming
   makeJsonStreamFolder, ev,
+  // Fused pipelines
+  fuseJson, coalgRangeUnary, coalgFullBinary, Alg_Json_pretty_fused, Alg_Json_sum_fused, Alg_Json_size_fused, Alg_Json_stats,
+  sumRange_FUSED, prettyRange_FUSED, statsFullBinary_FUSED, prettyAndSize_FUSED,
   // Monoids
   MonoidArray
 } from './allTS'
@@ -398,6 +401,54 @@ namespace JsonStreamingExamples {
 }
 
 // ====================================================================
+// 10. FUSED PIPELINES - Deforested generation and consumption
+// ====================================================================
+
+namespace FusedPipelineExamples {
+  // Fused pipelines demonstrate the power of hylomorphism: composing coalgebras
+  // (generators) with algebras (consumers) to create deforested pipelines that
+  // never build intermediate data structures. This is especially useful for
+  // processing large or infinite data streams efficiently.
+  
+  // The key insight: instead of generating a full tree and then consuming it,
+  // we fuse the generation and consumption into a single pass, avoiding
+  // intermediate memory allocation.
+
+  // Example 1: Range sum (no intermediate JSON tree)
+  // Instead of: generate [4,3,2,1,0] → sum → 10
+  // We do: generate-and-sum in one pass → 10
+  const rangeSum = sumRange_FUSED(5)  // -> 15 (1+2+3+4+5)
+
+  // Example 2: Range pretty-printing (illustrative)
+  // Shows "generate → pretty" fused, though pretty-printing a unary array
+  // is a bit silly in practice
+  const rangePretty = prettyRange_FUSED(3)  // -> "[2, 1, ]"
+
+  // Example 3: Full binary tree statistics in one pass
+  // Computes sum, count, max, and height without building the tree
+  const binaryStats = statsFullBinary_FUSED(3)  // -> { sum: 8, count: 15, max: 1, height: 4 }
+
+  // Example 4: Multiple results in one pass
+  // Gets both pretty representation and size without building intermediate tree
+  const prettyAndSize = prettyAndSize_FUSED(2)  // -> ["[[1, 1], [1, 1]]", 7]
+
+  // Example usage:
+  // (() => {
+  //   console.log('Range sum (fused):', rangeSum)
+  //   console.log('Range pretty (fused):', rangePretty)
+  //   console.log('Binary tree stats (fused):', binaryStats)
+  //   console.log('Pretty and size (fused):', prettyAndSize)
+  // })()
+
+  // Why this is useful:
+  // 1. Deforestation: hylo composes unfold and fold so nothing intermediate is built
+  // 2. Swap meanings: keep coalg* the same, plug different algebras to evaluate vs. pretty vs. stats
+  // 3. Single pass, multiple results: product algebras give you "N results in one traversal"
+  // 4. Memory efficient: no intermediate data structures for large or infinite streams
+  // 5. Composable: mix and match coalgebras and algebras for different behaviors
+}
+
+// ====================================================================
 // RUNNER - Uncomment examples to test them
 // ====================================================================
 
@@ -421,6 +472,7 @@ async function runExamples() {
   // PartitionExamples
   // SequenceExamples
   // JsonStreamingExamples
+  // FusedPipelineExamples
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
@@ -440,7 +492,8 @@ export type {
   RWSTExamples,
   PartitionExamples,
   SequenceExamples,
-  JsonStreamingExamples
+  JsonStreamingExamples,
+  FusedPipelineExamples
 }
 
 // Run if this file is executed directly
