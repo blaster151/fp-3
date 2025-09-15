@@ -13,7 +13,7 @@
 
 import type {
   // Core types
-  Option, Result, Validation, StateReaderTask, RWST
+  Option, Result, Validation, StateReaderTask, RWST, ReaderTaskOption
 } from './allTS'
 
 import {
@@ -22,7 +22,7 @@ import {
   // Monads
   Reader, ReaderTask, TaskResult, State,
   // Combinators
-  DoR, DoTR, SRT, runSRT, genRTO, genRWST,
+  DoR, DoTR, SRT, runSRT, genRTO, genRWST, RTO_, RWST_,
   // Utilities
   sequenceArrayValidation, sequenceArrayResult, sequenceStructValidation, sequenceStructResult,
   partitionSet, partitionSetWith, productTR, zipWithTR, sequenceState, traverseSRT,
@@ -275,25 +275,48 @@ namespace SRTBatchExamples {
 
 namespace RTOExamples {
   // ReaderTaskOption example
-  // Note: RTO examples are complex and require careful setup
-  // For now, this is a placeholder for future RTO examples
+  type Env = { n: number }
   
+  const stepA: ReaderTaskOption<Env, number> = async (r) => Some(r.n)
+  const stepB = (x: number): ReaderTaskOption<Env, number> => async () => (x > 0 ? Some(x + 1) : None)
+
+  const prog = genRTO<Env>()(function* () {
+    const a = yield* RTO_(stepA)
+    const b = yield* RTO_(stepB(a))
+    return a + b
+  })
+
   // Example usage:
   // (async () => {
-  //   // RTO examples will be added here
-  //   console.log('RTO examples coming soon!')
+  //   const result = await prog({ n: 2 })
+  //   console.log(result) // Some(5)
   // })()
 }
 
 namespace RWSTExamples {
   // Reader-Writer-State-Transformer example
-  // Note: RWST examples are complex and require careful setup
-  // For now, this is a placeholder for future RWST examples
-  
+  type Env = { inc: number }
+  type S = { log: ReadonlyArray<string> }
+  const M = MonoidArray<string>()
+
+  const step = (label: string): RWST<Env, ReadonlyArray<string>, S, number> =>
+    (r) => async (s0) => {
+      const n = r.inc
+      const s1 = { ...s0, log: [...s0.log, label] }
+      return [n, s1, [label]] as const
+    }
+
+  const prog = genRWST(M)<Env, S>()(function* () {
+    const a = yield* RWST_(step('a'))
+    const b = yield* RWST_(step('b'))
+    return a + b
+  })
+
   // Example usage:
   // (async () => {
-  //   // RWST examples will be added here
-  //   console.log('RWST examples coming soon!')
+  //   const [sum, sFinal, w] = await prog({ inc: 2 })({ log: [] })
+  //   // sum === 4, sFinal.log === ['a','b'], w === ['a','b']
+  //   console.log({ sum, sFinal, w })
   // })()
 }
 

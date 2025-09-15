@@ -3250,7 +3250,7 @@ export const DoRTO = <R = unknown>() => {
 // `prog` has type ReaderTaskOption<R, ReturnTypeOfReturn>.
 
 type RTO_Yield<R, A> = Generator<ReaderTaskOption<R, A>, A, A>
-const RTO_ =
+export const RTO_ =
   <R, A>(ma: ReaderTaskOption<R, A>): RTO_Yield<R, A> =>
   (function* () { return (yield ma) as A })()
 
@@ -4071,7 +4071,7 @@ export const logRWST  = async <R, W, S, A>(m: RWST<R, W, S, A>, r: R, s: S) => {
 //   })
 
 type RWST_Yield<R, W, S, A> = Generator<RWST<R, W, S, A>, A, A>
-const RWST_ =
+export const RWST_ =
   <R, W, S, A>(m: RWST<R, W, S, A>): RWST_Yield<R, W, S, A> =>
   (function* () { return (yield m) as A })()
 
