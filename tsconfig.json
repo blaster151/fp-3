@@ -4,10 +4,11 @@
     "rootDir": "./",
     "outDir": "./dist",
 
-    // Environment Settings - Latest standards
-    "target": "ESNext",
-    "module": "ESNext",
-    "lib": ["ESNext", "DOM"],
+        // Environment Settings - Latest standards
+        "target": "ES2015",
+        "module": "ESNext",
+        "lib": ["ES2015", "DOM"],
+        "downlevelIteration": true,
     "types": ["node"],
 
     // Other Outputs
