@@ -906,17 +906,23 @@ export type ExprF<A> =
   | { _tag: 'Neg'; value: A }
   | { _tag: 'AddN'; items: ReadonlyArray<A> }
   | { _tag: 'MulN'; items: ReadonlyArray<A> }
+  | { _tag: 'Var'; name: string }
+  | { _tag: 'Let'; name: string; value: A; body: A }
+  | { _tag: 'Div'; left: A; right: A }
 
 export const mapExprF =
   <A, B>(f: (a: A) => B) =>
   (fa: ExprF<A>): ExprF<B> => {
     switch (fa._tag) {
-      case 'Lit': return fa
-      case 'Add': return { _tag: 'Add', left: f(fa.left), right: f(fa.right) }
-      case 'Mul': return { _tag: 'Mul', left: f(fa.left), right: f(fa.right) }
-      case 'Neg': return { _tag: 'Neg', value: f(fa.value) }
+      case 'Lit':  return fa
+      case 'Add':  return { _tag: 'Add',  left: f(fa.left),  right: f(fa.right) }
+      case 'Mul':  return { _tag: 'Mul',  left: f(fa.left),  right: f(fa.right) }
+      case 'Neg':  return { _tag: 'Neg',  value: f(fa.value) }
       case 'AddN': return { _tag: 'AddN', items: fa.items.map(f) }
       case 'MulN': return { _tag: 'MulN', items: fa.items.map(f) }
+      case 'Var':  return fa
+      case 'Let':  return { _tag: 'Let',  name: fa.name, value: f(fa.value), body: f(fa.body) }
+      case 'Div':  return { _tag: 'Div',  left: f(fa.left),  right: f(fa.right) }
     }
   }
 
@@ -928,17 +934,22 @@ export type Expr = Fix1<'ExprF'>
 export const { cata: cataExpr, ana: anaExpr, hylo: hyloExpr } = makeRecursionK1(ExprFK)
 
 // Smart constructors
-export const lit = (n: number): Expr => ({ un: { _tag: 'Lit', value: n } })
-export const add = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Add', left: l, right: r } })
-export const mul = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Mul', left: l, right: r } })
-export const neg = (e: Expr): Expr => ({ un: { _tag: 'Neg', value: e } })
+export const lit  = (n: number): Expr => ({ un: { _tag: 'Lit', value: n } })
+export const add  = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Add', left: l, right: r } })
+export const mul  = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Mul', left: l, right: r } })
+export const neg  = (e: Expr): Expr => ({ un: { _tag: 'Neg', value: e } })
 export const addN = (items: ReadonlyArray<Expr>): Expr => ({ un: { _tag: 'AddN', items } })
 export const mulN = (items: ReadonlyArray<Expr>): Expr => ({ un: { _tag: 'MulN', items } })
+export const vvar = (name: string): Expr => ({ un: { _tag: 'Var', name } })
+export const lett = (name: string, value: Expr, body: Expr): Expr =>
+  ({ un: { _tag: 'Let', name, value, body } })
+export const divE = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Div', left: l, right: r } })
 
 // --------- Examples for ExprF ---------
 
 // Exhaustiveness guard helper
 const _exhaustive = (x: never): never => x
+const _absurd = (x: never): never => x
 
 // Evaluate expression via cata
 export const evalExpr: (e: Expr) => number =
@@ -950,6 +961,9 @@ export const evalExpr: (e: Expr) => number =
       case 'Neg': return -f.value
       case 'AddN': return f.items.reduce((s, x) => s + x, 0)
       case 'MulN': return f.items.reduce((p, x) => p * x, 1)
+      case 'Var': throw new Error(`unbound var: ${f.name}`)
+      case 'Let': throw new Error('let expressions not supported in simple eval')
+      case 'Div': return f.left / f.right
       default: return _exhaustive(f)
     }
   })
@@ -968,6 +982,9 @@ export const showExpr: (e: Expr) => string =
       case 'Neg': return `(-${f.value})`
       case 'AddN': return `(${f.items.join(' + ')})`
       case 'MulN': return `(${f.items.join(' * ')})`
+      case 'Var': return f.name
+      case 'Let': return `(let ${f.name} = ${f.value} in ${f.body})`
+      case 'Div': return `(${f.left} / ${f.right})`
       default: return _exhaustive(f)
     }
   })
@@ -994,6 +1011,9 @@ export const Alg_Expr_eval: ExprAlg<number> = (f) => {
     case 'Neg': return -f.value
     case 'AddN': return f.items.reduce((s, x) => s + x, 0)
     case 'MulN': return f.items.reduce((p, x) => p * x, 1)
+    case 'Var': throw new Error(`unbound var: ${f.name}`)
+    case 'Let': throw new Error('let expressions not supported in simple eval')
+    case 'Div': return f.left / f.right
     default: return _exhaustive(f)
   }
 }
@@ -1007,6 +1027,9 @@ export const Alg_Expr_pretty: ExprAlg<string> = (f) => {
     case 'Neg': return `(-${f.value})`
     case 'AddN': return `(${f.items.join(' + ')})`
     case 'MulN': return `(${f.items.join(' * ')})`
+    case 'Var': return f.name
+    case 'Let': return `(let ${f.name} = ${f.value} in ${f.body})`
+    case 'Div': return `(${f.left} / ${f.right})`
     default: return _exhaustive(f)
   }
 }
@@ -1021,6 +1044,9 @@ export const Alg_Expr_leaves: ExprAlg<ReadonlyArray<number>> = (f) => {
     case 'Neg': return f.value
     case 'AddN': return f.items.flat()
     case 'MulN': return f.items.flat()
+    case 'Var': return []
+    case 'Let': return [...f.value, ...f.body]
+    case 'Div': return [...f.left, ...f.right]
     default: return _exhaustive(f)
   }
 }
@@ -1030,19 +1056,146 @@ export const leavesExprReusable = cataExpr(Alg_Expr_leaves)
 // Migration fold: convert binary chains to N-ary for better associativity
 // ====================================================================
 
-// Normalize binary Add/Mul chains into N-ary forms
+// Normalize: turn Add/Mul chains into AddN/MulN and flatten nested n-aries
 export const normalizeExprToNary: (e: Expr) => Expr =
   cataExpr<Expr>(fb => {
     switch (fb._tag) {
       case 'Lit':  return lit(fb.value)
       case 'Neg':  return neg(fb.value)
-      case 'Add':  return { un: { _tag: 'AddN', items: [fb.left, fb.right] } }
-      case 'Mul':  return { un: { _tag: 'MulN', items: [fb.left, fb.right] } }
-      case 'AddN': return { un: { _tag: 'AddN', items: fb.items.flatMap(d => d.un._tag === 'AddN' ? d.un.items : [d]) } }
-      case 'MulN': return { un: { _tag: 'MulN', items: fb.items.flatMap(d => d.un._tag === 'MulN' ? d.un.items : [d]) } }
-      default:     return fb as never
+      case 'Var':  return vvar(fb.name)
+      case 'Div':  return divE(fb.left, fb.right)
+      case 'Let':  return lett(fb.name, fb.value, fb.body)
+      case 'Add':  return addN([fb.left, fb.right])
+      case 'Mul':  return mulN([fb.left, fb.right])
+      case 'AddN': return addN(fb.items.flatMap(d => d.un._tag === 'AddN' ? d.un.items : [d]))
+      case 'MulN': return mulN(fb.items.flatMap(d => d.un._tag === 'MulN' ? d.un.items : [d]))
+      default:     return _absurd(fb as never)
     }
   })
+
+// ====================================================================
+// Advanced evaluators and pretty-printers
+// ====================================================================
+
+// Closed evaluator: only works when there are no Vars/Let.
+// For Vars/Let, use the Reader evaluators below.
+export const evalExprNum2 =
+  cataExpr<number>((f) => {
+    switch (f._tag) {
+      case 'Lit':  return f.value
+      case 'Neg':  return -f.value
+      case 'Add':  return f.left + f.right
+      case 'Mul':  return f.left * f.right
+      case 'Div':  return f.left / f.right
+      case 'AddN': return f.items.reduce((s, x) => s + x, 0)
+      case 'MulN': return f.items.reduce((p, x) => p * x, 1)
+      case 'Var':  throw new Error('evalExprNum2: Vars not supported. Use evalExprR / evalExprRR.')
+      case 'Let':  throw new Error('evalExprNum2: Let not supported. Use evalExprR / evalExprRR.')
+      default:     return _absurd(f as never)
+    }
+  })
+
+// ----- Reader-based eval with variables -----
+type ExprEnv = Readonly<Record<string, number>>
+
+// Result type: (e: Expr) => Reader<ExprEnv, number>
+export const evalExprR: (e: Expr) => Reader<ExprEnv, number> =
+  cataExpr<Reader<ExprEnv, number>>((f) => {
+    switch (f._tag) {
+      case 'Lit':  return (_env) => f.value
+      case 'Var':  return (env)  => env[f.name] ?? 0 // pick your policy (0 or throw/Err)
+      case 'Neg':  return (env)  => -f.value(env)
+      case 'Add':  return (env)  => f.left(env) + f.right(env)
+      case 'Mul':  return (env)  => f.left(env) * f.right(env)
+      case 'Div':  return (env)  => f.left(env) / f.right(env)
+      case 'AddN': return (env)  => f.items.reduce((s, r) => s + r(env), 0)
+      case 'MulN': return (env)  => f.items.reduce((p, r) => p * r(env), 1)
+      case 'Let':  return (env)  => {
+        const bound = f.value(env)
+        const env2  = { ...env, [f.name]: bound }
+        return f.body(env2)
+      }
+      default:     return (_: ExprEnv) => { throw new Error('exhaustive') }
+    }
+  })
+
+// Result type: (e: Expr) => Reader<ExprEnv, Result<string, number>>
+export const evalExprRR:
+  (e: Expr) => Reader<ExprEnv, Result<string, number>> =
+  cataExpr<Reader<ExprEnv, Result<string, number>>>((f) => {
+    switch (f._tag) {
+      case 'Lit':  return (_env) => Ok(f.value)
+      case 'Var':  return (env)  => {
+        const v = env[f.name]
+        return v === undefined ? Err(`unbound var: ${f.name}`) : Ok(v)
+      }
+      case 'Neg':  return (env)  => {
+        const r = f.value(env)
+        return isErr(r) ? r : Ok(-r.value)
+      }
+      case 'Add':  return (env)  => {
+        const l = f.left(env);  if (isErr(l)) return l
+        const r = f.right(env); if (isErr(r)) return r
+        return Ok(l.value + r.value)
+      }
+      case 'Mul':  return (env)  => {
+        const l = f.left(env);  if (isErr(l)) return l
+        const r = f.right(env); if (isErr(r)) return r
+        return Ok(l.value * r.value)
+      }
+      case 'Div':  return (env)  => {
+        const l = f.left(env);  if (isErr(l)) return l
+        const r = f.right(env); if (isErr(r)) return r
+        if (r.value === 0) return Err('div by zero')
+        return Ok(l.value / r.value)
+      }
+      case 'AddN': return (env)  => {
+        let s = 0
+        for (const rf of f.items) {
+          const r = rf(env); if (isErr(r)) return r
+          s += r.value
+        }
+        return Ok(s)
+      }
+      case 'MulN': return (env)  => {
+        let p = 1
+        for (const rf of f.items) {
+          const r = rf(env); if (isErr(r)) return r
+          p *= r.value
+        }
+        return Ok(p)
+      }
+      case 'Let':  return (env)  => {
+        const rv = f.value(env); if (isErr(rv)) return rv
+        const env2 = { ...env, [f.name]: rv.value }
+        return f.body(env2)
+      }
+      default:     return (_: ExprEnv) => Err('exhaustive')
+    }
+  })
+
+// ----- Precedence-aware pretty (min parens), updated for new tags -----
+type Doc = { txt: string; prec: number }
+const litD = (s: string): Doc => ({ txt: s, prec: 100 })
+const withParens = (outer: number, inner: Doc) =>
+  inner.prec < outer ? `(${inner.txt})` : inner.txt
+
+export const prettyExprMinParens2 =
+  cataExpr<Doc>(f => {
+    switch (f._tag) {
+      case 'Lit':  return litD(String(f.value))
+      case 'Var':  return litD(f.name)
+      case 'Neg':  return { txt: `-${withParens(90, f.value)}`, prec: 90 }
+      case 'Mul':  return { txt: `${withParens(80, f.left)} * ${withParens(80, f.right)}`, prec: 80 }
+      case 'Div':  return { txt: `${withParens(80, f.left)} / ${withParens(80, f.right)}`, prec: 80 }
+      case 'Add':  return { txt: `${withParens(70, f.left)} + ${withParens(70, f.right)}`, prec: 70 }
+      case 'AddN': return { txt: f.items.map(d => withParens(70, d)).join(' + '), prec: 70 }
+      case 'MulN': return { txt: f.items.map(d => withParens(80, d)).join(' * '), prec: 80 }
+      case 'Let':  return { txt: `(let ${f.name} = ${f.value.txt} in ${f.body.txt})`, prec: 0 }
+      default:     return _absurd(f as never)
+    }
+  })
+export const showExprMinParens2 = (e: Expr) => prettyExprMinParens2(e).txt
 
 // ====================================================================
 // Ana & Hylo quickies (generation + fused transform)

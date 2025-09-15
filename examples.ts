@@ -32,7 +32,9 @@ import {
   fuseJson, coalgRangeUnary, coalgFullBinary, Alg_Json_pretty_fused, Alg_Json_sum_fused, Alg_Json_size_fused, Alg_Json_stats,
   sumRange_FUSED, prettyRange_FUSED, statsFullBinary_FUSED, prettyAndSize_FUSED,
   // Expr constructors
-  lit, add, mul, neg, addN, mulN, evalExpr, showExpr, normalizeExprToNary,
+  lit, add, mul, neg, addN, mulN, vvar, lett, divE, evalExpr, showExpr, normalizeExprToNary,
+  // Advanced evaluators
+  evalExprNum2, evalExprR, evalExprRR, showExprMinParens2,
   // Monoids
   MonoidArray
 } from './allTS'
@@ -461,13 +463,13 @@ namespace SafeASTEvolutionExamples {
   
   // Example: Using the new Neg constructor
   const simpleNeg = neg(lit(5))  // -5
-  const complexExpr = neg(add(lit(2), lit(3)))  // -(2 + 3) = -5
+  const negExpr = neg(add(lit(2), lit(3)))  // -(2 + 3) = -5
   
   // All algebras automatically work with the new Neg node:
   const result1 = evalExpr(simpleNeg)  // -5
-  const result2 = evalExpr(complexExpr)  // -5
+  const result2 = evalExpr(negExpr)  // -5
   const pretty1 = showExpr(simpleNeg)  // "(-5)"
-  const pretty2 = showExpr(complexExpr)  // "(-(2 + 3))"
+  const pretty2 = showExpr(negExpr)  // "(-(2 + 3))"
   
   // Example: N-ary operations for better associativity
   const narySum = addN([lit(1), lit(2), lit(3), lit(4)])  // 1+2+3+4 = 10
@@ -488,6 +490,21 @@ namespace SafeASTEvolutionExamples {
   const normalizedResult = evalExpr(normalized)  // 10
   const normalizedPretty = showExpr(normalized)  // "(1 + 2 + 3 + 4)"
   
+  // Example: Advanced evaluators with variables and let-binding
+  const varExpr = add(vvar('x'), lit(5))  // x + 5
+  const letExpr = lett('x', lit(10), add(vvar('x'), lit(3)))  // let x = 10 in x + 3
+  const divExpr = divE(lit(10), lit(2))  // 10 / 2
+  
+  // Using different evaluators
+  const simpleResult = evalExprNum2(divExpr)  // 5 (no vars/let)
+  const readerResult = evalExprR(varExpr)({ x: 7 })  // 12 (with env)
+  const letResult = evalExprR(letExpr)({})  // 13 (let binding)
+  const resultWithError = evalExprRR(divE(lit(10), lit(0)))({})  // Err('div by zero')
+  
+  // Precedence-aware pretty printing
+  const complexExpr = add(mul(lit(2), lit(3)), divE(lit(10), lit(2)))  // 2*3 + 10/2
+  const minParensPretty = showExprMinParens2(complexExpr)  // "2 * 3 + 10 / 2" (no extra parens)
+  
   // Example usage:
   // (() => {
   //   console.log('Simple negation:', result1, '→', pretty1)
@@ -496,10 +513,15 @@ namespace SafeASTEvolutionExamples {
   //   console.log('N-ary product:', productResult, '→', productPretty)
   //   console.log('Mixed expression:', mixedResult, '→', mixedPretty)
   //   console.log('Binary chain:', normalizedResult, '→', normalizedPretty)
+  //   console.log('Simple division:', simpleResult)
+  //   console.log('Reader with env:', readerResult)
+  //   console.log('Let binding:', letResult)
+  //   console.log('Division by zero:', resultWithError)
+  //   console.log('Min parens pretty:', minParensPretty)
   // })()
   
   // Why this is powerful:
-  // 1. Compiler safety: Adding Neg/AddN/MulN forced updates to all algebras
+  // 1. Compiler safety: Adding Neg/AddN/MulN/Var/Let/Div forced updates to all algebras
   // 2. No recursion code to touch: cataExpr/anaExpr/hyloExpr stay the same
   // 3. Exhaustiveness: _exhaustive helper catches missing cases
   // 4. Uniform evolution: All algebras evolve together consistently
@@ -507,6 +529,10 @@ namespace SafeASTEvolutionExamples {
   // 6. Better associativity: N-ary operations flatten skewed trees
   // 7. Migration support: normalizeExprToNary converts binary chains
   // 8. Composable: Mix binary and N-ary operations seamlessly
+  // 9. Multiple evaluation strategies: Simple, Reader-based, Result-typed
+  // 10. Variable binding: Let expressions with proper scoping
+  // 11. Error handling: Typed failures for division by zero, unbound variables
+  // 12. Precedence-aware printing: Minimal parentheses for readability
 }
 
 // ====================================================================
