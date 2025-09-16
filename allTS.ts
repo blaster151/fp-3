@@ -650,23 +650,33 @@ export const applyEdits =
 
 export type JsonF<A> =
   | { _tag: 'JNull' }
-  | { _tag: 'JBool'; value: boolean }
-  | { _tag: 'JNum';  value: number }
-  | { _tag: 'JStr';  value: string }
-  | { _tag: 'JArr';  items: ReadonlyArray<A> }
-  | { _tag: 'JObj';  entries: ReadonlyArray<readonly [string, A]> }
+  | { _tag: 'JUndefined' }                       // NEW
+  | { _tag: 'JBool';  value: boolean }
+  | { _tag: 'JNum';   value: number }
+  | { _tag: 'JDec';   decimal: string }          // NEW: decimal-as-string
+  | { _tag: 'JStr';   value: string }
+  | { _tag: 'JBinary'; base64: string }          // NEW: binary-as-base64
+  | { _tag: 'JRegex'; pattern: string; flags?: string } // NEW
+  | { _tag: 'JArr';   items: ReadonlyArray<A> }
+  | { _tag: 'JSet';   items: ReadonlyArray<A> }  // NEW: set semantics
+  | { _tag: 'JObj';   entries: ReadonlyArray<readonly [string, A]> }
 
-// Functor action for JsonF
+// Functor action for JsonF (map over recursive slots only)
 export const mapJsonF =
   <A, B>(f: (a: A) => B) =>
   (fa: JsonF<A>): JsonF<B> => {
     switch (fa._tag) {
-      case 'JNull': return fa
-      case 'JBool': return fa
-      case 'JNum':  return fa
-      case 'JStr':  return fa
-      case 'JArr':  return { _tag: 'JArr', items: fa.items.map(f) }
-      case 'JObj':  return {
+      case 'JNull':      return fa
+      case 'JUndefined': return fa
+      case 'JBool':      return fa
+      case 'JNum':       return fa
+      case 'JDec':       return fa
+      case 'JStr':       return fa
+      case 'JBinary':    return fa
+      case 'JRegex':     return fa
+      case 'JArr':       return { _tag: 'JArr', items: fa.items.map(f) }
+      case 'JSet':       return { _tag: 'JSet', items: fa.items.map(f) }
+      case 'JObj':       return {
         _tag: 'JObj',
         entries: fa.entries.map(([k, a]) => [k, f(a)] as const)
       }
@@ -724,6 +734,15 @@ export const jArr   = (xs: ReadonlyArray<Json>): Json => ({ un: { _tag: 'JArr', 
 export const jObj   = (es: ReadonlyArray<readonly [string, Json]>): Json =>
   ({ un: { _tag: 'JObj', entries: es } })
 
+// New constructors for extended Json variants
+export const jUndef = (): Json => ({ un: { _tag: 'JUndefined' } })
+export const jDec    = (decimal: string): Json => ({ un: { _tag: 'JDec', decimal } })
+export const jBinary = (base64: string): Json => ({ un: { _tag: 'JBinary', base64 } })
+export const jRegex  = (pattern: string, flags?: string): Json =>
+  ({ un: { _tag: 'JRegex', pattern, ...(flags !== undefined ? { flags } : {}) } })
+export const jSet    = (xs: ReadonlyArray<Json>): Json =>
+  ({ un: { _tag: 'JSet', items: xs } })
+
 // cata / ana / hylo derived from the HKT factory (remove your old ad-hoc versions)
 export const { cata: cataJson, ana: anaJson, hylo: hyloJson } = makeRecursionK1(JsonFK)
 
@@ -738,10 +757,15 @@ export const ppJson: (j: Json) => string =
   cataJson<string>((f) => {
     switch (f._tag) {
       case 'JNull': return 'null'
+      case 'JUndefined': return 'undefined'
       case 'JBool': return String(f.value)
       case 'JNum':  return String(f.value)
+      case 'JDec':  return f.decimal
       case 'JStr':  return JSON.stringify(f.value)
+      case 'JBinary': return `"base64(${f.base64})"`
+      case 'JRegex': return `"/${f.pattern}/${f.flags ?? ''}"`
       case 'JArr':  return `[${f.items.join(', ')}]`
+      case 'JSet':  return `Set[${f.items.join(', ')}]`
       case 'JObj':  return `{${f.entries.map(([k,v]) => JSON.stringify(k)+': '+v).join(', ')}}`
     }
   })
@@ -751,11 +775,19 @@ export const sizeJson: (j: Json) => number =
   cataJson<number>((f) => {
     switch (f._tag) {
       case 'JNull':
+      case 'JUndefined':
       case 'JBool':
       case 'JNum':
-      case 'JStr':  return 1
-      case 'JArr':  return 1 + f.items.reduce((n, x) => n + x, 0)
-      case 'JObj':  return 1 + f.entries.reduce((n, [,v]) => n + v, 0)
+      case 'JDec':
+      case 'JStr':
+      case 'JBinary':
+      case 'JRegex':
+        return 1
+      case 'JArr':
+      case 'JSet':
+        return 1 + f.items.reduce((n, x) => n + x, 0)
+      case 'JObj':
+        return 1 + f.entries.reduce((n, [,v]) => n + v, 0)
     }
   })
 
@@ -793,10 +825,15 @@ type JsonAlgebra<B> = (fb: JsonF<B>) => B
 export const Alg_Json_pretty: JsonAlgebra<string> = (f) => {
   switch (f._tag) {
     case 'JNull': return 'null'
+    case 'JUndefined': return 'undefined'
     case 'JBool': return String(f.value)
     case 'JNum':  return String(f.value)
+    case 'JDec':  return f.decimal   // or `"dec(" + f.decimal + ")"` if you want to mark it
     case 'JStr':  return JSON.stringify(f.value)
+    case 'JBinary': return `"base64(${f.base64})"`
+    case 'JRegex': return `"/${f.pattern}/${f.flags ?? ''}"`
     case 'JArr':  return `[${f.items.join(', ')}]`
+    case 'JSet':  return `Set[${f.items.join(', ')}]`
     case 'JObj':  return `{${f.entries.map(([k,v]) => JSON.stringify(k)+': '+v).join(', ')}}`
   }
 }
@@ -806,11 +843,19 @@ export const prettyJson = cataJson(Alg_Json_pretty)
 export const Alg_Json_size: JsonAlgebra<number> = (f) => {
   switch (f._tag) {
     case 'JNull':
+    case 'JUndefined':
     case 'JBool':
     case 'JNum':
-    case 'JStr':  return 1
-    case 'JArr':  return 1 + f.items.reduce((n, x) => n + x, 0)
-    case 'JObj':  return 1 + f.entries.reduce((n, [,v]) => n + v, 0)
+    case 'JDec':
+    case 'JStr':
+    case 'JBinary':
+    case 'JRegex':
+      return 1
+    case 'JArr':
+    case 'JSet':
+      return 1 + f.items.reduce((n, x) => n + x, 0)
+    case 'JObj':
+      return 1 + f.entries.reduce((n, [,v]) => n + v, 0)
   }
 }
 export const sizeJsonReusable = cataJson(Alg_Json_size)
@@ -818,13 +863,387 @@ export const sizeJsonReusable = cataJson(Alg_Json_size)
 // 3) Collect all string leaves
 export const Alg_Json_collectStrings: JsonAlgebra<ReadonlyArray<string>> = (f) => {
   switch (f._tag) {
-    case 'JStr':  return [f.value]
-    case 'JArr':  return f.items.flat()
-    case 'JObj':  return f.entries.flatMap(([,v]) => v)
-    default:      return []
+    case 'JStr':   return [f.value]
+    case 'JArr':   return f.items.flat()
+    case 'JSet':   return f.items.flat()
+    case 'JObj':   return f.entries.flatMap(([,v]) => v)
+    // leaves that don't carry strings contribute nothing:
+    case 'JNull':
+    case 'JUndefined':
+    case 'JBool':
+    case 'JNum':
+    case 'JDec':
+    case 'JBinary':
+    case 'JRegex':
+      return []
   }
 }
 export const collectStrings = cataJson(Alg_Json_collectStrings)
+
+// Maximum depth
+export const Alg_Json_depth = (f: JsonF<number>): number => {
+  switch (f._tag) {
+    case 'JNull':
+    case 'JUndefined':
+    case 'JBool':
+    case 'JNum':
+    case 'JDec':
+    case 'JStr':
+    case 'JBinary':
+    case 'JRegex':
+      return 1
+    case 'JArr':
+    case 'JSet':
+      return 1 + (f.items.length ? Math.max(...f.items) : 0)
+    case 'JObj':
+      return 1 + (f.entries.length ? Math.max(...f.entries.map(([,v]) => v)) : 0)
+  }
+}
+
+// Convenience functions for the new algebras
+export const sizeJsonNew = cataJson(Alg_Json_size)
+export const strsJson = cataJson(Alg_Json_collectStrings)
+export const depthJson = cataJson(Alg_Json_depth)
+
+// Combine two JsonF algebras into one traversal producing a pair
+export const productJsonAlg2Regular =
+  <B, C>(algB: (f: JsonF<B>) => B, algC: (f: JsonF<C>) => C) =>
+  (f: JsonF<readonly [B, C]>): readonly [B, C] => {
+    switch (f._tag) {
+      case 'JNull': {
+        const fb: JsonF<B> = { _tag: 'JNull' }
+        const fc: JsonF<C> = { _tag: 'JNull' }
+        return [algB(fb), algC(fc)] as const
+      }
+      case 'JUndefined': {
+        const fb: JsonF<B> = { _tag: 'JUndefined' }
+        const fc: JsonF<C> = { _tag: 'JUndefined' }
+        return [algB(fb), algC(fc)] as const
+      }
+      case 'JBool': {
+        const fb: JsonF<B> = { _tag: 'JBool', value: f.value }
+        const fc: JsonF<C> = { _tag: 'JBool', value: f.value }
+        return [algB(fb), algC(fc)] as const
+      }
+      case 'JNum': {
+        const fb: JsonF<B> = { _tag: 'JNum', value: f.value }
+        const fc: JsonF<C> = { _tag: 'JNum', value: f.value }
+        return [algB(fb), algC(fc)] as const
+      }
+      case 'JDec': {
+        const fb: JsonF<B> = { _tag: 'JDec', decimal: f.decimal }
+        const fc: JsonF<C> = { _tag: 'JDec', decimal: f.decimal }
+        return [algB(fb), algC(fc)] as const
+      }
+      case 'JStr': {
+        const fb: JsonF<B> = { _tag: 'JStr', value: f.value }
+        const fc: JsonF<C> = { _tag: 'JStr', value: f.value }
+        return [algB(fb), algC(fc)] as const
+      }
+      case 'JBinary': {
+        const fb: JsonF<B> = { _tag: 'JBinary', base64: f.base64 }
+        const fc: JsonF<C> = { _tag: 'JBinary', base64: f.base64 }
+        return [algB(fb), algC(fc)] as const
+      }
+      case 'JRegex': {
+        const fb: JsonF<B> = { _tag: 'JRegex', pattern: f.pattern, ...(f.flags !== undefined ? { flags: f.flags } : {}) }
+        const fc: JsonF<C> = { _tag: 'JRegex', pattern: f.pattern, ...(f.flags !== undefined ? { flags: f.flags } : {}) }
+        return [algB(fb), algC(fc)] as const
+      }
+      case 'JArr': {
+        const itemsB = f.items.map(p => p[0]) as ReadonlyArray<B>
+        const itemsC = f.items.map(p => p[1]) as ReadonlyArray<C>
+        const fb: JsonF<B> = { _tag: 'JArr', items: itemsB }
+        const fc: JsonF<C> = { _tag: 'JArr', items: itemsC }
+        return [algB(fb), algC(fc)] as const
+      }
+      case 'JSet': {
+        const itemsB = f.items.map(p => p[0]) as ReadonlyArray<B>
+        const itemsC = f.items.map(p => p[1]) as ReadonlyArray<C>
+        const fb: JsonF<B> = { _tag: 'JSet', items: itemsB }
+        const fc: JsonF<C> = { _tag: 'JSet', items: itemsC }
+        return [algB(fb), algC(fc)] as const
+      }
+      case 'JObj': {
+        const entriesB = f.entries.map(([k, p]) => [k, p[0]] as const) as ReadonlyArray<readonly [string, B]>
+        const entriesC = f.entries.map(([k, p]) => [k, p[1]] as const) as ReadonlyArray<readonly [string, C]>
+        const fb: JsonF<B> = { _tag: 'JObj', entries: entriesB }
+        const fc: JsonF<C> = { _tag: 'JObj', entries: entriesC }
+        return [algB(fb), algC(fc)] as const
+      }
+    }
+  }
+
+// Size & depth in a single traversal
+export const sizeAndDepthJson = cataJson(productJsonAlg2Regular(Alg_Json_size, Alg_Json_depth))
+
+// Strings & size in a single traversal
+export const strsAndSizeJson = cataJson(productJsonAlg2Regular(Alg_Json_collectStrings, Alg_Json_size))
+
+// ====================================================================
+// Canonicalization fold for Json
+// ====================================================================
+
+/** Stable, deterministic canonicalization for Json:
+ *  - JObj: sort keys lexicographically
+ *  - JSet: deduplicate (by structural key) and sort
+ *  - JRegex: normalize flags by sorting/uniquing
+ *  Leaves (Null/Undefined/Bool/Num/Dec/Str/Binary) unchanged.
+ */
+
+// Build a stable string key for a *canonical* Json node.
+// We encode to EJSON and JSON.stringify it. Because canonicalization
+// sorts keys and set items first, this string is stable.
+const _canonicalStableKey = (j: Json): string => {
+  const ej = toEJsonCanonical(j) // defined below
+  return JSON.stringify(ej)
+}
+
+// normalize regex flags (dedupe + sort)
+const _normFlags = (flags?: string): string | undefined => {
+  if (!flags) return undefined
+  const uniq = Array.from(new Set(flags.split('')))
+  uniq.sort()
+  return uniq.join('') || undefined
+}
+
+export const canonicalizeJson: (j: Json) => Json =
+  cataJson<Json>((f) => {
+    switch (f._tag) {
+      case 'JNull':      return jNull()
+      case 'JUndefined': return jUndef()
+      case 'JBool':      return jBool(f.value)
+      case 'JNum':       return jNum(f.value)
+      case 'JDec':       return jDec(f.decimal)
+      case 'JStr':       return jStr(f.value)
+      case 'JBinary':    return jBinary(f.base64)
+      case 'JRegex':     return jRegex(f.pattern, _normFlags(f.flags))
+
+      case 'JArr': {
+        // arrays keep order; children are already canonical
+        return jArr(f.items)
+      }
+
+      case 'JSet': {
+        // children are already canonical; dedup + sort by stable key
+        const keyed = f.items.map(x => [_canonicalStableKey(x), x] as const)
+        const uniq = new Map<string, Json>()
+        for (const [k, x] of keyed) uniq.set(k, x)
+        const sorted = Array.from(uniq.entries())
+          .sort(([k1], [k2]) => (k1 < k2 ? -1 : k1 > k2 ? 1 : 0))
+          .map(([, x]) => x)
+        return jSet(sorted)
+      }
+
+      case 'JObj': {
+        // sort keys lexicographically; values already canonical
+        const sorted = [...f.entries].sort(([k1], [k2]) => (k1 < k2 ? -1 : k1 > k2 ? 1 : 0))
+        return jObj(sorted)
+      }
+    }
+  })
+
+// ====================================================================
+// EJSON-like encoder/decoder pair
+// ====================================================================
+
+// ------------------------
+// EJSON-like encoder
+// ------------------------
+export const toEJson = (j: Json): unknown => {
+  const go = cataJson<unknown>((f) => {
+    switch (f._tag) {
+      case 'JNull':      return null
+      case 'JUndefined': return { $undefined: true }
+      case 'JBool':      return f.value
+      case 'JNum':       return f.value
+      case 'JDec':       return { $decimal: f.decimal }
+      case 'JStr':       return f.value
+      case 'JBinary':    return { $binary: f.base64 }
+      case 'JRegex':     return f.flags ? { $regex: f.pattern, $flags: f.flags } : { $regex: f.pattern }
+      case 'JArr':       return f.items
+      case 'JSet':       return { $set: f.items }
+      case 'JObj':       return Object.fromEntries(f.entries)
+    }
+  })
+  return go(j)
+}
+
+// canonical encoder (stable object key order & set order)
+export const toEJsonCanonical = (j: Json): unknown =>
+  toEJson(canonicalizeJson(j))
+
+// ------------------------
+// Decoder with error aggregation:
+//   fromEJson(u) -> Result<string[], Json>
+// ------------------------
+
+type V<A> = Validation<string, A>
+const concatStrs = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) => [...a, ...b]
+
+const V_of = <A>(a: A): V<A> => VOk(a) as any
+const V_err = (m: string): V<never> => VErr(m)
+
+const sequenceV = <A>(vs: ReadonlyArray<V<A>>): V<ReadonlyArray<A>> => {
+  const out: A[] = []
+  let errs: string[] | null = null
+  for (const v of vs) {
+    if (isVOk(v)) out.push(v.value as A)
+    else errs = errs ? concatStrs(errs, v.errors as string[]) : [...(v.errors as string[])]
+  }
+  return errs ? VErr(...errs) : VOk(out as ReadonlyArray<A>) as any
+}
+
+const isPlainObj = (u: unknown): u is Record<string, unknown> =>
+  typeof u === 'object' && u !== null && !Array.isArray(u)
+
+const exactKeys = (o: Record<string, unknown>, required: string[], optional: string[] = []): boolean => {
+  const ks = Object.keys(o).sort()
+  const need = [...required].sort()
+  // all required present?
+  if (!need.every(k => ks.includes(k))) return false
+  // no unexpected keys?
+  const allowed = new Set([...required, ...optional])
+  return ks.every(k => allowed.has(k))
+}
+
+const decodeValueV = (u: unknown): V<Json> => {
+  // null
+  if (u === null) return V_of(jNull())
+  // boolean
+  if (typeof u === 'boolean') return V_of(jBool(u))
+  // number (must be finite)
+  if (typeof u === 'number') {
+    return Number.isFinite(u) ? V_of(jNum(u)) : V_err(`non-finite number: ${String(u)}`)
+  }
+  // string
+  if (typeof u === 'string') return V_of(jStr(u))
+  // array
+  if (Array.isArray(u)) {
+    const elems = sequenceV(u.map(decodeValueV))
+    return isVOk(elems) ? V_of(jArr(elems.value)) : elems as any
+  }
+  // object-ish
+  if (isPlainObj(u)) {
+    // tagged forms (must be exact)
+    if (exactKeys(u, ['$undefined'])) {
+      return u['$undefined'] === true ? V_of(jUndef()) : V_err(`$undefined must be true`)
+    }
+    if (exactKeys(u, ['$decimal'])) {
+      const v = u['$decimal']
+      return typeof v === 'string'
+        ? V_of(jDec(v))
+        : V_err(`$decimal must be string`)
+    }
+    if (exactKeys(u, ['$binary'])) {
+      const v = u['$binary']
+      return typeof v === 'string'
+        ? V_of(jBinary(v))
+        : V_err(`$binary must be string (base64)`)
+    }
+    if (exactKeys(u, ['$regex'], ['$flags'])) {
+      const p = u['$regex'], f = u['$flags']
+      if (typeof p !== 'string') return V_err(`$regex must be string`)
+      if (f !== undefined && typeof f !== 'string') return V_err(`$flags must be string`)
+      return V_of(jRegex(p, f as string | undefined))
+    }
+    if (exactKeys(u, ['$set'])) {
+      const arr = u['$set']
+      if (!Array.isArray(arr)) return V_err(`$set must be array`)
+      const vs = sequenceV(arr.map(decodeValueV))
+      return isVOk(vs) ? V_of(jSet(vs.value)) : vs as any
+    }
+    // plain object: decode each value
+    const entries = Object.entries(u)
+    const decoded = sequenceV(entries.map(([k, v]) => {
+      const vResult = decodeValueV(v)
+      return isVOk(vResult) ? V_of([k, vResult.value] as const) : vResult as any
+    }))
+    return isVOk(decoded) ? V_of(jObj(decoded.value as ReadonlyArray<readonly [string, Json]>)) : decoded as any
+  }
+  // otherwise
+  return V_err(`unsupported value: ${Object.prototype.toString.call(u)}`)
+}
+
+export const fromEJson = (u: unknown): Result<ReadonlyArray<string>, Json> => {
+  const v = decodeValueV(u)
+  return isVOk(v) ? Ok(v.value) : Err(v.errors as ReadonlyArray<string>)
+}
+
+// ====================================================================
+// Canonical utilities: equality, hash, hash-consing
+// ====================================================================
+
+// Stable canonical key = JSON of the canonical EJSON encoding
+export const canonicalKey = (j: Json): string =>
+  JSON.stringify(toEJsonCanonical(j))
+
+// Canonical equality & ordering (lexicographic on canonical key)
+export const equalsCanonical = (a: Json, b: Json): boolean =>
+  canonicalKey(a) === canonicalKey(b)
+
+export const compareCanonical = (a: Json, b: Json): number => {
+  const ka = canonicalKey(a), kb = canonicalKey(b)
+  return ka < kb ? -1 : ka > kb ? 1 : 0
+}
+
+// FNV-1a 32-bit hash (deterministic across platforms)
+const _fnv1a32 = (s: string): number => {
+  let h = 0x811c9dc5 >>> 0
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    // h *= 16777619 mod 2^32
+    h = (h + ((h << 1) >>> 0) + ((h << 4) >>> 0) + ((h << 7) >>> 0) + ((h << 8) >>> 0) + ((h << 24) >>> 0)) >>> 0
+  }
+  return h >>> 0
+}
+
+const _hex8 = (n: number): string =>
+  (n >>> 0).toString(16).padStart(8, '0')
+
+// Public hash helpers (string form is convenient as a Map key)
+export const hashCanonicalNum = (j: Json): number =>
+  _fnv1a32(canonicalKey(j))
+
+export const hashCanonical = (j: Json): string =>
+  _hex8(hashCanonicalNum(j))
+
+// Rebuild a Json node from a JsonF whose children are already Json
+const _rebuildFromF = (f: JsonF<Json>): Json => {
+  switch (f._tag) {
+    case 'JNull':      return jNull()
+    case 'JUndefined': return jUndef()
+    case 'JBool':      return jBool(f.value)
+    case 'JNum':       return jNum(f.value)
+    case 'JDec':       return jDec(f.decimal)
+    case 'JStr':       return jStr(f.value)
+    case 'JBinary':    return jBinary(f.base64)
+    case 'JRegex':     return jRegex(f.pattern, f.flags)
+    case 'JArr':       return jArr(f.items)
+    case 'JSet':       return jSet(f.items)
+    case 'JObj':       return jObj(f.entries)
+  }
+}
+
+/** Hash-consing: share identical subtrees.
+ *  - Canonicalize each rebuilt node
+ *  - Use canonicalKey as the memo key
+ *  - Return the pooled (shared) node
+ */
+export const hashConsJson = (j: Json, pool?: Map<string, Json>): Json => {
+  const P = pool ?? new Map<string, Json>()
+  const go = cataJson<Json>((f) => {
+    // children are already deduped; rebuild this node
+    const node  = _rebuildFromF(f)
+    const canon = canonicalizeJson(node)
+    const key   = canonicalKey(canon)
+    const hit   = P.get(key)
+    if (hit) return hit
+    P.set(key, canon)
+    return canon
+  })
+  return go(j)
+}
 
 // 4) Sum all numbers (0 for others)
 export const Alg_Json_sumNumbers: JsonAlgebra<number> = (f) => {
@@ -842,10 +1261,15 @@ export const sumNumbersJson = cataJson(Alg_Json_sumNumbers)
 export const Alg_Json_dropNulls: JsonAlgebra<Json> = (f) => {
   switch (f._tag) {
     case 'JNull': return jNull()
+    case 'JUndefined': return jUndef()
     case 'JBool': return jBool(f.value)
     case 'JNum':  return jNum(f.value)
+    case 'JDec':  return jDec(f.decimal)
     case 'JStr':  return jStr(f.value)
+    case 'JBinary': return jBinary(f.base64)
+    case 'JRegex': return jRegex(f.pattern, f.flags)
     case 'JArr':  return jArr(f.items.filter(j => j.un._tag !== 'JNull'))
+    case 'JSet':  return jSet(f.items.filter(j => j.un._tag !== 'JNull'))
     case 'JObj':  return jObj(f.entries.filter(([_, v]) => v.un._tag !== 'JNull'))
   }
 }
@@ -863,16 +1287,28 @@ export const productJsonAlg =
   (fbc: JsonF<readonly [B, C]>) => {
     switch (fbc._tag) {
       case 'JNull': return [algB({ _tag:'JNull' }), algC({ _tag:'JNull' })] as const
+      case 'JUndefined': return [algB({ _tag:'JUndefined' }), algC({ _tag:'JUndefined' })] as const
       case 'JBool': return [algB({ _tag:'JBool', value: fbc.value }),
                             algC({ _tag:'JBool', value: fbc.value })] as const
       case 'JNum':  return [algB({ _tag:'JNum',  value: fbc.value }),
                             algC({ _tag:'JNum',  value: fbc.value })] as const
+      case 'JDec':  return [algB({ _tag:'JDec',  decimal: fbc.decimal }),
+                            algC({ _tag:'JDec',  decimal: fbc.decimal })] as const
       case 'JStr':  return [algB({ _tag:'JStr',  value: fbc.value }),
                             algC({ _tag:'JStr',  value: fbc.value })] as const
+      case 'JBinary': return [algB({ _tag:'JBinary', base64: fbc.base64 }),
+                              algC({ _tag:'JBinary', base64: fbc.base64 })] as const
+      case 'JRegex': return [algB({ _tag:'JRegex', pattern: fbc.pattern, ...(fbc.flags !== undefined ? { flags: fbc.flags } : {}) }),
+                             algC({ _tag:'JRegex', pattern: fbc.pattern, ...(fbc.flags !== undefined ? { flags: fbc.flags } : {}) })] as const
       case 'JArr': {
         const bs = fbc.items.map(([b]) => b)
         const cs = fbc.items.map(([,c]) => c)
         return [algB({ _tag:'JArr', items: bs }), algC({ _tag:'JArr', items: cs })] as const
+      }
+      case 'JSet': {
+        const bs = fbc.items.map(([b]) => b)
+        const cs = fbc.items.map(([,c]) => c)
+        return [algB({ _tag:'JSet', items: bs }), algC({ _tag:'JSet', items: cs })] as const
       }
       case 'JObj': {
         const bs = fbc.entries.map(([k, bc]) => [k, bc[0]] as const)
@@ -909,6 +1345,7 @@ export type ExprF<A> =
   | { _tag: 'Var'; name: string }
   | { _tag: 'Let'; name: string; value: A; body: A }
   | { _tag: 'Div'; left: A; right: A }
+  | { _tag: 'Pow'; base: A; exp: A }
 
 export const mapExprF =
   <A, B>(f: (a: A) => B) =>
@@ -923,6 +1360,7 @@ export const mapExprF =
       case 'Var':  return fa
       case 'Let':  return { _tag: 'Let',  name: fa.name, value: f(fa.value), body: f(fa.body) }
       case 'Div':  return { _tag: 'Div',  left: f(fa.left),  right: f(fa.right) }
+      case 'Pow':  return { _tag: 'Pow',  base: f(fa.base),  exp: f(fa.exp) }
     }
   }
 
@@ -944,6 +1382,8 @@ export const vvar = (name: string): Expr => ({ un: { _tag: 'Var', name } })
 export const lett = (name: string, value: Expr, body: Expr): Expr =>
   ({ un: { _tag: 'Let', name, value, body } })
 export const divE = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Div', left: l, right: r } })
+export const powE = (base: Expr, exp: Expr): Expr =>
+  ({ un: { _tag: 'Pow', base, exp } })
 
 // --------- Examples for ExprF ---------
 
@@ -964,6 +1404,7 @@ export const evalExpr: (e: Expr) => number =
       case 'Var': throw new Error(`unbound var: ${f.name}`)
       case 'Let': throw new Error('let expressions not supported in simple eval')
       case 'Div': return f.left / f.right
+      case 'Pow': return Math.pow(f.base, f.exp)
       default: return _exhaustive(f)
     }
   })
@@ -985,6 +1426,7 @@ export const showExpr: (e: Expr) => string =
       case 'Var': return f.name
       case 'Let': return `(let ${f.name} = ${f.value} in ${f.body})`
       case 'Div': return `(${f.left} / ${f.right})`
+      case 'Pow': return `(${f.base} ^ ${f.exp})`
       default: return _exhaustive(f)
     }
   })
@@ -1014,6 +1456,7 @@ export const Alg_Expr_eval: ExprAlg<number> = (f) => {
     case 'Var': throw new Error(`unbound var: ${f.name}`)
     case 'Let': throw new Error('let expressions not supported in simple eval')
     case 'Div': return f.left / f.right
+    case 'Pow': return Math.pow(f.base, f.exp)
     default: return _exhaustive(f)
   }
 }
@@ -1030,6 +1473,7 @@ export const Alg_Expr_pretty: ExprAlg<string> = (f) => {
     case 'Var': return f.name
     case 'Let': return `(let ${f.name} = ${f.value} in ${f.body})`
     case 'Div': return `(${f.left} / ${f.right})`
+    case 'Pow': return `(${f.base} ^ ${f.exp})`
     default: return _exhaustive(f)
   }
 }
@@ -1047,10 +1491,85 @@ export const Alg_Expr_leaves: ExprAlg<ReadonlyArray<number>> = (f) => {
     case 'Var': return []
     case 'Let': return [...f.value, ...f.body]
     case 'Div': return [...f.left, ...f.right]
+    case 'Pow': return [...f.base, ...f.exp]
     default: return _exhaustive(f)
   }
 }
 export const leavesExprReusable = cataExpr(Alg_Expr_leaves)
+
+// Count total nodes
+export const Alg_Expr_size = (f: ExprF<number>): number => {
+  switch (f._tag) {
+    case 'Lit': case 'Var': return 1
+    case 'Neg': return 1 + f.value
+    case 'Add': return 1 + f.left + f.right
+    case 'Mul': return 1 + f.left + f.right
+    case 'Div': return 1 + f.left + f.right
+    case 'Pow': return 1 + f.base + f.exp
+    case 'AddN': return 1 + f.items.reduce((n, x) => n + x, 0)
+    case 'MulN': return 1 + f.items.reduce((n, x) => n + x, 0)
+    case 'Let':  return 1 + f.value + f.body
+    default: return _exhaustive(f)
+  }
+}
+
+// Maximum depth
+export const Alg_Expr_depth = (f: ExprF<number>): number => {
+  switch (f._tag) {
+    case 'Lit': case 'Var': return 1
+    case 'Neg': return 1 + f.value
+    case 'Add': return 1 + Math.max(f.left, f.right)
+    case 'Mul': return 1 + Math.max(f.left, f.right)
+    case 'Div': return 1 + Math.max(f.left, f.right)
+    case 'Pow': return 1 + Math.max(f.base, f.exp)
+    case 'AddN': return 1 + (f.items.length ? Math.max(...f.items) : 0)
+    case 'MulN': return 1 + (f.items.length ? Math.max(...f.items) : 0)
+    case 'Let':  return 1 + Math.max(f.value, f.body)
+    default: return _exhaustive(f)
+  }
+}
+
+// Product algebra for combining two algebras in one traversal
+export const productExprAlg2 =
+  <B, C>(algB: (f: ExprF<B>) => B, algC: (f: ExprF<C>) => C) =>
+  (f: ExprF<readonly [B, C]>): readonly [B, C] => {
+    switch (f._tag) {
+      case 'Lit': return [algB({ _tag:'Lit', value:f.value }), algC({ _tag:'Lit', value:f.value })]
+      case 'Var': return [algB({ _tag:'Var', name:f.name }),  algC({ _tag:'Var', name:f.name })]
+      case 'Neg': { const [vB, vC] = f.value; return [
+        algB({ _tag:'Neg', value:vB }), algC({ _tag:'Neg', value:vC })
+      ] }
+      case 'Add': { const [lB,lC] = f.left, [rB,rC] = f.right; return [
+        algB({ _tag:'Add', left:lB, right:rB }), algC({ _tag:'Add', left:lC, right:rC })
+      ] }
+      case 'Mul': { const [lB,lC] = f.left, [rB,rC] = f.right; return [
+        algB({ _tag:'Mul', left:lB, right:rB }), algC({ _tag:'Mul', left:lC, right:rC })
+      ] }
+      case 'Div': { const [lB,lC] = f.left, [rB,rC] = f.right; return [
+        algB({ _tag:'Div', left:lB, right:rB }), algC({ _tag:'Div', left:lC, right:rC })
+      ] }
+      case 'Pow': { const [bB,bC] = f.base, [eB,eC] = f.exp; return [
+        algB({ _tag:'Pow', base:bB, exp:eB }), algC({ _tag:'Pow', base:bC, exp:eC })
+      ] }
+      case 'AddN': {
+        const bs = f.items.map(p => p[0]); const cs = f.items.map(p => p[1])
+        return [algB({ _tag:'AddN', items: bs }), algC({ _tag:'AddN', items: cs })]
+      }
+      case 'MulN': {
+        const bs = f.items.map(p => p[0]); const cs = f.items.map(p => p[1])
+        return [algB({ _tag:'MulN', items: bs }), algC({ _tag:'MulN', items: cs })]
+      }
+      case 'Let': {
+        const [vB,vC] = f.value, [bB,bC] = f.body
+        return [algB({ _tag:'Let', name:f.name, value:vB, body:bB }),
+                algC({ _tag:'Let', name:f.name, value:vC, body:bC })]
+      }
+      default: return _exhaustive(f)
+    }
+  }
+
+// size & depth in one pass (fused)
+export const sizeAndDepthExpr = cataExpr(productExprAlg2(Alg_Expr_size, Alg_Expr_depth))
 
 // ====================================================================
 // Migration fold: convert binary chains to N-ary for better associativity
@@ -1064,6 +1583,7 @@ export const normalizeExprToNary: (e: Expr) => Expr =
       case 'Neg':  return neg(fb.value)
       case 'Var':  return vvar(fb.name)
       case 'Div':  return divE(fb.left, fb.right)
+      case 'Pow':  return powE(fb.base, fb.exp)
       case 'Let':  return lett(fb.name, fb.value, fb.body)
       case 'Add':  return addN([fb.left, fb.right])
       case 'Mul':  return mulN([fb.left, fb.right])
@@ -1091,6 +1611,7 @@ export const evalExprNum2 =
       case 'MulN': return f.items.reduce((p, x) => p * x, 1)
       case 'Var':  throw new Error('evalExprNum2: Vars not supported. Use evalExprR / evalExprRR.')
       case 'Let':  throw new Error('evalExprNum2: Let not supported. Use evalExprR / evalExprRR.')
+      case 'Pow':  return Math.pow(f.base, f.exp)
       default:     return _absurd(f as never)
     }
   })
@@ -1110,6 +1631,7 @@ export const evalExprR: (e: Expr) => Reader<ExprEnv, number> =
       case 'Div':  return (env)  => f.left(env) / f.right(env)
       case 'AddN': return (env)  => f.items.reduce((s, r) => s + r(env), 0)
       case 'MulN': return (env)  => f.items.reduce((p, r) => p * r(env), 1)
+      case 'Pow':  return (env)  => Math.pow(f.base(env), f.exp(env))
       case 'Let':  return (env)  => {
         const bound = f.value(env)
         const env2  = { ...env, [f.name]: bound }
@@ -1165,7 +1687,195 @@ export const evalExprRR:
         }
         return Ok(p)
       }
+      case 'Pow':  return (env)  => {
+        const b = f.base(env);  if (isErr(b)) return b
+        const e = f.exp(env);   if (isErr(e)) return e
+        return Ok(Math.pow(b.value, e.value))
+      }
       case 'Let':  return (env)  => {
+        const rv = f.value(env); if (isErr(rv)) return rv
+        const env2 = { ...env, [f.name]: rv.value }
+        return f.body(env2)
+      }
+      default:     return (_: ExprEnv) => Err('exhaustive')
+    }
+  })
+
+// ---------- Reader helpers (Applicative-style) ----------
+export type Rdr<Env, A> = Reader<Env, A>
+
+export const mapRdr =
+  <Env, A, B>(f: (a: A) => B) =>
+  (ra: Rdr<Env, A>): Rdr<Env, B> =>
+    Reader.map<A, B>(f)<Env>(ra)
+
+export const apRdr =
+  <Env, A, B>(rfab: Rdr<Env, (a: A) => B>) =>
+  (ra: Rdr<Env, A>): Rdr<Env, B> =>
+    Reader.ap<Env, A, B>(rfab)(ra)
+
+export const ofRdr =
+  <Env, A>(a: A): Rdr<Env, A> =>
+    Reader.of<Env, A>(a)
+
+// liftN (curried)
+export const lift2Rdr =
+  <Env, A, B, C>(f: (a: A) => (b: B) => C) =>
+  (ra: Rdr<Env, A>) =>
+  (rb: Rdr<Env, B>): Rdr<Env, C> =>
+    apRdr<Env, B, C>(mapRdr<Env, A, (b: B) => C>(f)(ra))(rb)
+
+export const lift3Rdr =
+  <Env, A, B, C, D>(f: (a: A) => (b: B) => (c: C) => D) =>
+  (ra: Rdr<Env, A>) =>
+  (rb: Rdr<Env, B>) =>
+  (rc: Rdr<Env, C>): Rdr<Env, D> =>
+    apRdr<Env, C, D>(
+      apRdr<Env, B, (c: C) => D>(
+        mapRdr<Env, A, (b: B) => (c: C) => D>(f)(ra)
+      )(rb)
+    )(rc)
+
+// sequence/traverse for Reader
+export const sequenceArrayRdr =
+  <Env, A>(rs: ReadonlyArray<Rdr<Env, A>>): Rdr<Env, ReadonlyArray<A>> =>
+  (env) => rs.map(r => r(env))
+
+export const traverseArrayRdr =
+  <Env, A, B>(as: ReadonlyArray<A>, f: (a: A) => Rdr<Env, B>): Rdr<Env, ReadonlyArray<B>> =>
+  (env) => as.map(a => f(a)(env))
+
+// ---------- Reader<Result> helpers ----------
+export type RRes<Env, E, A> = Reader<Env, Result<E, A>>
+
+export const mapRR =
+  <Env, E, A, B>(f: (a: A) => B) =>
+  (rra: RRes<Env, E, A>): RRes<Env, E, B> =>
+  (env) => mapR<E, A, B>(f)(rra(env))
+
+export const apRR =
+  <Env, E, A, B>(rrf: RRes<Env, E, (a: A) => B>) =>
+  (rra: RRes<Env, E, A>): RRes<Env, E, B> =>
+  (env) => {
+    const rf = rrf(env)
+    if (isErr(rf)) return rf as any
+    const ra = rra(env)
+    if (isErr(ra)) return ra as any
+    return Ok(rf.value(ra.value))
+  }
+
+export const ofRR =
+  <Env, E = never, A = never>(a: A): RRes<Env, E, A> =>
+  (_env) => Ok(a)
+
+export const raiseRR =
+  <Env, E, A = never>(e: E): RRes<Env, E, A> =>
+  (_env) => Err(e)
+
+export const chainRR =
+  <Env, E, A, B>(f: (a: A) => RRes<Env, E, B>) =>
+  (rra: RRes<Env, E, A>): RRes<Env, E, B> =>
+  (env) => {
+    const ra = rra(env)
+    return isErr(ra) ? ra : f(ra.value)(env)
+  }
+
+// liftN (curried)
+export const lift2RR =
+  <Env, E, A, B, C>(f: (a: A) => (b: B) => C) =>
+  (ra: RRes<Env, E, A>) =>
+  (rb: RRes<Env, E, B>): RRes<Env, E, C> =>
+    apRR<Env, E, B, C>(mapRR<Env, E, A, (b: B) => C>(f)(ra))(rb)
+
+export const lift3RR =
+  <Env, E, A, B, C, D>(f: (a: A) => (b: B) => (c: C) => D) =>
+  (ra: RRes<Env, E, A>) =>
+  (rb: RRes<Env, E, B>) =>
+  (rc: RRes<Env, E, C>): RRes<Env, E, D> =>
+    apRR<Env, E, C, D>(
+      apRR<Env, E, B, (c: C) => D>(
+        mapRR<Env, E, A, (b: B) => (c: C) => D>(f)(ra)
+      )(rb)
+    )(rc)
+
+export const sequenceArrayRR =
+  <Env, E, A>(rs: ReadonlyArray<RRes<Env, E, A>>): RRes<Env, E, ReadonlyArray<A>> =>
+  (env) => {
+    const out: A[] = []
+    for (const rr of rs) {
+      const r = rr(env)
+      if (isErr(r)) return r
+      out.push(r.value)
+    }
+    return Ok(out)
+  }
+
+export const traverseArrayRR =
+  <Env, E, A, B>(as: ReadonlyArray<A>, f: (a: A) => RRes<Env, E, B>): RRes<Env, E, ReadonlyArray<B>> =>
+  (env) => {
+    const out: B[] = []
+    for (const a of as) {
+      const r = f(a)(env)
+      if (isErr(r)) return r
+      out.push(r.value)
+    }
+    return Ok(out)
+  }
+
+// ---------- Reader evaluator (applicative style) ----------
+export const evalExprR_app: (e: Expr) => Reader<ExprEnv, number> =
+  cataExpr<Reader<ExprEnv, number>>((f) => {
+    switch (f._tag) {
+      case 'Lit':  return ofRdr<ExprEnv, number>(f.value)
+      case 'Var':  return Reader.asks(env => env[f.name] ?? 0)
+      case 'Neg':  return mapRdr<ExprEnv, number, number>(n => -n)(f.value)
+      case 'Add':  return lift2Rdr<ExprEnv, number, number, number>(a => b => a + b)(f.left)(f.right)
+      case 'Mul':  return lift2Rdr<ExprEnv, number, number, number>(a => b => a * b)(f.left)(f.right)
+      case 'Div':  return lift2Rdr<ExprEnv, number, number, number>(a => b => a / b)(f.left)(f.right)
+      case 'Pow':  return lift2Rdr<ExprEnv, number, number, number>(a => b => Math.pow(a, b))(f.base)(f.exp)
+      case 'AddN': return mapRdr<ExprEnv, ReadonlyArray<number>, number>(xs => xs.reduce((s, x) => s + x, 0))(
+                      sequenceArrayRdr<ExprEnv, number>(f.items)
+                    )
+      case 'MulN': return mapRdr<ExprEnv, ReadonlyArray<number>, number>(xs => xs.reduce((p, x) => p * x, 1))(
+                      sequenceArrayRdr<ExprEnv, number>(f.items)
+                    )
+      case 'Let':  return (env) => {
+        const bound = f.value(env)
+        const env2  = { ...env, [f.name]: bound }
+        return f.body(env2)
+      }
+      default:     return (_: ExprEnv) => { throw new Error('exhaustive') }
+    }
+  })
+
+// ---------- Reader<Result> evaluator (applicative + short-circuit) ----------
+export const evalExprRR_app:
+  (e: Expr) => Reader<ExprEnv, Result<string, number>> =
+  cataExpr<Reader<ExprEnv, Result<string, number>>>((f) => {
+    switch (f._tag) {
+      case 'Lit':  return ofRR<ExprEnv, string, number>(f.value)
+      case 'Var':  return Reader.asks(env => {
+        const v = env[f.name]
+        return v === undefined ? Err(`unbound var: ${f.name}`) : Ok(v)
+      })
+      case 'Neg':  return mapRR<ExprEnv, string, number, number>(n => -n)(f.value)
+      case 'Add':  return lift2RR<ExprEnv, string, number, number, number>(a => b => a + b)(f.left)(f.right)
+      case 'Mul':  return lift2RR<ExprEnv, string, number, number, number>(a => b => a * b)(f.left)(f.right)
+      case 'Pow':  return lift2RR<ExprEnv, string, number, number, number>(a => b => Math.pow(a, b))(f.base)(f.exp)
+      case 'Div':  // need a zero-check on the RHS; use chainRR
+        return chainRR<ExprEnv, string, number, number>((b) =>
+          b === 0
+            ? raiseRR<ExprEnv, string, number>('div by zero')
+            : mapRR<ExprEnv, string, number, number>((a) => a / b)(f.left)
+        )(f.right)
+
+      case 'AddN': return mapRR<ExprEnv, string, ReadonlyArray<number>, number>(xs => xs.reduce((s, x) => s + x, 0))(
+                      sequenceArrayRR<ExprEnv, string, number>(f.items)
+                    )
+      case 'MulN': return mapRR<ExprEnv, string, ReadonlyArray<number>, number>(xs => xs.reduce((p, x) => p * x, 1))(
+                      sequenceArrayRR<ExprEnv, string, number>(f.items)
+                    )
+      case 'Let':  return (env) => {
         const rv = f.value(env); if (isErr(rv)) return rv
         const env2 = { ...env, [f.name]: rv.value }
         return f.body(env2)
@@ -1179,6 +1889,10 @@ type Doc = { txt: string; prec: number }
 const litD = (s: string): Doc => ({ txt: s, prec: 100 })
 const withParens = (outer: number, inner: Doc) =>
   inner.prec < outer ? `(${inner.txt})` : inner.txt
+const withParensL = (outer: number, inner: Doc) =>
+  inner.prec < outer ? `(${inner.txt})` : inner.txt
+const withParensR = (outer: number, inner: Doc) =>
+  inner.prec <= outer ? `(${inner.txt})` : inner.txt
 
 export const prettyExprMinParens2 =
   cataExpr<Doc>(f => {
@@ -1186,6 +1900,10 @@ export const prettyExprMinParens2 =
       case 'Lit':  return litD(String(f.value))
       case 'Var':  return litD(f.name)
       case 'Neg':  return { txt: `-${withParens(90, f.value)}`, prec: 90 }
+      case 'Pow': {
+        const prec = 95
+        return { txt: `${withParensL(prec, f.base)} ^ ${withParensR(prec, f.exp)}`, prec }
+      }
       case 'Mul':  return { txt: `${withParens(80, f.left)} * ${withParens(80, f.right)}`, prec: 80 }
       case 'Div':  return { txt: `${withParens(80, f.left)} / ${withParens(80, f.right)}`, prec: 80 }
       case 'Add':  return { txt: `${withParens(70, f.left)} + ${withParens(70, f.right)}`, prec: 70 }
@@ -1196,6 +1914,357 @@ export const prettyExprMinParens2 =
     }
   })
 export const showExprMinParens2 = (e: Expr) => prettyExprMinParens2(e).txt
+
+// ====================================================================
+// Rewrite rules (simplifier) with constant-folding & identities
+// ====================================================================
+
+// tiny classifiers
+const isLit  = (e: Expr): e is Expr & { un: { _tag: 'Lit'; value: number } } => e.un._tag === 'Lit'
+const litVal = (e: Expr) => (isLit(e) ? e.un.value : undefined)
+const isZero = (e: Expr) => isLit(e) && e.un.value === 0
+const isOne  = (e: Expr) => isLit(e) && e.un.value === 1
+
+// remove neutral elements, fold constants, keep laws that are *always* valid
+export const simplifyExpr: (e: Expr) => Expr =
+  cataExpr<Expr>((f): Expr => {
+    switch (f._tag) {
+      case 'Lit':  return lit(f.value)
+      case 'Var':  return vvar(f.name)
+      case 'Neg': {
+        const a = f.value
+        // -- -(-x) => x ; -(0) => 0
+        if (a.un._tag === 'Neg') return a.un.value
+        if (isZero(a)) return lit(0)
+        return neg(a)
+      }
+      case 'Add': {
+        const l = f.left, r = f.right
+        if (isZero(l)) return r
+        if (isZero(r)) return l
+        if (isLit(l) && isLit(r)) return lit(l.un.value + r.un.value)
+        return add(l, r)
+      }
+      case 'Mul': {
+        const l = f.left, r = f.right
+        if (isZero(l) || isZero(r)) return lit(0)
+        if (isOne(l))  return r
+        if (isOne(r))  return l
+        if (isLit(l) && isLit(r)) return lit(l.un.value * r.un.value)
+        return mul(l, r)
+      }
+      case 'Div': {
+        const l = f.left, r = f.right
+        if (isZero(l) && !isZero(r)) return lit(0)        // safe: 0/x = 0 for x ≠ 0; we don't simplify 0/0
+        if (isOne(r)) return l
+        if (isLit(l) && isLit(r)) return lit(l.un.value / r.un.value)
+        return divE(l, r)
+      }
+      case 'Pow': {
+        const b = f.base, e = f.exp
+        if (isOne(e)) return b
+        if (isZero(e)) return lit(1)                      // convention: x^0 = 1 (we won't rewrite 0^0)
+        if (isOne(b)) return lit(1)
+        if (isLit(b) && isLit(e)) return lit(Math.pow(b.un.value, e.un.value))
+        return powE(b, e)
+      }
+      case 'AddN': {
+        // flatten + drop zeros + fold constants
+        const xs = f.items.flatMap(x => x.un._tag === 'AddN' ? x.un.items : [x])
+        const kept: Expr[] = []
+        let c = 0
+        for (const x of xs) {
+          if (isZero(x)) continue
+          if (isLit(x)) c += x.un.value
+          else kept.push(x)
+        }
+        if (kept.length === 0) return lit(c)
+        if (c !== 0) kept.push(lit(c))
+        if (kept.length === 0) return lit(0)
+        if (kept.length === 1) {
+          const result = kept[0]
+          if (result === undefined) return lit(0)
+          return result
+        }
+        return addN(kept)
+      }
+      case 'MulN': {
+        // flatten + annihilator zero + drop ones + fold constants
+        const xs = f.items.flatMap(x => x.un._tag === 'MulN' ? x.un.items : [x])
+        let c = 1
+        const kept: Expr[] = []
+        for (const x of xs) {
+          if (isZero(x)) return lit(0)
+          if (isOne(x)) continue
+          if (isLit(x)) c *= x.un.value
+          else kept.push(x)
+        }
+        if (kept.length === 0) return lit(c)
+        if (c !== 1) kept.unshift(lit(c))
+        if (kept.length === 0) return lit(1)
+        if (kept.length === 1) {
+          const result = kept[0]
+          if (result === undefined) return lit(1)
+          return result
+        }
+        return mulN(kept)
+      }
+      case 'Let':  return lett(f.name, f.value, f.body)
+      default:     return _absurd(f as never)
+    }
+  })
+
+// One-shot cleanup pass: normalize to n-ary then simplify
+export const normalizeAndSimplify = (e: Expr): Expr =>
+  simplifyExpr(normalizeExprToNary(e))
+
+// ====================================================================
+// Free/Bound vars and capture-avoiding substitution
+// ====================================================================
+
+// Free vars (Set<string>)
+export const freeVars: (e: Expr) => ReadonlySet<string> =
+  cataExpr<ReadonlySet<string>>((f) => {
+    switch (f._tag) {
+      case 'Lit':  return new Set()
+      case 'Var':  return new Set([f.name])
+      case 'Neg':  return f.value
+      case 'Add':  return new Set([...f.left, ...f.right])
+      case 'Mul':  return new Set([...f.left, ...f.right])
+      case 'Div':  return new Set([...f.left, ...f.right])
+      case 'Pow':  return new Set([...f.base, ...f.exp])
+      case 'AddN': return new Set(f.items.flatMap(s => [...s]))
+      case 'MulN': return new Set(f.items.flatMap(s => [...s]))
+      case 'Let': {
+        const fvVal  = f.value
+        const fvBody = new Set([...f.body]); fvBody.delete(f.name)
+        return new Set([...fvVal, ...fvBody])
+      }
+      default:     return _absurd(f as never)
+    }
+  })
+
+// Bound vars
+export const boundVars: (e: Expr) => ReadonlySet<string> =
+  cataExpr<ReadonlySet<string>>((f) => {
+    switch (f._tag) {
+      case 'Let':  return new Set([f.name, ...f.value, ...f.body])
+      case 'Neg':  return f.value
+      case 'Add':  return new Set([...f.left, ...f.right])
+      case 'Mul':  return new Set([...f.left, ...f.right])
+      case 'Div':  return new Set([...f.left, ...f.right])
+      case 'Pow':  return new Set([...f.base, ...f.exp])
+      case 'AddN': return new Set(f.items.flatMap(s => [...s]))
+      case 'MulN': return new Set(f.items.flatMap(s => [...s]))
+      default:     return new Set()
+    }
+  })
+
+// fresh name avoiding a set
+export const freshName = (base: string, avoid: ReadonlySet<string>): string => {
+  if (!avoid.has(base)) return base
+  let i = 1
+  while (avoid.has(`${base}_${i}`)) i++
+  return `${base}_${i}`
+}
+
+// rename bound variable (alpha-conversion) in body: let x = v in body  => let x' = v in body[x'/x]
+export const renameBound = (from: string, to: string) => (e: Expr): Expr => {
+  const go = (t: Expr): Expr => {
+    const u = t.un
+    switch (u._tag) {
+      case 'Var':  return u.name === from ? vvar(to) : t
+      case 'Let':  return u.name === from
+        ? lett(u.name, go(u.value), u.body) // inner same-named binder shadows; leave body
+        : lett(u.name, go(u.value), go(u.body))
+      case 'Neg':  return neg(go(u.value))
+      case 'Add':  return add(go(u.left), go(u.right))
+      case 'Mul':  return mul(go(u.left), go(u.right))
+      case 'Div':  return divE(go(u.left), go(u.right))
+      case 'Pow':  return powE(go(u.base), go(u.exp))
+      case 'AddN': return addN(u.items.map(go))
+      case 'MulN': return mulN(u.items.map(go))
+      case 'Lit':  return t
+      default:     return _absurd(u as never)
+    }
+  }
+  return go(e)
+}
+
+// capture-avoiding substitution [x := v]e
+export const subst = (x: string, v: Expr) => (e: Expr): Expr => {
+  const go = (t: Expr): Expr => {
+    const u = t.un
+    switch (u._tag) {
+      case 'Lit':  return t
+      case 'Var':  return u.name === x ? v : t
+      case 'Neg':  return neg(go(u.value))
+      case 'Add':  return add(go(u.left), go(u.right))
+      case 'Mul':  return mul(go(u.left), go(u.right))
+      case 'Div':  return divE(go(u.left), go(u.right))
+      case 'Pow':  return powE(go(u.base), go(u.exp))
+      case 'AddN': return addN(u.items.map(go))
+      case 'MulN': return mulN(u.items.map(go))
+      case 'Let': {
+        // substitute into value always
+        const v1 = go(u.value)
+        if (u.name === x) {
+          // binder shadows x in body -> don't substitute in body
+          return lett(u.name, v1, u.body)
+        }
+        // avoid capture: if binder collides with free vars of v, rename
+        const fvV   = freeVars(v)
+        if (fvV.has(u.name)) {
+          const avoid = new Set<string>([...fvV, ...freeVars(u.body)])
+          const fresh = freshName(u.name, avoid)
+          const bodyR = renameBound(u.name, fresh)(u.body)
+          return lett(fresh, v1, go(bodyR))
+        }
+        return lett(u.name, v1, go(u.body))
+      }
+      default: return _absurd(u as never)
+    }
+  }
+  return go(e)
+}
+
+// ====================================================================
+// Tiny stack machine (+ compiler & evaluator)
+// ====================================================================
+
+// -------- Stack machine --------
+export type Instr =
+  | { op: 'PUSH'; n: number }
+  | { op: 'LOAD'; name: string }
+  | { op: 'NEG' }
+  | { op: 'ADD' } | { op: 'MUL' } | { op: 'DIV' } | { op: 'POW' }
+  | { op: 'LET'; name: string }   // pops value, pushes a scope binding
+  | { op: 'ENDLET' }
+
+export type Program = ReadonlyArray<Instr>
+
+// naive persistent env as a stack of scopes
+type Scope = Map<string, number>
+
+// Compile Expr -> Program
+export const compileExpr = (e: Expr): Program => {
+  const out: Instr[] = []
+  const emit = (i: Instr) => out.push(i)
+  const go = (t: Expr): void => {
+    const u = t.un
+    switch (u._tag) {
+      case 'Lit':  emit({ op: 'PUSH', n: u.value }); return
+      case 'Var':  emit({ op: 'LOAD', name: u.name }); return
+      case 'Neg':  go(u.value); emit({ op: 'NEG' }); return
+      case 'Add':  go(u.left); go(u.right); emit({ op: 'ADD' }); return
+      case 'Mul':  go(u.left); go(u.right); emit({ op: 'MUL' }); return
+      case 'Div':  go(u.left); go(u.right); emit({ op: 'DIV' }); return
+      case 'Pow':  go(u.base); go(u.exp); emit({ op: 'POW' }); return
+      case 'AddN': u.items.forEach(go); for (let i = 1; i < u.items.length; i++) emit({ op: 'ADD' }); return
+      case 'MulN': u.items.forEach(go); for (let i = 1; i < u.items.length; i++) emit({ op: 'MUL' }); return
+      case 'Let':  go(u.value); emit({ op: 'LET', name: u.name }); go(u.body); emit({ op: 'ENDLET' }); return
+      default:     return _absurd(u as never)
+    }
+  }
+  go(e)
+  return out
+}
+
+// Run program with initial env; returns Result<string, number>
+export const runProgram = (prog: Program, env0: Readonly<Record<string, number>> = {}): Result<string, number> => {
+  const scopes: Scope[] = [new Map(Object.entries(env0))]
+  const stack: number[] = []
+  const peek = () => stack[stack.length - 1]
+  const pop = (): number | undefined => stack.pop()
+  const push = (n: number) => { stack.push(n) }
+
+  const load = (name: string): Result<string, number> => {
+    for (let i = scopes.length - 1; i >= 0; i--) {
+      const scope = scopes[i]
+      if (scope) {
+        const v = scope.get(name)
+        if (v !== undefined) return Ok(v)
+      }
+    }
+    return Err(`unbound var: ${name}`)
+  }
+
+  for (const ins of prog) {
+    switch (ins.op) {
+      case 'PUSH': push(ins.n); break
+      case 'LOAD': {
+        const r = load(ins.name); if (isErr(r)) return r; push(r.value); break
+      }
+      case 'NEG':  { const a = pop(); if (a === undefined) return Err('stack underflow'); push(-a); break }
+      case 'ADD':  { const b = pop(), a = pop(); if (a===undefined||b===undefined) return Err('stack underflow'); push(a + b); break }
+      case 'MUL':  { const b = pop(), a = pop(); if (a===undefined||b===undefined) return Err('stack underflow'); push(a * b); break }
+      case 'DIV':  { const b = pop(), a = pop(); if (a===undefined||b===undefined) return Err('stack underflow'); if (b === 0) return Err('div by zero'); push(a / b); break }
+      case 'POW':  { const b = pop(), a = pop(); if (a===undefined||b===undefined) return Err('stack underflow'); push(Math.pow(a, b)); break }
+      case 'LET':  {
+        const v = pop(); if (v === undefined) return Err('stack underflow')
+        const ns = new Map(scopes[scopes.length - 1])
+        ns.set(ins.name, v)
+        scopes.push(ns)
+        break
+      }
+      case 'ENDLET': {
+        if (scopes.length <= 1) return Err('scope underflow')
+        scopes.pop()
+        break
+      }
+    }
+  }
+  if (stack.length !== 1) return Err('stack not singleton at end')
+  const result = peek()
+  if (result === undefined) return Err('stack is empty')
+  return Ok(result)
+}
+
+// ====================================================================
+// Symbolic differentiation (d/dx) + cleanup
+// ====================================================================
+
+// d/dv (symbolic); supports Lit, Var, Neg, Add/AddN, Mul/MulN, Div, Pow(base, const)
+export const diff = (v: string) => {
+  const D = (e: Expr): Expr => {
+    const u = e.un
+    switch (u._tag) {
+      case 'Lit':  return lit(0)
+      case 'Var':  return lit(u.name === v ? 1 : 0)
+      case 'Neg':  return neg(D(u.value))
+      case 'Add':  return add(D(u.left), D(u.right))
+      case 'Mul':  return add(mul(D(u.left), u.right), mul(u.left, D(u.right))) // product
+      case 'Div':  return divE(
+                      add(mul(D(u.left), u.right), neg(mul(u.left, D(u.right)))),
+                      powE(u.right, lit(2))
+                    )
+      case 'Pow': {
+        // Power rule only when exponent is a constant: d(u^c) = c*u^(c-1)*u'
+        if (isLit(u.exp)) return mulN([ lit(u.exp.un.value), powE(u.base, lit(u.exp.un.value - 1)), D(u.base) ])
+        // otherwise (general u^v) not supported without ln/exp in the AST
+        return vvar('__d_unsupported_pow')
+      }
+      case 'AddN': return addN(u.items.map(D))
+      case 'MulN': {
+        // Sum over i: (x1*...*x'i*...*xn)
+        const terms: Expr[] = []
+        for (let i = 0; i < u.items.length; i++) {
+          const di = D(u.items[i]!)
+          const others = u.items.map((x, j) => (j === i ? di : x))
+          terms.push(mulN(others))
+        }
+        return addN(terms)
+      }
+      case 'Let': {
+        // d/dv (let x = a in b) = let x = a in d/dv b, but if v occurs in a, you may want total derivative.
+        // We do the usual static scoping derivative of the body (substitute is not needed here).
+        return lett(u.name, u.value, D(u.body))
+      }
+      default: return _absurd(u as never)
+    }
+  }
+  return (e: Expr): Expr => normalizeAndSimplify(D(e))
+}
 
 // ====================================================================
 // Ana & Hylo quickies (generation + fused transform)
@@ -1245,10 +2314,15 @@ export const coalgFullBinary =
 export const Alg_Json_pretty_fused: JsonAlgFused<string> = (f) => {
   switch (f._tag) {
     case 'JNull': return 'null'
+    case 'JUndefined': return 'undefined'
     case 'JBool': return String(f.value)
     case 'JNum':  return String(f.value)
+    case 'JDec':  return f.decimal
     case 'JStr':  return JSON.stringify(f.value)
+    case 'JBinary': return `"base64(${f.base64})"`
+    case 'JRegex': return `"/${f.pattern}/${f.flags ?? ''}"`
     case 'JArr':  return `[${f.items.join(', ')}]`
+    case 'JSet':  return `Set[${f.items.join(', ')}]`
     case 'JObj':  return `{${f.entries.map(([k,v]) => JSON.stringify(k)+': '+v).join(', ')}}`
   }
 }
@@ -1267,11 +2341,19 @@ export const Alg_Json_sum_fused: JsonAlgFused<number> = (f) => {
 export const Alg_Json_size_fused: JsonAlgFused<number> = (f) => {
   switch (f._tag) {
     case 'JNull':
+    case 'JUndefined':
     case 'JBool':
     case 'JNum':
-    case 'JStr':  return 1
-    case 'JArr':  return 1 + f.items.reduce((n, x) => n + x, 0)
-    case 'JObj':  return 1 + f.entries.reduce((n, [,v]) => n + v, 0)
+    case 'JDec':
+    case 'JStr':
+    case 'JBinary':
+    case 'JRegex':
+      return 1
+    case 'JArr':
+    case 'JSet':
+      return 1 + f.items.reduce((n, x) => n + x, 0)
+    case 'JObj':
+      return 1 + f.entries.reduce((n, [,v]) => n + v, 0)
   }
 }
 
@@ -1327,16 +2409,28 @@ export const productJsonAlg2 =
   (fbc: JsonF<readonly [B, C]>) => {
     switch (fbc._tag) {
       case 'JNull': return [algB({ _tag:'JNull' }), algC({ _tag:'JNull' })] as const
+      case 'JUndefined': return [algB({ _tag:'JUndefined' }), algC({ _tag:'JUndefined' })] as const
       case 'JBool': return [algB({ _tag:'JBool', value: fbc.value }),
                             algC({ _tag:'JBool', value: fbc.value })] as const
       case 'JNum':  return [algB({ _tag:'JNum',  value: fbc.value }),
                             algC({ _tag:'JNum',  value: fbc.value })] as const
+      case 'JDec':  return [algB({ _tag:'JDec',  decimal: fbc.decimal }),
+                            algC({ _tag:'JDec',  decimal: fbc.decimal })] as const
       case 'JStr':  return [algB({ _tag:'JStr',  value: fbc.value }),
                             algC({ _tag:'JStr',  value: fbc.value })] as const
+      case 'JBinary': return [algB({ _tag:'JBinary', base64: fbc.base64 }),
+                              algC({ _tag:'JBinary', base64: fbc.base64 })] as const
+      case 'JRegex': return [algB({ _tag:'JRegex', pattern: fbc.pattern, ...(fbc.flags !== undefined ? { flags: fbc.flags } : {}) }),
+                             algC({ _tag:'JRegex', pattern: fbc.pattern, ...(fbc.flags !== undefined ? { flags: fbc.flags } : {}) })] as const
       case 'JArr': {
         const bs = fbc.items.map(([b]) => b)
         const cs = fbc.items.map(([,c]) => c)
         return [algB({ _tag:'JArr', items: bs }), algC({ _tag:'JArr', items: cs })] as const
+      }
+      case 'JSet': {
+        const bs = fbc.items.map(([b]) => b)
+        const cs = fbc.items.map(([,c]) => c)
+        return [algB({ _tag:'JSet', items: bs }), algC({ _tag:'JSet', items: cs })] as const
       }
       case 'JObj': {
         const bs = fbc.entries.map(([k, bc]) => [k, bc[0]] as const)
@@ -2181,6 +3275,97 @@ export const partitionSetWith = <A, L, R>(
   }
   return [left as ReadonlySet<L>, right as ReadonlySet<R>]
 }
+
+// ============
+// Partial Functions
+// ============
+
+export type PartialFn<A, B> = {
+  isDefinedAt: (a: A) => boolean
+  apply: (a: A) => B
+}
+
+export const pf = <A, B>(
+  isDefinedAt: (a: A) => boolean,
+  apply: (a: A) => B
+): PartialFn<A, B> => ({
+  isDefinedAt,
+  apply
+})
+
+// ============
+// FilterMap / Collect helpers
+// ============
+
+// Arrays
+// filterMap over arrays (with index)
+export const filterMapArray =
+  <A, B>(as: ReadonlyArray<A>, f: (a: A, i: number) => Option<B>): ReadonlyArray<B> => {
+    const out: B[] = []
+    for (let i = 0; i < as.length; i++) {
+      const ob = f(as[i]!, i)
+      if (isSome(ob)) out.push(ob.value)
+    }
+    return out
+  }
+
+// collect: apply a PartialFn to each element; keep successes
+export const collectArray =
+  <A, B>(as: ReadonlyArray<A>, pf: PartialFn<A, B>): ReadonlyArray<B> =>
+    filterMapArray(as, (a) => (pf.isDefinedAt(a) ? Some(pf.apply(a)) : None))
+
+// Maps
+// filterMap values (keep same keys)
+export const filterMapMapValues =
+  <K, A, B>(m: ReadonlyMap<K, A>, f: (a: A, k: K) => Option<B>): ReadonlyMap<K, B> => {
+    const out = new Map<K, B>()
+    for (const [k, a] of m) {
+      const ob = f(a, k)
+      if (isSome(ob)) out.set(k, ob.value)
+    }
+    return out
+  }
+
+// collect values with a PartialFn (same keys)
+export const collectMapValues =
+  <K, A, B>(m: ReadonlyMap<K, A>, pf: PartialFn<A, B>): ReadonlyMap<K, B> =>
+    filterMapMapValues(m, (a) => (pf.isDefinedAt(a) ? Some(pf.apply(a)) : None))
+
+// filterMap entries (allow remapping the key too)
+export const filterMapMapEntries =
+  <K, A, L, B>(m: ReadonlyMap<K, A>, f: (k: K, a: A) => Option<readonly [L, B]>): ReadonlyMap<L, B> => {
+    const out = new Map<L, B>()
+    for (const [k, a] of m) {
+      const op = f(k, a)
+      if (isSome(op)) {
+        const [l, b] = op.value
+        out.set(l, b)
+      }
+    }
+    return out
+  }
+
+// collect entries with a PartialFn on [key, value]
+export const collectMapEntries =
+  <K, A, L, B>(m: ReadonlyMap<K, A>, pf: PartialFn<readonly [K, A], readonly [L, B]>): ReadonlyMap<L, B> =>
+    filterMapMapEntries(m, (k, a) => (pf.isDefinedAt([k, a] as const) ? Some(pf.apply([k, a] as const)) : None))
+
+// Sets (bonus)
+// filterMap over sets (dedup via Set semantics on B)
+export const filterMapSet =
+  <A, B>(s: ReadonlySet<A>, f: (a: A) => Option<B>): ReadonlySet<B> => {
+    const out = new Set<B>()
+    for (const a of s) {
+      const ob = f(a)
+      if (isSome(ob)) out.add(ob.value)
+    }
+    return out
+  }
+
+// collect for sets with PartialFn
+export const collectSet =
+  <A, B>(s: ReadonlySet<A>, pf: PartialFn<A, B>): ReadonlySet<B> =>
+    filterMapSet(s, (a) => (pf.isDefinedAt(a) ? Some(pf.apply(a)) : None))
 
 
 
