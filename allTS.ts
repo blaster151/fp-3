@@ -501,7 +501,7 @@ export type DoReaderBuilder<R, T extends Record<string, unknown>> = {
   done: () => Reader<R, T>
 }
 
-export const DoReader = <R = unknown>() => {
+export const DoReader = <R>() => {
   const start: Reader<R, {}> = Reader.of<R, {}>({})
   const make = <T extends Record<string, unknown>>(acc: Reader<R, T>): DoReaderBuilder<R, T> => ({
     bind: <K extends string, A>(k: K, ra: Reader<R, A>) =>
@@ -657,6 +657,7 @@ export type JsonF<A> =
   | { _tag: 'JStr';   value: string }
   | { _tag: 'JBinary'; base64: string }          // NEW: binary-as-base64
   | { _tag: 'JRegex'; pattern: string; flags?: string } // NEW
+  | { _tag: 'JDate'; iso: string }                      // NEW: date handling
   | { _tag: 'JArr';   items: ReadonlyArray<A> }
   | { _tag: 'JSet';   items: ReadonlyArray<A> }  // NEW: set semantics
   | { _tag: 'JObj';   entries: ReadonlyArray<readonly [string, A]> }
@@ -674,6 +675,7 @@ export const mapJsonF =
       case 'JStr':       return fa
       case 'JBinary':    return fa
       case 'JRegex':     return fa
+      case 'JDate':      return fa
       case 'JArr':       return { _tag: 'JArr', items: fa.items.map(f) }
       case 'JSet':       return { _tag: 'JSet', items: fa.items.map(f) }
       case 'JObj':       return {
@@ -740,6 +742,7 @@ export const jDec    = (decimal: string): Json => ({ un: { _tag: 'JDec', decimal
 export const jBinary = (base64: string): Json => ({ un: { _tag: 'JBinary', base64 } })
 export const jRegex  = (pattern: string, flags?: string): Json =>
   ({ un: { _tag: 'JRegex', pattern, ...(flags !== undefined ? { flags } : {}) } })
+export const jDate   = (iso: string): Json => ({ un: { _tag: 'JDate', iso } })
 export const jSet    = (xs: ReadonlyArray<Json>): Json =>
   ({ un: { _tag: 'JSet', items: xs } })
 
@@ -764,6 +767,7 @@ export const ppJson: (j: Json) => string =
       case 'JStr':  return JSON.stringify(f.value)
       case 'JBinary': return `"base64(${f.base64})"`
       case 'JRegex': return `"/${f.pattern}/${f.flags ?? ''}"`
+      case 'JDate':  return `"${new Date(f.iso).toISOString()}"`
       case 'JArr':  return `[${f.items.join(', ')}]`
       case 'JSet':  return `Set[${f.items.join(', ')}]`
       case 'JObj':  return `{${f.entries.map(([k,v]) => JSON.stringify(k)+': '+v).join(', ')}}`
@@ -782,6 +786,7 @@ export const sizeJson: (j: Json) => number =
       case 'JStr':
       case 'JBinary':
       case 'JRegex':
+      case 'JDate':
         return 1
       case 'JArr':
       case 'JSet':
@@ -832,6 +837,7 @@ export const Alg_Json_pretty: JsonAlgebra<string> = (f) => {
     case 'JStr':  return JSON.stringify(f.value)
     case 'JBinary': return `"base64(${f.base64})"`
     case 'JRegex': return `"/${f.pattern}/${f.flags ?? ''}"`
+    case 'JDate':  return `"${new Date(f.iso).toISOString()}"`
     case 'JArr':  return `[${f.items.join(', ')}]`
     case 'JSet':  return `Set[${f.items.join(', ')}]`
     case 'JObj':  return `{${f.entries.map(([k,v]) => JSON.stringify(k)+': '+v).join(', ')}}`
@@ -850,6 +856,7 @@ export const Alg_Json_size: JsonAlgebra<number> = (f) => {
     case 'JStr':
     case 'JBinary':
     case 'JRegex':
+    case 'JDate':
       return 1
     case 'JArr':
     case 'JSet':
@@ -875,10 +882,14 @@ export const Alg_Json_collectStrings: JsonAlgebra<ReadonlyArray<string>> = (f) =
     case 'JDec':
     case 'JBinary':
     case 'JRegex':
+    case 'JDate':
       return []
   }
 }
 export const collectStrings = cataJson(Alg_Json_collectStrings)
+
+// Alias for consistency with the new naming
+export const Alg_Json_collectStrs = Alg_Json_collectStrings
 
 // Maximum depth
 export const Alg_Json_depth = (f: JsonF<number>): number => {
@@ -891,6 +902,7 @@ export const Alg_Json_depth = (f: JsonF<number>): number => {
     case 'JStr':
     case 'JBinary':
     case 'JRegex':
+    case 'JDate':
       return 1
     case 'JArr':
     case 'JSet':
@@ -948,6 +960,11 @@ export const productJsonAlg2Regular =
       case 'JRegex': {
         const fb: JsonF<B> = { _tag: 'JRegex', pattern: f.pattern, ...(f.flags !== undefined ? { flags: f.flags } : {}) }
         const fc: JsonF<C> = { _tag: 'JRegex', pattern: f.pattern, ...(f.flags !== undefined ? { flags: f.flags } : {}) }
+        return [algB(fb), algC(fc)] as const
+      }
+      case 'JDate': {
+        const fb: JsonF<B> = { _tag: 'JDate', iso: f.iso }
+        const fc: JsonF<C> = { _tag: 'JDate', iso: f.iso }
         return [algB(fb), algC(fc)] as const
       }
       case 'JArr': {
@@ -1018,6 +1035,7 @@ export const canonicalizeJson: (j: Json) => Json =
       case 'JStr':       return jStr(f.value)
       case 'JBinary':    return jBinary(f.base64)
       case 'JRegex':     return jRegex(f.pattern, _normFlags(f.flags))
+      case 'JDate':      return jDate(f.iso)
 
       case 'JArr': {
         // arrays keep order; children are already canonical
@@ -1061,6 +1079,7 @@ export const toEJson = (j: Json): unknown => {
       case 'JStr':       return f.value
       case 'JBinary':    return { $binary: f.base64 }
       case 'JRegex':     return f.flags ? { $regex: f.pattern, $flags: f.flags } : { $regex: f.pattern }
+      case 'JDate':      return { $date: f.iso }
       case 'JArr':       return f.items
       case 'JSet':       return { $set: f.items }
       case 'JObj':       return Object.fromEntries(f.entries)
@@ -1219,6 +1238,7 @@ const _rebuildFromF = (f: JsonF<Json>): Json => {
     case 'JStr':       return jStr(f.value)
     case 'JBinary':    return jBinary(f.base64)
     case 'JRegex':     return jRegex(f.pattern, f.flags)
+    case 'JDate':      return jDate(f.iso)
     case 'JArr':       return jArr(f.items)
     case 'JSet':       return jSet(f.items)
     case 'JObj':       return jObj(f.entries)
@@ -1245,6 +1265,215 @@ export const hashConsJson = (j: Json, pool?: Map<string, Json>): Json => {
   return go(j)
 }
 
+// =========================================================
+// Canonical containers for Json
+//  - CanonicalJsonMap<V>: Map-like, keys are canonical Json
+//  - CanonicalJsonSet:    Set-like, elements are canonical Json
+// Notes:
+//  * Keys/elements are stored canonicalized (and hash-consed).
+//  * Equality is equalsCanonical; iteration is insertion order.
+//  * Backing Map is keyed by canonicalKey(j).
+// =========================================================
+
+export class CanonicalJsonMap<V> implements Iterable<readonly [Json, V]> {
+  private readonly buckets = new Map<string, { k: Json; v: V }>()
+  private readonly pool = new Map<string, Json>() // share identical subtrees across inserts
+
+  constructor(init?: Iterable<readonly [Json, V]>) {
+    if (init) for (const [k, v] of init) this.set(k, v)
+  }
+
+  get size(): number { return this.buckets.size }
+  clear(): void { this.buckets.clear() }
+
+  has(key: Json): boolean {
+    const c = canonicalizeJson(key)
+    return this.buckets.has(canonicalKey(c))
+  }
+
+  get(key: Json): V | undefined {
+    const c = canonicalizeJson(key)
+    const e = this.buckets.get(canonicalKey(c))
+    return e?.v
+  }
+
+  set(key: Json, value: V): this {
+    // canonicalize + hash-cons so we physically share equal subtrees
+    const c0 = canonicalizeJson(key)
+    const c  = hashConsJson(c0, this.pool)
+    this.buckets.set(canonicalKey(c), { k: c, v: value })
+    return this
+  }
+
+  delete(key: Json): boolean {
+    const c = canonicalizeJson(key)
+    return this.buckets.delete(canonicalKey(c))
+  }
+
+  // Iteration (insertion order)
+  *keys(): IterableIterator<Json> {
+    for (const { k } of this.buckets.values()) yield k
+  }
+  *values(): IterableIterator<V> {
+    for (const { v } of this.buckets.values()) yield v
+  }
+  *entries(): IterableIterator<readonly [Json, V]> {
+    for (const { k, v } of this.buckets.values()) yield [k, v] as const
+  }
+  [Symbol.iterator](): IterableIterator<readonly [Json, V]> { return this.entries() }
+
+  forEach(cb: (value: V, key: Json, map: this) => void, thisArg?: unknown): void {
+    for (const { k, v } of this.buckets.values()) cb.call(thisArg, v, k, this)
+  }
+
+  // Convenience upsert
+  upsert(key: Json, onMissing: () => V, onHit?: (v: V) => V): V {
+    const c0 = canonicalizeJson(key)
+    const c  = hashConsJson(c0, this.pool)
+    const ck = canonicalKey(c)
+    const hit = this.buckets.get(ck)
+    if (hit) {
+      if (onHit) hit.v = onHit(hit.v)
+      return hit.v
+    }
+    const nv = onMissing()
+    this.buckets.set(ck, { k: c, v: nv })
+    return nv
+  }
+
+  static from<V>(iter: Iterable<readonly [Json, V]>): CanonicalJsonMap<V> {
+    return new CanonicalJsonMap(iter)
+  }
+}
+
+export class CanonicalJsonSet implements Iterable<Json> {
+  private readonly m = new CanonicalJsonMap<true>()
+
+  constructor(init?: Iterable<Json>) {
+    if (init) for (const x of init) this.add(x)
+  }
+
+  get size(): number { return this.m.size }
+  clear(): void { this.m.clear() }
+  has(x: Json): boolean { return this.m.has(x) }
+  add(x: Json): this { this.m.set(x, true); return this }
+  delete(x: Json): boolean { return this.m.delete(x) }
+
+  *keys(): IterableIterator<Json> { yield* this.m.keys() }
+  *values(): IterableIterator<Json> { yield* this.m.keys() }
+  *entries(): IterableIterator<readonly [Json, Json]> {
+    for (const k of this.m.keys()) yield [k, k] as const
+  }
+  [Symbol.iterator](): IterableIterator<Json> { return this.values() }
+
+  forEach(cb: (value: Json, value2: Json, set: this) => void, thisArg?: unknown): void {
+    for (const k of this.m.keys()) cb.call(thisArg, k, k, this)
+  }
+
+  static from(iter: Iterable<Json>): CanonicalJsonSet {
+    return new CanonicalJsonSet(iter)
+  }
+}
+
+// =========================================================
+// Canonical multimap (Json → many V)
+// Backed by CanonicalJsonMap<ReadonlyArray<V>> with upsert.
+// =========================================================
+export class CanonicalJsonMultiMap<V> implements Iterable<readonly [Json, ReadonlyArray<V>]> {
+  private readonly m = new CanonicalJsonMap<ReadonlyArray<V>>()
+
+  constructor(init?: Iterable<readonly [Json, V]>) {
+    if (init) for (const [k, v] of init) this.add(k, v)
+  }
+
+  get size(): number { return this.m.size }
+  clear(): void { this.m.clear() }
+
+  get(key: Json): ReadonlyArray<V> {
+    return this.m.get(key) ?? []
+  }
+
+  add(key: Json, value: V): this {
+    this.m.upsert(key, () => [value], (xs) => [...xs, value])
+    return this
+  }
+
+  addAll(key: Json, values: ReadonlyArray<V>): this {
+    if (values.length === 0) return this
+    this.m.upsert(key, () => [...values], (xs) => [...xs, ...values])
+    return this
+  }
+
+  setList(key: Json, values: ReadonlyArray<V>): this {
+    this.m.set(key, [...values])
+    return this
+  }
+
+  delete(key: Json): boolean {
+    return this.m.delete(key)
+  }
+  
+  has(key: Json): boolean {
+    return this.m.has(key)
+  }
+
+  keys(): IterableIterator<Json> { return this.m.keys() }
+  
+  values(): IterableIterator<ReadonlyArray<V>> { return this.m.values() }
+  
+  entries(): IterableIterator<readonly [Json, ReadonlyArray<V>]> { return this.m.entries() }
+  
+  [Symbol.iterator](): IterableIterator<readonly [Json, ReadonlyArray<V>]> { 
+    return this.entries() 
+  }
+
+  static from<V>(pairs: Iterable<readonly [Json, V]>): CanonicalJsonMultiMap<V> {
+    return new CanonicalJsonMultiMap(pairs)
+  }
+}
+
+// =========================================================
+// groupBy helpers (canonical)
+// =========================================================
+
+// Group an array of T by a Json key derived from each item.
+export const groupByCanonical = <T>(
+  items: ReadonlyArray<T>,
+  keyOf: (t: T) => Json
+): CanonicalJsonMap<ReadonlyArray<T>> => {
+  const m = new CanonicalJsonMap<ReadonlyArray<T>>()
+  for (const t of items) {
+    const k = keyOf(t)
+    m.upsert(k, () => [t], (xs) => [...xs, t])
+  }
+  return m
+}
+
+// Group pairs [Json, V] by the Json key.
+export const groupPairsByCanonical = <V>(
+  pairs: ReadonlyArray<readonly [Json, V]>
+): CanonicalJsonMap<ReadonlyArray<V>> => {
+  const m = new CanonicalJsonMap<ReadonlyArray<V>>()
+  for (const [k, v] of pairs) {
+    m.upsert(k, () => [v], (xs) => [...xs, v])
+  }
+  return m
+}
+
+// Multimap variants if you prefer that interface:
+export const multiMapByCanonical = <T>(
+  items: ReadonlyArray<T>,
+  keyOf: (t: T) => Json
+): CanonicalJsonMultiMap<T> => {
+  const mm = new CanonicalJsonMultiMap<T>()
+  for (const t of items) mm.add(keyOf(t), t)
+  return mm
+}
+
+export const multiMapPairsByCanonical = <V>(
+  pairs: ReadonlyArray<readonly [Json, V]>
+): CanonicalJsonMultiMap<V> => CanonicalJsonMultiMap.from(pairs)
+
 // 4) Sum all numbers (0 for others)
 export const Alg_Json_sumNumbers: JsonAlgebra<number> = (f) => {
   switch (f._tag) {
@@ -1268,6 +1497,7 @@ export const Alg_Json_dropNulls: JsonAlgebra<Json> = (f) => {
     case 'JStr':  return jStr(f.value)
     case 'JBinary': return jBinary(f.base64)
     case 'JRegex': return jRegex(f.pattern, f.flags)
+    case 'JDate':  return jDate(f.iso)
     case 'JArr':  return jArr(f.items.filter(j => j.un._tag !== 'JNull'))
     case 'JSet':  return jSet(f.items.filter(j => j.un._tag !== 'JNull'))
     case 'JObj':  return jObj(f.entries.filter(([_, v]) => v.un._tag !== 'JNull'))
@@ -1300,6 +1530,8 @@ export const productJsonAlg =
                               algC({ _tag:'JBinary', base64: fbc.base64 })] as const
       case 'JRegex': return [algB({ _tag:'JRegex', pattern: fbc.pattern, ...(fbc.flags !== undefined ? { flags: fbc.flags } : {}) }),
                              algC({ _tag:'JRegex', pattern: fbc.pattern, ...(fbc.flags !== undefined ? { flags: fbc.flags } : {}) })] as const
+      case 'JDate':  return [algB({ _tag:'JDate', iso: fbc.iso }),
+                             algC({ _tag:'JDate', iso: fbc.iso })] as const
       case 'JArr': {
         const bs = fbc.items.map(([b]) => b)
         const cs = fbc.items.map(([,c]) => c)
@@ -1340,6 +1572,7 @@ export type ExprF<A> =
   | { _tag: 'Add'; left: A; right: A }
   | { _tag: 'Mul'; left: A; right: A }
   | { _tag: 'Neg'; value: A }
+  | { _tag: 'Abs'; value: A }                    // NEW: Absolute value node
   | { _tag: 'AddN'; items: ReadonlyArray<A> }
   | { _tag: 'MulN'; items: ReadonlyArray<A> }
   | { _tag: 'Var'; name: string }
@@ -1355,12 +1588,14 @@ export const mapExprF =
       case 'Add':  return { _tag: 'Add',  left: f(fa.left),  right: f(fa.right) }
       case 'Mul':  return { _tag: 'Mul',  left: f(fa.left),  right: f(fa.right) }
       case 'Neg':  return { _tag: 'Neg',  value: f(fa.value) }
+      case 'Abs':  return { _tag: 'Abs',  value: f(fa.value) }  // NEW: handle Abs recursion
       case 'AddN': return { _tag: 'AddN', items: fa.items.map(f) }
       case 'MulN': return { _tag: 'MulN', items: fa.items.map(f) }
       case 'Var':  return fa
       case 'Let':  return { _tag: 'Let',  name: fa.name, value: f(fa.value), body: f(fa.body) }
       case 'Div':  return { _tag: 'Div',  left: f(fa.left),  right: f(fa.right) }
       case 'Pow':  return { _tag: 'Pow',  base: f(fa.base),  exp: f(fa.exp) }
+      default: return _exhaustive(fa)  // Exhaustiveness guard
     }
   }
 
@@ -1376,6 +1611,7 @@ export const lit  = (n: number): Expr => ({ un: { _tag: 'Lit', value: n } })
 export const add  = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Add', left: l, right: r } })
 export const mul  = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Mul', left: l, right: r } })
 export const neg  = (e: Expr): Expr => ({ un: { _tag: 'Neg', value: e } })
+export const abs  = (e: Expr): Expr => ({ un: { _tag: 'Abs', value: e } })  // NEW: absolute value
 export const addN = (items: ReadonlyArray<Expr>): Expr => ({ un: { _tag: 'AddN', items } })
 export const mulN = (items: ReadonlyArray<Expr>): Expr => ({ un: { _tag: 'MulN', items } })
 export const vvar = (name: string): Expr => ({ un: { _tag: 'Var', name } })
@@ -1387,8 +1623,7 @@ export const powE = (base: Expr, exp: Expr): Expr =>
 
 // --------- Examples for ExprF ---------
 
-// Exhaustiveness guard helper
-const _exhaustive = (x: never): never => x
+// Exhaustiveness guard helper (using the exported one)
 const _absurd = (x: never): never => x
 
 // Evaluate expression via cata
@@ -1399,6 +1634,7 @@ export const evalExpr: (e: Expr) => number =
       case 'Add': return f.left + f.right
       case 'Mul': return f.left * f.right
       case 'Neg': return -f.value
+      case 'Abs': return Math.abs(f.value)  // NEW: handle absolute value
       case 'AddN': return f.items.reduce((s, x) => s + x, 0)
       case 'MulN': return f.items.reduce((p, x) => p * x, 1)
       case 'Var': throw new Error(`unbound var: ${f.name}`)
@@ -1421,6 +1657,7 @@ export const showExpr: (e: Expr) => string =
       case 'Add': return `(${f.left} + ${f.right})`
       case 'Mul': return `(${f.left} * ${f.right})`
       case 'Neg': return `(-${f.value})`
+      case 'Abs': return `|${f.value}|`  // NEW: handle absolute value
       case 'AddN': return `(${f.items.join(' + ')})`
       case 'MulN': return `(${f.items.join(' * ')})`
       case 'Var': return f.name
@@ -1451,6 +1688,7 @@ export const Alg_Expr_eval: ExprAlg<number> = (f) => {
     case 'Add': return f.left + f.right
     case 'Mul': return f.left * f.right
     case 'Neg': return -f.value
+    case 'Abs': return Math.abs(f.value)  // NEW: handle absolute value
     case 'AddN': return f.items.reduce((s, x) => s + x, 0)
     case 'MulN': return f.items.reduce((p, x) => p * x, 1)
     case 'Var': throw new Error(`unbound var: ${f.name}`)
@@ -1468,6 +1706,7 @@ export const Alg_Expr_pretty: ExprAlg<string> = (f) => {
     case 'Add': return `(${f.left} + ${f.right})`
     case 'Mul': return `(${f.left} * ${f.right})`
     case 'Neg': return `(-${f.value})`
+    case 'Abs': return `|${f.value}|`  // NEW: handle absolute value
     case 'AddN': return `(${f.items.join(' + ')})`
     case 'MulN': return `(${f.items.join(' * ')})`
     case 'Var': return f.name
@@ -1486,6 +1725,7 @@ export const Alg_Expr_leaves: ExprAlg<ReadonlyArray<number>> = (f) => {
     case 'Add': return [...f.left, ...f.right]
     case 'Mul': return [...f.left, ...f.right]
     case 'Neg': return f.value
+    case 'Abs': return f.value  // NEW: handle absolute value
     case 'AddN': return f.items.flat()
     case 'MulN': return f.items.flat()
     case 'Var': return []
@@ -1502,6 +1742,7 @@ export const Alg_Expr_size = (f: ExprF<number>): number => {
   switch (f._tag) {
     case 'Lit': case 'Var': return 1
     case 'Neg': return 1 + f.value
+    case 'Abs': return 1 + f.value  // NEW: handle absolute value
     case 'Add': return 1 + f.left + f.right
     case 'Mul': return 1 + f.left + f.right
     case 'Div': return 1 + f.left + f.right
@@ -1518,6 +1759,7 @@ export const Alg_Expr_depth = (f: ExprF<number>): number => {
   switch (f._tag) {
     case 'Lit': case 'Var': return 1
     case 'Neg': return 1 + f.value
+    case 'Abs': return 1 + f.value  // NEW: handle absolute value
     case 'Add': return 1 + Math.max(f.left, f.right)
     case 'Mul': return 1 + Math.max(f.left, f.right)
     case 'Div': return 1 + Math.max(f.left, f.right)
@@ -1538,6 +1780,9 @@ export const productExprAlg2 =
       case 'Var': return [algB({ _tag:'Var', name:f.name }),  algC({ _tag:'Var', name:f.name })]
       case 'Neg': { const [vB, vC] = f.value; return [
         algB({ _tag:'Neg', value:vB }), algC({ _tag:'Neg', value:vC })
+      ] }
+      case 'Abs': { const [vB, vC] = f.value; return [
+        algB({ _tag:'Abs', value:vB }), algC({ _tag:'Abs', value:vC })
       ] }
       case 'Add': { const [lB,lC] = f.left, [rB,rC] = f.right; return [
         algB({ _tag:'Add', left:lB, right:rB }), algC({ _tag:'Add', left:lC, right:rC })
@@ -1745,6 +1990,28 @@ export const traverseArrayRdr =
   <Env, A, B>(as: ReadonlyArray<A>, f: (a: A) => Rdr<Env, B>): Rdr<Env, ReadonlyArray<B>> =>
   (env) => as.map(a => f(a)(env))
 
+// apFirst / apSecond / zip / zipWith for Reader
+export const apFirstRdr =
+  <Env, A, B>(ra: Rdr<Env, A>) =>
+  (rb: Rdr<Env, B>): Rdr<Env, A> =>
+    lift2Rdr<Env, A, B, A>(a => _ => a)(ra)(rb)
+
+export const apSecondRdr =
+  <Env, A, B>(ra: Rdr<Env, A>) =>
+  (rb: Rdr<Env, B>): Rdr<Env, B> =>
+    lift2Rdr<Env, A, B, B>(_ => b => b)(ra)(rb)
+
+export const zipWithRdr =
+  <Env, A, B, C>(f: (a: A) => (b: B) => C) =>
+  (ra: Rdr<Env, A>) =>
+  (rb: Rdr<Env, B>): Rdr<Env, C> =>
+    lift2Rdr<Env, A, B, C>(f)(ra)(rb)
+
+export const zipRdr =
+  <Env, A, B>(ra: Rdr<Env, A>) =>
+  (rb: Rdr<Env, B>): Rdr<Env, readonly [A, B]> =>
+    lift2Rdr<Env, A, B, readonly [A, B]>(a => b => [a, b] as const)(ra)(rb)
+
 // ---------- Reader<Result> helpers ----------
 export type RRes<Env, E, A> = Reader<Env, Result<E, A>>
 
@@ -1821,6 +2088,53 @@ export const traverseArrayRR =
     }
     return Ok(out)
   }
+
+// apFirst / apSecond / zip / zipWith for Reader<Result>
+export const apFirstRR =
+  <Env, E, A, B>(ra: RRes<Env, E, A>) =>
+  (rb: RRes<Env, E, B>): RRes<Env, E, A> =>
+    lift2RR<Env, E, A, B, A>(a => _ => a)(ra)(rb)
+
+export const apSecondRR =
+  <Env, E, A, B>(ra: RRes<Env, E, A>) =>
+  (rb: RRes<Env, E, B>): RRes<Env, E, B> =>
+    lift2RR<Env, E, A, B, B>(_ => b => b)(ra)(rb)
+
+export const zipWithRR =
+  <Env, E, A, B, C>(f: (a: A) => (b: B) => C) =>
+  (ra: RRes<Env, E, A>) =>
+  (rb: RRes<Env, E, B>): RRes<Env, E, C> =>
+    lift2RR<Env, E, A, B, C>(f)(ra)(rb)
+
+export const zipRR =
+  <Env, E, A, B>(ra: RRes<Env, E, A>) =>
+  (rb: RRes<Env, E, B>): RRes<Env, E, readonly [A, B]> =>
+    lift2RR<Env, E, A, B, readonly [A, B]>(a => b => [a, b] as const)(ra)(rb)
+
+// ---------- Pure Result evaluator (no Reader, no async) ----------
+export const evalExprResult: (e: Expr) => Result<string, number> =
+  cataExpr<Result<string, number>>((f) => {
+    switch (f._tag) {
+      case 'Lit':  return Ok(f.value)
+      case 'Var':  return Err(`unbound var: ${f.name}`) // pure Result can't access env
+      case 'Neg':  return mapR((n: number) => -n)(f.value)
+      case 'Add':  return ResultI.ap(mapR((l: number) => (r: number) => l + r)(f.left))(f.right)
+      case 'Mul':  return ResultI.ap(mapR((l: number) => (r: number) => l * r)(f.left))(f.right)
+      case 'Div':  return ResultI.chain((l: number) => ResultI.chain((r: number) =>
+                           r === 0 ? Err('div by zero') : Ok(l / r)
+                         )(f.right))(f.left)
+      case 'AddN': return f.items.reduce((acc, r) => 
+                         ResultI.ap(ResultI.map((a: number) => (b: number) => a + b)(acc))(r), 
+                         Ok(0))
+      case 'MulN': return f.items.reduce((acc, r) => 
+                         ResultI.ap(ResultI.map((a: number) => (b: number) => a * b)(acc))(r), 
+                         Ok(1))
+      case 'Pow':  return ResultI.ap(ResultI.map((b: number) => (e: number) => Math.pow(b, e))(f.base))(f.exp)
+      case 'Let':  return Err('let expressions require environment - use evalExprR or evalExprRR')
+      case 'Abs':  return mapR((n: number) => Math.abs(n))(f.value)
+      default:     return _exhaustive(f)
+    }
+  })
 
 // ---------- Reader evaluator (applicative style) ----------
 export const evalExprR_app: (e: Expr) => Reader<ExprEnv, number> =
@@ -2321,6 +2635,7 @@ export const Alg_Json_pretty_fused: JsonAlgFused<string> = (f) => {
     case 'JStr':  return JSON.stringify(f.value)
     case 'JBinary': return `"base64(${f.base64})"`
     case 'JRegex': return `"/${f.pattern}/${f.flags ?? ''}"`
+    case 'JDate':  return `"${new Date(f.iso).toISOString()}"`
     case 'JArr':  return `[${f.items.join(', ')}]`
     case 'JSet':  return `Set[${f.items.join(', ')}]`
     case 'JObj':  return `{${f.entries.map(([k,v]) => JSON.stringify(k)+': '+v).join(', ')}}`
@@ -2348,6 +2663,7 @@ export const Alg_Json_size_fused: JsonAlgFused<number> = (f) => {
     case 'JStr':
     case 'JBinary':
     case 'JRegex':
+    case 'JDate':
       return 1
     case 'JArr':
     case 'JSet':
@@ -2422,6 +2738,8 @@ export const productJsonAlg2 =
                               algC({ _tag:'JBinary', base64: fbc.base64 })] as const
       case 'JRegex': return [algB({ _tag:'JRegex', pattern: fbc.pattern, ...(fbc.flags !== undefined ? { flags: fbc.flags } : {}) }),
                              algC({ _tag:'JRegex', pattern: fbc.pattern, ...(fbc.flags !== undefined ? { flags: fbc.flags } : {}) })] as const
+      case 'JDate':  return [algB({ _tag:'JDate', iso: fbc.iso }),
+                             algC({ _tag:'JDate', iso: fbc.iso })] as const
       case 'JArr': {
         const bs = fbc.items.map(([b]) => b)
         const cs = fbc.items.map(([,c]) => c)
@@ -3293,6 +3611,60 @@ export const pf = <A, B>(
   apply
 })
 
+// Lift to total Option / Result
+export const liftOptionPF =
+  <A, B>(p: PartialFn<A, B>) =>
+  (a: A): Option<B> =>
+    p.isDefinedAt(a) ? Some(p.apply(a)) : None
+
+export const liftResultPF =
+  <A, E, B>(onUndefined: (a: A) => E) =>
+  (p: PartialFn<A, B>) =>
+  (a: A): Result<E, B> =>
+    p.isDefinedAt(a) ? Ok(p.apply(a)) : Err(onUndefined(a))
+
+// Useful combinators
+export const orElsePF =
+  <A, B>(p: PartialFn<A, B>, q: PartialFn<A, B>): PartialFn<A, B> =>
+    pf(
+      (a) => p.isDefinedAt(a) || q.isDefinedAt(a),
+      (a) => (p.isDefinedAt(a) ? p.apply(a) : q.apply(a))
+    )
+
+export const composePF =
+  <A, B, C>(g: PartialFn<B, C>, f: PartialFn<A, B>): PartialFn<A, C> =>
+    pf(
+      (a) => f.isDefinedAt(a) && g.isDefinedAt(f.apply(a)),
+      (a) => g.apply(f.apply(a))
+    )
+
+export const restrictPF =
+  <A, B>(p: PartialFn<A, B>, pred: (a: A) => boolean): PartialFn<A, B> =>
+    pf((a) => pred(a) && p.isDefinedAt(a), p.apply)
+
+// Turn a maybe-throwing / maybe-null function into total Option/Result
+export const optionFromPartial =
+  <A, B>(f: (a: A) => B | null | undefined) =>
+  (a: A): Option<B> => {
+    try {
+      const b = f(a)
+      return b == null ? None : Some(b)
+    } catch {
+      return None
+    }
+  }
+
+export const resultFromPartial =
+  <A, E, B>(f: (a: A) => B | null | undefined, onFail: (a: A, u?: unknown) => E) =>
+  (a: A): Result<E, B> => {
+    try {
+      const b = f(a)
+      return b == null ? Err(onFail(a)) : Ok(b)
+    } catch (u) {
+      return Err(onFail(a, u))
+    }
+  }
+
 // ============
 // FilterMap / Collect helpers
 // ============
@@ -3304,6 +3676,17 @@ export const filterMapArray =
     const out: B[] = []
     for (let i = 0; i < as.length; i++) {
       const ob = f(as[i]!, i)
+      if (isSome(ob)) out.push(ob.value)
+    }
+    return out
+  }
+
+// filterMap over arrays (without index)
+export const filterMapArraySimple =
+  <A, B>(as: ReadonlyArray<A>, f: (a: A) => Option<B>): ReadonlyArray<B> => {
+    const out: B[] = []
+    for (let i = 0; i < as.length; i++) {
+      const ob = f(as[i]!)
       if (isSome(ob)) out.push(ob.value)
     }
     return out
@@ -4426,7 +4809,7 @@ export type Reader<R, A> = (r: R) => A
 
 export const Reader = {
   of:
-    <R = unknown, A = never>(a: A): Reader<R, A> =>
+    <R, A>(a: A): Reader<R, A> =>
     (_: R) =>
       a,
 
@@ -4475,7 +4858,7 @@ export type ReaderTask<R, A> = (r: R) => Promise<A>
 
 export const ReaderTask = {
   of:
-    <R = unknown, A = never>(a: A): ReaderTask<R, A> =>
+    <R, A>(a: A): ReaderTask<R, A> =>
     async (_: R) =>
       a,
 
@@ -4674,8 +5057,8 @@ export const TaskOption = {
 }
 
 export const ReaderTaskOption = {
-  of: <R = unknown, A = never>(a: A): ReaderTaskOption<R, A> => async () => Some(a),
-  none: <R = unknown>(): ReaderTaskOption<R, never> => async () => None,
+  of: <R, A>(a: A): ReaderTaskOption<R, A> => async () => Some(a),
+  none: <R>(): ReaderTaskOption<R, never> => async () => None,
 
   fromReader: <R, A>(ra: Reader<R, A>): ReaderTaskOption<R, A> =>
     async (r) => Some(ra(r)),
@@ -6341,17 +6724,961 @@ export const zipDelete = (z: JsonZipper): Option<JsonZipper> => {
   }
 }
 
+// =======================
+// Path-based navigation for JsonZipper
+// =======================
+
+// Path steps
+export type JsonPathStep =
+  | { _tag: 'Arr'; index: number }
+  | { _tag: 'Set'; index: number }
+  | { _tag: 'Obj'; key: string }
+
+// Navigate to a focus by path using existing JsonZipper
+export const focusAtPath = (root: Json, path: ReadonlyArray<JsonPathStep>): Option<JsonZipper> => {
+  let z: JsonZipper = zipRoot(root)
+  for (const step of path) {
+    switch (step._tag) {
+      case 'Arr': {
+        const oz = zipDownIndex(step.index)(z); if (isNone(oz)) return None
+        z = oz.value; break
+      }
+      case 'Set': {
+        // For sets, treat as array for navigation
+        const oz = zipDownIndex(step.index)(z); if (isNone(oz)) return None
+        z = oz.value; break
+      }
+      case 'Obj': {
+        const oz = zipDownKey(step.key)(z); if (isNone(oz)) return None
+        z = oz.value; break
+      }
+    }
+  }
+  return Some(z)
+}
+
+// Optional<Json, Json> focusing by path
+export const optionalAtPath = (path: ReadonlyArray<JsonPathStep>): Optional<Json, Json> => optional(
+  (root: Json) => {
+    const oz = focusAtPath(root, path)
+    return isSome(oz) ? Some(oz.value.focus) : None
+  },
+  (newFocus: Json, root: Json) => {
+    const oz = focusAtPath(root, path)
+    if (isNone(oz)) return root
+    // replace focus and rebuild
+    const z2 = zipReplace(newFocus)(oz.value)
+    return zipTree(z2)
+  }
+)
+
+// Convenience function for path-based modification
+export const modifyAtPath = (path: ReadonlyArray<JsonPathStep>, f: (j: Json) => Json) =>
+  (root: Json): Json => {
+    const oz = focusAtPath(root, path)
+    if (isNone(oz)) return root
+    const z2 = zipModify(f)(oz.value)
+    return zipTree(z2)
+  }
+
+// Aliases for compatibility with examples
+export const fromJsonZ = zipRoot
+export const toJsonZ = zipTree
+export const downArr = zipDownIndex
+export const downSet = zipDownIndex  // Sets are treated as arrays for navigation
+export const downObjKey = zipDownKey
+export const up = zipUp
+export const left = zipLeft
+export const right = zipRight
+export const replaceFocus = zipReplace
+export const modifyFocus = zipModify
+
+// =======================
+// Type utilities for better inference
+// =======================
+
+export type NoInfer<T> = [T][T extends any ? 0 : never]
+
+// Arrow type aliases for better inference
+export type ArrRTR<R, E, A, B> = (a: A) => ReaderTaskResult<R, E, B>
+export type ArrReader<R, A, B> = (a: A) => Reader<R, B>
+export type ArrTask<A, B> = (a: A) => Task<B>
+export type ArrReaderTask<R, A, B> = (a: A) => ReaderTask<R, B>
+
+// =======================
+// Kleisli Arrows
+// =======================
+// 
+// Kleisli arrows provide structured composition for effectful functions (A -> M<B>)
+// without committing to do-notation everywhere. They sit between Applicative and Monad,
+// offering clean composition operators like (>>>), first, second, split (***), and fanout (&&&).
+
+// ---------- Kleisli Arrow for Reader ----------
+export const makeKleisliArrowReader = <R>() => {
+  type M<B> = Reader<R, B>
+  type Arr<A, B> = (a: A) => M<B>
+
+  const arr =
+    <A, B>(f: (a: A) => B): Arr<A, B> =>
+    (a) => Reader.of<R, B>(f(a))
+
+  const then =
+    <A, B, C>(g: Arr<B, C>) =>
+    (f: Arr<A, B>): Arr<A, C> =>
+    (a) => (r: R) => g(f(a)(r))(r)
+
+  const first =
+    <A, B, C>(f: Arr<A, B>): Arr<readonly [A, C], readonly [B, C]> =>
+    ([a, c]) => (r: R) => [f(a)(r), c] as const
+
+  const second =
+    <A, B, C>(f: Arr<B, C>): Arr<readonly [A, B], readonly [A, C]> =>
+    ([a, b]) => (r: R) => [a, f(b)(r)] as const
+
+  const split =
+    <A, B, C, D>(f: Arr<A, B>, g: Arr<C, D>): Arr<readonly [A, C], readonly [B, D]> =>
+    ([a, c]) => (r: R) => [f(a)(r), g(c)(r)] as const
+
+  const fanout =
+    <A, B, C>(f: Arr<A, B>, g: Arr<A, C>): Arr<A, readonly [B, C]> =>
+    (a) => (r: R) => [f(a)(r), g(a)(r)] as const
+
+  /** ArrowApply: app :: ([a, Arr a b]) -> Arr b  */
+  const app =
+    <A, B>(): Arr<readonly [A, Arr<A, B>], B> =>
+    ([a, f]) =>
+    (r: R) =>
+      f(a)(r)
+
+  /** Helper: applyTo(f)(a) = app([a, f]) */
+  const applyTo =
+    <A, B>(f: Arr<A, B>) =>
+    (a: A): M<B> =>
+      app<A, B>()([a, f])
+
+  // =======================
+  // Kleisli-friendly sugar
+  // =======================
+  // Nice aliases that read like monadic ops
+
+  const idA = <A>(): Arr<A, A> => (a) => (_: R) => a
+
+  const mapK =
+    <A, B, C>(f: (b: B) => C) =>
+    (ab: Arr<A, B>): Arr<A, C> =>
+      then<A, B, C>(arr(f))(ab)
+
+  // apK ff fa = app (fa &&& ff)
+  const apK =
+    <A, B, C>(ff: Arr<A, Arr<B, C>>) =>
+    (fa: Arr<A, B>): Arr<A, C> =>
+      then<A, readonly [B, Arr<B, C>], C>(app<B, C>())(fanout(fa, ff))
+
+  const liftK2 =
+    <A, B, C, D>(h: (b: B, c: C) => D) =>
+    (fb: Arr<A, B>, fc: Arr<A, C>): Arr<A, D> =>
+      then<A, readonly [B, C], D>(arr(([b, c]: readonly [B, C]) => h(b, c)))(fanout(fb, fc))
+
+  // Higher-order bind (A -> Arr<A,B>)
+  const bindK_HO =
+    <A, B>(f: Arr<A, Arr<A, B>>): Arr<A, B> =>
+      then<A, readonly [A, Arr<A, B>], B>(app<A, B>())(fanout(idA<A>(), f))
+
+  return { arr, then, first, second, split, fanout, app, applyTo, idA, mapK, apK, liftK2, bindK_HO }
+}
+
+// ---------- Kleisli Arrow for Task ----------
+export const makeKleisliArrowTask = () => {
+  type M<B> = Task<B>
+  type Arr<A, B> = (a: A) => M<B>
+
+  const arr =
+    <A, B>(f: (a: A) => B): Arr<A, B> =>
+    (a) => () => Promise.resolve(f(a))
+
+  const then =
+    <A, B, C>(g: Arr<B, C>) =>
+    (f: Arr<A, B>): Arr<A, C> =>
+    (a) => async () => g(await f(a)())()
+
+  const first =
+    <A, B, C>(f: Arr<A, B>): Arr<readonly [A, C], readonly [B, C]> =>
+    ([a, c]) => async () => [await f(a)(), c] as const
+
+  const second =
+    <A, B, C>(f: Arr<B, C>): Arr<readonly [A, B], readonly [A, C]> =>
+    ([a, b]) => async () => [a, await f(b)()] as const
+
+  const split =
+    <A, B, C, D>(f: Arr<A, B>, g: Arr<C, D>): Arr<readonly [A, C], readonly [B, D]> =>
+    ([a, c]) => async () => [await f(a)(), await g(c)()] as const
+
+  const fanout =
+    <A, B, C>(f: Arr<A, B>, g: Arr<A, C>): Arr<A, readonly [B, C]> =>
+    (a) => async () => [await f(a)(), await g(a)()] as const
+
+  const app =
+    <A, B>(): Arr<readonly [A, Arr<A, B>], B> =>
+    ([a, f]) =>
+    async () =>
+      f(a)()
+
+  const applyTo =
+    <A, B>(f: Arr<A, B>) =>
+    (a: A): M<B> =>
+      app<A, B>()([a, f])
+
+  // =======================
+  // Kleisli-friendly sugar
+  // =======================
+
+  const idA = <A>(): Arr<A, A> => (a) => async () => a
+
+  const mapK =
+    <A, B, C>(f: (b: B) => C) =>
+    (ab: Arr<A, B>): Arr<A, C> =>
+      then<A, B, C>(arr(f))(ab)
+
+  const apK =
+    <A, B, C>(ff: Arr<A, Arr<B, C>>) =>
+    (fa: Arr<A, B>): Arr<A, C> =>
+      then<A, readonly [B, Arr<B, C>], C>(app<B, C>())(fanout(fa, ff))
+
+  const liftK2 =
+    <A, B, C, D>(h: (b: B, c: C) => D) =>
+    (fb: Arr<A, B>, fc: Arr<A, C>): Arr<A, D> =>
+      then<A, readonly [B, C], D>(arr(([b, c]: readonly [B, C]) => h(b, c)))(fanout(fb, fc))
+
+  const bindK_HO =
+    <A, B>(f: Arr<A, Arr<A, B>>): Arr<A, B> =>
+      then<A, readonly [A, Arr<A, B>], B>(app<A, B>())(fanout(idA<A>(), f))
+
+  return { arr, then, first, second, split, fanout, app, applyTo, idA, mapK, apK, liftK2, bindK_HO }
+}
+
+// ---------- Kleisli Arrow for ReaderTask ----------
+export const makeKleisliArrowReaderTask = <R>() => {
+  type M<B> = ReaderTask<R, B>
+  type Arr<A, B> = (a: A) => M<B>
+
+  const arr =
+    <A, B>(f: (a: A) => B): Arr<A, B> =>
+    (a) => async (_: R) => f(a)
+
+  const then =
+    <A, B, C>(g: Arr<B, C>) =>
+    (f: Arr<A, B>): Arr<A, C> =>
+    (a) => async (r: R) => g(await f(a)(r))(r)
+
+  const first =
+    <A, B, C>(f: Arr<A, B>): Arr<readonly [A, C], readonly [B, C]> =>
+    ([a, c]) => async (r: R) => [await f(a)(r), c] as const
+
+  const second =
+    <A, B, C>(f: Arr<B, C>): Arr<readonly [A, B], readonly [A, C]> =>
+    ([a, b]) => async (r: R) => [a, await f(b)(r)] as const
+
+  const split =
+    <A, B, C, D>(f: Arr<A, B>, g: Arr<C, D>): Arr<readonly [A, C], readonly [B, D]> =>
+    ([a, c]) => async (r: R) => [await f(a)(r), await g(c)(r)] as const
+
+  const fanout =
+    <A, B, C>(f: Arr<A, B>, g: Arr<A, C>): Arr<A, readonly [B, C]> =>
+    (a) => async (r: R) => [await f(a)(r), await g(a)(r)] as const
+
+  const app =
+    <A, B>(): Arr<readonly [A, Arr<A, B>], B> =>
+    ([a, f]) =>
+    async (r: R) =>
+      f(a)(r)
+
+  const applyTo =
+    <A, B>(f: Arr<A, B>) =>
+    (a: A): M<B> =>
+      app<A, B>()([a, f])
+
+  // =======================
+  // Kleisli-friendly sugar
+  // =======================
+
+  const idA = <A>(): Arr<A, A> => (a) => async (_: R) => a
+
+  const mapK =
+    <A, B, C>(f: (b: B) => C) =>
+    (ab: Arr<A, B>): Arr<A, C> =>
+      then<A, B, C>(arr(f))(ab)
+
+  const apK =
+    <A, B, C>(ff: Arr<A, Arr<B, C>>) =>
+    (fa: Arr<A, B>): Arr<A, C> =>
+      then<A, readonly [B, Arr<B, C>], C>(app<B, C>())(fanout(fa, ff))
+
+  const liftK2 =
+    <A, B, C, D>(h: (b: B, c: C) => D) =>
+    (fb: Arr<A, B>, fc: Arr<A, C>): Arr<A, D> =>
+      then<A, readonly [B, C], D>(arr(([b, c]: readonly [B, C]) => h(b, c)))(fanout(fb, fc))
+
+  const bindK_HO =
+    <A, B>(f: Arr<A, Arr<A, B>>): Arr<A, B> =>
+      then<A, readonly [A, Arr<A, B>], B>(app<A, B>())(fanout(idA<A>(), f))
+
+  return { arr, then, first, second, split, fanout, app, applyTo, idA, mapK, apK, liftK2, bindK_HO }
+}
+
+// ---------- Kleisli Arrow for ReaderTaskResult ----------
+export const makeKleisliArrowRTR = <R, E>() => {
+  type M<B> = ReaderTaskResult<R, E, B>
+  type Arr<A, B> = (a: A) => M<B>
+
+  const arr =
+    <A, B>(f: (a: A) => B): Arr<A, B> =>
+    (a) => async (_: R) => Ok(f(a))
+
+  // Overload for better inference
+  function then<A, B, C>(g: Arr<B, C>): (f: Arr<A, B>) => Arr<A, C>
+  function then<A, B, C>(g: Arr<B, C>, f: Arr<A, B>): Arr<A, C>
+  function then<A, B, C>(g: Arr<B, C>, f?: Arr<A, B>): any {
+    if (f === undefined) {
+      return (f: Arr<A, B>): Arr<A, C> =>
+        (a) => async (r: R) => {
+          const rb = await f(a)(r)
+          return isErr(rb) ? rb : g(rb.value)(r)
+        }
+    }
+    return (a: A) => async (r: R) => {
+      const rb = await f(a)(r)
+      return isErr(rb) ? rb : g(rb.value)(r)
+    }
+  }
+
+  const first =
+    <A, B, C>(f: Arr<A, B>): Arr<readonly [A, C], readonly [B, C]> =>
+    ([a, c]) => async (r: R) => {
+      const rb = await f(a)(r)
+      return isErr(rb) ? rb : Ok([rb.value, c] as const)
+    }
+
+  const second =
+    <A, B, C>(f: Arr<B, C>): Arr<readonly [A, B], readonly [A, C]> =>
+    ([a, b]) => async (r: R) => {
+      const rc = await f(b)(r)
+      return isErr(rc) ? rc : Ok([a, rc.value] as const)
+    }
+
+  // sequential; change to Promise.all if you want parallel and combine Errs differently
+  const split =
+    <A, B, C, D>(f: Arr<A, B>, g: Arr<C, D>): Arr<readonly [A, C], readonly [B, D]> =>
+    ([a, c]) => async (r: R) => {
+      const rb = await f(a)(r); if (isErr(rb)) return rb
+      const rd = await g(c)(r); if (isErr(rd)) return rd
+      return Ok([rb.value, rd.value] as const)
+    }
+
+  const fanout =
+    <A, B, C>(f: Arr<A, B>, g: Arr<A, C>): Arr<A, readonly [B, C]> =>
+    (a) => async (r: R) => {
+      const rb = await f(a)(r); if (isErr(rb)) return rb
+      const rc = await g(a)(r); if (isErr(rc)) return rc
+      return Ok([rb.value, rc.value] as const)
+    }
+
+  /** Passes env + error semantics through unchanged */
+  const app =
+    <A, B>(): Arr<readonly [A, Arr<A, B>], B> =>
+    ([a, f]) =>
+    async (r: R) =>
+      f(a)(r) // Result<E, B>
+
+  const applyTo =
+    <A, B>(f: Arr<A, B>) =>
+    (a: A): M<B> =>
+      app<A, B>()([a, f])
+
+  // =======================
+  // Kleisli-friendly sugar
+  // =======================
+
+  const idA = <A>(): Arr<A, A> => (a) => async (_: R) => Ok(a)
+
+  const mapK =
+    <A, B, C>(f: (b: B) => C) =>
+    (ab: Arr<A, B>): Arr<A, C> =>
+      then<A, B, C>(arr(f))(ab)
+
+  const apK =
+    <A, B, C>(ff: Arr<A, Arr<B, C>>) =>
+    (fa: Arr<A, B>): Arr<A, C> =>
+      then<A, readonly [B, Arr<B, C>], C>(app<B, C>())(fanout(fa, ff))
+
+  const liftK2 =
+    <A, B, C, D>(h: (b: B, c: C) => D) =>
+    (fb: Arr<A, B>, fc: Arr<A, C>): Arr<A, D> =>
+      then<A, readonly [B, C], D>(arr(([b, c]: readonly [B, C]) => h(b, c)))(fanout(fb, fc))
+
+  const bindK_HO =
+    <A, B>(f: Arr<A, Arr<A, B>>): Arr<A, B> =>
+      then<A, readonly [A, Arr<A, B>], B>(app<A, B>())(fanout(idA<A>(), f))
+
+  // Kleisli bind for ReaderTaskResult
+  const bindK =
+    <A, B>(k: (a: NoInfer<A>) => ReaderTaskResult<R, E, B>) =>
+    <X>(f: (x: X) => ReaderTaskResult<R, E, A>) =>
+    (x: X): ReaderTaskResult<R, E, B> =>
+    async (r: R) => {
+      const ra = await f(x)(r)
+      return isErr(ra) ? ra : k(ra.value)(r)
+    }
+
+  return { arr, then, first, second, split, fanout, app, applyTo, idA, mapK, apK, liftK2, bindK_HO, bindK }
+}
+
+// =======================
+// Stream Arrow Instance (Finite Streams)
+// =======================
+//
+// Minimal stream processor for testing Stream/Iteration laws.
+// Uses finite arrays as streams with denotational semantics.
+
+// Stream type: finite list of values
+export type Stream<A> = ReadonlyArray<A>
+
+// Stream processor: transforms streams
+export type StreamProc<A, B> = (stream: Stream<A>) => Stream<B>
+
+// Stream arrow operations
+export const StreamArrow = {
+  // arr: lift pure function to stream processor
+  arr: <A, B>(f: (a: A) => B): StreamProc<A, B> => 
+    (stream: Stream<A>) => stream.map(f),
+
+  // then: compose stream processors
+  then: <A, B, C>(g: StreamProc<B, C>) => (f: StreamProc<A, B>): StreamProc<A, C> =>
+    (stream: Stream<A>) => g(f(stream)),
+
+  // first: process first element of pairs
+  first: <A, B, C>(f: StreamProc<A, B>): StreamProc<readonly [A, C], readonly [B, C]> =>
+    (stream: Stream<readonly [A, C]>) => stream.map(([a, c]) => [f([a])[0]!, c] as const),
+
+  // second: process second element of pairs  
+  second: <A, B, C>(f: StreamProc<B, C>): StreamProc<readonly [A, B], readonly [A, C]> =>
+    (stream: Stream<readonly [A, B]>) => stream.map(([a, b]) => [a, f([b])[0]!] as const),
+
+  // split: process pairs in parallel
+  split: <A, B, C, D>(f: StreamProc<A, B>, g: StreamProc<C, D>): StreamProc<readonly [A, C], readonly [B, D]> =>
+    (stream: Stream<readonly [A, C]>) => stream.map(([a, c]) => [f([a])[0]!, g([c])[0]!] as const),
+
+  // fanout: duplicate input to two processors
+  fanout: <A, B, C>(f: StreamProc<A, B>, g: StreamProc<A, C>): StreamProc<A, readonly [B, C]> =>
+    (stream: Stream<A>) => stream.map(a => [f([a])[0]!, g([a])[0]!] as const),
+
+  // left: process left side of Either-like values
+  left: <A, B, C>(f: StreamProc<A, B>): StreamProc<{ _tag: 'Left'; value: A } | { _tag: 'Right'; value: C }, { _tag: 'Left'; value: B } | { _tag: 'Right'; value: C }> =>
+    (stream: Stream<{ _tag: 'Left'; value: A } | { _tag: 'Right'; value: C }>) => 
+      stream.map(e => e._tag === 'Left' ? { _tag: 'Left' as const, value: f([e.value])[0]! } : e),
+
+  // right: process right side of Either-like values
+  right: <A, B, C>(f: StreamProc<B, C>): StreamProc<{ _tag: 'Left'; value: A } | { _tag: 'Right'; value: B }, { _tag: 'Left'; value: A } | { _tag: 'Right'; value: C }> =>
+    (stream: Stream<{ _tag: 'Left'; value: A } | { _tag: 'Right'; value: B }>) => 
+      stream.map(e => e._tag === 'Right' ? { _tag: 'Right' as const, value: f([e.value])[0]! } : e),
+
+  // zero: empty stream processor
+  zero: <A, B>(): StreamProc<A, B> => () => [],
+
+  // alt: choice between processors
+  alt: <A, B>(f: StreamProc<A, B>, g: StreamProc<A, B>): StreamProc<A, B> =>
+    (stream: Stream<A>) => {
+      const resultF = f(stream)
+      const resultG = g(stream)
+      return resultF.length > 0 ? resultF : resultG
+    },
+
+  // loop: feedback loop processor
+  loop: <A, B, C>(f: StreamProc<readonly [A, C], readonly [B, C]>): StreamProc<A, B> =>
+    (stream: Stream<A>) => {
+      const result: B[] = []
+      let feedback: C[] = []
+      
+      for (const a of stream) {
+        const input: readonly [A, C][] = [[a, feedback[0] ?? ({} as C)]]
+        const output = f(input)
+        if (output.length > 0) {
+          const [b, c] = output[0]!
+          result.push(b)
+          feedback = [c]
+        }
+      }
+      
+      return result
+    }
+}
+
+// Stream fusion operations
+export const StreamFusion = {
+  // fusePureInto: fuse pure function into processor
+  fusePureInto: <A, B, C>(sigma: StreamProc<B, C>, f: (a: A) => B): StreamProc<A, C> =>
+    (stream: Stream<A>) => sigma(stream.map(f)),
+
+  // fuseProcInto: fuse processor into processor  
+  fuseProcInto: <A, B, C>(sigma: StreamProc<B, C>, tau: StreamProc<A, B>): StreamProc<A, C> =>
+    (stream: Stream<A>) => sigma(tau(stream)),
+
+  // fusePureOut: fuse pure function out of processor
+  fusePureOut: <A, B, C>(sigma: StreamProc<A, B>, g: (b: B) => C): StreamProc<A, C> =>
+    (stream: Stream<A>) => sigma(stream).map(g)
+}
+
+// Stream independence predicate (simple version)
+export const isIndependent = <A, B, C>(
+  f: StreamProc<A, B>, 
+  g: StreamProc<A, C>
+): boolean => {
+  // Simple independence: processors don't share state
+  // In a real implementation, this would be more sophisticated
+  return true // For now, assume all processors are independent
+}
+
+// =======================
+// Arrow IR System (Paper-Faithful)
+// =======================
+//
+// This implements the "Laws → Shapes → Rewrites → Tests" principle
+// with a proper IR-based approach to Arrow operations.
+
+// ===============================================
+// Minimal IR (paper-faithful)
+// ===============================================
+
+export type IR<I, O> =
+  | { tag: 'Arr'; f: (i: I) => O }                    // arr
+  | { tag: 'Comp'; f: IR<I, any>; g: IR<any, O> }     // >>>
+  | { tag: 'First'; f: IR<any, any> }                 // first
+  | { tag: 'Left'; f: IR<any, any> }                  // ArrowChoice
+  | { tag: 'Par'; l: IR<any, any>; r: IR<any, any> }  // *** (derived: par(f,g) = first(f) >>> second(g))
+  | { tag: 'Fanout'; l: IR<any, any>; r: IR<any, any> } // &&& (derived: fanout(f,g) = arr(dup) >>> par(f,g))
+  | { tag: 'Zero' }                                   // ArrowZero
+  | { tag: 'Alt'; l: IR<any, any>; r: IR<any, any> }  // ArrowPlus
+  | { tag: 'Loop'; f: IR<[any, any], [any, any]> }    // ArrowLoop
+
+// ===============================================
+// Denotation Function (IR → Function)
+// ===============================================
+
+export const denot = <I, O>(ir: IR<I, O>): (i: I) => O => {
+  switch (ir.tag) {
+    case 'Arr':
+      return ir.f
+
+    case 'Comp': {
+      const f = denot(ir.f)
+      const g = denot(ir.g)
+      return (i: I) => g(f(i))
+    }
+
+    case 'First': {
+      const f = denot(ir.f)
+      return (([a, c]: readonly [any, any]) => [f(a), c] as const) as unknown as (i: I) => O
+    }
+
+    case 'Left': {
+      const f = denot(ir.f)
+      return (e: any) => {
+        if (e._tag === 'Left') return { _tag: 'Left' as const, value: f(e.value) }
+        return e
+      }
+    }
+
+    case 'Par': {
+      const l = denot(ir.l)
+      const r = denot(ir.r)
+      return (([a, c]: readonly [any, any]) => [l(a), r(c)] as const) as unknown as (i: I) => O
+    }
+
+    case 'Fanout': {
+      const l = denot(ir.l)
+      const r = denot(ir.r)
+      return ((a: any) => [l(a), r(a)] as const) as unknown as (i: I) => O
+    }
+
+    case 'Zero':
+      return () => { throw new Error('ArrowZero: no value') }
+
+    case 'Alt': {
+      const l = denot(ir.l)
+      const r = denot(ir.r)
+      return (a: any) => {
+        try { return l(a) } catch { return r(a) }
+      }
+    }
+
+    case 'Loop': {
+      const f = denot(ir.f)
+      return (a: any) => {
+        let [b, c] = f([a, undefined])
+        while (c !== undefined) {
+          [b, c] = f([a, c])
+        }
+        return b
+      }
+    }
+  }
+}
+
+// ===============================================
+// Arrow Constructors
+// ===============================================
+
+export const arr = <I, O>(f: (i: I) => O): IR<I, O> => ({ tag: 'Arr', f })
+
+export const comp = <I, M, O>(f: IR<I, M>, g: IR<M, O>): IR<I, O> => ({ tag: 'Comp', f, g })
+
+export const first = <A, B, C>(f: IR<A, B>): IR<readonly [A, C], readonly [B, C]> => ({ tag: 'First', f })
+
+export const leftArrow = <A, B, C>(f: IR<A, B>): IR<{ _tag: 'Left'; value: A } | { _tag: 'Right'; value: C }, { _tag: 'Left'; value: B } | { _tag: 'Right'; value: C }> => ({ tag: 'Left', f })
+
+export const par = <A, B, C, D>(f: IR<A, B>, g: IR<C, D>): IR<readonly [A, C], readonly [B, D]> => ({ tag: 'Par', l: f, r: g })
+
+export const fanout = <A, B, C>(f: IR<A, B>, g: IR<A, C>): IR<A, readonly [B, C]> => ({ tag: 'Fanout', l: f, r: g })
+
+export const zero = <A, B>(): IR<A, B> => ({ tag: 'Zero' })
+
+export const alt = <A, B>(f: IR<A, B>, g: IR<A, B>): IR<A, B> => ({ tag: 'Alt', l: f, r: g })
+
+export const loop = <A, B>(f: IR<[A, B], [B, B]>): IR<A, B> => ({ tag: 'Loop', f })
+
+// ===============================================
+// Derived Combinators
+// ===============================================
+
+export const second = <A, B, C>(f: IR<B, C>): IR<readonly [A, B], readonly [A, C]> => {
+  // second f = arr swap >>> first f >>> arr swap
+  const swap = arr<readonly [A, B], readonly [B, A]>(([a, b]) => [b, a])
+  const swapBack = arr<readonly [C, A], readonly [A, C]>(([c, a]) => [a, c])
+  return comp(comp(swap, first(f)), swapBack)
+}
+
+export const rightArrow = <A, B, C>(f: IR<A, B>): IR<{ _tag: 'Left'; value: C } | { _tag: 'Right'; value: A }, { _tag: 'Left'; value: C } | { _tag: 'Right'; value: B }> => {
+  // right f = arr mirror >>> left f >>> arr mirror
+  const mirror = arr<any, any>((e: any) => 
+    e._tag === 'Left' ? { _tag: 'Right' as const, value: e.value } : { _tag: 'Left' as const, value: e.value }
+  )
+  return comp(comp(mirror, leftArrow(f)), mirror)
+}
+
+export const plus = <A, B>(f: IR<A, B>, g: IR<A, B>): IR<A, B> => alt(f, g)
+
+// ===============================================
+// Explain-Plan Contract
+// ===============================================
+
+export interface RewriteStep {
+  rule: string
+  before: string
+  after: string
+  law: string
+}
+
+export interface RewritePlan {
+  plan: IR<any, any>
+  steps: ReadonlyArray<RewriteStep>
+}
+
+// ===============================================
+// Normalization Rewrites (with Explain-Plan)
+// ===============================================
+
+export const normalize = <I, O>(ir: IR<I, O>): RewritePlan => {
+  const steps: RewriteStep[] = []
+  let current = ir
+  let changed = true
+  
+  while (changed) {
+    changed = false
+    const result = rewriteWithPlan(current)
+    if (result.plan !== current) {
+      current = result.plan
+      steps.push(...result.steps)
+      changed = true
+    }
+  }
+  
+  return { plan: current, steps }
+}
+
+const rewriteWithPlan = <I, O>(ir: IR<I, O>): RewritePlan => {
+  const steps: RewriteStep[] = []
+  const result = rewrite(ir, steps)
+  return { plan: result, steps }
+}
+
+const rewrite = <I, O>(ir: IR<I, O>, steps: RewriteStep[] = []): IR<I, O> => {
+  switch (ir.tag) {
+    case 'Comp': {
+      const f = rewrite(ir.f, steps)
+      const g = rewrite(ir.g, steps)
+      
+      // Associativity: (f >>> g) >>> h = f >>> (g >>> h)
+      if (f.tag === 'Comp') {
+        const result = comp(f.f, comp(f.g, g))
+        steps.push({
+          rule: "AssocComp",
+          before: hashIR(ir),
+          after: hashIR(result),
+          law: "Category.3 (Associativity)"
+        })
+        return result
+      }
+      
+      // Identity elimination: arr id >>> f = f
+      if (f.tag === 'Arr' && f.f === idFn) {
+        steps.push({
+          rule: "DropLeftId",
+          before: hashIR(ir),
+          after: hashIR(g),
+          law: "Category.1 (Left Identity)"
+        })
+        return g
+      }
+      
+      // Identity elimination: f >>> arr id = f  
+      if (g.tag === 'Arr' && g.f === idFn) {
+        steps.push({
+          rule: "DropRightId",
+          before: hashIR(ir),
+          after: hashIR(f),
+          law: "Category.2 (Right Identity)"
+        })
+        return f
+      }
+      
+      // Functoriality: arr f >>> arr g = arr (g ∘ f)
+      if (f.tag === 'Arr' && g.tag === 'Arr') {
+        const result = arr((i: I) => g.f(f.f(i)))
+        steps.push({
+          rule: "FuseArr",
+          before: hashIR(ir),
+          after: hashIR(result),
+          law: "Arrow.2 (Functoriality)"
+        })
+        return result
+      }
+      
+      return { tag: 'Comp', f, g }
+    }
+    
+    case 'First': {
+      const f = rewrite(ir.f, steps)
+      
+      // first (arr f) = arr (first f)
+      if (f.tag === 'Arr') {
+        const result = arr(([a, c]: readonly [any, any]) => [f.f(a), c] as const) as IR<I, O>
+        steps.push({
+          rule: "CollapseFirstArr",
+          before: hashIR(ir),
+          after: hashIR(result),
+          law: "Arrow.3 (Extension)"
+        })
+        return result
+      }
+      
+      // first (f >>> g) = first f >>> first g
+      if (f.tag === 'Comp') {
+        const result = comp(first(f.f), first(f.g)) as IR<I, O>
+        steps.push({
+          rule: "PushFirstComp",
+          before: hashIR(ir),
+          after: hashIR(result),
+          law: "Arrow.4 (Exchange)"
+        })
+        return result
+      }
+      
+      return { tag: 'First', f }
+    }
+    
+    case 'Par': {
+      const l = rewrite(ir.l, steps)
+      const r = rewrite(ir.r, steps)
+      
+      // Par(Arr f, Arr g) = Arr(f×g)
+      if (l.tag === 'Arr' && r.tag === 'Arr') {
+        const result = arr(([a, c]: readonly [any, any]) => [l.f(a), r.f(c)] as const) as IR<I, O>
+        steps.push({
+          rule: "FuseParArr",
+          before: hashIR(ir),
+          after: hashIR(result),
+          law: "Arrow.5 (Product Functoriality)"
+        })
+        return result
+      }
+      
+      // Comp(Par(a,b), Par(c,d)) = Par(Comp(a,c), Comp(b,d))
+      // This would need more context to implement properly
+      
+      return { tag: 'Par', l, r }
+    }
+    
+    case 'Fanout': {
+      const l = rewrite(ir.l, steps)
+      const r = rewrite(ir.r, steps)
+      
+      // Fanout(Arr f, Arr g) = Arr(f &&& g)
+      if (l.tag === 'Arr' && r.tag === 'Arr') {
+        const result = arr((a: any) => [l.f(a), r.f(a)] as const) as IR<I, O>
+        steps.push({
+          rule: "FuseFanoutArr",
+          before: hashIR(ir),
+          after: hashIR(result),
+          law: "Arrow.6 (Fanout Functoriality)"
+        })
+        return result
+      }
+      
+      return { tag: 'Fanout', l, r }
+    }
+    
+    case 'Alt': {
+      const l = rewrite(ir.l, steps)
+      const r = rewrite(ir.r, steps)
+      
+      // Zero <+> p = p
+      if (l.tag === 'Zero') {
+        steps.push({
+          rule: "DropLeftZero",
+          before: hashIR(ir),
+          after: hashIR(r),
+          law: "ArrowPlus.1 (Left Identity)"
+        })
+        return r
+      }
+      
+      // p <+> Zero = p
+      if (r.tag === 'Zero') {
+        steps.push({
+          rule: "DropRightZero",
+          before: hashIR(ir),
+          after: hashIR(l),
+          law: "ArrowPlus.2 (Right Identity)"
+        })
+        return l
+      }
+      
+      // (p <+> q) <+> r = p <+> (q <+> r)
+      if (l.tag === 'Alt') {
+        const result = alt(l.l, alt(l.r, r))
+        steps.push({
+          rule: "AssocAlt",
+          before: hashIR(ir),
+          after: hashIR(result),
+          law: "ArrowPlus.3 (Associativity)"
+        })
+        return result
+      }
+      
+      return { tag: 'Alt', l, r }
+    }
+    
+    case 'Left': {
+      const f = rewrite(ir.f, steps)
+      
+      // left (arr f) = arr (left f)
+      if (f.tag === 'Arr') {
+        const result = arr((e: any) => {
+          if (e._tag === 'Left') return { _tag: 'Left' as const, value: f.f(e.value) }
+          return e
+        }) as IR<I, O>
+        steps.push({
+          rule: "CollapseLeftArr",
+          before: hashIR(ir),
+          after: hashIR(result),
+          law: "ArrowChoice.1 (Left Identity)"
+        })
+        return result
+      }
+      
+      // left (f >>> g) = left f >>> left g
+      if (f.tag === 'Comp') {
+        const result = comp(leftArrow(f.f), leftArrow(f.g)) as IR<I, O>
+        steps.push({
+          rule: "PushLeftComp",
+          before: hashIR(ir),
+          after: hashIR(result),
+          law: "ArrowChoice.2 (Left Exchange)"
+        })
+        return result
+      }
+      
+      return { tag: 'Left', f }
+    }
+    
+    case 'Loop': {
+      const f = rewrite(ir.f, steps)
+      
+      // Loop(f) >>> arr g = Loop(f >>> arr(g × id))
+      // This would need more context to implement properly
+      // For now, just return the loop unchanged
+      
+      return { tag: 'Loop', f }
+    }
+    
+    default:
+      return ir
+  }
+}
+
+// Helper function for identity (avoiding conflict with existing id)
+const idFn = <A>(a: A): A => a
+
+// Simple hash function for IR (for explain-plan)
+const hashIR = (ir: IR<any, any>): string => {
+  return JSON.stringify(ir, (key, value) => {
+    if (typeof value === 'function') return '<function>'
+    return value
+  }).slice(0, 50) + '...'
+}
+
+// ===============================================
+// Arrow API (High-Level)
+// ===============================================
+
+export const Arrow = {
+  // Core operations
+  arr,
+  comp,
+  first,
+  left,
+  par,
+  fanout,
+  zero,
+  alt,
+  loop,
+  
+  // Derived operations
+  second,
+  right: rightArrow,
+  plus,
+  
+  // Utilities
+  denot,
+  normalize,
+  
+  // Convenience aliases
+  then: comp,
+  split: par,
+  
+  // Identity arrow
+  id: <A>(): IR<A, A> => arr(idFn),
+}
 
 
 
 
-
-
-
-
-
-
-
+// =======================
+// Exhaustiveness Guard (for safe refactoring)
+// =======================
+//
+// Drop this helper in every switch over tagged unions to make missing cases
+// compile-time errors. Essential for safe AST evolution!
+export const _exhaustive = (x: never): never => x
 
 // =======================
 // HKT core (ours): HK.*
@@ -6934,6 +8261,74 @@ const getUserName: ReaderTask<EnvErr, Result<Error, string>> =
   ReaderTaskResult.map<EnvErr, Error, User, string>((u) => u.name)(
     getUser("42")
   )
+
+// ============
+// Runnable mini-examples (sanity suite)
+// ============
+
+// ---------- Partial function: parseInt on int-like strings ----------
+const intLike = (s: string) => /^-?\d+$/.test(s)
+const parseIntPF: PartialFn<string, number> = pf(intLike, s => Number(s))
+
+// Arrays: filterMap / collect
+const raw = ["10", "x", "-3", "7.5", "0"]
+const ints1 = filterMapArraySimple(raw, (s) => intLike(s) ? Some(Number(s)) : None)
+const ints2 = collectArray(raw, parseIntPF)
+// ints1/ints2 -> [10, -3, 0]
+
+// Maps: value collect (keep keys)
+const agesRaw = new Map<string, string>([["a","19"], ["b","oops"], ["c","42"]])
+const ages = collectMapValues(agesRaw, parseIntPF)
+// ages.get("a") = 19, ages.get("b") = undefined, ages.get("c") = 42
+
+// Maps: entry collect (remap keys)
+const emails = new Map<string, string>([
+  ["u1", "ada@example.com"],
+  ["u2", "not-an-email"],
+  ["u3", "bob@example.com"]
+])
+const emailDomainPF: PartialFn<readonly [string, string], readonly [string, string]> =
+  pf(([, e]) => /@/.test(e), ([id, e]) => [e.split("@")[1]!, id] as const)
+// swap key to domain, value to id (only for valid emails)
+const byDomain = collectMapEntries(emails, emailDomainPF)
+// byDomain.get("example.com") has "u1" and/or "u3" depending on last write (Map overwrites duplicate keys)
+
+// Sets: filterMap / collect
+const setRaw = new Set(["1", "2", "two", "3"])
+const setInts = collectSet(setRaw, parseIntPF) // Set{1, 2, 3}
+
+// ---------- Reader applicative eval demo ----------
+type ExprEnvDemo = Readonly<Record<string, number>>
+const prog = lett("x", lit(10),
+  addN([ vvar("x"), powE(lit(2), lit(3)), neg(lit(4)) ]) // x + 2^3 + (-4)
+)
+
+const n1 = runReader(evalExprR_app(prog), {})            // 10 + 8 - 4 = 14 (x defaulted to 0? Nope, we bind x=10)
+const n2 = runReader(evalExprR_app(prog), { x: 1 })      // still 14 (let shadows)
+
+// ---------- Reader<Result> eval demo (div-by-zero) ----------
+const bad = divE(lit(1), add(vvar("d"), neg(vvar("d")))) // 1 / (d + (-d)) = 1/0
+const r1 = runReader(evalExprRR_app(bad), { d: 3 })      // Err("div by zero")
+
+// ---------- Fused hylo demo (Expr or Json as you like) ----------
+// Note: These functions would need to be implemented based on your fused hylo setup
+// const s5 = evalSum1toN_FUSED(5)                          // 15
+// const p2 = showPowMul_FUSED(2, 3)                        // "((3 * 3) * (3 * 3))"
+
+// ---------- Stack machine demo ----------
+const machineExpr = lett("y", lit(5), mul(add(vvar("y"), lit(1)), lit(3))) // (y+1)*3 where y=5
+const progAsm = compileExpr(machineExpr)
+const runAsm = runProgram(progAsm)                       // Ok(18)
+
+// ---------- New algebras demo (size & depth) ----------
+const complexExpr = addN([neg(lit(4)), mulN([lit(2), lit(3)]), divE(lit(8), lit(2))])
+const [exprSize, exprDepth] = sizeAndDepthExpr(complexExpr)  // [5, 3]
+
+const complexJson = jObj([['name', jStr('Ada')], ['tags', jArr([jStr('fp'), jStr('ts')])]])
+const jsonSize = sizeJson(complexJson)     // 6
+const jsonStrs = strsJson(complexJson)     // ['Ada', 'fp', 'ts']
+const jsonDepth = depthJson(complexJson)   // 3
+const [jsonSize2, jsonDepth2] = sizeAndDepthJson(complexJson)  // [6, 3]
 
 
 

@@ -8,10 +8,16 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && tsc run-examples-simple.ts --outDir dist --target ES2015 --module CommonJS",
+    "build": "tsc && tsc run-examples-simple.ts --outDir dist --target ES2020 --module CommonJS",
     "typecheck": "tsc --noEmit",
     "examples": "node dist/run-examples-simple.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest",
+    "test:laws": "vitest test/laws",
+    "test:ci": "vitest run test/laws --reporter=verbose",
+    "test:nightly": "vitest run test/laws --reporter=verbose --run",
+    "test:ui": "vitest --ui",
+    "coverage": "node test/laws/coverage-matrix.js",
+    "coverage:ci": "node test/laws/coverage-matrix.js && npm run test:ci"
   },
   "keywords": [
     "functional-programming",
@@ -26,7 +32,10 @@
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^24.4.0",
+    "@vitest/ui": "^3.2.4",
+    "fast-check": "^4.3.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
   }
 }

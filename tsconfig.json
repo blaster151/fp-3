@@ -5,11 +5,10 @@
     "outDir": "./dist",
 
         // Environment Settings - Latest standards
-        "target": "ES2015",
+        "target": "ES2020",
         "module": "ESNext",
-        "lib": ["ES2015", "DOM"],
+        "lib": ["ES2020", "DOM"],
         "downlevelIteration": true,
-    "types": ["node"],
 
     // Other Outputs
     "sourceMap": true,

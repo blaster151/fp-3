@@ -1,0 +1,72 @@
+{
+  "Arrow": {
+    "Category.Assoc": "implemented|witnessed",
+    "Category.IdLeft": "implemented|witnessed",
+    "Category.IdRight": "implemented|witnessed",
+    "Arr.Functorial": "implemented|witnessed",
+    "First.Functorial": "implemented",
+    "First.Pure": "implemented",
+    "Choice.LeftFunctorial": "implemented",
+    "Choice.LeftPure": "implemented",
+    "Loop.RightTightening": "todo",
+    "Par.Functorial": "implemented|witnessed",
+    "Fanout.Functorial": "implemented|witnessed",
+    "ArrowPlus.LeftId": "implemented",
+    "ArrowPlus.RightId": "implemented",
+    "ArrowPlus.Assoc": "implemented"
+  },
+  "Functor": {
+    "Identity": "implemented|witnessed",
+    "Composition": "implemented|witnessed",
+    "_note": "For Reader, Task, ReaderTask, ReaderTaskResult, Result, Validation"
+  },
+  "Applicative": {
+    "Identity": "implemented|witnessed",
+    "Homomorphism": "implemented|witnessed",
+    "Interchange": "implemented|witnessed",
+    "Composition": "implemented|witnessed",
+    "_note": "For Reader, Task, ReaderTask, ReaderTaskResult, Result, Validation"
+  },
+  "Monad": {
+    "LeftId": "implemented|witnessed",
+    "RightId": "implemented|witnessed",
+    "Assoc": "implemented|witnessed",
+    "_note": "For Reader, Task, ReaderTask, ReaderTaskResult, Result only. Validation excluded (Applicative-only)"
+  },
+  "Monoid": {
+    "LeftId": "implemented|witnessed",
+    "RightId": "implemented|witnessed",
+    "Assoc": "implemented|witnessed",
+    "_note": "For MonoidArray, MonoidEndo, and other monoid instances"
+  },
+  "Stream": {
+    "Fusion": "implemented|witnessed",
+    "Exchange": "implemented|witnessed",
+    "Parallel": "implemented|witnessed",
+    "MergeIndependence": "implemented|witnessed",
+    "RightTightening": "implemented|witnessed",
+    "Category.Assoc": "implemented|witnessed",
+    "Category.IdLeft": "implemented|witnessed",
+    "Category.IdRight": "implemented|witnessed",
+    "Arr.Functorial": "implemented|witnessed",
+    "Choice.LeftFunctorial": "implemented|witnessed",
+    "Choice.LeftComp": "implemented|witnessed",
+    "Plus.LeftId": "implemented|witnessed",
+    "Plus.RightId": "implemented|witnessed",
+    "Plus.Assoc": "implemented|witnessed"
+  },
+  "RecSchemes": {
+    "CataOverAnaIso": "implemented|witnessed",
+    "CataAssociativity": "implemented|witnessed",
+    "CataFusion": "implemented|witnessed",
+    "ParaIdentity": "implemented|witnessed",
+    "ParaComposition": "implemented|witnessed",
+    "ApoIdentity": "implemented|witnessed",
+    "FusedSumEval": "implemented|witnessed",
+    "FusedPowerEval": "implemented|witnessed",
+    "FusedPrettyEval": "implemented|witnessed",
+    "FusedConstantFolding": "implemented|witnessed",
+    "ProductAlgebra": "implemented|witnessed",
+    "_note": "Complete coverage with fused pipelines and golden examples"
+  }
+}
