@@ -433,7 +433,15 @@ export type Reader<R, A> = (r: R) => A
 export const Reader = {
   map:  <A, B>(f: (a: A) => B) => <R>(ra: Reader<R, A>): Reader<R, B> => (r) => f(ra(r)),
   of:   <R, A>(a: A): Reader<R, A> => (_: R) => a,
+  chain: <A, B, R>(f: (a: A) => Reader<R, B>) => (ra: Reader<R, A>): Reader<R, B> => (r) => f(ra(r))(r),
+  ap:   <R, A, B>(rfab: Reader<R, (a: A) => B>) => (rfa: Reader<R, A>): Reader<R, B> => (r) => rfab(r)(rfa(r)),
+  ask:  <R>(): Reader<R, R> => (r: R) => r,
+  asks: <R, A>(f: (r: R) => A): Reader<R, A> => (r) => f(r),
+  local: <R, Q>(f: (q: Q) => R) => <A>(rq: Reader<R, A>): Reader<Q, A> => (q) => rq(f(q)),
 }
+
+// Helper function to run a Reader with an environment
+export const runReader = <R, A>(ra: Reader<R, A>, r: R): A => ra(r)
 
 // Lax 2-functor: PostcomposeReader<R>
 export const PostcomposeReader2 = <R>(): LaxTwoFunctorK1 => {
@@ -601,7 +609,10 @@ export const StoreC = {
         pos: sa.pos
       }),
 
-  // extras
+} satisfies ComonadK1<'Store'> as any
+
+// Store-specific extras (not part of ComonadK1)
+export const StoreExtras = {
   seek:
     <S>(s: S) =>
     <A>(sa: Store<S, A>): Store<S, A> =>
@@ -621,11 +632,11 @@ export const StoreC = {
         peek: (b: B) => sa.peek(ln.set(b)(sa.pos)),
         pos: ln.get(sa.pos)
       })
-} satisfies ComonadK1<'Store'> as any
+}
 
 // ==================== Env (product) comonad ====================
 // A context value E carried along with A
-export type Env<E, A> = readonly [E, A]
+// Note: Using earlier Env type definition from line 486
 
 export const EnvC = {
   map:
@@ -642,14 +653,17 @@ export const EnvC = {
     <E>(ea: Env<E, A>): Env<E, B> =>
       [ea[0], f(ea)] as const,
 
-  // extras
+} satisfies ComonadK1<'Env'> as any
+
+// Env-specific extras (not part of ComonadK1)
+export const EnvExtras = {
   ask:  <E, A>(ea: Env<E, A>): E => ea[0],
   asks: <E, B>(f: (e: E) => B) => <A>(ea: Env<E, A>): B => f(ea[0]),
   local:
     <E>(f: (e: E) => E) =>
     <A>(ea: Env<E, A>): Env<E, A> =>
       [f(ea[0]), ea[1]] as const,
-} satisfies ComonadK1<'Env'> as any
+}
 
 // ==================== Traced comonad ====================
 // Traced<M,A> ~ (m: M) => A, with monoid M
@@ -713,7 +727,7 @@ export const CofreeK1 = <F extends HK.Id1>(F: FunctorK1<F>) => {
       ({ head: g(w), tail: F.map(extend(g))(w.tail) })
 
   const duplicate = <A>(w: Cofree<F, A>): Cofree<F, Cofree<F, A>> =>
-    extend<Cofree<F, A>, Cofree<F, A>>((x) => x)(w)
+    extend<A, Cofree<F, A>>((x) => x)(w)
 
   // unfold (cofree-ana): ψ : S -> [A, F<S>]
   const unfold =
@@ -794,23 +808,23 @@ export const StoreLens = {
 
 // ================ Co-Do builder for any ComonadK1 =================
 
+export type CoBuilder<F, A0, A> = {
+  /** co-Kleisli composition: then(g) = g ⧑ current */
+  then: <B>(g: (wb: any /* F<A> */) => B) => CoBuilder<F, A0, B>
+  /** post-map the final result */
+  map:  <B>(f: (a: A) => B) => CoBuilder<F, A0, B>
+  /** side-effect on the final result (keeps A) */
+  tap:  (f: (a: A) => void) => CoBuilder<F, A0, A>
+  /** finish: the composed arrow F<A0> -> A */
+  done: (wa: any /* F<A0> */) => A
+}
+
 export const DoCo = <F>(W: ComonadK1<F>) => {
   const Co = coKleisli(W)
 
   type Arrow<A0, A> = (wa: any /* F<A0> */) => A
 
-  type CoBuilder<A0, A> = {
-    /** co-Kleisli composition: then(g) = g ⧑ current */
-    then: <B>(g: (wb: any /* F<A> */) => B) => CoBuilder<A0, B>
-    /** post-map the final result */
-    map:  <B>(f: (a: A) => B) => CoBuilder<A0, B>
-    /** side-effect on the final result (keeps A) */
-    tap:  (f: (a: A) => void) => CoBuilder<A0, A>
-    /** finish: the composed arrow F<A0> -> A */
-    done: Arrow<A0, A>
-  }
-
-  const make = <A0, A>(arrow: Arrow<A0, A>): CoBuilder<A0, A> => ({
+  const make = <A0, A>(arrow: Arrow<A0, A>): CoBuilder<F, A0, A> => ({
     then: (g) => make(Co.comp(g, arrow)),
     map:  (f) => make((wa) => f(arrow(wa))),
     tap:  (f) => make((wa) => { const a = arrow(wa); f(a); return a }),
@@ -6258,50 +6272,9 @@ export const overT = <S, A>(tv: Traversal<S, A>, f: (a: A) => A) => tv.modify(f)
 
 
 // =======================
-// Reader
+// Reader (using earlier definition from line 432)
 // =======================
-export type Reader<R, A> = (r: R) => A
-
-export const Reader = {
-  of:
-    <R, A>(a: A): Reader<R, A> =>
-    (_: R) =>
-      a,
-
-  ask: <R>(): Reader<R, R> => (r: R) => r,
-
-  asks:
-    <R, A>(f: (r: R) => A): Reader<R, A> =>
-    (r) =>
-      f(r),
-
-  map:
-    <A, B>(f: (a: A) => B) =>
-    <R>(ra: Reader<R, A>): Reader<R, B> =>
-    (r) =>
-      f(ra(r)),
-
-  chain:
-    <A, B, R>(f: (a: A) => Reader<R, B>) =>
-    (ra: Reader<R, A>): Reader<R, B> =>
-    (r) =>
-      f(ra(r))(r),
-
-  ap:
-    <R, A, B>(rfab: Reader<R, (a: A) => B>) =>
-    (rfa: Reader<R, A>): Reader<R, B> =>
-    (r) =>
-      rfab(r)(rfa(r)),
-
-  local:
-    <R, Q>(f: (q: Q) => R) =>
-    <A>(rq: Reader<R, A>): Reader<Q, A> =>
-    (q) =>
-      rq(f(q)),
-}
-
-// helpers
-export const runReader = <R, A>(ra: Reader<R, A>, r: R): A => ra(r)
+// Note: Reader type and implementation already defined earlier
 
 
 
@@ -9202,7 +9175,7 @@ export interface MonadK2C<F extends HK.Id2, L> extends ApplicativeK2C<F, L> {
 // -----------------------
 
 // Endofunctor on K1 is just a FunctorK1 (endofunctor on TS types)
-export type EndofunctorK1<F extends HK.Id1> = FunctorK1<F>
+// Note: Using the earlier EndofunctorK1 definition from line 330
 
 // Helpers to "fix" the left param of K2 constructors => a K1 endofunctor
 export const ResultK1 = <E>() => ({
@@ -9215,7 +9188,7 @@ export const ResultK1 = <E>() => ({
 })
 
 export const ValidationK1 = <E>() => ({
-  map:  <A, B>(f: (a: A) => B) => (va: Validation<E, A>): Validation<E, B> => mapV(f)(va),
+  map:  <A, B>(f: (a: A) => B) => (va: Validation<E, A>): Validation<E, B> => mapV<E, A, B>(f)(va),
   // for ap, you'll use your `apV` with a chosen concat
   ap:   <A, B>(concat: (x: ReadonlyArray<E>, y: ReadonlyArray<E>) => ReadonlyArray<E>) =>
         (vf: Validation<E, (a: A) => B>) =>
@@ -9537,12 +9510,13 @@ export const ResultK = <E>(): MonadK2C<'Result', E> => ({
 // ====================================================================
 
 // ---------- Natural transformations over K1 ----------
-export type NatK1<F, G> = <A>(fa: any /* Kind1<F, A> */) => any /* Kind1<G, A> */
+// Note: Using the earlier NatK1 and idNatK1 definitions from lines 335 and 340
 
 // identity / composition
-export const idNatK1 = <F>(): NatK1<F, F> => <A>(fa: any) => fa
-export const composeNatK1 = <F, G, H>(g: NatK1<G, H>, f: NatK1<F, G>): NatK1<F, H> =>
-  <A>(fa: any) => g(f(fa))
+// Note: Using the earlier idNatK1 definition
+export const composeNatK1 = <F, G, H>(g: NatK1<G, H>, f: NatK1<F, G>): NatK1<F, H> => ({
+  app: <A>(fa: any) => g.app(f.app(fa))
+})
 
 // ---------- Concrete polymorphic transforms (no HKT registry needed) ----------
 export const optionToResult =
@@ -9851,8 +9825,7 @@ export const zipRTE =
     zipWithRTE<R, E, A, B, readonly [A, B]>((a, b) => [a, b] as const)(rteA)(rteB)
 
 // ----- Do-notation for ReaderTaskEither (RTE) -----
-type _Merge<A, B> = { readonly [K in keyof A | keyof B]:
-  K extends keyof B ? B[K] : K extends keyof A ? A[K] : never }
+// Note: Using earlier _Merge type definition from line 944
 
 export type DoRTEBuilder<R, T, E> = {
   /** bind: run an RTE and add its Ok value at key K */
@@ -9922,10 +9895,10 @@ export const DoRTE = <R>() => {
 
     tap: (f) =>
       make(
-        RTE.chain<T, E, any, T>((t) =>
-          RTE.map(() => t)(f(t))
+        RTE.chain<T, any, any, T>((t) =>
+          RTE.map(() => t)(f(t) as any)
         )(rte) as any
-      ),
+      ) as any,
 
     map: (f) => RTE.map(f)(rte),
 
@@ -10100,49 +10073,49 @@ export const DoWRTE = <W>(Wmod: ReturnType<typeof WRTE<W>>) => <R>() => {
   ): DoWRTEBuilder<W, R, T, E> => ({
     bind: (k, ma) =>
       make(
-        Wmod.chain((t: T) =>
-          Wmod.map((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
+        Wmod.chain<R, any, T, any, any>((t: T) =>
+          Wmod.map<R, any, any, any>((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
         )(m) as any
       ),
 
     apS: (k, ma) =>
       make(
-        Wmod.chain((t: T) =>
-          Wmod.map((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
+        Wmod.chain<R, any, T, any, any>((t: T) =>
+          Wmod.map<R, any, any, any>((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
         )(m) as any
       ),
 
     let: (k, f) =>
-      make(Wmod.map((t: T) => ({ ...(t as any), [k]: f(t) } as const))(m)),
+      make(Wmod.map<R, E, T, any>((t: T) => ({ ...(t as any), [k]: f(t) } as const))(m)),
 
     apFirst: (ma) =>
       make(
-        Wmod.chain<T, E, any, T>((t) =>
-          Wmod.map(() => t)(ma)
+        Wmod.chain<R, E, T, any, T>((t) =>
+          Wmod.map<R, any, any, T>(() => t)(ma)
         )(m)
       ),
 
     apSecond: (ma) =>
       make(
-        Wmod.chain<T, E, any, any>(() => ma)(m)
+        Wmod.chain<R, E, T, any, any>(() => ma)(m)
       ) as any, // builder's T becomes the Ok value type of `ma`
 
     tap: (f) =>
       make(
-        Wmod.chain<T, E, any, T>((t) =>
-          Wmod.map(() => t)(f(t))
+        Wmod.chain<R, E, T, any, T>((t) =>
+          Wmod.map<R, any, unknown, T>(() => t)(f(t))
         )(m)
       ),
 
     tell: (w) =>
       make(
-        Wmod.chain((t: T) =>
+        Wmod.chain<R, E, T, never, T>((t: T) =>
           // tell returns WRTE<W,R,never,void>; map(() => t) keeps the record
-          Wmod.map(() => t)(Wmod.tell(w))
+          Wmod.map<R, never, void, T>(() => t)(Wmod.tell(w))
         )(m)
       ),
 
-    map: (f) => Wmod.map(f)(m),
+    map: (f) => Wmod.map<R, E, T, any>(f)(m),
 
     done: m,
   })
@@ -10567,20 +10540,20 @@ export const mkRTR = <R, E>() => {
 
 // Tiny examples
 // ENV / config
-type Env = { apiBase: string; token: string }
+type AppEnv = { apiBase: string; token: string }
 
 // Reader usage (pure dependency injection)
-const authHeader: Reader<Env, Record<string, string>> = Reader.asks((env) => ({
+const authHeader: Reader<AppEnv, Record<string, string>> = Reader.asks((env) => ({
   Authorization: `Bearer ${env.token}`,
 }))
 
-const withApi = Reader.local<Env, { apiBase: string }>(
+const withApi = Reader.local<AppEnv, { apiBase: string }>(
   (q) => ({ apiBase: q.apiBase, token: "n/a" }) // adapt env shape if needed
 )
 
-const url: Reader<Env, string> = Reader.asks((env) => `${env.apiBase}/users/me`)
+const url: Reader<AppEnv, string> = Reader.asks((env) => `${env.apiBase}/users/me`)
 
-const headersThenUrl = Reader.chain<Record<string, string>, string, Env>((h) =>
+const headersThenUrl = Reader.chain<Record<string, string>, string, AppEnv>((h) =>
   Reader.map<string, string>((u) => `${u}?auth=${!!h['Authorization']}`)(url)
 )(authHeader)
 
