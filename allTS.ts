@@ -1093,6 +1093,268 @@ export const composeMatrices = (A: ZMatrix, B: ZMatrix): ZMatrix => {
   return C
 }
 
+// =====================================================================
+// Smith Normal Form over Z  (small, pedagogical; fine for tiny matrices)
+// Returns U, D, V with U*M*V = D, U,V unimodular; diag(D) nonneg and
+// each di | d{i+1}. Also returns V^{-1} so we can change the C_n basis.
+// =====================================================================
+export type SNF = {
+  D: ZMatrix
+  U: ZMatrix
+  V: ZMatrix
+  Vinv: ZMatrix
+  rank: number
+  diag: number[] // nonzero invariant factors
+}
+
+const ident = (m: number): ZMatrix =>
+  Array.from({ length: m }, (_, i) =>
+    Array.from({ length: m }, (_, j) => (i === j ? 1 : 0))
+  )
+
+const swapRows = (M: ZMatrix, i: number, j: number) => {
+  const t = M[i]!; M[i] = M[j]!; M[j] = t
+}
+const swapCols = (M: ZMatrix, i: number, j: number) => {
+  for (let r = 0; r < M.length; r++) { const t = M[r]![i]!; M[r]![i] = M[r]![j]!; M[r]![j] = t }
+}
+const addRow = (M: ZMatrix, src: number, dst: number, k: number) => {
+  const row = M[src]!; const to = M[dst]!
+  for (let c = 0; c < to.length; c++) to[c]! += k * row[c]!
+}
+const addCol = (M: ZMatrix, src: number, dst: number, k: number) => {
+  for (let r = 0; r < M.length; r++) M[r]![dst]! += k * M[r]![src]!
+}
+const gcd = (a: number, b: number) => {
+  a = Math.abs(a); b = Math.abs(b)
+  while (b !== 0) { const t = a % b; a = b; b = t }
+  return a
+}
+
+export const smithNormalForm = (M0: ZMatrix): SNF => {
+  const m = M0.length, n = M0[0]?.length ?? 0
+  const M = M0.map(r => r.slice())
+  const U = ident(m), V = ident(n), Vinv = ident(n) // we'll keep V and V^{-1}
+
+  let r = 0, c = 0
+  while (r < m && c < n) {
+    // find a nonzero pivot with minimal |value|
+    let pr = -1, pc = -1, best = Number.MAX_SAFE_INTEGER
+    for (let i = r; i < m; i++) for (let j = c; j < n; j++) {
+      const val = Math.abs(M[i]![j]!)
+      if (val !== 0 && val < best) { best = val; pr = i; pc = j }
+    }
+    if (pr < 0) break // all remaining are zero
+    if (pr !== r) { swapRows(M, pr, r); swapRows(U, pr, r) }
+    if (pc !== c) { swapCols(M, pc, c); swapCols(V, pc, c); swapRows(Vinv, c, pc) } // Vinv left-multiplies inverse effect
+
+    // now reduce column c and row r
+    let changed = true
+    while (changed) {
+      changed = false
+      // clear below/above in column c
+      for (let i = 0; i < m; i++) if (i !== r && M[i]![c]! !== 0) {
+        const q = Math.trunc(M[i]![c]! / M[r]![c]!)
+        addRow(M, r, i, -q); addRow(U, r, i, -q)
+        if (Math.abs(M[i]![c]!) < Math.abs(M[r]![c]!)) { swapRows(M, i, r); swapRows(U, i, r); changed = true }
+      }
+      // clear left/right in row r
+      for (let j = 0; j < n; j++) if (j !== c && M[r]![j]! !== 0) {
+        const q = Math.trunc(M[r]![j]! / M[r]![c]!)
+        addCol(M, c, j, -q); addCol(V, c, j, -q); addRow(Vinv, j, c, q) // (V * C, C^{-1} * Vinv)
+        if (Math.abs(M[r]![j]!) < Math.abs(M[r]![c]!)) { swapCols(M, j, c); swapCols(V, j, c); swapRows(Vinv, c, j); changed = true }
+      }
+    }
+    // make diagonal nonnegative
+    if (M[r]![c]! < 0) { 
+      for (let j = 0; j < n; j++) M[r]![j] = -M[r]![j]!; 
+      for (let j = 0; j < n; j++) V[r]![j] = -V[r]![j]!; 
+      for (let j = 0; j < n; j++) Vinv[j]![r] = -Vinv[j]![r]! 
+    }
+    // ensure divisibility condition wrt submatrix
+    for (let i = r + 1; i < m; i++) if (M[i]![c]! % M[r]![c]! !== 0) { addRow(M, r, i, 1); addRow(U, r, i, 1); changed = true }
+    for (let j = c + 1; j < n; j++) if (M[r]![j]! % M[r]![c]! !== 0) { addCol(M, c, j, 1); addCol(V, c, j, 1); addRow(Vinv, j, c, -1); changed = true }
+    if (changed) continue
+
+    r++; c++
+  }
+
+  // canonicalize: positive diagonal, zeros elsewhere in used rows/cols
+  const diag: number[] = []
+  const rank = Math.min(m, n)
+  for (let i = 0; i < Math.min(r, c); i++) diag.push(Math.abs(M[i]![i]!))
+  return { D: M, U, V, Vinv, rank: diag.filter(d => d !== 0).length, diag: diag.filter(d => d !== 0) }
+}
+
+// =====================================================================
+// Integer homology H_n(Z) from boundaries d_n with torsion
+//   Uses SNF(d_n) to find ker(d_n) basis, then restricts d_{n+1} into
+//   that subspace and SNF there to read torsion invariants.
+// =====================================================================
+export type HomologyZ = { n: number; freeRank: number; torsion: number[] }
+
+export const homologyZ_fromBoundaries =
+  (dims: number[], d: ZMatrix[], n: number): HomologyZ => {
+    const dn   = d[n]   ?? [[]]
+    const dnp1 = d[n+1] ?? [[]]
+    // SNF(d_n) => V_n gives new basis for C_n; kernel = last k columns of V_n
+    const snf_n = smithNormalForm(dn)
+    const rank_n = snf_n.rank
+    const dim_n = dims[n] ?? 0
+    const k = dim_n - rank_n // nullity
+
+    // transform d_{n+1} into new C_n coords: B = V_n^{-1} * d_{n+1}
+    // B has shape (dim_n x dim_{n+1})
+    const Vinv = snf_n.Vinv
+    const B: ZMatrix = Array.from({ length: dim_n }, (_, i) =>
+      Array.from({ length: dnp1[0]?.length ?? 0 }, (_, j) =>
+        (i < Vinv.length && j < (dnp1[0]?.length ?? 0))
+          ? Vinv[i]!.reduce((acc, v, t) => acc + v * (dnp1[t]?.[j] ?? 0), 0)
+          : 0
+      )
+    )
+
+    // restrict to kernel rows (bottom k rows)
+    const K: ZMatrix = B.slice(rank_n, dim_n)
+
+    const snfK = smithNormalForm(K)
+    const freeRank = k - snfK.rank  // should match β_n over Q
+    const torsion = snfK.diag.filter(x => Math.abs(x) > 1).map(x => Math.abs(x))
+    return { n, freeRank, torsion }
+  }
+
+// =====================================================================
+// Public, discoverable API
+// =====================================================================
+
+/**
+ * Build an augmented chain complex from the Pair comonad simplicial object.
+ * @param Es  finite environment values E
+ * @param As  finite "points" A
+ * @param maxN maximum n-level to build (C_0..C_maxN, and ε : C_0→Z[A])
+ * @returns { dims, d }  dimensions and integer boundary matrices (∂_n: C_n→C_{n-1})
+ * @example
+ *   const { dims, d } = toChainComplexPair(['L','R'], ['•'], 3)
+ *   const H1 = homologyZ_fromBoundaries(dims, d, 1)  // { freeRank:0, torsion:[] }
+ */
+export const toChainComplexPair = <E, A>(
+  Es: ReadonlyArray<E>, As: ReadonlyArray<A>, maxN: number
+) => buildBoundariesForPair(Es, As, maxN)
+
+/**
+ * Compute **integer homology** H_n for the Pair complex.
+ * @returns { freeRank, torsion } so H_n ≅ Z^{freeRank} ⊕ ⊕ Z/torsion[i]Z
+ */
+export const homologyZ_Pair = <E, A>(
+  Es: ReadonlyArray<E>, As: ReadonlyArray<A>, maxN: number, n: number
+) => {
+  const { dims, d } = buildBoundariesForPair(Es, As, maxN)
+  return homologyZ_fromBoundaries(dims, d, n)
+}
+
+/**
+ * Build an augmented chain complex from the Store comonad simplicial object.
+ * @param Svals finite state space S
+ * @param Avals finite "points" A
+ * @param maxN maximum n-level to build
+ * @returns { dims, d } dimensions and boundary matrices
+ */
+export const toChainComplexStore = <S, A>(
+  Svals: ReadonlyArray<S>, Avals: ReadonlyArray<A>, maxN: number
+) => buildBoundariesForStore(Svals, Avals, maxN)
+
+/**
+ * Compute **integer homology** H_n for the Store complex.
+ * @returns { freeRank, torsion } so H_n ≅ Z^{freeRank} ⊕ ⊕ Z/torsion[i]Z
+ */
+export const homologyZ_Store = <S, A>(
+  Svals: ReadonlyArray<S>, Avals: ReadonlyArray<A>, maxN: number, n: number
+) => {
+  const { dims, d } = buildBoundariesForStore(Svals, Avals, maxN)
+  return homologyZ_fromBoundaries(dims, d, n)
+}
+
+// =====================================================================
+// Chain complex from the simplicial object of Store<S,_> (finite S)
+//   X_n = W^{n+1}A with W = Store<S,_>. We enumerate finite Stores by
+//   tabulating peek over Svals and recursing.
+// =====================================================================
+
+// materialize any Store<S,*> into a FiniteStore by tabulating over Svals
+const isStoreLike = (u: any): u is { pos: unknown; peek: Function } =>
+  u && typeof u === 'object' && 'pos' in u && typeof (u as any).peek === 'function'
+
+const materializeStoreDeep = <S>(Svals: ReadonlyArray<S>, w: any): any => {
+  if (!isStoreLike(w)) return w
+  const table = Svals.map((s) => [s, materializeStoreDeep(Svals, w.peek(s))] as const)
+  const peek = (s: S) => table[Svals.indexOf(s)]![1]
+  return { pos: w.pos, peek, table } as const
+}
+
+// stable key for (possibly nested) FiniteStore; ignores function identity
+const keyFiniteStoreDeep = <S>(Svals: ReadonlyArray<S>, v: any): string => {
+  if (!isStoreLike(v)) return JSON.stringify(['A', v])
+  const tab = Svals.map((s) => {
+    const child = v.peek(s)
+    return [Svals.indexOf(s), keyFiniteStoreDeep(Svals, materializeStoreDeep(Svals, child))] as const
+  })
+  return JSON.stringify(['W', Svals.indexOf(v.pos as any), tab])
+}
+
+export const buildBoundariesForStore =
+  <S, A>(Svals: ReadonlyArray<S>, Avals: ReadonlyArray<A>, maxN: number) => {
+    const W = StoreComonad<S>()
+    const Smp = makeSimplicialFromComonadK1(W)
+
+    // X_n = enumeratePowStore(Svals, n, Avals)  (returns W^{n+1}A)
+    const X: any[][] = []
+    const idx: Map<string, number>[] = []
+    for (let n = 0; n <= maxN; n++) {
+      const layer = enumeratePowStore(Svals, n, Avals)
+        .map(w => materializeStoreDeep(Svals, w))
+      X[n] = layer
+      const m = new Map<string, number>()
+      layer.forEach((el, i) => m.set(keyFiniteStoreDeep(Svals, el), i))
+      idx[n] = m
+    }
+
+    // boundaries d_n : C_n -> C_{n-1}
+    const d: ZMatrix[] = []
+
+    // n = 0 (augmentation): ε = extract : Store<S,A> -> A
+    {
+      const rows = Avals.length
+      const cols = X[0]!.length
+      const M: ZMatrix = Array.from({ length: rows }, () => Array(cols).fill(0))
+      X[0]!.forEach((w0: any, j: number) => {
+        const a = w0.peek(w0.pos)
+        const i = Avals.findIndex((aa) => Object.is(aa, a))
+        M[i]![j] = 1
+      })
+      d[0] = M
+    }
+
+    // n >= 1: ∂_n = Σ_i (-1)^i d_i
+    for (let n = 1; n <= maxN; n++) {
+      const rows = X[n - 1]!.length
+      const cols = X[n]!.length
+      const M: ZMatrix = Array.from({ length: rows }, () => Array(cols).fill(0))
+      for (let j = 0; j < cols; j++) {
+        const simplex = X[n]![j]
+        for (let i = 0; i <= n; i++) {
+          const face = materializeStoreDeep(Svals, Smp.d(n, i).app(simplex))
+          const r = idx[n - 1]!.get(keyFiniteStoreDeep(Svals, face))
+          if (r == null) throw new Error(`Store face not found at n=${n}, i=${i}`)
+          M[r]![j]! += (i % 2 === 0 ? 1 : -1)
+        }
+      }
+      d[n] = M
+    }
+
+    const dims = X.map(xs => xs.length)
+    return { dims, d }
+  }
+
 // ===============================================================
 // Store<S, A> comonad  (aka "indexed context")
 //   Intuition: a focus `pos : S` and a total observation `peek : S -> A`.
@@ -1165,6 +1427,45 @@ export const collectStore =
   <A>(n: number) =>
   (w: Store<number, A>): ReadonlyArray<A> =>
     Array.from({ length: n }, (_, i) => seek<number>(i)(w).peek(i))
+
+// =====================================================================
+// Finite enumeration for Store<S,_> layers when S and A are finite
+//   W(A) = { pos:S, peek:S->A }  (we encode peek as a table over Svals)
+//   W^{k+1} A is built recursively: tables map S -> W^{k} A.
+// Warning: combinatorial — keep |S| and |A| tiny in tests/examples.
+// =====================================================================
+export type FiniteStore<S, A> = Store<S, A> & { table: ReadonlyArray<readonly [S, A]> }
+
+const enumerateFunctions = <S, X>(Svals: ReadonlyArray<S>, Xvals: ReadonlyArray<X>): ReadonlyArray<ReadonlyArray<X>> => {
+  // all |S|-tuples over Xvals in Svals order
+  const res: X[][] = [[]]
+  for (let _ of Svals) {
+    const next: X[][] = []
+    for (const t of res) for (const x of Xvals) next.push([...t, x])
+    res.splice(0, res.length, ...next)
+  }
+  return res
+}
+
+export const enumeratePowStore =
+  <S, A>(Svals: ReadonlyArray<S>, k: number, Avals: ReadonlyArray<A>): ReadonlyArray<FiniteStore<S, any>> => {
+    // base X0 = A
+    let layer: any[] = Avals.slice()
+    for (let depth = 0; depth < k + 1; depth++) {
+      // build W(layer) from current layer
+      const funs = enumerateFunctions(Svals, layer) // tables S->layer
+      const next: FiniteStore<S, any>[] = []
+      for (const tbl of funs) {
+        for (const pos of Svals) {
+          const table = Svals.map((s, i) => [s, tbl[i]] as const)
+          const peek = (s: S) => table[Svals.indexOf(s)]![1]
+          next.push({ pos, peek, table })
+        }
+      }
+      layer = next
+    }
+    return layer as any
+  }
 
 // ===============================================================
 // Co-Kleisli usage: 3-point moving average over a numeric array
