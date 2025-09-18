@@ -325,8 +325,683 @@ export const composeK_ResultE =
   (a: A): Result<E, C> =>
     isOk(f(a)) ? g((f(a) as Ok<B>).value) : (f(a) as any)
 
+// =============== 2-Cat of Endofunctors on Types ==================
+// A minimal "functor-like" shape (unary endofunctor on TS types)
+export type EndofunctorK1<F> = {
+  readonly map: <A, B>(f: (a: A) => B) => (fa: any /* F<A> */) => any /* F<B> */
+}
 
+// A natural transformation F ⇒ G: components α_A : F<A> → G<A>
+export type NatK1<F, G> = {
+  readonly app: <A>(fa: any /* F<A> */) => any /* G<A> */
+}
 
+// Identity 2-cell on functor F
+export const idNatK1 = <F>(/* F: EndofunctorK1<F> */): NatK1<F, F> => ({
+  app: <A>(fa: any) => fa
+})
+
+// Vertical composition: β ∘ α : F ⇒ H (pointwise composition)
+export const vcompNatK1 =
+  <F, G, H>(alpha: NatK1<F, G>, beta: NatK1<G, H>): NatK1<F, H> => ({
+    app: <A>(fa: any) => beta.app<A>(alpha.app<A>(fa))
+  })
+
+// Whiskering and Horizontal composition (component-level)
+
+// Left whisker:   F ∘ β : F∘H ⇒ F∘K   with (F ∘ β)_A = F.map(β_A)
+export const leftWhisker =
+  <F>(F: EndofunctorK1<F>) =>
+  <H, K>(beta: NatK1<H, K>) => ({
+    app: <A>(fha: any /* F<H<A>> */) =>
+      F.map<any, any>((ha: any) => beta.app<A>(ha))(fha) // F.map applied to β_A
+  }) as NatK1<any /* F∘H */, any /* F∘K */>
+
+// Right whisker:  α ∘ H : F∘H ⇒ G∘H   with (α ∘ H)_A = α_{H A}
+export const rightWhisker =
+  <F, G>(alpha: NatK1<F, G>) =>
+  <H>(/* H: EndofunctorK1<H> not needed at runtime */) => ({
+    app: <A>(fha: any /* F<H<A>> */) => alpha.app<any>(fha)
+  }) as NatK1<any /* F∘H */, any /* G∘H */>
+
+// Horizontal composition (component form):
+//   (α ⋆ β)_A : F<H<A>> → G<K<A>>
+//   Either side is equal by naturality; we implement F.map(β_A) then α:
+export const hcompNatK1_component =
+  <F, G>(F: EndofunctorK1<F>) =>
+  <H, K>(alpha: NatK1<F, G>, beta: NatK1<H, K>) => ({
+    app: <A>(fha: any /* F<H<A>> */) =>
+      alpha.app<any>(
+        F.map<any, any>((ha: any) => beta.app<A>(ha))(fha)
+      )
+  }) as { app: <A>(fha: any /* F<H<A>> */) => any /* G<K<A>> */ }
+
+/**
+ * Laws (informal):
+ *  - Vertical composition is associative; idNat is identity.
+ *  - Horizontal composition respects whiskering and satisfies the interchange law:
+ *      (β ∘v α) ⋆ (δ ∘v γ) = (β ⋆ δ) ∘v (α ⋆ γ)
+ *  - Naturality ensures F.map(β_A); α_{H A} ≡ α_{K A}; G.map(β_A).
+ */
+
+// ================= 2-Functors on Endofunctors =================
+// Core: composition & identities for endofunctors
+
+// Identity endofunctor on Types
+export const IdK1: EndofunctorK1<'IdK1'> = {
+  map: <A, B>(f: (a: A) => B) => (a: A) => f(a)
+}
+
+// Horizontal composition of endofunctors: (F ∘ G).map = F.map ∘ G.map
+export const composeEndoK1 =
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>): EndofunctorK1<['Comp', F, G]> => ({
+    map: <A, B>(f: (a: A) => B) => (fga: any) => F.map(G.map(f))(fga)
+  })
+
+// ================= 2-Functor Interfaces =================
+// Strict 2-functor between our one-object 2-cats (Type → Type)
+export interface TwoFunctorK1 {
+  on1:  <F>(F: EndofunctorK1<F>) => EndofunctorK1<any>              // map 1-cells
+  on2:  <F, G>(α: NatK1<F, G>) => NatK1<any, any>                  // map 2-cells
+}
+
+// Lax 2-functor: preserves comp/unit up to specified 2-cells (directions as in "lax")
+export interface LaxTwoFunctorK1 extends TwoFunctorK1 {
+  // μ_{F,G} : on1(F) ∘ on1(G) ⇒ on1(F ∘ G)
+  mu:  <F, G>() => NatK1<any, any>
+  // η : Id ⇒ on1(Id)
+  eta: () => NatK1<any, any>
+  // (laws: unit & associativity coherence; naturality in F,G)
+}
+
+// Oplax 2-functor: structure maps go the other way
+export interface OplaxTwoFunctorK1 extends TwoFunctorK1 {
+  // μ^op_{F,G} : on1(F ∘ G) ⇒ on1(F) ∘ on1(G)
+  muOp:  <F, G>() => NatK1<any, any>
+  // η^op : on1(Id) ⇒ Id
+  etaOp: () => NatK1<any, any>
+}
+
+// ================= Concrete Lax 2-Functor: PostcomposeReader<R> =================
+// Intuition: U(F)=Reader R∘F
+// On 2-cells: apply the NT inside the Reader (right whiskering)
+// η:Id⇒U(Id) is `a ↦ (_)=>a`
+// μF,G:U(F)∘U(G)⇒U(F∘G) collapses the inner Reader by evaluating at the SAME environment
+
+// Reader endofunctor you already have
+export type Reader<R, A> = (r: R) => A
+export const Reader = {
+  map:  <A, B>(f: (a: A) => B) => <R>(ra: Reader<R, A>): Reader<R, B> => (r) => f(ra(r)),
+  of:   <R, A>(a: A): Reader<R, A> => (_: R) => a,
+}
+
+// Lax 2-functor: PostcomposeReader<R>
+export const PostcomposeReader2 = <R>(): LaxTwoFunctorK1 => {
+  const H: EndofunctorK1<'Reader'> = { map: Reader.map as any }
+
+  const on1 = <F>(F: EndofunctorK1<F>) =>
+    composeEndoK1(H, F) // Reader ∘ F
+
+  const on2 = <F, G>(α: NatK1<F, G>) => ({
+    app: <A>(rfa: Reader<R, any /* F<A> */>): Reader<R, any /* G<A> */> =>
+      (r) => α.app<A>(rfa(r))
+  })
+
+  // η : Id ⇒ Reader ∘ Id   (aka "unit")
+  const eta = () => ({
+    app: <A>(a: A): Reader<R, A> => Reader.of<R, A>(a)
+  })
+
+  // μ_{F,G} : (Reader∘F) ∘ (Reader∘G) ⇒ Reader ∘ (F∘G)
+  //  i.e.  Reader<R, F< Reader<R, G<A>> >>  →  Reader<R, F< G<A> >>
+  const mu = <F, G>() => ({
+    app: <A>(rf_rg: Reader<R, any>): Reader<R, any> =>
+      (r: R) => {
+        const f_rg = rf_rg(r)                            // F< Reader<R, G<A>> >
+        // evaluate inner Reader at the SAME environment
+        return ( (F: EndofunctorK1<F>) => F.map((rg: Reader<R, any>) => rg(r)) as any )(undefined as any) as never
+      }
+  }) as NatK1<any, any>
+
+  return { on1, on2, eta, mu }
+}
+
+// The (slightly) typed version of μ using the provided F:
+// Since TS can't pass F's value at runtime, we also export a helper that takes F explicitly:
+export const muPostReader =
+  <R>() =>
+  <F, G>(F: EndofunctorK1<F>) =>
+  ({
+    app: <A>(rf_rg: Reader<R, any /* F< Reader<R, G<A>> > */>): Reader<R, any /* F< G<A> > */> =>
+      (r: R) => F.map((rg: Reader<R, any>) => rg(r))(rf_rg(r))
+  }) as NatK1<any, any>
+
+// ================= Concrete Oplax 2-Functor: PrecomposeEnv<E> =================
+// Use the Env comonad Env E A≅[E,A]
+// We define U(F)=F∘Env E and give
+// - η^op:U(Id)⇒Id as the counit (drop the E), and
+// - μ^op_{F,G}:U(F∘G)⇒U(F)∘U(G) using a strength wrt Env (pull the pair outward)
+
+// Env comonad endofunctor: A ↦ readonly [E, A]
+export type Env<E, A> = readonly [E, A]
+export const EnvEndo = <E>(): EndofunctorK1<['Env', E]> => ({
+  map: <A, B>(f: (a: A) => B) => (ea: Env<E, A>): Env<E, B> => [ea[0], f(ea[1])] as const
+})
+
+// Strength wrt Env:  st_F : F<[E,A]> -> [E, F<A>]
+export type StrengthEnv<F, E> = {
+  st: <A>(fea: any /* F<Env<E,A>> */) => Env<E, any /* F<A> */>
+}
+
+// Oplax 2-functor: PrecomposeEnv<E> given a strength for every F you use
+export const PrecomposeEnv2 =
+  <E>(strengthFor: <F>(F: EndofunctorK1<F>) => StrengthEnv<F, E>): OplaxTwoFunctorK1 => {
+
+  const on1 = <F>(F: EndofunctorK1<F>) => composeEndoK1(F, EnvEndo<E>()) // F ∘ Env<E,_>
+
+  const on2 = <F, G>(α: NatK1<F, G>) => ({
+    app: <A>(fea: any /* F<Env<E,A>> */): any /* G<Env<E,A>> */ =>
+      α.app<Env<E, A>>(fea)
+  })
+
+  // η^op : on1(Id) = Env<E,_> ⇒ Id  (counit)
+  const etaOp = () => ({
+    app: <A>(ea: Env<E, A>): A => ea[1]
+  })
+
+  // μ^op_{F,G} : on1(F∘G) ⇒ on1(F) ∘ on1(G)
+  //   F<G<Env<E,A>>>  →  F<Env<E, G<Env<E,A>>>>  →  Env<E, F<G<Env<E,A>>>>
+  //   using st_G then st_F
+  const muOp = <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) => ({
+    app: <A>(fg_ea: any): any => {
+      const sG = strengthFor(G).st
+      const sF = strengthFor(F).st
+      // step 1: push Env through G
+      const f_env_g_ea = F.map((g_ea: any) => sG<any>(g_ea))(fg_ea)     // F<Env<E, G<A>>>
+      // step 2: push Env through F
+      return sF<any>(f_env_g_ea)                                        // Env<E, F<G<A>>>
+    }
+  }) as NatK1<any, any>
+
+  return { on1, on2, etaOp, muOp: <F, G>() => ({ app: muOp as any } as any) }
+}
+
+// ================= Ready-made strengths for common functors =================
+
+// Option: st<Option>(Option<[E,A]>) -> [E, Option<A>]
+export const strengthEnvOption = <E>(): StrengthEnv<'Option', E> => ({
+  st: <A>(oea: any) =>
+    (oea && oea._tag === 'Some')
+      ? [oea.value[0] as E, { _tag:'Some', value: (oea.value[1] as A) }] as const
+      : [undefined as unknown as E, { _tag:'None' }]
+})
+
+// Result<E2,_>: st<Result>(Result<[E,A]>) -> [E, Result<A>]
+//   If Err, we must still supply an E; we thread a "defaultE" you choose.
+export const strengthEnvResult = <E, E2>(defaultE: E): StrengthEnv<'Result', E> => ({
+  st: <A>(rea: any) =>
+    (rea && rea._tag === 'Ok')
+      ? [rea.value[0] as E, { _tag:'Ok', value: (rea.value[1] as A) }] as const
+      : [defaultE, rea]
+})
+
+// Reader<R,_>: st<Reader>(Reader<[E,A]>) -> [E, Reader<A>]
+export const strengthEnvReader = <E, R>(): StrengthEnv<'Reader', E> => ({
+  st: <A>(r_ea: (r: R) => readonly [E, A]) => {
+    // choose E from the current read (effectively "snapshot" E at run)
+    const sample = r_ea as any as (r: R) => readonly [E, A]
+    return [undefined as unknown as E,
+      ((r: R) => sample(r)[1]) // Reader<R, A>
+    ] as const
+  }
+})
+
+/**
+ * 2-functor (lax) laws (sketch):
+ *  - on2 respects vertical & horizontal composition.
+ *  - μ, η are natural in their arguments.
+ *  - Unit:  (on1(F) ∘ η) ; μ_{F,Id} = id   and   (η ∘ on1(F)) ; μ_{Id,F} = id
+ *  - Assoc:  (μ_{F,G} ⋆ id) ; μ_{F∘G,H} = (id ⋆ μ_{G,H}) ; μ_{F,G∘H}
+ *
+ * Oplax is dual: arrows reversed for η^op, μ^op and laws dualized.
+ */
+
+// ==================== Comonad K1 ====================
+export interface ComonadK1<F> extends EndofunctorK1<F> {
+  readonly extract: <A>(fa: any /* F<A> */) => A
+  readonly extend:  <A, B>(f: (fa: any /* F<A> */) => B) => (fa: any /* F<A> */) => any /* F<B> */
+  // duplicate = extend(id)
+}
+export const duplicateK1 =
+  <F>(W: ComonadK1<F>) =>
+  <A>(wa: any /* F<A> */) => W.extend<any, any>((x) => x)(wa)
+
+// ==================== Store comonad ====================
+// Canonical presentation: peek + focused position
+export type Store<S, A> = {
+  readonly peek: (s: S) => A
+  readonly pos: S
+}
+
+export const StoreC = {
+  map:
+    <A, B>(f: (a: A) => B) =>
+    <S>(sa: Store<S, A>): Store<S, B> =>
+      ({ peek: (s) => f(sa.peek(s)), pos: sa.pos }),
+
+  extract:
+    <S, A>(sa: Store<S, A>): A =>
+      sa.peek(sa.pos),
+
+  extend:
+    <A, B>(f: (w: Store<any, A>) => B) =>
+    <S>(sa: Store<S, A>): Store<S, B> =>
+      ({
+        peek: (s: S) => f({ peek: sa.peek, pos: s }),
+        pos: sa.pos
+      }),
+
+  // extras
+  seek:
+    <S>(s: S) =>
+    <A>(sa: Store<S, A>): Store<S, A> =>
+      ({ peek: sa.peek, pos: s }),
+
+  peeks:
+    <S>(k: (s: S) => S) =>
+    <A>(sa: Store<S, A>): A =>
+      sa.peek(k(sa.pos)),
+
+  // with Lens: move focus via lens (nice with your optics)
+  //   focus a lens S <-> B to turn a Store<S,A> into Store<B,A>
+  reindexWithLens:
+    <S, B>(ln: { get: (s: S) => B; set: (b: B) => (s: S) => S }) =>
+    <A>(sa: Store<S, A>): Store<B, A> =>
+      ({
+        peek: (b: B) => sa.peek(ln.set(b)(sa.pos)),
+        pos: ln.get(sa.pos)
+      })
+} satisfies ComonadK1<'Store'> as any
+
+// ==================== Env (product) comonad ====================
+// A context value E carried along with A
+export type Env<E, A> = readonly [E, A]
+
+export const EnvC = {
+  map:
+    <A, B>(f: (a: A) => B) =>
+    <E>(ea: Env<E, A>): Env<E, B> =>
+      [ea[0], f(ea[1])] as const,
+
+  extract:
+    <E, A>(ea: Env<E, A>): A =>
+      ea[1],
+
+  extend:
+    <A, B>(f: (w: Env<any, A>) => B) =>
+    <E>(ea: Env<E, A>): Env<E, B> =>
+      [ea[0], f(ea)] as const,
+
+  // extras
+  ask:  <E, A>(ea: Env<E, A>): E => ea[0],
+  asks: <E, B>(f: (e: E) => B) => <A>(ea: Env<E, A>): B => f(ea[0]),
+  local:
+    <E>(f: (e: E) => E) =>
+    <A>(ea: Env<E, A>): Env<E, A> =>
+      [f(ea[0]), ea[1]] as const,
+} satisfies ComonadK1<'Env'> as any
+
+// ==================== Traced comonad ====================
+// Traced<M,A> ~ (m: M) => A, with monoid M
+export type Traced<M, A> = (m: M) => A
+
+export interface Monoid<A> { empty: A; concat: (x: A, y: A) => A }
+
+export const TracedC = <M>(M: Monoid<M>) => ({
+  map:
+    <A, B>(f: (a: A) => B) =>
+    (ta: Traced<M, A>): Traced<M, B> =>
+      (m) => f(ta(m)),
+
+  extract:
+    <A>(ta: Traced<M, A>): A =>
+      ta(M.empty),
+
+  extend:
+    <A, B>(f: (w: Traced<M, A>) => B) =>
+    (ta: Traced<M, A>): Traced<M, B> =>
+      (m) => f((m2: M) => ta(M.concat(m, m2))),
+
+  // extras
+  trace:
+    <A>(ta: Traced<M, A>) => (m: M): A => ta(m),
+})
+
+// ==================== CoKleisli category helpers ====================
+// For any comonad W, arrows A ==> B are W<A> -> B
+// Composition:   (g ⧑ f)(wa) = g(extend(f)(wa))
+// Identity:      extract
+export const coKleisli = <F>(W: ComonadK1<F>) => ({
+  id:  <A>() => (wa: any /* F<A> */): A => W.extract<A>(wa),
+  comp:
+    <A, B, C>(g: (wb: any /* F<B> */) => C, f: (wa: any /* F<A> */) => B) =>
+    (wa: any /* F<A> */): C =>
+      g(W.extend<any, any>(f)(wa)),
+})
+
+// ================= Cofree over a FunctorK1 =================
+// Assumes your HKT aliases: HK.Id1, HK.Kind1, and FunctorK1<F> { map }
+
+export type Cofree<F extends HK.Id1, A> = {
+  readonly head: A
+  readonly tail: HK.Kind1<F, Cofree<F, A>>
+}
+
+export const CofreeK1 = <F extends HK.Id1>(F: FunctorK1<F>) => {
+  const map =
+    <A, B>(f: (a: A) => B) =>
+    (w: Cofree<F, A>): Cofree<F, B> =>
+      ({ head: f(w.head), tail: F.map(map(f))(w.tail) })
+
+  const extract =
+    <A>(w: Cofree<F, A>): A =>
+      w.head
+
+  const extend =
+    <A, B>(g: (w: Cofree<F, A>) => B) =>
+    (w: Cofree<F, A>): Cofree<F, B> =>
+      ({ head: g(w), tail: F.map(extend(g))(w.tail) })
+
+  const duplicate = <A>(w: Cofree<F, A>): Cofree<F, Cofree<F, A>> =>
+    extend<Cofree<F, A>, Cofree<F, A>>((x) => x)(w)
+
+  // unfold (cofree-ana): ψ : S -> [A, F<S>]
+  const unfold =
+    <S, A>(psi: (s: S) => readonly [A, HK.Kind1<F, S>]) =>
+    (s0: S): Cofree<F, A> => {
+      const [a, fs] = psi(s0)
+      return { head: a, tail: F.map(unfold(psi))(fs) }
+    }
+
+  // fold (cofree-cata): φ : F<B> -> B  and  h : [A, B] -> B
+  //   combine head & folded tail
+  const cata =
+    <A, B>(phi: (fb: HK.Kind1<F, B>) => B, h: (a: A, b: B) => B) =>
+    (w: Cofree<F, A>): B =>
+      h(w.head, phi(F.map(cata(phi, h))(w.tail)))
+
+  // limit (materialize N layers)
+  const take =
+    (n: number) =>
+    <A>(w: Cofree<F, A>): Cofree<F, A> =>
+      n <= 0 ? w : ({ head: w.head, tail: F.map(take(n - 1))(w.tail) })
+
+  // change base functor via natural transformation F ~> G
+  const hoist =
+    <G extends HK.Id1>(G: FunctorK1<G>) =>
+    (nt: <X>(fx: HK.Kind1<F, X>) => HK.Kind1<G, X>) => {
+      const go = <A>(w: Cofree<F, A>): Cofree<G, A> =>
+        ({ head: w.head, tail: G.map(go)(nt(w.tail)) })
+      return go
+    }
+
+  return { map, extract, extend, duplicate, unfold, cata, take, hoist }
+}
+
+// ================= Store × Lens helpers =================
+// Given your Lens<S, T> = { get: (s:S)=>T; set: (t:T)=>(s:S)=>S }
+// and Store<S, A> = { peek: (s:S)=>A; pos: S }
+
+export const StoreLens = {
+  /** Focus a Store<S, A> down to the sub-position T via a lens. */
+  focus:
+    <S, T>(ln: Lens<S, T>) =>
+    <A>(sa: Store<S, A>): Store<T, A> => ({
+      peek: (t: T) => sa.peek(ln.set(t)(sa.pos)),
+      pos: ln.get(sa.pos),
+    }),
+
+  /** Move along the lens: replace the sub-position T at the current S. */
+  move:
+    <S, T>(ln: Lens<S, T>) =>
+    (t: T) =>
+    <A>(sa: Store<S, A>): Store<S, A> =>
+      ({ peek: sa.peek, pos: ln.set(t)(sa.pos) }),
+
+  /** Transform the sub-position by a function T->T at current focus. */
+  seeks:
+    <S, T>(ln: Lens<S, T>) =>
+    (k: (t: T) => T) =>
+    <A>(sa: Store<S, A>): Store<S, A> =>
+      ({ peek: sa.peek, pos: ln.set(k(ln.get(sa.pos)))(sa.pos) }),
+
+  /** Peek at the A you'd get if the sub-position were set to a given T. */
+  peekSub:
+    <S, T>(ln: Lens<S, T>) =>
+    (t: T) =>
+    <A>(sa: Store<S, A>): A =>
+      sa.peek(ln.set(t)(sa.pos)),
+
+  /** Experiment: sample many sub-positions and collect their A's. */
+  experiment:
+    <S, T>(ln: Lens<S, T>) =>
+    (alts: (t: T) => ReadonlyArray<T>) =>
+    <A>(sa: Store<S, A>): ReadonlyArray<A> => {
+      const t0 = ln.get(sa.pos)
+      return alts(t0).map((t) => sa.peek(ln.set(t)(sa.pos)))
+    },
+}
+
+// ================ Co-Do builder for any ComonadK1 =================
+
+export const DoCo = <F>(W: ComonadK1<F>) => {
+  const Co = coKleisli(W)
+
+  type Arrow<A0, A> = (wa: any /* F<A0> */) => A
+
+  type CoBuilder<A0, A> = {
+    /** co-Kleisli composition: then(g) = g ⧑ current */
+    then: <B>(g: (wb: any /* F<A> */) => B) => CoBuilder<A0, B>
+    /** post-map the final result */
+    map:  <B>(f: (a: A) => B) => CoBuilder<A0, B>
+    /** side-effect on the final result (keeps A) */
+    tap:  (f: (a: A) => void) => CoBuilder<A0, A>
+    /** finish: the composed arrow F<A0> -> A */
+    done: Arrow<A0, A>
+  }
+
+  const make = <A0, A>(arrow: Arrow<A0, A>): CoBuilder<A0, A> => ({
+    then: (g) => make(Co.comp(g, arrow)),
+    map:  (f) => make((wa) => f(arrow(wa))),
+    tap:  (f) => make((wa) => { const a = arrow(wa); f(a); return a }),
+    done: arrow,
+  })
+
+  return {
+    /** Start a pipeline: identity co-Kleisli arrow (extract). */
+    start: <A>() => make<A, A>(Co.id<A>()),
+  }
+}
+
+// ================= Cofree over ExprF with annotations =================
+// Assumes you have FunctorK1<'ExprF'> and CofreeK1 already available
+
+// ---------- helpers: enumerate children for ExprF ----------
+type CofreeExpr<A> = Cofree<'ExprF', A>
+type ExprKids<A> = HK.Kind1<'ExprF', CofreeExpr<A>> // = ExprF<Cofree<'ExprF',A>>
+
+const childrenExprF = <A>(fa: ExprKids<A>): ReadonlyArray<CofreeExpr<A>> => {
+  switch ((fa as any)._tag) {
+    case 'Lit': return []
+    case 'Add': return [(fa as any).left, (fa as any).right]
+    case 'Mul': return [(fa as any).left, (fa as any).right]
+    // extend here for Var/Let/Div/AddN/MulN/... if you have them
+    default: return []
+  }
+}
+
+// ---------- build Cofree tree from your Fix1<'ExprF'> ----------
+export const toCofreeExpr =
+  (ExprFK: FunctorK1<'ExprF'>) =>
+  (t: Fix1<'ExprF'>): CofreeExpr<void> => {
+    const CF = CofreeK1(ExprFK)
+    return CF.unfold<Fix1<'ExprF'>, void>((node) => [undefined, node.un])(t)
+  }
+
+// ---------- annotate with {size, depth} using extend ----------
+export type ExprAnn = { readonly size: number; readonly depth: number }
+
+export const annotateExprSizeDepth =
+  (ExprFK: FunctorK1<'ExprF'>) =>
+  (w0: CofreeExpr<void>): CofreeExpr<ExprAnn> => {
+    const CF = CofreeK1(ExprFK)
+    function ann(w: CofreeExpr<any>): ExprAnn {
+      const ks = childrenExprF(w.tail).map(ann)
+      const size = 1 + ks.reduce((n, k) => n + k.size, 0)
+      const depth = 1 + (ks.length ? Math.max(...ks.map(k => k.depth)) : 0)
+      return { size, depth }
+    }
+    return CF.extend(ann)(w0)
+  }
+
+// ================= Cofree Zipper for ExprF =================
+// Minimal, focused on Lit | Add | Mul. Add frames for any extra constructors you have.
+
+// ---------- Zipper over Cofree<'ExprF',A> ----------
+type FrameExpr<A> =
+  | { _tag: 'AddL'; right: CofreeExpr<A> }
+  | { _tag: 'AddR'; left:  CofreeExpr<A> }
+  | { _tag: 'MulL'; right: CofreeExpr<A> }
+  | { _tag: 'MulR'; left:  CofreeExpr<A> }
+
+export type ZipperExpr<A> = {
+  readonly focus: CofreeExpr<A>
+  readonly crumbs: ReadonlyArray<FrameExpr<A>>
+}
+
+export const ZipperExpr = {
+  fromRoot: <A>(root: CofreeExpr<A>): ZipperExpr<A> => ({ focus: root, crumbs: [] }),
+
+  // rebuild a node from a child + a frame
+  privateRebuild:
+    <A>(child: CofreeExpr<A>, frame: FrameExpr<A>): CofreeExpr<A> => {
+      switch (frame._tag) {
+        case 'AddL': return { head: (frame.right.head as any), // keep parent head as-is; you can choose policy
+                            tail: { _tag: 'Add', left: child, right: frame.right } as any }
+        case 'AddR': return { head: (frame.left.head as any),
+                            tail: { _tag: 'Add', left: frame.left, right: child } as any }
+        case 'MulL': return { head: (frame.right.head as any),
+                            tail: { _tag: 'Mul', left: child, right: frame.right } as any }
+        case 'MulR': return { head: (frame.left.head as any),
+                            tail: { _tag: 'Mul', left: frame.left, right: child } as any }
+      }
+    },
+
+  // try to go down-left / down-right where applicable
+  downLeft: <A>(z: ZipperExpr<A>): ZipperExpr<A> => {
+    const t = z.focus.tail as any
+    switch (t._tag) {
+      case 'Add': return { focus: t.left, crumbs: [{ _tag:'AddL', right: t.right }, ...z.crumbs] }
+      case 'Mul': return { focus: t.left, crumbs: [{ _tag:'MulL', right: t.right }, ...z.crumbs] }
+      default:    return z
+    }
+  },
+
+  downRight: <A>(z: ZipperExpr<A>): ZipperExpr<A> => {
+    const t = z.focus.tail as any
+    switch (t._tag) {
+      case 'Add': return { focus: t.right, crumbs: [{ _tag:'AddR', left: t.left }, ...z.crumbs] }
+      case 'Mul': return { focus: t.right, crumbs: [{ _tag:'MulR', left: t.left }, ...z.crumbs] }
+      default:    return z
+    }
+  },
+
+  up: <A>(z: ZipperExpr<A>): ZipperExpr<A> => {
+    const [f, ...rest] = z.crumbs
+    if (!f) return z
+    return { focus: ZipperExpr.privateRebuild(z.focus, f), crumbs: rest }
+  },
+
+  // apply function to focus head (annotation/value) only
+  mapHead: <A, B>(f: (a: A) => B) => (z: ZipperExpr<A>): ZipperExpr<B> => ({
+    focus: { head: f(z.focus.head), tail: z.focus.tail as any },
+    crumbs: z.crumbs as any
+  }),
+
+  // replace focus entirely
+  replace: <A>(focus: CofreeExpr<A>) => (z: ZipperExpr<A>): ZipperExpr<A> => ({ focus, crumbs: z.crumbs }),
+
+  // rebuild full tree by walking up
+  toTree: <A>(z: ZipperExpr<A>): CofreeExpr<A> => {
+    let cur = z
+    while (cur.crumbs.length) cur = ZipperExpr.up(cur)
+    return cur.focus
+  },
+}
+
+// ============== DoCoBind — record-building Co-Do for any ComonadK1 =============
+
+type _Merge<A, B> = { readonly [K in keyof A | keyof B]:
+  K extends keyof B ? B[K] : K extends keyof A ? A[K] : never }
+
+export type DoCoBuilder<F, A0, T> = {
+  /** bind: run a co-Kleisli arrow on W<T> and add its result under key K */
+  bind: <K extends string, A>(k: K, h: (wT: any /* W<T> */) => A)
+      => DoCoBuilder<F, A0, _Merge<T, { readonly [P in K]: A }>>
+  /** alias */
+  apS:  <K extends string, A>(k: K, h: (wT: any /* W<T> */) => A)
+      => DoCoBuilder<F, A0, _Merge<T, { readonly [P in K]: A }>>
+  /** let: add a pure field computed from T */
+  let:  <K extends string, A>(k: K, f: (t: T) => A)
+      => DoCoBuilder<F, A0, _Merge<T, { readonly [P in K]: A }>>
+  /** map final record */
+  map:  <B>(f: (t: T) => B) => DoCoBuilder<F, A0, B>
+  /** side-effect on final record */
+  tap:  (f: (t: T) => void) => DoCoBuilder<F, A0, T>
+  /** finish: composed co-Kleisli arrow W<A0> -> T */
+  done: (wa: any /* W<A0> */) => T
+}
+
+export const DoCoBind = <F>(W: ComonadK1<F>) => {
+  const make = <A0, T>(arrow: (wa: any) => T): DoCoBuilder<F, A0, T> => ({
+    bind: (k, h) =>
+      make<A0, any>((wa) => {
+        const t  = arrow(wa)                                  // T
+        const wT = W.extend((_wa: any) => arrow(_wa))(wa)     // W<T>
+        const a  = h(wT)
+        return { ...(t as any), [k]: a } as const
+      }),
+
+    apS: (k, h) =>
+      make<A0, any>((wa) => {
+        const t  = arrow(wa)
+        const wT = W.extend((_wa: any) => arrow(_wa))(wa)
+        const a  = h(wT)
+        return { ...(t as any), [k]: a } as const
+      }),
+
+    let: (k, f) =>
+      make<A0, any>((wa) => {
+        const t = arrow(wa)
+        return { ...(t as any), [k]: f(t) } as const
+      }),
+
+    map: (f) => make<A0, any>((wa) => f(arrow(wa))),
+
+    tap: (f) => make<A0, T>((wa) => {
+      const t = arrow(wa); f(t); return t
+    }),
+
+    done: arrow,
+  })
+
+  return {
+    /** start with empty record {} */
+    startEmpty: <A0>() => make<A0, {}>((_) => ({} as const)),
+    /** start from an initial projection */
+    startWith:  <A0, T>(init: (wa: any /* W<A0> */) => T) => make<A0, T>(init),
+  }
+}
 
 // =======================
 // Reader monad pack

@@ -48,6 +48,18 @@ import {
   MonoidalReaderTask, zipReaderTask, zipWithReaderTask,
   MonoidalRTE, zipRTE_Monoidal, zipWithRTE_Monoidal,
   MonoidalValidation, zipValidation,
+  // 2-Category of Endofunctors
+  EndofunctorK1, NatK1, idNatK1, vcompNatK1, leftWhisker, rightWhisker, hcompNatK1_component,
+  // 2-Functors
+  IdK1, composeEndoK1, TwoFunctorK1, LaxTwoFunctorK1, OplaxTwoFunctorK1, PostcomposeReader2, muPostReader,
+  // Oplax 2-Functors
+  EnvEndo, StrengthEnv, PrecomposeEnv2, strengthEnvOption, strengthEnvResult, strengthEnvReader,
+  // Comonads
+  ComonadK1, duplicateK1, Store, StoreC, Env, EnvC, Traced, TracedC, Monoid, coKleisli,
+  // Advanced Comonads
+  Cofree, CofreeK1, StoreLens, DoCo,
+  // Advanced Comonad Features
+  toCofreeExpr, ExprAnn, annotateExprSizeDepth, ZipperExpr, DoCoBind,
   mapGroupValues, mapEachGroup, filterEachGroup, mergeGroupValues, dedupeEachGroup, flattenGroups,
   collapseToMap, mapMultiValues, mapEachMulti, filterEachMulti, mergeMulti,
   // New group operations
@@ -3457,6 +3469,182 @@ const r_bindHO = A_Reader.bindK_HO(
         const resultCombine = combineMonoidal(MonoidalResult<string>())
         const resultResult = resultCombine<number, string>(Ok(2), Ok('generic'))
         console.log(`Generic Result combine:`, isOk(resultResult) ? `Ok(${JSON.stringify(resultResult.value)})` : `Err(${resultResult.error})`)
+
+        // ==================== Comonad Examples ====================
+        console.log('\n=== Comonad Examples ===')
+        
+        // Store example: 2D grid cursor
+        type P = { x: number; y: number }
+        const grid: Store<P, string> = {
+          peek: (p) => `(${p.x},${p.y})`,
+          pos: { x: 0, y: 0 }
+        }
+        const labelHere = StoreC.extract(grid) // "(0,0)"
+        const around = StoreC.extend((w) => `center ${StoreC.extract(w)}; right ${w.peek({x:w.pos.x+1,y:w.pos.y})}`)(grid)
+        console.log(`Store extract: ${labelHere}`)
+        console.log(`Store extend: ${StoreC.extract(around)}`)
+
+        // Env example
+        const e1: Env<{locale:'en'}, number> = [{ locale: 'en' }, 42] as const
+        const out = EnvC.extend(w => `(${EnvC.ask(w).locale})=${EnvC.extract(w)}`)(e1) // [{locale:'en'},"(en)=42"]
+        console.log(`Env extend: ${JSON.stringify(out)}`)
+
+        // Traced with Sum monoid
+        const Sum: Monoid<number> = { empty: 0, concat: (x,y) => x+y }
+        const T = TracedC(Sum)
+        const ta: Traced<number, number> = (n) => n * 10
+        const dup = T.extend(w => w(5))(ta) // function that at m returns (m+5)*10 evaluated, i.e., 50 if m=0
+        console.log(`Traced extend result at 0: ${dup(0)}`) // Should be 50
+
+        // ==================== Advanced Comonad Examples ====================
+        console.log('\n=== Advanced Comonad Examples ===')
+        
+        // Cofree example with Array functor
+        const ArrayF: FunctorK1<'Array'> = { map: <A, B>(f: (a: A) => B) => (as: A[]) => as.map(f) }
+        const CofreeArray = CofreeK1(ArrayF)
+        
+        // Create a simple tree structure
+        const tree: Cofree<'Array', string> = {
+          head: "root",
+          tail: [
+            { head: "left", tail: [] },
+            { head: "right", tail: [{ head: "right-child", tail: [] }] }
+          ]
+        }
+        
+        const treeExtract = CofreeArray.extract(tree)
+        console.log(`Cofree extract: ${treeExtract}`)
+        
+        // Store × Lens integration
+        type Point = { x: number; y: number }
+        const pointLens = lens<Point, number>(
+          (p) => p.x,
+          (x) => (p) => ({ ...p, x })
+        )
+        
+        const gridStore: Store<Point, string> = {
+          peek: (p) => `(${p.x},${p.y})`,
+          pos: { x: 1, y: 2 }
+        }
+        
+        const focusedStore = StoreLens.focus(pointLens)(gridStore)
+        console.log(`Store lens focus: ${StoreC.extract(focusedStore)}`)
+        
+        // Co-Do notation example
+        const Co = DoCo(StoreC)
+        const length = (w: Store<Point, number>) => String(StoreC.extract(w)).length
+        const parity = (w: Store<Point, number>) => (StoreC.extract(w) % 2 === 0 ? 'even' : 'odd')
+        
+        const numberStore: Store<Point, number> = {
+          peek: (p) => p.x + p.y,
+          pos: { x: 1, y: 2 }
+        }
+        
+        const arrow = Co.start<number>()
+          .then(length)   // co-compose length ⧑ extract
+          .then((w: Store<Point, number>) => parity(w)) // ⧑ parity
+          .map(s => `len/parity: ${s}`)
+          .done
+        
+        const result = arrow(numberStore) // "len/parity: odd"
+        console.log(`Co-Do result: ${result}`)
+
+        // ==================== Advanced Comonad Features ====================
+        console.log('\n=== Advanced Comonad Features ===')
+        
+        // Cofree over ExprF with annotations
+        const ExprFK: FunctorK1<'ExprF'> = { map: mapExprF }
+        const someExpr: Fix1<'ExprF'> = fix1({ _tag: 'Add', left: fix1({ _tag: 'Lit', value: 5 }), right: fix1({ _tag: 'Lit', value: 3 }) })
+        
+        const cofreeExpr = toCofreeExpr(ExprFK)(someExpr)
+        const annotatedExpr = annotateExprSizeDepth(ExprFK)(cofreeExpr)
+        console.log(`Cofree ExprF annotation: size=${annotatedExpr.head.size}, depth=${annotatedExpr.head.depth}`)
+        
+        // Zipper navigation
+        const zipper = ZipperExpr.fromRoot(annotatedExpr)
+        const downLeft = ZipperExpr.downLeft(zipper)
+        const downRight = ZipperExpr.downRight(zipper)
+        console.log(`Zipper navigation: downLeft head=${downLeft.focus.head.size}, downRight head=${downRight.focus.head.size}`)
+        
+        // DoCoBind record builder
+        const CoB = DoCoBind(StoreC)
+        const program = CoB.startEmpty<number>()
+          .bind('here', wT => StoreC.extract(wT))       // number
+          .bind('right', wT => wT.peek({ x: wT.pos.x+1, y: wT.pos.y }))
+          .let('sum', t => t.here + t.right)
+          .map(t => `sum=${t.sum}`)
+          .done
+        
+        const out = program(numberStore) // "sum=5"
+        console.log(`DoCoBind result: ${out}`)
+
+        // ==================== 2-Functor Examples ====================
+        console.log('\n=== 2-Functor Examples ===')
+        
+        // Core endofunctor composition
+        const OptionEndo: EndofunctorK1<'Option'> = { map: <A, B>(f: (a: A) => B) => (oa: Option<A>) => oa.map(f) }
+        const composed = composeEndoK1(IdK1, OptionEndo)
+        const result1 = composed.map((x: number) => x * 2)(some(5))
+        console.log(`Endofunctor composition: ${JSON.stringify(result1)}`)
+        
+        // Lax 2-functor: PostcomposeReader
+        const U = PostcomposeReader2<{env: string}>()
+        const UF = U.on1(OptionEndo)           // A ↦ Reader<{env: string}, Option<A>>
+        const α = { app: <A>(oa: Option<A>) => oa } // identity NT
+        const Uα = U.on2(α)
+        
+        // Test the 2-functor
+        const readerOption = UF.map((x: number) => x * 2)
+        const env = { env: 'test' }
+        const result2 = readerOption(env)
+        console.log(`2-Functor on1: ${JSON.stringify(result2)}`)
+        
+        // Test eta (unit)
+        const etaResult = U.eta().app(42)
+        console.log(`2-Functor eta: ${etaResult(env)}`)
+        
+        // Test mu with explicit F
+        const μ_FG = muPostReader<{env: string}>()(OptionEndo)
+        const nestedReader = (env: {env: string}) => some((env: {env: string}) => some(42))
+        const flattened = μ_FG.app(nestedReader)
+        console.log(`2-Functor mu: ${flattened(env)}`)
+
+        // ==================== Oplax 2-Functor Examples ====================
+        console.log('\n=== Oplax 2-Functor Examples ===')
+        
+        // Create strength registry for common functors
+        const strengthRegistry = <F>(F: EndofunctorK1<F>): StrengthEnv<F, string> => {
+          if (F === OptionEndo) return strengthEnvOption<string>() as any
+          if (F === IdK1) return { st: <A>(a: A) => ['default', a] as any }
+          throw new Error(`No strength defined for ${F}`)
+        }
+        
+        // Create oplax 2-functor
+        const U = PrecomposeEnv2<string>(strengthRegistry)
+        const UF = U.on1(OptionEndo)           // A ↦ Option<Env<string, A>>
+        const α = { app: <A>(oa: Option<A>) => oa } // identity NT
+        const Uα = U.on2(α)
+        
+        // Test the oplax 2-functor
+        const optionEnv = UF.map((x: number) => x * 2)
+        const testValue = some(['context', 42] as [string, number])
+        const result3 = optionEnv(testValue)
+        console.log(`Oplax 2-Functor on1: ${JSON.stringify(result3)}`)
+        
+        // Test eta^op (counit)
+        const etaOpResult = U.etaOp().app(['context', 42])
+        console.log(`Oplax 2-Functor eta^op: ${etaOpResult}`)
+        
+        // Test strength instances
+        const optionStrength = strengthEnvOption<string>()
+        const optionWithEnv = some(['context', 42] as [string, number])
+        const strengthened = optionStrength.st(optionWithEnv)
+        console.log(`Option strength: ${JSON.stringify(strengthened)}`)
+        
+        const resultStrength = strengthEnvResult<string, string>('default')
+        const resultWithEnv = ok(['context', 42] as [string, number])
+        const resultStrengthened = resultStrength.st(resultWithEnv)
+        console.log(`Result strength: ${JSON.stringify(resultStrengthened)}`)
 
         console.log('\n✅ All examples completed successfully!')
 }

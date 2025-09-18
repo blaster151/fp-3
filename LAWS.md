@@ -374,6 +374,57 @@ The following instances satisfy the monoidal functor laws:
 
 **Witness**: Property test for each instance with random generators and equality functions
 
+## 2-Functor Laws
+
+### Strict 2-Functor Laws
+For any strict 2-functor `U: C → D` between 2-categories:
+
+**on2 respects vertical composition**: `U(β ∘v α) = U(β) ∘v U(α)`
+**on2 respects horizontal composition**: `U(β ⋆ α) = U(β) ⋆ U(α)`
+**on2 preserves identity**: `U(id_F) = id_{U(F)}`
+
+**Witness**: Property test with random natural transformations and endofunctors
+
+### Lax 2-Functor Laws
+For any lax 2-functor `U: C → D`:
+
+**μ, η are natural in their arguments**
+**Unit Coherence**: 
+- `(U(F) ∘ η) ; μ_{F,Id} = id_{U(F)}`
+- `(η ∘ U(F)) ; μ_{Id,F} = id_{U(F)}`
+**Associativity Coherence**: 
+- `(μ_{F,G} ⋆ id_{U(H)}) ; μ_{F∘G,H} = (id_{U(F)} ⋆ μ_{G,H}) ; μ_{F,G∘H}`
+
+**Witness**: Property test with random endofunctors and natural transformations
+
+### Oplax 2-Functor Laws (Dual)
+For any oplax 2-functor `U: C → D`:
+
+**η^op, μ^op are natural in their arguments**
+**Unit Coherence**: 
+- `η^op ; (U(F) ∘ μ^op_{F,Id}) = id_{U(F)}`
+- `η^op ; (μ^op_{Id,F} ∘ U(F)) = id_{U(F)}`
+**Associativity Coherence**: 
+- `μ^op_{F∘G,H} ; (μ^op_{F,G} ⋆ id_{U(H)}) = μ^op_{F,G∘H} ; (id_{U(F)} ⋆ μ^op_{G,H})`
+
+**Witness**: Property test with random endofunctors and natural transformations
+
+### Concrete Instances
+
+#### PostcomposeReader2<R> (Lax)
+- **on1**: `F ↦ Reader<R, F<_>>`
+- **on2**: `α ↦ Reader<R, α>`
+- **η**: `a ↦ (_) => a` (unit)
+- **μ**: `Reader<R, F<Reader<R, G<_>>>> ↦ Reader<R, F<G<_>>>` (evaluate inner Reader at same environment)
+
+#### PrecomposeEnv2<E> (Oplax)
+- **on1**: `F ↦ F ∘ Env<E, _>`
+- **on2**: `α ↦ α` (applied to Env<E, A>)
+- **η^op**: `[e, a] ↦ a` (counit - drop environment)
+- **μ^op**: `F<G<Env<E, A>>> ↦ Env<E, F<G<A>>>` (using strength to pull Env outward)
+
+**Witness**: Property test for each instance with random endofunctors and natural transformations
+
 ## Future Extensions
 
 This document should grow to include:
