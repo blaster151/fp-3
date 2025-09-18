@@ -934,6 +934,165 @@ export const makeSimplicialFromComonadK1 =
     return { X, d, s, aug }
   }
 
+// =====================================================================
+// Chain complex (augmented) from the simplicial object of PairComonad<E>
+//   Category = Set; comonad W(X) = E × X with |E| finite.
+//   X_n = E^{n+1} × A (finite set). We build C_n = Z[X_n] (free abelian).
+//   Boundary ∂_n = Σ_i (-1)^i d_i  (with ∂_0 = augmentation ε : E×A → A).
+//   We represent linear maps by integer matrices and compute Betti numbers
+//   over Q (rank/nullity via Gaussian elimination).
+// =====================================================================
+
+// ---------- Finite enumeration helpers ----------
+type NestedPair<E, A> = readonly [E, any] | A
+
+// E^k × A as nested pairs  [e0, [e1, [... [ek-1, a] ...]]]
+export const enumeratePowPair =
+  <E, A>(Es: ReadonlyArray<E>, k: number, As: ReadonlyArray<A>): ReadonlyArray<NestedPair<E, A>> => {
+    // cartesian power Es^k
+    const tuples: E[][] = [[]]
+    for (let i = 0; i < k; i++) {
+      const next: E[][] = []
+      for (const t of tuples) for (const e of Es) next.push([...t, e])
+      tuples.splice(0, tuples.length, ...next)
+    }
+    const out: NestedPair<E, A>[] = []
+    for (const a of As) for (const t of tuples) {
+      let v: any = a
+      for (let i = t.length - 1; i >= 0; i--) v = [t[i], v] as const
+      out.push(v)
+    }
+    return out
+  }
+
+// stable key for NestedPair<E,A> (serialize to JSON-ish)
+const keyNested = (v: any): string => {
+  const flat: any[] = []
+  let cur = v
+  while (Array.isArray(cur) && cur.length === 2) { flat.push(cur[0]); cur = cur[1] }
+  flat.push(cur) // the A
+  return JSON.stringify(flat)
+}
+
+// ---------- Boundary matrices from simplicial faces ----------
+export type ZMatrix = number[][] // rows x cols, integers
+
+export const buildBoundariesForPair =
+  <E, A>(Es: ReadonlyArray<E>, As: ReadonlyArray<A>, maxN: number): { dims: number[]; d: ZMatrix[] } => {
+    // comonad & simplicial structure
+    const W = PairComonad<E>()
+    const S = makeSimplicialFromComonadK1(W)
+
+    // X_n = W^{n+1} A = E^{n+1} × A
+    const X: ReadonlyArray<NestedPair<E, A>>[] = []
+    const idx: Map<string, number>[] = []
+    for (let n = 0; n <= maxN; n++) {
+      const elems = enumeratePowPair(Es, n + 1, As)
+      X[n] = elems
+      const m = new Map<string, number>()
+      elems.forEach((el, i) => m.set(keyNested(el), i))
+      idx[n] = m
+    }
+
+    // Build ∂_n: C_n → C_{n-1}
+    const d: ZMatrix[] = []
+    // n = 0 (augmentation): ε : E×A → A
+    {
+      const rows = As.length
+      const cols = X[0]!.length // |E|*|A|
+      const M: ZMatrix = Array.from({ length: rows }, () => Array(cols).fill(0))
+      X[0]!.forEach((x0, j) => {
+        // extract to A
+        let cur: any = x0
+        while (Array.isArray(cur) && cur.length === 2) cur = cur[1]
+        const a = cur
+        const i = As.findIndex((aa) => Object.is(aa, a))
+        M[i]![j] = 1
+      })
+      d[0] = M
+    }
+    // n >= 1: ∂_n = Σ_i (-1)^i d_i
+    for (let n = 1; n <= maxN; n++) {
+      const rows = X[n - 1]!.length
+      const cols = X[n]!.length
+      const M: ZMatrix = Array.from({ length: rows }, () => Array(cols).fill(0))
+      for (let j = 0; j < cols; j++) {
+        const simplex = X[n]![j]!
+        for (let i = 0; i <= n; i++) {
+          const face = S.d(n, i).app(simplex) // element of X_{n-1}
+          const r = idx[n - 1]!.get(keyNested(face))
+          if (r == null) throw new Error(`Face not found in X_${n - 1}`)
+          M[r]![j]! += (i % 2 === 0 ? 1 : -1)
+        }
+      }
+      d[n] = M
+    }
+
+    const dims = X.map(xs => xs.length)
+    return { dims, d }
+  }
+
+// ---------- Linear algebra over Q (rank / betti) ----------
+export const rankQ = (M: ZMatrix): number => {
+  if (M.length === 0) return 0
+  const A = M.map(row => row.map(x => x * 1)) // copy as float
+  const m = A.length, n = A[0]?.length ?? 0
+  let r = 0, c = 0
+  const EPS = 1e-10
+  while (r < m && c < n) {
+    // find pivot
+    let piv = r
+    for (let i = r; i < m; i++) if (Math.abs(A[i]![c]!) > Math.abs(A[piv]![c]!)) piv = i
+    if (Math.abs(A[piv]![c]!) < EPS) { c++; continue }
+    // swap rows
+    if (piv !== r) { const tmp = A[piv]!; A[piv] = A[r]!; A[r] = tmp }
+    // normalize row r
+    const s = A[r]![c]!
+    for (let j = c; j < n; j++) A[r]![j]! /= s
+    // eliminate
+    for (let i = 0; i < m; i++) if (i !== r) {
+      const f = A[i]![c]!
+      if (Math.abs(f) > EPS) for (let j = c; j < n; j++) A[i]![j]! -= f * A[r]![j]!
+    }
+    r++; c++
+  }
+  return r
+}
+
+export const bettiReduced =
+  (dims: number[], d: ZMatrix[], upToN: number): number[] => {
+    // β̃_n = nullity(∂_n) - rank(∂_{n+1})
+    const betti: number[] = []
+    for (let n = 0; n <= upToN; n++) {
+      const rank_n = rankQ(d[n] ?? [[]])
+      const dim_n  = dims[n] ?? 0
+      const null_n = dim_n - rank_n
+      const rank_np1 = rankQ(d[n + 1] ?? [[]])
+      betti[n] = null_n - rank_np1
+    }
+    return betti
+  }
+
+export const bettiUnreduced =
+  (dims: number[], d: ZMatrix[], upToN: number, augDim: number): number[] => {
+    // β_0 = β̃_0 + augDim ; β_n (n>=1) = β̃_n
+    const r = bettiReduced(dims, d, upToN)
+    if (r.length) r[0] = r[0]! + augDim
+    return r
+  }
+
+// quick check: composition ∂_{n-1} ∘ ∂_n = 0
+export const composeMatrices = (A: ZMatrix, B: ZMatrix): ZMatrix => {
+  const m = A.length, k = A[0]?.length ?? 0, n = B[0]?.length ?? 0
+  if (B.length !== k) throw new Error('composeMatrices: incompatible shapes')
+  const C: ZMatrix = Array.from({ length: m }, () => Array(n).fill(0))
+  for (let i = 0; i < m; i++)
+    for (let j = 0; j < n; j++)
+      for (let t = 0; t < k; t++)
+        C[i]![j]! += A[i]![t]! * B[t]![j]!
+  return C
+}
+
 // ===============================================================
 // Store<S, A> comonad  (aka "indexed context")
 //   Intuition: a focus `pos : S` and a total observation `peek : S -> A`.
