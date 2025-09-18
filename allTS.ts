@@ -338,29 +338,26 @@ export const vcompNatK1 =
 // Left whisker:   F ∘ β : F∘H ⇒ F∘K   with (F ∘ β)_A = F.map(β_A)
 export const leftWhisker =
   <F>(F: EndofunctorK1<F>) =>
-  <H, K>(beta: NatK1<H, K>) => ({
-    app: <A>(fha: any /* F<H<A>> */) =>
-      F.map<any, any>((ha: any) => beta.app<A>(ha))(fha) // F.map applied to β_A
-  }) as NatK1<any /* F∘H */, any /* F∘K */>
+  <H, K>(beta: NatK1<H, K>) => 
+    <A>(fha: any /* F<H<A>> */) =>
+      F.map<any, any>((ha: any) => beta<A>(ha))(fha) // F.map applied to β_A
 
 // Right whisker:  α ∘ H : F∘H ⇒ G∘H   with (α ∘ H)_A = α_{H A}
 export const rightWhisker =
   <F, G>(alpha: NatK1<F, G>) =>
-  <H>(/* H: EndofunctorK1<H> not needed at runtime */) => ({
-    app: <A>(fha: any /* F<H<A>> */) => alpha.app<any>(fha)
-  }) as NatK1<any /* F∘H */, any /* G∘H */>
+  <H>(/* H: EndofunctorK1<H> not needed at runtime */) => 
+    <A>(fha: any /* F<H<A>> */) => alpha<any>(fha)
 
 // Horizontal composition (component form):
 //   (α ⋆ β)_A : F<H<A>> → G<K<A>>
 //   Either side is equal by naturality; we implement F.map(β_A) then α:
 export const hcompNatK1_component =
   <F, G>(F: EndofunctorK1<F>) =>
-  <H, K>(alpha: NatK1<F, G>, beta: NatK1<H, K>) => ({
-    app: <A>(fha: any /* F<H<A>> */) =>
-      alpha.app<any>(
-        F.map<any, any>((ha: any) => beta.app<A>(ha))(fha)
+  <H, K>(alpha: NatK1<F, G>, beta: NatK1<H, K>) => 
+    <A>(fha: any /* F<H<A>> */) =>
+      alpha<any>(
+        F.map<any, any>((ha: any) => beta<A>(ha))(fha)
       )
-  }) as { app: <A>(fha: any /* F<H<A>> */) => any /* G<K<A>> */ }
 
 /**
  * Laws (informal):
@@ -419,6 +416,11 @@ export type Reader<R, A> = (r: R) => A
 export const Reader = {
   map:  <A, B>(f: (a: A) => B) => <R>(ra: Reader<R, A>): Reader<R, B> => (r) => f(ra(r)),
   of:   <R, A>(a: A): Reader<R, A> => (_: R) => a,
+  chain: <A, B, R>(f: (a: A) => Reader<R, B>) => (ra: Reader<R, A>): Reader<R, B> => (r) => f(ra(r))(r),
+  ap: <R, A, B>(rfab: Reader<R, (a: A) => B>) => (rfa: Reader<R, A>): Reader<R, B> => (r) => rfab(r)(rfa(r)),
+  ask: <R>(): Reader<R, R> => (r: R) => r,
+  asks: <R, A>(f: (r: R) => A): Reader<R, A> => (r) => f(r),
+  local: <R, Q>(f: (q: Q) => R) => <A>(rq: Reader<R, A>): Reader<Q, A> => (q) => rq(f(q)),
 }
 
 // Lax 2-functor: PostcomposeReader<R>
@@ -428,26 +430,23 @@ export const PostcomposeReader2 = <R>(): LaxTwoFunctorK1 => {
   const on1 = <F>(F: EndofunctorK1<F>) =>
     composeEndoK1(H, F) // Reader ∘ F
 
-  const on2 = <F, G>(α: NatK1<F, G>) => ({
-    app: <A>(rfa: Reader<R, any /* F<A> */>): Reader<R, any /* G<A> */> =>
-      (r) => α.app<A>(rfa(r))
-  })
+  const on2 = <F, G>(α: NatK1<F, G>) => 
+    <A>(rfa: Reader<R, any /* F<A> */>): Reader<R, any /* G<A> */> =>
+      (r) => α<A>(rfa(r))
 
   // η : Id ⇒ Reader ∘ Id   (aka "unit")
-  const eta = () => ({
-    app: <A>(a: A): Reader<R, A> => Reader.of<R, A>(a)
-  })
+  const eta = () => 
+    <A>(a: A): Reader<R, A> => Reader.of<R, A>(a)
 
   // μ_{F,G} : (Reader∘F) ∘ (Reader∘G) ⇒ Reader ∘ (F∘G)
   //  i.e.  Reader<R, F< Reader<R, G<A>> >>  →  Reader<R, F< G<A> >>
-  const mu = <F, G>() => ({
-    app: <A>(rf_rg: Reader<R, any>): Reader<R, any> =>
+  const mu = <F, G>() => 
+    <A>(rf_rg: Reader<R, any>): Reader<R, any> =>
       (r: R) => {
         const f_rg = rf_rg(r)                            // F< Reader<R, G<A>> >
         // evaluate inner Reader at the SAME environment
         return ( (F: EndofunctorK1<F>) => F.map((rg: Reader<R, any>) => rg(r)) as any )(undefined as any) as never
       }
-  }) as NatK1<any, any>
 
   return { on1, on2, eta, mu }
 }
@@ -457,10 +456,8 @@ export const PostcomposeReader2 = <R>(): LaxTwoFunctorK1 => {
 export const muPostReader =
   <R>() =>
   <F, G>(F: EndofunctorK1<F>) =>
-  ({
-    app: <A>(rf_rg: Reader<R, any /* F< Reader<R, G<A>> > */>): Reader<R, any /* F< G<A> > */> =>
+    <A>(rf_rg: Reader<R, any /* F< Reader<R, G<A>> > */>): Reader<R, any /* F< G<A> > */> =>
       (r: R) => F.map((rg: Reader<R, any>) => rg(r))(rf_rg(r))
-  }) as NatK1<any, any>
 
 // ================= Concrete Oplax 2-Functor: PrecomposeEnv<E> =================
 // Use the Env comonad Env E A≅[E,A]
@@ -485,21 +482,19 @@ export const PrecomposeEnv2 =
 
   const on1 = <F>(F: EndofunctorK1<F>) => composeEndoK1(F, EnvEndo<E>()) // F ∘ Env<E,_>
 
-  const on2 = <F, G>(α: NatK1<F, G>) => ({
-    app: <A>(fea: any /* F<Env<E,A>> */): any /* G<Env<E,A>> */ =>
-      α.app<Env<E, A>>(fea)
-  })
+  const on2 = <F, G>(α: NatK1<F, G>) => 
+    <A>(fea: any /* F<Env<E,A>> */): any /* G<Env<E,A>> */ =>
+      α<Env<E, A>>(fea)
 
   // η^op : on1(Id) = Env<E,_> ⇒ Id  (counit)
-  const etaOp = () => ({
-    app: <A>(ea: Env<E, A>): A => ea[1]
-  })
+  const etaOp = () => 
+    <A>(ea: Env<E, A>): A => ea[1]
 
   // μ^op_{F,G} : on1(F∘G) ⇒ on1(F) ∘ on1(G)
   //   F<G<Env<E,A>>>  →  F<Env<E, G<Env<E,A>>>>  →  Env<E, F<G<Env<E,A>>>>
   //   using st_G then st_F
-  const muOp = <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) => ({
-    app: <A>(fg_ea: any): any => {
+  const muOp = <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) => 
+    <A>(fg_ea: any): any => {
       const sG = strengthFor(G).st
       const sF = strengthFor(F).st
       // step 1: push Env through G
@@ -507,7 +502,6 @@ export const PrecomposeEnv2 =
       // step 2: push Env through F
       return sF<any>(f_env_g_ea)                                        // Env<E, F<G<A>>>
     }
-  }) as NatK1<any, any>
 
   return { on1, on2, etaOp, muOp: <F, G>() => ({ app: muOp as any } as any) }
 }
@@ -611,7 +605,7 @@ export const StoreC = {
 
 // ==================== Env (product) comonad ====================
 // A context value E carried along with A
-export type Env<E, A> = readonly [E, A]
+// Note: Env type is already defined above
 
 export const EnvC = {
   map:
@@ -699,7 +693,7 @@ export const CofreeK1 = <F extends HK.Id1>(F: FunctorK1<F>) => {
       ({ head: g(w), tail: F.map(extend(g))(w.tail) })
 
   const duplicate = <A>(w: Cofree<F, A>): Cofree<F, Cofree<F, A>> =>
-    extend<Cofree<F, A>, Cofree<F, A>>((x) => x)(w)
+    ({ head: w, tail: F.map(duplicate)(w.tail) })
 
   // unfold (cofree-ana): ψ : S -> [A, F<S>]
   const unfold =
@@ -6246,45 +6240,9 @@ export const overT = <S, A>(tv: Traversal<S, A>, f: (a: A) => A) => tv.modify(f)
 // =======================
 // Reader
 // =======================
-export type Reader<R, A> = (r: R) => A
+// Note: Reader type is already defined above
 
-export const Reader = {
-  of:
-    <R, A>(a: A): Reader<R, A> =>
-    (_: R) =>
-      a,
-
-  ask: <R>(): Reader<R, R> => (r: R) => r,
-
-  asks:
-    <R, A>(f: (r: R) => A): Reader<R, A> =>
-    (r) =>
-      f(r),
-
-  map:
-    <A, B>(f: (a: A) => B) =>
-    <R>(ra: Reader<R, A>): Reader<R, B> =>
-    (r) =>
-      f(ra(r)),
-
-  chain:
-    <A, B, R>(f: (a: A) => Reader<R, B>) =>
-    (ra: Reader<R, A>): Reader<R, B> =>
-    (r) =>
-      f(ra(r))(r),
-
-  ap:
-    <R, A, B>(rfab: Reader<R, (a: A) => B>) =>
-    (rfa: Reader<R, A>): Reader<R, B> =>
-    (r) =>
-      rfab(r)(rfa(r)),
-
-  local:
-    <R, Q>(f: (q: Q) => R) =>
-    <A>(rq: Reader<R, A>): Reader<Q, A> =>
-    (q) =>
-      rq(f(q)),
-}
+// Note: Reader const is already defined above
 
 // helpers
 export const runReader = <R, A>(ra: Reader<R, A>, r: R): A => ra(r)
@@ -9201,7 +9159,7 @@ export const ResultK1 = <E>() => ({
 })
 
 export const ValidationK1 = <E>() => ({
-  map:  <A, B>(f: (a: A) => B) => (va: Validation<E, A>): Validation<E, B> => mapV(f)(va),
+  map:  <A, B>(f: (a: A) => B) => (va: Validation<E, A>): Validation<E, B> => mapV<E, A, B>(f)(va),
   // for ap, you'll use your `apV` with a chosen concat
   ap:   <A, B>(concat: (x: ReadonlyArray<E>, y: ReadonlyArray<E>) => ReadonlyArray<E>) =>
         (vf: Validation<E, (a: A) => B>) =>
@@ -9837,8 +9795,7 @@ export const zipRTE =
     zipWithRTE<R, E, A, B, readonly [A, B]>((a, b) => [a, b] as const)(rteA)(rteB)
 
 // ----- Do-notation for ReaderTaskEither (RTE) -----
-type _Merge<A, B> = { readonly [K in keyof A | keyof B]:
-  K extends keyof B ? B[K] : K extends keyof A ? A[K] : never }
+// Note: _Merge type is already defined above
 
 export type DoRTEBuilder<R, T, E> = {
   /** bind: run an RTE and add its Ok value at key K */
@@ -10553,20 +10510,20 @@ export const mkRTR = <R, E>() => {
 
 // Tiny examples
 // ENV / config
-type Env = { apiBase: string; token: string }
+type ApiEnv = { apiBase: string; token: string }
 
 // Reader usage (pure dependency injection)
-const authHeader: Reader<Env, Record<string, string>> = Reader.asks((env) => ({
+const authHeader: Reader<ApiEnv, Record<string, string>> = Reader.asks((env) => ({
   Authorization: `Bearer ${env.token}`,
 }))
 
-const withApi = Reader.local<Env, { apiBase: string }>(
+const withApi = Reader.local<ApiEnv, { apiBase: string }>(
   (q) => ({ apiBase: q.apiBase, token: "n/a" }) // adapt env shape if needed
 )
 
-const url: Reader<Env, string> = Reader.asks((env) => `${env.apiBase}/users/me`)
+const url: Reader<ApiEnv, string> = Reader.asks((env) => `${env.apiBase}/users/me`)
 
-const headersThenUrl = Reader.chain<Record<string, string>, string, Env>((h) =>
+const headersThenUrl = Reader.chain<Record<string, string>, string, ApiEnv>((h) =>
   Reader.map<string, string>((u) => `${u}?auth=${!!h['Authorization']}`)(url)
 )(authHeader)
 
