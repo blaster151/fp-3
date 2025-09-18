@@ -10628,6 +10628,95 @@ export const registerCompDerived =
 export const makePostcomposePromise2WithRegistry = (R: TraversableRegistryK1): LaxTwoFunctorK1 =>
   makePostcomposePromise2(<F>(FEndo: EndofunctorK1<F>) => (R.get(FEndo as any) as any) ?? null)
 
+// =====================================================================
+// Smart metadata for composed endofunctors + lazy Traversable lookup
+// =====================================================================
+
+// Internal shape metadata (WeakMap so GC-friendly)
+type EndoMeta =
+  | { tag: 'Sum';  left: EndofunctorK1<any>; right: EndofunctorK1<any> }
+  | { tag: 'Prod'; left: EndofunctorK1<any>; right: EndofunctorK1<any> }
+  | { tag: 'Comp'; left: EndofunctorK1<any>; right: EndofunctorK1<any> }
+  | { tag: 'Pair'; C: unknown }
+  | { tag: 'Const'; C: unknown }
+
+const __endoMeta = new WeakMap<EndofunctorK1<any>, EndoMeta>()
+const withMeta = <F>(e: EndofunctorK1<F>, m: EndoMeta): EndofunctorK1<F> => {
+  __endoMeta.set(e as any, m)
+  return e
+}
+
+// Meta-enabled constructors (use these if you want auto-derivation):
+export const SumEndoM =
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) =>
+    withMeta(SumEndo(F, G) as any, { tag: 'Sum', left: F, right: G })
+
+export const ProdEndoM =
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) =>
+    withMeta(ProdEndo(F, G) as any, { tag: 'Prod', left: F, right: G })
+
+export const CompEndoM =
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) =>
+    withMeta(composeEndoK1(F, G) as any, { tag: 'Comp', left: F, right: G })
+
+export const PairEndoM =
+  <C>(c: C) => withMeta(PairEndo<C>() as any, { tag: 'Pair', C: c } as any)
+
+export const ConstEndoM =
+  <C>(c: C) => withMeta(ConstEndo<C>() as any, { tag: 'Const', C: c } as any)
+
+// Smart lookup: uses registry; if missing, tries to derive for Sum/Prod/Comp and caches result.
+export const makeSmartGetTraversableK1 =
+  (R: ReturnType<typeof makeTraversableRegistryK1>) =>
+  <F>(FEndo: EndofunctorK1<F>): TraversableK1<F> | null => {
+    const hit = R.get(FEndo as any)
+    if (hit) return hit as any
+    const m = __endoMeta.get(FEndo as any)
+    if (!m) return null
+
+    // recursive fetch that also caches
+    const need = makeSmartGetTraversableK1(R)
+
+    switch (m.tag) {
+      case 'Sum': {
+        const TL = need(m.left); const TR = need(m.right)
+        if (!TL || !TR) return null
+        const T = deriveTraversableSumK1(TL as any, TR as any) as any
+        R.register(FEndo as any, T)
+        return T
+      }
+      case 'Prod': {
+        const TL = need(m.left); const TR = need(m.right)
+        if (!TL || !TR) return null
+        const T = deriveTraversableProdK1(TL as any, TR as any) as any
+        R.register(FEndo as any, T)
+        return T
+      }
+      case 'Comp': {
+        const TL = need(m.left); const TR = need(m.right)
+        if (!TL || !TR) return null
+        const T = deriveTraversableCompK1(TL as any, TR as any) as any
+        R.register(FEndo as any, T)
+        return T
+      }
+      case 'Pair': {
+        const T = TraversablePairK1<any>()
+        R.register(FEndo as any, T as any)
+        return T as any
+      }
+      case 'Const': {
+        const T = TraversableConstK1<any>()
+        R.register(FEndo as any, T as any)
+        return T as any
+      }
+    }
+  }
+
+// Promise-postcompose that uses the smart getter:
+export const makePostcomposePromise2Smart =
+  (R: ReturnType<typeof makeTraversableRegistryK1>): LaxTwoFunctorK1 =>
+    makePostcomposePromise2(<F>(FEndo: EndofunctorK1<F>) => makeSmartGetTraversableK1(R)(FEndo) as any)
+
 // ---------------------------------------------------------------------
 // Result<E,_>: factory to adapt your existing Ok/Err tags without imports.
 // Provide a tag check and constructors so we don't collide with your names.
