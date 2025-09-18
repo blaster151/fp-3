@@ -30,7 +30,7 @@ import {
   EitherT, TaskEither, ReaderEither, ReaderTaskEither, RTE, TE, RE,
   // Advanced Compositions
   LogArray, MW_R, MW_RT, DoRTE, DoRTEBuilder,
-  WriterReaderTaskEither, WRTE, DoWRTE, DoWRTEBuilder,
+  WriterReaderTaskEither, WRTE,
   // Module-level shims
   apFirstRTE, apSecondRTE, zipWithRTE, zipRTE,
   // Endofunctor helpers

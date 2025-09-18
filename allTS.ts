@@ -649,6 +649,161 @@ export const strengthEnvFromProd =
     }
   })
 
+// ---------- Sum/Product of natural transformations ----------
+
+// α ⊕ β : (F ⊕ G) ⇒ (F' ⊕ G')
+export const sumNat =
+  <F, Fp, G, Gp>(alpha: NatK1<F, Fp>, beta: NatK1<G, Gp>): NatK1<['Sum', F, G], ['Sum', Fp, Gp]> => ({
+    app: <A>(v: SumVal<F, G, A>): SumVal<Fp, Gp, A> =>
+      v._sum === 'L'
+        ? { _sum: 'L', left:  alpha.app<A>(v.left) }
+        : { _sum: 'R', right: beta.app<A>(v.right) }
+  })
+
+// lift α to the left branch only: α ⊕ id
+export const sumNatL =
+  <F, Fp, G>(alpha: NatK1<F, Fp>): NatK1<['Sum', F, G], ['Sum', Fp, G]> => ({
+    app: <A>(v: SumVal<F, G, A>) =>
+      v._sum === 'L' ? { _sum: 'L', left: alpha.app<A>(v.left) } : v as any
+  })
+
+// lift β to the right branch only: id ⊕ β
+export const sumNatR =
+  <F, G, Gp>(beta: NatK1<G, Gp>): NatK1<['Sum', F, G], ['Sum', F, Gp]> => ({
+    app: <A>(v: SumVal<F, G, A>) =>
+      v._sum === 'R' ? { _sum: 'R', right: beta.app<A>(v.right) } : v as any
+  })
+
+// α ⊗ β : (F ⊗ G) ⇒ (F' ⊗ G')
+export const prodNat =
+  <F, Fp, G, Gp>(alpha: NatK1<F, Fp>, beta: NatK1<G, Gp>): NatK1<['Prod', F, G], ['Prod', Fp, Gp]> => ({
+    app: <A>(p: ProdVal<F, G, A>): ProdVal<Fp, Gp, A> => ({
+      left:  alpha.app<A>(p.left),
+      right: beta.app<A>(p.right),
+    })
+  })
+
+// affect only left / only right
+export const prodNatL =
+  <F, Fp, G>(alpha: NatK1<F, Fp>): NatK1<['Prod', F, G], ['Prod', Fp, G]> => ({
+    app: <A>(p: ProdVal<F, G, A>): ProdVal<Fp, G, A> => ({ left: alpha.app<A>(p.left), right: p.right })
+  })
+
+export const prodNatR =
+  <F, G, Gp>(beta: NatK1<G, Gp>): NatK1<['Prod', F, G], ['Prod', F, Gp]> => ({
+    app: <A>(p: ProdVal<F, G, A>): ProdVal<F, Gp, A> => ({ left: p.left, right: beta.app<A>(p.right) })
+  })
+
+// ---------- Minimal Applicative & Traversable (simple version) ----------
+export interface SimpleApplicativeK1<G> {
+  readonly of:  <A>(a: A) => any /* G<A> */
+  readonly map: <A, B>(f: (a: A) => B) => (ga: any /* G<A> */) => any /* G<B> */
+  readonly ap:  <A, B>(gf: any /* G<(a:A)=>B> */) => (ga: any /* G<A> */) => any /* G<B> */
+}
+
+export interface TraversableK1<F> {
+  // Standard shape: traverse :: (A -> G<B>) -> F<A> -> G<F<B>>
+  readonly traverse: <G>(G: SimpleApplicativeK1<G>) =>
+    <A, B>(f: (a: A) => any /* G<B> */) =>
+    (fa: any /* F<A> */) => any /* G<F<B>> */
+}
+
+// ---------- Promise as Applicative ----------
+export const PromiseApp: SimpleApplicativeK1<'Promise'> = {
+  of:  <A>(a: A) => Promise.resolve(a),
+  map: <A, B>(f: (a: A) => B) => (pa: Promise<A>) => pa.then(f),
+  ap:  <A, B>(pf: Promise<(a: A) => B>) => (pa: Promise<A>) =>
+        Promise.all([pf, pa]).then(([f, a]) => f(a)),
+}
+
+// ---------- Distributive law: F<Promise<A>> -> Promise<F<A>> ----------
+export const distributePromiseK1 =
+  <F>(T: TraversableK1<F>): NatK1<['Comp', F, 'Promise'], ['Comp', 'Promise', F]> => ({
+    app: <A>(fpa: any) =>
+      T.traverse(PromiseApp)<any, any>((pa: Promise<A>) => pa)(fpa) // sequence
+  })
+
+// Convenience: sequencePromiseK1(F) = distributePromiseK1(F)
+export const sequencePromiseK1 = distributePromiseK1
+
+// ---------- Optional: Task endofunctor (using existing Task type) ----------
+export const TaskEndo: EndofunctorK1<'Task'> = {
+  map: <A, B>(f: (a: A) => B) => (ta: Task<A>): Task<B> => () => ta().then(f)
+}
+export const TaskApp: SimpleApplicativeK1<'Task'> = {
+  of:  <A>(a: A): Task<A> => () => Promise.resolve(a),
+  map: <A, B>(f: (a: A) => B) => (ta: Task<A>): Task<B> => () => ta().then(f),
+  ap:  <A, B>(tf: Task<(a: A) => B>) => (ta: Task<A>): Task<B> =>
+        () => Promise.all([tf(), ta()]).then(([f, a]) => f(a)),
+}
+export const distributeTaskK1 =
+  <F>(T: TraversableK1<F>): NatK1<['Comp', F, 'Task'], ['Comp', 'Task', F]> => ({
+    app: <A>(fta: any) =>
+      T.traverse(TaskApp)<any, any>((ta: Task<A>) => ta)(fta)
+  })
+
+// ---------- Lax 2-functor: post-compose with Promise (needs Traversable on left functor in μ) ----------
+export const makePostcomposePromise2 = (
+  getTrav: <F>(F: EndofunctorK1<F>) => TraversableK1<F> | null
+): LaxTwoFunctorK1 => {
+  const H: EndofunctorK1<'Promise'> = { map: PromiseApp.map as any }
+  return {
+    on1: <F>(F: EndofunctorK1<F>) => composeEndoK1(H, F), // Promise ∘ F
+    on2: <F, G>(α: NatK1<F, G>) => ({
+      app: <A>(pfa: Promise<any>) => pfa.then((fa: any) => α.app<A>(fa)),
+    }),
+    eta: () => ({ app: <A>(a: A) => Promise.resolve(a) }),
+    mu: <F, G>() => ({
+      app: <A>(p_fpg: Promise<any>) =>
+        p_fpg.then((fpg: any) => {
+          const T = getTrav({} as any) // simplified for now
+          if (!T) throw new Error('muFor(Promise): missing Traversable for left functor')
+          return sequencePromiseK1(T).app<any>(fpg)
+        })
+    }),
+  }
+}
+
+// ---------- Example Traversable: Array ----------
+export const TraversableArrayK1: TraversableK1<'Array'> = {
+  traverse: <G>(G: SimpleApplicativeK1<G>) => <A, B>(f: (a: A) => any) => (as: ReadonlyArray<A>) =>
+    as.reduce(
+      (acc: any, a: A) =>
+        G.ap(G.map((xs: ReadonlyArray<B>) => (b: B) => [...xs, b])(acc))(f(a)),
+      G.of<ReadonlyArray<B>>([])
+    )
+}
+
+// ---------- Additional Endofunctors for Free Algebra ----------
+export const PairEndo = <C>(): EndofunctorK1<['Pair', C]> => ({
+  map: <A, B>(f: (a: A) => B) => (p: readonly [C, A]): readonly [C, B] => [p[0], f(p[1])]
+})
+
+export const ConstEndo = <C>(): EndofunctorK1<['Const', C]> => ({
+  map: <A, B>(_f: (a: A) => B) => (c: C): C => c
+})
+
+// Additional strength helpers for Pair and Const
+export const strengthEnvFromPair = <E>() => <C>(): StrengthEnv<['Pair', C], E> => ({
+  st: <A>(p: readonly [C, Env<E, A>]) => [p[1][0], [p[0], p[1][1]] as const] as const
+})
+
+export const strengthEnvFromConst = <E, C>(defaultE: E): StrengthEnv<['Const', C], E> => ({
+  st: <A>(_c: C) => [defaultE, _c] as const
+})
+
+// Composition strength helper
+export const strengthEnvCompose = <E>() => 
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>, sF: StrengthEnv<F, E>, sG: StrengthEnv<G, E>): StrengthEnv<['Comp', F, G], E> => ({
+    st: <A>(fg_ea: any) => {
+      // F<G<[E,A]>> -> [E, F<G<A>>]
+      // First use G's strength to get F<[E, G<A>]>
+      const f_ega = F.map((g_ea: any) => sG.st<A>(g_ea))(fg_ea)
+      // Then use F's strength to get [E, F<G<A>>]
+      return sF.st<any>(f_ega)
+    }
+  })
+
 // ==================== Comonad K1 ====================
 export interface ComonadK1<F> extends EndofunctorK1<F> {
   readonly extract: <A>(fa: any /* F<A> */) => A
@@ -10095,109 +10250,117 @@ export const WRTE = <W>(M: Monoid<W>) => {
   }
 }
 
-// ----- Do-notation for WRTE (WriterReaderTaskEither) -----
-// Simplified version focusing on core functionality
+// ---------- Free endofunctor term ----------
+export type EndoTerm<Sym extends string> =
+  | { tag: 'Id' }
+  | { tag: 'Base'; name: Sym }
+  | { tag: 'Sum';  left: EndoTerm<Sym>; right: EndoTerm<Sym> }
+  | { tag: 'Prod'; left: EndoTerm<Sym>; right: EndoTerm<Sym> }
+  | { tag: 'Comp'; left: EndoTerm<Sym>; right: EndoTerm<Sym> }
+  | { tag: 'Pair'; C: unknown }   // Pair<C,_>
+  | { tag: 'Const'; C: unknown }  // Const<C,_>
 
-export type DoWRTEBuilder<W, R, T, E> = {
-  /** bind: run a WRTE and add its Ok value at key K */
-  bind: <K extends string, E2, A>(
-    k: K,
-    ma: WriterReaderTaskEither<W, R, E2, A>
-  ) => DoWRTEBuilder<W, R, any, any>
+// constructors
+export const IdT   = { tag: 'Id' } as const
+export const BaseT = <S extends string>(name: S): EndoTerm<S> => ({ tag: 'Base', name })
+export const SumT  = <S extends string>(l: EndoTerm<S>, r: EndoTerm<S>): EndoTerm<S> => ({ tag: 'Sum',  left: l, right: r })
+export const ProdT = <S extends string>(l: EndoTerm<S>, r: EndoTerm<S>): EndoTerm<S> => ({ tag: 'Prod', left: l, right: r })
+export const CompT = <S extends string>(l: EndoTerm<S>, r: EndoTerm<S>): EndoTerm<S> => ({ tag: 'Comp', left: l, right: r })
+export const PairT = <S extends string>(C: unknown): EndoTerm<S> => ({ tag: 'Pair', C })
+export const ConstT= <S extends string>(C: unknown): EndoTerm<S> => ({ tag: 'Const', C })
 
-  /** apS: alias for bind (reads nicer applicatively) */
-  apS: <K extends string, E2, A>(
-    k: K,
-    ma: WriterReaderTaskEither<W, R, E2, A>
-  ) => DoWRTEBuilder<W, R, any, any>
+// dictionaries to interpret bases
+export type EndoDict<Sym extends string> = Record<Sym, EndofunctorK1<any>>
+export type StrengthDict<Sym extends string, E> = Record<Sym, StrengthEnv<any, E>>
+export type NatDict<SymFrom extends string, SymTo extends string> =
+  (name: SymFrom) => { to: SymTo; nat: NatK1<any, any> }
 
-  /** let: add a pure computed field (no effects) */
-  let: <K extends string, A>(
-    k: K,
-    f: (t: T) => A
-  ) => DoWRTEBuilder<W, R, any, any>
+// evaluate term to EndofunctorK1
+export const evalEndo =
+  <S extends string>(d: EndoDict<S>) =>
+  (t: EndoTerm<S>): EndofunctorK1<any> => {
+    switch (t.tag) {
+      case 'Id':    return IdK1
+      case 'Base':  return d[t.name]
+      case 'Sum':   return SumEndo(evalEndo(d)(t.left), evalEndo(d)(t.right))
+      case 'Prod':  return ProdEndo(evalEndo(d)(t.left), evalEndo(d)(t.right))
+      case 'Comp':  return composeEndoK1(evalEndo(d)(t.left), evalEndo(d)(t.right))
+      case 'Pair':  return PairEndo<any>()
+      case 'Const': return ConstEndo<any>()
+    }
+  }
 
-  /** run effect; keep current record T */
-  apFirst:  <E2, A>(ma: WriterReaderTaskEither<W, R, E2, A>) => DoWRTEBuilder<W, R, T, E | E2>
+// derive StrengthEnv for term (needs base strengths and rules)
+export const deriveStrengthEnv =
+  <S extends string, E>(sd: StrengthDict<S, E>) =>
+  (t: EndoTerm<S>): StrengthEnv<any, E> => {
+    switch (t.tag) {
+      case 'Id':    return { st: <A>(ea: Env<E, A>) => [ea[0], ea[1]] as const }
+      case 'Base':  return sd[t.name]
+      case 'Sum':   return strengthEnvFromSum<E>()(deriveStrengthEnv(sd)(t.left), deriveStrengthEnv(sd)(t.right))
+      case 'Prod':  return strengthEnvFromProd<E>()(deriveStrengthEnv(sd)(t.left), deriveStrengthEnv(sd)(t.right))
+      case 'Comp':  return strengthEnvCompose<E>()(
+                        evalEndo(({} as any) as EndoDict<S>)(t.left) as any,
+                        evalEndo(({} as any) as EndoDict<S>)(t.right) as any,
+                        deriveStrengthEnv(sd)(t.left),
+                        deriveStrengthEnv(sd)(t.right)
+                      )
+      case 'Pair':  return strengthEnvFromPair<E>()<any>()
+      case 'Const': return strengthEnvFromConst<E, any>(undefined as unknown as E)
+    }
+  }
 
-  /** run effect; replace record with its Ok value */
-  apSecond: <E2, A>(ma: WriterReaderTaskEither<W, R, E2, A>) => DoWRTEBuilder<W, R, A, E | E2>
-
-  /** run effect derived from T; keep T (great for logs) */
-  tap:      <E2>(f: (t: T) => WriterReaderTaskEither<W, R, E2, unknown>) => DoWRTEBuilder<W, R, T, E | E2>
-
-  /** tell: append to the writer log, keep the current record */
-  tell: (w: W) => DoWRTEBuilder<W, R, T, E>
-
-  /** map: finish by mapping the accumulated record into B */
-  map: <B>(f: (t: T) => B) => WriterReaderTaskEither<W, R, E, B>
-
-  /** done: finish and return the accumulated record */
-  done: WriterReaderTaskEither<W, R, E, T>
-}
-
-/**
- * Make a Do-builder bound to a specific WRTE instance (i.e., to its monoid + combinators).
- * Usage:
- *   const W = WRTE<string>(ArrayMonoid<string>())
- *   const Do = DoWRTE(W)<Env>()
- */
-export const DoWRTE = <W>(Wmod: ReturnType<typeof WRTE<W>>) => <R>() => {
-  const make = <T, E>(
-    m: WriterReaderTaskEither<W, R, E, T>
-  ): DoWRTEBuilder<W, R, T, E> => ({
-    bind: (k, ma) =>
-      make(
-        Wmod.chain((t: T) =>
-          Wmod.map((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
-        )(m) as any
-      ),
-
-    apS: (k, ma) =>
-      make(
-        Wmod.chain((t: T) =>
-          Wmod.map((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
-        )(m) as any
-      ),
-
-    let: (k, f) =>
-      make(Wmod.map((t: T) => ({ ...(t as any), [k]: f(t) } as const))(m)),
-
-    apFirst: (ma) =>
-      make(
-        Wmod.chain((t) =>
-          Wmod.map(() => t)(ma)
-        )(m) as any
-      ) as any,
-
-    apSecond: (ma) =>
-      make(
-        Wmod.chain(() => ma)(m)
-      ) as any, // builder's T becomes the Ok value type of `ma`
-
-    tap: (f) =>
-      make(
-        Wmod.chain((t) =>
-          Wmod.map(() => t)(f(t as any) as any)
-        )(m) as any
-      ) as any,
-
-    tell: (w) =>
-      make(
-        Wmod.chain((t: T) =>
-          // tell returns WRTE<W,R,never,void>; map(() => t) keeps the record
-          Wmod.map(() => t)(Wmod.tell(w))
-        )(m) as any
-      ) as any,
-
-    map: (f) => Wmod.map(f)(m) as any,
-
-    done: m,
-  })
-
-  // start with {} (explicit cast to fix the R phantom)
-  return make(Wmod.of({} as const) as WriterReaderTaskEither<W, R, never, {}>)
-}
+// hoist bases along a mapping of natural transformations, preserving shape
+export const hoistEndo =
+  <SFrom extends string, STo extends string>(dFrom: EndoDict<SFrom>, dTo: EndoDict<STo>) =>
+  (mapBase: NatDict<SFrom, STo>) =>
+  (t: EndoTerm<SFrom>): { endo: EndofunctorK1<any>; nat: NatK1<any, any>; term: EndoTerm<STo> } => {
+    type Out = { endo: EndofunctorK1<any>; nat: NatK1<any, any>; term: EndoTerm<STo> }
+    switch (t.tag) {
+      case 'Id': {
+        return { endo: IdK1, nat: idNatK1(), term: IdT as EndoTerm<STo> } as Out
+      }
+      case 'Base': {
+        const { to, nat } = mapBase(t.name)
+        return { endo: dTo[to], nat, term: BaseT(to) } as Out
+      }
+      case 'Sum': {
+        const L: Out = hoistEndo(dFrom, dTo)(mapBase)(t.left)
+        const R: Out = hoistEndo(dFrom, dTo)(mapBase)(t.right)
+        return {
+          endo: SumEndo(L.endo, R.endo),
+          nat:  sumNat(L.nat, R.nat),
+          term: SumT(L.term, R.term),
+        } as Out
+      }
+      case 'Prod': {
+        const L: Out = hoistEndo(dFrom, dTo)(mapBase)(t.left)
+        const R: Out = hoistEndo(dFrom, dTo)(mapBase)(t.right)
+        return {
+          endo: ProdEndo(L.endo, R.endo),
+          nat:  prodNat(L.nat, R.nat),
+          term: ProdT(L.term, R.term),
+        } as Out
+      }
+      case 'Comp': {
+        const L: Out = hoistEndo(dFrom, dTo)(mapBase)(t.left)
+        const R: Out = hoistEndo(dFrom, dTo)(mapBase)(t.right)
+        return {
+          endo: composeEndoK1(L.endo, R.endo),
+          nat:  hcompNatK1_component(L.endo)(L.nat, R.nat),
+          term: CompT(L.term, R.term),
+        } as Out
+      }
+      case 'Pair': {
+        const endo = PairEndo<any>()
+        return { endo, nat: idNatK1(), term: PairT<STo>(t.C) } as Out
+      }
+      case 'Const': {
+        const endo = ConstEndo<any>()
+        return { endo, nat: idNatK1(), term: ConstT<STo>(t.C) } as Out
+      }
+    }
+  }
 
 // =======================
 // Development Utilities (Dev-Only)
