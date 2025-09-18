@@ -827,6 +827,31 @@ export const duplicateK1 =
   <F>(W: ComonadK1<F>) =>
   <A>(wa: any /* F<A> */) => W.extend<any, any>((x) => x)(wa)
 
+// ===============================================================
+// Mixed distributive laws: T∘G ⇒ G∘T (monad × comonad)
+//   - Enables lifting monads to G-coalgebras and comonads to T-algebras
+//   - Foundation for entwining structures and corings
+// ===============================================================
+
+// Mixed distributive law T∘G ⇒ G∘T
+export type MixedDistK1<T extends HK.Id1, G extends HK.Id1> = {
+  dist: <A>(tga: HK.Kind1<T, HK.Kind1<G, A>>) => HK.Kind1<G, HK.Kind1<T, A>>
+}
+
+// Lift T to G-coalgebras: given γ : A -> G A, produce γ^T : T A -> G (T A)
+export const liftMonadToGCoalgK1 =
+  <T extends HK.Id1, G extends HK.Id1>(M: MonadK1<T>, C: ComonadK1<G>, D: MixedDistK1<T, G>) =>
+  <A>(gamma: (a: A) => HK.Kind1<G, A>) =>
+  (ta: HK.Kind1<T, A>): HK.Kind1<G, HK.Kind1<T, A>> =>
+    D.dist(M.map(gamma)(ta))
+
+// Lift G to T-algebras: given α : T A -> A, produce α_G : T (G A) -> G A
+export const liftComonadToTAlgK1 =
+  <T extends HK.Id1, G extends HK.Id1>(M: MonadK1<T>, C: ComonadK1<G>, D: MixedDistK1<T, G>) =>
+  <A>(alpha: (ta: HK.Kind1<T, A>) => A) =>
+  (tga: HK.Kind1<T, HK.Kind1<G, A>>): HK.Kind1<G, A> =>
+    C.map(alpha)(D.dist(tga))
+
 // =============== Coalgebras for W ===============
 // A coalgebra is a coaction α : A -> W<A> satisfying:
 //  (CoCounit)   extract(α(a)) = a
@@ -1427,6 +1452,32 @@ export const collectStore =
   <A>(n: number) =>
   (w: Store<number, A>): ReadonlyArray<A> =>
     Array.from({ length: n }, (_, i) => seek<number>(i)(w).peek(i))
+
+// ===============================================================
+// Mixed distributive law instances
+// ===============================================================
+
+// Result<E,_> × Store<S,_> given a default s0 : S
+export const MixedDist_Result_Store =
+  <S, E>(s0: S) => ({
+    dist:
+      <A>(tga: Result<E, Store<S, A>>): Store<S, Result<E, A>> =>
+        isOk(tga)
+          ? { pos: tga.value.pos,
+              peek: (s: S) => Ok(tga.value.peek(s)) }
+          : { pos: s0,
+              peek: (_s: S) => Err((tga as Err<E>).error) }
+  })
+
+// Task × Store<S,_> (lawful under standard Promise/Task laws)
+export const MixedDist_Task_Store =
+  <S>() => ({
+    dist:
+      <A>(tga: Task<Store<S, A>>): Store<S, Task<A>> => ({
+        pos: undefined as any, // keep pos after the Task resolves
+        peek: (s: S) => () => tga().then(w => w.peek(s)),
+      })
+  })
 
 // =====================================================================
 // Finite enumeration for Store<S,_> layers when S and A are finite
@@ -12067,7 +12118,7 @@ export const glueRecordCover =
     cover: RecordCover<I, K>,
     secs: Sections<I, K, A>,
     eq: Eq<A> = eqStrict<A>()
-  ) => glue(mkRecordGlueKit(cover, eq), secs)
+  ) => glue(mkRecordGlueKit(cover, eq), secs as any)
 
 export const resRecord =
   <I extends PropertyKey, K extends PropertyKey, A>(cover: RecordCover<I, K>) =>
