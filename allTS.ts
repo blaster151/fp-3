@@ -574,6 +574,81 @@ export const strengthEnvReader = <E, R>(): StrengthEnv<'Reader', E> => ({
  * Oplax is dual: arrows reversed for η^op, μ^op and laws dualized.
  */
 
+// ---------------------------------------------------------------------
+// Sum (coproduct) of endofunctors: F ⊕ G
+// Value shape carries a tag so we know which branch at runtime.
+// ---------------------------------------------------------------------
+export type SumVal<F, G, A> =
+  | { readonly _sum: 'L'; readonly left:  any /* F<A> */ }
+  | { readonly _sum: 'R'; readonly right: any /* G<A> */ }
+
+export const inL =
+  <F, G, A>(fa: any /* F<A> */): SumVal<F, G, A> =>
+    ({ _sum: 'L', left: fa })
+
+export const inR =
+  <F, G, A>(ga: any /* G<A> */): SumVal<F, G, A> =>
+    ({ _sum: 'R', right: ga })
+
+export const SumEndo =
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>): EndofunctorK1<['Sum', F, G]> => ({
+    map: <A, B>(f: (a: A) => B) => (v: SumVal<F, G, A>): SumVal<F, G, B> =>
+      v._sum === 'L'
+        ? { _sum: 'L', left:  F.map(f)(v.left) }
+        : { _sum: 'R', right: G.map(f)(v.right) }
+  })
+
+// Strength for Sum, derived from strengths of each side.
+// st_(F⊕G) : (F⊕G)<[E,A]> -> [E, (F⊕G)<A>]
+export const strengthEnvFromSum =
+  <E>() =>
+  <F, G>(sF: StrengthEnv<F, E>, sG: StrengthEnv<G, E>): StrengthEnv<['Sum', F, G], E> => ({
+    st: <A>(v: SumVal<F, G, Env<E, A>>) =>
+      v._sum === 'L'
+        ? (() => { const [e, fa] = sF.st<A>(v.left);  return [e, inL<F, G, A>(fa)] as const })()
+        : (() => { const [e, ga] = sG.st<A>(v.right); return [e, inR<F, G, A>(ga)] as const })()
+  })
+
+// (optional) case-analysis helper
+export const matchSum =
+  <F, G, A, B>(onL: (fa: any /* F<A> */) => B, onR: (ga: any /* G<A> */) => B) =>
+  (v: SumVal<F, G, A>): B =>
+    v._sum === 'L' ? onL(v.left) : onR(v.right)
+
+// ---------------------------------------------------------------------
+// Product of endofunctors: F ⊗ G   (pair the payloads componentwise)
+// ---------------------------------------------------------------------
+export type ProdVal<F, G, A> = {
+  readonly left:  any /* F<A> */
+  readonly right: any /* G<A> */
+}
+
+export const prod =
+  <F, G, A>(fa: any /* F<A> */, ga: any /* G<A> */): ProdVal<F, G, A> =>
+    ({ left: fa, right: ga })
+
+export const ProdEndo =
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>): EndofunctorK1<['Prod', F, G]> => ({
+    map: <A, B>(f: (a: A) => B) => (p: ProdVal<F, G, A>): ProdVal<F, G, B> => ({
+      left:  F.map(f)(p.left),
+      right: G.map(f)(p.right),
+    })
+  })
+
+// Strength for Product, derived componentwise.
+// st_(F⊗G) : (F⊗G)<[E,A]> -> [E, (F⊗G)<A>]
+// NOTE: both component strengths are expected to thread the SAME E (by law).
+// We take the left E; if they differ, consider asserting in dev builds.
+export const strengthEnvFromProd =
+  <E>() =>
+  <F, G>(sF: StrengthEnv<F, E>, sG: StrengthEnv<G, E>): StrengthEnv<['Prod', F, G], E> => ({
+    st: <A>(p: ProdVal<F, G, Env<E, A>>) => {
+      const [e1, fa] = sF.st<A>(p.left)
+      const [_,  ga] = sG.st<A>(p.right)
+      return [e1, prod<F, G, A>(fa, ga)] as const
+    }
+  })
+
 // ==================== Comonad K1 ====================
 export interface ComonadK1<F> extends EndofunctorK1<F> {
   readonly extract: <A>(fa: any /* F<A> */) => A
@@ -10103,7 +10178,7 @@ export const DoWRTE = <W>(Wmod: ReturnType<typeof WRTE<W>>) => <R>() => {
     tap: (f) =>
       make(
         Wmod.chain((t) =>
-          Wmod.map(() => t)(f(t) as any)
+          Wmod.map(() => t)(f(t as any) as any)
         )(m) as any
       ) as any,
 

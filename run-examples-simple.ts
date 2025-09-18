@@ -35,6 +35,9 @@ import {
   apFirstRTE, apSecondRTE, zipWithRTE, zipRTE,
   // Endofunctor helpers
   EndofunctorK1, ResultK1, ValidationK1, ReaderK1, ReaderTaskK1,
+  // Sum and Product functors
+  SumVal, SumEndo, inL, inR, strengthEnvFromSum, matchSum,
+  ProdVal, ProdEndo, prod, strengthEnvFromProd,
   // Monoidal Category Structure
   Iso, Hom, CatFn, MonoidalFn, MonoidalKleisliRTE,
   // Development Utilities
