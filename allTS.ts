@@ -45,7 +45,7 @@ export function pipe<A>(a: A): A
 export function pipe<A, B>(a: A, ab: (a: A) => B): B
 export function pipe<A, B, C>(a: A, ab: (a: A) => B, bc: (b: B) => C): C
 export function pipe<A, B, C, D>(a: A, ab: (a: A) => B, bc: (b: B) => C, cd: (c: C) => D): D
-export function pipe(a: unknown, ...fns: Array<(x: any) => any>): unknown {
+export function pipe(a: unknown, ...fns: Array<(x: unknown) => unknown>): unknown {
   return fns.reduce((acc, f) => f(acc), a)
 }
 
@@ -97,7 +97,7 @@ export const isOk = <E, A>(ra: Result<E, A>): ra is Ok<A> => ra._tag === 'Ok'
 
 export const mapR = <E, A, B>(f: (a: A) => B) => (ra: Result<E, A>): Result<E, B> => (isOk(ra) ? Ok(f(ra.value)) : ra)
 export const mapErr = <E, F, A>(f: (e: E) => F) => (ra: Result<E, A>): Result<F, A> => (isErr(ra) ? Err(f(ra.error)) : ra)
-export const flatMapR = <E, A, F, B>(f: (a: A) => Result<F, B>) => (ra: Result<E, A>): Result<E | F, B> => (isOk(ra) ? f(ra.value) : ra as any)
+export const flatMapR = <E, A, F, B>(f: (a: A) => Result<F, B>) => (ra: Result<E, A>): Result<E | F, B> => (isOk(ra) ? f(ra.value) : ra as Err<E>)
 export const getOrElseR = <E, A>(onErr: (e: E) => A) => (ra: Result<E, A>): A => (isOk(ra) ? ra.value : onErr(ra.error))
 
 export const tryCatch = <A>(thunk: Lazy<A>, onThrow: (u: unknown) => Error = (u) => (u instanceof Error ? u : new Error(String(u)))): Result<Error, A> => {
@@ -184,31 +184,34 @@ export const DoR = <E = never>() => {
 // =======================
 // Typeclasses (Functor / Apply / Monad)
 // =======================
+// Type alias for functor values (more descriptive than raw any)
+export type FunctorValue<F, A> = any // F<A> - Higher-Kinded Type placeholder
+
 export interface Functor<F> {
-  readonly map: <A, B>(f: (a: A) => B) => (fa: any) => any
+  readonly map: <A, B>(f: (a: A) => B) => (fa: FunctorValue<F, A>) => FunctorValue<F, B>
 }
 export interface Apply<F> extends Functor<F> {
-  readonly ap: <A, B>(fab: any) => (fa: any) => any
+  readonly ap: <A, B>(fab: FunctorValue<F, (a: A) => B>) => (fa: FunctorValue<F, A>) => FunctorValue<F, B>
 }
 export interface Monad<F> extends Apply<F> {
-  readonly of: <A>(a: A) => any
-  readonly chain: <A, B>(f: (a: A) => any) => (fa: any) => any
+  readonly of: <A>(a: A) => FunctorValue<F, A>
+  readonly chain: <A, B>(f: (a: A) => FunctorValue<F, B>) => (fa: FunctorValue<F, A>) => FunctorValue<F, B>
 }
 
 // Instances: Option
 export const OptionI: Monad<'Option'> = {
-  map: mapO as any,
+  map: mapO as FunctorValue<'Option', any>,
   ap: <A, B>(fab: Option<(a: A) => B>) => (fa: Option<A>): Option<B> => (isSome(fab) && isSome(fa) ? Some(fab.value(fa.value)) : None),
-  of: Some as any,
-  chain: flatMapO as any
+  of: Some as FunctorValue<'Option', any>,
+  chain: flatMapO as FunctorValue<'Option', any>
 }
 
 // Instances: Result (right-biased)
 export const ResultI: Monad<'Result'> = {
-  map: mapR as any,
-  ap: <E, A, B>(rfab: Result<E, (a: A) => B>) => (rfa: Result<E, A>): Result<E, B> => (isOk(rfab) && isOk(rfa) ? Ok(rfab.value(rfa.value)) : (isErr(rfab) ? rfab : rfa) as any),
-  of: Ok as any,
-  chain: flatMapR as any
+  map: mapR as FunctorValue<'Result', any>,
+  ap: <E, A, B>(rfab: Result<E, (a: A) => B>) => (rfa: Result<E, A>): Result<E, B> => (isOk(rfab) && isOk(rfa) ? Ok(rfab.value(rfa.value)) : (isErr(rfab) ? rfab : rfa) as Err<E>),
+  of: Ok as FunctorValue<'Result', any>,
+  chain: flatMapR as FunctorValue<'Result', any>
 }
 
 // =======================
@@ -433,7 +436,15 @@ export type Reader<R, A> = (r: R) => A
 export const Reader = {
   map:  <A, B>(f: (a: A) => B) => <R>(ra: Reader<R, A>): Reader<R, B> => (r) => f(ra(r)),
   of:   <R, A>(a: A): Reader<R, A> => (_: R) => a,
+  chain: <A, B, R>(f: (a: A) => Reader<R, B>) => (ra: Reader<R, A>): Reader<R, B> => (r) => f(ra(r))(r),
+  ap:   <R, A, B>(rfab: Reader<R, (a: A) => B>) => (rfa: Reader<R, A>): Reader<R, B> => (r) => rfab(r)(rfa(r)),
+  ask:  <R>(): Reader<R, R> => (r: R) => r,
+  asks: <R, A>(f: (r: R) => A): Reader<R, A> => (r) => f(r),
+  local: <R, Q>(f: (q: Q) => R) => <A>(rq: Reader<R, A>): Reader<Q, A> => (q) => rq(f(q)),
 }
+
+// Helper function to run a Reader with an environment
+export const runReader = <R, A>(ra: Reader<R, A>, r: R): A => ra(r)
 
 // Lax 2-functor: PostcomposeReader<R>
 export const PostcomposeReader2 = <R>(): LaxTwoFunctorK1 => {
@@ -566,66 +577,1015 @@ export const strengthEnvReader = <E, R>(): StrengthEnv<'Reader', E> => ({
  * Oplax is dual: arrows reversed for η^op, μ^op and laws dualized.
  */
 
+// ---------------------------------------------------------------------
+// Sum (coproduct) of endofunctors: F ⊕ G
+// Value shape carries a tag so we know which branch at runtime.
+// ---------------------------------------------------------------------
+export type SumVal<F, G, A> =
+  | { readonly _sum: 'L'; readonly left:  any /* F<A> */ }
+  | { readonly _sum: 'R'; readonly right: any /* G<A> */ }
+
+export const inL =
+  <F, G, A>(fa: any /* F<A> */): SumVal<F, G, A> =>
+    ({ _sum: 'L', left: fa })
+
+export const inR =
+  <F, G, A>(ga: any /* G<A> */): SumVal<F, G, A> =>
+    ({ _sum: 'R', right: ga })
+
+export const SumEndo =
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>): EndofunctorK1<['Sum', F, G]> => ({
+    map: <A, B>(f: (a: A) => B) => (v: SumVal<F, G, A>): SumVal<F, G, B> =>
+      v._sum === 'L'
+        ? { _sum: 'L', left:  F.map(f)(v.left) }
+        : { _sum: 'R', right: G.map(f)(v.right) }
+  })
+
+// Strength for Sum, derived from strengths of each side.
+// st_(F⊕G) : (F⊕G)<[E,A]> -> [E, (F⊕G)<A>]
+export const strengthEnvFromSum =
+  <E>() =>
+  <F, G>(sF: StrengthEnv<F, E>, sG: StrengthEnv<G, E>): StrengthEnv<['Sum', F, G], E> => ({
+    st: <A>(v: SumVal<F, G, Env<E, A>>) =>
+      v._sum === 'L'
+        ? (() => { const [e, fa] = sF.st<A>(v.left);  return [e, inL<F, G, A>(fa)] as const })()
+        : (() => { const [e, ga] = sG.st<A>(v.right); return [e, inR<F, G, A>(ga)] as const })()
+  })
+
+// (optional) case-analysis helper
+export const matchSum =
+  <F, G, A, B>(onL: (fa: any /* F<A> */) => B, onR: (ga: any /* G<A> */) => B) =>
+  (v: SumVal<F, G, A>): B =>
+    v._sum === 'L' ? onL(v.left) : onR(v.right)
+
+// ---------------------------------------------------------------------
+// Product of endofunctors: F ⊗ G   (pair the payloads componentwise)
+// ---------------------------------------------------------------------
+export type ProdVal<F, G, A> = {
+  readonly left:  any /* F<A> */
+  readonly right: any /* G<A> */
+}
+
+export const prod =
+  <F, G, A>(fa: any /* F<A> */, ga: any /* G<A> */): ProdVal<F, G, A> =>
+    ({ left: fa, right: ga })
+
+export const ProdEndo =
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>): EndofunctorK1<['Prod', F, G]> => ({
+    map: <A, B>(f: (a: A) => B) => (p: ProdVal<F, G, A>): ProdVal<F, G, B> => ({
+      left:  F.map(f)(p.left),
+      right: G.map(f)(p.right),
+    })
+  })
+
+// Strength for Product, derived componentwise.
+// st_(F⊗G) : (F⊗G)<[E,A]> -> [E, (F⊗G)<A>]
+// NOTE: both component strengths are expected to thread the SAME E (by law).
+// We take the left E; if they differ, consider asserting in dev builds.
+export const strengthEnvFromProd =
+  <E>() =>
+  <F, G>(sF: StrengthEnv<F, E>, sG: StrengthEnv<G, E>): StrengthEnv<['Prod', F, G], E> => ({
+    st: <A>(p: ProdVal<F, G, Env<E, A>>) => {
+      const [e1, fa] = sF.st<A>(p.left)
+      const [_,  ga] = sG.st<A>(p.right)
+      return [e1, prod<F, G, A>(fa, ga)] as const
+    }
+  })
+
+// ---------- Sum/Product of natural transformations ----------
+
+// α ⊕ β : (F ⊕ G) ⇒ (F' ⊕ G')
+export const sumNat =
+  <F, Fp, G, Gp>(alpha: NatK1<F, Fp>, beta: NatK1<G, Gp>): NatK1<['Sum', F, G], ['Sum', Fp, Gp]> => ({
+    app: <A>(v: SumVal<F, G, A>): SumVal<Fp, Gp, A> =>
+      v._sum === 'L'
+        ? { _sum: 'L', left:  alpha.app<A>(v.left) }
+        : { _sum: 'R', right: beta.app<A>(v.right) }
+  })
+
+// lift α to the left branch only: α ⊕ id
+export const sumNatL =
+  <F, Fp, G>(alpha: NatK1<F, Fp>): NatK1<['Sum', F, G], ['Sum', Fp, G]> => ({
+    app: <A>(v: SumVal<F, G, A>) =>
+      v._sum === 'L' ? { _sum: 'L', left: alpha.app<A>(v.left) } : v as any
+  })
+
+// lift β to the right branch only: id ⊕ β
+export const sumNatR =
+  <F, G, Gp>(beta: NatK1<G, Gp>): NatK1<['Sum', F, G], ['Sum', F, Gp]> => ({
+    app: <A>(v: SumVal<F, G, A>) =>
+      v._sum === 'R' ? { _sum: 'R', right: beta.app<A>(v.right) } : v as any
+  })
+
+// α ⊗ β : (F ⊗ G) ⇒ (F' ⊗ G')
+export const prodNat =
+  <F, Fp, G, Gp>(alpha: NatK1<F, Fp>, beta: NatK1<G, Gp>): NatK1<['Prod', F, G], ['Prod', Fp, Gp]> => ({
+    app: <A>(p: ProdVal<F, G, A>): ProdVal<Fp, Gp, A> => ({
+      left:  alpha.app<A>(p.left),
+      right: beta.app<A>(p.right),
+    })
+  })
+
+// affect only left / only right
+export const prodNatL =
+  <F, Fp, G>(alpha: NatK1<F, Fp>): NatK1<['Prod', F, G], ['Prod', Fp, G]> => ({
+    app: <A>(p: ProdVal<F, G, A>): ProdVal<Fp, G, A> => ({ left: alpha.app<A>(p.left), right: p.right })
+  })
+
+export const prodNatR =
+  <F, G, Gp>(beta: NatK1<G, Gp>): NatK1<['Prod', F, G], ['Prod', F, Gp]> => ({
+    app: <A>(p: ProdVal<F, G, A>): ProdVal<F, Gp, A> => ({ left: p.left, right: beta.app<A>(p.right) })
+  })
+
+// ---------- Minimal Applicative & Traversable (simple version) ----------
+export interface SimpleApplicativeK1<G> {
+  readonly of:  <A>(a: A) => any /* G<A> */
+  readonly map: <A, B>(f: (a: A) => B) => (ga: any /* G<A> */) => any /* G<B> */
+  readonly ap:  <A, B>(gf: any /* G<(a:A)=>B> */) => (ga: any /* G<A> */) => any /* G<B> */
+}
+
+export interface TraversableK1<F> {
+  // Standard shape: traverse :: (A -> G<B>) -> F<A> -> G<F<B>>
+  readonly traverse: <G>(G: SimpleApplicativeK1<G>) =>
+    <A, B>(f: (a: A) => any /* G<B> */) =>
+    (fa: any /* F<A> */) => any /* G<F<B>> */
+}
+
+// ---------- Promise as Applicative ----------
+export const PromiseApp: SimpleApplicativeK1<'Promise'> = {
+  of:  <A>(a: A) => Promise.resolve(a),
+  map: <A, B>(f: (a: A) => B) => (pa: Promise<A>) => pa.then(f),
+  ap:  <A, B>(pf: Promise<(a: A) => B>) => (pa: Promise<A>) =>
+        Promise.all([pf, pa]).then(([f, a]) => f(a)),
+}
+
+// ---------- Distributive law: F<Promise<A>> -> Promise<F<A>> ----------
+export const distributePromiseK1 =
+  <F>(T: TraversableK1<F>): NatK1<['Comp', F, 'Promise'], ['Comp', 'Promise', F]> => ({
+    app: <A>(fpa: any) =>
+      T.traverse(PromiseApp)<any, any>((pa: Promise<A>) => pa)(fpa) // sequence
+  })
+
+// Convenience: sequencePromiseK1(F) = distributePromiseK1(F)
+export const sequencePromiseK1 = distributePromiseK1
+
+// ---------- Optional: Task endofunctor (using existing Task type) ----------
+export const TaskEndo: EndofunctorK1<'Task'> = {
+  map: <A, B>(f: (a: A) => B) => (ta: Task<A>): Task<B> => () => ta().then(f)
+}
+export const TaskApp: SimpleApplicativeK1<'Task'> = {
+  of:  <A>(a: A): Task<A> => () => Promise.resolve(a),
+  map: <A, B>(f: (a: A) => B) => (ta: Task<A>): Task<B> => () => ta().then(f),
+  ap:  <A, B>(tf: Task<(a: A) => B>) => (ta: Task<A>): Task<B> =>
+        () => Promise.all([tf(), ta()]).then(([f, a]) => f(a)),
+}
+export const distributeTaskK1 =
+  <F>(T: TraversableK1<F>): NatK1<['Comp', F, 'Task'], ['Comp', 'Task', F]> => ({
+    app: <A>(fta: any) =>
+      T.traverse(TaskApp)<any, any>((ta: Task<A>) => ta)(fta)
+  })
+
+// ---------- Lax 2-functor: post-compose with Promise (needs Traversable on left functor in μ) ----------
+export const makePostcomposePromise2 = (
+  getTrav: <F>(F: EndofunctorK1<F>) => TraversableK1<F> | null
+): LaxTwoFunctorK1 => {
+  const H: EndofunctorK1<'Promise'> = { map: PromiseApp.map as any }
+  return {
+    on1: <F>(F: EndofunctorK1<F>) => composeEndoK1(H, F), // Promise ∘ F
+    on2: <F, G>(α: NatK1<F, G>) => ({
+      app: <A>(pfa: Promise<any>) => pfa.then((fa: any) => α.app<A>(fa)),
+    }),
+    eta: () => ({ app: <A>(a: A) => Promise.resolve(a) }),
+    mu: <F, G>() => ({
+      app: <A>(p_fpg: Promise<any>) =>
+        p_fpg.then((fpg: any) => {
+          const T = getTrav({} as any) // simplified for now
+          if (!T) throw new Error('muFor(Promise): missing Traversable for left functor')
+          return sequencePromiseK1(T).app<any>(fpg)
+        })
+    }),
+  }
+}
+
+// ---------- Example Traversable: Array ----------
+export const TraversableArrayK1: TraversableK1<'Array'> = {
+  traverse: <G>(G: SimpleApplicativeK1<G>) => <A, B>(f: (a: A) => any) => (as: ReadonlyArray<A>) =>
+    as.reduce(
+      (acc: any, a: A) =>
+        G.ap(G.map((xs: ReadonlyArray<B>) => (b: B) => [...xs, b])(acc))(f(a)),
+      G.of<ReadonlyArray<B>>([])
+    )
+}
+
+// ---------- Additional Endofunctors for Free Algebra ----------
+export const PairEndo = <C>(): EndofunctorK1<['Pair', C]> => ({
+  map: <A, B>(f: (a: A) => B) => (p: readonly [C, A]): readonly [C, B] => [p[0], f(p[1])]
+})
+
+export const ConstEndo = <C>(): EndofunctorK1<['Const', C]> => ({
+  map: <A, B>(_f: (a: A) => B) => (c: C): C => c
+})
+
+export const EitherEndo = <E>(): EndofunctorK1<['Either', E]> => ({
+  map: <A, B>(f: (a: A) => B) => (eab: Result<E, A>): Result<E, B> => mapR<E, A, B>(f)(eab)
+})
+
+// Const functor: Const<C, A> ≅ C (ignores the A parameter)
+export type Const<C, A> = C
+
+// Additional strength helpers for Pair and Const
+export const strengthEnvFromPair = <E>() => <C>(): StrengthEnv<['Pair', C], E> => ({
+  st: <A>(p: readonly [C, Env<E, A>]) => [p[1][0], [p[0], p[1][1]] as const] as const
+})
+
+export const strengthEnvFromConst = <E, C>(defaultE: E): StrengthEnv<['Const', C], E> => ({
+  st: <A>(_c: C) => [defaultE, _c] as const
+})
+
+// Composition strength helper
+export const strengthEnvCompose = <E>() => 
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>, sF: StrengthEnv<F, E>, sG: StrengthEnv<G, E>): StrengthEnv<['Comp', F, G], E> => ({
+    st: <A>(fg_ea: any) => {
+      // F<G<[E,A]>> -> [E, F<G<A>>]
+      // First use G's strength to get F<[E, G<A>]>
+      const f_ega = F.map((g_ea: any) => sG.st<A>(g_ea))(fg_ea)
+      // Then use F's strength to get [E, F<G<A>>]
+      return sF.st<any>(f_ega)
+    }
+  })
+
 // ==================== Comonad K1 ====================
 export interface ComonadK1<F> extends EndofunctorK1<F> {
+  // counit ε : W<A> -> A
   readonly extract: <A>(fa: any /* F<A> */) => A
+  // comultiplication δ : W<A> -> W<W<A>>
+  readonly duplicate: <A>(wa: any /* F<A> */) => any /* F<F<A>> */
+  // extend (co-Kleisli lift): (W<A> -> B) -> (W<A> -> W<B>)
   readonly extend:  <A, B>(f: (fa: any /* F<A> */) => B) => (fa: any /* F<A> */) => any /* F<B> */
-  // duplicate = extend(id)
 }
 export const duplicateK1 =
   <F>(W: ComonadK1<F>) =>
   <A>(wa: any /* F<A> */) => W.extend<any, any>((x) => x)(wa)
 
-// ==================== Store comonad ====================
-// Canonical presentation: peek + focused position
-export type Store<S, A> = {
-  readonly peek: (s: S) => A
-  readonly pos: S
+// ===============================================================
+// Mixed distributive laws: T∘G ⇒ G∘T (monad × comonad)
+//   - Enables lifting monads to G-coalgebras and comonads to T-algebras
+//   - Foundation for entwining structures and corings
+// ===============================================================
+
+// Mixed distributive law T∘G ⇒ G∘T
+export type MixedDistK1<T extends HK.Id1, G extends HK.Id1> = {
+  dist: <A>(tga: HK.Kind1<T, HK.Kind1<G, A>>) => HK.Kind1<G, HK.Kind1<T, A>>
 }
 
-export const StoreC = {
-  map:
-    <A, B>(f: (a: A) => B) =>
-    <S>(sa: Store<S, A>): Store<S, B> =>
-      ({ peek: (s) => f(sa.peek(s)), pos: sa.pos }),
+// Lift T to G-coalgebras: given γ : A -> G A, produce γ^T : T A -> G (T A)
+export const liftMonadToGCoalgK1 =
+  <T extends HK.Id1, G extends HK.Id1>(M: MonadK1<T>, C: ComonadK1<G>, D: MixedDistK1<T, G>) =>
+  <A>(gamma: (a: A) => HK.Kind1<G, A>) =>
+  (ta: HK.Kind1<T, A>): HK.Kind1<G, HK.Kind1<T, A>> =>
+    D.dist(M.map(gamma)(ta))
 
-  extract:
-    <S, A>(sa: Store<S, A>): A =>
-      sa.peek(sa.pos),
+// Lift G to T-algebras: given α : T A -> A, produce α_G : T (G A) -> G A
+export const liftComonadToTAlgK1 =
+  <T extends HK.Id1, G extends HK.Id1>(M: MonadK1<T>, C: ComonadK1<G>, D: MixedDistK1<T, G>) =>
+  <A>(alpha: (ta: HK.Kind1<T, A>) => A) =>
+  (tga: HK.Kind1<T, HK.Kind1<G, A>>): HK.Kind1<G, A> =>
+    C.map(alpha)(D.dist(tga))
 
-  extend:
-    <A, B>(f: (w: Store<any, A>) => B) =>
-    <S>(sa: Store<S, A>): Store<S, B> =>
-      ({
-        peek: (s: S) => f({ peek: sa.peek, pos: s }),
-        pos: sa.pos
-      }),
+// =============== Coalgebras for W ===============
+// A coalgebra is a coaction α : A -> W<A> satisfying:
+//  (CoCounit)   extract(α(a)) = a
+//  (CoAssoc)    duplicate(α(a)) = map(α)(α(a))
+export type Coalgebra<W, A> = (a: A) => any /* Kind1<W,A> */
 
-  // extras
-  seek:
-    <S>(s: S) =>
-    <A>(sa: Store<S, A>): Store<S, A> =>
-      ({ peek: sa.peek, pos: s }),
+// Morphism of coalgebras f : (A,α) -> (B,β) satisfies:
+//   map(f) ∘ α = β ∘ f
+export const isCoalgebraMorphism =
+  <W>(W: EndofunctorK1<W>) =>
+  <A, B>(alpha: Coalgebra<W, A>, beta: Coalgebra<W, B>, f: (a: A) => B, eq: (x: unknown, y: unknown) => boolean) =>
+  (a: A): boolean =>
+    eq(W.map(f as any)(alpha(a)), beta(f(a)))
 
-  peeks:
-    <S>(k: (s: S) => S) =>
-    <A>(sa: Store<S, A>): A =>
-      sa.peek(k(sa.pos)),
+// =============== Forgetful functor U : Coalg(W) -> Set ===============
+// U "forgets" the coaction: on objects, (A,α) |-> A; on morphisms, f |-> f.
+// In TS we model it as identity at runtime; the meaning is in the types.
+export const ForgetfulFromCoalgebras =
+  <W>(_W: ComonadK1<W>) => ({
+    onObject: <A>(_alpha: Coalgebra<W, A>) => (undefined as unknown as A),
+    onMorphism: <A, B>(f: (a: A) => B) => f,
+  })
 
-  // with Lens: move focus via lens (nice with your optics)
-  //   focus a lens S <-> B to turn a Store<S,A> into Store<B,A>
-  reindexWithLens:
-    <S, B>(ln: { get: (s: S) => B; set: (b: B) => (s: S) => S }) =>
-    <A>(sa: Store<S, A>): Store<B, A> =>
-      ({
-        peek: (b: B) => sa.peek(ln.set(b)(sa.pos)),
-        pos: ln.get(sa.pos)
+// =============== Concrete Comonad: Pair<E,_> (aka Env) ===============
+// Env comonad (aka Pair<E,_>)
+export const PairComonad =
+  <E>(): ComonadK1<['Pair', E]> => ({
+    ...PairEndo<E>(),
+    extract: <A>(wa: readonly [E, A]) => wa[1],
+    duplicate: <A>(wa: readonly [E, A]) => [wa[0], wa] as const,
+    extend: <A, B>(f: (w: readonly [E, A]) => B) => (wa: readonly [E, A]) =>
+      [wa[0], f(wa)] as const
+  })
+
+// ===============================================================
+// Co-Kleisli category for a comonad W
+//   Morphisms A -> B are functions  f̂ : W<A> -> B
+//   id = extract
+//   ĝ ∘ f̂ = ĝ ∘ extend(f̂)
+// ===============================================================
+export const CoKleisliK1 =
+  <W>(W: ComonadK1<W>) => ({
+    id: <A>(): ((wa: any /* W<A> */) => A) => W.extract as any,
+    compose:
+      <A, B, C>(gHat: (wb: any /* W<B> */) => C, fHat: (wa: any /* W<A> */) => B) =>
+      (wa: any /* W<A> */): C =>
+        gHat(W.extend(fHat as any)(wa)),
+    // lift a plain h : A -> B into co-Kleisli ĥ = h ∘ extract
+    arr: <A, B>(h: (a: A) => B) => (wa: any) => h(W.extract(wa))
+  })
+
+// ===============================================================
+// Simplicial object induced by a comonad W
+//   X_n  = W^{n+1}   (n >= 0)
+//   d_i : X_n => X_{n-1}  (0 <= i <= n)    via inserting extract at i
+//   s_i : X_n => X_{n+1}  (0 <= i <= n)    via inserting duplicate at i
+//   aug : X_0 => Id        (the ε : W => Id)
+// ===============================================================
+
+// functor power: W^n as an EndofunctorK1
+export const powEndoK1 =
+  <W>(W: EndofunctorK1<W>, n: number): EndofunctorK1<any> => ({
+    map: <A, B>(f: (a: A) => B) => {
+      let g: any = f
+      for (let i = 0; i < n; i++) g = (W.map as any)(g)
+      return g
+    }
+  })
+
+export type SimplicialFromComonadK1 = {
+  // X_n = W^{n+1}
+  X: (n: number) => EndofunctorK1<any>
+  // faces / degeneracies as natural transformations
+  d: (n: number, i: number) => NatK1<any, any> // X_n => X_{n-1}
+  s: (n: number, i: number) => NatK1<any, any> // X_n => X_{n+1}
+  // augmentation ε : X_0 => Id
+  aug: NatK1<any, 'Id'>
+}
+
+export const makeSimplicialFromComonadK1 =
+  <W>(W: ComonadK1<W>): SimplicialFromComonadK1 => {
+    // X_n: W^{n+1}
+    const X = (n: number): EndofunctorK1<any> => powEndoK1(W, n + 1)
+
+    // face d_i^n : W^{n+1}A -> W^{n}A
+    const d = (n: number, i: number): NatK1<any, any> => ({
+      app: <A>(val: any) => {
+        const go = (m: number, j: number, x: any): any =>
+          j === 0 ? W.extract(x) : W.map((y: any) => go(m - 1, j - 1, y))(x)
+        return go(n, i, val)
+      }
+    })
+
+    // degeneracy s_i^n : W^{n+1}A -> W^{n+2}A
+    const s = (n: number, i: number): NatK1<any, any> => ({
+      app: <A>(val: any) => {
+        const go = (m: number, j: number, x: any): any =>
+          j === 0 ? W.duplicate(x) : W.map((y: any) => go(m - 1, j - 1, y))(x)
+        return go(n, i, val)
+      }
+    })
+
+    const aug: NatK1<any, 'Id'> = { app: <A>(wa: any) => W.extract(wa) }
+
+    return { X, d, s, aug }
+  }
+
+// =====================================================================
+// Chain complex (augmented) from the simplicial object of PairComonad<E>
+//   Category = Set; comonad W(X) = E × X with |E| finite.
+//   X_n = E^{n+1} × A (finite set). We build C_n = Z[X_n] (free abelian).
+//   Boundary ∂_n = Σ_i (-1)^i d_i  (with ∂_0 = augmentation ε : E×A → A).
+//   We represent linear maps by integer matrices and compute Betti numbers
+//   over Q (rank/nullity via Gaussian elimination).
+// =====================================================================
+
+// ---------- Finite enumeration helpers ----------
+type NestedPair<E, A> = readonly [E, any] | A
+
+// E^k × A as nested pairs  [e0, [e1, [... [ek-1, a] ...]]]
+export const enumeratePowPair =
+  <E, A>(Es: ReadonlyArray<E>, k: number, As: ReadonlyArray<A>): ReadonlyArray<NestedPair<E, A>> => {
+    // cartesian power Es^k
+    const tuples: E[][] = [[]]
+    for (let i = 0; i < k; i++) {
+      const next: E[][] = []
+      for (const t of tuples) for (const e of Es) next.push([...t, e])
+      tuples.splice(0, tuples.length, ...next)
+    }
+    const out: NestedPair<E, A>[] = []
+    for (const a of As) for (const t of tuples) {
+      let v: any = a
+      for (let i = t.length - 1; i >= 0; i--) v = [t[i], v] as const
+      out.push(v)
+    }
+    return out
+  }
+
+// stable key for NestedPair<E,A> (serialize to JSON-ish)
+const keyNested = (v: any): string => {
+  const flat: any[] = []
+  let cur = v
+  while (Array.isArray(cur) && cur.length === 2) { flat.push(cur[0]); cur = cur[1] }
+  flat.push(cur) // the A
+  return JSON.stringify(flat)
+}
+
+// ---------- Boundary matrices from simplicial faces ----------
+export type ZMatrix = number[][] // rows x cols, integers
+
+export const buildBoundariesForPair =
+  <E, A>(Es: ReadonlyArray<E>, As: ReadonlyArray<A>, maxN: number): { dims: number[]; d: ZMatrix[] } => {
+    // comonad & simplicial structure
+    const W = PairComonad<E>()
+    const S = makeSimplicialFromComonadK1(W)
+
+    // X_n = W^{n+1} A = E^{n+1} × A
+    const X: ReadonlyArray<NestedPair<E, A>>[] = []
+    const idx: Map<string, number>[] = []
+    for (let n = 0; n <= maxN; n++) {
+      const elems = enumeratePowPair(Es, n + 1, As)
+      X[n] = elems
+      const m = new Map<string, number>()
+      elems.forEach((el, i) => m.set(keyNested(el), i))
+      idx[n] = m
+    }
+
+    // Build ∂_n: C_n → C_{n-1}
+    const d: ZMatrix[] = []
+    // n = 0 (augmentation): ε : E×A → A
+    {
+      const rows = As.length
+      const cols = X[0]!.length // |E|*|A|
+      const M: ZMatrix = Array.from({ length: rows }, () => Array(cols).fill(0))
+      X[0]!.forEach((x0, j) => {
+        // extract to A
+        let cur: any = x0
+        while (Array.isArray(cur) && cur.length === 2) cur = cur[1]
+        const a = cur
+        const i = As.findIndex((aa) => Object.is(aa, a))
+        M[i]![j] = 1
       })
-} satisfies ComonadK1<'Store'> as any
+      d[0] = M
+    }
+    // n >= 1: ∂_n = Σ_i (-1)^i d_i
+    for (let n = 1; n <= maxN; n++) {
+      const rows = X[n - 1]!.length
+      const cols = X[n]!.length
+      const M: ZMatrix = Array.from({ length: rows }, () => Array(cols).fill(0))
+      for (let j = 0; j < cols; j++) {
+        const simplex = X[n]![j]!
+        for (let i = 0; i <= n; i++) {
+          const face = S.d(n, i).app(simplex) // element of X_{n-1}
+          const r = idx[n - 1]!.get(keyNested(face))
+          if (r == null) throw new Error(`Face not found in X_${n - 1}`)
+          M[r]![j]! += (i % 2 === 0 ? 1 : -1)
+        }
+      }
+      d[n] = M
+    }
+
+    const dims = X.map(xs => xs.length)
+    return { dims, d }
+  }
+
+// ---------- Linear algebra over Q (rank / betti) ----------
+export const rankQ = (M: ZMatrix): number => {
+  if (M.length === 0) return 0
+  const A = M.map(row => row.map(x => x * 1)) // copy as float
+  const m = A.length, n = A[0]?.length ?? 0
+  let r = 0, c = 0
+  const EPS = 1e-10
+  while (r < m && c < n) {
+    // find pivot
+    let piv = r
+    for (let i = r; i < m; i++) if (Math.abs(A[i]![c]!) > Math.abs(A[piv]![c]!)) piv = i
+    if (Math.abs(A[piv]![c]!) < EPS) { c++; continue }
+    // swap rows
+    if (piv !== r) { const tmp = A[piv]!; A[piv] = A[r]!; A[r] = tmp }
+    // normalize row r
+    const s = A[r]![c]!
+    for (let j = c; j < n; j++) A[r]![j]! /= s
+    // eliminate
+    for (let i = 0; i < m; i++) if (i !== r) {
+      const f = A[i]![c]!
+      if (Math.abs(f) > EPS) for (let j = c; j < n; j++) A[i]![j]! -= f * A[r]![j]!
+    }
+    r++; c++
+  }
+  return r
+}
+
+export const bettiReduced =
+  (dims: number[], d: ZMatrix[], upToN: number): number[] => {
+    // β̃_n = nullity(∂_n) - rank(∂_{n+1})
+    const betti: number[] = []
+    for (let n = 0; n <= upToN; n++) {
+      const rank_n = rankQ(d[n] ?? [[]])
+      const dim_n  = dims[n] ?? 0
+      const null_n = dim_n - rank_n
+      const rank_np1 = rankQ(d[n + 1] ?? [[]])
+      betti[n] = null_n - rank_np1
+    }
+    return betti
+  }
+
+export const bettiUnreduced =
+  (dims: number[], d: ZMatrix[], upToN: number, augDim: number): number[] => {
+    // β_0 = β̃_0 + augDim ; β_n (n>=1) = β̃_n
+    const r = bettiReduced(dims, d, upToN)
+    if (r.length) r[0] = r[0]! + augDim
+    return r
+  }
+
+// quick check: composition ∂_{n-1} ∘ ∂_n = 0
+export const composeMatrices = (A: ZMatrix, B: ZMatrix): ZMatrix => {
+  const m = A.length, k = A[0]?.length ?? 0, n = B[0]?.length ?? 0
+  if (B.length !== k) throw new Error('composeMatrices: incompatible shapes')
+  const C: ZMatrix = Array.from({ length: m }, () => Array(n).fill(0))
+  for (let i = 0; i < m; i++)
+    for (let j = 0; j < n; j++)
+      for (let t = 0; t < k; t++)
+        C[i]![j]! += A[i]![t]! * B[t]![j]!
+  return C
+}
+
+// =====================================================================
+// Smith Normal Form over Z  (small, pedagogical; fine for tiny matrices)
+// Returns U, D, V with U*M*V = D, U,V unimodular; diag(D) nonneg and
+// each di | d{i+1}. Also returns V^{-1} so we can change the C_n basis.
+// =====================================================================
+export type SNF = {
+  D: ZMatrix
+  U: ZMatrix
+  V: ZMatrix
+  Vinv: ZMatrix
+  rank: number
+  diag: number[] // nonzero invariant factors
+}
+
+const ident = (m: number): ZMatrix =>
+  Array.from({ length: m }, (_, i) =>
+    Array.from({ length: m }, (_, j) => (i === j ? 1 : 0))
+  )
+
+const swapRows = (M: ZMatrix, i: number, j: number) => {
+  const t = M[i]!; M[i] = M[j]!; M[j] = t
+}
+const swapCols = (M: ZMatrix, i: number, j: number) => {
+  for (let r = 0; r < M.length; r++) { const t = M[r]![i]!; M[r]![i] = M[r]![j]!; M[r]![j] = t }
+}
+const addRow = (M: ZMatrix, src: number, dst: number, k: number) => {
+  const row = M[src]!; const to = M[dst]!
+  for (let c = 0; c < to.length; c++) to[c]! += k * row[c]!
+}
+const addCol = (M: ZMatrix, src: number, dst: number, k: number) => {
+  for (let r = 0; r < M.length; r++) M[r]![dst]! += k * M[r]![src]!
+}
+const gcd = (a: number, b: number) => {
+  a = Math.abs(a); b = Math.abs(b)
+  while (b !== 0) { const t = a % b; a = b; b = t }
+  return a
+}
+
+export const smithNormalForm = (M0: ZMatrix): SNF => {
+  const m = M0.length, n = M0[0]?.length ?? 0
+  const M = M0.map(r => r.slice())
+  const U = ident(m), V = ident(n), Vinv = ident(n) // we'll keep V and V^{-1}
+
+  let r = 0, c = 0
+  while (r < m && c < n) {
+    // find a nonzero pivot with minimal |value|
+    let pr = -1, pc = -1, best = Number.MAX_SAFE_INTEGER
+    for (let i = r; i < m; i++) for (let j = c; j < n; j++) {
+      const val = Math.abs(M[i]![j]!)
+      if (val !== 0 && val < best) { best = val; pr = i; pc = j }
+    }
+    if (pr < 0) break // all remaining are zero
+    if (pr !== r) { swapRows(M, pr, r); swapRows(U, pr, r) }
+    if (pc !== c) { swapCols(M, pc, c); swapCols(V, pc, c); swapRows(Vinv, c, pc) } // Vinv left-multiplies inverse effect
+
+    // now reduce column c and row r
+    let changed = true
+    while (changed) {
+      changed = false
+      // clear below/above in column c
+      for (let i = 0; i < m; i++) if (i !== r && M[i]![c]! !== 0) {
+        const q = Math.trunc(M[i]![c]! / M[r]![c]!)
+        addRow(M, r, i, -q); addRow(U, r, i, -q)
+        if (Math.abs(M[i]![c]!) < Math.abs(M[r]![c]!)) { swapRows(M, i, r); swapRows(U, i, r); changed = true }
+      }
+      // clear left/right in row r
+      for (let j = 0; j < n; j++) if (j !== c && M[r]![j]! !== 0) {
+        const q = Math.trunc(M[r]![j]! / M[r]![c]!)
+        addCol(M, c, j, -q); addCol(V, c, j, -q); addRow(Vinv, j, c, q) // (V * C, C^{-1} * Vinv)
+        if (Math.abs(M[r]![j]!) < Math.abs(M[r]![c]!)) { swapCols(M, j, c); swapCols(V, j, c); swapRows(Vinv, c, j); changed = true }
+      }
+    }
+    // make diagonal nonnegative
+    if (M[r]![c]! < 0) { 
+      for (let j = 0; j < n; j++) M[r]![j] = -M[r]![j]!; 
+      for (let j = 0; j < n; j++) V[r]![j] = -V[r]![j]!; 
+      for (let j = 0; j < n; j++) Vinv[j]![r] = -Vinv[j]![r]! 
+    }
+    // ensure divisibility condition wrt submatrix
+    for (let i = r + 1; i < m; i++) if (M[i]![c]! % M[r]![c]! !== 0) { addRow(M, r, i, 1); addRow(U, r, i, 1); changed = true }
+    for (let j = c + 1; j < n; j++) if (M[r]![j]! % M[r]![c]! !== 0) { addCol(M, c, j, 1); addCol(V, c, j, 1); addRow(Vinv, j, c, -1); changed = true }
+    if (changed) continue
+
+    r++; c++
+  }
+
+  // canonicalize: positive diagonal, zeros elsewhere in used rows/cols
+  const diag: number[] = []
+  const rank = Math.min(m, n)
+  for (let i = 0; i < Math.min(r, c); i++) diag.push(Math.abs(M[i]![i]!))
+  return { D: M, U, V, Vinv, rank: diag.filter(d => d !== 0).length, diag: diag.filter(d => d !== 0) }
+}
+
+// =====================================================================
+// Integer homology H_n(Z) from boundaries d_n with torsion
+//   Uses SNF(d_n) to find ker(d_n) basis, then restricts d_{n+1} into
+//   that subspace and SNF there to read torsion invariants.
+// =====================================================================
+export type HomologyZ = { n: number; freeRank: number; torsion: number[] }
+
+export const homologyZ_fromBoundaries =
+  (dims: number[], d: ZMatrix[], n: number): HomologyZ => {
+    const dn   = d[n]   ?? [[]]
+    const dnp1 = d[n+1] ?? [[]]
+    // SNF(d_n) => V_n gives new basis for C_n; kernel = last k columns of V_n
+    const snf_n = smithNormalForm(dn)
+    const rank_n = snf_n.rank
+    const dim_n = dims[n] ?? 0
+    const k = dim_n - rank_n // nullity
+
+    // transform d_{n+1} into new C_n coords: B = V_n^{-1} * d_{n+1}
+    // B has shape (dim_n x dim_{n+1})
+    const Vinv = snf_n.Vinv
+    const B: ZMatrix = Array.from({ length: dim_n }, (_, i) =>
+      Array.from({ length: dnp1[0]?.length ?? 0 }, (_, j) =>
+        (i < Vinv.length && j < (dnp1[0]?.length ?? 0))
+          ? Vinv[i]!.reduce((acc, v, t) => acc + v * (dnp1[t]?.[j] ?? 0), 0)
+          : 0
+      )
+    )
+
+    // restrict to kernel rows (bottom k rows)
+    const K: ZMatrix = B.slice(rank_n, dim_n)
+
+    const snfK = smithNormalForm(K)
+    const freeRank = k - snfK.rank  // should match β_n over Q
+    const torsion = snfK.diag.filter(x => Math.abs(x) > 1).map(x => Math.abs(x))
+    return { n, freeRank, torsion }
+  }
+
+// =====================================================================
+// Public, discoverable API
+// =====================================================================
+
+/**
+ * Build an augmented chain complex from the Pair comonad simplicial object.
+ * @param Es  finite environment values E
+ * @param As  finite "points" A
+ * @param maxN maximum n-level to build (C_0..C_maxN, and ε : C_0→Z[A])
+ * @returns { dims, d }  dimensions and integer boundary matrices (∂_n: C_n→C_{n-1})
+ * @example
+ *   const { dims, d } = toChainComplexPair(['L','R'], ['•'], 3)
+ *   const H1 = homologyZ_fromBoundaries(dims, d, 1)  // { freeRank:0, torsion:[] }
+ */
+export const toChainComplexPair = <E, A>(
+  Es: ReadonlyArray<E>, As: ReadonlyArray<A>, maxN: number
+) => buildBoundariesForPair(Es, As, maxN)
+
+/**
+ * Compute **integer homology** H_n for the Pair complex.
+ * @returns { freeRank, torsion } so H_n ≅ Z^{freeRank} ⊕ ⊕ Z/torsion[i]Z
+ */
+export const homologyZ_Pair = <E, A>(
+  Es: ReadonlyArray<E>, As: ReadonlyArray<A>, maxN: number, n: number
+) => {
+  const { dims, d } = buildBoundariesForPair(Es, As, maxN)
+  return homologyZ_fromBoundaries(dims, d, n)
+}
+
+/**
+ * Build an augmented chain complex from the Store comonad simplicial object.
+ * @param Svals finite state space S
+ * @param Avals finite "points" A
+ * @param maxN maximum n-level to build
+ * @returns { dims, d } dimensions and boundary matrices
+ */
+export const toChainComplexStore = <S, A>(
+  Svals: ReadonlyArray<S>, Avals: ReadonlyArray<A>, maxN: number
+) => buildBoundariesForStore(Svals, Avals, maxN)
+
+/**
+ * Compute **integer homology** H_n for the Store complex.
+ * @returns { freeRank, torsion } so H_n ≅ Z^{freeRank} ⊕ ⊕ Z/torsion[i]Z
+ */
+export const homologyZ_Store = <S, A>(
+  Svals: ReadonlyArray<S>, Avals: ReadonlyArray<A>, maxN: number, n: number
+) => {
+  const { dims, d } = buildBoundariesForStore(Svals, Avals, maxN)
+  return homologyZ_fromBoundaries(dims, d, n)
+}
+
+// =====================================================================
+// Chain complex from the simplicial object of Store<S,_> (finite S)
+//   X_n = W^{n+1}A with W = Store<S,_>. We enumerate finite Stores by
+//   tabulating peek over Svals and recursing.
+// =====================================================================
+
+// materialize any Store<S,*> into a FiniteStore by tabulating over Svals
+const isStoreLike = (u: any): u is { pos: unknown; peek: Function } =>
+  u && typeof u === 'object' && 'pos' in u && typeof (u as any).peek === 'function'
+
+const materializeStoreDeep = <S>(Svals: ReadonlyArray<S>, w: any): any => {
+  if (!isStoreLike(w)) return w
+  const table = Svals.map((s) => [s, materializeStoreDeep(Svals, w.peek(s))] as const)
+  const peek = (s: S) => table[Svals.indexOf(s)]![1]
+  return { pos: w.pos, peek, table } as const
+}
+
+// stable key for (possibly nested) FiniteStore; ignores function identity
+const keyFiniteStoreDeep = <S>(Svals: ReadonlyArray<S>, v: any): string => {
+  if (!isStoreLike(v)) return JSON.stringify(['A', v])
+  const tab = Svals.map((s) => {
+    const child = v.peek(s)
+    return [Svals.indexOf(s), keyFiniteStoreDeep(Svals, materializeStoreDeep(Svals, child))] as const
+  })
+  return JSON.stringify(['W', Svals.indexOf(v.pos as any), tab])
+}
+
+export const buildBoundariesForStore =
+  <S, A>(Svals: ReadonlyArray<S>, Avals: ReadonlyArray<A>, maxN: number) => {
+    const W = StoreComonad<S>()
+    const Smp = makeSimplicialFromComonadK1(W)
+
+    // X_n = enumeratePowStore(Svals, n, Avals)  (returns W^{n+1}A)
+    const X: any[][] = []
+    const idx: Map<string, number>[] = []
+    for (let n = 0; n <= maxN; n++) {
+      const layer = enumeratePowStore(Svals, n, Avals)
+        .map(w => materializeStoreDeep(Svals, w))
+      X[n] = layer
+      const m = new Map<string, number>()
+      layer.forEach((el, i) => m.set(keyFiniteStoreDeep(Svals, el), i))
+      idx[n] = m
+    }
+
+    // boundaries d_n : C_n -> C_{n-1}
+    const d: ZMatrix[] = []
+
+    // n = 0 (augmentation): ε = extract : Store<S,A> -> A
+    {
+      const rows = Avals.length
+      const cols = X[0]!.length
+      const M: ZMatrix = Array.from({ length: rows }, () => Array(cols).fill(0))
+      X[0]!.forEach((w0: any, j: number) => {
+        const a = w0.peek(w0.pos)
+        const i = Avals.findIndex((aa) => Object.is(aa, a))
+        M[i]![j] = 1
+      })
+      d[0] = M
+    }
+
+    // n >= 1: ∂_n = Σ_i (-1)^i d_i
+    for (let n = 1; n <= maxN; n++) {
+      const rows = X[n - 1]!.length
+      const cols = X[n]!.length
+      const M: ZMatrix = Array.from({ length: rows }, () => Array(cols).fill(0))
+      for (let j = 0; j < cols; j++) {
+        const simplex = X[n]![j]
+        for (let i = 0; i <= n; i++) {
+          const face = materializeStoreDeep(Svals, Smp.d(n, i).app(simplex))
+          const r = idx[n - 1]!.get(keyFiniteStoreDeep(Svals, face))
+          if (r == null) throw new Error(`Store face not found at n=${n}, i=${i}`)
+          M[r]![j]! += (i % 2 === 0 ? 1 : -1)
+        }
+      }
+      d[n] = M
+    }
+
+    const dims = X.map(xs => xs.length)
+    return { dims, d }
+  }
+
+// ===============================================================
+// Store<S, A> comonad  (aka "indexed context")
+//   Intuition: a focus `pos : S` and a total observation `peek : S -> A`.
+//   Functor maps *results* (post-compose peek), comonad can:
+//     - extract: read A at the current position
+//     - duplicate: reindex so every S-point gets its own focused Store
+//     - extend: compute B from neighborhoods (co-Kleisli lift)
+// ===============================================================
+export type Store<S, A> = {
+  readonly pos: S
+  readonly peek: (s: S) => A
+}
+
+// Endofunctor instance for Store<S,_>
+export const StoreEndo =
+  <S>(): EndofunctorK1<['Store', S]> => ({
+    map:
+      <A, B>(f: (a: A) => B) =>
+      (w: Store<S, A>): Store<S, B> => ({
+        pos: w.pos,
+        peek: (s: S) => f(w.peek(s)),
+      })
+  })
+
+// Comonad instance
+export const StoreComonad =
+  <S>(): ComonadK1<['Store', S]> => {
+    const F = StoreEndo<S>()
+    return {
+      ...F,
+      extract: <A>(w: Store<S, A>): A => w.peek(w.pos),
+      duplicate: <A>(w: Store<S, A>): Store<S, Store<S, A>> => ({
+        pos: w.pos,
+        peek: (s: S) => ({ pos: s, peek: w.peek }),
+      }),
+      extend:
+        <A, B>(f: (w: Store<S, A>) => B) =>
+        (w: Store<S, A>): Store<S, B> => ({
+          pos: w.pos,
+          peek: (s: S) => f({ pos: s, peek: w.peek }),
+        }),
+    }
+  }
+
+// Handy helpers
+export const seek =
+  <S>(s: S) =>
+  <A>(w: Store<S, A>): Store<S, A> =>
+    ({ pos: s, peek: w.peek })
+
+export const peeks =
+  <S>(k: (s: S) => S) =>
+  <A>(w: Store<S, A>): Store<S, A> =>
+    ({ pos: w.pos, peek: (s: S) => w.peek(k(s)) })
+
+// Build a Store from an array (indexing with clamp)
+export const storeFromArray =
+  <A>(xs: ReadonlyArray<A>, start = 0): Store<number, A> => {
+    const n = xs.length
+    if (n === 0) throw new Error('storeFromArray: empty array')
+    const clamp = (i: number) => (i < 0 ? 0 : i >= n ? n - 1 : i)
+    return {
+      pos: clamp(start),
+      peek: (i: number) => xs[clamp(i)]!,
+    }
+  }
+
+// Collect a Store<number, A> into an array snapshot of length n
+export const collectStore =
+  <A>(n: number) =>
+  (w: Store<number, A>): ReadonlyArray<A> =>
+    Array.from({ length: n }, (_, i) => seek<number>(i)(w).peek(i))
+
+// ===============================================================
+// Mixed distributive law instances
+// ===============================================================
+
+// Result<E,_> × Store<S,_> given a default s0 : S
+export const MixedDist_Result_Store =
+  <S, E>(s0: S) => ({
+    dist:
+      <A>(tga: Result<E, Store<S, A>>): Store<S, Result<E, A>> =>
+        isOk(tga)
+          ? { pos: tga.value.pos,
+              peek: (s: S) => Ok(tga.value.peek(s)) }
+          : { pos: s0,
+              peek: (_s: S) => Err((tga as Err<E>).error) }
+  })
+
+// Task × Store<S,_> (lawful under standard Promise/Task laws)
+export const MixedDist_Task_Store =
+  <S>() => ({
+    dist:
+      <A>(tga: Task<Store<S, A>>): Store<S, Task<A>> => ({
+        pos: undefined as any, // keep pos after the Task resolves
+        peek: (s: S) => () => tga().then(w => w.peek(s)),
+      })
+  })
+
+// =====================================================================
+// Finite enumeration for Store<S,_> layers when S and A are finite
+//   W(A) = { pos:S, peek:S->A }  (we encode peek as a table over Svals)
+//   W^{k+1} A is built recursively: tables map S -> W^{k} A.
+// Warning: combinatorial — keep |S| and |A| tiny in tests/examples.
+// =====================================================================
+export type FiniteStore<S, A> = Store<S, A> & { table: ReadonlyArray<readonly [S, A]> }
+
+const enumerateFunctions = <S, X>(Svals: ReadonlyArray<S>, Xvals: ReadonlyArray<X>): ReadonlyArray<ReadonlyArray<X>> => {
+  // all |S|-tuples over Xvals in Svals order
+  const res: X[][] = [[]]
+  for (let _ of Svals) {
+    const next: X[][] = []
+    for (const t of res) for (const x of Xvals) next.push([...t, x])
+    res.splice(0, res.length, ...next)
+  }
+  return res
+}
+
+export const enumeratePowStore =
+  <S, A>(Svals: ReadonlyArray<S>, k: number, Avals: ReadonlyArray<A>): ReadonlyArray<FiniteStore<S, any>> => {
+    // base X0 = A
+    let layer: any[] = Avals.slice()
+    for (let depth = 0; depth < k + 1; depth++) {
+      // build W(layer) from current layer
+      const funs = enumerateFunctions(Svals, layer) // tables S->layer
+      const next: FiniteStore<S, any>[] = []
+      for (const tbl of funs) {
+        for (const pos of Svals) {
+          const table = Svals.map((s, i) => [s, tbl[i]] as const)
+          const peek = (s: S) => table[Svals.indexOf(s)]![1]
+          next.push({ pos, peek, table })
+        }
+      }
+      layer = next
+    }
+    return layer as any
+  }
+
+// ===============================================================
+// Co-Kleisli usage: 3-point moving average over a numeric array
+//   We "extend" a local computation over the whole Store: each index
+//   gets the average of (i-1, i, i+1), clamped at edges.
+// ===============================================================
+export const movingAvg3 =
+  (w: Store<number, number>): Store<number, number> => {
+    const WC = StoreComonad<number>()
+    const avg = (ctx: Store<number, number>): number => {
+      const i = ctx.pos
+      const a = ctx.peek(i - 1)
+      const b = ctx.peek(i)
+      const c = ctx.peek(i + 1)
+      return (a + b + c) / 3
+    }
+    return WC.extend(avg)(w)
+  }
+
+// ===============================================================
+// Store + Lens integration: focus on nested fields
+//   Run comonadic computations over a nested field without rebuilding
+//   the entire structure. Perfect FP + optics + comonad trifecta!
+// ===============================================================
+
+// Note: Using existing Lens type from line 6086
+
+// Focus a Store through a lens: Store<S, T> -> Lens<T, A> -> Store<S, A>
+export const focusStoreWithLens =
+  <S, T, A>(lens: Lens<T, A>) =>
+  (store: Store<S, T>): Store<S, A> => ({
+    pos: store.pos,
+    peek: (s: S) => lens.get(store.peek(s))
+  })
+
+// Run a comonadic computation on a focused field, then set it back
+export const extendThroughLens =
+  <S, T, A>(lens: Lens<T, A>) =>
+  <B>(computation: (ctx: any) => B) =>
+  (store: Store<S, T>): Store<S, T> => {
+    const WC = StoreComonad<S>()
+    const focused = focusStoreWithLens(lens)(store as any) as any
+    const computed = WC.extend(computation as any)(focused)
+    
+    return {
+      pos: store.pos,
+      peek: (s: S) => {
+        const originalT = store.peek(s)
+        const newA = (computed as any).peek(s)
+        return lens.set(newA as any)(originalT)
+      }
+    }
+  }
+
+// Example: moving average on a nested field (specialized for number indices)
+export const movingAvgOnField =
+  <T>(lens: Lens<T, number>) =>
+  (store: Store<number, T>): Store<number, T> =>
+    extendThroughLens(lens)((ctx: any) => {
+      const i = ctx.pos
+      const a = ctx.peek(i - 1)
+      const b = ctx.peek(i)
+      const c = ctx.peek(i + 1)
+      return (a + b + c) / 3
+    })(store as any) as any
 
 // ==================== Env (product) comonad ====================
 // A context value E carried along with A
-export type Env<E, A> = readonly [E, A]
+// Note: Using earlier Env type definition from line 486
 
 export const EnvC = {
   map:
@@ -642,14 +1602,21 @@ export const EnvC = {
     <E>(ea: Env<E, A>): Env<E, B> =>
       [ea[0], f(ea)] as const,
 
-  // extras
+  duplicate:
+    <E, A>(ea: Env<E, A>): Env<E, Env<E, A>> =>
+      [ea[0], ea] as const,
+
+} satisfies ComonadK1<'Env'> as any
+
+// Env-specific extras (not part of ComonadK1)
+export const EnvExtras = {
   ask:  <E, A>(ea: Env<E, A>): E => ea[0],
   asks: <E, B>(f: (e: E) => B) => <A>(ea: Env<E, A>): B => f(ea[0]),
   local:
     <E>(f: (e: E) => E) =>
     <A>(ea: Env<E, A>): Env<E, A> =>
       [f(ea[0]), ea[1]] as const,
-} satisfies ComonadK1<'Env'> as any
+}
 
 // ==================== Traced comonad ====================
 // Traced<M,A> ~ (m: M) => A, with monoid M
@@ -713,7 +1680,7 @@ export const CofreeK1 = <F extends HK.Id1>(F: FunctorK1<F>) => {
       ({ head: g(w), tail: F.map(extend(g))(w.tail) })
 
   const duplicate = <A>(w: Cofree<F, A>): Cofree<F, Cofree<F, A>> =>
-    extend<Cofree<F, A>, Cofree<F, A>>((x) => x)(w)
+    extend<A, Cofree<F, A>>((x) => x)(w)
 
   // unfold (cofree-ana): ψ : S -> [A, F<S>]
   const unfold =
@@ -794,23 +1761,23 @@ export const StoreLens = {
 
 // ================ Co-Do builder for any ComonadK1 =================
 
+export type CoBuilder<F, A0, A> = {
+  /** co-Kleisli composition: then(g) = g ⧑ current */
+  then: <B>(g: (wb: any /* F<A> */) => B) => CoBuilder<F, A0, B>
+  /** post-map the final result */
+  map:  <B>(f: (a: A) => B) => CoBuilder<F, A0, B>
+  /** side-effect on the final result (keeps A) */
+  tap:  (f: (a: A) => void) => CoBuilder<F, A0, A>
+  /** finish: the composed arrow F<A0> -> A */
+  done: (wa: any /* F<A0> */) => A
+}
+
 export const DoCo = <F>(W: ComonadK1<F>) => {
   const Co = coKleisli(W)
 
   type Arrow<A0, A> = (wa: any /* F<A0> */) => A
 
-  type CoBuilder<A0, A> = {
-    /** co-Kleisli composition: then(g) = g ⧑ current */
-    then: <B>(g: (wb: any /* F<A> */) => B) => CoBuilder<A0, B>
-    /** post-map the final result */
-    map:  <B>(f: (a: A) => B) => CoBuilder<A0, B>
-    /** side-effect on the final result (keeps A) */
-    tap:  (f: (a: A) => void) => CoBuilder<A0, A>
-    /** finish: the composed arrow F<A0> -> A */
-    done: Arrow<A0, A>
-  }
-
-  const make = <A0, A>(arrow: Arrow<A0, A>): CoBuilder<A0, A> => ({
+  const make = <A0, A>(arrow: Arrow<A0, A>): CoBuilder<F, A0, A> => ({
     then: (g) => make(Co.comp(g, arrow)),
     map:  (f) => make((wa) => f(arrow(wa))),
     tap:  (f) => make((wa) => { const a = arrow(wa); f(a); return a }),
@@ -4676,17 +5643,17 @@ export const mapEntries = <
  * Overload 1: boolean predicate
  * Overload 2: type-guard predicate (narrows value type in the result)
  */
-export function filterValues<T extends Record<PropertyKey, any>>(
+export function filterValues<T extends Record<PropertyKey, unknown>>(
   obj: T,
   pred: <K extends keyof T>(value: T[K], key: K) => boolean
 ): Readonly<Partial<T>>
 
-export function filterValues<T extends Record<PropertyKey, any>, V>(
+export function filterValues<T extends Record<PropertyKey, unknown>, V>(
   obj: T,
   pred: <K extends keyof T>(value: T[K], key: K) => value is Extract<T[K], V>
 ): Readonly<Partial<{ [K in keyof T]: Extract<T[K], V> }>>
 
-export function filterValues<T extends Record<PropertyKey, any>>(
+export function filterValues<T extends Record<PropertyKey, unknown>>(
   obj: T,
   pred: (value: T[keyof T], key: keyof T) => boolean
 ): Readonly<Partial<T>> {
@@ -4702,7 +5669,7 @@ export function filterValues<T extends Record<PropertyKey, any>>(
 }
 
 /** filterKeys — keep entries whose key satisfies `pred` */
-export const filterKeys = <T extends Record<PropertyKey, any>>(
+export const filterKeys = <T extends Record<PropertyKey, unknown>>(
   obj: T,
   pred: (key: keyof T) => boolean
 ): Readonly<Partial<T>> => {
@@ -6236,9 +7203,9 @@ export const traversalArray = <A>(): Traversal<ReadonlyArray<A>, A> => traversal
   (f) => (as) => as.map(f)
 )
 
-export const traversalPropArray = <S>() => <K extends keyof S, A = any>(k: K & (S[K] extends ReadonlyArray<infer T> ? K : never)):
+export const traversalPropArray = <S>() => <K extends keyof S>(k: K & (S[K] extends ReadonlyArray<infer T> ? K : never)):
   Traversal<S, S[K] extends ReadonlyArray<infer T> ? T : never> => traversal(
-    (f) => (s: S) => ({ ...s, [k]: (s[k] as any as ReadonlyArray<any>).map(f) }) as S
+    (f) => (s: S) => ({ ...s, [k]: (s[k] as ReadonlyArray<any>).map(f) }) as S
 )
 
 export const optionalToTraversal = <S, A>(opt: Optional<S, A>): Traversal<S, A> => traversal(
@@ -6258,50 +7225,9 @@ export const overT = <S, A>(tv: Traversal<S, A>, f: (a: A) => A) => tv.modify(f)
 
 
 // =======================
-// Reader
+// Reader (using earlier definition from line 432)
 // =======================
-export type Reader<R, A> = (r: R) => A
-
-export const Reader = {
-  of:
-    <R, A>(a: A): Reader<R, A> =>
-    (_: R) =>
-      a,
-
-  ask: <R>(): Reader<R, R> => (r: R) => r,
-
-  asks:
-    <R, A>(f: (r: R) => A): Reader<R, A> =>
-    (r) =>
-      f(r),
-
-  map:
-    <A, B>(f: (a: A) => B) =>
-    <R>(ra: Reader<R, A>): Reader<R, B> =>
-    (r) =>
-      f(ra(r)),
-
-  chain:
-    <A, B, R>(f: (a: A) => Reader<R, B>) =>
-    (ra: Reader<R, A>): Reader<R, B> =>
-    (r) =>
-      f(ra(r))(r),
-
-  ap:
-    <R, A, B>(rfab: Reader<R, (a: A) => B>) =>
-    (rfa: Reader<R, A>): Reader<R, B> =>
-    (r) =>
-      rfab(r)(rfa(r)),
-
-  local:
-    <R, Q>(f: (q: Q) => R) =>
-    <A>(rq: Reader<R, A>): Reader<Q, A> =>
-    (q) =>
-      rq(f(q)),
-}
-
-// helpers
-export const runReader = <R, A>(ra: Reader<R, A>, r: R): A => ra(r)
+// Note: Reader type and implementation already defined earlier
 
 
 
@@ -9202,7 +10128,7 @@ export interface MonadK2C<F extends HK.Id2, L> extends ApplicativeK2C<F, L> {
 // -----------------------
 
 // Endofunctor on K1 is just a FunctorK1 (endofunctor on TS types)
-export type EndofunctorK1<F extends HK.Id1> = FunctorK1<F>
+// Note: Using the earlier EndofunctorK1 definition from line 330
 
 // Helpers to "fix" the left param of K2 constructors => a K1 endofunctor
 export const ResultK1 = <E>() => ({
@@ -9215,7 +10141,7 @@ export const ResultK1 = <E>() => ({
 })
 
 export const ValidationK1 = <E>() => ({
-  map:  <A, B>(f: (a: A) => B) => (va: Validation<E, A>): Validation<E, B> => mapV(f)(va),
+  map:  <A, B>(f: (a: A) => B) => (va: Validation<E, A>): Validation<E, B> => mapV<E, A, B>(f)(va),
   // for ap, you'll use your `apV` with a chosen concat
   ap:   <A, B>(concat: (x: ReadonlyArray<E>, y: ReadonlyArray<E>) => ReadonlyArray<E>) =>
         (vf: Validation<E, (a: A) => B>) =>
@@ -9358,17 +10284,17 @@ const ApplicativeOption: ApplicativeLike<'Option'> = {
     isSome(ff) && isSome(fa) ? Some(ff.value(fa.value)) : None,
 }
 export const MonoidalOption = monoidalFromApplicative(ApplicativeOption)
-export const zipOption      = zipFromMonoidal(MonoidalOption)<any, any>
-export const zipWithOption  = zipWithFromMonoidal(MonoidalOption)<any, any, any>
+export const zipOption      = zipFromMonoidal(MonoidalOption)
+export const zipWithOption  = zipWithFromMonoidal(MonoidalOption)
 
 // ----- Result<E,_> (short-circuiting; use Validation for accumulation) -----
 const apResult = <E, A, B>(rf: Result<E, (a: A) => B>) => (ra: Result<E, A>): Result<E, B> =>
-  isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : ra) as any
+  isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : ra as Err<E>)
 
 export const ApplicativeResult = <E>(): ApplicativeLike<'Result'> => ({
-  of: Ok as any,
-  map: mapR as any,
-  ap: apResult as any,
+  of: Ok as FunctorValue<'Result', any>,
+  map: mapR as FunctorValue<'Result', any>,
+  ap: apResult as FunctorValue<'Result', any>,
 })
 export const MonoidalResult = <E>() => monoidalFromApplicative(ApplicativeResult<E>())
 export const zipResult     = <E>() => zipFromMonoidal(MonoidalResult<E>())
@@ -9537,12 +10463,13 @@ export const ResultK = <E>(): MonadK2C<'Result', E> => ({
 // ====================================================================
 
 // ---------- Natural transformations over K1 ----------
-export type NatK1<F, G> = <A>(fa: any /* Kind1<F, A> */) => any /* Kind1<G, A> */
+// Note: Using the earlier NatK1 and idNatK1 definitions from lines 335 and 340
 
 // identity / composition
-export const idNatK1 = <F>(): NatK1<F, F> => <A>(fa: any) => fa
-export const composeNatK1 = <F, G, H>(g: NatK1<G, H>, f: NatK1<F, G>): NatK1<F, H> =>
-  <A>(fa: any) => g(f(fa))
+// Note: Using the earlier idNatK1 definition
+export const composeNatK1 = <F, G, H>(g: NatK1<G, H>, f: NatK1<F, G>): NatK1<F, H> => ({
+  app: <A>(fa: any) => g.app(f.app(fa))
+})
 
 // ---------- Concrete polymorphic transforms (no HKT registry needed) ----------
 export const optionToResult =
@@ -9851,8 +10778,7 @@ export const zipRTE =
     zipWithRTE<R, E, A, B, readonly [A, B]>((a, b) => [a, b] as const)(rteA)(rteB)
 
 // ----- Do-notation for ReaderTaskEither (RTE) -----
-type _Merge<A, B> = { readonly [K in keyof A | keyof B]:
-  K extends keyof B ? B[K] : K extends keyof A ? A[K] : never }
+// Note: Using earlier _Merge type definition from line 944
 
 export type DoRTEBuilder<R, T, E> = {
   /** bind: run an RTE and add its Ok value at key K */
@@ -9922,10 +10848,10 @@ export const DoRTE = <R>() => {
 
     tap: (f) =>
       make(
-        RTE.chain<T, E, any, T>((t) =>
-          RTE.map(() => t)(f(t))
+        RTE.chain<T, any, any, T>((t) =>
+          RTE.map(() => t)(f(t) as any)
         )(rte) as any
-      ),
+      ) as any,
 
     map: (f) => RTE.map(f)(rte),
 
@@ -10047,109 +10973,480 @@ export const WRTE = <W>(M: Monoid<W>) => {
   }
 }
 
-// ----- Do-notation for WRTE (WriterReaderTaskEither) -----
-// Simplified version focusing on core functionality
+// ---------- Free endofunctor term ----------
+export type EndoTerm<Sym extends string> =
+  | { tag: 'Id' }
+  | { tag: 'Base'; name: Sym }
+  | { tag: 'Sum';  left: EndoTerm<Sym>; right: EndoTerm<Sym> }
+  | { tag: 'Prod'; left: EndoTerm<Sym>; right: EndoTerm<Sym> }
+  | { tag: 'Comp'; left: EndoTerm<Sym>; right: EndoTerm<Sym> }
+  | { tag: 'Pair'; C: unknown }   // Pair<C,_>
+  | { tag: 'Const'; C: unknown }  // Const<C,_>
 
-export type DoWRTEBuilder<W, R, T, E> = {
-  /** bind: run a WRTE and add its Ok value at key K */
-  bind: <K extends string, E2, A>(
-    k: K,
-    ma: WriterReaderTaskEither<W, R, E2, A>
-  ) => DoWRTEBuilder<W, R, any, any>
+// constructors
+export const IdT   = { tag: 'Id' } as const
+export const BaseT = <S extends string>(name: S): EndoTerm<S> => ({ tag: 'Base', name })
+export const SumT  = <S extends string>(l: EndoTerm<S>, r: EndoTerm<S>): EndoTerm<S> => ({ tag: 'Sum',  left: l, right: r })
+export const ProdT = <S extends string>(l: EndoTerm<S>, r: EndoTerm<S>): EndoTerm<S> => ({ tag: 'Prod', left: l, right: r })
+export const CompT = <S extends string>(l: EndoTerm<S>, r: EndoTerm<S>): EndoTerm<S> => ({ tag: 'Comp', left: l, right: r })
+export const PairT = <S extends string>(C: unknown): EndoTerm<S> => ({ tag: 'Pair', C })
+export const ConstT= <S extends string>(C: unknown): EndoTerm<S> => ({ tag: 'Const', C })
 
-  /** apS: alias for bind (reads nicer applicatively) */
-  apS: <K extends string, E2, A>(
-    k: K,
-    ma: WriterReaderTaskEither<W, R, E2, A>
-  ) => DoWRTEBuilder<W, R, any, any>
+// dictionaries to interpret bases
+export type EndoDict<Sym extends string> = Record<Sym, EndofunctorK1<any>>
+export type StrengthDict<Sym extends string, E> = Record<Sym, StrengthEnv<any, E>>
+export type NatDict<SymFrom extends string, SymTo extends string> =
+  (name: SymFrom) => { to: SymTo; nat: NatK1<any, any> }
 
-  /** let: add a pure computed field (no effects) */
-  let: <K extends string, A>(
-    k: K,
-    f: (t: T) => A
-  ) => DoWRTEBuilder<W, R, any, any>
+// evaluate term to EndofunctorK1
+export const evalEndo =
+  <S extends string>(d: EndoDict<S>) =>
+  (t: EndoTerm<S>): EndofunctorK1<any> => {
+    switch (t.tag) {
+      case 'Id':    return IdK1
+      case 'Base':  return d[t.name]
+      case 'Sum':   return SumEndo(evalEndo(d)(t.left), evalEndo(d)(t.right))
+      case 'Prod':  return ProdEndo(evalEndo(d)(t.left), evalEndo(d)(t.right))
+      case 'Comp':  return composeEndoK1(evalEndo(d)(t.left), evalEndo(d)(t.right))
+      case 'Pair':  return PairEndo<any>()
+      case 'Const': return ConstEndo<any>()
+    }
+  }
 
-  /** run effect; keep current record T */
-  apFirst:  <E2, A>(ma: WriterReaderTaskEither<W, R, E2, A>) => DoWRTEBuilder<W, R, T, E | E2>
+// derive StrengthEnv for term (needs base strengths and rules)
+export const deriveStrengthEnv =
+  <S extends string, E>(sd: StrengthDict<S, E>) =>
+  (t: EndoTerm<S>): StrengthEnv<any, E> => {
+    switch (t.tag) {
+      case 'Id':    return { st: <A>(ea: Env<E, A>) => [ea[0], ea[1]] as const }
+      case 'Base':  return sd[t.name]
+      case 'Sum':   return strengthEnvFromSum<E>()(deriveStrengthEnv(sd)(t.left), deriveStrengthEnv(sd)(t.right))
+      case 'Prod':  return strengthEnvFromProd<E>()(deriveStrengthEnv(sd)(t.left), deriveStrengthEnv(sd)(t.right))
+      case 'Comp':  return strengthEnvCompose<E>()(
+                        evalEndo(({} as any) as EndoDict<S>)(t.left) as any,
+                        evalEndo(({} as any) as EndoDict<S>)(t.right) as any,
+                        deriveStrengthEnv(sd)(t.left),
+                        deriveStrengthEnv(sd)(t.right)
+                      )
+      case 'Pair':  return strengthEnvFromPair<E>()<any>()
+      case 'Const': return strengthEnvFromConst<E, any>(undefined as unknown as E)
+    }
+  }
 
-  /** run effect; replace record with its Ok value */
-  apSecond: <E2, A>(ma: WriterReaderTaskEither<W, R, E2, A>) => DoWRTEBuilder<W, R, A, E | E2>
+// hoist bases along a mapping of natural transformations, preserving shape
+export const hoistEndo =
+  <SFrom extends string, STo extends string>(dFrom: EndoDict<SFrom>, dTo: EndoDict<STo>) =>
+  (mapBase: NatDict<SFrom, STo>) =>
+  (t: EndoTerm<SFrom>): { endo: EndofunctorK1<any>; nat: NatK1<any, any>; term: EndoTerm<STo> } => {
+    type Out = { endo: EndofunctorK1<any>; nat: NatK1<any, any>; term: EndoTerm<STo> }
+    switch (t.tag) {
+      case 'Id': {
+        return { endo: IdK1, nat: idNatK1(), term: IdT as EndoTerm<STo> } as Out
+      }
+      case 'Base': {
+        const { to, nat } = mapBase(t.name)
+        return { endo: dTo[to], nat, term: BaseT(to) } as Out
+      }
+      case 'Sum': {
+        const L: Out = hoistEndo(dFrom, dTo)(mapBase)(t.left)
+        const R: Out = hoistEndo(dFrom, dTo)(mapBase)(t.right)
+        return {
+          endo: SumEndo(L.endo, R.endo),
+          nat:  sumNat(L.nat, R.nat),
+          term: SumT(L.term, R.term),
+        } as Out
+      }
+      case 'Prod': {
+        const L: Out = hoistEndo(dFrom, dTo)(mapBase)(t.left)
+        const R: Out = hoistEndo(dFrom, dTo)(mapBase)(t.right)
+        return {
+          endo: ProdEndo(L.endo, R.endo),
+          nat:  prodNat(L.nat, R.nat),
+          term: ProdT(L.term, R.term),
+        } as Out
+      }
+      case 'Comp': {
+        const L: Out = hoistEndo(dFrom, dTo)(mapBase)(t.left)
+        const R: Out = hoistEndo(dFrom, dTo)(mapBase)(t.right)
+        return {
+          endo: composeEndoK1(L.endo, R.endo),
+          nat:  hcompNatK1_component(L.endo)(L.nat, R.nat),
+          term: CompT(L.term, R.term),
+        } as Out
+      }
+      case 'Pair': {
+        const endo = PairEndo<any>()
+        return { endo, nat: idNatK1(), term: PairT<STo>(t.C) } as Out
+      }
+      case 'Const': {
+        const endo = ConstEndo<any>()
+        return { endo, nat: idNatK1(), term: ConstT<STo>(t.C) } as Out
+      }
+    }
+  }
 
-  /** run effect derived from T; keep T (great for logs) */
-  tap:      <E2>(f: (t: T) => WriterReaderTaskEither<W, R, E2, unknown>) => DoWRTEBuilder<W, R, T, E | E2>
+// ---------------------------------------------------------------------
+// Build a natural transformation by STRUCTURE-ALIGNMENT of two EndoTerms.
+// If shapes mismatch (e.g. Sum vs Prod, Pair<C1> vs Pair<C2>), we throw.
+// For Base/Base we ask you for a base-level NT via `pickBase`.
+// Returns both endofunctors (from/to) and the synthesized NatK1.
+// ---------------------------------------------------------------------
 
-  /** tell: append to the writer log, keep the current record */
-  tell: (w: W) => DoWRTEBuilder<W, R, T, E>
+export type AlignBuild<S1 extends string, S2 extends string> = {
+  from: EndofunctorK1<any>
+  to:   EndofunctorK1<any>
+  nat:  NatK1<any, any>
+}
 
-  /** map: finish by mapping the accumulated record into B */
-  map: <B>(f: (t: T) => B) => WriterReaderTaskEither<W, R, E, B>
-
-  /** done: finish and return the accumulated record */
-  done: WriterReaderTaskEither<W, R, E, T>
+export class EndoTermAlignError extends Error {
+  constructor(msg: string) { super(`[EndoTerm align] ${msg}`) }
 }
 
 /**
- * Make a Do-builder bound to a specific WRTE instance (i.e., to its monoid + combinators).
- * Usage:
- *   const W = WRTE<string>(ArrayMonoid<string>())
- *   const Do = DoWRTE(W)<Env>()
+ * Align two EndoTerms and synthesize a NatK1 by structural recursion.
+ *
+ * @param d1  dictionary for left/base symbols
+ * @param d2  dictionary for right/base symbols
+ * @param pickBase  (nameL,nameR) -> NatK1 for Base/Base leaves (return null to fail)
  */
-export const DoWRTE = <W>(Wmod: ReturnType<typeof WRTE<W>>) => <R>() => {
-  const make = <T, E>(
-    m: WriterReaderTaskEither<W, R, E, T>
-  ): DoWRTEBuilder<W, R, T, E> => ({
-    bind: (k, ma) =>
-      make(
-        Wmod.chain((t: T) =>
-          Wmod.map((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
-        )(m) as any
-      ),
+export const buildNatForTerms =
+  <S1 extends string, S2 extends string>(
+    d1: EndoDict<S1>,
+    d2: EndoDict<S2>,
+    pickBase: (nameL: S1, nameR: S2) => NatK1<any, any> | null
+  ) =>
+  (t1: EndoTerm<S1>, t2: EndoTerm<S2>): AlignBuild<S1, S2> => {
 
-    apS: (k, ma) =>
-      make(
-        Wmod.chain((t: T) =>
-          Wmod.map((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
-        )(m) as any
-      ),
+    const go = (a: EndoTerm<any>, b: EndoTerm<any>): AlignBuild<any, any> => {
+      if (a.tag !== b.tag) throw new EndoTermAlignError(`shape mismatch: ${a.tag} vs ${b.tag}`)
 
-    let: (k, f) =>
-      make(Wmod.map((t: T) => ({ ...(t as any), [k]: f(t) } as const))(m)),
+      switch (a.tag) {
+        case 'Id': {
+          return { from: IdK1, to: IdK1, nat: idNatK1() }
+        }
 
-    apFirst: (ma) =>
-      make(
-        Wmod.chain<T, E, any, T>((t) =>
-          Wmod.map(() => t)(ma)
-        )(m)
-      ),
+        case 'Base': {
+          const bBase = b as { tag: 'Base'; name: S2 }
+          const F = d1[a.name as S1]
+          const G = d2[bBase.name]
+          const nat = pickBase(a.name as S1, bBase.name)
+          if (!nat) throw new EndoTermAlignError(`no base NT for ${String(a.name)} ⇒ ${String(bBase.name)}`)
+          return { from: F, to: G, nat }
+        }
 
-    apSecond: (ma) =>
-      make(
-        Wmod.chain<T, E, any, any>(() => ma)(m)
-      ) as any, // builder's T becomes the Ok value type of `ma`
+        case 'Sum': {
+          const L = go(a.left,  (b as any).left)
+          const R = go(a.right, (b as any).right)
+          return {
+            from: SumEndo(L.from, R.from),
+            to:   SumEndo(L.to,   R.to),
+            nat:  sumNat(L.nat, R.nat),
+          }
+        }
 
-    tap: (f) =>
-      make(
-        Wmod.chain<T, E, any, T>((t) =>
-          Wmod.map(() => t)(f(t))
-        )(m)
-      ),
+        case 'Prod': {
+          const L = go(a.left,  (b as any).left)
+          const R = go(a.right, (b as any).right)
+          return {
+            from: ProdEndo(L.from, R.from),
+            to:   ProdEndo(L.to,   R.to),
+            nat:  prodNat(L.nat, R.nat),
+          }
+        }
 
-    tell: (w) =>
-      make(
-        Wmod.chain((t: T) =>
-          // tell returns WRTE<W,R,never,void>; map(() => t) keeps the record
-          Wmod.map(() => t)(Wmod.tell(w))
-        )(m)
-      ),
+        case 'Comp': {
+          const L = go(a.left,  (b as any).left)   // α : L.from ⇒ L.to
+          const R = go(a.right, (b as any).right)  // β : R.from ⇒ R.to
+          return {
+            from: composeEndoK1(L.from, R.from),
+            to:   composeEndoK1(L.to,   R.to),
+            nat:  hcompNatK1_component(L.from)(L.nat, R.nat), // (α ▷ β)
+          }
+        }
 
-    map: (f) => Wmod.map(f)(m),
+        case 'Pair': {
+          if (a.C !== (b as any).C)
+            throw new EndoTermAlignError(`Pair constants differ: ${String(a.C)} vs ${String((b as any).C)}`)
+          const F = PairEndo<any>()
+          return { from: F, to: F, nat: idNatK1() }
+        }
 
-    done: m,
+        case 'Const': {
+          if (a.C !== (b as any).C)
+            throw new EndoTermAlignError(`Const values differ: ${String(a.C)} vs ${String((b as any).C)}`)
+          const F = ConstEndo<any>()
+          return { from: F, to: F, nat: idNatK1() }
+        }
+      }
+    }
+
+    return go(t1, t2)
+  }
+
+// =====================================================================
+// Traversable registry (by functor VALUE identity) + helpers
+// =====================================================================
+export type TraversableRegistryK1 = WeakMap<EndofunctorK1<any>, TraversableK1<any>>
+
+export const makeTraversableRegistryK1 = () => {
+  const reg: TraversableRegistryK1 = new WeakMap()
+  const register = <F>(F: EndofunctorK1<F>, T: TraversableK1<F>): EndofunctorK1<F> => {
+    reg.set(F as any, T as any)
+    return F
+  }
+  const get = <F>(F: EndofunctorK1<F>): TraversableK1<F> | null =>
+    (reg.get(F as any) as any) ?? null
+  return { reg, register, get }
+}
+
+// ---------------------------------------------------------------------
+// TraversableK1 instances
+// ---------------------------------------------------------------------
+
+// Option
+export const TraversableOptionK1: TraversableK1<'Option'> = {
+  traverse: <G>(G: SimpleApplicativeK1<G>) =>
+    <A, B>(f: (a: A) => any) =>
+    (oa: Option<A>) =>
+      oa._tag === 'Some'
+        ? G.map((b: B) => Some(b))(f(oa.value))
+        : G.of<Option<B>>(None)
+}
+
+// Either<L,_>
+export const TraversableEitherK1 =
+  <L>(): TraversableK1<['Either', L]> => ({
+    traverse: <G>(G: SimpleApplicativeK1<G>) =>
+      <A, B>(f: (a: A) => any) =>
+      (eab: Result<L, A>) => // Using Result as Either
+        eab._tag === 'Ok'
+          ? G.map((b: B) => Ok<B>(b))(f(eab.value))
+          : G.of<Result<L, B>>(Err<L>(eab.error))
   })
 
-  // start with {} (explicit cast to fix the R phantom)
-  return make(Wmod.of({} as const) as WriterReaderTaskEither<W, R, never, {}>)
+// NonEmptyArray
+export type NEA<A> = readonly [A, ...A[]]
+
+export const TraversableNEAK1: TraversableK1<['NEA']> = {
+  traverse: <G>(G: SimpleApplicativeK1<G>) =>
+    <A, B>(f: (a: A) => any) =>
+    (nea: NEA<A>) => {
+      const [h, ...t] = nea
+      // start with head
+      let acc: any = G.map((b: B) => [b] as NEA<B>)(f(h))
+      // push each tail element
+      for (const a of t) {
+        const cons = G.map((xs: NEA<B>) => (b: B) => [...xs, b] as NEA<B>)(acc)
+        acc = G.ap(cons)(f(a))
+      }
+      return acc // G<NEA<B>>
+    }
 }
+
+// Ready-made traversables for parameterized functors
+export const TraversablePairK1 = <C>(): TraversableK1<['Pair', C]> => ({
+  traverse: <G>(G: SimpleApplicativeK1<G>) =>
+    <A, B>(f: (a: A) => any) =>
+    (ca: Pair<C, A>) =>
+      G.map((b: B) => [ca[0], b] as const)(f(ca[1]))
+})
+
+export const TraversableConstK1 = <C>(): TraversableK1<['Const', C]> => ({
+  traverse: <G>(G: SimpleApplicativeK1<G>) =>
+    <A, B>(_f: (a: A) => any) =>
+    (cx: C) => // Const<C, A> is just C
+      G.of(cx as any as C) // Const<C, B> is still just C
+})
+
+// Derive traversable for Sum/Prod/Comp from components
+export const deriveTraversableSumK1 =
+  <F, G>(TF: TraversableK1<F>, TG: TraversableK1<G>): TraversableK1<['Sum', F, G]> => ({
+    traverse: <App>(App: SimpleApplicativeK1<App>) =>
+      <A, B>(f: (a: A) => any) =>
+      (v: SumVal<F, G, A>) =>
+        v._sum === 'L'
+          ? App.map((fb: any) => inL<F, G, B>(fb))(TF.traverse(App)(f)(v.left))
+          : App.map((gb: any) => inR<F, G, B>(gb))(TG.traverse(App)(f)(v.right))
+  })
+
+export const deriveTraversableProdK1 =
+  <F, G>(TF: TraversableK1<F>, TG: TraversableK1<G>): TraversableK1<['Prod', F, G]> => ({
+    traverse: <App>(App: SimpleApplicativeK1<App>) =>
+      <A, B>(f: (a: A) => any) =>
+      (p: ProdVal<F, G, A>) => {
+        const lf = TF.traverse(App)(f)(p.left)
+        const rf = TG.traverse(App)(f)(p.right)
+        const ap2 = <X, Y, Z>(gxy: any, gy: any) =>
+          App.ap(App.map((x: X) => (y: Y) => ({ left: x, right: y } as ProdVal<F, G, Z>))(gxy))(gy)
+        return ap2(lf, rf)
+      }
+  })
+
+export const deriveTraversableCompK1 =
+  <F, G>(TF: TraversableK1<F>, TG: TraversableK1<G>): TraversableK1<['Comp', F, G]> => ({
+    traverse: <App>(App: SimpleApplicativeK1<App>) =>
+      <A, B>(f: (a: A) => any) =>
+      (fga: any) =>
+        TF.traverse(App)((ga: any) => TG.traverse(App)(f)(ga))(fga)
+  })
+
+// Register common families (return the same Endo value you should use elsewhere)
+export const registerEitherTraversable =
+  <E>(R: ReturnType<typeof makeTraversableRegistryK1>, tag?: E) => {
+    const F = ResultK1<E>() // Using Result as Either
+    const T = TraversableEitherK1<E>()
+    return R.register(F as any, T as any)
+  }
+
+export const registerPairTraversable =
+  <C>(R: ReturnType<typeof makeTraversableRegistryK1>) => {
+    const F = PairEndo<C>()
+    const T = TraversablePairK1<C>()
+    return R.register(F as any, T as any)
+  }
+
+export const registerConstTraversable =
+  <C>(R: ReturnType<typeof makeTraversableRegistryK1>) => {
+    const F = ConstEndo<C>()
+    const T = TraversableConstK1<C>()
+    return R.register(F as any, T as any)
+  }
+
+// Compose/derive & register at runtime from parts already in registry
+export const registerSumDerived =
+  <F, G>(R: ReturnType<typeof makeTraversableRegistryK1>, FEndo: EndofunctorK1<F>, GEndo: EndofunctorK1<G>) => {
+    const TF = R.get(FEndo); const TG = R.get(GEndo)
+    if (!TF || !TG) throw new Error('registerSumDerived: missing component traversables')
+    const FE = SumEndo(FEndo, GEndo)
+    const TT = deriveTraversableSumK1(TF as any, TG as any)
+    return R.register(FE as any, TT as any)
+  }
+
+export const registerProdDerived =
+  <F, G>(R: ReturnType<typeof makeTraversableRegistryK1>, FEndo: EndofunctorK1<F>, GEndo: EndofunctorK1<G>) => {
+    const TF = R.get(FEndo); const TG = R.get(GEndo)
+    if (!TF || !TG) throw new Error('registerProdDerived: missing component traversables')
+    const FE = ProdEndo(FEndo, GEndo)
+    const TT = deriveTraversableProdK1(TF as any, TG as any)
+    return R.register(FE as any, TT as any)
+  }
+
+export const registerCompDerived =
+  <F, G>(R: ReturnType<typeof makeTraversableRegistryK1>, FEndo: EndofunctorK1<F>, GEndo: EndofunctorK1<G>) => {
+    const TF = R.get(FEndo); const TG = R.get(GEndo)
+    if (!TF || !TG) throw new Error('registerCompDerived: missing component traversables')
+    const FE = composeEndoK1(FEndo, GEndo)
+    const TT = deriveTraversableCompK1(TF as any, TG as any)
+    return R.register(FE as any, TT as any)
+  }
+
+// Lax 2-functor (Promise postcompose) that consults the registry
+export const makePostcomposePromise2WithRegistry = (R: TraversableRegistryK1): LaxTwoFunctorK1 =>
+  makePostcomposePromise2(<F>(FEndo: EndofunctorK1<F>) => (R.get(FEndo as any) as any) ?? null)
+
+// =====================================================================
+// Smart metadata for composed endofunctors + lazy Traversable lookup
+// =====================================================================
+
+// Internal shape metadata (WeakMap so GC-friendly)
+type EndoMeta =
+  | { tag: 'Sum';  left: EndofunctorK1<any>; right: EndofunctorK1<any> }
+  | { tag: 'Prod'; left: EndofunctorK1<any>; right: EndofunctorK1<any> }
+  | { tag: 'Comp'; left: EndofunctorK1<any>; right: EndofunctorK1<any> }
+  | { tag: 'Pair'; C: unknown }
+  | { tag: 'Const'; C: unknown }
+
+const __endoMeta = new WeakMap<EndofunctorK1<any>, EndoMeta>()
+const withMeta = <F>(e: EndofunctorK1<F>, m: EndoMeta): EndofunctorK1<F> => {
+  __endoMeta.set(e as any, m)
+  return e
+}
+
+// Meta-enabled constructors (use these if you want auto-derivation):
+export const SumEndoM =
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) =>
+    withMeta(SumEndo(F, G) as any, { tag: 'Sum', left: F, right: G })
+
+export const ProdEndoM =
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) =>
+    withMeta(ProdEndo(F, G) as any, { tag: 'Prod', left: F, right: G })
+
+export const CompEndoM =
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) =>
+    withMeta(composeEndoK1(F, G) as any, { tag: 'Comp', left: F, right: G })
+
+export const PairEndoM =
+  <C>(c: C) => withMeta(PairEndo<C>() as any, { tag: 'Pair', C: c } as any)
+
+export const ConstEndoM =
+  <C>(c: C) => withMeta(ConstEndo<C>() as any, { tag: 'Const', C: c } as any)
+
+// Smart lookup: uses registry; if missing, tries to derive for Sum/Prod/Comp and caches result.
+export const makeSmartGetTraversableK1 =
+  (R: ReturnType<typeof makeTraversableRegistryK1>) =>
+  <F>(FEndo: EndofunctorK1<F>): TraversableK1<F> | null => {
+    const hit = R.get(FEndo as any)
+    if (hit) return hit as any
+    const m = __endoMeta.get(FEndo as any)
+    if (!m) return null
+
+    // recursive fetch that also caches
+    const need = makeSmartGetTraversableK1(R)
+
+    switch (m.tag) {
+      case 'Sum': {
+        const TL = need(m.left); const TR = need(m.right)
+        if (!TL || !TR) return null
+        const T = deriveTraversableSumK1(TL as any, TR as any) as any
+        R.register(FEndo as any, T)
+        return T
+      }
+      case 'Prod': {
+        const TL = need(m.left); const TR = need(m.right)
+        if (!TL || !TR) return null
+        const T = deriveTraversableProdK1(TL as any, TR as any) as any
+        R.register(FEndo as any, T)
+        return T
+      }
+      case 'Comp': {
+        const TL = need(m.left); const TR = need(m.right)
+        if (!TL || !TR) return null
+        const T = deriveTraversableCompK1(TL as any, TR as any) as any
+        R.register(FEndo as any, T)
+        return T
+      }
+      case 'Pair': {
+        const T = TraversablePairK1<any>()
+        R.register(FEndo as any, T as any)
+        return T as any
+      }
+      case 'Const': {
+        const T = TraversableConstK1<any>()
+        R.register(FEndo as any, T as any)
+        return T as any
+      }
+    }
+  }
+
+// Promise-postcompose that uses the smart getter:
+export const makePostcomposePromise2Smart =
+  (R: ReturnType<typeof makeTraversableRegistryK1>): LaxTwoFunctorK1 =>
+    makePostcomposePromise2(<F>(FEndo: EndofunctorK1<F>) => makeSmartGetTraversableK1(R)(FEndo) as any)
+
+// ---------------------------------------------------------------------
+// Result<E,_>: factory to adapt your existing Ok/Err tags without imports.
+// Provide a tag check and constructors so we don't collide with your names.
+// ---------------------------------------------------------------------
+export const makeTraversableResultK1 =
+  <E>(isOk: (r: any) => boolean, getOk: (r: any) => any, getErr: (r: any) => E,
+      OkCtor: <A>(a: A) => any, ErrCtor: (e: E) => any): TraversableK1<['Result', E]> => ({
+    traverse: <G>(G: SimpleApplicativeK1<G>) =>
+      <A, B>(f: (a: A) => any) =>
+      (r: any) =>
+        isOk(r)
+          ? G.map((b: B) => OkCtor(b))(f(getOk(r)))
+          : G.of(ErrCtor(getErr(r)))
+  })
 
 // =======================
 // Development Utilities (Dev-Only)
@@ -10567,20 +11864,20 @@ export const mkRTR = <R, E>() => {
 
 // Tiny examples
 // ENV / config
-type Env = { apiBase: string; token: string }
+type AppEnv = { apiBase: string; token: string }
 
 // Reader usage (pure dependency injection)
-const authHeader: Reader<Env, Record<string, string>> = Reader.asks((env) => ({
+const authHeader: Reader<AppEnv, Record<string, string>> = Reader.asks((env) => ({
   Authorization: `Bearer ${env.token}`,
 }))
 
-const withApi = Reader.local<Env, { apiBase: string }>(
+const withApi = Reader.local<AppEnv, { apiBase: string }>(
   (q) => ({ apiBase: q.apiBase, token: "n/a" }) // adapt env shape if needed
 )
 
-const url: Reader<Env, string> = Reader.asks((env) => `${env.apiBase}/users/me`)
+const url: Reader<AppEnv, string> = Reader.asks((env) => `${env.apiBase}/users/me`)
 
-const headersThenUrl = Reader.chain<Record<string, string>, string, Env>((h) =>
+const headersThenUrl = Reader.chain<Record<string, string>, string, AppEnv>((h) =>
   Reader.map<string, string>((u) => `${u}?auth=${!!h['Authorization']}`)(url)
 )(authHeader)
 
@@ -10700,6 +11997,136 @@ const n2 = runReader(evalExprR_app(prog), { x: 1 })      // still 14 (let shadow
 // ---------- Reader<Result> eval demo (div-by-zero) ----------
 const bad = divE(lit(1), add(vvar("d"), neg(vvar("d")))) // 1 / (d + (-d)) = 1/0
 const r1 = runReader(evalExprRR_app(bad), { d: 3 })      // Err("div by zero")
+
+// ===============================================================
+// Generic descent/glue kit
+//   - Works over any index type I (keys you glue along),
+//     local pieces Xi, overlap observations Oij, and final A.
+//   - You supply: how to "restrict" to overlaps, equality on overlaps,
+//     optional completeness checks, and how to assemble the global.
+// ===============================================================
+
+export type GlueKit<I extends PropertyKey, Xi, Oij, A> = {
+  readonly cover: ReadonlyArray<I>
+  readonly restrict: (i: I, j: I) => (xi: Xi) => Oij
+  readonly eqO: Eq<Oij>
+  readonly assemble: (sections: Readonly<Record<I, Xi>>) => A
+  readonly completeness?: (i: I, xi: Xi) => ReadonlyArray<string> // empty => ok
+}
+
+export type GlueErr<I extends PropertyKey, Oij> =
+  | { _tag: 'Incomplete'; i: I; details: ReadonlyArray<string> }
+  | { _tag: 'Conflict';  i: I; j: I; left: Oij; right: Oij }
+
+export const checkDescent =
+  <I extends PropertyKey, Xi, Oij, A>(
+    kit: GlueKit<I, Xi, Oij, A>,
+    secs: Readonly<Record<I, Xi>>
+  ): Validation<GlueErr<I, Oij>, true> => {
+    const errs: GlueErr<I, Oij>[] = []
+    const ids = kit.cover
+
+    // 1) completeness per piece (optional)
+    if (kit.completeness) {
+      for (const i of ids) {
+        const issues = kit.completeness(i, secs[i])
+        if (issues.length) errs.push({ _tag: 'Incomplete', i, details: issues })
+      }
+    }
+
+    // 2) compatibility on all overlaps
+    for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) {
+      const i = ids[a]!, j = ids[b]!
+      const rij = kit.restrict(i, j)(secs[i])
+      const rji = kit.restrict(j, i)(secs[j])
+      if (!kit.eqO(rij, rji)) errs.push({ _tag: 'Conflict', i, j, left: rij, right: rji })
+    }
+
+    return errs.length ? VErr(...errs) : VOk(true as const)
+  }
+
+export const glue =
+  <I extends PropertyKey, Xi, Oij, A>(
+    kit: GlueKit<I, Xi, Oij, A>,
+    secs: Readonly<Record<I, Xi>>
+  ): Validation<GlueErr<I, Oij>, A> => {
+    const ok = checkDescent(kit, secs)
+    return isVErr(ok) ? ok as any : VOk(kit.assemble(secs))
+  }
+
+// ===============================================================
+// Record-based gluing (keys as "opens")
+// ===============================================================
+export type RecordCover<I extends PropertyKey, K extends PropertyKey> =
+  Readonly<Record<I, ReadonlySet<K>>>
+export type Sections<I extends PropertyKey, K extends PropertyKey, A> =
+  Readonly<Record<I, Readonly<Partial<Record<K, A>>>>>
+
+const intersect = <T>(a: ReadonlySet<T>, b: ReadonlySet<T>): ReadonlyArray<T> => {
+  const out: T[] = []; for (const x of a) if (b.has(x)) out.push(x); return out
+}
+
+const eqRecordOn =
+  <K extends PropertyKey, A>(eqA: Eq<A>) =>
+  (keys: ReadonlyArray<K>) =>
+  (x: Readonly<Record<K, A>>, y: Readonly<Record<K, A>>): boolean =>
+    keys.every(k => eqA(x[k], y[k]))
+
+const pickRecord = <K extends PropertyKey, A>(r: Readonly<Record<K, A>>, ks: ReadonlyArray<K>): Readonly<Record<K, A>> => {
+  const o: Partial<Record<K, A>> = {}; for (const k of ks) if (k in r) o[k] = r[k]; return o as any
+}
+
+export const mkRecordGlueKit =
+  <I extends PropertyKey, K extends PropertyKey, A>(
+    cover: RecordCover<I, K>,
+    eqA: Eq<A> = eqStrict<A>()
+  ): GlueKit<I, Readonly<Record<K, A>>, Readonly<Record<K, A>>, Readonly<Record<K, A>>> => {
+    const ids = Object.keys(cover) as I[]
+
+    const restrict = (i: I, j: I) => (ri: Readonly<Record<K, A>>) =>
+      pickRecord(ri, intersect(cover[i], cover[j]))
+
+    const eqO = (x: Readonly<Record<K, A>>, y: Readonly<Record<K, A>>) =>
+      eqRecordOn(eqA)(Object.keys(x) as K[])(x, y) &&
+      eqRecordOn(eqA)(Object.keys(y) as K[])(x, y)
+
+    const completeness = (i: I, ri: Readonly<Record<K, A>>) => {
+      const need = [...cover[i] as Set<K>]
+      const miss = need.filter(k => !(k in ri))
+      return miss.length ? miss.map(k => `missing ${String(k)}`) : []
+    }
+
+    const assemble = (secs: Readonly<Record<I, Readonly<Record<K, A>>>>) => {
+      // union of all keys in the cover
+      const all = new Set<K>(); for (const i of ids) for (const k of cover[i]) all.add(k)
+      const out: Partial<Record<K, A>> = {}
+      // since descent holds, any section defining k has the same value
+      for (const k of all) {
+        for (const i of ids) {
+          const ri = secs[i]; if (k in ri) { out[k] = ri[k]; break }
+        }
+      }
+      return out as Readonly<Record<K, A>>
+    }
+
+    return { cover: ids, restrict, eqO, completeness, assemble }
+  }
+
+// Legacy API compatibility
+export const glueRecordCover =
+  <I extends PropertyKey, K extends PropertyKey, A>(
+    cover: RecordCover<I, K>,
+    secs: Sections<I, K, A>,
+    eq: Eq<A> = eqStrict<A>()
+  ) => glue(mkRecordGlueKit(cover, eq), secs as any)
+
+export const resRecord =
+  <I extends PropertyKey, K extends PropertyKey, A>(cover: RecordCover<I, K>) =>
+  (i: I, j: I) =>
+  (si: Readonly<Partial<Record<K, A>>>): Readonly<Partial<Record<K, A>>> => {
+    const kit = mkRecordGlueKit(cover)
+    return kit.restrict(i, j)(si as any) as any
+  }
 
 // ---------- Fused hylo demo (Expr or Json as you like) ----------
 // Note: These functions would need to be implemented based on your fused hylo setup

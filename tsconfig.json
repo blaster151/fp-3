@@ -18,6 +18,10 @@
     // Stricter Typechecking Options
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
+    // Additional any detection
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
 
     // Style Options - Strict (except unused variables for now)
     "noImplicitReturns": true,

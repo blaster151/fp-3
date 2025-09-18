@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 
 import {
-  Some, None, Ok, Err, VOk, VErr, isSome, isErr,
+  Some, None, Ok, Err, VOk, VErr, isSome, isErr, isVOk,
   Reader, DoR, DoTR, SRT, runSRT, ReaderTaskResult, ReaderTask, Task,
   sequenceArrayValidation, sequenceArrayResult, sequenceStructValidation, sequenceStructResult,
   partitionSet, partitionSetWith, productTR, zipWithTR, sequenceState, traverseSRT,
@@ -30,11 +30,14 @@ import {
   EitherT, TaskEither, ReaderEither, ReaderTaskEither, RTE, TE, RE,
   // Advanced Compositions
   LogArray, MW_R, MW_RT, DoRTE, DoRTEBuilder,
-  WriterReaderTaskEither, WRTE, DoWRTE, DoWRTEBuilder,
+  WriterReaderTaskEither, WRTE,
   // Module-level shims
   apFirstRTE, apSecondRTE, zipWithRTE, zipRTE,
   // Endofunctor helpers
   EndofunctorK1, ResultK1, ValidationK1, ReaderK1, ReaderTaskK1,
+  // Sum and Product functors
+  SumVal, SumEndo, inL, inR, strengthEnvFromSum, matchSum,
+  ProdVal, ProdEndo, prod, strengthEnvFromProd,
   // Monoidal Category Structure
   Iso, Hom, CatFn, MonoidalFn, MonoidalKleisliRTE,
   // Development Utilities
@@ -2572,7 +2575,7 @@ const r_bindHO = A_Reader.bindK_HO(
         const W = WRTE<string>(Log)
         const Do = DoWRTE(W)<Env>()
 
-        const stepOk: WriterReaderTaskEither<string, Env, never, number> =
+        const stepOk: WriterReaderTaskEither<readonly string[], Env, never, number> =
           W.chain(() => W.of(2))(W.tell(['start']))
 
         const program = Do
