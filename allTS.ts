@@ -813,13 +813,68 @@ export const strengthEnvCompose = <E>() =>
 
 // ==================== Comonad K1 ====================
 export interface ComonadK1<F> extends EndofunctorK1<F> {
+  // counit ε : W<A> -> A
   readonly extract: <A>(fa: any /* F<A> */) => A
+  // comultiplication δ : W<A> -> W<W<A>>
+  readonly duplicate: <A>(wa: any /* F<A> */) => any /* F<F<A>> */
+  // extend (co-Kleisli lift): (W<A> -> B) -> (W<A> -> W<B>)
   readonly extend:  <A, B>(f: (fa: any /* F<A> */) => B) => (fa: any /* F<A> */) => any /* F<B> */
-  // duplicate = extend(id)
 }
 export const duplicateK1 =
   <F>(W: ComonadK1<F>) =>
   <A>(wa: any /* F<A> */) => W.extend<any, any>((x) => x)(wa)
+
+// =============== Coalgebras for W ===============
+// A coalgebra is a coaction α : A -> W<A> satisfying:
+//  (CoCounit)   extract(α(a)) = a
+//  (CoAssoc)    duplicate(α(a)) = map(α)(α(a))
+export type Coalgebra<W, A> = (a: A) => any /* Kind1<W,A> */
+
+// Morphism of coalgebras f : (A,α) -> (B,β) satisfies:
+//   map(f) ∘ α = β ∘ f
+export const isCoalgebraMorphism =
+  <W>(W: EndofunctorK1<W>) =>
+  <A, B>(alpha: Coalgebra<W, A>, beta: Coalgebra<W, B>, f: (a: A) => B, eq: (x: unknown, y: unknown) => boolean) =>
+  (a: A): boolean =>
+    eq(W.map(f as any)(alpha(a)), beta(f(a)))
+
+// =============== Forgetful functor U : Coalg(W) -> Set ===============
+// U "forgets" the coaction: on objects, (A,α) |-> A; on morphisms, f |-> f.
+// In TS we model it as identity at runtime; the meaning is in the types.
+export const ForgetfulFromCoalgebras =
+  <W>(_W: ComonadK1<W>) => ({
+    onObject: <A>(_alpha: Coalgebra<W, A>) => (undefined as unknown as A),
+    onMorphism: <A, B>(f: (a: A) => B) => f,
+  })
+
+// =============== Concrete Comonad: Pair<E,_> (aka Env) ===============
+// Env comonad (aka Pair<E,_>)
+export const PairComonad =
+  <E>(): ComonadK1<['Pair', E]> => ({
+    ...PairEndo<E>(),
+    extract: <A>(wa: readonly [E, A]) => wa[1],
+    duplicate: <A>(wa: readonly [E, A]) => [wa[0], wa] as const,
+    extend: <A, B>(f: (w: readonly [E, A]) => B) => (wa: readonly [E, A]) =>
+      [wa[0], f(wa)] as const
+  })
+
+// =============== Co-Kleisli category ===============
+// Co-Kleisli for W
+export const CoKleisli =
+  <W>(W: ComonadK1<W>) => ({
+    id: <A>(): ((a: A) => any /* W<A> */) =>
+      (a: A) => W.duplicate(W.map((_x: A) => a)(W.extract as any) as any) /* not used directly */,
+    // Better: concrete builders below.
+    arr: <A, B>(f: (a: A) => B) => (a: A) => (W as any).extend((_wa: any) => f(a))((W as any).duplicate as any), // rarely used
+
+    // Practical composition: g ∘_CoK f :: A -> W<C>
+    compose: <A, B, C>(g: (b: B) => any, f: (a: A) => any) =>
+      (a: A) => {
+        const wb = f(a)                 // W<B>
+        const h  = (_wb: any) => W.extract(g(W.extract(wb))) // B -> C via g; evaluated "around" wb
+        return W.extend((_wb: any) => h(_wb))(wb)           // W<C>
+      }
+  })
 
 // ==================== Store comonad ====================
 // Canonical presentation: peek + focused position
@@ -845,6 +900,10 @@ export const StoreC = {
         peek: (s: S) => f({ peek: sa.peek, pos: s }),
         pos: sa.pos
       }),
+
+  duplicate:
+    <S, A>(sa: Store<S, A>): Store<S, Store<S, A>> =>
+      ({ peek: (s: S) => ({ peek: sa.peek, pos: s }), pos: sa.pos }),
 
 } satisfies ComonadK1<'Store'> as any
 
@@ -889,6 +948,10 @@ export const EnvC = {
     <A, B>(f: (w: Env<any, A>) => B) =>
     <E>(ea: Env<E, A>): Env<E, B> =>
       [ea[0], f(ea)] as const,
+
+  duplicate:
+    <E, A>(ea: Env<E, A>): Env<E, Env<E, A>> =>
+      [ea[0], ea] as const,
 
 } satisfies ComonadK1<'Env'> as any
 
