@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 
 import {
-  Some, None, Ok, Err, VOk, VErr, isSome, isErr,
+  Some, None, Ok, Err, VOk, VErr, isSome, isErr, isVOk,
   Reader, DoR, DoTR, SRT, runSRT, ReaderTaskResult, ReaderTask, Task,
   sequenceArrayValidation, sequenceArrayResult, sequenceStructValidation, sequenceStructResult,
   partitionSet, partitionSetWith, productTR, zipWithTR, sequenceState, traverseSRT,
@@ -2569,10 +2569,10 @@ const r_bindHO = A_Reader.bindK_HO(
         
         type Env = { base: string }
         const Log = ArrayMonoid<string>()
-        const W = WRTE<string>(Log)
+        const W = WRTE<readonly string[]>(Log)
         const Do = DoWRTE(W)<Env>()
 
-        const stepOk: WriterReaderTaskEither<string, Env, never, number> =
+        const stepOk: WriterReaderTaskEither<readonly string[], Env, never, number> =
           W.chain(() => W.of(2))(W.tell(['start']))
 
         const program = Do
@@ -2767,7 +2767,7 @@ const r_bindHO = A_Reader.bindK_HO(
         console.log('\n📊 DoWRTE with apFirst, apSecond, tap:')
         
         const Log = ArrayMonoid<string>()
-        const W = WRTE<string>(Log)
+        const W = WRTE<readonly string[]>(Log)
         const Do = DoWRTE(W)<{ base: string }>()
 
         const enhancedDoWRTE = Do
@@ -2925,7 +2925,7 @@ const r_bindHO = A_Reader.bindK_HO(
         console.log('\n📊 WRTE module-level shims:')
         
         const Log = ArrayMonoid<string>()
-        const W = WRTE<string>(Log)
+        const W = WRTE<readonly string[]>(Log)
         
         const wrteA = W.of(100)
         const wrteB = W.of('world')
