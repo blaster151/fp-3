@@ -75,6 +75,12 @@ function showBacklog() {
   }
 }
 
+function generateFileReference(analysisType) {
+  const timestamp = new Date().toISOString().split('T')[0];
+  const fileName = `PDI_ANALYSIS_${analysisType.toUpperCase()}.md`;
+  return `- **📄 Detailed Analysis**: [\`${fileName}\`](./${fileName})`;
+}
+
 function showStats() {
   if (!fs.existsSync(BACKLOG_FILE)) {
     console.log('❌ UPGRADE_BACKLOG.md not found');
@@ -105,6 +111,12 @@ function showStats() {
   }
 }
 
+function generateReference(analysisType) {
+  console.log(`📄 File reference for ${analysisType}:`);
+  console.log(generateFileReference(analysisType));
+  console.log('\n💡 Copy this line to your UPGRADE_BACKLOG.md under the appropriate item');
+}
+
 function showHelp() {
   console.log(`
 🔧 Upgrade Analyzer
@@ -113,6 +125,7 @@ Usage:
   node scripts/upgrade-analyzer.js analyze [pattern]  - Find potential upgrade opportunities
   node scripts/upgrade-analyzer.js backlog           - Show current backlog
   node scripts/upgrade-analyzer.js stats             - Show backlog statistics
+  node scripts/upgrade-analyzer.js reference [type]  - Generate file reference for analysis
   node scripts/upgrade-analyzer.js help              - Show this help
 
 Examples:
@@ -141,6 +154,13 @@ switch (command) {
     break;
   case 'stats':
     showStats();
+    break;
+  case 'reference':
+    if (process.argv[3]) {
+      generateReference(process.argv[3]);
+    } else {
+      console.log('❌ Please specify analysis type: npm run upgrade:reference [analysisType]');
+    }
     break;
   case 'help':
   case '--help':

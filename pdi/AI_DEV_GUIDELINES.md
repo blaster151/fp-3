@@ -392,3 +392,175 @@ LLM: "Let me check KNOWLEDGE_BASE.md... I see CanonicalJsonMap and hashConsJson 
       while hashConsJson offers memory optimization. For a JSON cache, 
       CanonicalJsonMap seems ideal. Should I proceed with that approach?"
 ```
+
+# Canonicalization Design Guidelines (Json)
+
+**Core intent**
+Canonicalization is a deterministic, structure-preserving normalization used for equality, hashing, grouping, and stable serialization. It should be:
+
+- **Pure** (no side effects),
+- **Idempotent** (`canonicalizeJson(canonicalizeJson(j)) === canonicalizeJson(j)`),
+- **Representation-agnostic** (logically equal values canonicalize the same).
+
+**Where to canonicalize**
+
+- At **boundaries**: before hashing/equality, when inserting into `CanonicalJsonMap/Set/MultiMap`, before dedup, and before `toEJsonCanonical`.
+- **Not** in every internal transformation; keep most transforms oblivious, and *opt in* at call sites that need stability or interning.
+
+**Equality/Hash contract**
+
+- If `equalsCanonical(a, b)` then `hashCanonical(a) === hashCanonical(b)`.
+- `compareCanonical(a, b)` is a total order (based on `canonicalKey`).
+- `canonicalKey(j) === JSON.stringify(toEJsonCanonical(j))` must remain true.
+
+**Leaves vs recursive slots**
+
+- Leaf variants carry data only; recursive variants carry children (`A`s).
+- **Leaf normalization** (examples you already have):
+  - `JRegex`: sort/unique flags.
+  - `JDec`: keep as given string (you may later enforce a decimal string normal form if you add a decimal lib).
+  - `JBinary`: treat as base64 string; callers are responsible for valid base64.
+  - `JUndefined`, `JNull`, `JBool`, `JNum`, `JStr`: pass through (with `JNum` requiring finite).
+- **Recursive normalization**:
+  - `JObj`: sort entries by key (lexicographic).
+  - `JSet`: dedupe by canonical key, then sort by canonical key.
+  - `JArr`: **preserve order** (arrays are sequences, not sets).
+
+**Performance posture**
+
+- Canonicalization is `O(n log n)` for `JObj`/`JSet` due to sort; others are linear.
+- Prefer **canonicalize once**, then **share** with `hashConsJson(pool)` to avoid duplicate subtrees.
+- When you need repeated keying/grouping, store canonical values in your maps/sets and reuse.
+
+**Serialization**
+
+- `toEJsonCanonical(canonicalizeJson(j))` must be fully deterministic.
+- `fromEJson(toEJsonCanonical(j))` should succeed and be canonical (round-trip law below).
+
+**Extensibility for new variants**
+When you add a new `JsonF` case:
+
+1. Decide: leaf vs recursive?
+2. Define its **canonicalization** (sorting, normalization, dedup policy),
+3. Encode/decode in EJSON (exact keys, no ambiguity),
+4. Update algebras that depend on tags (size/depth/collect/pretty, etc.),
+5. Ensure **product algebras** (like `productJsonAlg2`) forward payloads for the new tag.
+
+------
+
+# PR Checklist (New & Existing Features)
+
+### For a **new `JsonF` variant**
+
+-  Update `JsonF<A>` union with the new case (document whether it's leaf or recursive).
+-  Update `mapJsonF` to map child `A`s if (and only if) the case is recursive.
+-  Add smart constructor(s) `jNewCase(…)`.
+-  **Canonicalization**: add a `case` in `canonicalizeJson` with precise rules.
+-  **EJSON**:
+  -  `toEJson`: add bijective tagged encoding,
+  -  `fromEJson`: add exact-keys decoder branch, aggregate errors with `Validation`.
+-  **Algebras** the lib ships (if applicable): `Alg_Json_size`, `Alg_Json_depth`, `Alg_Json_collectStrs`, `prettyJsonExt`.
+-  **Product algebra** forwarding: update `productJsonAlg2` to pass the same payload to both algebras.
+-  Add unit tests (see "Tests" below).
+
+### For a **new feature that consumes Json** (grouping, caching, dedup, etc.)
+
+-  If it needs equality, hashing, ordering, or dedup, **use canonical APIs**:
+  - `canonicalizeJson`, `equalsCanonical`, `compareCanonical`, `hashCanonical`, `canonicalKey`,
+  - or the containers: `CanonicalJsonMap/Set/MultiMap`.
+-  Accept `Json` inputs but store **canonicalized** values internally (or clearly document if you store raw).
+-  Provide *predictable iteration order* (insertion or canonical order) and document it.
+
+### For **existing features**
+
+-  Replace any ad-hoc `JSON.stringify`/deep-equal with `equalsCanonical` or `canonicalKey`.
+-  Replace plain `Map<Json, …>`/`Set<Json>` where logical equality matters with `CanonicalJsonMap/Set/MultiMap`.
+-  If you serialize for caching or signatures, switch to `toEJsonCanonical` (not `JSON.stringify` of raw AST).
+-  If you dedup arrays of Json, replace with `uniqueJsonByCanonical` or a `CanonicalJsonSet`.
+
+------
+
+# Minimal Laws/Tests to add (copy/paste ideas)
+
+**Idempotence**
+
+```
+// canonicalize is idempotent
+expect(equalsCanonical(canonicalizeJson(j), canonicalizeJson(canonicalizeJson(j)))).toBe(true)
+```
+
+**Hash/equality coherence**
+
+```
+// equals -> hash equal
+if (equalsCanonical(a, b)) expect(hashCanonical(a)).toBe(hashCanonical(b))
+```
+
+**Ordering totality**
+
+```
+// compare is anti-symmetric & transitive
+expect(compareCanonical(a, b)).toBe(-compareCanonical(b, a))
+// build random triples and check transitivity if needed
+```
+
+**Round-trip**
+
+```
+const ej = toEJsonCanonical(j)
+const rt = fromEJson(ej)
+expect(isOk(rt)).toBe(true)
+expect(equalsCanonical(j, canonicalizeJson(rt.value))).toBe(true)
+```
+
+**Product algebra coherence**
+
+```
+const [x, y] = cataJson(productJsonAlg2(Alg_Json_size, Alg_Json_depth))(j)
+expect(x).toBe(cataJson(Alg_Json_size)(j))
+expect(y).toBe(cataJson(Alg_Json_depth)(j))
+```
+
+**Set/object policies**
+
+```
+// set dedup + sort
+const s = jSet([jStr('b'), jStr('a'), jStr('a')])
+const cs = canonicalizeJson(s)
+expect(prettyJsonExt(cs)).toBe('Set["a", "b"]')
+
+// object key order stable
+const o = jObj([['y', jNum(1)], ['x', jNum(2)]])
+const co = canonicalizeJson(o)
+expect(prettyJsonExt(co)).toBe('{\"x\": 2, \"y\": 1}')
+```
+
+------
+
+# "Opt-in" guidance for future features
+
+- **New data structures** keyed by `Json`? Prefer `CanonicalJsonMap/Set/MultiMap`.
+  If you must use native `Map`, always feed canonicalized keys (`canonicalizeJson`) and key by `canonicalKey` (string).
+- **New serializers**? Base them on `toEJsonCanonical`; never rely on engine object-key order.
+- **New equality checks**? Base them on `equalsCanonical`, never on reference equality or ad-hoc deep-equal.
+- **New dedup/group ops**? Use the canonical containers or `groupByCanonical*` helpers.
+- **Performance sensitive paths**? Canonicalize once → `hashConsJson(pool)` to maximize sharing; avoid repeated `canonicalKey` recomputation (cache it if you're computing it many times in a tight loop).
+
+------
+
+# Optional niceties you *can* add later (only if they're useful)
+
+- **Branded canonical type**:
+
+  ```
+  type Canonical = Json & { readonly __canon: unique symbol }
+  const asCanonical = (j: Json): Canonical => canonicalizeJson(j) as Canonical
+  ```
+
+  Use sparingly; it can help prevent mixing raw/canonical in internal caches.
+
+- **Policy switches** for canonicalization (e.g., "sort arrays too" or "case-insensitive keys"), but keep the default **strict** and **predictable**. If you add policies, thread a `{ policy?: CanonicalPolicy }` object through `canonicalizeJson` and mirror it in `toEJsonCanonical`.
+
+## TODO: Future Enhancements
+
+- [ ] **DoWRTE Implementation**: The current DoWRTE (Do-notation for WriterReaderTaskEither) has complex TypeScript type constraints that prevent compilation. Consider implementing a simplified version that focuses on core functionality with relaxed type constraints, or document as "advanced/experimental" feature.

@@ -17,9 +17,57 @@ import {
   Alg_Expr_size, Alg_Expr_depth, sizeAndDepthExpr,
   sizeJsonNew, strsJson, sizeAndDepthJson, strsAndSizeJson,
   // Canonicalization and EJSON
-  canonicalizeJson, toEJsonCanonical, fromEJson, CanonicalJsonMap, CanonicalJsonSet,
+  canonicalizeJson, canonicalizeJsonP, toEJsonCanonical, toEJsonCanonicalWithPolicy, fromEJson, CanonicalJsonMap, CanonicalJsonSet,
+  // Product algebra
+  productJsonAlg2, cataJson, JsonF,
+  // Category Theory constructs
+  NatK1, idNatK1, composeNatK1, optionToResult, resultToOption, taskToReaderTask, readerToReaderTask,
+  Kleisli, K_Option, K_Result, K_Task, K_Reader, K_ReaderTask,
+  Writer, WriterT, StringMonoid, ArrayMonoid,
+  ArrayM, traverseArrayA, sequenceArrayA,
+  // Monad Transformers
+  MonadWriterT, WriterInReader, WriterInReaderTask,
+  EitherT, TaskEither, ReaderEither, ReaderTaskEither, RTE, TE, RE,
+  // Advanced Compositions
+  LogArray, MW_R, MW_RT, DoRTE, DoRTEBuilder,
+  WriterReaderTaskEither, WRTE, DoWRTE, DoWRTEBuilder,
+  // Module-level shims
+  apFirstRTE, apSecondRTE, zipWithRTE, zipRTE,
+  // Endofunctor helpers
+  EndofunctorK1, ResultK1, ValidationK1, ReaderK1, ReaderTaskK1,
+  // Monoidal Category Structure
+  Iso, Hom, CatFn, MonoidalFn, MonoidalKleisliRTE,
+  // Development Utilities
+  assertMonoidalFnCoherence, assertMonoidalKleisliRTECoherence,
+  // Monoidal Functor Structure
+  MonoidalFunctorK1, monoidalFromApplicative, zipWithFromMonoidal, zipFromMonoidal,
+  // Monoidal Functor Instances
+  MonoidalOption, zipOption, zipWithOption,
+  MonoidalResult, zipResult, zipWithResult,
+  MonoidalReader, zipReader, zipWithReader,
+  MonoidalReaderTask, zipReaderTask, zipWithReaderTask,
+  MonoidalRTE, zipRTE_Monoidal, zipWithRTE_Monoidal,
+  MonoidalValidation, zipValidation,
   mapGroupValues, mapEachGroup, filterEachGroup, mergeGroupValues, dedupeEachGroup, flattenGroups,
   collapseToMap, mapMultiValues, mapEachMulti, filterEachMulti, mergeMulti,
+  // New group operations
+  concatGroups, unionGroupsBy, intersectGroupsBy, diffGroupsBy, topKBy, sortGroupsBy, sortGroupsByNumberDesc,
+  concatGroupsMM, unionGroupsByMM, intersectGroupsByMM, diffGroupsByMM, topKByMM, sortGroupsByNumberDescMM,
+  // New streaming operations
+  minByGroup, maxByGroup, minByGlobal, maxByGlobal, minByGroupMM, maxByGroupMM,
+  takeWhileGroup, dropWhileGroup, takeWhileGroupMM, dropWhileGroupMM,
+  streamReduceByCanonical, streamTopKByCanonical, streamCountsByCanonical, streamSumByCanonical,
+  // New canonical operations
+  minByCanonical, maxByCanonical, minByCanonicalScore, maxByCanonicalScore,
+  distinctByCanonical, distinctByCanonicalToArray, distinctPairsByCanonical, distinctPairsByCanonicalToArray,
+  distinctByCanonicalLast, distinctPairsByCanonicalLast,
+  // New canonical sort and unique operations
+  sortJsonByCanonical, sortJsonByCanonicalDesc, uniqueJsonByCanonical, uniqueJsonByCanonicalLast,
+  sortPairsByCanonical, sortPairsByCanonicalDesc, uniquePairsByCanonical, uniquePairsByCanonicalLast,
+  sortPairsBy, sortPairsByCanonicalThen, sortPairsByCanonicalThenNumberAsc, sortPairsByCanonicalThenNumberDesc,
+  sortValuesInGroups, sortValuesInGroupsByNumberAsc, sortValuesInGroupsByNumberDesc,
+  sortValuesInGroupsMM, sortValuesInGroupsByNumberAscMM, sortValuesInGroupsByNumberDescMM,
+  sortPairsByValueThenCanonical, sortPairsByValueNumberAscThenCanonical, sortPairsByValueNumberDescThenCanonical,
   // JSON types
   Json,
   // Canonical utilities
@@ -1282,8 +1330,8 @@ const r_bindHO = A_Reader.bindK_HO(
         console.log('✅ Canonical multimap provides efficient grouping by canonical JSON keys!')
         console.log('✅ GroupBy helpers enable fast canonical bucket building!')
         console.log('✅ Canonically equal JSONs are automatically grouped together!')
-
-        console.log('\n=== ALL NEW EXAMPLES COMPLETED ===')
+  
+  console.log('\n=== ALL NEW EXAMPLES COMPLETED ===')
         
         // =========================================================
         // NEW ADAPTERS DEMONSTRATION
@@ -1427,6 +1475,1988 @@ const r_bindHO = A_Reader.bindK_HO(
           const avg = stats.n > 0 ? stats.sum / stats.n : 0
           console.log(`   User: ${JSON.stringify(user)} -> $${avg.toFixed(2)} avg, ${stats.n} purchases, categories: [${Array.from(stats.categories).join(', ')}]`)
         }
+
+        // =========================================================
+        // NEW GROUP OPERATIONS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 NEW GROUP OPERATIONS DEMONSTRATION')
+        console.log('====================================')
+
+        // Create sample data for group operations
+        type Row = { id: string; score: number; category: string }
+        
+        const aKey = jObj([['user', jStr('ada')]])
+        const bKey = jObj([['user', jStr('bob')]])
+        const cKey = jObj([['user', jStr('charlie')]])
+
+        const group1 = new CanonicalJsonMap<ReadonlyArray<Row>>()
+          .set(aKey, [{id:'a1',score:10,category:'books'},{id:'a2',score:7,category:'books'}])
+          .set(bKey, [{id:'b1',score:1,category:'food'}])
+
+        const group2 = new CanonicalJsonMap<ReadonlyArray<Row>>()
+          .set(aKey, [{id:'a3',score:11,category:'books'},{id:'a2',score:7,category:'books'}]) // note duplicate id a2
+          .set(cKey, [{id:'c1',score:9,category:'tech'}])
+
+        console.log('📊 Original groups group1:')
+        for (const [key, rows] of group1) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        console.log('\n📊 Original groups group2:')
+        for (const [key, rows] of group2) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 1) Concatenate groups
+        const concat = concatGroups(group1, group2)
+        console.log('\n🔗 Concatenated groups:')
+        for (const [key, rows] of concat) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 2) Union groups with deduplication
+        const union = unionGroupsBy(group1, group2, r => r.id)
+        console.log('\n🔀 Union groups (deduplicated by id):')
+        for (const [key, rows] of union) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 3) Intersection groups
+        const inter = intersectGroupsBy(group1, group2, r => r.id)
+        console.log('\n🔍 Intersection groups:')
+        for (const [key, rows] of inter) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 4) Difference groups
+        const diffGroups = diffGroupsBy(group1, group2, r => r.id)
+        console.log('\n➖ Difference groups (group1 - group2):')
+        for (const [key, rows] of diffGroups) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 5) Top K per group
+        const top2 = topKBy(union, 2, (r) => r.score)
+        console.log('\n🏆 Top 2 per group (by score):')
+        for (const [key, rows] of top2) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 6) Sort groups by total score
+        const sorted = sortGroupsByNumberDesc(union, (vs) => vs.reduce((s,r) => s + r.score, 0))
+        console.log('\n📈 Groups sorted by total score (desc):')
+        for (const [key, rows] of sorted) {
+          const total = rows.reduce((s,r) => s + r.score, 0)
+          console.log(`   Key: ${JSON.stringify(key)} -> Total: ${total}, Items: ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // =========================================================
+        // MULTIMAP GROUP OPERATIONS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 MULTIMAP GROUP OPERATIONS DEMONSTRATION')
+        console.log('==========================================')
+
+        // Create multimaps
+        const mm1 = CanonicalJsonMultiMap.from([
+          [aKey, {id:'a1',score:10,category:'books'}],
+          [aKey, {id:'a2',score:7,category:'books'}],
+          [bKey, {id:'b1',score:1,category:'food'}]
+        ])
+
+        const mm2 = CanonicalJsonMultiMap.from([
+          [aKey, {id:'a3',score:11,category:'books'}],
+          [aKey, {id:'a2',score:7,category:'books'}], // duplicate
+          [cKey, {id:'c1',score:9,category:'tech'}]
+        ])
+
+        console.log('📊 Multimap 1:')
+        for (const [key, rows] of mm1) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        console.log('\n📊 Multimap 2:')
+        for (const [key, rows] of mm2) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 1) Concatenate multimaps
+        const concatMM = concatGroupsMM(mm1, mm2)
+        console.log('\n🔗 Concatenated multimaps:')
+        for (const [key, rows] of concatMM) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 2) Union multimaps with deduplication
+        const unionMM = unionGroupsByMM(mm1, mm2, r => r.id)
+        console.log('\n🔀 Union multimaps (deduplicated):')
+        for (const [key, rows] of unionMM) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 3) Intersection multimaps
+        const interMM = intersectGroupsByMM(mm1, mm2, r => r.id)
+        console.log('\n🔍 Intersection multimaps:')
+        for (const [key, rows] of interMM) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 4) Difference multimaps
+        const diffMM = diffGroupsByMM(mm1, mm2, r => r.id)
+        console.log('\n➖ Difference multimaps (mm1 - mm2):')
+        for (const [key, rows] of diffMM) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 5) Top K multimap
+        const top2MM = topKByMM(unionMM, 2, (r) => r.score)
+        console.log('\n🏆 Top 2 multimap (by score):')
+        for (const [key, rows] of top2MM) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 6) Sort multimap by total score
+        const sortedMM = sortGroupsByNumberDescMM(unionMM, (vs) => vs.reduce((s,r) => s + r.score, 0))
+        console.log('\n📈 Multimap sorted by total score (desc):')
+        for (const [key, rows] of sortedMM) {
+          const total = rows.reduce((s,r) => s + r.score, 0)
+          console.log(`   Key: ${JSON.stringify(key)} -> Total: ${total}, Items: ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // =========================================================
+        // NEW STREAMING OPERATIONS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 NEW STREAMING OPERATIONS DEMONSTRATION')
+        console.log('========================================')
+
+        // Create sample data for streaming operations
+        type StreamRow = { id: string; score: number; category: string }
+        
+        const K = (u: string) => jObj([['user', jStr(u)]])
+        const stream: Array<readonly [Json, StreamRow]> = [
+          [K('ada'), { id:'a1', score:10, category:'books' }],
+          [K('bob'), { id:'b1', score:4, category:'food' }],
+          [K('ada'), { id:'a2', score:7, category:'books' }],
+          [K('ada'), { id:'a3', score:11, category:'books' }],
+          [K('charlie'), { id:'c1', score:9, category:'tech' }]
+        ]
+
+        console.log('📊 Original stream:')
+        for (const [key, row] of stream) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${row.id}(${row.score})`)
+        }
+
+        // Group the stream first - extract just the values
+        const streamGrouped = new CanonicalJsonMap<ReadonlyArray<StreamRow>>()
+        for (const [key, row] of stream) {
+          const existing = streamGrouped.get(key) ?? []
+          streamGrouped.set(key, [...existing, row] as ReadonlyArray<StreamRow>)
+        }
+        
+        console.log('\n📊 Grouped stream:')
+        for (const [key, rows] of streamGrouped) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 1) Min/Max per group
+        const mins = minByGroup(streamGrouped, (r) => r.score)
+        console.log('\n🏆 Min per group (by score):')
+        for (const [key, rows] of mins) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        const maxs = maxByGroup(streamGrouped, (r) => r.score)
+        console.log('\n🏆 Max per group (by score):')
+        for (const [key, rows] of maxs) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 2) Global min/max
+        const bestGlobal = maxByGlobal(streamGrouped, (r) => r.score)
+        console.log('\n🌍 Global max (by score):')
+        if (isSome(bestGlobal)) {
+          const [key, row] = bestGlobal.value
+          console.log(`   Key: ${JSON.stringify(key)} -> ${row.id}(${row.score})`)
+        } else {
+          console.log('   No items found')
+        }
+
+        // 3) Take/Drop while
+        const highPrefix = takeWhileGroup(streamGrouped, (r) => r.score >= 8)
+        console.log('\n📈 Take while score >= 8:')
+        for (const [key, rows] of highPrefix) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        const dropPrefix = dropWhileGroup(streamGrouped, (r) => r.score >= 8)
+        console.log('\n📉 Drop while score >= 8:')
+        for (const [key, rows] of dropPrefix) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 4) Streaming reducers
+        const counts = streamCountsByCanonical(stream)
+        console.log('\n🔢 Stream counts per key:')
+        for (const [key, count] of counts) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${count} items`)
+        }
+
+        const sums = streamSumByCanonical(stream, (r) => r.score)
+        console.log('\n💰 Stream sums per key:')
+        for (const [key, sum] of sums) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${sum} total score`)
+        }
+
+        const streamTop2 = streamTopKByCanonical<StreamRow>(2, (r) => r.score)(stream)
+        console.log('\n🏆 Stream top 2 per key:')
+        for (const [key, rows] of streamTop2) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 5) MultiMap variants
+        const streamMM = CanonicalJsonMultiMap.from(stream)
+        const mmMins = minByGroupMM(streamMM, (r) => r.score)
+        console.log('\n🔧 MultiMap min per group:')
+        for (const [key, rows] of mmMins) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        const mmTakeWhile = takeWhileGroupMM(streamMM, (r) => r.score >= 8)
+        console.log('\n🔧 MultiMap take while score >= 8:')
+        for (const [key, rows] of mmTakeWhile) {
+          console.log(`   Key: ${JSON.stringify(key)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // =========================================================
+        // NEW CANONICAL OPERATIONS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 NEW CANONICAL OPERATIONS DEMONSTRATION')
+        console.log('==========================================')
+
+        // Create sample data for canonical operations
+        const canonicalA = jObj([['s', jSet([jStr('b'), jStr('a')])]])
+        const canonicalB = jObj([['s', jSet([jStr('a'), jStr('b'), jStr('a')])]]) // canonically == canonicalA
+        const canonicalC = jObj([['s', jSet([jStr('c')])]])
+        const canonicalD = jObj([['s', jSet([jStr('d'), jStr('e')])]])
+
+        console.log('📊 Original JSON objects:')
+        console.log(`   canonicalA: ${JSON.stringify(canonicalA)}`)
+        console.log(`   canonicalB: ${JSON.stringify(canonicalB)}`)
+        console.log(`   canonicalC: ${JSON.stringify(canonicalC)}`)
+        console.log(`   canonicalD: ${JSON.stringify(canonicalD)}`)
+
+        // 1) Canonical min/max by lexicographic key
+        const jsonArray = [canonicalB, canonicalC, canonicalA, canonicalD]
+        const minJson = minByCanonical(jsonArray)
+        const maxJson = maxByCanonical(jsonArray)
+
+        console.log('\n🏆 Min by canonical key (lexicographic):')
+        if (isSome(minJson)) {
+          console.log(`   Min: ${JSON.stringify(minJson.value)}`)
+        } else {
+          console.log('   No items found')
+        }
+
+        console.log('\n🏆 Max by canonical key (lexicographic):')
+        if (isSome(maxJson)) {
+          console.log(`   Max: ${JSON.stringify(maxJson.value)}`)
+        } else {
+          console.log('   No items found')
+        }
+
+        // 2) Canonical min/max by score
+        const minByScore = minByCanonicalScore(jsonArray, (j, k) => k.length)
+        const maxByScore = maxByCanonicalScore(jsonArray, (j, k) => k.length)
+
+        console.log('\n🏆 Min by canonical key length:')
+        if (isSome(minByScore)) {
+          console.log(`   Min: ${JSON.stringify(minByScore.value)}`)
+        } else {
+          console.log('   No items found')
+        }
+
+        console.log('\n🏆 Max by canonical key length:')
+        if (isSome(maxByScore)) {
+          console.log(`   Max: ${JSON.stringify(maxByScore.value)}`)
+        } else {
+          console.log('   No items found')
+        }
+
+        // 3) Streaming distinct operations
+        const duplicateArray = [canonicalA, canonicalB, canonicalC, canonicalA, canonicalD, canonicalB]
+        const distinctStream = [...distinctByCanonical(duplicateArray)]
+        const distinctArray = distinctByCanonicalToArray(duplicateArray)
+
+        console.log('\n🔀 Streaming distinct (first-wins):')
+        console.log(`   Original: ${duplicateArray.length} items`)
+        console.log(`   Distinct: ${distinctStream.length} items`)
+        for (const item of distinctStream) {
+          console.log(`     ${JSON.stringify(item)}`)
+        }
+
+        console.log('\n🔀 Distinct to array:')
+        console.log(`   Distinct: ${distinctArray.length} items`)
+        for (const item of distinctArray) {
+          console.log(`     ${JSON.stringify(item)}`)
+        }
+
+        // 4) Streaming distinct pairs
+        const jsonPairs = [[canonicalA, 1], [canonicalB, 2], [canonicalC, 3], [canonicalA, 4], [canonicalD, 5], [canonicalB, 6]] as const
+        const distinctPairsStream = [...distinctPairsByCanonical(jsonPairs)]
+        const distinctPairsArray = distinctPairsByCanonicalToArray(jsonPairs)
+
+        console.log('\n🔀 Streaming distinct pairs (first-wins):')
+        console.log(`   Original: ${jsonPairs.length} pairs`)
+        console.log(`   Distinct: ${distinctPairsStream.length} pairs`)
+        for (const [json, value] of distinctPairsStream) {
+          console.log(`     ${JSON.stringify(json)} -> ${value}`)
+        }
+
+        console.log('\n🔀 Distinct pairs to array:')
+        console.log(`   Distinct: ${distinctPairsArray.length} pairs`)
+        for (const [json, value] of distinctPairsArray) {
+          console.log(`     ${JSON.stringify(json)} -> ${value}`)
+        }
+
+        // 5) Last-wins distinct operations
+        const lastWinsDistinct = distinctByCanonicalLast(duplicateArray)
+        const lastWinsPairs = distinctPairsByCanonicalLast(jsonPairs)
+
+        console.log('\n🔀 Last-wins distinct:')
+        console.log(`   Original: ${duplicateArray.length} items`)
+        console.log(`   Distinct: ${lastWinsDistinct.length} items`)
+        for (const item of lastWinsDistinct) {
+          console.log(`     ${JSON.stringify(item)}`)
+        }
+
+        console.log('\n🔀 Last-wins distinct pairs:')
+        console.log(`   Original: ${jsonPairs.length} pairs`)
+        console.log(`   Distinct: ${lastWinsPairs.length} pairs`)
+        for (const [json, value] of lastWinsPairs) {
+          console.log(`     ${JSON.stringify(json)} -> ${value}`)
+        }
+
+        // 6) Canonical key comparison
+        console.log('\n🔑 Canonical key comparison:')
+        console.log(`   canonicalA canonical key: ${canonicalKey(canonicalA)}`)
+        console.log(`   canonicalB canonical key: ${canonicalKey(canonicalB)}`)
+        console.log(`   canonicalC canonical key: ${canonicalKey(canonicalC)}`)
+        console.log(`   canonicalD canonical key: ${canonicalKey(canonicalD)}`)
+        console.log(`   canonicalA == canonicalB (canonical): ${equalsCanonical(canonicalA, canonicalB)}`)
+
+        // 7) Canonical sort operations
+        const unsortedArray = [canonicalD, canonicalA, canonicalC, canonicalB]
+        const sortedAsc = sortJsonByCanonical(unsortedArray)
+        const sortedDesc = sortJsonByCanonicalDesc(unsortedArray)
+
+        console.log('\n📊 Canonical sort (ascending):')
+        console.log(`   Original: ${unsortedArray.length} items`)
+        console.log(`   Sorted: ${sortedAsc.length} items`)
+        for (const item of sortedAsc) {
+          console.log(`     ${JSON.stringify(item)}`)
+        }
+
+        console.log('\n📊 Canonical sort (descending):')
+        console.log(`   Original: ${unsortedArray.length} items`)
+        console.log(`   Sorted: ${sortedDesc.length} items`)
+        for (const item of sortedDesc) {
+          console.log(`     ${JSON.stringify(item)}`)
+        }
+
+        // 8) Canonical unique operations
+        const duplicateArray2 = [canonicalA, canonicalB, canonicalC, canonicalA, canonicalD, canonicalB]
+        const uniqueFirst = uniqueJsonByCanonical(duplicateArray2)
+        const uniqueLast = uniqueJsonByCanonicalLast(duplicateArray2)
+
+        console.log('\n🔀 Canonical unique (first-wins):')
+        console.log(`   Original: ${duplicateArray2.length} items`)
+        console.log(`   Unique: ${uniqueFirst.length} items`)
+        for (const item of uniqueFirst) {
+          console.log(`     ${JSON.stringify(item)}`)
+        }
+
+        console.log('\n🔀 Canonical unique (last-wins):')
+        console.log(`   Original: ${duplicateArray2.length} items`)
+        console.log(`   Unique: ${uniqueLast.length} items`)
+        for (const item of uniqueLast) {
+          console.log(`     ${JSON.stringify(item)}`)
+        }
+
+        // 9) Canonical key comparison for sorted items
+        console.log('\n🔑 Canonical keys for sorted items:')
+        for (let i = 0; i < sortedAsc.length; i++) {
+          const item = sortedAsc[i]!
+          const key = canonicalKey(item)
+          console.log(`   ${i + 1}. ${JSON.stringify(item)} -> ${key}`)
+        }
+
+        // =========================================================
+        // PAIR HELPERS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 PAIR HELPERS DEMONSTRATION')
+        console.log('=============================')
+
+        // Create test data with canonically equal JSONs
+        const k1 = jObj([['s', jSet([jStr('b'), jStr('a')])]])
+        const k2 = jObj([['s', jSet([jStr('a'), jStr('b'), jStr('a')])]]) // canonically == k1
+        const k3 = jObj([['s', jSet([jStr('c')])]])
+
+        const pairs = [[k1, 1] as const, [k2, 2] as const, [k3, 3] as const]
+
+        console.log('📊 Original pairs:')
+        for (const [json, value] of pairs) {
+          console.log(`   ${JSON.stringify(json)} -> ${value}`)
+        }
+
+        // Sort asc/desc
+        const sortedPairsAsc = sortPairsByCanonical(pairs)
+        const sortedPairsDesc = sortPairsByCanonicalDesc(pairs)
+
+        console.log('\n📊 Sorted pairs (ascending):')
+        for (const [json, value] of sortedPairsAsc) {
+          console.log(`   ${JSON.stringify(json)} -> ${value}`)
+        }
+
+        console.log('\n📊 Sorted pairs (descending):')
+        for (const [json, value] of sortedPairsDesc) {
+          console.log(`   ${JSON.stringify(json)} -> ${value}`)
+        }
+
+        // Unique (first-wins / last-wins)
+        const uniqueFirst = uniquePairsByCanonical(pairs)
+        const uniqueLast = uniquePairsByCanonicalLast(pairs)
+
+        console.log('\n🔀 Unique pairs (first-wins):')
+        console.log(`   Original: ${pairs.length} pairs`)
+        console.log(`   Unique: ${uniqueFirst.length} pairs`)
+        for (const [json, value] of uniqueFirst) {
+          console.log(`   ${JSON.stringify(json)} -> ${value}`)
+        }
+
+        console.log('\n🔀 Unique pairs (last-wins):')
+        console.log(`   Original: ${pairs.length} pairs`)
+        console.log(`   Unique: ${uniqueLast.length} pairs`)
+        for (const [json, value] of uniqueLast) {
+          console.log(`   ${JSON.stringify(json)} -> ${value}`)
+        }
+
+        // =========================================================
+        // VALUE-AWARE SORT HELPERS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 VALUE-AWARE SORT HELPERS DEMONSTRATION')
+        console.log('==========================================')
+
+        // Create test data
+        type Row = { id: string; score: number; category: string }
+        const K = (u: string) => jObj([['user', jStr(u)]])
+        
+        const pairs: ReadonlyArray<readonly [Json, Row]> = [
+          [K('ada'), { id:'a2', score: 7, category: 'books' }],
+          [K('ada'), { id:'a1', score: 10, category: 'books' }],
+          [K('bob'), { id:'b1', score: 4, category: 'food' }],
+          [K('ada'), { id:'a3', score: 8, category: 'books' }],
+          [K('charlie'), { id:'c1', score: 9, category: 'tech' }],
+          [K('bob'), { id:'b2', score: 6, category: 'food' }]
+        ]
+
+        console.log('📊 Original pairs:')
+        for (const [json, row] of pairs) {
+          console.log(`   ${JSON.stringify(json)} -> ${row.id}(${row.score})`)
+        }
+
+        // 1) Sort pairs by canonical key, then by score (ascending)
+        const sortedPairs = sortPairsByCanonicalThenNumberAsc(pairs, r => r.score)
+        console.log('\n📊 Pairs sorted by canonical key, then score (asc):')
+        for (const [json, row] of sortedPairs) {
+          console.log(`   ${JSON.stringify(json)} -> ${row.id}(${row.score})`)
+        }
+
+        // 2) Sort pairs by canonical key, then by score (descending)
+        const sortedPairsDesc = sortPairsByCanonicalThenNumberDesc(pairs, r => r.score)
+        console.log('\n📊 Pairs sorted by canonical key, then score (desc):')
+        for (const [json, row] of sortedPairsDesc) {
+          console.log(`   ${JSON.stringify(json)} -> ${row.id}(${row.score})`)
+        }
+
+        // 3) Sort pairs by score first, then canonical key
+        const sortedByValue = sortPairsByValueNumberDescThenCanonical(pairs, r => r.score)
+        console.log('\n📊 Pairs sorted by score (desc), then canonical key:')
+        for (const [json, row] of sortedByValue) {
+          console.log(`   ${JSON.stringify(json)} -> ${row.id}(${row.score})`)
+        }
+
+        // 4) Group the pairs and sort values within each group
+        const grouped = new CanonicalJsonMap<ReadonlyArray<Row>>()
+        for (const [json, row] of pairs) {
+          const existing = grouped.get(json) ?? []
+          grouped.set(json, [...existing, row] as ReadonlyArray<Row>)
+        }
+
+        console.log('\n📊 Original groups:')
+        for (const [json, rows] of grouped) {
+          console.log(`   ${JSON.stringify(json)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // Sort values within each group by score (descending)
+        const sortedGroups = sortValuesInGroupsByNumberDesc(grouped, r => r.score)
+        console.log('\n📊 Groups with values sorted by score (desc):')
+        for (const [json, rows] of sortedGroups) {
+          console.log(`   ${JSON.stringify(json)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 5) MultiMap version
+        const mm = new CanonicalJsonMultiMap<Row>()
+        for (const [json, row] of pairs) {
+          mm.add(json, row)
+        }
+
+        console.log('\n📊 Original multimap:')
+        for (const [json, rows] of mm) {
+          console.log(`   ${JSON.stringify(json)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // Sort values within each group in multimap by score (ascending)
+        const sortedMM = sortValuesInGroupsByNumberAscMM(mm, r => r.score)
+        console.log('\n📊 MultiMap with values sorted by score (asc):')
+        for (const [json, rows] of sortedMM) {
+          console.log(`   ${JSON.stringify(json)} -> ${rows.map(r => `${r.id}(${r.score})`).join(', ')}`)
+        }
+
+        // 6) Custom comparator example
+        const customSorted = sortPairsBy(pairs, ([jsonA, rowA], [jsonB, rowB]) => {
+          // First by category, then by score
+          const catCompare = rowA.category.localeCompare(rowB.category)
+          if (catCompare !== 0) return catCompare
+          return rowA.score - rowB.score
+        })
+
+        console.log('\n📊 Pairs sorted by custom comparator (category, then score):')
+        for (const [json, row] of customSorted) {
+          console.log(`   ${JSON.stringify(json)} -> ${row.id}(${row.score}) [${row.category}]`)
+        }
+
+        // 7) Generic sort with value projection
+        const genericSorted = sortPairsByCanonicalThen(
+          pairs,
+          r => r.category, // project to category
+          (a, b) => a.localeCompare(b) // compare categories
+        )
+
+        console.log('\n📊 Pairs sorted by canonical key, then category:')
+        for (const [json, row] of genericSorted) {
+          console.log(`   ${JSON.stringify(json)} -> ${row.id}(${row.score}) [${row.category}]`)
+        }
+
+        // =========================================================
+        // POLICY THREADING & IMPROVED PRODUCT ALGEBRA DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 POLICY THREADING & IMPROVED PRODUCT ALGEBRA DEMONSTRATION')
+        console.log('================================================================')
+
+        // Create test data with various JSON structures
+        const testJson = jObj([
+          ['z', jNum(3)],  // out of order keys
+          ['a', jSet([jStr('c'), jStr('a'), jStr('b')])], // unsorted set
+          ['b', jRegex('test', 'gim')], // regex with flags
+          ['c', jArr([jNum(3), jNum(1), jNum(2)])] // array (order preserved)
+        ])
+
+        console.log('📊 Original JSON:')
+        console.log(prettyJson(testJson))
+
+        // 1) Default canonicalization (all policies enabled)
+        const defaultCanonical = canonicalizeJson(testJson)
+        console.log('\n📊 Default canonicalization (all policies):')
+        console.log(prettyJson(defaultCanonical))
+
+        // 2) Policy-aware canonicalization - disable object sorting
+        const noSortPolicy = { sortObjects: false }
+        const noSortCanonical = canonicalizeJsonP(noSortPolicy)(testJson)
+        console.log('\n📊 No object sorting policy:')
+        console.log(prettyJson(noSortCanonical))
+
+        // 3) Policy-aware canonicalization - disable set operations
+        const noSetPolicy = { dedupSets: false, sortSets: false }
+        const noSetCanonical = canonicalizeJsonP(noSetPolicy)(testJson)
+        console.log('\n📊 No set dedup/sort policy:')
+        console.log(prettyJson(noSetCanonical))
+
+        // 4) Policy-aware EJSON encoding
+        const fastPolicy = { sortObjects: false, dedupSets: false, sortSets: false }
+        const fastEjson = toEJsonCanonicalWithPolicy(testJson, fastPolicy)
+        console.log('\n📊 Fast policy EJSON (minimal processing):')
+        console.log(JSON.stringify(fastEjson, null, 2))
+
+        // 5) Improved product algebra demonstration
+        console.log('\n📊 Improved product algebra (size & depth in single traversal):')
+        const [size, depth] = sizeAndDepthJson(testJson)
+        console.log(`Size: ${size}, Depth: ${depth}`)
+
+        // 6) Product algebra with custom algebras
+        const customAlg1 = (f: JsonF<number>) => f._tag === 'JNum' ? f.value : 0
+        const customAlg2 = (f: JsonF<string>) => f._tag === 'JStr' ? f.value : ''
+        
+        const [numbers, strings] = cataJson(productJsonAlg2(customAlg1, customAlg2))(testJson)
+        console.log('\n📊 Custom product algebra (numbers & strings):')
+        console.log(`Numbers: ${numbers}, Strings: ${strings}`)
+
+        // 7) Policy comparison
+        console.log('\n📊 Policy comparison:')
+        const policies = [
+          { name: 'Default', policy: {} },
+          { name: 'Fast', policy: { sortObjects: false, dedupSets: false, sortSets: false } },
+          { name: 'Strict', policy: { sortObjects: true, dedupSets: true, sortSets: true, normalizeRegexFlags: true } }
+        ]
+
+        for (const { name, policy } of policies) {
+          const canonical = canonicalizeJsonP(policy)(testJson)
+          const key = canonicalKey(canonical)
+          console.log(`${name}: ${key.substring(0, 50)}...`)
+        }
+
+        // =========================================================
+        // CATEGORY THEORY CONSTRUCTS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 CATEGORY THEORY CONSTRUCTS DEMONSTRATION')
+        console.log('===========================================')
+
+        // 1) Natural Transformations
+        console.log('\n📊 Natural Transformations:')
+        
+        // Option to Result transformation
+        const optToRes = optionToResult('No value found')
+        const someOpt = Some(42)
+        const noneOpt = None
+        const res1 = optToRes(someOpt)
+        const res2 = optToRes(noneOpt)
+        console.log(`Some(42) -> Result:`, isOk(res1) ? `Ok(${res1.value})` : `Err(${res1.error})`)
+        console.log(`None -> Result:`, isOk(res2) ? `Ok(${res2.value})` : `Err(${res2.error})`)
+
+        // Result to Option transformation
+        const resToOpt = resultToOption
+        const okRes = Ok(100)
+        const errRes = Err('Something went wrong')
+        const opt1 = resToOpt(okRes)
+        const opt2 = resToOpt(errRes)
+        console.log(`Ok(100) -> Option:`, isSome(opt1) ? `Some(${opt1.value})` : 'None')
+        console.log(`Err(...) -> Option:`, isSome(opt2) ? `Some(${opt2.value})` : 'None')
+
+        // Task to ReaderTask transformation
+        const task = Task.of(200)
+        const rtask = taskToReaderTask(task)
+        const result = await rtask({ env: 'test' })
+        console.log(`Task -> ReaderTask:`, result)
+
+        // 2) Kleisli Category
+        console.log('\n📊 Kleisli Category:')
+        
+        // Define some Kleisli arrows
+        const double = (n: number) => Some(n * 2)
+        const addOne = (n: number) => Some(n + 1)
+        const toString = (n: number) => Some(n.toString())
+
+        // Compose Kleisli arrows
+        const doubleThenAddOne = K_Option.compose(addOne, double)
+        const fullPipeline = K_Option.compose(toString, K_Option.compose(addOne, double))
+
+        const testValue = 5
+        const result1 = doubleThenAddOne(testValue)
+        const result2 = fullPipeline(testValue)
+        console.log(`5 -> double -> addOne:`, isSome(result1) ? `Some(${result1.value})` : 'None')
+        console.log(`5 -> full pipeline:`, isSome(result2) ? `Some(${result2.value})` : 'None')
+
+        // 3) Writer Monad
+        console.log('\n📊 Writer Monad:')
+        
+        const W = Writer(StringMonoid)
+        const logDouble = (n: number) => W.chain(StringMonoid)(() => W.tell(`Doubled ${n} to ${n * 2}\n`))(
+          W.of(StringMonoid)(n * 2)
+        )
+        const logAddOne = (n: number) => W.chain(StringMonoid)(() => W.tell(`Added 1 to ${n} to get ${n + 1}\n`))(
+          W.of(StringMonoid)(n + 1)
+        )
+
+        const writerResult = W.chain(StringMonoid)(logAddOne)(logDouble(3))
+        console.log(`Writer result:`, writerResult[0], 'with log:', writerResult[1])
+
+        // 4) WriterT (Writer Transformer)
+        console.log('\n📊 WriterT (Writer Transformer):')
+        
+        const WRT = WriterT<ReadonlyArray<string>>(ArrayMonoid<string>())(K_ReaderTask)
+        
+        const loggedComputation = WRT.chain((n: number) => 
+          WRT.chain(() => WRT.of(n + 1))(
+            WRT.tell(['Computed: ' + n + ' -> ' + (n + 1)])
+          )
+        )(WRT.of(10))
+
+        const env = { userId: 'user123' }
+        const [value, logs] = await loggedComputation(env)
+        console.log(`WriterT result:`, value, 'with logs:', logs)
+
+        // 5) Array Monad and Traverse
+        console.log('\n📊 Array Monad and Traverse:')
+        
+        // Array monad operations
+        const numbers = [1, 2, 3, 4, 5]
+        const doubled = ArrayM.map((n: number) => n * 2)(numbers)
+        const filtered = ArrayM.chain((n: number) => n % 2 === 0 ? [n] : [])(numbers)
+        console.log(`Original:`, numbers)
+        console.log(`Doubled:`, doubled)
+        console.log(`Even only:`, filtered)
+
+        // Traverse with Option
+        const maybeNumbers = [Some(1), Some(2), None, Some(4)]
+        const traversed = traverseArrayA(OptionK)(maybeNumbers, (opt, i) => opt)
+        console.log(`Traverse [Some(1), Some(2), None, Some(4)]:`, 
+          isSome(traversed) ? `Some([${traversed.value.join(', ')}])` : 'None')
+
+        // Sequence with Task
+        const tasks = [Task.of(1), Task.of(2), Task.of(3)]
+        const sequenced = sequenceArrayA(TaskK)(tasks)
+        const taskResults = await Promise.all(sequenced.map(t => t()))
+        console.log(`Sequence tasks:`, taskResults)
+
+        // 6) Natural Transformation Composition
+        console.log('\n📊 Natural Transformation Composition:')
+        
+        const optionToTask = composeNatK1(taskToReaderTask, optionToResult('Failed'))
+        const someValue = Some(42)
+        const taskFromOption = optionToTask(someValue)
+        const taskResult = await taskFromOption({ env: 'test' })
+        console.log(`Option -> Task via composition:`, taskResult)
+
+        // 7) Complex Kleisli Composition
+        console.log('\n📊 Complex Kleisli Composition:')
+        
+        // Define a complex pipeline
+        const validate = (n: number) => n > 0 ? Ok(n) : Err('Must be positive')
+        const process = (n: number) => Task.of(n * 2)
+        const log = (n: number) => Reader.of((env: any) => n + ' processed in ' + env.context)
+
+        // Compose the pipeline
+        const pipeline = K_ReaderTask.compose(
+          K_ReaderTask.compose(log, taskToReaderTask),
+          K_ReaderTask.compose(process, validate)
+        )
+
+        const pipelineResult = await pipeline(5)({ context: 'production' })
+        console.log(`Complex pipeline result:`, pipelineResult)
+
+        // =========================================================
+        // MONAD TRANSFORMERS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 MONAD TRANSFORMERS DEMONSTRATION')
+        console.log('====================================')
+
+        // 1) MonadWriter with WriterInReaderTask
+        console.log('\n📊 MonadWriter with WriterInReaderTask:')
+        
+        // logs as string[]
+        const WRT = WriterInReaderTask(ArrayMonoid<string>())
+
+        const prog = WRT.chain((n: number) =>
+          WRT.pass(
+            WRT.map((m: number) => [m * 2, (w: ReadonlyArray<string>) => [...w, 'x2']] as const)(
+              WRT.chain(() => WRT.of(n + 1))(
+                WRT.tell(['start'])
+              )
+            )
+          )
+        )(WRT.of(1))
+
+        // run: ReaderTask<Env, Writer<string[], number>>
+        const env = { userId: 'user123', context: 'production' }
+        const [value, logs] = await prog(env)
+        console.log(`WriterT result:`, value, 'with logs:', logs)
+
+        // 2) EitherT with TaskEither
+        console.log('\n📊 EitherT with TaskEither:')
+        
+        const taskEither = TE.right(42)
+        const mapped = TE.map((n: number) => n * 2)(taskEither)
+        const chained = TE.chain((n: number) => n > 50 ? TE.right(n) : TE.left('Too small'))(mapped)
+        
+        const taskResult = await chained()
+        console.log(`TaskEither result:`, isOk(taskResult) ? `Ok(${taskResult.value})` : `Err(${taskResult.error})`)
+
+        // 3) EitherT with ReaderEither
+        console.log('\n📊 EitherT with ReaderEither:')
+        
+        const readerEither = RE.right(100)
+        const mappedRE = RE.map((n: number) => n + 1)(readerEither)
+        const chainedRE = RE.chain((n: number) => n > 100 ? RE.right(n) : RE.left('Still too small'))(mappedRE)
+        
+        const readerResult = chainedRE({ env: 'test' })
+        console.log(`ReaderEither result:`, isOk(readerResult) ? `Ok(${readerResult.value})` : `Err(${readerResult.error})`)
+
+        // 4) EitherT with ReaderTaskEither (RTE)
+        console.log('\n📊 EitherT with ReaderTaskEither (RTE):')
+        
+        const rte = RTE.right(200)
+        const mappedRTE = RTE.map((n: number) => n * 3)(rte)
+        const chainedRTE = RTE.chain((n: number) => n > 500 ? RTE.right(n) : RTE.left('Not big enough'))(mappedRTE)
+        
+        const rteResult = await chainedRTE({ userId: 'user456' })
+        console.log(`RTE result:`, isOk(rteResult) ? `Ok(${rteResult.value})` : `Err(${rteResult.error})`)
+
+        // 5) Complex WriterT with pass operation
+        console.log('\n📊 Complex WriterT with pass operation:')
+        
+        const complexProg = WRT.chain((n: number) =>
+          WRT.chain((m: number) =>
+            WRT.pass(
+              WRT.map((k: number) => [k, (w: ReadonlyArray<string>) => [...w, `processed ${k}`]] as const)(
+                WRT.tell([`Processing ${m}`])
+              )
+            )
+          )(
+            WRT.chain(() => WRT.of(n * 2))(
+              WRT.tell([`Starting with ${n}`])
+            )
+          )
+        )(WRT.of(5))
+
+        const [finalValue, finalLogs] = await complexProg({ context: 'complex' })
+        console.log(`Complex WriterT result:`, finalValue, 'with logs:', finalLogs)
+
+        // 6) EitherT error handling and recovery
+        console.log('\n📊 EitherT error handling and recovery:')
+        
+        const errorHandling = RTE.chain((n: number) => 
+          n > 100 ? RTE.right(n) : RTE.left('Value too small')
+        )(
+          RTE.orElse((e: string) => RTE.right(999))(
+            RTE.left('Original error')
+          )
+        )
+
+        const errorResult = await errorHandling({ env: 'error-test' })
+        console.log(`Error handling result:`, isOk(errorResult) ? `Ok(${errorResult.value})` : `Err(${errorResult.error})`)
+
+        // 7) EitherT with fold and getOrElse
+        console.log('\n📊 EitherT with fold and getOrElse:')
+        
+        const foldExample = RTE.fold(
+          (e: string) => `Error: ${e}`,
+          (n: number) => `Success: ${n}`
+        )(RTE.right(42))
+
+        const getOrElseExample = RTE.getOrElse((e: string) => 0)(
+          RTE.left('Something went wrong')
+        )
+
+        const foldResult = await foldExample({ env: 'fold-test' })
+        const getOrElseResult = await getOrElseExample({ env: 'getOrElse-test' })
+        
+        console.log(`Fold result:`, foldResult)
+        console.log(`GetOrElse result:`, getOrElseResult)
+
+        // 8) EitherT with mapLeft and bimap
+        console.log('\n📊 EitherT with mapLeft and bimap:')
+        
+        const mapLeftExample = RTE.mapLeft((e: string) => `Mapped: ${e}`)(
+          RTE.left('Original error')
+        )
+        
+        const bimapExample = RTE.bimap(
+          (e: string) => `Error: ${e}`,
+          (n: number) => n * 2
+        )(RTE.right(21))
+
+        const mapLeftResult = await mapLeftExample({ env: 'mapLeft-test' })
+        const bimapResult = await bimapExample({ env: 'bimap-test' })
+        
+        console.log(`MapLeft result:`, isOk(mapLeftResult) ? `Ok(${mapLeftResult.value})` : `Err(${mapLeftResult.error})`)
+        console.log(`Bimap result:`, isOk(bimapResult) ? `Ok(${bimapResult.value})` : `Err(${bimapResult.error})`)
+
+        // 9) EitherT with swap
+        console.log('\n📊 EitherT with swap:')
+        
+        const swapExample = RTE.swap(RTE.right(42))
+        const swapResult = await swapExample({ env: 'swap-test' })
+        console.log(`Swap result:`, isOk(swapResult) ? `Ok(${swapResult.value})` : `Err(${swapResult.error})`)
+
+        // 10) Complex pipeline with multiple transformers
+        console.log('\n📊 Complex pipeline with multiple transformers:')
+        
+        const complexPipeline = WRT.chain((n: number) =>
+          WRT.chain(() => {
+            const rte = RTE.right(n * 2)
+            return WRT.of(rte)
+          })(
+            WRT.tell([`Complex step 1: ${n}`])
+          )
+        )(WRT.of(10))
+
+        const [pipelineValue, pipelineLogs] = await complexPipeline({ env: 'pipeline' })
+        console.log(`Complex pipeline result:`, pipelineValue, 'with logs:', pipelineLogs)
+
+        // =========================================================
+        // ADVANCED COMPOSITION HELPERS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 ADVANCED COMPOSITION HELPERS DEMONSTRATION')
+        console.log('==============================================')
+
+        // 1) Ready-to-use Writer Modules
+        console.log('\n📊 Ready-to-use Writer Modules:')
+        
+        // MW_RT for ReaderTask with logging
+        const programRT = MW_RT.chain((n: number) => MW_RT.tell(['got ' + n]))(MW_RT.of(1))
+        const [valueRT, logsRT] = await programRT({ env: 'test' })
+        console.log(`MW_RT result:`, valueRT, 'with logs:', logsRT)
+
+        // 2) Do-notation for ReaderTaskEither (RTE)
+        console.log('\n📊 Do-notation for ReaderTaskEither:')
+        
+        // Mock functions for demonstration
+        const getUserRTE = (id: string) => RTE.right({ name: `User${id}`, id })
+        const getProfileRTE = (user: any) => RTE.right({ ...user, profile: 'premium' })
+        
+        // Using Do-notation
+        const prog = DoRTE<{ env: string }>()
+          .bind('user', getUserRTE('42'))
+          .let('name', t => t.user.name)
+          .bind('profile', t => getProfileRTE(t.user))
+          .map(t => ({ user: t.user, name: t.name, profile: t.profile }))
+          .done
+
+        const doResult = await prog({ env: 'production' })
+        console.log(`Do-notation result:`, isOk(doResult) ? `Ok(${JSON.stringify(doResult.value)})` : `Err(${doResult.error})`)
+
+        // 3) Writer × EitherT × ReaderTask (WRTE) composition
+        console.log('\n📊 WRTE (Writer × EitherT × ReaderTask) composition:')
+        
+        const LogM = ArrayMonoid<string>()
+        const W = WRTE<string>(LogM)
+
+        // Step that logs then fails
+        const step = W.chain<number, string, number, string, number>(() => W.left('boom'))(
+          W.chain(() => W.of(1))(
+            W.tell(['start'])
+          )
+        )
+        
+        const [stepResult, stepLogs] = await step({ base: 'x' })
+        console.log(`WRTE step result:`, isOk(stepResult) ? `Ok(${stepResult.value})` : `Err(${stepResult.error})`, 'with logs:', stepLogs)
+
+        // 4) WRTE with successful computation
+        console.log('\n📊 WRTE with successful computation:')
+        
+        const successStep = W.chain((n: number) => W.of(n * 2))(
+          W.chain(() => W.of(5))(
+            W.tell(['Starting computation'])
+          )
+        )
+        
+        const [successResult, successLogs] = await successStep({ base: 'y' })
+        console.log(`WRTE success result:`, isOk(successResult) ? `Ok(${successResult.value})` : `Err(${successResult.error})`, 'with logs:', successLogs)
+
+        // 5) WRTE with liftRTE integration
+        console.log('\n📊 WRTE with liftRTE integration:')
+        
+        const existingRTE = RTE.right({ name: 'John', age: 30 })
+        const lifted = W.liftRTE(existingRTE)
+        const processed = W.chain((user: any) => W.of(user.name + ' is ' + user.age))(
+          W.chain(() => lifted)(
+            W.tell(['Processing user'])
+          )
+        )
+        
+        const [liftedResult, liftedLogs] = await processed({ env: 'lifted' })
+        console.log(`WRTE lifted result:`, isOk(liftedResult) ? `Ok(${liftedResult.value})` : `Err(${liftedResult.error})`, 'with logs:', liftedLogs)
+
+        // 6) WRTE with pass operation
+        console.log('\n📊 WRTE with pass operation:')
+        
+        const passStep = W.pass(
+          W.map((n: number) => [n * 2, (w: ReadonlyArray<string>) => [...w, 'doubled']] as const)(
+            W.chain(() => W.of(3))(
+              W.tell(['Starting pass operation'])
+            )
+          )
+        )
+        
+        const [passResult, passLogs] = await passStep({ env: 'pass' })
+        console.log(`WRTE pass result:`, isOk(passResult) ? `Ok(${passResult.value})` : `Err(${passResult.error})`, 'with logs:', passLogs)
+
+        // 7) WRTE with error recovery
+        console.log('\n📊 WRTE with error recovery:')
+        
+        const recoveryStep = W.orElse((e: string) => W.of(999))(
+          W.chain((n: number) => n > 10 ? W.of(n) : W.left('Too small'))(
+            W.chain(() => W.of(5))(
+              W.tell(['Testing recovery'])
+            )
+          )
+        )
+        
+        const [recoveryResult, recoveryLogs] = await recoveryStep({ env: 'recovery' })
+        console.log(`WRTE recovery result:`, isOk(recoveryResult) ? `Ok(${recoveryResult.value})` : `Err(${recoveryResult.error})`, 'with logs:', recoveryLogs)
+
+        // 8) WRTE with fold operation
+        console.log('\n📊 WRTE with fold operation:')
+        
+        const foldStep = W.fold(
+          (e: string) => `Error: ${e}`,
+          (n: number) => `Success: ${n}`
+        )(W.right(42))
+        
+        const [foldResult, foldLogs] = await foldStep({ env: 'fold' })
+        console.log(`WRTE fold result:`, foldResult, 'with logs:', foldLogs)
+
+        // 9) Complex WRTE pipeline
+        console.log('\n📊 Complex WRTE pipeline:')
+        
+        const complexPipeline = W.chain((n: number) =>
+          W.chain((m: number) =>
+            W.chain(() => W.of(m + 1))(
+              W.tell([`Processing ${m}`])
+            )
+          )(
+            W.chain(() => W.of(n * 2))(
+              W.tell([`Starting with ${n}`])
+            )
+          )
+        )(W.of(2))
+        
+        const [pipelineResult, pipelineLogs] = await complexPipeline({ env: 'complex' })
+        console.log(`WRTE pipeline result:`, isOk(pipelineResult) ? `Ok(${pipelineResult.value})` : `Err(${pipelineResult.error})`, 'with logs:', pipelineLogs)
+
+        // 10) WRTE with stripLog
+        console.log('\n📊 WRTE with stripLog:')
+        
+        const loggedComputation = W.chain((n: number) => W.of(n * 3))(
+          W.chain(() => W.of(4))(
+            W.tell(['Computing'])
+          )
+        )
+        
+        const stripped = W.stripLog(loggedComputation)
+        const strippedResult = await stripped({ env: 'stripped' })
+        console.log(`WRTE stripped result:`, isOk(strippedResult) ? `Ok(${strippedResult.value})` : `Err(${strippedResult.error})`)
+
+        // =========================================================
+        // DO-NOTATION FOR WRTE DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 DO-NOTATION FOR WRTE DEMONSTRATION')
+        console.log('=====================================')
+
+        // 1) Basic DoWRTE usage
+        console.log('\n📊 Basic DoWRTE usage:')
+        
+        type Env = { base: string }
+        const Log = ArrayMonoid<string>()
+        const W = WRTE<string>(Log)
+        const Do = DoWRTE(W)<Env>()
+
+        const stepOk: WriterReaderTaskEither<string, Env, never, number> =
+          W.chain(() => W.of(2))(W.tell(['start']))
+
+        const program = Do
+          .bind('n', stepOk)
+          .let('n2', t => t.n * 2)
+          .tell(['after n2'])
+          .map(t => t.n + t.n2)
+          .done
+
+        const [programResult, programLogs] = await program({ base: 'x' })
+        console.log(`DoWRTE program result:`, isOk(programResult) ? `Ok(${programResult.value})` : `Err(${programResult.error})`, 'with logs:', programLogs)
+
+        // 2) DoWRTE with error handling
+        console.log('\n📊 DoWRTE with error handling:')
+        
+        const errorStep = W.chain(() => W.left('Something went wrong'))(
+          W.tell(['before error'])
+        )
+
+        const errorProgram = Do
+          .bind('n', W.of(5))
+          .tell(['before error step'])
+          .bind('error', errorStep)
+          .let('recovery', t => t.n * 2)
+          .done
+
+        const [errorResult, errorLogs] = await errorProgram({ base: 'error-test' })
+        console.log(`DoWRTE error result:`, isOk(errorResult) ? `Ok(${JSON.stringify(errorResult.value)})` : `Err(${errorResult.error})`, 'with logs:', errorLogs)
+
+        // 3) DoWRTE with multiple steps and logging
+        console.log('\n📊 DoWRTE with multiple steps and logging:')
+        
+        const multiStep = Do
+          .bind('user', W.of({ name: 'John', id: 123 }))
+          .tell(['User loaded'])
+          .let('displayName', t => `${t.user.name} (${t.user.id})`)
+          .bind('profile', W.of({ role: 'admin', permissions: ['read', 'write'] }))
+          .tell(['Profile loaded'])
+          .let('fullInfo', t => ({ ...t.user, ...t.profile, displayName: t.displayName }))
+          .tell(['Full info computed'])
+          .map(t => t.fullInfo)
+          .done
+
+        const [multiResult, multiLogs] = await multiStep({ base: 'multi' })
+        console.log(`DoWRTE multi result:`, isOk(multiResult) ? `Ok(${JSON.stringify(multiResult.value)})` : `Err(${multiResult.error})`, 'with logs:', multiLogs)
+
+        // 4) DoWRTE with conditional logic
+        console.log('\n📊 DoWRTE with conditional logic:')
+        
+        const conditionalStep = Do
+          .bind('value', W.of(15))
+          .let('isHigh', t => t.value > 10)
+          .bind('category', t => t.isHigh ? W.of('high') : W.of('low'))
+          .tell(['Category determined'])
+          .let('message', t => `Value ${t.value} is ${t.category}`)
+          .map(t => ({ value: t.value, category: t.category, message: t.message }))
+          .done
+
+        const [conditionalResult, conditionalLogs] = await conditionalStep({ base: 'conditional' })
+        console.log(`DoWRTE conditional result:`, isOk(conditionalResult) ? `Ok(${JSON.stringify(conditionalResult.value)})` : `Err(${conditionalResult.error})`, 'with logs:', conditionalLogs)
+
+        // 5) DoWRTE with error recovery
+        console.log('\n📊 DoWRTE with error recovery:')
+        
+        const recoveryStep = Do
+          .bind('attempt1', W.chain(() => W.left('First attempt failed'))(
+            W.tell(['Attempting first operation'])
+          ))
+          .bind('attempt2', W.of('Second attempt succeeded'))
+          .tell(['Recovery successful'])
+          .let('finalResult', t => t.attempt2)
+          .map(t => t.finalResult)
+          .done
+
+        const [recoveryResult, recoveryLogs] = await recoveryStep({ base: 'recovery' })
+        console.log(`DoWRTE recovery result:`, isOk(recoveryResult) ? `Ok(${recoveryResult.value})` : `Err(${recoveryResult.error})`, 'with logs:', recoveryLogs)
+
+        // 6) DoWRTE with complex data transformation
+        console.log('\n📊 DoWRTE with complex data transformation:')
+        
+        const transformStep = Do
+          .bind('rawData', W.of([1, 2, 3, 4, 5]))
+          .tell(['Raw data loaded'])
+          .let('filtered', t => t.rawData.filter(n => n % 2 === 0))
+          .let('doubled', t => t.filtered.map(n => n * 2))
+          .let('sum', t => t.doubled.reduce((a, b) => a + b, 0))
+          .tell(['Transformation complete'])
+          .map(t => ({ original: t.rawData, processed: t.doubled, sum: t.sum }))
+          .done
+
+        const [transformResult, transformLogs] = await transformStep({ base: 'transform' })
+        console.log(`DoWRTE transform result:`, isOk(transformResult) ? `Ok(${JSON.stringify(transformResult.value)})` : `Err(${transformResult.error})`, 'with logs:', transformLogs)
+
+        // 7) DoWRTE with apS (applicative style)
+        console.log('\n📊 DoWRTE with apS (applicative style):')
+        
+        const apSStep = Do
+          .apS('a', W.of(10))
+          .apS('b', W.of(20))
+          .tell(['Both values loaded'])
+          .let('sum', t => t.a + t.b)
+          .let('product', t => t.a * t.b)
+          .tell(['Calculations complete'])
+          .map(t => ({ a: t.a, b: t.b, sum: t.sum, product: t.product }))
+          .done
+
+        const [apSResult, apSLogs] = await apSStep({ base: 'apS' })
+        console.log(`DoWRTE apS result:`, isOk(apSResult) ? `Ok(${JSON.stringify(apSResult.value)})` : `Err(${apSResult.error})`, 'with logs:', apSLogs)
+
+        // 8) DoWRTE with environment access
+        console.log('\n📊 DoWRTE with environment access:')
+        
+        const envStep = Do
+          .bind('config', W.chain((env: Env) => W.of({ base: env.base, timestamp: Date.now() }))(
+            W.tell(['Accessing environment'])
+          ))
+          .let('message', t => `Processing with base: ${t.config.base}`)
+          .tell(['Environment processed'])
+          .map(t => ({ message: t.message, config: t.config }))
+          .done
+
+        const [envResult, envLogs] = await envStep({ base: 'environment' })
+        console.log(`DoWRTE env result:`, isOk(envResult) ? `Ok(${JSON.stringify(envResult.value)})` : `Err(${envResult.error})`, 'with logs:', envLogs)
+
+        // 9) DoWRTE with nested computations
+        console.log('\n📊 DoWRTE with nested computations:')
+        
+        const nestedStep = Do
+          .bind('outer', W.of('outer-value'))
+          .tell(['Outer computation'])
+          .bind('inner', Do
+            .bind('x', W.of(5))
+            .bind('y', W.of(10))
+            .tell(['Inner computation'])
+            .map(t => t.x + t.y)
+            .done
+          )
+          .tell(['Nested computation complete'])
+          .map(t => ({ outer: t.outer, inner: t.inner, total: t.outer.length + t.inner }))
+          .done
+
+        const [nestedResult, nestedLogs] = await nestedStep({ base: 'nested' })
+        console.log(`DoWRTE nested result:`, isOk(nestedResult) ? `Ok(${JSON.stringify(nestedResult.value)})` : `Err(${nestedResult.error})`, 'with logs:', nestedLogs)
+
+        // 10) DoWRTE with final transformation
+        console.log('\n📊 DoWRTE with final transformation:')
+        
+        const finalStep = Do
+          .bind('data', W.of({ items: [1, 2, 3], multiplier: 2 }))
+          .tell(['Data loaded'])
+          .let('processed', t => t.data.items.map(item => item * t.data.multiplier))
+          .let('total', t => t.processed.reduce((a, b) => a + b, 0))
+          .tell(['Final calculations'])
+          .map(t => ({ 
+            original: t.data.items, 
+            processed: t.processed, 
+            total: t.total,
+            multiplier: t.data.multiplier
+          }))
+          .done
+
+        const [finalResult, finalLogs] = await finalStep({ base: 'final' })
+        console.log(`DoWRTE final result:`, isOk(finalResult) ? `Ok(${JSON.stringify(finalResult.value)})` : `Err(${finalResult.error})`, 'with logs:', finalLogs)
+
+        // =========================================================
+        // ENHANCED DO-NOTATION BUILDER METHODS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 ENHANCED DO-NOTATION BUILDER METHODS DEMONSTRATION')
+        console.log('====================================================')
+
+        // 1) DoRTE with apFirst, apSecond, tap
+        console.log('\n📊 DoRTE with apFirst, apSecond, tap:')
+        
+        // Mock functions for demonstration
+        const pingRTE = RTE.right('pong')
+        const fetchNameRTE = RTE.right('John Doe')
+        const logRTE = (msg: string) => RTE.right(`Logged: ${msg}`)
+        
+        // Using enhanced DoRTE
+        const enhancedDoRTE = DoRTE<{ env: string }>()
+          .bind('user', getUserRTE('42'))
+          .apFirst(pingRTE)              // run ping; keep { user }
+          .apSecond(fetchNameRTE)        // now the builder accumulates just `string` (the name)
+          .tap(() => logRTE('after'))    // side-effecting RTE; keep current accumulation
+          .done
+
+        const enhancedDoRTEResult = await enhancedDoRTE({ env: 'production' })
+        console.log(`Enhanced DoRTE result:`, isOk(enhancedDoRTEResult) ? `Ok(${enhancedDoRTEResult.value})` : `Err(${enhancedDoRTEResult.error})`)
+
+        // 2) DoWRTE with apFirst, apSecond, tap
+        console.log('\n📊 DoWRTE with apFirst, apSecond, tap:')
+        
+        const Log = ArrayMonoid<string>()
+        const W = WRTE<string>(Log)
+        const Do = DoWRTE(W)<{ base: string }>()
+
+        const enhancedDoWRTE = Do
+          .bind('user', W.of({ name: 'Alice', id: 123 }))
+          .tap(t => W.tell(['got user ' + t.user.id]))
+          .apFirst(W.tell(['pinged']))
+          .apSecond(W.of('Enhanced Name')) // builder now accumulates `string`
+          .done
+
+        const [enhancedDoWRTEResult, enhancedDoWRTELogs] = await enhancedDoWRTE({ base: 'enhanced' })
+        console.log(`Enhanced DoWRTE result:`, isOk(enhancedDoWRTEResult) ? `Ok(${enhancedDoWRTEResult.value})` : `Err(${enhancedDoWRTEResult.error})`, 'with logs:', enhancedDoWRTELogs)
+
+        // 3) DoRTE with complex tap operations
+        console.log('\n📊 DoRTE with complex tap operations:')
+        
+        const complexTapDoRTE = DoRTE<{ env: string }>()
+          .bind('data', RTE.right({ items: [1, 2, 3], multiplier: 2 }))
+          .tap(t => RTE.right(`Processing ${t.data.items.length} items`))
+          .let('processed', t => t.data.items.map(item => item * t.data.multiplier))
+          .tap(t => RTE.right(`Processed: ${t.processed.join(', ')}`))
+          .map(t => ({ original: t.data.items, processed: t.processed }))
+          .done
+
+        const complexTapResult = await complexTapDoRTE({ env: 'complex' })
+        console.log(`Complex tap DoRTE result:`, isOk(complexTapResult) ? `Ok(${JSON.stringify(complexTapResult.value)})` : `Err(${complexTapResult.error})`)
+
+        // 4) DoWRTE with logging and validation
+        console.log('\n📊 DoWRTE with logging and validation:')
+        
+        const loggingDoWRTE = Do
+          .bind('input', W.of(15))
+          .tap(t => W.tell([`Input: ${t.input}`]))
+          .let('isValid', t => t.input > 10)
+          .tap(t => W.tell([`Valid: ${t.isValid}`]))
+          .bind('result', t => t.isValid ? W.of(t.input * 2) : W.left('Invalid input'))
+          .tap(t => W.tell([`Result: ${t.result}`]))
+          .done
+
+        const [loggingResult, loggingLogs] = await loggingDoWRTE({ base: 'logging' })
+        console.log(`Logging DoWRTE result:`, isOk(loggingResult) ? `Ok(${loggingResult.value})` : `Err(${loggingResult.error})`, 'with logs:', loggingLogs)
+
+        // 5) DoRTE with apFirst for side effects
+        console.log('\n📊 DoRTE with apFirst for side effects:')
+        
+        const sideEffectDoRTE = DoRTE<{ env: string }>()
+          .bind('user', getUserRTE('42'))
+          .apFirst(RTE.right('Side effect 1'))
+          .apFirst(RTE.right('Side effect 2'))
+          .let('message', t => `User: ${t.user.name}`)
+          .done
+
+        const sideEffectResult = await sideEffectDoRTE({ env: 'side-effects' })
+        console.log(`Side effect DoRTE result:`, isOk(sideEffectResult) ? `Ok(${JSON.stringify(sideEffectResult.value)})` : `Err(${sideEffectResult.error})`)
+
+        // 6) DoWRTE with apSecond for value replacement
+        console.log('\n📊 DoWRTE with apSecond for value replacement:')
+        
+        const valueReplacementDoWRTE = Do
+          .bind('initial', W.of('start'))
+          .apSecond(W.of('replaced'))
+          .tap(t => W.tell([`Final value: ${t}`]))
+          .done
+
+        const [valueReplacementResult, valueReplacementLogs] = await valueReplacementDoWRTE({ base: 'replacement' })
+        console.log(`Value replacement DoWRTE result:`, isOk(valueReplacementResult) ? `Ok(${valueReplacementResult.value})` : `Err(${valueReplacementResult.error})`, 'with logs:', valueReplacementLogs)
+
+        // 7) DoRTE with error handling in tap
+        console.log('\n📊 DoRTE with error handling in tap:')
+        
+        const errorHandlingDoRTE = DoRTE<{ env: string }>()
+          .bind('value', RTE.right(42))
+          .tap(t => t.value > 50 ? RTE.left('Value too high') : RTE.right('Value OK'))
+          .let('doubled', t => t.value * 2)
+          .done
+
+        const errorHandlingResult = await errorHandlingDoRTE({ env: 'error-handling' })
+        console.log(`Error handling DoRTE result:`, isOk(errorHandlingResult) ? `Ok(${JSON.stringify(errorHandlingResult.value)})` : `Err(${errorHandlingResult.error})`)
+
+        // 8) DoWRTE with complex logging pipeline
+        console.log('\n📊 DoWRTE with complex logging pipeline:')
+        
+        const loggingPipelineDoWRTE = Do
+          .bind('step1', W.of('Step 1'))
+          .tap(t => W.tell([`Completed: ${t.step1}`]))
+          .apFirst(W.tell(['Intermediate log']))
+          .bind('step2', W.of('Step 2'))
+          .tap(t => W.tell([`Completed: ${t.step2}`]))
+          .apSecond(W.of('Final Result'))
+          .tap(t => W.tell([`Final: ${t}`]))
+          .done
+
+        const [loggingPipelineResult, loggingPipelineLogs] = await loggingPipelineDoWRTE({ base: 'pipeline' })
+        console.log(`Logging pipeline DoWRTE result:`, isOk(loggingPipelineResult) ? `Ok(${loggingPipelineResult.value})` : `Err(${loggingPipelineResult.error})`, 'with logs:', loggingPipelineLogs)
+
+        // 9) DoRTE with conditional apFirst
+        console.log('\n📊 DoRTE with conditional apFirst:')
+        
+        const conditionalApFirstDoRTE = DoRTE<{ env: string }>()
+          .bind('condition', RTE.right(true))
+          .apFirst(conditionalApFirstDoRTE.condition ? RTE.right('Conditional effect') : RTE.right('No effect'))
+          .let('result', t => t.condition ? 'Applied' : 'Skipped')
+          .done
+
+        const conditionalApFirstResult = await conditionalApFirstDoRTE({ env: 'conditional' })
+        console.log(`Conditional apFirst DoRTE result:`, isOk(conditionalApFirstResult) ? `Ok(${JSON.stringify(conditionalApFirstResult.value)})` : `Err(${conditionalApFirstResult.error})`)
+
+        // 10) DoWRTE with comprehensive logging and validation
+        console.log('\n📊 DoWRTE with comprehensive logging and validation:')
+        
+        const comprehensiveDoWRTE = Do
+          .bind('user', W.of({ name: 'Bob', age: 25, role: 'admin' }))
+          .tap(t => W.tell([`User loaded: ${t.user.name}`]))
+          .apFirst(W.tell(['Validating user']))
+          .let('isAdult', t => t.user.age >= 18)
+          .let('isAdmin', t => t.user.role === 'admin')
+          .tap(t => W.tell([`Adult: ${t.isAdult}, Admin: ${t.isAdmin}`]))
+          .bind('permissions', t => t.isAdult && t.isAdmin ? W.of(['read', 'write', 'admin']) : W.of(['read']))
+          .tap(t => W.tell([`Permissions: ${t.permissions.join(', ')}`]))
+          .map(t => ({ user: t.user, permissions: t.permissions }))
+          .done
+
+        const [comprehensiveResult, comprehensiveLogs] = await comprehensiveDoWRTE({ base: 'comprehensive' })
+        console.log(`Comprehensive DoWRTE result:`, isOk(comprehensiveResult) ? `Ok(${JSON.stringify(comprehensiveResult.value)})` : `Err(${comprehensiveResult.error})`, 'with logs:', comprehensiveLogs)
+
+        // =========================================================
+        // MODULE-LEVEL SHIMS AND ENDOFUNCTOR HELPERS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 MODULE-LEVEL SHIMS AND ENDOFUNCTOR HELPERS DEMONSTRATION')
+        console.log('==========================================================')
+
+        // 1) RTE module-level shims
+        console.log('\n📊 RTE module-level shims:')
+        
+        const rteA = RTE.right(42)
+        const rteB = RTE.right('hello')
+        
+        // apFirst: run rteB, keep rteA's value
+        const apFirstResult = await apFirstRTE(rteB)(rteA)({ env: 'test' })
+        console.log(`apFirstRTE result:`, isOk(apFirstResult) ? `Ok(${apFirstResult.value})` : `Err(${apFirstResult.error})`)
+        
+        // apSecond: run rteA, return rteB's value
+        const apSecondResult = await apSecondRTE(rteB)(rteA)({ env: 'test' })
+        console.log(`apSecondRTE result:`, isOk(apSecondResult) ? `Ok(${apSecondResult.value})` : `Err(${apSecondResult.error})`)
+        
+        // zipWith: combine two RTEs with a function
+        const zipWithResult = await zipWithRTE((a: number, b: string) => `${a}-${b}`)(rteA)(rteB)({ env: 'test' })
+        console.log(`zipWithRTE result:`, isOk(zipWithResult) ? `Ok(${zipWithResult.value})` : `Err(${zipWithResult.error})`)
+        
+        // zip: combine two RTEs into a tuple
+        const zipResult = await zipRTE(rteA)(rteB)({ env: 'test' })
+        console.log(`zipRTE result:`, isOk(zipResult) ? `Ok(${JSON.stringify(zipResult.value)})` : `Err(${zipResult.error})`)
+
+        // 2) WRTE module-level shims
+        console.log('\n📊 WRTE module-level shims:')
+        
+        const Log = ArrayMonoid<string>()
+        const W = WRTE<string>(Log)
+        
+        const wrteA = W.of(100)
+        const wrteB = W.of('world')
+        
+        // apFirst: run wrteB, keep wrteA's value
+        const [wrteApFirstResult, wrteApFirstLogs] = await W.apFirst(wrteB)(wrteA)({ base: 'test' })
+        console.log(`WRTE apFirst result:`, isOk(wrteApFirstResult) ? `Ok(${wrteApFirstResult.value})` : `Err(${wrteApFirstResult.error})`, 'with logs:', wrteApFirstLogs)
+        
+        // apSecond: run wrteA, return wrteB's value
+        const [wrteApSecondResult, wrteApSecondLogs] = await W.apSecond(wrteB)(wrteA)({ base: 'test' })
+        console.log(`WRTE apSecond result:`, isOk(wrteApSecondResult) ? `Ok(${wrteApSecondResult.value})` : `Err(${wrteApSecondResult.error})`, 'with logs:', wrteApSecondLogs)
+        
+        // zipWith: combine two WRTEs with a function
+        const [wrteZipWithResult, wrteZipWithLogs] = await W.zipWith((a: number, b: string) => `${a}-${b}`)(wrteA)(wrteB)({ base: 'test' })
+        console.log(`WRTE zipWith result:`, isOk(wrteZipWithResult) ? `Ok(${wrteZipWithResult.value})` : `Err(${wrteZipWithResult.error})`, 'with logs:', wrteZipWithLogs)
+        
+        // zip: combine two WRTEs into a tuple
+        const [wrteZipResult, wrteZipLogs] = await W.zip(wrteA)(wrteB)({ base: 'test' })
+        console.log(`WRTE zip result:`, isOk(wrteZipResult) ? `Ok(${JSON.stringify(wrteZipResult.value)})` : `Err(${wrteZipResult.error})`, 'with logs:', wrteZipLogs)
+
+        // 3) Endofunctor helpers - ResultK
+        console.log('\n📊 Endofunctor helpers - ResultK:')
+        
+        const ResultString = ResultK1<string>()
+        const resultA = Ok(10)
+        const resultB = Ok(20)
+        
+        // map with ResultK
+        const mappedResult = ResultString.map((x: number) => x * 2)(resultA)
+        console.log(`ResultK map:`, isOk(mappedResult) ? `Ok(${mappedResult.value})` : `Err(${mappedResult.error})`)
+        
+        // ap with ResultK
+        const apResult = ResultString.ap(Ok((x: number) => x + 5))(resultA)
+        console.log(`ResultK ap:`, isOk(apResult) ? `Ok(${apResult.value})` : `Err(${apResult.error})`)
+        
+        // chain with ResultK
+        const chainedResult = ResultString.chain((x: number) => x > 5 ? Ok(x * 2) : Err('Too small'))(resultA)
+        console.log(`ResultK chain:`, isOk(chainedResult) ? `Ok(${chainedResult.value})` : `Err(${chainedResult.error})`)
+
+        // 4) Endofunctor helpers - ValidationK
+        console.log('\n📊 Endofunctor helpers - ValidationK:')
+        
+        const ValidationString = ValidationK1<string>()
+        const validationA = VOk(15)
+        const validationB = VOk(25)
+        
+        // map with ValidationK
+        const mappedValidation = ValidationString.map((x: number) => x * 3)(validationA)
+        console.log(`ValidationK map:`, isVOk(mappedValidation) ? `Ok(${mappedValidation.value})` : `Err(${mappedValidation.errors})`)
+        
+        // ap with ValidationK (using array concat)
+        const apValidation = ValidationString.ap((x: string[], y: string[]) => [...x, ...y])(VOk((x: number) => x + 10))(validationA)
+        console.log(`ValidationK ap:`, isVOk(apValidation) ? `Ok(${apValidation.value})` : `Err(${apValidation.errors})`)
+
+        // 5) Endofunctor helpers - ReaderK
+        console.log('\n📊 Endofunctor helpers - ReaderK:')
+        
+        const ReaderEnv = ReaderK1<{ env: string }>()
+        const readerA = Reader.of<{ env: string }, number>(42)
+        
+        // map with ReaderK
+        const mappedReader = ReaderEnv.map((x: number) => x * 2)(readerA)
+        const mappedReaderResult = await mappedReader({ env: 'test' })
+        console.log(`ReaderK map result:`, mappedReaderResult)
+        
+        // ap with ReaderK
+        const apReader = ReaderEnv.ap(Reader.of<{ env: string }, (x: number) => number>((x: number) => x + 10))(readerA)
+        const apReaderResult = await apReader({ env: 'test' })
+        console.log(`ReaderK ap result:`, apReaderResult)
+
+        // 6) Endofunctor helpers - ReaderTaskK
+        console.log('\n📊 Endofunctor helpers - ReaderTaskK:')
+        
+        const ReaderTaskEnv = ReaderTaskK1<{ env: string }>()
+        const readerTaskA = ReaderTask.of<{ env: string }, number>(100)
+        
+        // map with ReaderTaskK
+        const mappedReaderTask = ReaderTaskEnv.map((x: number) => x * 2)(readerTaskA)
+        const mappedReaderTaskResult = await mappedReaderTask({ env: 'test' })
+        console.log(`ReaderTaskK map result:`, mappedReaderTaskResult)
+        
+        // chain with ReaderTaskK
+        const chainedReaderTask = ReaderTaskEnv.chain((x: number) => ReaderTask.of<{ env: string }, number>(x + 50))(readerTaskA)
+        const chainedReaderTaskResult = await chainedReaderTask({ env: 'test' })
+        console.log(`ReaderTaskK chain result:`, chainedReaderTaskResult)
+
+        // 7) Complex RTE pipeline with module shims
+        console.log('\n📊 Complex RTE pipeline with module shims:')
+        
+        const fetchUserRTE = (id: string) => RTE.right({ id, name: `User${id}` })
+        const fetchProfileRTE = (userId: string) => RTE.right({ userId, bio: `Bio for ${userId}` })
+        const logActionRTE = (action: string) => RTE.right(`Logged: ${action}`)
+        
+        const complexPipeline = RTE.chain((user: { id: string; name: string }) =>
+          RTE.chain((profile: { userId: string; bio: string }) =>
+            RTE.map((log: string) => ({ user, profile, log }))(
+              logActionRTE('User fetched')
+            )
+          )(fetchProfileRTE(user.id))
+        )(fetchUserRTE('123'))
+        
+        const complexResult = await complexPipeline({ env: 'complex' })
+        console.log(`Complex RTE pipeline result:`, isOk(complexResult) ? `Ok(${JSON.stringify(complexResult.value)})` : `Err(${complexResult.error})`)
+
+        // 8) Complex WRTE pipeline with module shims
+        console.log('\n📊 Complex WRTE pipeline with module shims:')
+        
+        const fetchDataWRTE = (id: string) => W.chain(() => W.of({ id, data: `Data${id}` }))(W.tell([`Fetching data for ${id}`]))
+        const processDataWRTE = (data: { id: string; data: string }) => W.chain(() => W.of({ ...data, processed: true }))(W.tell([`Processing ${data.data}`]))
+        
+        const complexWRTE = W.chain((data: { id: string; data: string }) =>
+          W.chain((processed: { id: string; data: string; processed: boolean }) =>
+            W.map((log: string) => ({ data, processed, log }))(
+              W.tell([`Completed processing ${processed.id}`])
+            )
+          )(processDataWRTE(data))
+        )(fetchDataWRTE('456'))
+        
+        const [complexWRTEResult, complexWRTELogs] = await complexWRTE({ base: 'complex' })
+        console.log(`Complex WRTE pipeline result:`, isOk(complexWRTEResult) ? `Ok(${JSON.stringify(complexWRTEResult.value)})` : `Err(${complexWRTEResult.error})`, 'with logs:', complexWRTELogs)
+
+        // 9) Generic endofunctor usage
+        console.log('\n📊 Generic endofunctor usage:')
+        
+        // Function that works with any endofunctor
+        const doubleEndofunctor = <F extends HK.Id1>(F: EndofunctorK1<F>) => 
+          <A>(fa: HK.Kind1<F, A>): HK.Kind1<F, A> => 
+            F.map((x: A) => x * 2)(fa)
+        
+        // Use with ResultK
+        const doubledResult = doubleEndofunctor(ResultString)(Ok(21))
+        console.log(`Doubled Result:`, isOk(doubledResult) ? `Ok(${doubledResult.value})` : `Err(${doubledResult.error})`)
+        
+        // Use with ReaderK
+        const doubledReader = doubleEndofunctor(ReaderEnv)(Reader.of<{ env: string }, number>(30))
+        const doubledReaderResult = await doubledReader({ env: 'generic' })
+        console.log(`Doubled Reader result:`, doubledReaderResult)
+
+        // 10) Error handling with module shims
+        console.log('\n📊 Error handling with module shims:')
+        
+        const errorRTE = RTE.left('Something went wrong')
+        const successRTE = RTE.right('Success')
+        
+        // apFirst with error - should propagate error
+        const errorApFirst = await apFirstRTE(errorRTE)(successRTE)({ env: 'error-test' })
+        console.log(`apFirst with error:`, isOk(errorApFirst) ? `Ok(${errorApFirst.value})` : `Err(${errorApFirst.error})`)
+        
+        // apSecond with error - should propagate error
+        const errorApSecond = await apSecondRTE(successRTE)(errorRTE)({ env: 'error-test' })
+        console.log(`apSecond with error:`, isOk(errorApSecond) ? `Ok(${errorApSecond.value})` : `Err(${errorApSecond.error})`)
+
+        // =========================================================
+        // MONOIDAL CATEGORY STRUCTURE DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 MONOIDAL CATEGORY STRUCTURE DEMONSTRATION')
+        console.log('============================================')
+
+        // 1) Basic function category operations
+        console.log('\n📊 Basic function category operations:')
+        
+        const double = (x: number) => x * 2
+        const addOne = (x: number) => x + 1
+        const toString = (x: number) => x.toString()
+        
+        // Identity
+        const id = CatFn.id<number>()
+        console.log(`Identity: ${id(5)}`)
+        
+        // Composition
+        const composed = CatFn.compose(toString, CatFn.compose(addOne, double))
+        console.log(`Composition: ${composed(5)}`)
+
+        // 2) Monoidal structure on functions
+        console.log('\n📊 Monoidal structure on functions:')
+        
+        const f = (x: number) => x * 2
+        const g = (s: string) => s.toUpperCase()
+        
+        // Tensor product of morphisms
+        const tensor = MonoidalFn.tensor(f, g)
+        const result = tensor([10, 'hello'] as const)
+        console.log(`Tensor product: ${JSON.stringify(result)}`)
+        
+        // Left unitor
+        const leftUnitor = MonoidalFn.leftUnitor<number>()
+        const leftResult = leftUnitor.to([undefined, 42] as const)
+        console.log(`Left unitor: ${leftResult}`)
+        
+        // Right unitor
+        const rightUnitor = MonoidalFn.rightUnitor<string>()
+        const rightResult = rightUnitor.to(['world', undefined] as const)
+        console.log(`Right unitor: ${rightResult}`)
+        
+        // Associator
+        const associator = MonoidalFn.associator<number, string, boolean>()
+        const assocResult = associator.to([1, ['hello', true] as const] as const)
+        console.log(`Associator: ${JSON.stringify(assocResult)}`)
+
+        // 3) Monoidal Kleisli structure for RTE
+        console.log('\n📊 Monoidal Kleisli structure for RTE:')
+        
+        type Env = { base: string }
+        type Error = string
+        
+        const M = MonoidalKleisliRTE<Env, Error>()
+        
+        // Mock functions for demonstration
+        const loadUser = (id: string) => RTE.right({ id, name: `User${id}` })
+        const loadPosts = (userId: string) => RTE.right([`Post1-${userId}`, `Post2-${userId}`])
+        
+        // Tensor product in Kleisli
+        const tensorKleisli = M.tensor(loadUser, loadPosts)
+        const kleisliResult = await tensorKleisli(['42', '42'] as const)({ base: 'test' })
+        console.log(`Kleisli tensor:`, isOk(kleisliResult) ? `Ok(${JSON.stringify(kleisliResult.value)})` : `Err(${kleisliResult.error})`)
+        
+        // Left unitor in Kleisli
+        const leftUnitorKleisli = M.leftUnitor<{ id: string; name: string }>()
+        const leftKleisliResult = await leftUnitorKleisli.to([undefined, { id: '123', name: 'Alice' }] as const)({ base: 'test' })
+        console.log(`Kleisli left unitor:`, isOk(leftKleisliResult) ? `Ok(${JSON.stringify(leftKleisliResult.value)})` : `Err(${leftKleisliResult.error})`)
+        
+        // Right unitor in Kleisli
+        const rightUnitorKleisli = M.rightUnitor<{ id: string; name: string }>()
+        const rightKleisliResult = await rightUnitorKleisli.to([{ id: '456', name: 'Bob' }, undefined] as const)({ base: 'test' })
+        console.log(`Kleisli right unitor:`, isOk(rightKleisliResult) ? `Ok(${JSON.stringify(rightKleisliResult.value)})` : `Err(${rightKleisliResult.error})`)
+        
+        // Associator in Kleisli
+        const associatorKleisli = M.associator<{ id: string }, string[], boolean>()
+        const assocKleisliResult = await associatorKleisli.to([{ id: '789' }, [['post1', 'post2'], true] as const] as const)({ base: 'test' })
+        console.log(`Kleisli associator:`, isOk(assocKleisliResult) ? `Ok(${JSON.stringify(assocKleisliResult.value)})` : `Err(${assocKleisliResult.error})`)
+
+        // 4) Complex monoidal operations
+        console.log('\n📊 Complex monoidal operations:')
+        
+        // Multiple tensor products
+        const f1 = (x: number) => x * 2
+        const f2 = (s: string) => s.length
+        const f3 = (b: boolean) => b ? 1 : 0
+        
+        const tensor12 = MonoidalFn.tensor(f1, f2)
+        const tensor123 = MonoidalFn.tensor(tensor12, f3)
+        const complexResult = tensor123([[10, 'hello'], true] as const)
+        console.log(`Complex tensor: ${JSON.stringify(complexResult)}`)
+        
+        // Kleisli with error handling
+        const loadUserWithError = (id: string) => 
+          id === 'error' ? RTE.left('User not found') : RTE.right({ id, name: `User${id}` })
+        const loadPostsWithError = (userId: string) => 
+          userId === 'error' ? RTE.left('Posts not found') : RTE.right([`Post1-${userId}`])
+        
+        const errorTensor = M.tensor(loadUserWithError, loadPostsWithError)
+        const errorResult = await errorTensor(['error', '42'] as const)({ base: 'test' })
+        console.log(`Error tensor:`, isOk(errorResult) ? `Ok(${JSON.stringify(errorResult.value)})` : `Err(${errorResult.error})`)
+
+        // 5) Coherence law demonstrations
+        console.log('\n📊 Coherence law demonstrations:')
+        
+        // Test associativity
+        const a = 1, b = 2, c = 3
+        const assoc = MonoidalFn.associator<typeof a, typeof b, typeof c>()
+        const original = [a, [b, c] as const] as const
+        const reassociated = assoc.to(original)
+        const back = assoc.from(reassociated)
+        console.log(`Associativity test: ${JSON.stringify(original)} -> ${JSON.stringify(reassociated)} -> ${JSON.stringify(back)}`)
+        
+        // Test left unitor
+        const leftUnitorTest = MonoidalFn.leftUnitor<number>()
+        const originalLeft = [undefined, 42] as const
+        const extracted = leftUnitorTest.to(originalLeft)
+        const restored = leftUnitorTest.from(extracted)
+        console.log(`Left unitor test: ${JSON.stringify(originalLeft)} -> ${extracted} -> ${JSON.stringify(restored)}`)
+
+        // 6) Practical monoidal patterns
+        console.log('\n📊 Practical monoidal patterns:')
+        
+        // Parallel processing with RTE
+        const fetchUserData = (id: string) => RTE.right({ id, name: `User${id}`, email: `user${id}@example.com` })
+        const fetchUserSettings = (id: string) => RTE.right({ theme: 'dark', notifications: true })
+        const fetchUserPreferences = (id: string) => RTE.right({ language: 'en', timezone: 'UTC' })
+        
+        const parallelFetch = M.tensor(
+          M.tensor(fetchUserData, fetchUserSettings),
+          fetchUserPreferences
+        )
+        
+        const parallelResult = await parallelFetch([['123', '123'], '123'] as const)({ base: 'parallel' })
+        console.log(`Parallel fetch:`, isOk(parallelResult) ? `Ok(${JSON.stringify(parallelResult.value)})` : `Err(${parallelResult.error})`)
+
+        // 7) Development coherence checks
+        console.log('\n📊 Development coherence checks:')
+        
+        // Run coherence checks (only in dev mode)
+        assertMonoidalFnCoherence()
+        await assertMonoidalKleisliRTECoherence<Env, Error>()
+        console.log('Coherence checks completed (check console for warnings)')
+
+        // 8) Monoidal composition patterns
+        console.log('\n📊 Monoidal composition patterns:')
+        
+        // Sequential tensor products
+        const step1 = (x: number) => x * 2
+        const step2 = (x: number) => x + 10
+        const step3 = (x: number) => x.toString()
+        
+        const pipeline = MonoidalFn.tensor(
+          MonoidalFn.tensor(step1, step2),
+          step3
+        )
+        
+        const pipelineResult = pipeline([[5, 5], 3] as const)
+        console.log(`Pipeline result: ${JSON.stringify(pipelineResult)}`)
+
+        // 9) Error propagation in monoidal Kleisli
+        console.log('\n📊 Error propagation in monoidal Kleisli:')
+        
+        const safeLoadUser = (id: string) => 
+          id.length > 0 ? RTE.right({ id, name: `User${id}` }) : RTE.left('Invalid ID')
+        const safeLoadPosts = (userId: string) => 
+          userId.length > 0 ? RTE.right([`Post-${userId}`]) : RTE.left('Invalid user ID')
+        
+        const safeTensor = M.tensor(safeLoadUser, safeLoadPosts)
+        
+        // Success case
+        const successResult = await safeTensor(['123', '123'] as const)({ base: 'safe' })
+        console.log(`Safe tensor success:`, isOk(successResult) ? `Ok(${JSON.stringify(successResult.value)})` : `Err(${successResult.error})`)
+        
+        // Error case
+        const errorResult = await safeTensor(['', '123'] as const)({ base: 'safe' })
+        console.log(`Safe tensor error:`, isOk(errorResult) ? `Ok(${JSON.stringify(errorResult.value)})` : `Err(${errorResult.error})`)
+
+        // 10) Advanced monoidal transformations
+        console.log('\n📊 Advanced monoidal transformations:')
+        
+        // Transform between different monoidal structures
+        const transform = (f: (x: number) => number, g: (s: string) => string) => 
+          MonoidalFn.tensor(f, g)
+        
+        const doubleAndUpper = transform(x => x * 2, s => s.toUpperCase())
+        const transformResult = doubleAndUpper([5, 'hello'] as const)
+        console.log(`Transform result: ${JSON.stringify(transformResult)}`)
+        
+        // Kleisli transformation with environment
+        const envTransform = (f: (x: number) => ReaderTaskEither<Env, Error, number>) => 
+          (g: (s: string) => ReaderTaskEither<Env, Error, string>) =>
+            M.tensor(f, g)
+        
+        const envDouble = (x: number) => RTE.right(x * 2)
+        const envUpper = (s: string) => RTE.right(s.toUpperCase())
+        const envTransformResult = await envTransform(envDouble)(envUpper)([10, 'world'] as const)({ base: 'transform' })
+        console.log(`Env transform:`, isOk(envTransformResult) ? `Ok(${JSON.stringify(envTransformResult.value)})` : `Err(${envTransformResult.error})`)
+
+        // =========================================================
+        // MONOIDAL FUNCTOR STRUCTURE DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 MONOIDAL FUNCTOR STRUCTURE DEMONSTRATION')
+        console.log('===========================================')
+
+        // 1) Option monoidal functor
+        console.log('\n📊 Option monoidal functor:')
+        
+        const o1 = Some(1)
+        const o2 = Some('x')
+        const o3 = None
+        
+        // zip with Option
+        const oz = zipOption<number, string>(o1)(o2)
+        console.log(`Option zip:`, isSome(oz) ? `Some(${JSON.stringify(oz.value)})` : 'None')
+        
+        // zipWith with Option
+        const ozw = zipWithOption<number, string, string>((a, b) => `${a}-${b}`)(o1)(o2)
+        console.log(`Option zipWith:`, isSome(ozw) ? `Some(${ozw.value})` : 'None')
+        
+        // zip with None
+        const ozNone = zipOption<number, string>(o1)(o3)
+        console.log(`Option zip with None:`, isSome(ozNone) ? `Some(${JSON.stringify(ozNone.value)})` : 'None')
+
+        // 2) Result monoidal functor (short-circuiting)
+        console.log('\n📊 Result monoidal functor (short-circuiting):')
+        
+        const r1 = Ok(2)
+        const r2 = Ok('hello')
+        const r3 = Err('boom')
+        
+        // zip with Result
+        const rz = zipResult<string>()<number, string>(r1)(r2)
+        console.log(`Result zip:`, isOk(rz) ? `Ok(${JSON.stringify(rz.value)})` : `Err(${rz.error})`)
+        
+        // zipWith with Result
+        const rzw = zipWithResult<string>()<number, string, string>((a, b) => `${a}-${b}`)(r1)(r2)
+        console.log(`Result zipWith:`, isOk(rzw) ? `Ok(${rzw.value})` : `Err(${rzw.error})`)
+        
+        // zip with error (short-circuits)
+        const rzErr = zipResult<string>()<number, string>(r1)(r3)
+        console.log(`Result zip with error:`, isOk(rzErr) ? `Ok(${JSON.stringify(rzErr.value)})` : `Err(${rzErr.error})`)
+
+        // 3) Reader monoidal functor
+        console.log('\n📊 Reader monoidal functor:')
+        
+        const rA = Reader.asks((n: number) => n + 1)
+        const rB = Reader.asks((n: number) => String(n))
+        
+        // zip with Reader
+        const rZ = zipReader<number>()<number, string>(rA)(rB)
+        const rZResult = await rZ(5)
+        console.log(`Reader zip result: ${JSON.stringify(rZResult)}`)
+        
+        // zipWith with Reader
+        const rZW = zipWithReader<number>()<number, string, string>((a, b) => `${a}-${b}`)(rA)(rB)
+        const rZWResult = await rZW(5)
+        console.log(`Reader zipWith result: ${rZWResult}`)
+
+        // 4) ReaderTask monoidal functor
+        console.log('\n📊 ReaderTask monoidal functor:')
+        
+        const rtA = ReaderTask.of<{ env: string }, number>(42)
+        const rtB = ReaderTask.of<{ env: string }, string>('world')
+        
+        // zip with ReaderTask
+        const rtZ = zipReaderTask<{ env: string }>()<number, string>(rtA)(rtB)
+        const rtZResult = await rtZ({ env: 'test' })
+        console.log(`ReaderTask zip result: ${JSON.stringify(rtZResult)}`)
+        
+        // zipWith with ReaderTask
+        const rtZW = zipWithReaderTask<{ env: string }>()<number, string, string>((a, b) => `${a}-${b}`)(rtA)(rtB)
+        const rtZWResult = await rtZW({ env: 'test' })
+        console.log(`ReaderTask zipWith result: ${rtZWResult}`)
+
+        // 5) ReaderTaskEither monoidal functor
+        console.log('\n📊 ReaderTaskEither monoidal functor:')
+        
+        const rteA = RTE.right(100)
+        const rteB = RTE.right('success')
+        const rteC = RTE.left('error')
+        
+        // zip with RTE
+        const rteZ = zipRTE_Monoidal<{ env: string }, string>()<number, string>(rteA)(rteB)
+        const rteZResult = await rteZ({ env: 'test' })
+        console.log(`RTE zip result:`, isOk(rteZResult) ? `Ok(${JSON.stringify(rteZResult.value)})` : `Err(${rteZResult.error})`)
+        
+        // zipWith with RTE
+        const rteZW = zipWithRTE_Monoidal<{ env: string }, string>()<number, string, string>((a, b) => `${a}-${b}`)(rteA)(rteB)
+        const rteZWResult = await rteZW({ env: 'test' })
+        console.log(`RTE zipWith result:`, isOk(rteZWResult) ? `Ok(${rteZWResult.value})` : `Err(${rteZWResult.error})`)
+        
+        // zip with error (short-circuits)
+        const rteZErr = zipRTE_Monoidal<{ env: string }, string>()<number, string>(rteA)(rteC)
+        const rteZErrResult = await rteZErr({ env: 'test' })
+        console.log(`RTE zip with error:`, isOk(rteZErrResult) ? `Ok(${JSON.stringify(rteZErrResult.value)})` : `Err(${rteZErrResult.error})`)
+
+        // 6) Validation monoidal functor (accumulating)
+        console.log('\n📊 Validation monoidal functor (accumulating):')
+        
+        const vA = VOk(10)
+        const vB = VOk('valid')
+        const vC = VErr(['error1'])
+        const vD = VErr(['error2'])
+        
+        // zip with Validation (success case)
+        const vZ = zipValidation<string>((x, y) => [...x, ...y])<number, string>(vA)(vB)
+        console.log(`Validation zip success:`, isVOk(vZ) ? `Ok(${JSON.stringify(vZ.value)})` : `Err(${vZ.errors})`)
+        
+        // zip with Validation (error accumulation)
+        const vZErr = zipValidation<string>((x, y) => [...x, ...y])<number, string>(vC)(vD)
+        console.log(`Validation zip errors:`, isVOk(vZErr) ? `Ok(${JSON.stringify(vZErr.value)})` : `Err(${vZErr.errors})`)
+        
+        // zip with mixed success/error
+        const vZMixed = zipValidation<string>((x, y) => [...x, ...y])<number, string>(vA)(vC)
+        console.log(`Validation zip mixed:`, isVOk(vZMixed) ? `Ok(${JSON.stringify(vZMixed.value)})` : `Err(${vZMixed.errors})`)
+
+        // 7) Complex monoidal functor operations
+        console.log('\n📊 Complex monoidal functor operations:')
+        
+        // Multiple zips with Option
+        const o4 = Some(3)
+        const o5 = Some(4)
+        const o6 = Some(5)
+        
+        const complexO = zipOption<number, number>(zipOption<number, number>(o4)(o5))(o6)
+        console.log(`Complex Option zip:`, isSome(complexO) ? `Some(${JSON.stringify(complexO.value)})` : 'None')
+        
+        // Multiple zips with Result
+        const r4 = Ok(6)
+        const r5 = Ok(7)
+        const r6 = Ok(8)
+        
+        const complexR = zipResult<string>()<number, number>(zipResult<string>()<number, number>(r4)(r5))(r6)
+        console.log(`Complex Result zip:`, isOk(complexR) ? `Ok(${JSON.stringify(complexR.value)})` : `Err(${complexR.error})`)
+
+        // 8) Monoidal functor with environment
+        console.log('\n📊 Monoidal functor with environment:')
+        
+        // Reader with environment
+        const envReader = Reader.asks((env: { base: string }) => env.base + '_processed')
+        const envReader2 = Reader.asks((env: { base: string }) => env.base.length)
+        
+        const envZip = zipWithReader<{ base: string }>()<string, number, string>((s, n) => `${s}_${n}`)(envReader)(envReader2)
+        const envResult = await envZip({ base: 'test' })
+        console.log(`Environment Reader zipWith result: ${envResult}`)
+        
+        // ReaderTask with environment
+        const envRT = ReaderTask.of<{ base: string }, string>('async_value')
+        const envRT2 = ReaderTask.of<{ base: string }, number>(42)
+        
+        const envRTZip = zipWithReaderTask<{ base: string }>()<string, number, string>((s, n) => `${s}_${n}`)(envRT)(envRT2)
+        const envRTResult = await envRTZip({ base: 'async' })
+        console.log(`Environment ReaderTask zipWith result: ${envRTResult}`)
+
+        // 9) Error handling patterns
+        console.log('\n📊 Error handling patterns:')
+        
+        // Short-circuiting vs accumulating
+        const shortCircuit1 = Ok(1)
+        const shortCircuit2 = Err('first error')
+        const shortCircuit3 = Err('second error')
+        
+        const shortResult = zipResult<string>()<number, number>(shortCircuit1)(shortCircuit2)
+        console.log(`Short-circuiting Result:`, isOk(shortResult) ? `Ok(${JSON.stringify(shortResult.value)})` : `Err(${shortResult.error})`)
+        
+        // Accumulating errors
+        const acc1 = VErr(['first error'])
+        const acc2 = VErr(['second error'])
+        
+        const accResult = zipValidation<string>((x, y) => [...x, ...y])<number, number>(acc1)(acc2)
+        console.log(`Accumulating Validation:`, isVOk(accResult) ? `Ok(${JSON.stringify(accResult.value)})` : `Err(${accResult.errors})`)
+
+        // 10) Generic monoidal functor usage
+        console.log('\n📊 Generic monoidal functor usage:')
+        
+        // Function that works with any monoidal functor
+        const combineMonoidal = <F>(M: MonoidalFunctorK1<F>) => 
+          <A, B>(fa: any, fb: any) => M.tensor<A, B>(fa, fb)
+        
+        // Use with Option
+        const optionCombine = combineMonoidal(MonoidalOption)
+        const optionResult = optionCombine<number, string>(Some(1), Some('test'))
+        console.log(`Generic Option combine:`, isSome(optionResult) ? `Some(${JSON.stringify(optionResult.value)})` : 'None')
+        
+        // Use with Result
+        const resultCombine = combineMonoidal(MonoidalResult<string>())
+        const resultResult = resultCombine<number, string>(Ok(2), Ok('generic'))
+        console.log(`Generic Result combine:`, isOk(resultResult) ? `Ok(${JSON.stringify(resultResult.value)})` : `Err(${resultResult.error})`)
 
         console.log('\n✅ All examples completed successfully!')
 }

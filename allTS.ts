@@ -250,21 +250,7 @@ export const PromiseM = {
 
 // ---- Array (List) ----
 // Readonly in/out to fit your FP style.
-export const ArrayM = {
-  of: <A>(a: A): ReadonlyArray<A> => [a],
-  map:
-    <A, B>(f: (a: A) => B) =>
-    (as: ReadonlyArray<A>): ReadonlyArray<B> =>
-      as.map(f),
-  chain:
-    <A, B>(f: (a: A) => ReadonlyArray<B>) =>
-    (as: ReadonlyArray<A>): ReadonlyArray<B> =>
-      as.flatMap(f),
-  ap:
-    <A, B>(fs: ReadonlyArray<(a: A) => B>) =>
-    (as: ReadonlyArray<A>): ReadonlyArray<B> =>
-      fs.flatMap(f => as.map(f)),
-}
+// Note: ArrayM is now defined in the Category Theory section below
 
 // ---- Result (fixed E) ----
 // A monad instance where the error type is held constant across binds.
@@ -917,89 +903,78 @@ export const sizeJsonNew = cataJson(Alg_Json_size)
 export const strsJson = cataJson(Alg_Json_collectStrings)
 export const depthJson = cataJson(Alg_Json_depth)
 
-// Combine two JsonF algebras into one traversal producing a pair
-export const productJsonAlg2Regular =
-  <B, C>(algB: (f: JsonF<B>) => B, algC: (f: JsonF<C>) => C) =>
-  (f: JsonF<readonly [B, C]>): readonly [B, C] => {
-    switch (f._tag) {
-      case 'JNull': {
-        const fb: JsonF<B> = { _tag: 'JNull' }
-        const fc: JsonF<C> = { _tag: 'JNull' }
-        return [algB(fb), algC(fc)] as const
-      }
-      case 'JUndefined': {
-        const fb: JsonF<B> = { _tag: 'JUndefined' }
-        const fc: JsonF<C> = { _tag: 'JUndefined' }
-        return [algB(fb), algC(fc)] as const
-      }
-      case 'JBool': {
-        const fb: JsonF<B> = { _tag: 'JBool', value: f.value }
-        const fc: JsonF<C> = { _tag: 'JBool', value: f.value }
-        return [algB(fb), algC(fc)] as const
-      }
-      case 'JNum': {
-        const fb: JsonF<B> = { _tag: 'JNum', value: f.value }
-        const fc: JsonF<C> = { _tag: 'JNum', value: f.value }
-        return [algB(fb), algC(fc)] as const
-      }
-      case 'JDec': {
-        const fb: JsonF<B> = { _tag: 'JDec', decimal: f.decimal }
-        const fc: JsonF<C> = { _tag: 'JDec', decimal: f.decimal }
-        return [algB(fb), algC(fc)] as const
-      }
-      case 'JStr': {
-        const fb: JsonF<B> = { _tag: 'JStr', value: f.value }
-        const fc: JsonF<C> = { _tag: 'JStr', value: f.value }
-        return [algB(fb), algC(fc)] as const
-      }
-      case 'JBinary': {
-        const fb: JsonF<B> = { _tag: 'JBinary', base64: f.base64 }
-        const fc: JsonF<C> = { _tag: 'JBinary', base64: f.base64 }
-        return [algB(fb), algC(fc)] as const
-      }
-      case 'JRegex': {
-        const fb: JsonF<B> = { _tag: 'JRegex', pattern: f.pattern, ...(f.flags !== undefined ? { flags: f.flags } : {}) }
-        const fc: JsonF<C> = { _tag: 'JRegex', pattern: f.pattern, ...(f.flags !== undefined ? { flags: f.flags } : {}) }
-        return [algB(fb), algC(fc)] as const
-      }
-      case 'JDate': {
-        const fb: JsonF<B> = { _tag: 'JDate', iso: f.iso }
-        const fc: JsonF<C> = { _tag: 'JDate', iso: f.iso }
-        return [algB(fb), algC(fc)] as const
-      }
+// Product algebra: runs two algebras in lockstep with payload consistency
+export const productJsonAlg2 =
+  <B, C>(algB: (fb: JsonF<B>) => B, algC: (fc: JsonF<C>) => C) =>
+  (fbc: JsonF<readonly [B, C]>): readonly [B, C] => {
+    switch (fbc._tag) {
+      // LEAVES: forward identical payload to both algebras
+      case 'JNull':      return [algB({ _tag: 'JNull' }),      algC({ _tag: 'JNull' })]
+      case 'JUndefined': return [algB({ _tag: 'JUndefined' }), algC({ _tag: 'JUndefined' })]
+      case 'JBool':      return [algB({ _tag: 'JBool',  value: fbc.value }),
+                                 algC({ _tag: 'JBool',  value: fbc.value })]
+      case 'JNum':       return [algB({ _tag: 'JNum',   value: fbc.value }),
+                                 algC({ _tag: 'JNum',   value: fbc.value })]
+      case 'JDec':       return [algB({ _tag: 'JDec',   decimal: fbc.decimal }),
+                                 algC({ _tag: 'JDec',   decimal: fbc.decimal })]
+      case 'JStr':       return [algB({ _tag: 'JStr',   value: fbc.value }),
+                                 algC({ _tag: 'JStr',   value: fbc.value })]
+      case 'JBinary':    return [algB({ _tag: 'JBinary', base64: fbc.base64 }),
+                                 algC({ _tag: 'JBinary', base64: fbc.base64 })]
+      case 'JRegex':     return [algB({ _tag: 'JRegex', pattern: fbc.pattern, ...(fbc.flags !== undefined ? { flags: fbc.flags } : {}) }),
+                                 algC({ _tag: 'JRegex', pattern: fbc.pattern, ...(fbc.flags !== undefined ? { flags: fbc.flags } : {}) })]
+      case 'JDate':      return [algB({ _tag: 'JDate', iso: fbc.iso }),
+                                 algC({ _tag: 'JDate', iso: fbc.iso })]
+
+      // RECURSIVE: map children's left/right parts separately
       case 'JArr': {
-        const itemsB = f.items.map(p => p[0]) as ReadonlyArray<B>
-        const itemsC = f.items.map(p => p[1]) as ReadonlyArray<C>
-        const fb: JsonF<B> = { _tag: 'JArr', items: itemsB }
-        const fc: JsonF<C> = { _tag: 'JArr', items: itemsC }
-        return [algB(fb), algC(fc)] as const
+        const left  = fbc.items.map(([b]) => b)
+        const right = fbc.items.map(([, c]) => c)
+        return [algB({ _tag: 'JArr', items: left }),
+                algC({ _tag: 'JArr', items: right })]
       }
       case 'JSet': {
-        const itemsB = f.items.map(p => p[0]) as ReadonlyArray<B>
-        const itemsC = f.items.map(p => p[1]) as ReadonlyArray<C>
-        const fb: JsonF<B> = { _tag: 'JSet', items: itemsB }
-        const fc: JsonF<C> = { _tag: 'JSet', items: itemsC }
-        return [algB(fb), algC(fc)] as const
+        const left  = fbc.items.map(([b]) => b)
+        const right = fbc.items.map(([, c]) => c)
+        return [algB({ _tag: 'JSet', items: left }),
+                algC({ _tag: 'JSet', items: right })]
       }
       case 'JObj': {
-        const entriesB = f.entries.map(([k, p]) => [k, p[0]] as const) as ReadonlyArray<readonly [string, B]>
-        const entriesC = f.entries.map(([k, p]) => [k, p[1]] as const) as ReadonlyArray<readonly [string, C]>
-        const fb: JsonF<B> = { _tag: 'JObj', entries: entriesB }
-        const fc: JsonF<C> = { _tag: 'JObj', entries: entriesC }
-        return [algB(fb), algC(fc)] as const
+        const left  = fbc.entries.map(([k, [b]]) => [k, b] as const)
+        const right = fbc.entries.map(([k, [, c]]) => [k, c] as const)
+        return [algB({ _tag: 'JObj', entries: left }),
+                algC({ _tag: 'JObj', entries: right })]
       }
     }
   }
 
+// Legacy product algebra (kept for compatibility)
+export const productJsonAlg2Regular = productJsonAlg2
+
 // Size & depth in a single traversal
-export const sizeAndDepthJson = cataJson(productJsonAlg2Regular(Alg_Json_size, Alg_Json_depth))
+export const sizeAndDepthJson = cataJson(productJsonAlg2(Alg_Json_size, Alg_Json_depth))
 
 // Strings & size in a single traversal
-export const strsAndSizeJson = cataJson(productJsonAlg2Regular(Alg_Json_collectStrs, Alg_Json_size))
+export const strsAndSizeJson = cataJson(productJsonAlg2(Alg_Json_collectStrs, Alg_Json_size))
 
 // ====================================================================
 // Canonicalization fold for Json
 // ====================================================================
+
+// Policy threading for canonicalization
+export type CanonicalPolicy = Readonly<{
+  sortObjects?: boolean            // default: true
+  dedupSets?: boolean              // default: true
+  sortSets?: boolean               // default: true
+  normalizeRegexFlags?: boolean    // default: true
+}>
+
+const defaultPolicy: Required<CanonicalPolicy> = {
+  sortObjects: true,
+  dedupSets: true,
+  sortSets: true,
+  normalizeRegexFlags: true,
+}
 
 /** Stable, deterministic canonicalization for Json:
  *  - JObj: sort keys lexicographically
@@ -1024,38 +999,52 @@ const _normFlags = (flags?: string): string | undefined => {
   return uniq.join('') || undefined
 }
 
-export const canonicalizeJson: (j: Json) => Json =
-  cataJson<Json>((f) => {
-    switch (f._tag) {
-      case 'JNull':      return jNull()
-      case 'JUndefined': return jUndef()
-      case 'JBool':      return jBool(f.value)
-      case 'JNum':       return jNum(f.value)
-      case 'JDec':       return jDec(f.decimal)
-      case 'JStr':       return jStr(f.value)
-      case 'JBinary':    return jBinary(f.base64)
-      case 'JRegex':     return jRegex(f.pattern, _normFlags(f.flags))
-      case 'JDate':      return jDate(f.iso)
+// Policy-aware canonicalization
+export const canonicalizeJsonP =
+  (policy: CanonicalPolicy = {}): ((j: Json) => Json) => {
+    const P = { ...defaultPolicy, ...policy }
+    const normFlags = (f: string | undefined) =>
+      !P.normalizeRegexFlags || !f ? f : Array.from(new Set(f.split(''))).sort().join('') || undefined
 
-      case 'JArr': {
-        // arrays keep order; children are already canonical
-        return jArr(f.items)
-      }
+    return cataJson<Json>((f) => {
+      switch (f._tag) {
+        case 'JNull':      return jNull()
+        case 'JUndefined': return jUndef()
+        case 'JBool':      return jBool(f.value)
+        case 'JNum':       return jNum(f.value)
+        case 'JDec':       return jDec(f.decimal)
+        case 'JStr':       return jStr(f.value)
+        case 'JBinary':    return jBinary(f.base64)
+        case 'JRegex':     return jRegex(f.pattern, normFlags(f.flags))
+        case 'JDate':      return jDate(f.iso)
 
-      case 'JSet': {
-        // children are already canonical; dedup + sort by stable key
-        // Use CanonicalJsonSet for automatic deduplication and canonical ordering
-        const canonicalSet = new CanonicalJsonSet(f.items)
-        return jSet(Array.from(canonicalSet))
-      }
+        case 'JArr': {
+          // arrays keep order; children are already canonical
+          return jArr(f.items)
+        }
 
-      case 'JObj': {
-        // sort keys lexicographically; values already canonical
-        const sorted = [...f.entries].sort(([k1], [k2]) => (k1 < k2 ? -1 : k1 > k2 ? 1 : 0))
-        return jObj(sorted)
+        case 'JSet': {
+          let xs = f.items
+          if (P.dedupSets) {
+            const m = new Map(xs.map(x => [canonicalKey(x), x]))
+            xs = [...m.values()]
+          }
+          if (P.sortSets) {
+            xs = [...xs].sort(compareCanonical)
+          }
+          return jSet(xs)
+        }
+
+        case 'JObj': {
+          const es = P.sortObjects ? [...f.entries].sort(([a],[b]) => a<b?-1:a>b?1:0) : f.entries
+          return jObj(es)
+        }
       }
-    }
-  })
+    })
+  }
+
+// Keep existing default function delegating to policyful version
+export const canonicalizeJson = (j: Json): Json => canonicalizeJsonP()(j)
 
 // ====================================================================
 // EJSON-like encoder/decoder pair
@@ -1087,6 +1076,10 @@ export const toEJson = (j: Json): unknown => {
 // canonical encoder (stable object key order & set order)
 export const toEJsonCanonical = (j: Json): unknown =>
   toEJson(canonicalizeJson(j))
+
+// encoder that accepts an optional policy
+export const toEJsonCanonicalWithPolicy = (j: Json, policy?: CanonicalPolicy): unknown =>
+  toEJson(canonicalizeJsonP(policy)(j))
 
 // ------------------------
 // Decoder with error aggregation:
@@ -1426,6 +1419,12 @@ export class CanonicalJsonMultiMap<V> implements Iterable<readonly [Json, Readon
   static from<V>(pairs: Iterable<readonly [Json, V]>): CanonicalJsonMultiMap<V> {
     return new CanonicalJsonMultiMap(pairs)
   }
+
+  static fromGroups<V>(groups: CanonicalJsonMap<ReadonlyArray<V>>): CanonicalJsonMultiMap<V> {
+    const out = new CanonicalJsonMultiMap<V>()
+    for (const [k, vs] of groups) out.addAll(k, vs)
+    return out
+  }
 }
 
 // =========================================================
@@ -1592,6 +1591,668 @@ export const mergeMulti =
     }
     return out
   }
+
+// =========================================================
+// Small array utilities (used below)
+// =========================================================
+
+const dedupeArrayBy =
+  <V, K>(xs: ReadonlyArray<V>, keyOf: (v: V) => K): ReadonlyArray<V> => {
+    const seen = new Set<K>(), out: V[] = []
+    for (const v of xs) { const k = keyOf(v); if (!seen.has(k)) { seen.add(k); out.push(v) } }
+    return out
+  }
+
+const intersectArrayBy =
+  <V, K>(as: ReadonlyArray<V>, bs: ReadonlyArray<V>, keyOf: (v: V) => K): ReadonlyArray<V> => {
+    const sb = new Set(bs.map(keyOf))
+    return as.filter(a => sb.has(keyOf(a)))
+  }
+
+const diffArrayBy =
+  <V, K>(as: ReadonlyArray<V>, bs: ReadonlyArray<V>, keyOf: (v: V) => K): ReadonlyArray<V> => {
+    const sb = new Set(bs.map(keyOf))
+    return as.filter(a => !sb.has(keyOf(a)))
+  }
+
+// =========================================================
+// CanonicalJsonMap<ReadonlyArray<V>> — set-like group ops
+// =========================================================
+
+// Concatenate groups; m1 values come first if both have the key
+export const concatGroups =
+  <V>(m1: CanonicalJsonMap<ReadonlyArray<V>>,
+      m2: CanonicalJsonMap<ReadonlyArray<V>>): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs] of m1) out.set(k, vs)
+    for (const [k, vs] of m2) out.set(k, (out.get(k) ? [...(out.get(k)!), ...vs] : vs) as ReadonlyArray<V>)
+    return out
+  }
+
+// Union groups with element de-duplication by keyOf
+export const unionGroupsBy =
+  <V, K>(m1: CanonicalJsonMap<ReadonlyArray<V>>,
+         m2: CanonicalJsonMap<ReadonlyArray<V>>,
+         keyOf: (v: V) => K): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    const add = (k: Json, vs: ReadonlyArray<V>) =>
+      out.set(k, dedupeArrayBy([...(out.get(k) ?? []), ...vs], keyOf))
+    for (const [k, vs] of m1) add(k, vs)
+    for (const [k, vs] of m2) add(k, vs)
+    return out
+  }
+
+// Intersection: keep only keys present in both, and intersect elements (by keyOf)
+export const intersectGroupsBy =
+  <V, K>(m1: CanonicalJsonMap<ReadonlyArray<V>>,
+         m2: CanonicalJsonMap<ReadonlyArray<V>>,
+         keyOf: (v: V) => K): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs1] of m1) {
+      const vs2 = m2.get(k)
+      if (vs2) out.set(k, intersectArrayBy(vs1, vs2, keyOf))
+    }
+    return out
+  }
+
+// Difference: A\B by elements (only keys from A kept), using keyOf
+export const diffGroupsBy =
+  <V, K>(ma: CanonicalJsonMap<ReadonlyArray<V>>,
+         mb: CanonicalJsonMap<ReadonlyArray<V>>,
+         keyOf: (v: V) => K): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vsA] of ma) {
+      const vsB = mb.get(k) ?? []
+      const diff = diffArrayBy(vsA, vsB, keyOf)
+      if (diff.length) out.set(k, diff)
+    }
+    return out
+  }
+
+// =========================================================
+// Per-group "top K" and global sorting of groups
+// =========================================================
+
+// Keep top K elements *per group* by score (desc), stable on ties
+export const topKBy =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+      k: number,
+      scoreOf: (v: V, key: Json) => number): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [kjson, vs] of m) {
+      const ranked = vs.map((v, i) => ({ v, i, s: scoreOf(v, kjson) }))
+        .sort((a, b) => (b.s - a.s) || (a.i - b.i))
+        .slice(0, Math.max(0, k))
+        .map(x => x.v)
+      out.set(kjson, ranked as ReadonlyArray<V>)
+    }
+    return out
+  }
+
+// Sort groups globally by a summary; returns a NEW CanonicalJsonMap with that order
+export const sortGroupsBy =
+  <V, S>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+         summarize: (values: ReadonlyArray<V>, key: Json) => S,
+         compare: (sa: S, sb: S, ka: Json, kb: Json) => number): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const rows = [...m].map(([k, vs]) => [k, vs, summarize(vs, k)] as const)
+    rows.sort((a, b) => compare(a[2], b[2], a[0], b[0]))
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs] of rows) out.set(k, vs)
+    return out
+  }
+
+// A convenient numeric-desc variant (falls back to key order for ties)
+export const sortGroupsByNumberDesc =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+      summarize: (values: ReadonlyArray<V>, key: Json) => number): CanonicalJsonMap<ReadonlyArray<V>> =>
+    sortGroupsBy(m, summarize, (sa, sb, ka, kb) =>
+      (sb - sa) || compareCanonical(ka, kb)
+    )
+
+// =========================================================
+// CanonicalJsonMultiMap wrappers (thin adapters)
+// =========================================================
+
+// Concatenate groups (values), preserving group insertion order
+export const concatGroupsMM =
+  <V>(m1: CanonicalJsonMultiMap<V>, m2: CanonicalJsonMultiMap<V>): CanonicalJsonMultiMap<V> => {
+    const out = new CanonicalJsonMultiMap<V>()
+    for (const [k, vs] of m1) out.addAll(k, vs)
+    for (const [k, vs] of m2) out.addAll(k, vs)
+    return out
+  }
+
+export const unionGroupsByMM =
+  <V, K>(m1: CanonicalJsonMultiMap<V>, m2: CanonicalJsonMultiMap<V>, keyOf: (v: V) => K): CanonicalJsonMultiMap<V> => {
+    const base = collapseToMap(m1)
+    const merged = unionGroupsBy(base, collapseToMap(m2), keyOf)
+    return CanonicalJsonMultiMap.fromGroups(merged)
+  }
+
+export const intersectGroupsByMM =
+  <V, K>(m1: CanonicalJsonMultiMap<V>, m2: CanonicalJsonMultiMap<V>, keyOf: (v: V) => K): CanonicalJsonMultiMap<V> => {
+    const a = collapseToMap(m1)
+    const b = collapseToMap(m2)
+    return CanonicalJsonMultiMap.fromGroups(intersectGroupsBy(a, b, keyOf))
+  }
+
+export const diffGroupsByMM =
+  <V, K>(ma: CanonicalJsonMultiMap<V>, mb: CanonicalJsonMultiMap<V>, keyOf: (v: V) => K): CanonicalJsonMultiMap<V> => {
+    const a = collapseToMap(ma)
+    const b = collapseToMap(mb)
+    return CanonicalJsonMultiMap.fromGroups(diffGroupsBy(a, b, keyOf))
+  }
+
+export const topKByMM =
+  <V>(mm: CanonicalJsonMultiMap<V>, k: number, scoreOf: (v: V, key: Json) => number): CanonicalJsonMultiMap<V> =>
+    CanonicalJsonMultiMap.fromGroups(topKBy(collapseToMap(mm), k, scoreOf))
+
+export const sortGroupsByNumberDescMM =
+  <V>(mm: CanonicalJsonMultiMap<V>, summarize: (values: ReadonlyArray<V>, key: Json) => number): CanonicalJsonMultiMap<V> =>
+    CanonicalJsonMultiMap.fromGroups(sortGroupsByNumberDesc(collapseToMap(mm), summarize))
+
+// =========================================================
+// Array micro-helpers (used below)
+// =========================================================
+
+const minBy = <V>(xs: ReadonlyArray<V>, scoreOf: (v: V, i: number) => number): V | undefined => {
+  if (xs.length === 0) return undefined
+  let best = xs[0]!, sbest = scoreOf(best, 0)
+  for (let i = 1; i < xs.length; i++) {
+    const s = scoreOf(xs[i]!, i)
+    if (s < sbest) { best = xs[i]!; sbest = s }
+  }
+  return best
+}
+
+const maxBy = <V>(xs: ReadonlyArray<V>, scoreOf: (v: V, i: number) => number): V | undefined => {
+  if (xs.length === 0) return undefined
+  let best = xs[0]!, sbest = scoreOf(best, 0)
+  for (let i = 1; i < xs.length; i++) {
+    const s = scoreOf(xs[i]!, i)
+    if (s > sbest) { best = xs[i]!; sbest = s }
+  }
+  return best
+}
+
+const takeWhileArr = <V>(xs: ReadonlyArray<V>, p: (v: V, i: number) => boolean): ReadonlyArray<V> => {
+  let i = 0; while (i < xs.length && p(xs[i]!, i)) i++; return xs.slice(0, i)
+}
+
+const dropWhileArr = <V>(xs: ReadonlyArray<V>, p: (v: V, i: number) => boolean): ReadonlyArray<V> => {
+  let i = 0; while (i < xs.length && p(xs[i]!, i)) i++; return xs.slice(i)
+}
+
+// =========================================================
+// Per-group minBy/maxBy + global min/max
+// =========================================================
+
+// Keep only the minimum element per group (ties keep first by index)
+export const minByGroup =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+      scoreOf: (v: V, key: Json, index: number) => number): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs] of m) {
+      const v = minBy(vs, (x, i) => scoreOf(x, k, i))
+      out.set(k, v === undefined ? [] : [v] as const)
+    }
+    return out
+  }
+
+// Keep only the maximum element per group
+export const maxByGroup =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+      scoreOf: (v: V, key: Json, index: number) => number): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs] of m) {
+      const v = maxBy(vs, (x, i) => scoreOf(x, k, i))
+      out.set(k, v === undefined ? [] : [v] as const)
+    }
+    return out
+  }
+
+// Global min across all groups (Option)
+export const minByGlobal =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+      scoreOf: (v: V, key: Json, index: number) => number): Option<readonly [Json, V]> => {
+    let bestK: Json | undefined, bestV: V | undefined, sbest = Infinity, idx = 0
+    for (const [k, vs] of m) {
+      for (let i = 0; i < vs.length; i++, idx++) {
+        const v = vs[i]!, s = scoreOf(v, k, i)
+        if (s < sbest) { sbest = s; bestK = k; bestV = v }
+      }
+    }
+    return bestK === undefined ? None : Some([bestK, bestV!] as const)
+  }
+
+// Global max across all groups (Option)
+export const maxByGlobal =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+      scoreOf: (v: V, key: Json, index: number) => number): Option<readonly [Json, V]> => {
+    let bestK: Json | undefined, bestV: V | undefined, sbest = -Infinity, idx = 0
+    for (const [k, vs] of m) {
+      for (let i = 0; i < vs.length; i++, idx++) {
+        const v = vs[i]!, s = scoreOf(v, k, i)
+        if (s > sbest) { sbest = s; bestK = k; bestV = v }
+      }
+    }
+    return bestK === undefined ? None : Some([bestK, bestV!] as const)
+  }
+
+// =========================================================
+// MultiMap variants for min/max
+// =========================================================
+
+export const minByGroupMM =
+  <V>(mm: CanonicalJsonMultiMap<V>,
+      scoreOf: (v: V, key: Json, index: number) => number): CanonicalJsonMultiMap<V> => {
+    const out = new CanonicalJsonMultiMap<V>()
+    for (const [k, vs] of mm) {
+      const v = minBy(vs, (x, i) => scoreOf(x, k, i))
+      if (v !== undefined) out.addAll(k, [v])
+    }
+    return out
+  }
+
+export const maxByGroupMM =
+  <V>(mm: CanonicalJsonMultiMap<V>,
+      scoreOf: (v: V, key: Json, index: number) => number): CanonicalJsonMultiMap<V> => {
+    const out = new CanonicalJsonMultiMap<V>()
+    for (const [k, vs] of mm) {
+      const v = maxBy(vs, (x, i) => scoreOf(x, k, i))
+      if (v !== undefined) out.addAll(k, [v])
+    }
+    return out
+  }
+
+// =========================================================
+// Per-group takeWhile/dropWhile
+// =========================================================
+
+export const takeWhileGroup =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+      p: (v: V, key: Json, index: number) => boolean): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs] of m) out.set(k, takeWhileArr(vs, (v, i) => p(v, k, i)))
+    return out
+  }
+
+export const dropWhileGroup =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+      p: (v: V, key: Json, index: number) => boolean): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs] of m) out.set(k, dropWhileArr(vs, (v, i) => p(v, k, i)))
+    return out
+  }
+
+// MultiMap flavors (yield MultiMap)
+export const takeWhileGroupMM =
+  <V>(mm: CanonicalJsonMultiMap<V>,
+      p: (v: V, key: Json, index: number) => boolean): CanonicalJsonMultiMap<V> => {
+    const out = new CanonicalJsonMultiMap<V>()
+    for (const [k, vs] of mm) out.addAll(k, takeWhileArr(vs, (v, i) => p(v, k, i)))
+    return out
+  }
+
+export const dropWhileGroupMM =
+  <V>(mm: CanonicalJsonMultiMap<V>,
+      p: (v: V, key: Json, index: number) => boolean): CanonicalJsonMultiMap<V> => {
+    const out = new CanonicalJsonMultiMap<V>()
+    for (const [k, vs] of mm) out.addAll(k, dropWhileArr(vs, (v, i) => p(v, k, i)))
+    return out
+  }
+
+// =========================================================
+// Streaming reducers (single pass over Iterable<[Json, V]>)
+// =========================================================
+
+// Reduce stream of (Json, V) with per-key accumulator
+export const streamReduceByCanonical =
+  <V, Acc>(pairs: Iterable<readonly [Json, V]>,
+           init: (key: Json) => Acc,
+           step: (acc: Acc, v: V, key: Json, index: number) => Acc): CanonicalJsonMap<Acc> => {
+    const out = new CanonicalJsonMap<Acc>()
+    const idx = new CanonicalJsonMap<number>() // per-key index
+    for (const [j, v] of pairs) {
+      const i = idx.get(j) ?? 0
+      out.upsert(j, () => step(init(j), v, canonicalizeJson(j), i),
+                    (a) => step(a, v, canonicalizeJson(j), i))
+      idx.set(j, i + 1)
+    }
+    return out
+  }
+
+// Maintain top-K per key while streaming
+export const streamTopKByCanonical =
+  <V>(k: number,
+      scoreOf: (v: V, key: Json, index: number) => number) =>
+  (pairs: Iterable<readonly [Json, V]>): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    const idx = new CanonicalJsonMap<number>()
+    for (const [j, v] of pairs) {
+      const i = idx.get(j) ?? 0
+      const cur = out.get(j) ?? []
+      const withScore = cur.map((x, ii) => ({ v: x, s: scoreOf(x, j, ii) }))
+      withScore.push({ v, s: scoreOf(v, j, i) })
+      withScore.sort((a, b) => (b.s - a.s)) // desc
+      const keep = withScore.slice(0, Math.max(0, k)).map(x => x.v)
+      out.set(j, keep as ReadonlyArray<V>)
+      idx.set(j, i + 1)
+    }
+    return out
+  }
+
+// Count stream per key
+export const streamCountsByCanonical =
+  (pairs: Iterable<readonly [Json, unknown]>): CanonicalJsonMap<number> =>
+    streamReduceByCanonical(pairs, () => 0, (acc) => acc + 1)
+
+// Sum stream per key by a projection
+export const streamSumByCanonical =
+  <V>(pairs: Iterable<readonly [Json, V]>, valueOf: (v: V, key: Json, index: number) => number): CanonicalJsonMap<number> =>
+    streamReduceByCanonical(pairs, () => 0, (acc, v, k, i) => acc + valueOf(v, k, i))
+
+// =========================================================
+// Canonical min/max operations for Json arrays
+// =========================================================
+
+// =========== Json[] min/max by canonical key (lexicographic) ===========
+
+export const minByCanonical =
+  (xs: ReadonlyArray<Json>): Option<Json> => {
+    if (xs.length === 0) return None
+    let best = xs[0]!, kbest = canonicalKey(xs[0]!)
+    for (let i = 1; i < xs.length; i++) {
+      const k = canonicalKey(xs[i]!)
+      if (k < kbest) { best = xs[i]!; kbest = k }
+    }
+    return Some(best)
+  }
+
+export const maxByCanonical =
+  (xs: ReadonlyArray<Json>): Option<Json> => {
+    if (xs.length === 0) return None
+    let best = xs[0]!, kbest = canonicalKey(xs[0]!)
+    for (let i = 1; i < xs.length; i++) {
+      const k = canonicalKey(xs[i]!)
+      if (k > kbest) { best = xs[i]!; kbest = k }
+    }
+    return Some(best)
+  }
+
+// =========== Json[] min/max by a canonical score ===========
+// scoreOf gets both Json and its canonical key (handy if you pre-tokenize key)
+
+export const minByCanonicalScore =
+  (xs: ReadonlyArray<Json>, scoreOf: (j: Json, key: string) => number): Option<Json> => {
+    if (xs.length === 0) return None
+    let best = xs[0]!, kbest = canonicalKey(xs[0]!), sbest = scoreOf(xs[0]!, kbest)
+    for (let i = 1; i < xs.length; i++) {
+      const j = xs[i]!, kj = canonicalKey(j), s = scoreOf(j, kj)
+      if (s < sbest) { best = j; kbest = kj; sbest = s }
+    }
+    return Some(best)
+  }
+
+export const maxByCanonicalScore =
+  (xs: ReadonlyArray<Json>, scoreOf: (j: Json, key: string) => number): Option<Json> => {
+    if (xs.length === 0) return None
+    let best = xs[0]!, kbest = canonicalKey(xs[0]!), sbest = scoreOf(xs[0]!, kbest)
+    for (let i = 1; i < xs.length; i++) {
+      const j = xs[i]!, kj = canonicalKey(j), s = scoreOf(j, kj)
+      if (s > sbest) { best = j; kbest = kj; sbest = s }
+    }
+    return Some(best)
+  }
+
+// =========================================================
+// Streaming distinct operations for Json
+// =========================================================
+
+// =========== Streaming distinct for Json ===========
+
+export function* distinctByCanonical(it: Iterable<Json>): IterableIterator<Json> {
+  const seen = new Set<string>()
+  for (const j of it) {
+    const k = canonicalKey(j)
+    if (!seen.has(k)) { seen.add(k); yield canonicalizeJson(j) }
+  }
+}
+
+export const distinctByCanonicalToArray =
+  (it: Iterable<Json>): ReadonlyArray<Json> => Array.from(distinctByCanonical(it))
+
+// =========== Streaming distinct for pairs [Json, V] (first-wins) ===========
+
+export function* distinctPairsByCanonical<V>(
+  it: Iterable<readonly [Json, V]>
+): IterableIterator<readonly [Json, V]> {
+  const seen = new Set<string>()
+  for (const [j, v] of it) {
+    const k = canonicalKey(j)
+    if (!seen.has(k)) { seen.add(k); yield [canonicalizeJson(j), v] as const }
+  }
+}
+
+export const distinctPairsByCanonicalToArray =
+  <V>(it: Iterable<readonly [Json, V]>): ReadonlyArray<readonly [Json, V]> =>
+    Array.from(distinctPairsByCanonical(it))
+
+// =========================================================
+// Last-wins distinct operations (non-streaming)
+// =========================================================
+
+export const distinctByCanonicalLast =
+  (xs: ReadonlyArray<Json>): ReadonlyArray<Json> => {
+    const m = new Map<string, Json>()
+    for (const j of xs) m.set(canonicalKey(j), canonicalizeJson(j))
+    return [...m.values()]
+  }
+
+export const distinctPairsByCanonicalLast =
+  <V>(xs: ReadonlyArray<readonly [Json, V]>): ReadonlyArray<readonly [Json, V]> => {
+    const m = new Map<string, readonly [Json, V]>()
+    for (const [j, v] of xs) m.set(canonicalKey(j), [canonicalizeJson(j), v] as const)
+    return [...m.values()]
+  }
+
+// =========================================================
+// Canonical sort and unique operations for Json arrays
+// =========================================================
+
+// Stable sort by canonical key (asc)
+export const sortJsonByCanonical =
+  (xs: ReadonlyArray<Json>): ReadonlyArray<Json> =>
+    xs
+      .map((j, i) => ({ j, k: canonicalKey(j), i }))               // decorate
+      .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : a.i - b.i))// stable
+      .map(({ j }) => j)                                           // undecorate
+
+// Stable sort (desc)
+export const sortJsonByCanonicalDesc =
+  (xs: ReadonlyArray<Json>): ReadonlyArray<Json> =>
+    xs
+      .map((j, i) => ({ j, k: canonicalKey(j), i }))
+      .sort((a, b) => (a.k > b.k ? -1 : a.k < b.k ? 1 : a.i - b.i))
+      .map(({ j }) => j)
+
+// Unique (first-wins) by canonical key — returns canonicalized nodes
+export const uniqueJsonByCanonical =
+  (xs: ReadonlyArray<Json>): ReadonlyArray<Json> => {
+    const seen = new Set<string>(), out: Json[] = []
+    for (const j of xs) {
+      const k = canonicalKey(j)
+      if (!seen.has(k)) { seen.add(k); out.push(canonicalizeJson(j)) }
+    }
+    return out
+  }
+
+// If you prefer last-wins (already added earlier, here's the alias name):
+export const uniqueJsonByCanonicalLast = distinctByCanonicalLast
+
+// ==============================
+// Pairs: sort by canonical key
+// ==============================
+
+// Stable asc sort by canonical key
+export const sortPairsByCanonical =
+  <V>(xs: ReadonlyArray<readonly [Json, V]>): ReadonlyArray<readonly [Json, V]> =>
+    xs
+      .map(([j, v], i) => ({ j, v, k: canonicalKey(j), i }))                    // decorate
+      .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : a.i - b.i))             // stable
+      .map(({ j, v }) => [j, v] as const)                                       // undecorate
+
+// Stable desc sort by canonical key
+export const sortPairsByCanonicalDesc =
+  <V>(xs: ReadonlyArray<readonly [Json, V]>): ReadonlyArray<readonly [Json, V]> =>
+    xs
+      .map(([j, v], i) => ({ j, v, k: canonicalKey(j), i }))
+      .sort((a, b) => (a.k > b.k ? -1 : a.k < b.k ? 1 : a.i - b.i))
+      .map(({ j, v }) => [j, v] as const)
+// ===========================================
+// Pairs: unique by canonical key (first/last)
+// ===========================================
+
+// First-wins; returns canonicalized keys
+export const uniquePairsByCanonical =
+  <V>(xs: ReadonlyArray<readonly [Json, V]>): ReadonlyArray<readonly [Json, V]> => {
+    const seen = new Set<string>()
+    const out: Array<readonly [Json, V]> = []
+    for (const [j, v] of xs) {
+      const k = canonicalKey(j)
+      if (!seen.has(k)) {
+        seen.add(k)
+        out.push([canonicalizeJson(j), v] as const)
+      }
+    }
+    return out
+  }
+
+// Last-wins; returns canonicalized keys
+export const uniquePairsByCanonicalLast =
+  <V>(xs: ReadonlyArray<readonly [Json, V]>): ReadonlyArray<readonly [Json, V]> => {
+    const m = new Map<string, readonly [Json, V]>()
+    for (const [j, v] of xs) {
+      m.set(canonicalKey(j), [canonicalizeJson(j), v] as const)
+    }
+    return [...m.values()]
+  }
+
+// Note: distinctPairsByCanonicalLast is already defined earlier in the file
+
+// ==============================
+// Value-aware sort helpers
+// ==============================
+
+// ------------ pairs: generic stable sort by comparator ------------
+export const sortPairsBy =
+  <V>(xs: ReadonlyArray<readonly [Json, V]>,
+      cmp: (a: readonly [Json, V], b: readonly [Json, V]) => number)
+  : ReadonlyArray<readonly [Json, V]> =>
+    xs
+      .map((p, i) => ({ p, i }))
+      .sort((A, B) => cmp(A.p, B.p) || (A.i - B.i)) // stable
+      .map(({ p }) => p)
+
+// ------------ pairs: by canonical, then by a value projection ------------
+export const sortPairsByCanonicalThen =
+  <V, S>(xs: ReadonlyArray<readonly [Json, V]>,
+         proj: (v: V, j: Json) => S,
+         compare: (a: S, b: S) => number)
+  : ReadonlyArray<readonly [Json, V]> =>
+    xs
+      .map(([j, v], i) => ({ j, v, k: canonicalKey(j), s: proj(v, j), i }))
+      .sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : compare(a.s, b.s) || (a.i - b.i)))
+      .map(({ j, v }) => [j, v] as const)
+
+// ------------ pairs: numeric convenience ------------
+export const sortPairsByCanonicalThenNumberAsc =
+  <V>(xs: ReadonlyArray<readonly [Json, V]>,
+      valueOf: (v: V, j: Json) => number)
+  : ReadonlyArray<readonly [Json, V]> =>
+    sortPairsByCanonicalThen(xs, valueOf, (a, b) => a - b)
+
+export const sortPairsByCanonicalThenNumberDesc =
+  <V>(xs: ReadonlyArray<readonly [Json, V]>,
+      valueOf: (v: V, j: Json) => number)
+  : ReadonlyArray<readonly [Json, V]> =>
+    sortPairsByCanonicalThen(xs, valueOf, (a, b) => b - a)
+
+// ------------ groups: sort values inside each group by comparator ------------
+export const sortValuesInGroups =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+      cmp: (a: V, b: V, key: Json) => number)
+  : CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs] of m) {
+      const decorated = vs.map((v, i) => ({ v, i }))
+      decorated.sort((A, B) => cmp(A.v, B.v, k) || (A.i - B.i)) // stable
+      out.set(k, decorated.map(d => d.v) as ReadonlyArray<V>)
+    }
+    return out
+  }
+
+// ------------ groups: numeric asc/desc convenience ------------
+export const sortValuesInGroupsByNumberAsc =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+      valueOf: (v: V, key: Json) => number)
+  : CanonicalJsonMap<ReadonlyArray<V>> =>
+    sortValuesInGroups(m, (a, b, k) => valueOf(a, k) - valueOf(b, k))
+
+export const sortValuesInGroupsByNumberDesc =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+      valueOf: (v: V, key: Json) => number)
+  : CanonicalJsonMap<ReadonlyArray<V>> =>
+    sortValuesInGroups(m, (a, b, k) => valueOf(b, k) - valueOf(a, k))
+
+// ------------ multimap versions ------------
+export const sortValuesInGroupsMM =
+  <V>(mm: CanonicalJsonMultiMap<V>,
+      cmp: (a: V, b: V, key: Json) => number)
+  : CanonicalJsonMultiMap<V> => {
+    const out = new CanonicalJsonMultiMap<V>()
+    for (const [k, vs] of mm) {
+      const decorated = vs.map((v, i) => ({ v, i }))
+      decorated.sort((A, B) => cmp(A.v, B.v, k) || (A.i - B.i)) // stable
+      out.addAll(k, decorated.map(d => d.v))
+    }
+    return out
+  }
+
+export const sortValuesInGroupsByNumberAscMM =
+  <V>(mm: CanonicalJsonMultiMap<V>,
+      valueOf: (v: V, key: Json) => number)
+  : CanonicalJsonMultiMap<V> =>
+    sortValuesInGroupsMM(mm, (a, b, k) => valueOf(a, k) - valueOf(b, k))
+
+export const sortValuesInGroupsByNumberDescMM =
+  <V>(mm: CanonicalJsonMultiMap<V>,
+      valueOf: (v: V, key: Json) => number)
+  : CanonicalJsonMultiMap<V> =>
+    sortValuesInGroupsMM(mm, (a, b, k) => valueOf(b, k) - valueOf(a, k))
+
+// ------------ bonus: sort pairs by value first, then canonical ------------
+export const sortPairsByValueThenCanonical =
+  <V, S>(xs: ReadonlyArray<readonly [Json, V]>,
+         proj: (v: V, j: Json) => S,
+         compare: (a: S, b: S) => number)
+  : ReadonlyArray<readonly [Json, V]> =>
+    xs
+      .map(([j, v], i) => ({ j, v, k: canonicalKey(j), s: proj(v, j), i }))
+      .sort((a, b) => compare(a.s, b.s) || (a.k < b.k ? -1 : a.k > b.k ? 1 : (a.i - b.i)))
+      .map(({ j, v }) => [j, v] as const)
+
+export const sortPairsByValueNumberAscThenCanonical =
+  <V>(xs: ReadonlyArray<readonly [Json, V]>,
+      valueOf: (v: V, j: Json) => number)
+  : ReadonlyArray<readonly [Json, V]> =>
+    sortPairsByValueThenCanonical(xs, valueOf, (a, b) => a - b)
+
+export const sortPairsByValueNumberDescThenCanonical =
+  <V>(xs: ReadonlyArray<readonly [Json, V]>,
+      valueOf: (v: V, j: Json) => number)
+  : ReadonlyArray<readonly [Json, V]> =>
+    sortPairsByValueThenCanonical(xs, valueOf, (a, b) => b - a)
 
 // 4) Sum all numbers (0 for others)
 export const Alg_Json_sumNumbers: JsonAlgebra<number> = (f) => {
@@ -2839,7 +3500,7 @@ export const statsFullBinary_FUSED = (depth: number): JStats =>
 // 4) Full binary(depth) → *both* pretty and size in one pass via a product algebra
 //    If you already defined a product algebra elsewhere, feel free to reuse it;
 //    this local version avoids naming collisions.
-export const productJsonAlg2 =
+export const productJsonAlg2Fused =
   <B, C>(algB: JsonAlgFused<B>, algC: JsonAlgFused<C>): JsonAlgFused<readonly [B, C]> =>
   (fbc: JsonF<readonly [B, C]>) => {
     switch (fbc._tag) {
@@ -2879,7 +3540,7 @@ export const productJsonAlg2 =
 
 export const prettyAndSize_FUSED =
   (depth: number): readonly [string, number] =>
-    fuseJson(coalgFullBinary, productJsonAlg2(Alg_Json_pretty_fused, Alg_Json_size_fused))(depth)
+    fuseJson(coalgFullBinary, productJsonAlg2Fused(Alg_Json_pretty_fused, Alg_Json_size_fused))(depth)
 
 
 // ====================================================================
@@ -7861,6 +8522,283 @@ export interface MonadK2C<F extends HK.Id2, L> extends ApplicativeK2C<F, L> {
   readonly chain: <A, B>(f: (a: A) => HK.Kind2<F, L, B>) => (fa: HK.Kind2<F, L, A>) => HK.Kind2<F, L, B>
 }
 
+// -----------------------
+// Endofunctor helpers
+// -----------------------
+
+// Endofunctor on K1 is just a FunctorK1 (endofunctor on TS types)
+export type EndofunctorK1<F extends HK.Id1> = FunctorK1<F>
+
+// Helpers to "fix" the left param of K2 constructors => a K1 endofunctor
+export const ResultK1 = <E>() => ({
+  map:  <A, B>(f: (a: A) => B) => (ra: Result<E, A>): Result<E, B> => mapR<E, A, B>(f)(ra),
+  ap:   <A, B>(rf: Result<E, (a: A) => B>) => (ra: Result<E, A>): Result<E, B> =>
+        isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : ra) as any,
+  of:   <A>(a: A): Result<E, A> => Ok(a),
+  chain:<A, B>(f: (a: A) => Result<E, B>) => (ra: Result<E, A>): Result<E, B> =>
+        isOk(ra) ? f(ra.value) : ra as any,
+})
+
+export const ValidationK1 = <E>() => ({
+  map:  <A, B>(f: (a: A) => B) => (va: Validation<E, A>): Validation<E, B> => mapV(f)(va),
+  // for ap, you'll use your `apV` with a chosen concat
+  ap:   <A, B>(concat: (x: ReadonlyArray<E>, y: ReadonlyArray<E>) => ReadonlyArray<E>) =>
+        (vf: Validation<E, (a: A) => B>) =>
+        (va: Validation<E, A>): Validation<E, B> => apV<E>(concat)<A, B>(vf)(va),
+  of:   <A>(a: A): Validation<E, A> => VOk(a),
+  chain:<A, B>(f: (a: A) => Validation<E, B>) => (va: Validation<E, A>): Validation<E, B> =>
+        isVOk(va) ? f(va.value) : va as any,
+})
+
+// Fix Reader/ReaderTask environment to get a K1 endofunctor
+export const ReaderK1 = <R>() => ({
+  map:  <A, B>(f: (a: A) => B) => (ra: Reader<R, A>): Reader<R, B> => Reader.map<A, B>(f)(ra),
+  ap:   <A, B>(rf: Reader<R, (a: A) => B>) => (ra: Reader<R, A>): Reader<R, B> => Reader.ap<R, A, B>(rf)(ra),
+  of:   <A>(a: A): Reader<R, A> => Reader.of<R, A>(a),
+  chain:<A, B>(f: (a: A) => Reader<R, B>) => (ra: Reader<R, A>): Reader<R, B> => Reader.chain<A, B, R>(f)(ra),
+})
+
+export const ReaderTaskK1 = <R>() => ({
+  map:  <A, B>(f: (a: A) => B) => (rta: ReaderTask<R, A>): ReaderTask<R, B> => ReaderTask.map<A, B>(f)(rta),
+  ap:   <A, B>(rf: ReaderTask<R, (a: A) => B>) => (ra: ReaderTask<R, A>): ReaderTask<R, B> => ReaderTask.ap<R, A, B>(rf)(ra),
+  of:   <A>(a: A): ReaderTask<R, A> => ReaderTask.of<R, A>(a),
+  chain:<A, B>(f: (a: A) => ReaderTask<R, B>) => (ra: ReaderTask<R, A>): ReaderTask<R, B> => ReaderTask.chain<A, B, R>(f)(ra),
+})
+
+// -----------------------
+// Monoidal Functor Structure
+// -----------------------
+
+/**
+ * MonoidalFunctorK1 (lax monoidal endofunctor on Types, tensor = product)
+ * Laws (point-free; F is the functor, × is tuple, 1 is void):
+ *
+ * 1) Functor laws
+ *    F.map(id) = id
+ *    F.map(g ∘ f) = F.map(g) ∘ F.map(f)
+ *
+ * 2) Unit (left/right) coherence
+ *    // λ: A ≅ [1, A],  ρ: A ≅ [A, 1]
+ *    F.map(λ.from) = a => F.tensor(F.unit, a)          // expand with left unit
+ *    F.map(ρ.from) = a => F.tensor(a, F.unit)          // expand with right unit
+ *
+ * 3) Associativity coherence
+ *    // α: [A, [B, C]] ≅ [[A, B], C]
+ *    F.map(α.from) ∘ F.tensor(F.tensor(a, b), c)
+ *      = F.tensor(a, F.tensor(b, c))                   // both sides are F<[A,[B,C]]>
+ *
+ * 4) Naturality of tensor
+ *    F.tensor(F.map(f)(a), F.map(g)(b))
+ *      = F.map(bimap(f, g))(F.tensor(a, b))
+ *
+ * Helpers you can reuse in tests:
+ *   const lFrom = <A>(a: A): readonly [void, A] => [undefined, a] as const
+ *   const rFrom = <A>(a: A): readonly [A, void] => [a, undefined] as const
+ *   const assocFrom = <A,B,C>(x: readonly [[A,B], C]): readonly [A, readonly [B,C]] =>
+ *     [x[0][0], [x[0][1], x[1]] as const] as const
+ *   const bimap = <A,B,C,D>(f: (a:A)=>C, g: (b:B)=>D) =>
+ *     ([a,b]: readonly [A,B]): readonly [C,D] => [f(a), g(b)] as const
+ */
+export type MonoidalFunctorK1<F> = {
+  /** φ₀ : 1 → F 1  (here: 1 is `void`) */
+  unit: any /* Kind1<F, void> */
+  /** φ_{A,B} : F A × F B → F (A×B)  (here: × is tuple) */
+  tensor: <A, B>(fa: any /* F<A> */, fb: any /* F<B> */) => any /* F<readonly [A,B]> */
+  /** just to be convenient at call sites */
+  map: <A, B>(f: (a: A) => B) => (fa: any /* F<A> */) => any /* F<B> */
+}
+
+export const monoidalFromApplicative = <F>(A: ApplicativeLike<F>): MonoidalFunctorK1<F> => ({
+  unit: A.of<void>(undefined as void),
+  tensor: <A, B>(fa: any, fb: any) => A.ap(A.map((a: A) => (b: B) => [a, b] as const)(fa))(fb),
+  map: A.map
+})
+
+// convenience shims built from any Monoidal
+export const zipWithFromMonoidal =
+  <F>(M: MonoidalFunctorK1<F>) =>
+  <A, B, C>(f: (a: A, b: B) => C) =>
+  (fa: any /* F<A> */) =>
+  (fb: any /* F<B> */) =>
+    M.map<readonly [A, B], C>(([a, b]) => f(a, b))(M.tensor<A, B>(fa, fb))
+
+export const zipFromMonoidal =
+  <F>(M: MonoidalFunctorK1<F>) =>
+  <A, B>(fa: any /* F<A> */) =>
+  (fb: any /* F<B> */) =>
+    M.tensor<A, B>(fa, fb) as any /* F<readonly [A,B]> */
+
+// -----------------------
+// Monoidal Category Structure
+// -----------------------
+
+// ---------- Iso (categorical isomorphism as a pair of arrows) ----------
+export type Iso<X, Y> = {
+  readonly to:   (x: X) => Y
+  readonly from: (y: Y) => X
+}
+
+// ---------- Plain function category (Types, functions) ----------
+export type Hom<A, B> = (a: A) => B
+
+export const CatFn = {
+  id:      <A>(): Hom<A, A> => (a) => a,
+  compose: <A, B, C>(f: Hom<B, C>, g: Hom<A, B>): Hom<A, C> => (a) => f(g(a)),
+}
+
+// ---------- Monoidal structure on functions: tensor = product, unit = void ----------
+export const MonoidalFn = {
+  I: undefined as void, // unit object 1
+
+  // tensor on morphisms: (A→B) ⊗ (C→D) = ([A,C]→[B,D])
+  tensor:
+    <A, B, C, D>(f: Hom<A, B>, g: Hom<C, D>): Hom<readonly [A, C], readonly [B, D]> =>
+      ([a, c]) => [f(a), g(c)] as const,
+
+  // coherence isos (they're isomorphisms, not equalities)
+  leftUnitor:  <A>(): Iso<readonly [void, A], A> =>
+    ({ to: ([, a]) => a, from: (a) => [undefined, a] as const }),
+
+  rightUnitor: <A>(): Iso<readonly [A, void], A> =>
+    ({ to: ([a]) => a, from: (a) => [a, undefined] as const }),
+
+  associator:  <A, B, C>(): Iso<
+    readonly [A, readonly [B, C]],
+    readonly [readonly [A, B], C]
+  > => ({
+    to:   ([a, [b, c]])   => [[a, b] as const, c] as const,
+    from: ([[a, b],  c])  => [a, [b, c] as const] as const,
+  }),
+}
+
+// -----------------------
+// Monoidal Functor Instances
+// -----------------------
+
+// ----- Option -----
+const ApplicativeOption: ApplicativeLike<'Option'> = {
+  of: Some,
+  map: mapO as any,
+  ap: <A, B>(ff: Option<(a: A) => B>) => (fa: Option<A>): Option<B> =>
+    isSome(ff) && isSome(fa) ? Some(ff.value(fa.value)) : None,
+}
+export const MonoidalOption = monoidalFromApplicative(ApplicativeOption)
+export const zipOption      = zipFromMonoidal(MonoidalOption)<any, any>
+export const zipWithOption  = zipWithFromMonoidal(MonoidalOption)<any, any, any>
+
+// ----- Result<E,_> (short-circuiting; use Validation for accumulation) -----
+const apResult = <E, A, B>(rf: Result<E, (a: A) => B>) => (ra: Result<E, A>): Result<E, B> =>
+  isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : ra) as any
+
+export const ApplicativeResult = <E>(): ApplicativeLike<'Result'> => ({
+  of: Ok as any,
+  map: mapR as any,
+  ap: apResult as any,
+})
+export const MonoidalResult = <E>() => monoidalFromApplicative(ApplicativeResult<E>())
+export const zipResult     = <E>() => zipFromMonoidal(MonoidalResult<E>())
+export const zipWithResult = <E>() => zipWithFromMonoidal(MonoidalResult<E>())
+
+// ----- Reader<R,_> -----
+export const ApplicativeReader = <R>(): ApplicativeLike<'Reader'> => ({
+  of: <A>(a: A) => Reader.of<R, A>(a),
+  map: Reader.map as any,
+  ap:  Reader.ap  as any,
+})
+export const MonoidalReader = <R>() => monoidalFromApplicative(ApplicativeReader<R>())
+export const zipReader      = <R>() => zipFromMonoidal(MonoidalReader<R>())
+export const zipWithReader  = <R>() => zipWithFromMonoidal(MonoidalReader<R>())
+
+// ----- ReaderTask<R,_> -----
+export const ApplicativeReaderTask = <R>(): ApplicativeLike<'ReaderTask'> => ({
+  of:  <A>(a: A) => ReaderTask.of<R, A>(a),
+  map: ReaderTask.map as any,
+  ap:  ReaderTask.ap  as any,
+})
+export const MonoidalReaderTask = <R>() => monoidalFromApplicative(ApplicativeReaderTask<R>())
+export const zipReaderTask      = <R>() => zipFromMonoidal(MonoidalReaderTask<R>())
+export const zipWithReaderTask  = <R>() => zipWithFromMonoidal(MonoidalReaderTask<R>())
+
+// ----- ReaderTaskEither<R,E,_> -----
+export const ApplicativeRTE = <R, E>(): ApplicativeLike<'RTE'> => ({
+  of:  <A>(a: A) => RTE.of<A>(a) as ReaderTaskEither<R, E, A>,
+  map: RTE.map as any,
+  ap:  RTE.ap  as any,
+})
+
+export const MonoidalRTE = <R, E>() => monoidalFromApplicative(ApplicativeRTE<R, E>())
+
+export const zipRTE_Monoidal =
+  <R, E>() =>
+  <A, B>(fa: ReaderTaskEither<R, E, A>) =>
+  (fb: ReaderTaskEither<R, E, B>): ReaderTaskEither<R, E, readonly [A, B]> =>
+    MonoidalRTE<R, E>().tensor(fa, fb) as any
+
+export const zipWithRTE_Monoidal =
+  <R, E>() =>
+  <A, B, C>(f: (a: A, b: B) => C) =>
+  (fa: ReaderTaskEither<R, E, A>) =>
+  (fb: ReaderTaskEither<R, E, B>): ReaderTaskEither<R, E, C> =>
+    MonoidalRTE<R, E>().map<readonly [A, B], C>(([a, b]) => f(a, b))(MonoidalRTE<R, E>().tensor(fa, fb))
+
+// ----- Validation<E,_> (accumulating) -----
+export const ApplicativeValidation =
+  <E>(concatErrs: (x: ReadonlyArray<E>, y: ReadonlyArray<E>) => ReadonlyArray<E>): ApplicativeLike<'Validation'> => ({
+    of:  <A>(a: A) => VOk(a) as any,
+    map: mapV as any,
+    ap:  <A, B>(vf: Validation<E, (a: A) => B>) =>
+         (va: Validation<E, A>) => apV<E>(concatErrs)<A, B>(vf)(va) as any,
+  })
+
+export const MonoidalValidation =
+  <E>(concatErrs: (x: ReadonlyArray<E>, y: ReadonlyArray<E>) => ReadonlyArray<E>) =>
+    monoidalFromApplicative(ApplicativeValidation<E>(concatErrs))
+
+// helpers:
+export const zipValidation =
+  <E>(concatErrs: (x: ReadonlyArray<E>, y: ReadonlyArray<E>) => ReadonlyArray<E>) =>
+  <A, B>(va: Validation<E, A>) =>
+  (vb: Validation<E, B>): Validation<E, readonly [A, B]> =>
+    MonoidalValidation<E>(concatErrs).tensor(va, vb) as any
+
+// ----- Minimal aliases for RTE (adjust if you already have them) -----
+const ofRTE = <R, E, A>(a: A): ReaderTaskEither<R, E, A> =>
+  async (_: R) => Ok(a)
+
+// ----- Monoidal Kleisli structure for RTE -----
+export const MonoidalKleisliRTE = <R, E>() => {
+  return {
+    I: undefined as void,
+
+    // tensor on arrows: ([A,C]) -> zip(f(a), g(c))
+    tensor:
+      <A, B, C, D>(
+        f: (a: A) => ReaderTaskEither<R, E, B>,
+        g: (c: C) => ReaderTaskEither<R, E, D>
+      ) =>
+      ([a, c]: readonly [A, C]): ReaderTaskEither<R, E, readonly [B, D]> =>
+        zipWithRTE<R, E, B, D, readonly [B, D]>((b, d) => [b, d] as const)(f(a))(g(c)),
+
+    // coherence isos lifted into Kleisli (pure maps wrapped with of)
+    leftUnitor:  <A>() => ({
+      to:   ([, a]: readonly [void, A]) => ofRTE<R, E, A>(a),
+      from: (a: A)                       => ofRTE<R, E, readonly [void, A]>([undefined, a] as const),
+    }),
+
+    rightUnitor: <A>() => ({
+      to:   ([a]: readonly [A, void]) => ofRTE<R, E, A>(a),
+      from: (a: A)                     => ofRTE<R, E, readonly [A, void]>([a, undefined] as const),
+    }),
+
+    associator:  <A, B, C>() => ({
+      to:   ([a, bc]: readonly [A, readonly [B, C]]) =>
+              ofRTE<R, E, readonly [[A, B], C]>([[a, bc[0]] as const, bc[1]] as const),
+      from: ([[a, b], c]: readonly [readonly [A, B], C]) =>
+              ofRTE<R, E, readonly [A, readonly [B, C]]>([a, [b, c] as const] as const),
+    }),
+  }
+}
+
 // =======================
 // Instances (no collisions)
 // =======================
@@ -7918,6 +8856,665 @@ export const ResultK = <E>(): MonadK2C<'Result', E> => ({
 // =======================
 // Generic helpers using HK.*
 // =======================
+
+// ====================================================================
+// Category Theory Constructs: Natural Transformations, Kleisli, Writer
+// ====================================================================
+
+// ---------- Natural transformations over K1 ----------
+export type NatK1<F, G> = <A>(fa: any /* Kind1<F, A> */) => any /* Kind1<G, A> */
+
+// identity / composition
+export const idNatK1 = <F>(): NatK1<F, F> => <A>(fa: any) => fa
+export const composeNatK1 = <F, G, H>(g: NatK1<G, H>, f: NatK1<F, G>): NatK1<F, H> =>
+  <A>(fa: any) => g(f(fa))
+
+// ---------- Concrete polymorphic transforms (no HKT registry needed) ----------
+export const optionToResult =
+  <E>(onNone: E) =>
+  <A>(oa: Option<A>): Result<E, A> =>
+    isSome(oa) ? Ok(oa.value) : Err(onNone)
+
+export const resultToOption =
+  <E, A>(ra: Result<E, A>): Option<A> =>
+    isOk(ra) ? Some(ra.value) : None
+
+export const taskToReaderTask =
+  <R, A>(ta: Task<A>): ReaderTask<R, A> =>
+    async () => ta()
+
+export const readerToReaderTask =
+  <R, A>(ra: Reader<R, A>): ReaderTask<R, A> =>
+    async (r: R) => ra(r)
+
+// ---------- Kleisli "category" over any MonadK1 + ready-made instances ----------
+// Minimal MonadK1 shape we rely on
+export type MonadK1Like<F> = {
+  of: <A>(a: A) => any
+  chain: <A, B>(f: (a: A) => any) => (fa: any) => any
+}
+
+// Kleisli composition: (B -> M C) ∘ (A -> M B) -> (A -> M C)
+export const Kleisli = <M>(M: MonadK1Like<M>) => ({
+  id:
+    <A>() =>
+    (a: A) =>
+      M.of<A>(a),
+
+  compose:
+    <A, B, C>(f: (b: B) => any, g: (a: A) => any) =>
+    (a: A) =>
+      M.chain<B, C>(f)(g(a)),
+})
+
+// Instances over your monads
+export const K_Option   = Kleisli({ of: Some,      chain: <A,B>(f:(a:A)=>Option<B>) => (oa:Option<A>) => isSome(oa) ? f(oa.value) : None })
+export const K_Result   = Kleisli({ of: Ok,        chain: <E,A,B>(f:(a:A)=>Result<E,B>) => (ra:Result<E,A>) => isOk(ra) ? f(ra.value) : ra })
+export const K_Task     = Kleisli({ of: Task.of,   chain: Task.chain })
+export const K_Reader   = Kleisli({ of: Reader.of, chain: Reader.chain })
+export const K_ReaderTask = Kleisli({ of: ReaderTask.of, chain: ReaderTask.chain })
+
+// Quick sugar for logs
+export const StringMonoid: Monoid<string> = { empty: "", concat: (a, b) => a + b }
+export const ArrayMonoid = <A>(): Monoid<ReadonlyArray<A>> => ({ empty: [], concat: (x, y) => [...x, ...y] })
+
+// ---------- Array/List monad + generic traverse/sequence ----------
+// Plain array instances (no HKT needed)
+export const ArrayM = {
+  of: <A>(a: A): ReadonlyArray<A> => [a],
+  map: <A, B>(f: (a: A) => B) => (as: ReadonlyArray<A>): ReadonlyArray<B> => as.map(f),
+  ap:  <A, B>(fs: ReadonlyArray<(a: A) => B>) => (as: ReadonlyArray<A>): ReadonlyArray<B> =>
+        fs.flatMap(f => as.map(f)),
+  chain: <A, B>(f: (a: A) => ReadonlyArray<B>) => (as: ReadonlyArray<A>): ReadonlyArray<B> =>
+        as.flatMap(f),
+}
+
+// Traverse/sequence with any Applicative
+export type ApplicativeLike<F> = {
+  of: <A>(a: A) => any
+  ap: <A, B>(ff: any) => (fa: any) => any
+  map: <A, B>(f: (a: A) => B) => (fa: any) => any
+}
+
+export const traverseArrayA =
+  <F>(A: ApplicativeLike<F>) =>
+  <A, B>(as: ReadonlyArray<A>, f: (a: A, i: number) => any /* F<B> */) =>
+    as.reduce(
+      (acc: any, a: A, i: number) =>
+        A.ap(A.map((xs: ReadonlyArray<B>) => (b: B) => [...xs, b])(acc))(f(a, i)),
+      A.of([] as ReadonlyArray<B>)
+    )
+
+export const sequenceArrayA =
+  <F>(A: ApplicativeLike<F>) =>
+  <A>(fas: ReadonlyArray<any /* F<A> */>) =>
+    traverseArrayA<F>(A)(fas, (fa) => fa)
+
+// ====================================================================
+// Monad Transformers: MonadWriter, EitherT
+// ====================================================================
+
+// ----- MonadWriter interface + WriterT (with pass) -----
+export interface MonadWriterT<F, W> {
+  of: <A>(a: A) => any /* F<Writer<W,A>> */
+  map: <A, B>(f: (a: A) => B) => (fwa: any) => any /* F<Writer<W,B>> */
+  chain: <A, B>(f: (a: A) => any /* F<Writer<W,B>> */) => (fwa: any) => any
+  tell: (w: W) => any /* F<Writer<W, void>> */
+  listen: <A>(fwa: any /* F<Writer<W,A>> */) => any /* F<Writer<W,[A,W]>> */
+  pass: <A>(fwa: any /* F<Writer<W,[A,(W)=>W]>> */) => any /* F<Writer<W,A>> */
+}
+
+// ----- Writer (pure) -----
+export type Writer<W, A> = readonly [A, W]
+
+export const Writer = {
+  of:
+    <W>(M: Monoid<W>) =>
+    <A>(a: A): Writer<W, A> =>
+      [a, M.empty] as const,
+
+  map:
+    <W, A, B>(f: (a: A) => B) =>
+    (wa: Writer<W, A>): Writer<W, B> =>
+      [f(wa[0]), wa[1]] as const,
+
+  chain:
+    <W>(M: Monoid<W>) =>
+    <A, B>(f: (a: A) => Writer<W, B>) =>
+    (wa: Writer<W, A>): Writer<W, B> => {
+      const [a, w1] = wa
+      const [b, w2] = f(a)
+      return [b, M.concat(w1, w2)] as const
+    },
+
+  tell:
+    <W>(w: W): Writer<W, void> =>
+      [undefined, w] as const,
+
+  listen:
+    <W, A>(wa: Writer<W, A>): Writer<W, readonly [A, W]> =>
+      [[wa[0], wa[1]] as const, wa[1]] as const,
+
+  pass:
+    <W, A>(wfw: Writer<W, readonly [A, (w: W) => W]>): Writer<W, A> => {
+      const [[a, tweak], w] = [[wfw[0], (wfw as any)[0][1]], wfw[1]] as unknown as [readonly [A, (w: W)=>W], W]
+      return [a, tweak(w)] as const
+    },
+}
+
+// ----- WriterT over any base monad F (Reader, Task, ReaderTask, …) -----
+export const WriterT = <W>(M: Monoid<W>) => <F>(F: MonadK1Like<F>): MonadWriterT<F, W> => ({
+  of:
+    <A>(a: A) =>
+      F.of<Writer<W, A>>([a, M.empty] as const),
+
+  map:
+    <A, B>(f: (a: A) => B) =>
+    (fwa: any) =>
+      F.chain<Writer<W, A>, Writer<W, B>>(([a, w]: Writer<W, A>) => F.of([f(a), w] as const))(fwa),
+
+  chain:
+    <A, B>(f: (a: A) => any /* F<Writer<W,B>> */) =>
+    (fwa: any) =>
+      F.chain<Writer<W, A>, Writer<W, B>>(([a, w1]: Writer<W, A>) =>
+        F.chain<Writer<W, B>, Writer<W, B>>(([b, w2]: Writer<W, B>) =>
+          F.of([b, M.concat(w1, w2)] as const)
+        )(f(a))
+      )(fwa),
+
+  tell:
+    (w: W) =>
+      F.of([undefined, w] as const),
+
+  listen:
+    <A>(fwa: any) =>
+      F.chain<Writer<W, A>, Writer<W, readonly [A, W]>>(
+        ([a, w]: Writer<W, A>) => F.of([[a, w] as const, w] as const)
+      )(fwa),
+
+  pass:
+    <A>(fwa: any /* F<Writer<W, [A,(W)=>W]>> */) =>
+      F.chain<Writer<W, readonly [A, (w: W) => W]>, Writer<W, A>>(
+        ([[a, tweak], w]: Writer<W, readonly [A, (w: W) => W]>) =>
+          F.of([a, tweak(w)] as const)
+      )(fwa),
+})
+
+// ----- Prewired Writer helpers -----
+export const K_Reader_Writer = {
+  of: <A>(a: A) => Reader.of<unknown, A>(a),
+  chain: <A, B>(f: (a: A) => Reader<unknown, B>) => (ra: Reader<unknown, A>) => Reader.chain<A, B, unknown>(f)(ra)
+}
+export const K_ReaderTask_Writer = {
+  of: <A>(a: A) => ReaderTask.of<unknown, A>(a),
+  chain: <A, B>(f: (a: A) => ReaderTask<unknown, B>) => (rta: ReaderTask<unknown, A>) => ReaderTask.chain<A, B, unknown>(f)(rta)
+}
+
+// ready-to-use modules:
+export const WriterInReader = <W>(M: Monoid<W>) => WriterT<W>(M)(K_Reader_Writer)
+export const WriterInReaderTask = <W>(M: Monoid<W>) => WriterT<W>(M)(K_ReaderTask_Writer)
+
+// ----- EitherT (tiny) + prewired aliases -----
+export const EitherT = <F>(F: MonadK1Like<F>) => ({
+  // Constructors
+  right:  <A>(a: A) => F.of<Result<never, A>>(Ok(a)) as any,
+  left:   <E>(e: E) => F.of<Result<E, never>>(Err(e)) as any,
+  of:     <A>(a: A) => F.of<Result<never, A>>(Ok(a)) as any,
+
+  // Lift a pure F<A> into F<Result<never,A>>
+  liftF:  <A>(fa: any) => F.chain<A, Result<never, A>>((a: A) => F.of(Ok(a)))(fa),
+
+  // Functor/Bifunctor
+  map:
+    <E, A, B>(f: (a: A) => B) =>
+    (fea: any) =>
+      F.chain<Result<E, A>, Result<E, B>>((ra) => F.of(mapR<E, A, B>(f)(ra)))(fea),
+
+  mapLeft:
+    <E, F2, A>(f: (e: E) => F2) =>
+    (fea: any) =>
+      F.chain<Result<E, A>, Result<F2, A>>((ra) => F.of(mapErr<E, F2, A>(f)(ra)))(fea),
+
+  bimap:
+    <E, F2, A, B>(l: (e: E) => F2, r: (a: A) => B) =>
+    (fea: any) =>
+      F.chain<Result<E, A>, Result<F2, B>>((ra) => F.of(isOk(ra) ? Ok(r(ra.value)) : Err(l((ra as Err<E>).error))))(fea),
+
+  // Apply/Chain
+  ap:
+    <E, A, B>(ff: any /* F<Result<E,(a:A)=>B>> */) =>
+    (fa: any /* F<Result<E,A>> */) =>
+      F.chain<Result<E, (a: A) => B>, Result<E, B>>((rf) =>
+        isOk(rf)
+          ? F.chain<Result<E, A>, Result<E, B>>((ra) =>
+              F.of(isOk(ra) ? Ok(rf.value(ra.value)) : (ra as any))
+            )(fa)
+          : F.of(rf as any)
+      )(ff),
+
+  chain:
+    // note error union E|E2
+    <E, A, E2, B>(f: (a: A) => any /* F<Result<E2,B>> */) =>
+    (fea: any /* F<Result<E,A>> */) =>
+      F.chain<Result<E, A>, Result<E | E2, B>>((ra) => (isOk(ra) ? f(ra.value) : F.of(ra as any)))(fea),
+
+  orElse:
+    <E, A, E2>(f: (e: E) => any /* F<Result<E2, A>> */) =>
+    (fea: any /* F<Result<E,A>> */) =>
+      F.chain<Result<E, A>, Result<E | E2, A>>((ra) => (isErr(ra) ? f(ra.error) : F.of(ra)))(fea),
+
+  // Eliminators/util
+  getOrElse:
+    <E, A>(onErr: (e: E) => A) =>
+    (fea: any) =>
+      F.chain<Result<E, A>, A>((ra) => F.of(getOrElseR<E, A>(onErr)(ra)))(fea),
+
+  fold:
+    <E, A, B>(onErr: (e: E) => B, onOk: (a: A) => B) =>
+    (fea: any) =>
+      F.chain<Result<E, A>, B>((ra) => F.of(isOk(ra) ? onOk(ra.value) : onErr((ra as Err<E>).error)))(fea),
+
+  swap:
+    <E, A>(fea: any) =>
+      F.chain<Result<E, A>, Result<A, E>>((ra) => F.of(isOk(ra) ? Err(ra.value as any) : Ok((ra as Err<E>).error as any)))(fea),
+})
+
+// ----- Prewired specializations (aliases) -----
+export type TaskEither<E, A> = Task<Result<E, A>>
+export const TaskEither = EitherT({
+  of: Task.of,
+  chain: Task.chain
+})
+
+export type ReaderEither<R, E, A> = Reader<R, Result<E, A>>
+export const ReaderEither = EitherT({
+  of: <A>(a: A) => Reader.of<unknown, A>(a),
+  chain: <A, B>(f: (a: A) => Reader<unknown, B>) => (ra: Reader<unknown, A>) => Reader.chain<A, B, unknown>(f)(ra)
+})
+
+export type ReaderTaskEither<R, E, A> = ReaderTask<R, Result<E, A>>
+export const ReaderTaskEither = EitherT({
+  of: <A>(a: A) => ReaderTask.of<unknown, A>(a),
+  chain: <A, B>(f: (a: A) => ReaderTask<unknown, B>) => (rta: ReaderTask<unknown, A>) => ReaderTask.chain<A, B, unknown>(f)(rta)
+})
+
+// (Optional) ergonomic re-exports matching your current naming
+export const RTE = ReaderTaskEither
+export const TE  = TaskEither
+export const RE  = ReaderEither
+
+// ====================================================================
+// Ready-to-use Writer Modules & Advanced Compositions
+// ====================================================================
+
+// ----- Ready "lifted" Writer modules for Reader/ReaderTask -----
+export const LogArray = ArrayMonoid<string>()
+
+export const MW_R = WriterInReader(LogArray)         // tell/listen/pass in Reader
+export const MW_RT = WriterInReaderTask(LogArray)    // tell/listen/pass in ReaderTask
+
+// ----- Module-level shims for ReaderTaskEither -----
+export const apFirstRTE =
+  <R, E, A, B>(rteB: ReaderTaskEither<R, E, B>) =>
+  (rteA: ReaderTaskEither<R, E, A>): ReaderTaskEither<R, E, A> =>
+    RTE.chain<A, E, never, A>((a) => RTE.map(() => a)(rteB))(rteA)
+
+export const apSecondRTE =
+  <R, E, A, B>(rteB: ReaderTaskEither<R, E, B>) =>
+  (rteA: ReaderTaskEither<R, E, A>): ReaderTaskEither<R, E, B> =>
+    RTE.chain<A, E, never, B>(() => rteB)(rteA)
+
+export const zipWithRTE =
+  <R, E, A, B, C>(f: (a: A, b: B) => C) =>
+  (rteA: ReaderTaskEither<R, E, A>) =>
+  (rteB: ReaderTaskEither<R, E, B>): ReaderTaskEither<R, E, C> =>
+    RTE.ap(RTE.map((a: A) => (b: B) => f(a, b))(rteA))(rteB)
+
+export const zipRTE =
+  <R, E, A, B>(rteA: ReaderTaskEither<R, E, A>) =>
+  (rteB: ReaderTaskEither<R, E, B>): ReaderTaskEither<R, E, readonly [A, B]> =>
+    zipWithRTE<R, E, A, B, readonly [A, B]>((a, b) => [a, b] as const)(rteA)(rteB)
+
+// ----- Do-notation for ReaderTaskEither (RTE) -----
+type _Merge<A, B> = { readonly [K in keyof A | keyof B]:
+  K extends keyof B ? B[K] : K extends keyof A ? A[K] : never }
+
+export type DoRTEBuilder<R, T, E> = {
+  /** bind: run an RTE and add its Ok value at key K */
+  bind: <K extends string, E2, A>(
+    k: K,
+    rtea: ReaderTaskEither<R, E2, A>
+  ) => DoRTEBuilder<R, _Merge<T, { readonly [P in K]: A }>, E | E2>
+
+  /** let: add a pure computed field (no effects) */
+  let: <K extends string, A>(
+    k: K,
+    f: (t: T) => A
+  ) => DoRTEBuilder<R, _Merge<T, { readonly [P in K]: A }>, E>
+
+  /** apS: alias for bind, reads nicer in applicative-ish code */
+  apS: <K extends string, E2, A>(
+    k: K,
+    rtea: ReaderTaskEither<R, E2, A>
+  ) => DoRTEBuilder<R, _Merge<T, { readonly [P in K]: A }>, E | E2>
+
+  /** run effect; keep current record T */
+  apFirst:  <E2, A>(rtea: ReaderTaskEither<R, E2, A>) => DoRTEBuilder<R, T, E | E2>
+
+  /** run effect; replace record with its Ok value */
+  apSecond: <E2, A>(rtea: ReaderTaskEither<R, E2, A>) => DoRTEBuilder<R, A, E | E2>
+
+  /** run effect derived from T; keep T (useful for logging/validation) */
+  tap:      <E2>(f: (t: T) => ReaderTaskEither<R, E2, unknown>) => DoRTEBuilder<R, T, E | E2>
+
+  /** map: final transform into B */
+  map: <B>(f: (t: T) => B) => ReaderTaskEither<R, E, B>
+
+  /** done: finish and return the accumulated record */
+  done: ReaderTaskEither<R, E, T>
+}
+
+export const DoRTE = <R>() => {
+  const make = <T, E>(rte: ReaderTaskEither<R, E, T>): DoRTEBuilder<R, T, E> => ({
+    bind: (k, rtea) =>
+      make(
+        RTE.chain<T, E, any, _Merge<T, Record<typeof k, any>>>((t) =>
+          RTE.map((a: any) => ({ ...(t as any), [k]: a } as const))(rtea)
+        )(rte) as any
+      ),
+
+    apS: (k, rtea) =>
+      make(
+        RTE.chain<T, E, any, _Merge<T, Record<typeof k, any>>>((t) =>
+          RTE.map((a: any) => ({ ...(t as any), [k]: a } as const))(rtea)
+        )(rte) as any
+      ),
+
+    let: (k, f) =>
+      make(RTE.map((t: T) => ({ ...(t as any), [k]: f(t) } as const))(rte)),
+
+    apFirst: (rtea) =>
+      make(
+        RTE.chain<T, E, any, T>((t) =>
+          RTE.map(() => t)(rtea)
+        )(rte) as any
+      ),
+
+    apSecond: (rtea) =>
+      make(
+        RTE.chain<T, E, any, any>(() => rtea)(rte) as any
+      ) as any, // resulting builder's T is the Ok value type of rtea
+
+    tap: (f) =>
+      make(
+        RTE.chain<T, E, any, T>((t) =>
+          RTE.map(() => t)(f(t))
+        )(rte) as any
+      ),
+
+    map: (f) => RTE.map(f)(rte),
+
+    done: rte,
+  })
+
+  // start with {}
+  return make(RTE.of({} as const))
+}
+
+// ----- Writer × EitherT × ReaderTask (WRTE) composition -----
+export type WriterReaderTaskEither<W, R, E, A> =
+  ReaderTask<R, Writer<W, Result<E, A>>>
+
+export const WRTE = <W>(M: Monoid<W>) => {
+  // base monad = ReaderTask
+  const F = {
+    of: <A>(a: A) => ReaderTask.of<unknown, A>(a),
+    chain: <A, B>(f: (a: A) => ReaderTask<unknown, B>) =>
+      (fa: ReaderTask<unknown, A>) => ReaderTask.chain<A, B, unknown>(f)(fa),
+  }
+
+  // WriterT over ReaderTask
+  const WT = WriterT<W>(M)(F)
+
+  // EitherT over (WriterT over ReaderTask)
+  const ET = EitherT(WT)
+
+  // helpers to keep types nice at call sites
+  type _WRTE<R, E, A> = WriterReaderTaskEither<W, R, E, A>
+
+  // lift a plain RTE into WRTE (adds empty log)
+  const liftRTE =
+    <R, E, A>(rte: ReaderTaskEither<R, E, A>): _WRTE<R, E, A> =>
+      async (r: R) => {
+        const ra = await rte(r)
+        return [ra, M.empty] as const
+      }
+
+  // strip logs back to plain RTE (keep only Result)
+  const stripLog =
+    <R, E, A>(m: _WRTE<R, E, A>): ReaderTaskEither<R, E, A> =>
+      async (r: R) => {
+        const [ra] = await m(r)
+        return ra
+      }
+
+  return {
+    // constructors
+    right:  <R = unknown, E = never, A = never>(a: A): _WRTE<R, E, A> => ET.right(a),
+    left:   <R = unknown, E = never>(e: E): _WRTE<R, E, never> => ET.left(e),
+    of:     <R = unknown, A = never>(a: A): _WRTE<R, never, A> => ET.of(a),
+
+    // core combinators
+    map:     <R, E, A, B>(f: (a: A) => B) => (m: _WRTE<R, E, A>): _WRTE<R, E, B> => ET.map<E, A, B>(f)(m) as any,
+    mapLeft: <R, E, F2, A>(f: (e: E) => F2) => (m: _WRTE<R, E, A>): _WRTE<R, F2, A> => ET.mapLeft<E, F2, A>(f)(m) as any,
+    bimap:   <R, E, F2, A, B>(l:(e:E)=>F2, r:(a:A)=>B) => (m:_WRTE<R,E,A>): _WRTE<R,F2,B> => ET.bimap(l, r)(m) as any,
+
+    ap:
+      <R, E, A, B>(mf: _WRTE<R, E, (a: A) => B>) =>
+      (ma: _WRTE<R, E, A>): _WRTE<R, E, B> => ET.ap<E, A, B>(mf)(ma) as any,
+
+    chain:
+      <R, E, A, F2, B>(f: (a: A) => _WRTE<R, F2, B>) =>
+      (ma: _WRTE<R, E, A>): _WRTE<R, E | F2, B> => ET.chain<E, A, F2, B>(f)(ma) as any,
+
+    orElse:
+      <R, E, A, F2>(f: (e: E) => _WRTE<R, F2, A>) =>
+      (ma: _WRTE<R, E, A>): _WRTE<R, E | F2, A> => ET.orElse<E, A, F2>(f)(ma) as any,
+
+    // logging
+    tell:   <R = unknown>(w: W): _WRTE<R, never, void> => WT.tell(w) as any,
+    listen: <R, E, A>(ma: _WRTE<R, E, A>): _WRTE<R, E, readonly [A, W]> => WT.listen(ma) as any,
+    pass:   <R, E, A>(ma: _WRTE<R, E, readonly [A, (w: W) => W]>): _WRTE<R, E, A> => WT.pass(ma) as any,
+
+    // -------- apFirst / apSecond / zip / zipWith for WRTE --------
+    apFirst:
+      <R, E, A, B>(mb: WriterReaderTaskEither<W, R, E, B>) =>
+      (ma: WriterReaderTaskEither<W, R, E, A>): WriterReaderTaskEither<W, R, E, A> =>
+        ET.chain<A, E, never, A>((a) => ET.map(() => a)(mb))(ma) as any,
+
+    apSecond:
+      <R, E, A, B>(mb: WriterReaderTaskEither<W, R, E, B>) =>
+      (ma: WriterReaderTaskEither<W, R, E, A>): WriterReaderTaskEither<W, R, E, B> =>
+        ET.chain<A, E, never, B>(() => mb)(ma) as any,
+
+    zipWith:
+      <R, E, A, B, C>(f: (a: A, b: B) => C) =>
+      (ma: WriterReaderTaskEither<W, R, E, A>) =>
+      (mb: WriterReaderTaskEither<W, R, E, B>): WriterReaderTaskEither<W, R, E, C> =>
+        // ap(map(f)(ma))(mb)
+        ET.ap<E, A, (b: B) => C>(ET.map((a: A) => (b: B) => f(a, b))(ma))(mb) as any,
+
+    zip:
+      <R, E, A, B>(ma: WriterReaderTaskEither<W, R, E, A>) =>
+      (mb: WriterReaderTaskEither<W, R, E, B>): WriterReaderTaskEither<W, R, E, readonly [A, B]> =>
+        ET.ap<E, A, (b: B) => readonly [A, B]>(ET.map((a: A) => (b: B) => [a, b] as const)(ma))(mb) as any,
+
+    // interop
+    liftRTE,   // ReaderTaskEither<R,E,A> -> WRTE<W,R,E,A>
+    stripLog,  // WRTE<W,R,E,A> -> ReaderTaskEither<R,E,A>
+
+    // eliminators
+    getOrElse:
+      <R, E, A>(onErr: (e: E) => A) =>
+      (ma: _WRTE<R, E, A>): ReaderTask<R, Writer<W, A>> =>
+        async (r: R) => {
+          const [ra, w] = await ma(r)
+          return [getOrElseR<E, A>(onErr)(ra), w] as const
+        },
+
+    fold:
+      <R, E, A, B>(onErr: (e: E) => B, onOk: (a: A) => B) =>
+      (ma: _WRTE<R, E, A>): ReaderTask<R, Writer<W, B>> =>
+        async (r: R) => {
+          const [ra, w] = await ma(r)
+          return [isOk(ra) ? onOk(ra.value) : onErr((ra as Err<E>).error), w] as const
+        },
+  }
+}
+
+// ----- Do-notation for WRTE (WriterReaderTaskEither) -----
+// Simplified version focusing on core functionality
+
+export type DoWRTEBuilder<W, R, T, E> = {
+  /** bind: run a WRTE and add its Ok value at key K */
+  bind: <K extends string, E2, A>(
+    k: K,
+    ma: WriterReaderTaskEither<W, R, E2, A>
+  ) => DoWRTEBuilder<W, R, any, any>
+
+  /** apS: alias for bind (reads nicer applicatively) */
+  apS: <K extends string, E2, A>(
+    k: K,
+    ma: WriterReaderTaskEither<W, R, E2, A>
+  ) => DoWRTEBuilder<W, R, any, any>
+
+  /** let: add a pure computed field (no effects) */
+  let: <K extends string, A>(
+    k: K,
+    f: (t: T) => A
+  ) => DoWRTEBuilder<W, R, any, any>
+
+  /** run effect; keep current record T */
+  apFirst:  <E2, A>(ma: WriterReaderTaskEither<W, R, E2, A>) => DoWRTEBuilder<W, R, T, E | E2>
+
+  /** run effect; replace record with its Ok value */
+  apSecond: <E2, A>(ma: WriterReaderTaskEither<W, R, E2, A>) => DoWRTEBuilder<W, R, A, E | E2>
+
+  /** run effect derived from T; keep T (great for logs) */
+  tap:      <E2>(f: (t: T) => WriterReaderTaskEither<W, R, E2, unknown>) => DoWRTEBuilder<W, R, T, E | E2>
+
+  /** tell: append to the writer log, keep the current record */
+  tell: (w: W) => DoWRTEBuilder<W, R, T, E>
+
+  /** map: finish by mapping the accumulated record into B */
+  map: <B>(f: (t: T) => B) => WriterReaderTaskEither<W, R, E, B>
+
+  /** done: finish and return the accumulated record */
+  done: WriterReaderTaskEither<W, R, E, T>
+}
+
+/**
+ * Make a Do-builder bound to a specific WRTE instance (i.e., to its monoid + combinators).
+ * Usage:
+ *   const W = WRTE<string>(ArrayMonoid<string>())
+ *   const Do = DoWRTE(W)<Env>()
+ */
+export const DoWRTE = <W>(Wmod: ReturnType<typeof WRTE<W>>) => <R>() => {
+  const make = <T, E>(
+    m: WriterReaderTaskEither<W, R, E, T>
+  ): DoWRTEBuilder<W, R, T, E> => ({
+    bind: (k, ma) =>
+      make(
+        Wmod.chain((t: T) =>
+          Wmod.map((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
+        )(m) as any
+      ),
+
+    apS: (k, ma) =>
+      make(
+        Wmod.chain((t: T) =>
+          Wmod.map((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
+        )(m) as any
+      ),
+
+    let: (k, f) =>
+      make(Wmod.map((t: T) => ({ ...(t as any), [k]: f(t) } as const))(m)),
+
+    apFirst: (ma) =>
+      make(
+        Wmod.chain<T, E, any, T>((t) =>
+          Wmod.map(() => t)(ma)
+        )(m)
+      ),
+
+    apSecond: (ma) =>
+      make(
+        Wmod.chain<T, E, any, any>(() => ma)(m)
+      ) as any, // builder's T becomes the Ok value type of `ma`
+
+    tap: (f) =>
+      make(
+        Wmod.chain<T, E, any, T>((t) =>
+          Wmod.map(() => t)(f(t))
+        )(m)
+      ),
+
+    tell: (w) =>
+      make(
+        Wmod.chain((t: T) =>
+          // tell returns WRTE<W,R,never,void>; map(() => t) keeps the record
+          Wmod.map(() => t)(Wmod.tell(w))
+        )(m)
+      ),
+
+    map: (f) => Wmod.map(f)(m),
+
+    done: m,
+  })
+
+  // start with {} (explicit cast to fix the R phantom)
+  return make(Wmod.of({} as const) as WriterReaderTaskEither<W, R, never, {}>)
+}
+
+// =======================
+// Development Utilities (Dev-Only)
+// =======================
+
+const __DEV__ = process.env['NODE_ENV'] !== "production"
+
+export const assertMonoidalFnCoherence = (): void => {
+  if (!__DEV__) return
+  
+  // Simple coherence test: test that isomorphisms are actually isomorphisms
+  const A = 42 as const
+  const leftUnitor = MonoidalFn.leftUnitor<typeof A>()
+  const original = [undefined, A] as const
+  const transformed = leftUnitor.to(original)
+  const back = leftUnitor.from(transformed)
+  
+  if (JSON.stringify(original) !== JSON.stringify(back)) {
+    console.warn("monoidal left unitor coherence failed")
+  }
+}
+
+export const assertMonoidalKleisliRTECoherence = async <R, E>(): Promise<void> => {
+  if (!__DEV__) return
+  
+  const M = MonoidalKleisliRTE<R, E>()
+  
+  // Test left unitor coherence
+  const testValue = 42 as const
+  const leftUnitor = M.leftUnitor<typeof testValue>()
+  
+  try {
+    const result = await leftUnitor.to([undefined, testValue] as const)({} as R)
+    if (!isOk(result) || result.value !== testValue) {
+      console.warn("monoidal left unitor (Kleisli RTE) failed")
+    }
+  } catch (error) {
+    console.warn("monoidal left unitor (Kleisli RTE) failed with error:", error)
+  }
+}
 
 export const liftA2K1 =
   <F extends HK.Id1>(F: ApplicativeK1<F>) =>

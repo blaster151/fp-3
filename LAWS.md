@@ -324,6 +324,56 @@ For `MonoidEndo<A>()`:
 
 **Witness**: Property test with random endomorphisms and random values
 
+## Monoidal Functor Laws
+
+### Monoidal Functor Laws
+For any lax monoidal functor `F` on the category of types with tensor = product and unit = void:
+
+**Functor Laws**:
+- **Identity**: `F.map(id) = id`
+- **Composition**: `F.map(g ∘ f) = F.map(g) ∘ F.map(f)`
+
+**Unit Coherence**:
+- **Left Unit**: `F.map(λ.from) = a => F.tensor(F.unit, a)` where `λ: A ≅ [void, A]`
+- **Right Unit**: `F.map(ρ.from) = a => F.tensor(a, F.unit)` where `ρ: A ≅ [A, void]`
+
+**Associativity Coherence**:
+- **Associator**: `F.map(α.from) ∘ F.tensor(F.tensor(a, b), c) = F.tensor(a, F.tensor(b, c))` where `α: [A, [B, C]] ≅ [[A, B], C]`
+
+**Naturality of Tensor**:
+- **Tensor Naturality**: `F.tensor(F.map(f)(a), F.map(g)(b)) = F.map(bimap(f, g))(F.tensor(a, b))`
+
+**Witness**: Property test with random functions `f, g` and random values `a, b, c`
+
+### Monoidal Functor Instances
+The following instances satisfy the monoidal functor laws:
+
+**Option Monoidal Functor**:
+- **Unit**: `Some(undefined)`
+- **Tensor**: `zipOption(fa, fb) = fa <*> fb.map(b => a => [a, b])`
+
+**Result Monoidal Functor** (short-circuiting):
+- **Unit**: `Ok(undefined)`
+- **Tensor**: `zipResult(fa, fb) = fa <*> fb.map(b => a => [a, b])`
+
+**Reader Monoidal Functor**:
+- **Unit**: `Reader.of(undefined)`
+- **Tensor**: `zipReader(fa, fb) = r => [fa(r), fb(r)]`
+
+**ReaderTask Monoidal Functor**:
+- **Unit**: `ReaderTask.of(undefined)`
+- **Tensor**: `zipReaderTask(fa, fb) = r => Promise.all([fa(r), fb(r)])`
+
+**ReaderTaskEither Monoidal Functor**:
+- **Unit**: `RTE.of(undefined)`
+- **Tensor**: `zipRTE(fa, fb) = r => Promise.all([fa(r), fb(r)]).then(([ra, rb]) => ra <*> rb.map(b => a => [a, b]))`
+
+**Validation Monoidal Functor** (accumulating):
+- **Unit**: `VOk(undefined)`
+- **Tensor**: `zipValidation(fa, fb) = fa <*> fb.map(b => a => [a, b])` (accumulates errors)
+
+**Witness**: Property test for each instance with random generators and equality functions
+
 ## Future Extensions
 
 This document should grow to include:

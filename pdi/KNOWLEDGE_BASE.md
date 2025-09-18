@@ -77,6 +77,25 @@ const pairs = flattenGroups(groups)
 - `CanonicalJsonMap<ReadonlyArray<` - Ensure it's grouped data
 - `groupByCanonical\|groupPairsByCanonical` - Ensure it's from grouping functions
 
+**Ripgrep patterns for streaming operations**:
+- `\.reduce\(.*,.*0\)` - Manual sum/count reduction
+- `\.sort\(.*\)\.slice\(0,\s*\d+\)` - Manual top-K selection
+- `\.filter\(.*\)\.slice\(0,\s*\d+\)` - Manual conditional filtering
+- `for\s+const\s+\[.*\]\s+of\s+\w+.*Math\.` - Manual min/max in loops
+- `Math\.min\|Math\.max` - Manual min/max calculations
+- `\.length.*\?.*:` - Manual counting patterns
+
+**Specific patterns for streaming operations**:
+- `\.reduce\(.*,.*0\)` - Manual sum/count reduction
+- `\.sort\(.*\)\.slice\(0,\s*\d+\)` - Manual top-K selection
+- `\.filter\(.*\)\.slice\(0,\s*\d+\)` - Manual conditional filtering
+- `for\s+const\s+\[.*\]\s+of\s+\w+.*Math\.` - Manual min/max in loops
+
+**Validation patterns** (to avoid false positives):
+- `CanonicalJsonMap<ReadonlyArray<` - Ensure it's grouped data
+- `stream\|pairs\|Iterable` - Ensure it's streaming data
+- `score\|value\|count` - Ensure it's numeric operations
+
 ## CanonicalJsonMultiMap Adapters
 
 **What**: `collapseToMap`, `mapMultiValues`, `mapEachMulti`, `filterEachMulti`, `mergeMulti` - Adapters for multimap operations.
@@ -239,6 +258,41 @@ const clean = collectArray(data.map(parseAndValidate))
 
 // Process map values
 const processed = collectMapValues(map, transform)
+```
+
+## Streaming Operations & Min/Max
+
+**What**: Advanced streaming reducers and min/max operations for `CanonicalJsonMap<ReadonlyArray<V>>` and `CanonicalJsonMultiMap<V>`.
+
+**Key functions**:
+- **Min/Max per group**: `minByGroup`, `maxByGroup`, `minByGlobal`, `maxByGlobal`
+- **Take/Drop while**: `takeWhileGroup`, `dropWhileGroup`
+- **Streaming reducers**: `streamReduceByCanonical`, `streamTopKByCanonical`, `streamCountsByCanonical`, `streamSumByCanonical`
+- **MultiMap variants**: `minByGroupMM`, `maxByGroupMM`, `takeWhileGroupMM`, `dropWhileGroupMM`
+
+**When to use**:
+- ✅ **Per-group min/max**: `minByGroup(groups, (item) => item.score)`
+- ✅ **Global min/max**: `maxByGlobal(groups, (item) => item.score)`
+- ✅ **Conditional filtering**: `takeWhileGroup(groups, (item) => item.score >= 8)`
+- ✅ **Streaming aggregation**: `streamCountsByCanonical(stream)`, `streamSumByCanonical(stream, (item) => item.score)`
+- ✅ **Streaming top-K**: `streamTopKByCanonical(2, (item) => item.score)(stream)`
+
+**Example patterns**:
+```typescript
+// Per-group min/max
+const mins = minByGroup(groups, (item) => item.score)
+const maxs = maxByGroup(groups, (item) => item.score)
+
+// Global min/max
+const best = maxByGlobal(groups, (item) => item.score)
+
+// Conditional filtering
+const highScore = takeWhileGroup(groups, (item) => item.score >= 8)
+
+// Streaming aggregation
+const counts = streamCountsByCanonical(stream)
+const sums = streamSumByCanonical(stream, (item) => item.score)
+const top2 = streamTopKByCanonical(2, (item) => item.score)(stream)
 ```
 
 ---

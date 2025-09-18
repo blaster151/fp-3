@@ -21,6 +21,7 @@
     "upgrade:analyze": "node pdi/upgrade-analyzer.js analyze",
     "upgrade:backlog": "node pdi/upgrade-analyzer.js backlog",
     "upgrade:stats": "node pdi/upgrade-analyzer.js stats",
+    "upgrade:reference": "node pdi/upgrade-analyzer.js reference",
     "maintenance:check": "node pdi/maintenance-reminder.js check",
     "maintenance:remind": "node pdi/maintenance-reminder.js remind",
     "tasks:check": "node pdi/task-scheduler.js check",
@@ -28,7 +29,10 @@
     "tasks:increment": "node pdi/task-scheduler.js increment",
     "docs:check": "node pdi/docs-checker.js check",
     "docs:stale": "node pdi/docs-checker.js stale",
-    "docs:update": "node pdi/docs-checker.js update"
+    "docs:update": "node pdi/docs-checker.js update",
+    "lint": "eslint . --ext .ts,.js",
+    "lint:fix": "eslint . --ext .ts,.js --fix",
+    "laws": "tsx laws.monoidal.ts"
   },
   "keywords": [
     "functional-programming",
@@ -43,7 +47,10 @@
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^24.4.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@typescript-eslint/utils": "^6.0.0",
     "@vitest/ui": "^3.2.4",
+    "eslint": "^8.0.0",
     "fast-check": "^4.3.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2",

@@ -1,0 +1,12 @@
+{
+  "name": "eslint-plugin-tinyfp",
+  "version": "0.0.0",
+  "main": "index.js",
+  "private": true,
+  "peerDependencies": {
+    "eslint": ">=8",
+    "@typescript-eslint/parser": ">=6",
+    "@typescript-eslint/utils": ">=6",
+    "typescript": ">=5"
+  }
+}
