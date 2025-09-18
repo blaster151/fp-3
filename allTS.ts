@@ -45,7 +45,7 @@ export function pipe<A>(a: A): A
 export function pipe<A, B>(a: A, ab: (a: A) => B): B
 export function pipe<A, B, C>(a: A, ab: (a: A) => B, bc: (b: B) => C): C
 export function pipe<A, B, C, D>(a: A, ab: (a: A) => B, bc: (b: B) => C, cd: (c: C) => D): D
-export function pipe(a: unknown, ...fns: Array<(x: any) => any>): unknown {
+export function pipe(a: unknown, ...fns: Array<(x: unknown) => unknown>): unknown {
   return fns.reduce((acc, f) => f(acc), a)
 }
 
@@ -97,7 +97,7 @@ export const isOk = <E, A>(ra: Result<E, A>): ra is Ok<A> => ra._tag === 'Ok'
 
 export const mapR = <E, A, B>(f: (a: A) => B) => (ra: Result<E, A>): Result<E, B> => (isOk(ra) ? Ok(f(ra.value)) : ra)
 export const mapErr = <E, F, A>(f: (e: E) => F) => (ra: Result<E, A>): Result<F, A> => (isErr(ra) ? Err(f(ra.error)) : ra)
-export const flatMapR = <E, A, F, B>(f: (a: A) => Result<F, B>) => (ra: Result<E, A>): Result<E | F, B> => (isOk(ra) ? f(ra.value) : ra as any)
+export const flatMapR = <E, A, F, B>(f: (a: A) => Result<F, B>) => (ra: Result<E, A>): Result<E | F, B> => (isOk(ra) ? f(ra.value) : ra as Err<E>)
 export const getOrElseR = <E, A>(onErr: (e: E) => A) => (ra: Result<E, A>): A => (isOk(ra) ? ra.value : onErr(ra.error))
 
 export const tryCatch = <A>(thunk: Lazy<A>, onThrow: (u: unknown) => Error = (u) => (u instanceof Error ? u : new Error(String(u)))): Result<Error, A> => {
@@ -184,31 +184,34 @@ export const DoR = <E = never>() => {
 // =======================
 // Typeclasses (Functor / Apply / Monad)
 // =======================
+// Type alias for functor values (more descriptive than raw any)
+export type FunctorValue<F, A> = any // F<A> - Higher-Kinded Type placeholder
+
 export interface Functor<F> {
-  readonly map: <A, B>(f: (a: A) => B) => (fa: any) => any
+  readonly map: <A, B>(f: (a: A) => B) => (fa: FunctorValue<F, A>) => FunctorValue<F, B>
 }
 export interface Apply<F> extends Functor<F> {
-  readonly ap: <A, B>(fab: any) => (fa: any) => any
+  readonly ap: <A, B>(fab: FunctorValue<F, (a: A) => B>) => (fa: FunctorValue<F, A>) => FunctorValue<F, B>
 }
 export interface Monad<F> extends Apply<F> {
-  readonly of: <A>(a: A) => any
-  readonly chain: <A, B>(f: (a: A) => any) => (fa: any) => any
+  readonly of: <A>(a: A) => FunctorValue<F, A>
+  readonly chain: <A, B>(f: (a: A) => FunctorValue<F, B>) => (fa: FunctorValue<F, A>) => FunctorValue<F, B>
 }
 
 // Instances: Option
 export const OptionI: Monad<'Option'> = {
-  map: mapO as any,
+  map: mapO as FunctorValue<'Option', any>,
   ap: <A, B>(fab: Option<(a: A) => B>) => (fa: Option<A>): Option<B> => (isSome(fab) && isSome(fa) ? Some(fab.value(fa.value)) : None),
-  of: Some as any,
-  chain: flatMapO as any
+  of: Some as FunctorValue<'Option', any>,
+  chain: flatMapO as FunctorValue<'Option', any>
 }
 
 // Instances: Result (right-biased)
 export const ResultI: Monad<'Result'> = {
-  map: mapR as any,
-  ap: <E, A, B>(rfab: Result<E, (a: A) => B>) => (rfa: Result<E, A>): Result<E, B> => (isOk(rfab) && isOk(rfa) ? Ok(rfab.value(rfa.value)) : (isErr(rfab) ? rfab : rfa) as any),
-  of: Ok as any,
-  chain: flatMapR as any
+  map: mapR as FunctorValue<'Result', any>,
+  ap: <E, A, B>(rfab: Result<E, (a: A) => B>) => (rfa: Result<E, A>): Result<E, B> => (isOk(rfab) && isOk(rfa) ? Ok(rfab.value(rfa.value)) : (isErr(rfab) ? rfab : rfa) as Err<E>),
+  of: Ok as FunctorValue<'Result', any>,
+  chain: flatMapR as FunctorValue<'Result', any>
 }
 
 // =======================
@@ -5129,17 +5132,17 @@ export const mapEntries = <
  * Overload 1: boolean predicate
  * Overload 2: type-guard predicate (narrows value type in the result)
  */
-export function filterValues<T extends Record<PropertyKey, any>>(
+export function filterValues<T extends Record<PropertyKey, unknown>>(
   obj: T,
   pred: <K extends keyof T>(value: T[K], key: K) => boolean
 ): Readonly<Partial<T>>
 
-export function filterValues<T extends Record<PropertyKey, any>, V>(
+export function filterValues<T extends Record<PropertyKey, unknown>, V>(
   obj: T,
   pred: <K extends keyof T>(value: T[K], key: K) => value is Extract<T[K], V>
 ): Readonly<Partial<{ [K in keyof T]: Extract<T[K], V> }>>
 
-export function filterValues<T extends Record<PropertyKey, any>>(
+export function filterValues<T extends Record<PropertyKey, unknown>>(
   obj: T,
   pred: (value: T[keyof T], key: keyof T) => boolean
 ): Readonly<Partial<T>> {
@@ -5155,7 +5158,7 @@ export function filterValues<T extends Record<PropertyKey, any>>(
 }
 
 /** filterKeys — keep entries whose key satisfies `pred` */
-export const filterKeys = <T extends Record<PropertyKey, any>>(
+export const filterKeys = <T extends Record<PropertyKey, unknown>>(
   obj: T,
   pred: (key: keyof T) => boolean
 ): Readonly<Partial<T>> => {
@@ -6689,9 +6692,9 @@ export const traversalArray = <A>(): Traversal<ReadonlyArray<A>, A> => traversal
   (f) => (as) => as.map(f)
 )
 
-export const traversalPropArray = <S>() => <K extends keyof S, A = any>(k: K & (S[K] extends ReadonlyArray<infer T> ? K : never)):
+export const traversalPropArray = <S>() => <K extends keyof S>(k: K & (S[K] extends ReadonlyArray<infer T> ? K : never)):
   Traversal<S, S[K] extends ReadonlyArray<infer T> ? T : never> => traversal(
-    (f) => (s: S) => ({ ...s, [k]: (s[k] as any as ReadonlyArray<any>).map(f) }) as S
+    (f) => (s: S) => ({ ...s, [k]: (s[k] as ReadonlyArray<any>).map(f) }) as S
 )
 
 export const optionalToTraversal = <S, A>(opt: Optional<S, A>): Traversal<S, A> => traversal(
@@ -9770,17 +9773,17 @@ const ApplicativeOption: ApplicativeLike<'Option'> = {
     isSome(ff) && isSome(fa) ? Some(ff.value(fa.value)) : None,
 }
 export const MonoidalOption = monoidalFromApplicative(ApplicativeOption)
-export const zipOption      = zipFromMonoidal(MonoidalOption)<any, any>
-export const zipWithOption  = zipWithFromMonoidal(MonoidalOption)<any, any, any>
+export const zipOption      = zipFromMonoidal(MonoidalOption)
+export const zipWithOption  = zipWithFromMonoidal(MonoidalOption)
 
 // ----- Result<E,_> (short-circuiting; use Validation for accumulation) -----
 const apResult = <E, A, B>(rf: Result<E, (a: A) => B>) => (ra: Result<E, A>): Result<E, B> =>
-  isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : ra) as any
+  isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : ra as Err<E>)
 
 export const ApplicativeResult = <E>(): ApplicativeLike<'Result'> => ({
-  of: Ok as any,
-  map: mapR as any,
-  ap: apResult as any,
+  of: Ok as FunctorValue<'Result', any>,
+  map: mapR as FunctorValue<'Result', any>,
+  ap: apResult as FunctorValue<'Result', any>,
 })
 export const MonoidalResult = <E>() => monoidalFromApplicative(ApplicativeResult<E>())
 export const zipResult     = <E>() => zipFromMonoidal(MonoidalResult<E>())
