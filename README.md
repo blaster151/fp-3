@@ -6,78 +6,80 @@ A compact, practical functional programming toolkit for TypeScript.
 
 - **Zero dependencies** - Pure TypeScript implementation
 - **Tree-shakeable** - Import only what you need
-- **Pragmatic types** - Focus on practical usage over theoretical purity
-- **Good dev ergonomics** - Clean APIs with excellent TypeScript support
-
-## Core Concepts
-
-- **Option/Maybe** - Handle nullable values safely
-- **Result/Either** - Handle errors without exceptions
-- **Validation** - Accumulate multiple errors
-- **Reader** - Dependency injection pattern
-- **State** - Pure stateful computations
-- **TaskResult** - Async operations with error handling
-- **Recursion Schemes** - Generic tree traversal and generation
+- **Type-safe** - Full TypeScript support
+- **Functional** - Immutable data structures and pure functions
+- **Comprehensive** - Covers monads, functors, optics, and more
 
 ## Quick Start
 
 ```typescript
-import { Some, None, Ok, Err, pipe } from './allTS'
+import { Option, Some, None, mapO, flatMapO } from './allTS'
 
-// Option usage
-const parseNumber = (s: string) => {
-  const n = Number(s)
-  return isNaN(n) ? None : Some(n)
-}
+const result = Some(42)
+  .pipe(mapO(x => x * 2))
+  .pipe(flatMapO(x => x > 50 ? Some(x) : None))
 
-// Result usage
-const safeDivide = (a: number, b: number) => 
-  b === 0 ? Err('Division by zero') : Ok(a / b)
-
-// Usage
-const result = pipe(
-  parseNumber("10"),
-  flatMapO(n => safeDivide(n, 2))
-)
+console.log(result) // Some(84)
 ```
 
-## Examples
+## Development
 
-The `examples.ts` file contains comprehensive, runnable examples organized by complexity:
+This project uses the **Pattern Discovery & Integration (PDI)** system for systematic development.
 
-1. **Basic Concepts** - Option, Result, Validation
-2. **Do Notation** - Clean monadic composition
-3. **State Management** - Pure stateful computations
-4. **Reader Pattern** - Dependency injection
-5. **Async Patterns** - TaskResult and parallel execution
-6. **Combined Patterns** - StateReaderTask (SRT)
-7. **Advanced Patterns** - RTO and RWST
-8. **Utility Patterns** - Partitioning and sequencing
-9. **JSON Streaming** - Event-driven processing
+### For Human Developers
+- See `pdi/HUMAN_DEV_GUIDELINES.md` for quick reference
+- Use `npm run maintenance:check` for status updates
+- Review `pdi/REMINDERS.md` for regular tasks
 
-### Running Examples
+### For AI-Assisted Development
+- Follow `pdi/AI_DEV_GUIDELINES.md` for systematic processes
+- Use `pdi/KNOWLEDGE_BASE.md` for pattern discovery
+- Track opportunities in `pdi/UPGRADE_BACKLOG.md`
+
+### PDI Commands
+```bash
+npm run upgrade:backlog      # View upgrade opportunities
+npm run upgrade:stats        # See backlog statistics
+npm run maintenance:check    # Check maintenance status
+npm run maintenance:remind   # Show development reminders
+```
+
+## Bootstrapping PDI in New Projects
+
+To set up PDI in your own project:
 
 ```bash
-# Type-check examples
-npx tsc --noEmit --project examples-tsconfig.json
+# Copy the PDI system
+cp -r pdi/ your-project/pdi/
 
-# Run examples (uncomment the ones you want to test)
-npx ts-node examples.ts
+# Initialize in your project
+cd your-project
+node pdi/bootstrap-pdi.js init
 ```
 
-## Installation
+## Project Structure
+
+- **`allTS.ts`** - Main library implementation
+- **`run-examples-simple.ts`** - Comprehensive examples
+- **`pdi/`** - Pattern Discovery & Integration system
+- **`test/laws/`** - Law-based testing with witnesses
+- **`LAWS.md`** - Mathematical laws and properties
+
+## Testing
 
 ```bash
-npm install tiny-fp
+npm run test:laws           # Run law-based tests
+npm run test:ci            # Run tests in CI mode
+npm run coverage           # Check law coverage
 ```
 
-## Building
+## Contributing
 
-```bash
-npm run build      # Build the library
-npm run typecheck  # Type-check without building
-```
+1. Follow the PDI system guidelines
+2. Ensure all laws are properly tested
+3. Update documentation as needed
+4. Use the upgrade analysis process
 
 ## License
 
-ISC
+MIT

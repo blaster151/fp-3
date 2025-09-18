@@ -17,7 +17,18 @@
     "test:nightly": "vitest run test/laws --reporter=verbose --run",
     "test:ui": "vitest --ui",
     "coverage": "node test/laws/coverage-matrix.js",
-    "coverage:ci": "node test/laws/coverage-matrix.js && npm run test:ci"
+    "coverage:ci": "node test/laws/coverage-matrix.js && npm run test:ci",
+    "upgrade:analyze": "node pdi/upgrade-analyzer.js analyze",
+    "upgrade:backlog": "node pdi/upgrade-analyzer.js backlog",
+    "upgrade:stats": "node pdi/upgrade-analyzer.js stats",
+    "maintenance:check": "node pdi/maintenance-reminder.js check",
+    "maintenance:remind": "node pdi/maintenance-reminder.js remind",
+    "tasks:check": "node pdi/task-scheduler.js check",
+    "tasks:list": "node pdi/task-scheduler.js list",
+    "tasks:increment": "node pdi/task-scheduler.js increment",
+    "docs:check": "node pdi/docs-checker.js check",
+    "docs:stale": "node pdi/docs-checker.js stale",
+    "docs:update": "node pdi/docs-checker.js update"
   },
   "keywords": [
     "functional-programming",

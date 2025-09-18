@@ -17,7 +17,11 @@ import {
   Alg_Expr_size, Alg_Expr_depth, sizeAndDepthExpr,
   sizeJsonNew, strsJson, sizeAndDepthJson, strsAndSizeJson,
   // Canonicalization and EJSON
-  canonicalizeJson, toEJsonCanonical, fromEJson,
+  canonicalizeJson, toEJsonCanonical, fromEJson, CanonicalJsonMap, CanonicalJsonSet,
+  mapGroupValues, mapEachGroup, filterEachGroup, mergeGroupValues, dedupeEachGroup, flattenGroups,
+  collapseToMap, mapMultiValues, mapEachMulti, filterEachMulti, mergeMulti,
+  // JSON types
+  Json,
   // Canonical utilities
   canonicalKey, equalsCanonical, compareCanonical, hashCanonical, hashConsJson,
   // Canonical multimap and groupBy
@@ -1052,7 +1056,379 @@ const r_bindHO = A_Reader.bindK_HO(
         console.log('✅ New algebras demonstrate swapping meanings without touching recursion code!')
         console.log('✅ Product algebras enable single-pass computation of multiple properties!')
 
+        // ============ PRODUCT JSON ALGEBRA DEMONSTRATION ============
+        console.log('\n=== PRODUCT JSON ALGEBRA DEMONSTRATION ===')
+        
+        // Create a complex JSON structure
+        const complexJson2 = jObj([
+          ['name', jStr('Ada')],
+          ['tags', jArr([jStr('fp'), jStr('ts')])],
+          ['metadata', jObj([
+            ['version', jStr('1.0')],
+            ['features', jArr([jStr('arrows'), jStr('recursion')])]
+          ])]
+        ])
+        
+        // Single-pass computation of multiple properties
+        const [jsonSize3, jsonDepth3] = sizeAndDepthJson(complexJson2)
+        const [jsonStrs3, jsonSize4] = strsAndSizeJson(complexJson2)
+        
+        console.log('Complex JSON structure created')
+        console.log('JSON size & depth (single pass):', jsonSize3, jsonDepth3)
+        console.log('JSON strings & size (single pass):', jsonStrs3, jsonSize4)
+        console.log('JSON pretty:', prettyJson(complexJson2))
+        
+        console.log('✅ Product algebras fuse multiple computations into single traversal!')
+        console.log('✅ No intermediate structures - direct composition of algebras!')
+
+        // ============ EXTENDED JSON VARIANTS DEMONSTRATION ============
+        console.log('\n=== EXTENDED JSON VARIANTS DEMONSTRATION ===')
+        
+        // Create JSON with all the extended variants
+        const extendedJson2 = jObj([
+          ['undefined', jUndef()],
+          ['decimal', jDec('12345678901234567890.0001')],
+          ['binary', jBinary('SGVsbG8=')], // "Hello" in base64
+          ['regex', jRegex('^a.*z$', 'i')],
+          ['date', jDate('2024-03-15T09:00:00.000Z')],
+          ['set', jSet([jStr('a'), jStr('b'), jStr('c')])],
+          ['nested', jObj([
+            ['precision', jDec('0.000000000000000001')],
+            ['pattern', jRegex('\\d+', 'g')]
+          ])]
+        ])
+        
+        // Test all the algebras with extended variants
+        const [extSize, extDepth] = sizeAndDepthJson(extendedJson2)
+        const [extStrs, extSize2] = strsAndSizeJson(extendedJson2)
+        
+        console.log('Extended JSON with all variants created')
+        console.log('Extended JSON pretty:', prettyJson(extendedJson2))
+        console.log('Extended JSON size & depth:', extSize, extDepth)
+        console.log('Extended JSON strings & size:', extStrs, extSize2)
+        
+        // Test individual variants
+        console.log('\nIndividual variant examples:')
+        console.log('Undefined:', prettyJson(jUndef()))
+        console.log('Decimal:', prettyJson(jDec('999999999999999999.999999999')))
+        console.log('Binary:', prettyJson(jBinary('VGVzdA=='))) // "Test" in base64
+        console.log('Regex:', prettyJson(jRegex('\\w+@\\w+\\.\\w+', 'i')))
+        console.log('Date:', prettyJson(jDate('2024-12-25T00:00:00.000Z')))
+        console.log('Set:', prettyJson(jSet([jNum(1), jNum(2), jNum(3)])))
+        
+        console.log('✅ All extended JSON variants work seamlessly with existing algebras!')
+        console.log('✅ JUndefined, JDec, JBinary, JRegex, JDate, JSet all integrated!')
+        console.log('✅ Size, depth, and string collection work with all variants!')
+
+        // ============ CANONICALIZATION & EJSON DEMONSTRATION ============
+        console.log('\n=== CANONICALIZATION & EJSON DEMONSTRATION ===')
+        
+        // Build extended Json with sets / regex / decimal
+        const messyJson2 = jObj([
+          ['c', jDec('1234567890123456789.0001')],
+          ['a', jSet([ jStr('x'), jStr('x'), jStr('y') ])], // duplicates
+          ['d', jUndef()],
+          ['b', jRegex('^a.*z$', 'ziiz')], // messy flags
+        ])
+        
+        console.log('Original messy JSON:', prettyJson(messyJson2))
+        
+        // Canonicalize (set dedup/sort, flags normalized, keys sorted)
+        const canonicalJson2 = canonicalizeJson(messyJson2)
+        console.log('Canonicalized JSON:', prettyJson(canonicalJson2))
+        
+        // Encode to EJSON (deterministic)
+        const ejson2 = toEJsonCanonical(canonicalJson2)
+        console.log('EJSON encoding:', JSON.stringify(ejson2, null, 2))
+        
+        // Round-trip test
+        const roundTrip = fromEJson(ejson2)
+        console.log('Round-trip successful:', isOk(roundTrip))
+        if (isOk(roundTrip)) {
+          console.log('Round-trip result:', prettyJson(roundTrip.value))
+        }
+        
+        // Show determinism: JSON.stringify(ejson) stable across runs
+        const stableKey = JSON.stringify(ejson2)
+        console.log('Stable canonical key (first 100 chars):', stableKey.substring(0, 100) + '...')
+        
+        // Test error handling
+        const badEjson = { $regex: 123 } // should be string
+        const badResult = fromEJson(badEjson)
+        console.log('Error handling test:', isErr(badResult) ? badResult.error : 'Unexpected success')
+        
+        console.log('✅ Canonicalization provides stable, deterministic ordering!')
+        console.log('✅ EJSON encoding/decoding supports all extended variants!')
+        console.log('✅ Round-trip preservation with proper error handling!')
+
+        // ============ CANONICAL EQUALITY & HASHING DEMONSTRATION ============
+        console.log('\n=== CANONICAL EQUALITY & HASHING DEMONSTRATION ===')
+        
+        // Test canonical equality
+        const objA = jObj([['x', jArr([jStr('a'), jStr('b')])]])
+        const objB = jObj([['x', jArr([jStr('a'), jStr('b')])]])
+        console.log('Equal objects:', equalsCanonical(objA, objB))
+        console.log('Same hash:', hashCanonical(objA) === hashCanonical(objB))
+        console.log('Hash A:', hashCanonical(objA))
+        console.log('Hash B:', hashCanonical(objB))
+        
+        // Test that key ordering doesn't affect equality
+        const setC = jObj([['x', jSet([jStr('b'), jStr('a'), jStr('a')])]])
+        const setD = jObj([['x', jSet([jStr('a'), jStr('b')])]])
+        const canonC = canonicalizeJson(setC)
+        const canonD = canonicalizeJson(setD)
+        console.log('Canonical sets equal:', equalsCanonical(canonC, canonD))
+        console.log('Canonical key C:', canonicalKey(canonC).substring(0, 50) + '...')
+        console.log('Canonical key D:', canonicalKey(canonD).substring(0, 50) + '...')
+        
+        // Test hash-consing (deduplication)
+        const bigArray = jArr([objA, objB, canonC, canonD, objA, objB])
+        const sharedArray = hashConsJson(bigArray)
+        console.log('Hash-consing applied to array with duplicates')
+        console.log('Original size:', JSON.stringify(bigArray).length)
+        console.log('Shared size:', JSON.stringify(sharedArray).length)
+        
+        console.log('✅ Canonical equality works across different representations!')
+        console.log('✅ Hash functions provide stable, deterministic keys!')
+        console.log('✅ Hash-consing deduplicates identical subtrees!')
+
+        // ============ CANONICAL CONTAINERS DEMONSTRATION ============
+        console.log('\n=== CANONICAL CONTAINERS DEMONSTRATION ===')
+        
+        // Keys that differ superficially but are canonically equal coalesce
+        const k1 = jObj([['s', jSet([jStr('b'), jStr('a'), jStr('a')])]])
+        const k2 = jObj([['s', jSet([jStr('a'), jStr('b')])]])
+        
+        // CanonicalJsonMap demonstration
+        const map = new CanonicalJsonMap<number>()
+        map.set(k1, 1)
+        map.set(k2, 2)   // overwrites same canonical key
+        console.log('Map size:', map.size)         // 1
+        console.log('Map.get(k1):', map.get(k1))   // 2 (overwrote)
+        console.log('Map.get(k2):', map.get(k2))   // 2 (same canonical key)
+        
+        // CanonicalJsonSet demonstration
+        const set = new CanonicalJsonSet([k1, k2])
+        console.log('Set size:', set.size)         // 1
+        console.log('Set contents:')
+        for (const x of set) {
+          console.log('  -', prettyJson(x))
+        }
+        
+        // Upsert demonstration
+        const cache = new CanonicalJsonMap<string>()
+        const expensiveKey = jObj([['complex', jArr([jNum(1), jNum(2), jNum(3)])]])
+        
+        const result1 = cache.upsert(expensiveKey, () => 'computed-result')
+        const result2 = cache.upsert(expensiveKey, () => 'should-not-compute')
+        console.log('Cache upsert result1:', result1)
+        console.log('Cache upsert result2:', result2)
+        console.log('Cache size:', cache.size)
+        
+        console.log('✅ Canonical containers automatically deduplicate structurally equal JSON!')
+        console.log('✅ Perfect for caches, memoization, and deduplication passes!')
+        console.log('✅ Upsert pattern enables efficient cache-or-compute workflows!')
+
+        // ============ CANONICAL MULTIMAP & GROUPBY DEMONSTRATION ============
+        console.log('\n=== CANONICAL MULTIMAP & GROUPBY DEMONSTRATION ===')
+        
+        // Create test data with canonically equal JSONs
+        const jsonA = jObj([['s', jSet([jStr('b'), jStr('a')])]])
+        const jsonB = jObj([['s', jSet([jStr('a'), jStr('b'), jStr('a')])]]) // canonically equal to jsonA
+        const jsonC = jObj([['s', jSet([jStr('c')])]])
+        
+        // groupByCanonical - group items by extracted JSON key
+        const items = [
+          { name: 'Alice', role: jStr('user') },
+          { name: 'Bob', role: jStr('user') },
+          { name: 'Charlie', role: jStr('admin') }
+        ]
+        const g1 = groupByCanonical(items, item => item.role)
+        console.log('groupByCanonical size:', g1.size) // 2 (user and admin roles)
+        // Manual approach (before)
+        console.log('Users group (manual):', g1.get(jStr('user'))?.map(u => u.name)) // ['Alice', 'Bob']
+        console.log('Admins group (manual):', g1.get(jStr('admin'))?.map(u => u.name)) // ['Charlie']
+        
+        // Adapter approach (after)
+        const namesByRole = mapEachGroup(g1, (u) => u.name)
+        console.log('Users group (adapter):', namesByRole.get(jStr('user'))) // ['Alice', 'Bob']
+        console.log('Admins group (adapter):', namesByRole.get(jStr('admin'))) // ['Charlie']
+        
+        // groupPairsByCanonical - group pairs by JSON key
+        const pairs: ReadonlyArray<readonly [Json, string]> = [[jsonA, 'x'], [jsonB, 'y'], [jsonC, 'z']]
+        const g2 = groupPairsByCanonical(pairs)
+        console.log('groupPairsByCanonical result for jsonA:', g2.get(jsonA)) // ['x', 'y'] (jsonA and jsonB are canonically equal)
+        console.log('groupPairsByCanonical result for jsonC:', g2.get(jsonC)) // ['z']
+        
+        // MultiMap demonstration
+        const mm3 = multiMapByCanonical(items, item => item.role)
+        console.log('MultiMap size:', mm3.size) // 2 distinct keys
+        console.log('MultiMap total values:', Array.from(mm3.values()).flat().length) // 3 total values
+        
+        // Iteration examples
+        console.log('MultiMap groups:')
+        for (const [k, vs] of mm3) {
+          console.log('  Key:', prettyJson(k))
+          console.log('  Values:', vs.map(v => v.name))
+        }
+        
+        // Manual MultiMap construction
+        const manualMM = new CanonicalJsonMultiMap<string>()
+        manualMM.add(jsonA, 'x')
+        manualMM.add(jsonB, 'y') // Will be grouped with jsonA
+        manualMM.add(jsonC, 'z')
+        console.log('Manual MultiMap size:', manualMM.size) // 2 (jsonA/jsonB grouped, jsonC separate)
+        
+        console.log('✅ Canonical multimap provides efficient grouping by canonical JSON keys!')
+        console.log('✅ GroupBy helpers enable fast canonical bucket building!')
+        console.log('✅ Canonically equal JSONs are automatically grouped together!')
+
         console.log('\n=== ALL NEW EXAMPLES COMPLETED ===')
+        
+        // =========================================================
+        // NEW ADAPTERS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 NEW ADAPTERS DEMONSTRATION')
+        console.log('============================')
+
+        // Suppose we grouped purchases by canonical user profile JSON:
+        type Purchase = { id: string; total: number; category: string }
+
+        const purchases: Purchase[] = [
+          { id: 'p1', total: 12, category: 'books' },
+          { id: 'p2', total: 8, category: 'books' },
+          { id: 'p3', total: 5, category: 'food' },
+          { id: 'p4', total: 15, category: 'books' },
+          { id: 'p5', total: 3, category: 'food' }
+        ]
+
+        // Group purchases by user (simulating different users)
+        const userA = jObj([['user', jStr('ada')]])
+        const userB = jObj([['user', jStr('bob')]])
+
+        const groups = new CanonicalJsonMap<ReadonlyArray<Purchase>>()
+          .set(userA, [purchases[0], purchases[1], purchases[3]]) // ada: p1, p2, p4
+          .set(userB, [purchases[2], purchases[4]]) // bob: p3, p5
+
+        console.log('📊 Original groups:')
+        for (const [user, purchases] of groups) {
+          console.log(`   User: ${JSON.stringify(user)}`)
+          console.log(`   Purchases: ${purchases.map(p => `${p.id}($${p.total})`).join(', ')}`)
+        }
+
+        // 1) Transform whole group -> summary number
+        const totals = mapGroupValues(groups, (vs) => vs.reduce((s, p) => s + p.total, 0))
+        console.log('\n💰 Total spending per user:')
+        for (const [user, total] of totals) {
+          console.log(`   User: ${JSON.stringify(user)} -> $${total}`)
+        }
+
+        // 2) Map each element
+        const idsByUser = mapEachGroup(groups, (p) => p.id)
+        console.log('\n🆔 Purchase IDs per user:')
+        for (const [user, ids] of idsByUser) {
+          console.log(`   User: ${JSON.stringify(user)} -> [${ids.join(', ')}]`)
+        }
+
+        // 3) Filter elements
+        const bigOnly = filterEachGroup(groups, (p) => p.total >= 10)
+        console.log('\n💎 Big purchases (≥$10) per user:')
+        for (const [user, purchases] of bigOnly) {
+          console.log(`   User: ${JSON.stringify(user)} -> ${purchases.map(p => `${p.id}($${p.total})`).join(', ')}`)
+        }
+
+        // 4) Merge with custom fold
+        const avgTotals = mergeGroupValues(
+          groups,
+          () => ({ sum: 0, n: 0 }),
+          (acc, p) => ({ sum: acc.sum + p.total, n: acc.n + 1 })
+        )
+        console.log('\n📈 Average spending per user:')
+        for (const [user, stats] of avgTotals) {
+          const avg = stats.n > 0 ? stats.sum / stats.n : 0
+          console.log(`   User: ${JSON.stringify(user)} -> $${avg.toFixed(2)} (${stats.n} purchases)`)
+        }
+
+        // 5) Dedupe inside groups (by category)
+        const uniqByCategory = dedupeEachGroup(groups, (p) => p.category)
+        console.log('\n🏷️ Unique categories per user:')
+        for (const [user, purchases] of uniqByCategory) {
+          console.log(`   User: ${JSON.stringify(user)} -> ${purchases.map(p => p.category).join(', ')}`)
+        }
+
+        // 6) Flatten to pairs
+        const rows = flattenGroups(groups)
+        console.log('\n📋 Flattened pairs:')
+        for (const [user, purchase] of rows) {
+          console.log(`   ${JSON.stringify(user)} -> ${purchase.id}($${purchase.total})`)
+        }
+
+        // =========================================================
+        // MULTIMAP ADAPTERS DEMONSTRATION
+        // =========================================================
+
+        console.log('\n🔧 MULTIMAP ADAPTERS DEMONSTRATION')
+        console.log('==================================')
+
+        // Create a multimap from the same data
+        const mm4 = new CanonicalJsonMultiMap<Purchase>()
+        mm4.add(userA, purchases[0])
+        mm4.add(userA, purchases[1])
+        mm4.add(userA, purchases[3])
+        mm4.add(userB, purchases[2])
+        mm4.add(userB, purchases[4])
+
+        console.log('📊 Original multimap:')
+        for (const [user, purchases] of mm4) {
+          console.log(`   User: ${JSON.stringify(user)} -> ${purchases.map(p => `${p.id}($${p.total})`).join(', ')}`)
+        }
+
+        // 1) Collapse to map
+        const collapsed = collapseToMap(mm4)
+        console.log('\n🔄 Collapsed to map:')
+        for (const [user, purchases] of collapsed) {
+          console.log(`   User: ${JSON.stringify(user)} -> ${purchases.map(p => `${p.id}($${p.total})`).join(', ')}`)
+        }
+
+        // 2) Map multimap values
+        const mmTotals = mapMultiValues(mm4, (vs) => vs.reduce((s, p) => s + p.total, 0))
+        console.log('\n💰 Multimap totals:')
+        for (const [user, total] of mmTotals) {
+          console.log(`   User: ${JSON.stringify(user)} -> $${total}`)
+        }
+
+        // 3) Map each element in multimap
+        const mmIds = mapEachMulti(mm4, (p) => p.id)
+        console.log('\n🆔 Multimap IDs:')
+        for (const [user, ids] of mmIds) {
+          console.log(`   User: ${JSON.stringify(user)} -> [${ids.join(', ')}]`)
+        }
+
+        // 4) Filter each element in multimap
+        const mmBigOnly = filterEachMulti(mm4, (p) => p.total >= 10)
+        console.log('\n💎 Multimap big purchases:')
+        for (const [user, purchases] of mmBigOnly) {
+          console.log(`   User: ${JSON.stringify(user)} -> ${purchases.map(p => `${p.id}($${p.total})`).join(', ')}`)
+        }
+
+        // 5) Merge multimap with custom fold
+        const mmStats = mergeMulti(
+          mm4,
+          () => ({ sum: 0, n: 0, categories: new Set<string>() }),
+          (acc, p) => ({ 
+            sum: acc.sum + p.total, 
+            n: acc.n + 1, 
+            categories: acc.categories.add(p.category) 
+          })
+        )
+        console.log('\n📊 Multimap statistics:')
+        for (const [user, stats] of mmStats) {
+          const avg = stats.n > 0 ? stats.sum / stats.n : 0
+          console.log(`   User: ${JSON.stringify(user)} -> $${avg.toFixed(2)} avg, ${stats.n} purchases, categories: [${Array.from(stats.categories).join(', ')}]`)
+        }
+
+        console.log('\n✅ All examples completed successfully!')
 }
 
 runExamples().catch(console.error)

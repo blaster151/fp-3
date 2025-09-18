@@ -1,6 +1,10 @@
-# tiny-fp
+# AI/Human Development Guidelines
 
-A compact, practical functional programming toolkit for TypeScript.
+*This file contains detailed processes for AI-assisted development. For human developers, see `HUMAN_DEV_GUIDELINES.md` for a concise overview.*
+
+## Overview
+
+This document provides systematic processes for AI-assisted development of the tiny-fp functional programming library.
 
 ## Features
 

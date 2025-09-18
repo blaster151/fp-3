@@ -995,7 +995,7 @@ export const productJsonAlg2Regular =
 export const sizeAndDepthJson = cataJson(productJsonAlg2Regular(Alg_Json_size, Alg_Json_depth))
 
 // Strings & size in a single traversal
-export const strsAndSizeJson = cataJson(productJsonAlg2Regular(Alg_Json_collectStrings, Alg_Json_size))
+export const strsAndSizeJson = cataJson(productJsonAlg2Regular(Alg_Json_collectStrs, Alg_Json_size))
 
 // ====================================================================
 // Canonicalization fold for Json
@@ -1044,13 +1044,9 @@ export const canonicalizeJson: (j: Json) => Json =
 
       case 'JSet': {
         // children are already canonical; dedup + sort by stable key
-        const keyed = f.items.map(x => [_canonicalStableKey(x), x] as const)
-        const uniq = new Map<string, Json>()
-        for (const [k, x] of keyed) uniq.set(k, x)
-        const sorted = Array.from(uniq.entries())
-          .sort(([k1], [k2]) => (k1 < k2 ? -1 : k1 > k2 ? 1 : 0))
-          .map(([, x]) => x)
-        return jSet(sorted)
+        // Use CanonicalJsonSet for automatic deduplication and canonical ordering
+        const canonicalSet = new CanonicalJsonSet(f.items)
+        return jSet(Array.from(canonicalSet))
       }
 
       case 'JObj': {
@@ -1473,6 +1469,129 @@ export const multiMapByCanonical = <T>(
 export const multiMapPairsByCanonical = <V>(
   pairs: ReadonlyArray<readonly [Json, V]>
 ): CanonicalJsonMultiMap<V> => CanonicalJsonMultiMap.from(pairs)
+
+// =========================================================
+// CanonicalJsonMap<ReadonlyArray<V>> adapters
+//   - mapGroupValues:    transform whole group -> W
+//   - mapEachGroup:      map each element in group -> U
+//   - filterEachGroup:   keep elements by predicate
+//   - mergeGroupValues:  fold group elements -> Acc
+//   - dedupeEachGroup:   deduplicate elements by key
+//   - flattenGroups:     to flat pairs [Json, V]
+// =========================================================
+
+export const mapGroupValues =
+  <V, W>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+         f: (values: ReadonlyArray<V>, key: Json) => W): CanonicalJsonMap<W> => {
+    const out = new CanonicalJsonMap<W>()
+    for (const [k, vs] of m) out.set(k, f(vs, k))
+    return out
+  }
+
+export const mapEachGroup =
+  <V, U>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+         f: (v: V, key: Json, index: number) => U): CanonicalJsonMap<ReadonlyArray<U>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<U>>()
+    for (const [k, vs] of m) out.set(k, vs.map((v, i) => f(v, k, i)) as ReadonlyArray<U>)
+    return out
+  }
+
+export const filterEachGroup =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+       p: (v: V, key: Json, index: number) => boolean): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs] of m) out.set(k, vs.filter((v, i) => p(v, k, i)) as ReadonlyArray<V>)
+    return out
+  }
+
+export const mergeGroupValues =
+  <V, Acc>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+           init: (key: Json) => Acc,
+           step: (acc: Acc, v: V, key: Json, index: number) => Acc): CanonicalJsonMap<Acc> => {
+    const out = new CanonicalJsonMap<Acc>()
+    for (const [k, vs] of m) {
+      let acc = init(k)
+      vs.forEach((v, i) => { acc = step(acc, v, k, i) })
+      out.set(k, acc)
+    }
+    return out
+  }
+
+export const dedupeEachGroup =
+  <V, K>(m: CanonicalJsonMap<ReadonlyArray<V>>,
+         keyOf: (v: V, key: Json) => K): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs] of m) {
+      const seen = new Set<K>()
+      const arr: V[] = []
+      for (const v of vs) {
+        const h = keyOf(v, k)
+        if (!seen.has(h)) { seen.add(h); arr.push(v) }
+      }
+      out.set(k, arr as ReadonlyArray<V>)
+    }
+    return out
+  }
+
+export const flattenGroups =
+  <V>(m: CanonicalJsonMap<ReadonlyArray<V>>): ReadonlyArray<readonly [Json, V]> => {
+    const out: Array<readonly [Json, V]> = []
+    for (const [k, vs] of m) for (const v of vs) out.push([k, v] as const)
+    return out
+  }
+
+// =========================================================
+// CanonicalJsonMultiMap<V> adapters
+//   - collapseToMap:   MultiMap -> CanonicalJsonMap<ReadonlyArray<V>>
+//   - mapMultiValues:  group -> W (like mapGroupValues)
+//   - mapEachMulti:    per-element map
+//   - filterEachMulti: per-element filter
+//   - mergeMulti:      fold group -> Acc
+// =========================================================
+
+export const collapseToMap =
+  <V>(mm: CanonicalJsonMultiMap<V>): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs] of mm) out.set(k, [...vs] as ReadonlyArray<V>)
+    return out
+  }
+
+export const mapMultiValues =
+  <V, W>(mm: CanonicalJsonMultiMap<V>,
+         f: (values: ReadonlyArray<V>, key: Json) => W): CanonicalJsonMap<W> => {
+    const out = new CanonicalJsonMap<W>()
+    for (const [k, vs] of mm) out.set(k, f(vs, k))
+    return out
+  }
+
+export const mapEachMulti =
+  <V, U>(mm: CanonicalJsonMultiMap<V>,
+         f: (v: V, key: Json, index: number) => U): CanonicalJsonMap<ReadonlyArray<U>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<U>>()
+    for (const [k, vs] of mm) out.set(k, vs.map((v, i) => f(v, k, i)) as ReadonlyArray<U>)
+    return out
+  }
+
+export const filterEachMulti =
+  <V>(mm: CanonicalJsonMultiMap<V>,
+       p: (v: V, key: Json, index: number) => boolean): CanonicalJsonMap<ReadonlyArray<V>> => {
+    const out = new CanonicalJsonMap<ReadonlyArray<V>>()
+    for (const [k, vs] of mm) out.set(k, vs.filter((v, i) => p(v, k, i)) as ReadonlyArray<V>)
+    return out
+  }
+
+export const mergeMulti =
+  <V, Acc>(mm: CanonicalJsonMultiMap<V>,
+           init: (key: Json) => Acc,
+           step: (acc: Acc, v: V, key: Json, index: number) => Acc): CanonicalJsonMap<Acc> => {
+    const out = new CanonicalJsonMap<Acc>()
+    for (const [k, vs] of mm) {
+      let acc = init(k)
+      vs.forEach((v, i) => { acc = step(acc, v, k, i) })
+      out.set(k, acc)
+    }
+    return out
+  }
 
 // 4) Sum all numbers (0 for others)
 export const Alg_Json_sumNumbers: JsonAlgebra<number> = (f) => {

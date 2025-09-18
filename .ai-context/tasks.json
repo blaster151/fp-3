@@ -1,0 +1,25 @@
+{
+  "tasks": {
+    "guidelines_refresh": {
+      "type": "counter",
+      "description": "Run after N prompts",
+      "action": "read_guidelines",
+      "threshold": 5,
+      "current": 0,
+      "lastRun": "2025-09-18T02:51:04.220Z"
+    },
+    "vitest_rerun": {
+      "type": "counter",
+      "description": "Run after N prompts",
+      "action": "run_vitest",
+      "threshold": 7,
+      "current": 5
+    },
+    "coverage_check": {
+      "type": "daily",
+      "description": "Run once per day",
+      "action": "check_coverage",
+      "lastRun": "2025-09-18T02:48:08.616Z"
+    }
+  }
+}
