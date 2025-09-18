@@ -783,6 +783,13 @@ export const ConstEndo = <C>(): EndofunctorK1<['Const', C]> => ({
   map: <A, B>(_f: (a: A) => B) => (c: C): C => c
 })
 
+export const EitherEndo = <E>(): EndofunctorK1<['Either', E]> => ({
+  map: <A, B>(f: (a: A) => B) => (eab: Result<E, A>): Result<E, B> => mapR<E, A, B>(f)(eab)
+})
+
+// Const functor: Const<C, A> ≅ C (ignores the A parameter)
+export type Const<C, A> = C
+
 // Additional strength helpers for Pair and Const
 export const strengthEnvFromPair = <E>() => <C>(): StrengthEnv<['Pair', C], E> => ({
   st: <A>(p: readonly [C, Env<E, A>]) => [p[1][0], [p[0], p[1][1]] as const] as const
@@ -10361,6 +10368,280 @@ export const hoistEndo =
       }
     }
   }
+
+// ---------------------------------------------------------------------
+// Build a natural transformation by STRUCTURE-ALIGNMENT of two EndoTerms.
+// If shapes mismatch (e.g. Sum vs Prod, Pair<C1> vs Pair<C2>), we throw.
+// For Base/Base we ask you for a base-level NT via `pickBase`.
+// Returns both endofunctors (from/to) and the synthesized NatK1.
+// ---------------------------------------------------------------------
+
+export type AlignBuild<S1 extends string, S2 extends string> = {
+  from: EndofunctorK1<any>
+  to:   EndofunctorK1<any>
+  nat:  NatK1<any, any>
+}
+
+export class EndoTermAlignError extends Error {
+  constructor(msg: string) { super(`[EndoTerm align] ${msg}`) }
+}
+
+/**
+ * Align two EndoTerms and synthesize a NatK1 by structural recursion.
+ *
+ * @param d1  dictionary for left/base symbols
+ * @param d2  dictionary for right/base symbols
+ * @param pickBase  (nameL,nameR) -> NatK1 for Base/Base leaves (return null to fail)
+ */
+export const buildNatForTerms =
+  <S1 extends string, S2 extends string>(
+    d1: EndoDict<S1>,
+    d2: EndoDict<S2>,
+    pickBase: (nameL: S1, nameR: S2) => NatK1<any, any> | null
+  ) =>
+  (t1: EndoTerm<S1>, t2: EndoTerm<S2>): AlignBuild<S1, S2> => {
+
+    const go = (a: EndoTerm<any>, b: EndoTerm<any>): AlignBuild<any, any> => {
+      if (a.tag !== b.tag) throw new EndoTermAlignError(`shape mismatch: ${a.tag} vs ${b.tag}`)
+
+      switch (a.tag) {
+        case 'Id': {
+          return { from: IdK1, to: IdK1, nat: idNatK1() }
+        }
+
+        case 'Base': {
+          const bBase = b as { tag: 'Base'; name: S2 }
+          const F = d1[a.name as S1]
+          const G = d2[bBase.name]
+          const nat = pickBase(a.name as S1, bBase.name)
+          if (!nat) throw new EndoTermAlignError(`no base NT for ${String(a.name)} ⇒ ${String(bBase.name)}`)
+          return { from: F, to: G, nat }
+        }
+
+        case 'Sum': {
+          const L = go(a.left,  (b as any).left)
+          const R = go(a.right, (b as any).right)
+          return {
+            from: SumEndo(L.from, R.from),
+            to:   SumEndo(L.to,   R.to),
+            nat:  sumNat(L.nat, R.nat),
+          }
+        }
+
+        case 'Prod': {
+          const L = go(a.left,  (b as any).left)
+          const R = go(a.right, (b as any).right)
+          return {
+            from: ProdEndo(L.from, R.from),
+            to:   ProdEndo(L.to,   R.to),
+            nat:  prodNat(L.nat, R.nat),
+          }
+        }
+
+        case 'Comp': {
+          const L = go(a.left,  (b as any).left)   // α : L.from ⇒ L.to
+          const R = go(a.right, (b as any).right)  // β : R.from ⇒ R.to
+          return {
+            from: composeEndoK1(L.from, R.from),
+            to:   composeEndoK1(L.to,   R.to),
+            nat:  hcompNatK1_component(L.from)(L.nat, R.nat), // (α ▷ β)
+          }
+        }
+
+        case 'Pair': {
+          if (a.C !== (b as any).C)
+            throw new EndoTermAlignError(`Pair constants differ: ${String(a.C)} vs ${String((b as any).C)}`)
+          const F = PairEndo<any>()
+          return { from: F, to: F, nat: idNatK1() }
+        }
+
+        case 'Const': {
+          if (a.C !== (b as any).C)
+            throw new EndoTermAlignError(`Const values differ: ${String(a.C)} vs ${String((b as any).C)}`)
+          const F = ConstEndo<any>()
+          return { from: F, to: F, nat: idNatK1() }
+        }
+      }
+    }
+
+    return go(t1, t2)
+  }
+
+// =====================================================================
+// Traversable registry (by functor VALUE identity) + helpers
+// =====================================================================
+export type TraversableRegistryK1 = WeakMap<EndofunctorK1<any>, TraversableK1<any>>
+
+export const makeTraversableRegistryK1 = () => {
+  const reg: TraversableRegistryK1 = new WeakMap()
+  const register = <F>(F: EndofunctorK1<F>, T: TraversableK1<F>): EndofunctorK1<F> => {
+    reg.set(F as any, T as any)
+    return F
+  }
+  const get = <F>(F: EndofunctorK1<F>): TraversableK1<F> | null =>
+    (reg.get(F as any) as any) ?? null
+  return { reg, register, get }
+}
+
+// ---------------------------------------------------------------------
+// TraversableK1 instances
+// ---------------------------------------------------------------------
+
+// Option
+export const TraversableOptionK1: TraversableK1<'Option'> = {
+  traverse: <G>(G: SimpleApplicativeK1<G>) =>
+    <A, B>(f: (a: A) => any) =>
+    (oa: Option<A>) =>
+      oa._tag === 'Some'
+        ? G.map((b: B) => Some(b))(f(oa.value))
+        : G.of<Option<B>>(None)
+}
+
+// Either<L,_>
+export const TraversableEitherK1 =
+  <L>(): TraversableK1<['Either', L]> => ({
+    traverse: <G>(G: SimpleApplicativeK1<G>) =>
+      <A, B>(f: (a: A) => any) =>
+      (eab: Result<L, A>) => // Using Result as Either
+        eab._tag === 'Ok'
+          ? G.map((b: B) => Ok<B>(b))(f(eab.value))
+          : G.of<Result<L, B>>(Err<L>(eab.error))
+  })
+
+// NonEmptyArray
+export type NEA<A> = readonly [A, ...A[]]
+
+export const TraversableNEAK1: TraversableK1<['NEA']> = {
+  traverse: <G>(G: SimpleApplicativeK1<G>) =>
+    <A, B>(f: (a: A) => any) =>
+    (nea: NEA<A>) => {
+      const [h, ...t] = nea
+      // start with head
+      let acc: any = G.map((b: B) => [b] as NEA<B>)(f(h))
+      // push each tail element
+      for (const a of t) {
+        const cons = G.map((xs: NEA<B>) => (b: B) => [...xs, b] as NEA<B>)(acc)
+        acc = G.ap(cons)(f(a))
+      }
+      return acc // G<NEA<B>>
+    }
+}
+
+// Ready-made traversables for parameterized functors
+export const TraversablePairK1 = <C>(): TraversableK1<['Pair', C]> => ({
+  traverse: <G>(G: SimpleApplicativeK1<G>) =>
+    <A, B>(f: (a: A) => any) =>
+    (ca: Pair<C, A>) =>
+      G.map((b: B) => [ca[0], b] as const)(f(ca[1]))
+})
+
+export const TraversableConstK1 = <C>(): TraversableK1<['Const', C]> => ({
+  traverse: <G>(G: SimpleApplicativeK1<G>) =>
+    <A, B>(_f: (a: A) => any) =>
+    (cx: C) => // Const<C, A> is just C
+      G.of(cx as any as C) // Const<C, B> is still just C
+})
+
+// Derive traversable for Sum/Prod/Comp from components
+export const deriveTraversableSumK1 =
+  <F, G>(TF: TraversableK1<F>, TG: TraversableK1<G>): TraversableK1<['Sum', F, G]> => ({
+    traverse: <App>(App: SimpleApplicativeK1<App>) =>
+      <A, B>(f: (a: A) => any) =>
+      (v: SumVal<F, G, A>) =>
+        v._sum === 'L'
+          ? App.map((fb: any) => inL<F, G, B>(fb))(TF.traverse(App)(f)(v.left))
+          : App.map((gb: any) => inR<F, G, B>(gb))(TG.traverse(App)(f)(v.right))
+  })
+
+export const deriveTraversableProdK1 =
+  <F, G>(TF: TraversableK1<F>, TG: TraversableK1<G>): TraversableK1<['Prod', F, G]> => ({
+    traverse: <App>(App: SimpleApplicativeK1<App>) =>
+      <A, B>(f: (a: A) => any) =>
+      (p: ProdVal<F, G, A>) => {
+        const lf = TF.traverse(App)(f)(p.left)
+        const rf = TG.traverse(App)(f)(p.right)
+        const ap2 = <X, Y, Z>(gxy: any, gy: any) =>
+          App.ap(App.map((x: X) => (y: Y) => ({ left: x, right: y } as ProdVal<F, G, Z>))(gxy))(gy)
+        return ap2(lf, rf)
+      }
+  })
+
+export const deriveTraversableCompK1 =
+  <F, G>(TF: TraversableK1<F>, TG: TraversableK1<G>): TraversableK1<['Comp', F, G]> => ({
+    traverse: <App>(App: SimpleApplicativeK1<App>) =>
+      <A, B>(f: (a: A) => any) =>
+      (fga: any) =>
+        TF.traverse(App)((ga: any) => TG.traverse(App)(f)(ga))(fga)
+  })
+
+// Register common families (return the same Endo value you should use elsewhere)
+export const registerEitherTraversable =
+  <E>(R: ReturnType<typeof makeTraversableRegistryK1>, tag?: E) => {
+    const F = ResultK1<E>() // Using Result as Either
+    const T = TraversableEitherK1<E>()
+    return R.register(F as any, T as any)
+  }
+
+export const registerPairTraversable =
+  <C>(R: ReturnType<typeof makeTraversableRegistryK1>) => {
+    const F = PairEndo<C>()
+    const T = TraversablePairK1<C>()
+    return R.register(F as any, T as any)
+  }
+
+export const registerConstTraversable =
+  <C>(R: ReturnType<typeof makeTraversableRegistryK1>) => {
+    const F = ConstEndo<C>()
+    const T = TraversableConstK1<C>()
+    return R.register(F as any, T as any)
+  }
+
+// Compose/derive & register at runtime from parts already in registry
+export const registerSumDerived =
+  <F, G>(R: ReturnType<typeof makeTraversableRegistryK1>, FEndo: EndofunctorK1<F>, GEndo: EndofunctorK1<G>) => {
+    const TF = R.get(FEndo); const TG = R.get(GEndo)
+    if (!TF || !TG) throw new Error('registerSumDerived: missing component traversables')
+    const FE = SumEndo(FEndo, GEndo)
+    const TT = deriveTraversableSumK1(TF as any, TG as any)
+    return R.register(FE as any, TT as any)
+  }
+
+export const registerProdDerived =
+  <F, G>(R: ReturnType<typeof makeTraversableRegistryK1>, FEndo: EndofunctorK1<F>, GEndo: EndofunctorK1<G>) => {
+    const TF = R.get(FEndo); const TG = R.get(GEndo)
+    if (!TF || !TG) throw new Error('registerProdDerived: missing component traversables')
+    const FE = ProdEndo(FEndo, GEndo)
+    const TT = deriveTraversableProdK1(TF as any, TG as any)
+    return R.register(FE as any, TT as any)
+  }
+
+export const registerCompDerived =
+  <F, G>(R: ReturnType<typeof makeTraversableRegistryK1>, FEndo: EndofunctorK1<F>, GEndo: EndofunctorK1<G>) => {
+    const TF = R.get(FEndo); const TG = R.get(GEndo)
+    if (!TF || !TG) throw new Error('registerCompDerived: missing component traversables')
+    const FE = composeEndoK1(FEndo, GEndo)
+    const TT = deriveTraversableCompK1(TF as any, TG as any)
+    return R.register(FE as any, TT as any)
+  }
+
+// Lax 2-functor (Promise postcompose) that consults the registry
+export const makePostcomposePromise2WithRegistry = (R: TraversableRegistryK1): LaxTwoFunctorK1 =>
+  makePostcomposePromise2(<F>(FEndo: EndofunctorK1<F>) => (R.get(FEndo as any) as any) ?? null)
+
+// ---------------------------------------------------------------------
+// Result<E,_>: factory to adapt your existing Ok/Err tags without imports.
+// Provide a tag check and constructors so we don't collide with your names.
+// ---------------------------------------------------------------------
+export const makeTraversableResultK1 =
+  <E>(isOk: (r: any) => boolean, getOk: (r: any) => any, getErr: (r: any) => E,
+      OkCtor: <A>(a: A) => any, ErrCtor: (e: E) => any): TraversableK1<['Result', E]> => ({
+    traverse: <G>(G: SimpleApplicativeK1<G>) =>
+      <A, B>(f: (a: A) => any) =>
+      (r: any) =>
+        isOk(r)
+          ? G.map((b: B) => OkCtor(b))(f(getOk(r)))
+          : G.of(ErrCtor(getErr(r)))
+  })
 
 // =======================
 // Development Utilities (Dev-Only)
