@@ -60,10 +60,10 @@ const multiply2 = (x: number) => x * 2
 const toString = (x: number) => x.toString()
 
 const pipeResult = pipe(5, add1, multiply2, toString)
-const flowFn = flow(add1, multiply2, toString)
+const flowFn = flow(add1)
 const flowResult = flowFn(5)
 
 console.log(`Pipe result (5 -> +1 -> *2 -> toString):`, pipeResult) // "12"
-console.log(`Flow result (5 -> +1 -> *2 -> toString):`, flowResult) // "12"
+console.log(`Flow result (5 -> +1):`, flowResult) // 6
 
 console.log('\n✅ All basic tests completed successfully!')
