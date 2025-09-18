@@ -11948,111 +11948,133 @@ const bad = divE(lit(1), add(vvar("d"), neg(vvar("d")))) // 1 / (d + (-d)) = 1/0
 const r1 = runReader(evalExprRR_app(bad), { d: 3 })      // Err("div by zero")
 
 // ===============================================================
-// Gluing for records (descent over a finite key cover)
-//   - A "space" is a key-set K (keys are PropertyKey)
-//   - An open cover is { U_i ⊆ K }_i  (as Sets of keys)
-//   - A section on U_i is a record with exactly those keys
-//   - Descent data = sections { s_i } that agree on overlaps U_i ∩ U_j
-//   - glueRecordCover validates descent and (if ok) returns the glued section on ⋃U_i
+// Generic descent/glue kit
+//   - Works over any index type I (keys you glue along),
+//     local pieces Xi, overlap observations Oij, and final A.
+//   - You supply: how to "restrict" to overlaps, equality on overlaps,
+//     optional completeness checks, and how to assemble the global.
 // ===============================================================
 
+export type GlueKit<I extends PropertyKey, Xi, Oij, A> = {
+  readonly cover: ReadonlyArray<I>
+  readonly restrict: (i: I, j: I) => (xi: Xi) => Oij
+  readonly eqO: Eq<Oij>
+  readonly assemble: (sections: Readonly<Record<I, Xi>>) => A
+  readonly completeness?: (i: I, xi: Xi) => ReadonlyArray<string> // empty => ok
+}
+
+export type GlueErr<I extends PropertyKey, Oij> =
+  | { _tag: 'Incomplete'; i: I; details: ReadonlyArray<string> }
+  | { _tag: 'Conflict';  i: I; j: I; left: Oij; right: Oij }
+
+export const checkDescent =
+  <I extends PropertyKey, Xi, Oij, A>(
+    kit: GlueKit<I, Xi, Oij, A>,
+    secs: Readonly<Record<I, Xi>>
+  ): Validation<GlueErr<I, Oij>, true> => {
+    const errs: GlueErr<I, Oij>[] = []
+    const ids = kit.cover
+
+    // 1) completeness per piece (optional)
+    if (kit.completeness) {
+      for (const i of ids) {
+        const issues = kit.completeness(i, secs[i])
+        if (issues.length) errs.push({ _tag: 'Incomplete', i, details: issues })
+      }
+    }
+
+    // 2) compatibility on all overlaps
+    for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) {
+      const i = ids[a]!, j = ids[b]!
+      const rij = kit.restrict(i, j)(secs[i])
+      const rji = kit.restrict(j, i)(secs[j])
+      if (!kit.eqO(rij, rji)) errs.push({ _tag: 'Conflict', i, j, left: rij, right: rji })
+    }
+
+    return errs.length ? VErr(...errs) : VOk(true as const)
+  }
+
+export const glue =
+  <I extends PropertyKey, Xi, Oij, A>(
+    kit: GlueKit<I, Xi, Oij, A>,
+    secs: Readonly<Record<I, Xi>>
+  ): Validation<GlueErr<I, Oij>, A> => {
+    const ok = checkDescent(kit, secs)
+    return isVErr(ok) ? ok as any : VOk(kit.assemble(secs))
+  }
+
+// ===============================================================
+// Record-based gluing (keys as "opens")
+// ===============================================================
 export type RecordCover<I extends PropertyKey, K extends PropertyKey> =
   Readonly<Record<I, ReadonlySet<K>>>
-
 export type Sections<I extends PropertyKey, K extends PropertyKey, A> =
   Readonly<Record<I, Readonly<Partial<Record<K, A>>>>>
 
-export type GlueError<I extends PropertyKey, K extends PropertyKey, A> =
-  | { _tag: 'Incomplete'; i: I; missing: ReadonlyArray<K> }
-  | { _tag: 'Conflict';  i: I; j: I; key: K; left: A; right: A }
-
-const setIntersect = <T>(a: ReadonlySet<T>, b: ReadonlySet<T>): ReadonlyArray<T> => {
-  const out: T[] = []
-  for (const x of a) if (b.has(x)) out.push(x)
-  return out
+const intersect = <T>(a: ReadonlySet<T>, b: ReadonlySet<T>): ReadonlyArray<T> => {
+  const out: T[] = []; for (const x of a) if (b.has(x)) out.push(x); return out
 }
 
-const setUnion = <T>(sets: ReadonlyArray<ReadonlySet<T>>): ReadonlyArray<T> => {
-  const u = new Set<T>()
-  for (const s of sets) for (const x of s) u.add(x)
-  return [...u]
+const eqRecordOn =
+  <K extends PropertyKey, A>(eqA: Eq<A>) =>
+  (keys: ReadonlyArray<K>) =>
+  (x: Readonly<Record<K, A>>, y: Readonly<Record<K, A>>): boolean =>
+    keys.every(k => eqA(x[k], y[k]))
+
+const pickRecord = <K extends PropertyKey, A>(r: Readonly<Record<K, A>>, ks: ReadonlyArray<K>): Readonly<Record<K, A>> => {
+  const o: Partial<Record<K, A>> = {}; for (const k of ks) if (k in r) o[k] = r[k]; return o as any
 }
 
-const pickKeys = <K extends PropertyKey, A>(obj: Readonly<Record<K, A>>, keys: ReadonlyArray<K>): Readonly<Record<K, A>> => {
-  const r: Partial<Record<K, A>> = {}
-  for (const k of keys) if (k in obj) r[k] = obj[k]
-  return r as Record<K, A>
-}
-
-/**
- * Restriction maps for a record cover:
- *   res(i,j)(s_i) = s_i restricted to U_i ∩ U_j
- */
-export const resRecord =
-  <I extends PropertyKey, K extends PropertyKey, A>(cover: RecordCover<I, K>) =>
-  (i: I, j: I) =>
-  (si: Readonly<Partial<Record<K, A>>>): Readonly<Partial<Record<K, A>>> =>
-    pickKeys(si as any, setIntersect(cover[i], cover[j])) as any
-
-/**
- * Check the descent condition for sections over a cover:
- *   res(i,j)(s_i) == res(j,i)(s_j) on all overlaps.
- * Also verifies each section covers its declared open (no missing keys).
- */
-export const checkDescentByEq =
+export const mkRecordGlueKit =
   <I extends PropertyKey, K extends PropertyKey, A>(
     cover: RecordCover<I, K>,
-    secs : Sections<I, K, A>,
-    eq: Eq<A> = eqStrict<A>()
-  ): Validation<GlueError<I, K, A>, true> => {
-    const errors: GlueError<I, K, A>[] = []
-
-    // completeness: each s_i must have all keys in U_i
-    for (const i in cover) {
-      const need = [...cover[i] as Set<K>]
-      const missing = need.filter(k => !(k in secs[i]))
-      if (missing.length) errors.push({ _tag: 'Incomplete', i: i as I, missing })
-    }
-
-    // compatibility: for all i<j, values must agree on U_i∩U_j
+    eqA: Eq<A> = eqStrict<A>()
+  ): GlueKit<I, Readonly<Record<K, A>>, Readonly<Record<K, A>>, Readonly<Record<K, A>>> => {
     const ids = Object.keys(cover) as I[]
-    for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) {
-      const i = ids[a]!, j = ids[b]!
-      const overlap = setIntersect(cover[i], cover[j])
-      const si = secs[i], sj = secs[j]
-      for (const k of overlap) {
-        const vi = si[k], vj = sj[k]
-        if (!eq(vi, vj)) errors.push({ _tag: 'Conflict', i, j, key: k, left: vi, right: vj })
-      }
+
+    const restrict = (i: I, j: I) => (ri: Readonly<Record<K, A>>) =>
+      pickRecord(ri, intersect(cover[i], cover[j]))
+
+    const eqO = (x: Readonly<Record<K, A>>, y: Readonly<Record<K, A>>) =>
+      eqRecordOn(eqA)(Object.keys(x) as K[])(x, y) &&
+      eqRecordOn(eqA)(Object.keys(y) as K[])(x, y)
+
+    const completeness = (i: I, ri: Readonly<Record<K, A>>) => {
+      const need = [...cover[i] as Set<K>]
+      const miss = need.filter(k => !(k in ri))
+      return miss.length ? miss.map(k => `missing ${String(k)}`) : []
     }
 
-    return errors.length ? VErr(...errors) : VOk(true as const)
+    const assemble = (secs: Readonly<Record<I, Readonly<Record<K, A>>>>) => {
+      // union of all keys in the cover
+      const all = new Set<K>(); for (const i of ids) for (const k of cover[i]) all.add(k)
+      const out: Partial<Record<K, A>> = {}
+      // since descent holds, any section defining k has the same value
+      for (const k of all) {
+        for (const i of ids) {
+          const ri = secs[i]; if (k in ri) { out[k] = ri[k]; break }
+        }
+      }
+      return out as Readonly<Record<K, A>>
+    }
+
+    return { cover: ids, restrict, eqO, completeness, assemble }
   }
 
-/**
- * Glue compatible sections into a single global record on ⋃U_i.
- * Returns Validation of errors if descent fails.
- */
+// Legacy API compatibility
 export const glueRecordCover =
   <I extends PropertyKey, K extends PropertyKey, A>(
     cover: RecordCover<I, K>,
-    secs : Sections<I, K, A>,
+    secs: Sections<I, K, A>,
     eq: Eq<A> = eqStrict<A>()
-  ): Validation<GlueError<I, K, A>, Readonly<Partial<Record<K, A>>>> => {
-    const ok = checkDescentByEq(cover, secs, eq)
-    if (isVErr(ok)) return ok as any
+  ) => glue(mkRecordGlueKit(cover, eq), secs)
 
-    // merge: since compatible, any defining piece yields the same value
-    const allKeys = setUnion(Object.values(cover) as ReadonlyArray<ReadonlySet<K>>)
-    const result: Partial<Record<K, A>> = {}
-    for (const k of allKeys) {
-      // find first piece that defines k
-      for (const i in secs) {
-        const si = secs[i]
-        if (k in si) { result[k] = si[k]; break }
-      }
-    }
-    return VOk(result as Readonly<Partial<Record<K, A>>>)
+export const resRecord =
+  <I extends PropertyKey, K extends PropertyKey, A>(cover: RecordCover<I, K>) =>
+  (i: I, j: I) =>
+  (si: Readonly<Partial<Record<K, A>>>): Readonly<Partial<Record<K, A>>> => {
+    const kit = mkRecordGlueKit(cover)
+    return kit.restrict(i, j)(si as any) as any
   }
 
 // ---------- Fused hylo demo (Expr or Json as you like) ----------
