@@ -876,59 +876,96 @@ export const CoKleisli =
       }
   })
 
-// ==================== Store comonad ====================
-// Canonical presentation: peek + focused position
+// ===============================================================
+// Store<S, A> comonad  (aka "indexed context")
+//   Intuition: a focus `pos : S` and a total observation `peek : S -> A`.
+//   Functor maps *results* (post-compose peek), comonad can:
+//     - extract: read A at the current position
+//     - duplicate: reindex so every S-point gets its own focused Store
+//     - extend: compute B from neighborhoods (co-Kleisli lift)
+// ===============================================================
 export type Store<S, A> = {
-  readonly peek: (s: S) => A
   readonly pos: S
+  readonly peek: (s: S) => A
 }
 
-export const StoreC = {
-  map:
-    <A, B>(f: (a: A) => B) =>
-    <S>(sa: Store<S, A>): Store<S, B> =>
-      ({ peek: (s) => f(sa.peek(s)), pos: sa.pos }),
-
-  extract:
-    <S, A>(sa: Store<S, A>): A =>
-      sa.peek(sa.pos),
-
-  extend:
-    <A, B>(f: (w: Store<any, A>) => B) =>
-    <S>(sa: Store<S, A>): Store<S, B> =>
-      ({
-        peek: (s: S) => f({ peek: sa.peek, pos: s }),
-        pos: sa.pos
-      }),
-
-  duplicate:
-    <S, A>(sa: Store<S, A>): Store<S, Store<S, A>> =>
-      ({ peek: (s: S) => ({ peek: sa.peek, pos: s }), pos: sa.pos }),
-
-} satisfies ComonadK1<'Store'> as any
-
-// Store-specific extras (not part of ComonadK1)
-export const StoreExtras = {
-  seek:
-    <S>(s: S) =>
-    <A>(sa: Store<S, A>): Store<S, A> =>
-      ({ peek: sa.peek, pos: s }),
-
-  peeks:
-    <S>(k: (s: S) => S) =>
-    <A>(sa: Store<S, A>): A =>
-      sa.peek(k(sa.pos)),
-
-  // with Lens: move focus via lens (nice with your optics)
-  //   focus a lens S <-> B to turn a Store<S,A> into Store<B,A>
-  reindexWithLens:
-    <S, B>(ln: { get: (s: S) => B; set: (b: B) => (s: S) => S }) =>
-    <A>(sa: Store<S, A>): Store<B, A> =>
-      ({
-        peek: (b: B) => sa.peek(ln.set(b)(sa.pos)),
-        pos: ln.get(sa.pos)
+// Endofunctor instance for Store<S,_>
+export const StoreEndo =
+  <S>(): EndofunctorK1<['Store', S]> => ({
+    map:
+      <A, B>(f: (a: A) => B) =>
+      (w: Store<S, A>): Store<S, B> => ({
+        pos: w.pos,
+        peek: (s: S) => f(w.peek(s)),
       })
-}
+  })
+
+// Comonad instance
+export const StoreComonad =
+  <S>(): ComonadK1<['Store', S]> => {
+    const F = StoreEndo<S>()
+    return {
+      ...F,
+      extract: <A>(w: Store<S, A>): A => w.peek(w.pos),
+      duplicate: <A>(w: Store<S, A>): Store<S, Store<S, A>> => ({
+        pos: w.pos,
+        peek: (s: S) => ({ pos: s, peek: w.peek }),
+      }),
+      extend:
+        <A, B>(f: (w: Store<S, A>) => B) =>
+        (w: Store<S, A>): Store<S, B> => ({
+          pos: w.pos,
+          peek: (s: S) => f({ pos: s, peek: w.peek }),
+        }),
+    }
+  }
+
+// Handy helpers
+export const seek =
+  <S>(s: S) =>
+  <A>(w: Store<S, A>): Store<S, A> =>
+    ({ pos: s, peek: w.peek })
+
+export const peeks =
+  <S>(k: (s: S) => S) =>
+  <A>(w: Store<S, A>): Store<S, A> =>
+    ({ pos: w.pos, peek: (s: S) => w.peek(k(s)) })
+
+// Build a Store from an array (indexing with clamp)
+export const storeFromArray =
+  <A>(xs: ReadonlyArray<A>, start = 0): Store<number, A> => {
+    const n = xs.length
+    if (n === 0) throw new Error('storeFromArray: empty array')
+    const clamp = (i: number) => (i < 0 ? 0 : i >= n ? n - 1 : i)
+    return {
+      pos: clamp(start),
+      peek: (i: number) => xs[clamp(i)]!,
+    }
+  }
+
+// Collect a Store<number, A> into an array snapshot of length n
+export const collectStore =
+  <A>(n: number) =>
+  (w: Store<number, A>): ReadonlyArray<A> =>
+    Array.from({ length: n }, (_, i) => seek<number>(i)(w).peek(i))
+
+// ===============================================================
+// Co-Kleisli usage: 3-point moving average over a numeric array
+//   We "extend" a local computation over the whole Store: each index
+//   gets the average of (i-1, i, i+1), clamped at edges.
+// ===============================================================
+export const movingAvg3 =
+  (w: Store<number, number>): Store<number, number> => {
+    const WC = StoreComonad<number>()
+    const avg = (ctx: Store<number, number>): number => {
+      const i = ctx.pos
+      const a = ctx.peek(i - 1)
+      const b = ctx.peek(i)
+      const c = ctx.peek(i + 1)
+      return (a + b + c) / 3
+    }
+    return WC.extend(avg)(w)
+  }
 
 // ==================== Env (product) comonad ====================
 // A context value E carried along with A
