@@ -858,23 +858,78 @@ export const PairComonad =
       [wa[0], f(wa)] as const
   })
 
-// =============== Co-Kleisli category ===============
-// Co-Kleisli for W
-export const CoKleisli =
+// ===============================================================
+// Co-Kleisli category for a comonad W
+//   Morphisms A -> B are functions  f̂ : W<A> -> B
+//   id = extract
+//   ĝ ∘ f̂ = ĝ ∘ extend(f̂)
+// ===============================================================
+export const CoKleisliK1 =
   <W>(W: ComonadK1<W>) => ({
-    id: <A>(): ((a: A) => any /* W<A> */) =>
-      (a: A) => W.duplicate(W.map((_x: A) => a)(W.extract as any) as any) /* not used directly */,
-    // Better: concrete builders below.
-    arr: <A, B>(f: (a: A) => B) => (a: A) => (W as any).extend((_wa: any) => f(a))((W as any).duplicate as any), // rarely used
-
-    // Practical composition: g ∘_CoK f :: A -> W<C>
-    compose: <A, B, C>(g: (b: B) => any, f: (a: A) => any) =>
-      (a: A) => {
-        const wb = f(a)                 // W<B>
-        const h  = (_wb: any) => W.extract(g(W.extract(wb))) // B -> C via g; evaluated "around" wb
-        return W.extend((_wb: any) => h(_wb))(wb)           // W<C>
-      }
+    id: <A>(): ((wa: any /* W<A> */) => A) => W.extract as any,
+    compose:
+      <A, B, C>(gHat: (wb: any /* W<B> */) => C, fHat: (wa: any /* W<A> */) => B) =>
+      (wa: any /* W<A> */): C =>
+        gHat(W.extend(fHat as any)(wa)),
+    // lift a plain h : A -> B into co-Kleisli ĥ = h ∘ extract
+    arr: <A, B>(h: (a: A) => B) => (wa: any) => h(W.extract(wa))
   })
+
+// ===============================================================
+// Simplicial object induced by a comonad W
+//   X_n  = W^{n+1}   (n >= 0)
+//   d_i : X_n => X_{n-1}  (0 <= i <= n)    via inserting extract at i
+//   s_i : X_n => X_{n+1}  (0 <= i <= n)    via inserting duplicate at i
+//   aug : X_0 => Id        (the ε : W => Id)
+// ===============================================================
+
+// functor power: W^n as an EndofunctorK1
+export const powEndoK1 =
+  <W>(W: EndofunctorK1<W>, n: number): EndofunctorK1<any> => ({
+    map: <A, B>(f: (a: A) => B) => {
+      let g: any = f
+      for (let i = 0; i < n; i++) g = (W.map as any)(g)
+      return g
+    }
+  })
+
+export type SimplicialFromComonadK1 = {
+  // X_n = W^{n+1}
+  X: (n: number) => EndofunctorK1<any>
+  // faces / degeneracies as natural transformations
+  d: (n: number, i: number) => NatK1<any, any> // X_n => X_{n-1}
+  s: (n: number, i: number) => NatK1<any, any> // X_n => X_{n+1}
+  // augmentation ε : X_0 => Id
+  aug: NatK1<any, 'Id'>
+}
+
+export const makeSimplicialFromComonadK1 =
+  <W>(W: ComonadK1<W>): SimplicialFromComonadK1 => {
+    // X_n: W^{n+1}
+    const X = (n: number): EndofunctorK1<any> => powEndoK1(W, n + 1)
+
+    // face d_i^n : W^{n+1}A -> W^{n}A
+    const d = (n: number, i: number): NatK1<any, any> => ({
+      app: <A>(val: any) => {
+        const go = (m: number, j: number, x: any): any =>
+          j === 0 ? W.extract(x) : W.map((y: any) => go(m - 1, j - 1, y))(x)
+        return go(n, i, val)
+      }
+    })
+
+    // degeneracy s_i^n : W^{n+1}A -> W^{n+2}A
+    const s = (n: number, i: number): NatK1<any, any> => ({
+      app: <A>(val: any) => {
+        const go = (m: number, j: number, x: any): any =>
+          j === 0 ? W.duplicate(x) : W.map((y: any) => go(m - 1, j - 1, y))(x)
+        return go(n, i, val)
+      }
+    })
+
+    const aug: NatK1<any, 'Id'> = { app: <A>(wa: any) => W.extract(wa) }
+
+    return { X, d, s, aug }
+  }
 
 // ===============================================================
 // Store<S, A> comonad  (aka "indexed context")
@@ -966,6 +1021,53 @@ export const movingAvg3 =
     }
     return WC.extend(avg)(w)
   }
+
+// ===============================================================
+// Store + Lens integration: focus on nested fields
+//   Run comonadic computations over a nested field without rebuilding
+//   the entire structure. Perfect FP + optics + comonad trifecta!
+// ===============================================================
+
+// Note: Using existing Lens type from line 6086
+
+// Focus a Store through a lens: Store<S, T> -> Lens<T, A> -> Store<S, A>
+export const focusStoreWithLens =
+  <S, T, A>(lens: Lens<T, A>) =>
+  (store: Store<S, T>): Store<S, A> => ({
+    pos: store.pos,
+    peek: (s: S) => lens.get(store.peek(s))
+  })
+
+// Run a comonadic computation on a focused field, then set it back
+export const extendThroughLens =
+  <S, T, A>(lens: Lens<T, A>) =>
+  <B>(computation: (ctx: any) => B) =>
+  (store: Store<S, T>): Store<S, T> => {
+    const WC = StoreComonad<S>()
+    const focused = focusStoreWithLens(lens)(store as any) as any
+    const computed = WC.extend(computation as any)(focused)
+    
+    return {
+      pos: store.pos,
+      peek: (s: S) => {
+        const originalT = store.peek(s)
+        const newA = (computed as any).peek(s)
+        return lens.set(newA as any)(originalT)
+      }
+    }
+  }
+
+// Example: moving average on a nested field (specialized for number indices)
+export const movingAvgOnField =
+  <T>(lens: Lens<T, number>) =>
+  (store: Store<number, T>): Store<number, T> =>
+    extendThroughLens(lens)((ctx: any) => {
+      const i = ctx.pos
+      const a = ctx.peek(i - 1)
+      const b = ctx.peek(i)
+      const c = ctx.peek(i + 1)
+      return (a + b + c) / 3
+    })(store as any) as any
 
 // ==================== Env (product) comonad ====================
 // A context value E carried along with A
