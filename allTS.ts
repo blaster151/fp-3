@@ -326,26 +326,12 @@ export const composeK_ResultE =
     isOk(f(a)) ? g((f(a) as Ok<B>).value) : (f(a) as any)
 
 // =============== 2-Cat of Endofunctors on Types ==================
-// A minimal "functor-like" shape (unary endofunctor on TS types)
-export type EndofunctorK1<F> = {
-  readonly map: <A, B>(f: (a: A) => B) => (fa: any /* F<A> */) => any /* F<B> */
-}
-
-// A natural transformation F ⇒ G: components α_A : F<A> → G<A>
-export type NatK1<F, G> = {
-  readonly app: <A>(fa: any /* F<A> */) => any /* G<A> */
-}
-
-// Identity 2-cell on functor F
-export const idNatK1 = <F>(/* F: EndofunctorK1<F> */): NatK1<F, F> => ({
-  app: <A>(fa: any) => fa
-})
+// Note: EndofunctorK1 and NatK1 are defined later in the file with more specific constraints
 
 // Vertical composition: β ∘ α : F ⇒ H (pointwise composition)
 export const vcompNatK1 =
-  <F, G, H>(alpha: NatK1<F, G>, beta: NatK1<G, H>): NatK1<F, H> => ({
-    app: <A>(fa: any) => beta.app<A>(alpha.app<A>(fa))
-  })
+  <F, G, H>(alpha: NatK1<F, G>, beta: NatK1<G, H>): NatK1<F, H> =>
+    <A>(fa: any) => beta(alpha(fa))
 
 // Whiskering and Horizontal composition (component-level)
 
