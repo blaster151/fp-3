@@ -10073,49 +10073,49 @@ export const DoWRTE = <W>(Wmod: ReturnType<typeof WRTE<W>>) => <R>() => {
   ): DoWRTEBuilder<W, R, T, E> => ({
     bind: (k, ma) =>
       make(
-        Wmod.chain<R, any, T, any, any>((t: T) =>
-          Wmod.map<R, any, any, any>((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
+        Wmod.chain((t: T) =>
+          Wmod.map((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
         )(m) as any
       ),
 
     apS: (k, ma) =>
       make(
-        Wmod.chain<R, any, T, any, any>((t: T) =>
-          Wmod.map<R, any, any, any>((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
+        Wmod.chain((t: T) =>
+          Wmod.map((a: any) => ({ ...(t as any), [k]: a } as const))(ma)
         )(m) as any
       ),
 
     let: (k, f) =>
-      make(Wmod.map<R, E, T, any>((t: T) => ({ ...(t as any), [k]: f(t) } as const))(m)),
+      make(Wmod.map((t: T) => ({ ...(t as any), [k]: f(t) } as const))(m)),
 
     apFirst: (ma) =>
       make(
-        Wmod.chain<R, E, T, any, T>((t) =>
-          Wmod.map<R, any, any, T>(() => t)(ma)
-        )(m)
-      ),
+        Wmod.chain((t) =>
+          Wmod.map(() => t)(ma)
+        )(m) as any
+      ) as any,
 
     apSecond: (ma) =>
       make(
-        Wmod.chain<R, E, T, any, any>(() => ma)(m)
+        Wmod.chain(() => ma)(m)
       ) as any, // builder's T becomes the Ok value type of `ma`
 
     tap: (f) =>
       make(
-        Wmod.chain<R, E, T, any, T>((t) =>
-          Wmod.map<R, any, unknown, T>(() => t)(f(t))
-        )(m)
-      ),
+        Wmod.chain((t) =>
+          Wmod.map(() => t)(f(t) as any)
+        )(m) as any
+      ) as any,
 
     tell: (w) =>
       make(
-        Wmod.chain<R, E, T, never, T>((t: T) =>
+        Wmod.chain((t: T) =>
           // tell returns WRTE<W,R,never,void>; map(() => t) keeps the record
-          Wmod.map<R, never, void, T>(() => t)(Wmod.tell(w))
-        )(m)
-      ),
+          Wmod.map(() => t)(Wmod.tell(w))
+        )(m) as any
+      ) as any,
 
-    map: (f) => Wmod.map<R, E, T, any>(f)(m),
+    map: (f) => Wmod.map(f)(m) as any,
 
     done: m,
   })

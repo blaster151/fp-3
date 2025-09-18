@@ -2569,7 +2569,7 @@ const r_bindHO = A_Reader.bindK_HO(
         
         type Env = { base: string }
         const Log = ArrayMonoid<string>()
-        const W = WRTE<readonly string[]>(Log)
+        const W = WRTE<string>(Log)
         const Do = DoWRTE(W)<Env>()
 
         const stepOk: WriterReaderTaskEither<readonly string[], Env, never, number> =
@@ -2767,7 +2767,7 @@ const r_bindHO = A_Reader.bindK_HO(
         console.log('\n📊 DoWRTE with apFirst, apSecond, tap:')
         
         const Log = ArrayMonoid<string>()
-        const W = WRTE<readonly string[]>(Log)
+        const W = WRTE<string>(Log)
         const Do = DoWRTE(W)<{ base: string }>()
 
         const enhancedDoWRTE = Do
@@ -2925,7 +2925,7 @@ const r_bindHO = A_Reader.bindK_HO(
         console.log('\n📊 WRTE module-level shims:')
         
         const Log = ArrayMonoid<string>()
-        const W = WRTE<readonly string[]>(Log)
+        const W = WRTE<string>(Log)
         
         const wrteA = W.of(100)
         const wrteB = W.of('world')
