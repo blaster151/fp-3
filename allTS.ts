@@ -14983,6 +14983,135 @@ export const complexSpaces =
     return out
   }
 
+// ========================= Poset → Vect (at a chosen degree) =========================
+
+/** Vector space diagram at a single fixed degree n. */
+export type VectDiagram<R> = {
+  I: FinitePoset
+  V: Readonly<Record<string, VectorSpace<R>>>
+  arr: (a: ObjId, b: ObjId) => LinMap<R> | undefined
+}
+
+/** Extract a Vect diagram for a *single fixed degree* n. */
+export const toVectAtDegree =
+  <R>(F: Field<R>) =>
+  (D: PosetDiagram<R>, n: number): VectDiagram<R> => {
+    const V: Record<string, VectorSpace<R>> = {}
+    for (const o of D.I.objects) V[o] = VS(F)(D.X[o]!.dim[n] ?? 0)
+
+    const arr = (a: ObjId, b: ObjId): LinMap<R> | undefined => {
+      const f = D.arr(a,b); if (!f) return undefined
+      const Ma = (f.f[n] ?? []) as R[][]
+      return { F, dom: V[a]!, cod: V[b]!, M: Ma }
+    }
+
+    return { I: D.I, V, arr }
+  }
+
+/** Convenience: get the block matrix for a specific arrow at degree n, or zero if no arrow. */
+export const arrowMatrixAtDegree =
+  <R>(F: Field<R>) =>
+  (D: PosetDiagram<R>, n: number, a: ObjId, b: ObjId): R[][] => {
+    const f = D.arr(a,b); if (!f) return Array.from({ length: D.X[b]!.dim[n] ?? 0 }, () => Array.from({ length: D.X[a]!.dim[n] ?? 0 }, () => F.zero))
+    return (f.f[n] ?? []) as R[][]
+  }
+
+// ========================= Pretty-printers =========================
+
+export const ppMatrix =
+  <R>(F: Field<R>) =>
+  (A: ReadonlyArray<ReadonlyArray<R>>): string =>
+    A.map(row => row.map(x => String(x)).join(' ')).join('\n')
+
+export const ppChainMap =
+  <R>(F: Field<R>) =>
+  (name: string, f: ChainMap<R>): string => {
+    const ds = f.X.degrees.slice().sort((a,b)=>a-b)
+    const parts = ds.map(n => {
+      const M = (f.f[n] ?? []) as R[][]
+      return `  degree ${n}: ${f.X.dim[n] ?? 0}→${f.Y.dim[n] ?? 0}\n${ppMatrix(F)(M)}`
+    })
+    return `${name} : ${f.X.S}→${f.Y.S}\n${parts.join('\n')}`
+  }
+
+export const ppVectDiagramAtDegree =
+  <R>(F: Field<R>) =>
+  (name: string, VD: VectDiagram<R>): string => {
+    const sizes = VD.I.objects.map(o => `${o}:${VD.V[o]!.dim}`).join(', ')
+    const edges = VD.I.objects.flatMap(a =>
+      VD.I.objects
+        .filter(b => VD.I.leq(a,b))
+        .map(b => {
+          const f = VD.arr(a,b)
+          return `${a}≤${b}: ${f ? `${f.cod.dim}×${f.dom.dim}` : '—'}`
+        }))
+    return `${name} @Vect:\n objects { ${sizes} }\n arrows:\n  ${edges.join('\n  ')}`
+  }
+
+// ========================= Smith Normal Form (use existing implementation) =========================
+
+// Note: smithNormalForm is already implemented earlier in the file
+
+// ========================= Algebra bridges (actions/coactions) =========================
+
+/** Ring/algebra representation ρ: A → End(V) */
+export type Representation<A,R> = {
+  F: Field<R>
+  dimV: number
+  mat: (a: A) => R[][]
+}
+
+export const applyRepAsLin =
+  <A,R>(F: Field<R>) =>
+  (ρ: Representation<A,R>, a: A): LinMap<R> => {
+    const V = VS(F)(ρ.dimV)
+    return { F, dom: V, cod: V, M: ρ.mat(a) }
+  }
+
+/** Right C-comodule structure δ: V → V ⊗ C */
+export type Coaction<R> = {
+  F: Field<R>
+  dimV: number
+  dimC: number
+  delta: R[][] // (dimV*dimC) × dimV
+}
+
+export const coactionAsLin =
+  <R>(F: Field<R>) =>
+  (δ: Coaction<R>): LinMap<R> => {
+    const V = VS(F)(δ.dimV)
+    const VC = VS(F)(δ.dimV * δ.dimC)
+    return { F, dom: V, cod: VC, M: δ.delta }
+  }
+
+/** Push a linear map g:C→C' across a coaction: (id_V ⊗ g) ∘ δ */
+export const pushCoaction =
+  <R>(F: Field<R>) =>
+  (δ: Coaction<R>, g: R[][]): Coaction<R> => {
+    const K = kron(F)
+    // id_V ⊗ g is block-diag with g repeated dimV times in Kronecker layout:
+    const IdV = Array.from({ length: δ.dimV }, (_, i) => Array.from({ length: δ.dimV }, (_, j) => (i===j?F.one:F.zero)))
+    const T = K(IdV as R[][], g as R[][])               // (dimV*dimC')×(dimV*dimC)
+    const M = ((): R[][] => {
+      // compose (id⊗g) with δ.delta
+      const mul = matMul(F)
+      return mul(T, δ.delta as R[][])
+    })()
+    return { F, dimV: δ.dimV, dimC: (g.length ?? 0), delta: M }
+  }
+
+/** Convert action to chain map at degree n */
+export const actionToChain =
+  <A,R>(F: Field<R>) =>
+  (n: number, ρ: Representation<A,R>, a: A): ChainMap<R> =>
+    linToChain(F)(n, applyRepAsLin(F)(ρ, a))
+
+/** Convert coaction to chain map at degree n */
+export const coactionToChain =
+  <R>(F: Field<R>) =>
+  (n: number, δ: Coaction<R>): ChainMap<R> =>
+    linToChain(F)(n, coactionAsLin(F)(δ))
+
 // =====================================================================
 // Free bimodules over semirings (object-level; finite rank only)
 //   R ⟂ M ⟂ S  with M ≅ R^m as a *left* R-semimodule and *right* S-semimodule
@@ -15300,6 +15429,23 @@ export const FP_CATALOG = {
   composeL: 'Compose linear maps',
   linToChain: 'Convert linear map to one-degree chain map',
   complexSpaces: 'Extract vector spaces from complex degrees',
+  toVectAtDegree: 'Extract Vect diagram at fixed degree from poset diagram',
+  arrowMatrixAtDegree: 'Get matrix for specific arrow at degree n',
+  
+  // Pretty-printing
+  ppMatrix: 'Pretty-print matrix with readable formatting',
+  ppChainMap: 'Pretty-print chain map with degree-wise breakdown',
+  ppVectDiagramAtDegree: 'Pretty-print vector space diagram',
+  
+  // Smith Normal Form (integers)
+  smithNormalForm: 'Compute U*A*V = S diagonal form over integers (PID)',
+  
+  // Algebra bridges
+  applyRepAsLin: 'Convert ring representation to linear map',
+  coactionAsLin: 'Convert comodule coaction to linear map V → V⊗C',
+  pushCoaction: 'Push linear map across coaction: (id⊗g)∘δ',
+  actionToChain: 'Convert action to chain map at degree n',
+  coactionToChain: 'Convert coaction to chain map at degree n',
 } as const
 
 // Namespaced exports for discoverability
@@ -15315,7 +15461,21 @@ export const Lin = {
 }
 
 export const Vect = {
-  VS, idL, composeL, linToChain, complexSpaces
+  VS, idL, composeL, linToChain, complexSpaces,
+  toVectAtDegree, arrowMatrixAtDegree
+}
+
+export const Pretty = {
+  ppMatrix, ppChainMap, ppVectDiagramAtDegree
+}
+
+export const IntegerLA = {
+  smithNormalForm
+}
+
+export const Algebra = {
+  applyRepAsLin, coactionAsLin, pushCoaction, 
+  actionToChain, coactionToChain
 }
 
 export const Chain = { 

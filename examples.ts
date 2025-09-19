@@ -66,8 +66,16 @@ import {
   LanPoset, RanPoset,
   // Vector space bridge
   VectorSpace, LinMap, VS, idL, composeL, linToChain, complexSpaces,
+  VectDiagram, toVectAtDegree, arrowMatrixAtDegree,
+  // Pretty-printing
+  ppMatrix, ppChainMap, ppVectDiagramAtDegree,
+  // Smith Normal Form
+  SNF, smithNormalForm,
+  // Algebra bridges  
+  Representation, Coaction, applyRepAsLin, coactionAsLin, pushCoaction,
+  actionToChain, coactionToChain,
   // Namespaced exports
-  Diagram, Lin, Chain, Exactness, Vect
+  Diagram, Lin, Chain, Exactness, Vect, Pretty, IntegerLA, Algebra
 } from './allTS'
 
 // ====================================================================
@@ -1365,6 +1373,186 @@ namespace ComoduleExamples {
     
     console.log('✓ Pushout and Kan extension infrastructure complete!')
   }
+
+  export function vectViewExample() {
+    console.log('\n--- Vect View of Diagrams ---')
+    
+    // Create a simple diagram
+    const poset: FinitePoset = {
+      objects: ['x', 'y'],
+      leq: (a, b) => a === b || (a === 'x' && b === 'y')
+    }
+    
+    const C2: Complex<number> = { S: FieldReal, degrees: [0], dim: {0:2}, d: {} }
+    const C1: Complex<number> = { S: FieldReal, degrees: [0], dim: {0:1}, d: {} }
+    
+    const diagram: PosetDiagram<number> = {
+      I: poset,
+      X: { x: C2, y: C1 },
+      arr: (a, b) => {
+        if (!poset.leq(a, b)) return undefined
+        if (a === b) return { S: FieldReal, X: diagram.X[a]!, Y: diagram.X[b]!, f: { 0: eye(FieldReal)(diagram.X[a]!.dim[0] ?? 0) } }
+        // x → y via projection [1, 0] (take first coordinate)
+        return { S: FieldReal, X: C2, Y: C1, f: { 0: [[1, 0]] } }
+      }
+    }
+    
+    console.log('Original diagram:')
+    console.log('  x: dim 2, y: dim 1')
+    console.log('  x→y: projection [1, 0]')
+    
+    // Extract Vect view at degree 0
+    const vectView = toVectAtDegree(FieldReal)(diagram, 0)
+    
+    console.log('\nVect view at degree 0:')
+    console.log('  Objects:', Object.keys(vectView.V))
+    console.log('  x dimension:', vectView.V.x?.dim)
+    console.log('  y dimension:', vectView.V.y?.dim)
+    
+    const arrow_xy = vectView.arr('x', 'y')
+    if (arrow_xy) {
+      console.log('  x→y matrix:', arrow_xy.M)
+    }
+    
+    // Pretty-print the Vect diagram
+    const prettyView = ppVectDiagramAtDegree(FieldReal)('Example', vectView)
+    console.log('\nPretty-printed view:')
+    console.log(prettyView)
+    
+    console.log('✓ Vect view extraction working!')
+  }
+
+  export function prettyPrintingExample() {
+    console.log('\n--- Pretty-Printing Demo ---')
+    
+    // Create a simple matrix
+    const A = [[1, 2, 3], [4, 5, 6]]
+    console.log('Matrix A:')
+    console.log(ppMatrix(FieldReal)(A))
+    
+    // Create a chain map
+    const X: Complex<number> = { S: FieldReal, degrees: [0, 1], dim: {0: 2, 1: 1}, d: {} }
+    const Y: Complex<number> = { S: FieldReal, degrees: [0, 1], dim: {0: 1, 1: 2}, d: {} }
+    const f: ChainMap<number> = {
+      S: FieldReal,
+      X, Y,
+      f: { 0: [[1, 0]], 1: [[1], [2]] }
+    }
+    
+    console.log('\nChain map f:')
+    console.log(ppChainMap(FieldReal)('f', f))
+    
+    console.log('✓ Pretty-printing working!')
+  }
+
+  export function smithNormalFormExample() {
+    console.log('\n--- Smith Normal Form Demo ---')
+    
+    // Example integer matrix
+    const A = [
+      [2, 4, 4],
+      [-6, 6, 12],
+      [10, 4, 16]
+    ]
+    
+    console.log('Original matrix A:')
+    console.log(ppMatrix(FieldReal)(A))
+    
+    const { U, S, V } = smithNormalForm(A)
+    
+    console.log('\nSmith Normal Form: U * A * V = S')
+    console.log('U (left transform):')
+    console.log(ppMatrix(FieldReal)(U))
+    console.log('\nS (diagonal form):')
+    console.log(ppMatrix(FieldReal)(S))
+    console.log('\nV (right transform):')
+    console.log(ppMatrix(FieldReal)(V))
+    
+    // Verify: U * A * V = S
+    const UAV = matMul(FieldReal)(U as number[][], matMul(FieldReal)(A as number[][], V as number[][]))
+    console.log('\nVerification U*A*V:')
+    console.log(ppMatrix(FieldReal)(UAV))
+    
+    console.log('✓ Smith Normal Form working!')
+  }
+
+  export function algebraBridgesExample() {
+    console.log('\n--- Algebra Bridges Demo ---')
+    
+    // Example: 2x2 matrix representation of a simple algebra element
+    const matrixRep: Representation<string, number> = {
+      F: FieldReal,
+      dimV: 2,
+      mat: (a: string) => {
+        switch (a) {
+          case 'e': return [[1, 0], [0, 1]]  // identity
+          case 'x': return [[0, 1], [1, 0]]  // swap coordinates
+          case 'y': return [[1, 1], [0, 1]]  // upper triangular
+          default: return [[0, 0], [0, 0]]   // zero
+        }
+      }
+    }
+    
+    console.log('Matrix representation:')
+    console.log('  e (identity):', matrixRep.mat('e'))
+    console.log('  x (swap):', matrixRep.mat('x'))
+    console.log('  y (upper triangular):', matrixRep.mat('y'))
+    
+    // Convert to linear map
+    const linMapX = applyRepAsLin(FieldReal)(matrixRep, 'x')
+    console.log('\nLinear map for x:')
+    console.log('  Domain dimension:', linMapX.dom.dim)
+    console.log('  Codomain dimension:', linMapX.cod.dim)
+    console.log('  Matrix:', linMapX.M)
+    
+    // Convert to chain map at degree 0
+    const chainMapX = actionToChain(FieldReal)(0, matrixRep, 'x')
+    console.log('\nChain map for x at degree 0:')
+    console.log('  X dimension[0]:', chainMapX.X.dim[0])
+    console.log('  Y dimension[0]:', chainMapX.Y.dim[0])
+    console.log('  f[0]:', chainMapX.f[0])
+    
+    // Example coaction: V → V ⊗ C where V is 2D and C is 1D
+    const coactionExample: Coaction<number> = {
+      F: FieldReal,
+      dimV: 2,
+      dimC: 1, 
+      delta: [[1], [0], [0], [1]] // 2*1 × 2 matrix: (v1,v2) ↦ (v1⊗1, v2⊗1)
+    }
+    
+    console.log('\nCoaction δ: V → V⊗C:')
+    console.log('  V dimension:', coactionExample.dimV)
+    console.log('  C dimension:', coactionExample.dimC)
+    console.log('  Delta matrix:', coactionExample.delta)
+    
+    const coactionLinMap = coactionAsLin(FieldReal)(coactionExample)
+    console.log('  As linear map: 2 → 2*1 =', coactionLinMap.cod.dim)
+    
+    console.log('✓ Algebra bridges working!')
+  }
+
+  export function namespaceDemoExample() {
+    console.log('\n--- Namespace Demo ---')
+    
+    console.log('Available namespaces:')
+    console.log('  Vect:', Object.keys(Vect))
+    console.log('  Pretty:', Object.keys(Pretty))
+    console.log('  IntegerLA:', Object.keys(IntegerLA))
+    console.log('  Algebra:', Object.keys(Algebra))
+    
+    // Use namespaced functions
+    const V3 = Vect.VS(FieldReal)(3)
+    console.log('\nUsing Vect.VS to create 3D space:', V3.dim)
+    
+    const testMatrix = [[1, 2], [3, 4]]
+    console.log('\nUsing Pretty.ppMatrix:')
+    console.log(Pretty.ppMatrix(FieldReal)(testMatrix))
+    
+    const snf = IntegerLA.smithNormalForm([[2, 4], [6, 8]])
+    console.log('\nUsing IntegerLA.smithNormalForm diagonal:', snf.S)
+    
+    console.log('✓ All namespaces working!')
+  }
 }
 
 // ====================================================================
@@ -1413,6 +1601,11 @@ async function runExamples() {
   ComoduleExamples.advancedDiagramExample()
   ComoduleExamples.vectorSpaceBridgeExample()
   ComoduleExamples.pushoutKanExample()
+  ComoduleExamples.vectViewExample()
+  ComoduleExamples.prettyPrintingExample()
+  ComoduleExamples.smithNormalFormExample()
+  ComoduleExamples.algebraBridgesExample()
+  ComoduleExamples.namespaceDemoExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
