@@ -14370,7 +14370,10 @@ export const reindexDisc =
 export const coproductComplex =
   <R>(F: Field<R>) =>
   (...Xs: ReadonlyArray<Complex<R>>): Complex<R> => {
-    if (Xs.length === 0) throw new Error('coproduct of empty family')
+    if (Xs.length === 0) {
+      // Return zero complex
+      return { S: F as Ring<R>, degrees: [], dim: {}, d: {} }
+    }
     const S = Xs[0]!.S
     const degrees = Array.from(new Set(Xs.flatMap(X => X.degrees))).sort((a,b)=>a-b)
     const dim: Record<number, number> = {}
@@ -14583,6 +14586,401 @@ export const pullbackInDiagram =
       PB: f.X, // placeholder - would be kernel
       toB: idChainMapField(F)(f.X) // placeholder
     }
+  }
+
+/* ========= Left/Right Kan extensions with TRUE universal morphisms ===== */
+
+const tpose = <R>(A: ReadonlyArray<ReadonlyArray<R>>): R[][] => (A[0]?.map((_, j) => A.map(r => r[j])) ?? [])
+
+/** Left Kan along u: J→I with REAL universal arr(a,b). */
+export const LanPoset =
+  <R>(F: Field<R>) =>
+  (u: (j: ObjId) => ObjId, J: FinitePoset, I: FinitePoset) =>
+  (DJ: PosetDiagram<R>): PosetDiagram<R> => {
+    const coprod = coproductComplex(F)
+    const inc = inclusionIntoCoproduct(F)
+    const mul = matMul(F)
+    const coords = (A: R[][], b: R[]) => solveLinear(F)(tpose(A), b)
+    const imCols = colspaceByRref(F)
+
+    type SliceMeta = {
+      Js: ObjId[]
+      P: Complex<R>                 // ∐ D(j)
+      Rm: Complex<R>                // ∐ D(dom h)
+      s: Record<number,R[][]>       // s: R ⇉ P
+      t: Record<number,R[][]>       // t: R ⇉ P
+      U: Record<number,R[][]>       // image basis columns of (s - t) in P (per degree)
+      B: Record<number,R[][]>       // chosen complement columns in P (basis for cokernel reps)
+      q: Record<number,R[][]>       // q: P → C  (coords in B)
+      sec: Record<number,R[][]>     // sec: C → P (embeds coords via B)
+      C: Complex<R>                 // the actual Lan(i)
+    }
+
+    // choose complement to a set of columns U (span in P) by greedy rank extension with std basis
+    const chooseComplementCols = (U: R[][], dimP: number): R[][] => {
+      const rank = (A: R[][]) => getRref(F)(A).pivots.length
+      const Istd: R[][] = Array.from({ length: dimP }, (_, j) =>
+        Array.from({ length: dimP }, (_, i) => (i === j ? F.one : F.zero)))
+      let cur = U.map(col => col.slice()), picked: R[][] = []
+      const r0 = rank(cur)
+      for (let j = 0; j < dimP; j++) {
+        const cand = cur.concat([Istd.map(row => row[j])])
+        if (rank(cand) > rank(cur)) { picked.push(Istd.map(row => row[j])); cur = cand }
+        if (picked.length + r0 >= dimP) break
+      }
+      return picked
+    }
+
+    const meta = new Map<ObjId, SliceMeta>()
+
+    // Build Lan(i) for each i with full metadata enabling universal arrows.
+    for (const i of I.objects) {
+      const Js = J.objects.filter(j => I.leq(u(j), i))
+      const parts = Js.map(j => DJ.X[j]!)
+      const P = coprod(...parts) // ∐ D(j)
+
+      // edges in slice: j→j' with J.leq(j,j') and both in Js
+      type Edge = readonly [ObjId, ObjId]
+      const edges: Edge[] = []
+      for (const j of Js) for (const j2 of Js)
+        if (j !== j2 && J.leq(j, j2)) edges.push([j, j2])
+
+      const Rm = edges.length > 0 ? coprod(...edges.map(([j]) => DJ.X[j]!)) : 
+        { S: P.S, degrees: P.degrees, dim: Object.fromEntries(P.degrees.map(n => [n, 0])), d: {} } // empty complex
+
+      // assemble s,t by blocks: s_e = inc_{j'} ∘ D(j→j'), t_e = inc_j
+      const s: Record<number,R[][]> = {}
+      const t: Record<number,R[][]> = {}
+      const incP = Js.map((_, k) => inc(parts, k))
+      const incR = edges.map(([j], eidx) => {
+        const doms = edges.map(([jj]) => DJ.X[jj]!)
+        return inc(doms, eidx)
+      })
+
+      for (const n of P.degrees) {
+        const rowsP = P.dim[n] ?? 0
+        const colsR = edges.reduce((s,[j]) => s + (DJ.X[j]!.dim[n] ?? 0), 0)
+        const S: R[][] = Array.from({ length: rowsP }, () => [])
+        const T: R[][] = Array.from({ length: rowsP }, () => [])
+        for (let e = 0; e < edges.length; e++) {
+          const [j, j2] = edges[e]!
+          const k  = Js.indexOf(j)
+          const k2 = Js.indexOf(j2)
+          const h = DJ.arr(j, j2); if (!h) throw new Error('missing DJ edge map')
+          // s block = inc_{j2} ∘ h
+          const SB = mul(incP[k2]!.f[n] ?? [], h.f[n] ?? [])
+          const TB = incP[k]!.f[n] ?? []
+          // append by columns
+          if (S.length === 0) for (let i = 0; i < rowsP; i++) S[i] = []
+          if (T.length === 0) for (let i = 0; i < rowsP; i++) T[i] = []
+          for (let i = 0; i < rowsP; i++) {
+            const srow = SB[i] ?? [], trow = TB[i] ?? []
+            for (let c = 0; c < srow.length; c++) S[i]!.push(srow[c]!)
+            for (let c = 0; c < trow.length; c++) T[i]!.push(trow[c]!)
+          }
+        }
+        s[n] = S; t[n] = T
+      }
+
+      // compute cokernel data per degree
+      const U: Record<number,R[][]> = {}
+      const B: Record<number,R[][]> = {}
+      const q: Record<number,R[][]> = {}
+      const sec: Record<number,R[][]> = {}
+      const dim: Record<number, number> = {}
+
+      for (const n of P.degrees) {
+        // U = image columns of (s - t) in P
+        const Sn = s[n] ?? [], Tn = t[n] ?? []
+        const rows = Sn.length, cols = Sn[0]?.length ?? 0
+        const M: R[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => F.zero))
+        for (let i = 0; i < rows; i++)
+          for (let j = 0; j < cols; j++)
+            M[i]![j] = F.add(Sn[i]?.[j] ?? F.zero, F.neg(Tn[i]?.[j] ?? F.zero))
+        const Ucols = imCols(M)                    // P_n × r
+        U[n] = Ucols
+        // choose complement B in P to span quotient reps
+        const dimP = P.dim[n] ?? 0
+        const Bcols = chooseComplementCols(Ucols, dimP)   // P_n × q
+        B[n] = Bcols
+        dim[n] = Bcols[0]?.length ?? 0
+        // q: P→C = coordinates in basis B, sec: C→P embeds via B
+        const qn: R[][] = Array.from({ length: dim[n] }, () => Array.from({ length: dimP }, () => F.zero))
+        for (let j = 0; j < dimP; j++) {
+          const e = eye(F)(dimP).map(r => r[j] as R)
+          const alpha = coords(Bcols, e) // B * alpha = e
+          for (let i = 0; i < (dim[n] ?? 0); i++) qn[i]![j] = alpha[i] ?? F.zero
+        }
+        q[n] = qn
+        sec[n] = tpose(Bcols) // (q×dimP)ᵗ = dimP×q columns are basis reps
+      }
+
+      const C: Complex<R> = { S: P.S, degrees: P.degrees, dim, d: {} as any }
+      // differentials on C: induced by P via q∘dP∘sec (well-defined in quotients)
+      const dC: Record<number,R[][]> = {}
+      for (const n of P.degrees) {
+        const dP = P.d[n] ?? []
+        const qn1 = q[n-1] ?? []; const secn = sec[n] ?? []
+        dC[n] = mul(qn1, mul(dP, secn))
+      }
+      C.d = dC
+      const record: SliceMeta = { Js, P, Rm, s, t, U, B, q, sec, C }
+      meta.set(i, record)
+    }
+
+    // The Lan diagram:
+    const X: Record<ObjId, Complex<R>> = {}
+    for (const i of I.objects) X[i] = meta.get(i)!.C
+
+    // The universal morphism arr(a,b): Lan(a) → Lan(b) for a≤b (true induced map)
+    const arr = (a: ObjId, b: ObjId): ChainMap<R> | undefined => {
+      if (!I.leq(a,b)) return undefined
+      const A = meta.get(a)!; const Bm = meta.get(b)!
+      // Build m_P: P_a → P_b that maps each component j∈(u↓a) into the same j in (u↓b)
+      const Pa = A.P, Pb = Bm.P
+      const f: Record<number,R[][]> = {}
+      for (const n of Pa.degrees) {
+        const rows = Pb.dim[n] ?? 0
+        const cols = Pa.dim[n] ?? 0
+        const M: R[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => F.zero))
+        // offsets per component
+        const dimsA = A.Js.map(j => DJ.X[j]!.dim[n] ?? 0)
+        const dimsB = Bm.Js.map(j => DJ.X[j]!.dim[n] ?? 0)
+        let offA = 0
+        for (let k = 0; k < A.Js.length; k++) {
+          const j = A.Js[k]!
+          const kk = Bm.Js.indexOf(j) // guaranteed ≥0 by slice inclusion
+          const offB = Bm.Js.slice(0, kk).reduce((s, jj) => s + (DJ.X[jj]!.dim[n] ?? 0), 0)
+          const w = dimsA[k]!
+          for (let c = 0; c < w; c++) M[offB + c]![offA + c] = F.one
+          offA += w
+        }
+        f[n] = M
+      }
+      const mP: ChainMap<R> = { S: Pa.S, X: Pa, Y: Pb, f }
+
+      // Induced map on cokernels: φ = q_b ∘ mP ∘ sec_a
+      const φ: Record<number,R[][]> = {}
+      for (const n of Pa.degrees) {
+        const Mat = mul(Bm.q[n] ?? [], mul(mP.f[n] ?? [], A.sec[n] ?? []))
+        φ[n] = Mat
+      }
+      const La = A.C, Lb = Bm.C
+      return { S: La.S, X: La, Y: Lb, f: φ }
+    }
+
+    return { I, X, arr }
+  }
+
+/** Right Kan along u: J→I with REAL universal arr(a,b). */
+export const RanPoset =
+  <R>(F: Field<R>) =>
+  (u: (j: ObjId) => ObjId, J: FinitePoset, I: FinitePoset) =>
+  (DJ: PosetDiagram<R>): PosetDiagram<R> => {
+    const prod = productComplex(F)
+    const prj = projectionFromProduct(F)
+    const mul = matMul(F)
+    const kerCols = nullspaceByRref(F)
+    const coords = (A: R[][], b: R[]) => solveLinear(F)(tpose(A), b)
+
+    type SliceMeta = {
+      Js: ObjId[]
+      P0: Complex<R>                // ∏ D(j)
+      Q:  Complex<R>                // ∏ D(tgt h)
+      u1: Record<number,R[][]>      // u1: P0 → Q
+      u2: Record<number,R[][]>      // u2: P0 → Q
+      K:  Complex<R>                // Ker(u1 - u2)
+      inc: Record<number,R[][]>     // inc: K → P0  (columns = kernel basis)
+      coordK: Record<number,(w:R[])=>R[]> // coordinate solver in K (inc·α = w)
+    }
+
+    const meta = new Map<ObjId, SliceMeta>()
+
+    for (const i of I.objects) {
+      const Js = J.objects.filter(j => I.leq(i, u(j)))          // (i↓u)
+      const parts = Js.map(j => DJ.X[j]!)
+      const P0 = prod(...parts)
+
+      // edges j→j' in slice
+      type Edge = readonly [ObjId, ObjId]
+      const edges: Edge[] = []
+      for (const j of Js) for (const j2 of Js)
+        if (j !== j2 && J.leq(j, j2)) edges.push([j, j2])
+      const Q = edges.length > 0 ? prod(...edges.map(([,j2]) => DJ.X[j2]!)) : 
+        { S: P0.S, degrees: P0.degrees, dim: Object.fromEntries(P0.degrees.map(n => [n, 0])), d: {} } // empty complex
+
+      // build u1,u2
+      const u1: Record<number,R[][]> = {}
+      const u2: Record<number,R[][]> = {}
+      const prP = Js.map((_, k) => prj(parts, k))
+      const prQ = edges.map(([, j2], eidx) => {
+        const tgts = edges.map(([,jj]) => DJ.X[jj]!)
+        return prj(tgts, eidx)
+      })
+
+      for (let e = 0; e < edges.length; e++) {
+        const [j, j2] = edges[e]!
+        const k  = Js.indexOf(j)
+        const k2 = Js.indexOf(j2)
+        const h = DJ.arr(j, j2); if (!h) throw new Error('missing DJ edge map')
+
+        for (const n of P0.degrees) {
+          // Se = prQ[e] ∘ h ∘ prP[k],   Te = prQ[e] ∘ prP[k2]
+          const Se = mul(prQ[e]!.f[n] ?? [], mul(h.f[n] ?? [], prP[k]!.f[n] ?? []))
+          const Te = mul(prQ[e]!.f[n] ?? [],          prP[k2]!.f[n] ?? [])
+          const add = (dst: Record<number,R[][]>, B: R[][]) => {
+            const prev = dst[n]; if (!prev) { dst[n] = B.map(r=>r.slice()); return }
+            for (let i = 0; i < prev.length; i++)
+              for (let j = 0; j < (prev[0]?.length ?? 0); j++)
+                prev[i]![j] = F.add(prev[i]![j]!, B[i]![j]!)
+          }
+          add(u1, Se); add(u2, Te)
+        }
+      }
+
+      // equalizer K = Ker(u1 - u2) with inclusion inc: K → P0 (basis columns)
+      const inc: Record<number,R[][]> = {}
+      const Kdim: Record<number, number> = {}
+      for (const n of P0.degrees) {
+        const U1 = u1[n] ?? [], U2 = u2[n] ?? []
+        const rows = U1.length, cols = U1[0]?.length ?? 0
+        const D: R[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => F.zero))
+        for (let i = 0; i < rows; i++)
+          for (let j = 0; j < cols; j++)
+            D[i]![j] = F.add(U1[i]?.[j] ?? F.zero, F.neg(U2[i]?.[j] ?? F.zero))
+        // Kernel columns live in domain P0: each column is a vector in P0
+        const N = kerCols(D)      // P0_n × k
+        inc[n] = N
+        Kdim[n] = N[0]?.length ?? 0
+      }
+      const K: Complex<R> = { S: P0.S, degrees: P0.degrees, dim: Kdim, d: {} as any }
+      // induced differential on K: inc is a chain map iff dQ(u1-u2)=(u1-u2)dP0; we build dK by pullback:
+      for (const n of P0.degrees) {
+        const dP = P0.d[n] ?? []
+        // inc_{n-1} · dK_n = dP_n · inc_n   ⇒ solve for dK via coordinates in columns of inc_{n-1}
+        const v = mul(P0.d[n] ?? [], inc[n] ?? [])
+        // coordinates α with (inc_{n-1}) α = v  (column-wise)
+        const alpha: R[][] = []
+        const coord = (w: R[]) => coords(inc[n-1] ?? [], w)
+        for (let j = 0; j < (inc[n]?.[0]?.length ?? 0); j++) {
+          const w = v.map(row => row[j] ?? F.zero)
+          alpha.push(coord(w))
+        }
+        // pack α columns: dim(K_{n-1}) × dim(K_n)
+        const rows = Kdim[n-1] ?? 0, cols = Kdim[n] ?? 0
+        const DK: R[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => F.zero))
+        for (let j = 0; j < cols; j++) {
+          const col = alpha[j] ?? []
+          for (let i = 0; i < rows; i++) DK[i]![j] = col[i] ?? F.zero
+        }
+        K.d[n] = DK
+      }
+
+      // fast coordinate solver in K: α s.t. inc·α = w (precompute left solve per column)
+      const coordK: Record<number,(w:R[])=>R[]> = {}
+      for (const n of P0.degrees) coordK[n] = (w: R[]) => coords(inc[n] ?? [], w)
+
+      meta.set(i, { Js, P0, Q, u1, u2, K, inc, coordK })
+    }
+
+    const X: Record<ObjId, Complex<R>> = {}
+    for (const i of I.objects) X[i] = meta.get(i)!.K
+
+    // Universal morphism arr(a,b): Ran(a) → Ran(b) for a≤b
+    const arr = (a: ObjId, b: ObjId): ChainMap<R> | undefined => {
+      if (!I.leq(a,b)) return undefined
+      const A = meta.get(a)!; const Bm = meta.get(b)!
+      const Ka = A.K, Kb = Bm.K
+      const f: Record<number,R[][]> = {}
+
+      for (const n of Ka.degrees) {
+        // projection π_ab: P0_a → P0_b (drop components not in Js_b)
+        const rows = Bm.P0.dim[n] ?? 0
+        const cols = A.P0.dim[n] ?? 0
+        const Πab: R[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => F.zero))
+        // offsets per component
+        let offA = 0
+        for (let k = 0; k < A.Js.length; k++) {
+          const j = A.Js[k]!
+          const w = DJ.X[j]!.dim[n] ?? 0
+          const kk = Bm.Js.indexOf(j)
+          if (kk >= 0) {
+            const offB = Bm.Js.slice(0, kk).reduce((s,jj)=>s+(DJ.X[jj]!.dim[n] ?? 0),0)
+            for (let c = 0; c < w; c++) Πab[offB + c]![offA + c] = F.one
+          }
+          offA += w
+        }
+        // inc_b ∘ φ_n  =  Πab ∘ inc_a   ⇒   solve for φ_n by coordinates in Kb
+        const RHS = mul(Πab, A.inc[n] ?? [])
+        // for each column j of RHS, find α with (inc_b) α = RHS[:,j]
+        const rowsK = Kb.dim[n] ?? 0
+        const colsK = Ka.dim[n] ?? 0
+        const Φ: R[][] = Array.from({ length: rowsK }, () => Array.from({ length: colsK }, () => F.zero))
+        for (let j = 0; j < colsK; j++) {
+          const w = RHS.map(row => row[j] ?? F.zero)
+          const alpha = Bm.coordK[n]!(w)
+          for (let i = 0; i < rowsK; i++) Φ[i]![j] = alpha[i] ?? F.zero
+        }
+        f[n] = Φ
+      }
+      return { S: Ka.S, X: Ka, Y: Kb, f }
+    }
+
+    return { I, X, arr }
+  }
+
+// ========================= Vector space bridge layer =========================
+
+export type VectorSpace<R> = {
+  readonly F: Field<R>
+  readonly dim: number
+  /** basis matrix B: columns are basis vectors in the ambient standard basis (optional; default = std basis) */
+  readonly B?: ReadonlyArray<ReadonlyArray<R>>
+}
+
+export type LinMap<R> = {
+  readonly F: Field<R>
+  readonly dom: VectorSpace<R>
+  readonly cod: VectorSpace<R>
+  /** matrix (cod.dim × dom.dim) in the *coordinates of dom/cod bases* */
+  readonly M: ReadonlyArray<ReadonlyArray<R>>
+}
+
+export const VS =
+  <R>(F: Field<R>) =>
+  (dim: number, B?: R[][]): VectorSpace<R> => ({ F, dim, B })
+
+export const idL =
+  <R>(F: Field<R>) =>
+  (V: VectorSpace<R>): LinMap<R> => ({
+    F, dom: V, cod: V, M: eye(F)(V.dim)
+  })
+
+export const composeL =
+  <R>(F: Field<R>) =>
+  (g: LinMap<R>, f: LinMap<R>): LinMap<R> => {
+    if (f.cod !== g.dom) throw new Error('composeL: domain/codomain mismatch')
+    const M = matMul(F)(g.M as R[][], f.M as R[][])
+    return { F, dom: f.dom, cod: g.cod, M }
+  }
+
+/** Convert a `LinMap` to a one-degree `ChainMap` (degree n), handy for demos. */
+export const linToChain =
+  <R>(F: Field<R>) =>
+  (n: number, f: LinMap<R>): ChainMap<R> => ({
+    S: f.F as Ring<R>,
+    X: { S: f.F as Ring<R>, degrees:[n], dim: { [n]: f.dom.dim }, d:{} },
+    Y: { S: f.F as Ring<R>, degrees:[n], dim: { [n]: f.cod.dim }, d:{} },
+    f: { [n]: f.M as R[][] }
+  })
+
+/** Extract degree‐wise vector spaces from a complex (std basis). */
+export const complexSpaces =
+  <R>(F: Field<R>) =>
+  (X: Complex<R>): Record<number, VectorSpace<R>> => {
+    const out: Record<number, VectorSpace<R>> = {}
+    for (const n of X.degrees) out[n] = VS(F)(X.dim[n] ?? 0)
+    return out
   }
 
 // =====================================================================
@@ -14888,17 +15286,36 @@ export const FP_CATALOG = {
   
   // Backend selection
   registerRref: 'Override RREF for a Field (e.g., registerRref(FieldQ, rrefQPivot))',
+  
+  // Poset diagrams and Kan extensions
+  makePosetDiagram: 'Build diagram over finite poset with transitive composition',
+  pushoutInDiagram: 'Pushout of cospan in a poset diagram',
+  pullbackInDiagram: 'Pullback of span in a poset diagram',
+  LanPoset: 'Left Kan extension along monotone map with TRUE universal morphisms',
+  RanPoset: 'Right Kan extension along monotone map with TRUE universal morphisms',
+  
+  // Vector space bridge
+  VS: 'Create vector space over a field',
+  idL: 'Identity linear map',
+  composeL: 'Compose linear maps',
+  linToChain: 'Convert linear map to one-degree chain map',
+  complexSpaces: 'Extract vector spaces from complex degrees',
 } as const
 
 // Namespaced exports for discoverability
 export const Diagram = {
   makePosetDiagram, pushoutInDiagram, pullbackInDiagram,
   LanDisc, RanDisc, reindexDisc,
+  LanPoset, RanPoset,
   coproductComplex, productComplex
 }
 
 export const Lin = { 
   registerRref, rrefQPivot, FieldQ, solveLinear, nullspace, colspace
+}
+
+export const Vect = {
+  VS, idL, composeL, linToChain, complexSpaces
 }
 
 export const Chain = { 
