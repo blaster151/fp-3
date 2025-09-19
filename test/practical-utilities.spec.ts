@@ -6,7 +6,7 @@ import {
   HMM, hmmForward, diagFromVec, normalizeRow,
   Edge, graphAdjNat, graphAdjBool, graphAdjWeights,
   countPathsOfLength, reachableWithin, shortestPathsUpTo,
-  transitiveClosureBool, compileRegexToWA,
+  transitiveClosureBool, compileRegexToWA, compileRegexToWAWithAlphabet,
   eye,
 } from '../allTS'
 
@@ -365,5 +365,38 @@ describe('Regex compilation', () => {
     expect(waAcceptsBool(wa)(['a','b','0','1','2'])).toBe(true)   // ab012
     expect(waAcceptsBool(wa)([])).toBe(false)                     // need at least one a
     expect(waAcceptsBool(wa)(['b'])).toBe(false)                  // need a first
+  })
+
+  it('compiles dot with explicit alphabet', () => {
+    const alphabet = ['a', 'b', 'c']
+    const wa = compileRegexToWAWithAlphabet('.+', alphabet)
+    
+    expect(waAcceptsBool(wa)(['a'])).toBe(true)
+    expect(waAcceptsBool(wa)(['b'])).toBe(true)
+    expect(waAcceptsBool(wa)(['c'])).toBe(true)
+    expect(waAcceptsBool(wa)(['a','b','c'])).toBe(true)
+    expect(waAcceptsBool(wa)([])).toBe(false) // + requires at least one
+  })
+
+  it('compiles negated character classes', () => {
+    const alphabet = ['a', 'b', 'c', 'd']
+    const wa = compileRegexToWAWithAlphabet('[^ab]+', alphabet)
+    
+    expect(waAcceptsBool(wa)(['c'])).toBe(true)
+    expect(waAcceptsBool(wa)(['d'])).toBe(true)
+    expect(waAcceptsBool(wa)(['c','d'])).toBe(true)
+    expect(waAcceptsBool(wa)(['a'])).toBe(false) // a is excluded
+    expect(waAcceptsBool(wa)(['b'])).toBe(false) // b is excluded
+    expect(waAcceptsBool(wa)([])).toBe(false)    // + requires at least one
+  })
+
+  it('handles mixed dot and negated classes', () => {
+    const alphabet = ['a', 'b', 'c', 'x', 'y', 'z']
+    const wa = compileRegexToWAWithAlphabet('.*[^xyz]', alphabet)
+    
+    expect(waAcceptsBool(wa)(['a'])).toBe(true)           // ends with a (not xyz)
+    expect(waAcceptsBool(wa)(['b','c','a'])).toBe(true)   // ends with a
+    expect(waAcceptsBool(wa)(['a','b','x'])).toBe(false)  // ends with x (excluded)
+    expect(waAcceptsBool(wa)(['x'])).toBe(false)          // just x (excluded)
   })
 })

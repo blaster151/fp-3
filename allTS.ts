@@ -13035,13 +13035,14 @@ export const transitiveClosureBool = (
 type RX =
   | { _tag: 'Eps' }                              // ε
   | { _tag: 'Lit'; ch: string }                  // single symbol
-  | { _tag: 'Class'; set: ReadonlyArray<string>} // positive set of symbols
+  | { _tag: 'Class'; set: ReadonlyArray<string>; negated: boolean } // [abc] or [^abc]
+  | { _tag: 'Dot' }                              // . (any symbol from alphabet)
   | { _tag: 'Concat'; left: RX; right: RX }
   | { _tag: 'Alt'; left: RX; right: RX }
   | { _tag: 'Star'; inner: RX }
 
 const isSpecialTop = (c: string) =>
-  c === '(' || c === ')' || c === '|' || c === '*' || c === '+' || c === '?' || c === '['
+  c === '(' || c === ')' || c === '|' || c === '*' || c === '+' || c === '?' || c === '[' || c === '.'
 
 const readEscaped = (src: string, i: number): { ch: string; i: number } => {
   if (i >= src.length) throw new Error('regex: dangling escape')
@@ -13060,6 +13061,13 @@ const parseClass = (src: string, start: number): { node: RX; i: number } => {
   // src[start] === '['; returns when it consumes closing ']'
   let i = start + 1
   const items: string[] = []
+  
+  // Check for negation
+  let negated = false
+  if (src[i] === '^') {
+    negated = true
+    i++
+  }
 
   const takeChar = (): string => {
     const c = src[i]
@@ -13092,7 +13100,7 @@ const parseClass = (src: string, start: number): { node: RX; i: number } => {
   }
 
   if (items.length === 0) throw new Error('regex: empty character class []')
-  return { node: { _tag: 'Class', set: items }, i }
+  return { node: { _tag: 'Class', set: items, negated }, i }
 }
 
 const parseRegex = (src: string): RX => {
@@ -13116,6 +13124,11 @@ const parseRegex = (src: string): RX => {
       const { node, i: j } = parseClass(src, i)
       i = j
       return node
+    }
+
+    if (c === '.') {
+      eat()
+      return { _tag: 'Dot' }
     }
 
     if (c === '\\') {
@@ -13212,7 +13225,13 @@ const buildThompson = (rx: RX): NFA => {
       }
       case 'Class': {
         const s = newState(), t = newState()
+        // For now, just handle positive classes - negation will be resolved at compile time
         for (const ch of e.set) { ensureSym(ch); sym[ch]![s]!.add(t) }
+        return { s, t }
+      }
+      case 'Dot': {
+        const s = newState(), t = newState()
+        // Dot will be expanded to all alphabet symbols at compile time
         return { s, t }
       }
       case 'Concat': {
@@ -13256,17 +13275,48 @@ const buildThompson = (rx: RX): NFA => {
   return { n, start: s, accept: t, epsAdj, symAdj, alphabet }
 }
 
-export const compileRegexToWA = (pattern: string): WeightedAutomaton<boolean, string> => {
-  const rx = parseRegex(pattern)
+// Enhanced compilation with explicit alphabet support
+export const compileRegexToWAWithAlphabet = (
+  pattern: string, 
+  alphabet: ReadonlyArray<string>
+): WeightedAutomaton<boolean, string> => {
+  // First pass: expand negated classes and dots
+  const expandNode = (node: RX): RX => {
+    switch (node._tag) {
+      case 'Class':
+        if (node.negated) {
+          const complement = alphabet.filter(ch => !node.set.includes(ch))
+          return { _tag: 'Class', set: complement, negated: false }
+        }
+        return node
+      case 'Dot':
+        return { _tag: 'Class', set: [...alphabet], negated: false }
+      case 'Concat':
+        return { _tag: 'Concat', left: expandNode(node.left), right: expandNode(node.right) }
+      case 'Alt':
+        return { _tag: 'Alt', left: expandNode(node.left), right: expandNode(node.right) }
+      case 'Star':
+        return { _tag: 'Star', inner: expandNode(node.inner) }
+      default:
+        return node
+    }
+  }
+
+  const rx = expandNode(parseRegex(pattern))
   const nfa = buildThompson(rx)
   const B = SemiringBoolOrAnd
 
   const E = transitiveClosureBool(nfa.epsAdj, true) // ε*
 
   const delta: Record<string, Mat<boolean>> = {}
-  for (const ch of nfa.alphabet) {
-    const M1 = matMul(B)(E, nfa.symAdj[ch]!)
-    delta[ch] = matMul(B)(M1, E)
+  for (const ch of alphabet) {
+    if (nfa.symAdj[ch]) {
+      const M1 = matMul(B)(E, nfa.symAdj[ch]!)
+      delta[ch] = matMul(B)(M1, E)
+    } else {
+      // Symbol not in regex, create zero transition
+      delta[ch] = Array.from({ length: nfa.n }, () => Array(nfa.n).fill(false))
+    }
   }
 
   const init = Array.from({ length: nfa.n }, () => false)
@@ -13278,6 +13328,57 @@ export const compileRegexToWA = (pattern: string): WeightedAutomaton<boolean, st
   const finalP = matVec(B)(E, final)
 
   return { S: B, n: nfa.n, init: initP, final: finalP, delta }
+}
+
+// Backward compatibility: auto-detect alphabet from pattern
+export const compileRegexToWA = (pattern: string): WeightedAutomaton<boolean, string> => {
+  // Parse the pattern to extract all literal symbols
+  const chars = new Set<string>()
+  
+  // Simple extraction - handle basic cases
+  let i = 0
+  while (i < pattern.length) {
+    const c = pattern[i]!
+    if (c === '\\' && i + 1 < pattern.length) {
+      chars.add(pattern[i + 1]!)
+      i += 2
+    } else if (c === '[') {
+      // Extract characters from class
+      i++
+      if (pattern[i] === '^') i++ // skip negation marker
+      while (i < pattern.length && pattern[i] !== ']') {
+        const ch = pattern[i]!
+        if (ch === '\\' && i + 1 < pattern.length) {
+          chars.add(pattern[i + 1]!)
+          i += 2
+        } else if (pattern[i + 1] === '-' && i + 2 < pattern.length && pattern[i + 2] !== ']') {
+          // Handle range
+          const start = ch.charCodeAt(0)
+          const end = pattern[i + 2]!.charCodeAt(0)
+          for (let code = start; code <= end; code++) {
+            chars.add(String.fromCharCode(code))
+          }
+          i += 3
+        } else {
+          chars.add(ch)
+          i++
+        }
+      }
+      i++ // skip ']'
+    } else if (!isSpecialTop(c)) {
+      chars.add(c)
+      i++
+    } else {
+      i++
+    }
+  }
+  
+  // Ensure we have at least some alphabet
+  if (chars.size === 0) {
+    chars.add('a') // fallback
+  }
+  
+  return compileRegexToWAWithAlphabet(pattern, [...chars].sort())
 }
 
 // =====================================================================

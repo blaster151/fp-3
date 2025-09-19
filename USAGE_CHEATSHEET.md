@@ -18,7 +18,8 @@ This document provides a quick reference for finding the right tool for your pro
 ### **Build Automata & Language Recognition**
 | **Problem** | **Use This** | **Notes** |
 |-------------|--------------|-----------|
-| Compile regex to automaton | `compileRegexToWA(pattern)` | Supports `()`, `|`, `*`, escapes |
+| Compile regex to automaton | `compileRegexToWA(pattern)` | Supports `()`, `|`, `*`, `+`, `?`, `[a-z]`, `[^abc]`, `.` |
+| Compile regex with explicit alphabet | `compileRegexToWAWithAlphabet(pattern, alphabet)` | Full control over symbol set |
 | Count how many ways to parse a word | `waRun(automaton)(word)` | Use `SemiringNat` |
 | Check if word is accepted | `waAcceptsBool(automaton)(word)` | Use `SemiringBoolOrAnd` |
 | Intersect two automata | `waProduct(S)(A, B)(alphabet)` | Synchronous product |
@@ -150,8 +151,15 @@ console.log('P(xyy):', hmmForward(hmm)(['x','y','y']))
 
 ### **Regex to Automaton in 2 Lines**
 ```typescript
-const regex = compileRegexToWA('(ab|ac)*')
-console.log('accepts "abac":', waAcceptsBool(regex)(['a','b','a','c'])) // true
+const regex = compileRegexToWA('[a-z]+@[a-z]+\\.[a-z]+') // email-like pattern
+console.log('accepts email:', waAcceptsBool(regex)(['j','o','e','@','c','o','m','.','o','r','g']))
+```
+
+### **Advanced Regex with Explicit Alphabet**
+```typescript
+const alphabet = ['a','b','c','d','x','y','z']
+const regex = compileRegexToWAWithAlphabet('.*[^xyz]', alphabet) // any chars ending with non-xyz
+console.log('accepts "abcd":', waAcceptsBool(regex)(['a','b','c','d'])) // true
 ```
 
 ### **Transitive Closure in 1 Line**

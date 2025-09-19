@@ -49,7 +49,7 @@ import {
   SemiringMinPlus, SemiringMaxPlus, SemiringBoolOrAnd, SemiringProb,
   WeightedAutomaton, waRun, waAcceptsBool, HMM, hmmForward, diagFromVec,
   Edge, graphAdjNat, graphAdjBool, graphAdjWeights, countPathsOfLength, 
-  reachableWithin, shortestPathsUpTo, transitiveClosureBool, compileRegexToWA,
+  reachableWithin, shortestPathsUpTo, transitiveClosureBool, compileRegexToWA, compileRegexToWAWithAlphabet,
   // Triangulated categories
   RingReal, Complex, ChainMap, Triangle, complexIsValid, isChainMap, 
   shift1, cone, triangleFromMap, triangleIsSane
@@ -890,6 +890,23 @@ namespace ComoduleExamples {
     const Complex = compileRegexToWA('([a-c]b)*')
     console.log('  ([a-c]b)* accepts "":', waAcceptsBool(Complex)([]))                     // true
     console.log('  ([a-c]b)* accepts "abcb":', waAcceptsBool(Complex)(['a','b','c','b'])) // true
+
+    // Enhanced features with explicit alphabet
+    console.log('\nAdvanced Regex Features:')
+    const alphabet = ['a', 'b', 'c', 'd', 'x', 'y', 'z']
+    
+    // Dot matches any symbol
+    const dotWA = compileRegexToWAWithAlphabet('.+', alphabet)
+    console.log('  .+ accepts "abc":', waAcceptsBool(dotWA)(['a','b','c']))   // true
+    
+    // Negated class
+    const negWA = compileRegexToWAWithAlphabet('[^xyz]+', alphabet)
+    console.log('  [^xyz]+ accepts "abc":', waAcceptsBool(negWA)(['a','b','c'])) // true
+    console.log('  [^xyz]+ accepts "x":', waAcceptsBool(negWA)(['x']))           // false
+    
+    // Mixed: any chars ending with non-xyz
+    const mixedWA = compileRegexToWAWithAlphabet('.*[^xyz]', alphabet)
+    console.log('  .*[^xyz] accepts "xya":', waAcceptsBool(mixedWA)(['x','y','a'])) // true
     
     // Transitive Closure Example
     console.log('\nTransitive Closure:')
