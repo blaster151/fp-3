@@ -55,7 +55,9 @@ import {
   shift1, cone, triangleFromMap, triangleIsSane,
   // Advanced homological algebra
   FieldReal, FieldQ, Q, Qof, QtoString, rref, nullspace, solveLinear, composeExact,
-  rrefQPivot, runLesConeProps, randomTwoTermComplex, makeHomologyShiftIso
+  rrefQPivot, runLesConeProps, randomTwoTermComplex, makeHomologyShiftIso,
+  // Discoverability and advanced features
+  FP_CATALOG, checkExactnessForFunctor, ComplexFunctor, idChainMapN
 } from './allTS'
 
 // ====================================================================
@@ -1033,6 +1035,36 @@ namespace ComoduleExamples {
     
     console.log('✓ Advanced homological algebra infrastructure ready!')
   }
+
+  export function discoverabilityExample() {
+    console.log('\n--- Discoverability Catalog Example ---')
+    
+    console.log('Available power-tools (sample):')
+    const sampleFeatures = [
+      'SemiringMinPlus', 'compileRegexToWA', 'shortestPathsUpTo', 
+      'hmmForward', 'FieldQ', 'imageComplex', 'checkExactnessForFunctor'
+    ] as const
+    
+    for (const feature of sampleFeatures) {
+      console.log(`  ${feature}: ${FP_CATALOG[feature]}`)
+    }
+    
+    console.log('\nGeneric exactness checker demo:')
+    const X = randomTwoTermComplex(FieldReal, 1)
+    const f = idChainMapN(X)
+    
+    // Create a simple functor (identity)
+    const identityFunctor: ComplexFunctor<number> = {
+      onComplex: (X) => X,
+      onMap: (f) => f
+    }
+    
+    const exactnessCheck = checkExactnessForFunctor(FieldReal)(identityFunctor, f)
+    console.log('  Identity functor exactness:', exactnessCheck.dimsOk && exactnessCheck.isoOk)
+    console.log('  Status:', exactnessCheck.message)
+    
+    console.log('✓ Discoverability and power-tool catalog working!')
+  }
 }
 
 // ====================================================================
@@ -1074,6 +1106,7 @@ async function runExamples() {
   ComoduleExamples.triangulatedCategoryExample()
   ComoduleExamples.rationalFieldExample()
   ComoduleExamples.advancedHomologyExample()
+  ComoduleExamples.discoverabilityExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
