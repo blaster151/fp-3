@@ -21,7 +21,19 @@ import {
   entwiningCounitHolds,
   makeDiagonalEntwinedModule,
   entwinedLawHolds,
+  isEntwinedModuleHom,
+  entwinedFromComodule_AotimesM,
+  entwinedFromLeftModule_NotimesC,
+  makeTaggedLeftModule,
+  eye,
 } from '../allTS'
+
+// handy basis permutation m×m (σ: index -> index)
+const permuteBasis = (m: number, sigma: (i: number) => number): number[][] => {
+  const M = Array.from({ length: m }, () => Array.from({ length: m }, () => 0))
+  for (let i = 0; i < m; i++) M[sigma(i)]![i] = 1
+  return M
+}
 
 describe('Right comodules over diagonal coring', () => {
   it('diagonal coaction satisfies laws', () => {
@@ -210,5 +222,95 @@ describe('Entwined modules', () => {
 
     const M = makeDiagonalEntwinedModule(E)(1, j => j, j => j)
     expect(entwinedLawHolds(E, M)).toBe(true)
+  })
+})
+
+describe('Entwined modules – advanced constructions', () => {
+  it('A⊗M becomes a lawful entwined module', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(3)
+    const C = makeDiagonalCoring(S)(4)
+    const E = makeDiagonalEntwining(A, C)
+
+    // M: simple diagonal comodule on R^2
+    const M = makeDiagonalComodule(C)(2, k => (k+1) % C.n)
+
+    const EM = entwinedFromComodule_AotimesM(E)(M)
+    expect(entwinedLawHolds(E, EM)).toBe(true)
+  })
+
+  it('N⊗C becomes a lawful entwined module', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)
+    const C = makeDiagonalCoring(S)(3)
+    const E = makeDiagonalEntwining(A, C)
+
+    const N = makeTaggedLeftModule(A)(2, j => j % A.k)
+    const EN = entwinedFromLeftModule_NotimesC(E)(N)
+
+    expect(entwinedLawHolds(E, EN)).toBe(true)
+  })
+
+  it('isEntwinedModuleHom validates identity and basic morphisms', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)
+    const C = makeDiagonalCoring(S)(2)
+    const E = makeDiagonalEntwining(A, C)
+
+    // Build two identical entwined modules 
+    const M1 = makeDiagonalComodule(C)(1, k => k)
+    const M2 = makeDiagonalComodule(C)(1, k => k)
+
+    const E1 = entwinedFromComodule_AotimesM(E)(M1)
+    const E2 = entwinedFromComodule_AotimesM(E)(M2)
+
+    // identity is a hom
+    const id = eye(S)(E1.m)
+    expect(isEntwinedModuleHom(E)(E1, E1, id)).toBe(true)
+
+    // between identical modules, identity should also work
+    expect(isEntwinedModuleHom(E)(E1, E2, id)).toBe(true)
+
+    // zero map is always a hom (trivially preserves both action and coaction)
+    const zero = Array.from({ length: E1.m }, () => Array(E1.m).fill(0))
+    expect(isEntwinedModuleHom(E)(E1, E2, zero)).toBe(true)
+  })
+
+  it('validates morphism laws with dimension checks', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)
+    const C = makeDiagonalCoring(S)(2)
+    const E = makeDiagonalEntwining(A, C)
+
+    const M1 = makeDiagonalComodule(C)(1, k => k)
+    const M2 = makeDiagonalComodule(C)(1, k => k)
+
+    const E1 = entwinedFromComodule_AotimesM(E)(M1) // dim = 2*1 = 2
+    const E2 = entwinedFromComodule_AotimesM(E)(M2) // dim = 2*1 = 2
+
+    // Wrong dimensions should fail
+    const wrongDim = [[1, 0, 0], [0, 1, 0]] // 2×3 instead of 2×2
+    expect(isEntwinedModuleHom(E)(E1, E2, wrongDim)).toBe(false)
+
+    // Correct identity should pass
+    const id = eye(S)(E1.m)
+    expect(isEntwinedModuleHom(E)(E1, E2, id)).toBe(true)
+  })
+
+  it('constructions produce correct dimensions', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(3) // k = 3
+    const C = makeDiagonalCoring(S)(4)  // n = 4
+    const E = makeDiagonalEntwining(A, C)
+
+    // A⊗M construction
+    const M = makeDiagonalComodule(C)(2, k => k) // m = 2
+    const AM = entwinedFromComodule_AotimesM(E)(M)
+    expect(AM.m).toBe(6) // k * m = 3 * 2
+
+    // N⊗C construction  
+    const N = makeTaggedLeftModule(A)(2, j => j) // m = 2
+    const NC = entwinedFromLeftModule_NotimesC(E)(N)
+    expect(NC.m).toBe(8) // m * n = 2 * 4
   })
 })

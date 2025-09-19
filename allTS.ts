@@ -12527,6 +12527,92 @@ export const makeDiagonalEntwinedModule =
   }
 
 // =====================================================================
+// Morphism of entwined modules f : M → N (linear map, shapes mN × mM)
+//  (A,C,Ψ) fixed.
+// Laws:
+//   (i)  f ∘ act_M = act_N ∘ (id_A ⊗ f)
+//   (ii) (f ⊗ id_C) ∘ rho_M = rho_N ∘ f
+// =====================================================================
+export const isEntwinedModuleHom =
+  <R>(E: Entwining<R>) =>
+  (M: EntwinedModule<R>, N: EntwinedModule<R>, f: Mat<R>): boolean => {
+    const S = E.A.S
+    const k = E.A.k, n = E.C.n
+    const mM = M.m, mN = N.m
+
+    // quick shape sanity (optional)
+    if ((f.length !== mN) || (f[0]?.length ?? -1) !== mM) return false
+
+    const I = (d: number) => eye(S)(d)
+
+    // (i) action square
+    const leftAct  = matMul(S)(f, M.act)                          // mN × (k*mM)
+    const rightAct = matMul(S)(N.act, kron(S)(I(k), f))           // mN × (k*mM)
+
+    // (ii) coaction square
+    const leftCo   = matMul(S)(kron(S)(f, I(n)), M.rho)           // (mN*n) × mM
+    const rightCo  = matMul(S)(N.rho, f)                          // (mN*n) × mM
+
+    return eqMat(S)(leftAct, rightAct) && eqMat(S)(leftCo, rightCo)
+  }
+
+// Lift A⊗M to a comodule via (id_A ⊗ ρ_M)
+export const liftAotimesToComodule = <R>(E: Entwining<R>) => (M: Comodule<R>): Comodule<R> => {
+  const S = E.A.S, k = E.A.k, n = E.C.n, m = M.m
+  const I = (d: number) => eye(S)(d)
+  
+  // A⊗M has dimension k*m
+  // coaction: (id_A ⊗ ρ_M) : A⊗M → A⊗M⊗C, matrix (k*m*n) × (k*m)
+  const rho_AM = kron(S)(I(k), M.rho)
+  
+  return { S, C: E.C, m: k * m, rho: rho_AM }
+}
+
+// Lift N⊗C to a left module via (act_N ⊗ id_C)
+export const liftTensorCToLeftModule = <R>(E: Entwining<R>) => (N: LeftModule<R>): LeftModule<R> => {
+  const S = E.A.S, k = E.A.k, n = E.C.n, m = N.m
+  const I = (d: number) => eye(S)(d)
+  
+  // N⊗C has dimension m*n
+  // action: A⊗(N⊗C) → N⊗C via (act_N ⊗ id_C), matrix (m*n) × (k*m*n)
+  const act_NC = kron(S)(N.act, I(n))
+  
+  return { S, A: E.A, m: m * n, act: act_NC }
+}
+
+// A⊗M as an entwined module
+export const entwinedFromComodule_AotimesM =
+  <R>(E: Entwining<R>) =>
+  (M: Comodule<R>): EntwinedModule<R> => {
+    const S = E.A.S, k = E.A.k, n = E.C.n, m = M.m
+    const I = (d: number) => eye(S)(d)
+
+    // action (μ ⊗ id_M) : (k*m) × (k*k*m)
+    const actA = matMul(S)(kron(S)(E.A.Mu, I(m)), eye(S)(k*k*m)) // assoc is strict in our encoding
+
+    // coaction via earlier lift
+    const AM_as_comod = liftAotimesToComodule(E)(M) // rho: (k*m*n) × (k*m)
+
+    return { S, A: E.A, C: E.C, m: k*m, act: actA, rho: AM_as_comod.rho }
+  }
+
+// N⊗C as an entwined module
+export const entwinedFromLeftModule_NotimesC =
+  <R>(E: Entwining<R>) =>
+  (N: LeftModule<R>): EntwinedModule<R> => {
+    const S = E.A.S, n = E.C.n, m = N.m
+    const I = (d: number) => eye(S)(d)
+
+    // action on N⊗C via the lift
+    const NC = liftTensorCToLeftModule(E)(N)  // act: (m*n) × (k*m*n)
+
+    // coaction: id_N ⊗ Δ : (m*n^2) × (m*n)
+    const rhoNC = kron(S)(I(m), E.C.Delta)
+
+    return { S, A: E.A, C: E.C, m: m*n, act: NC.act, rho: rhoNC }
+  }
+
+// =====================================================================
 // Free bimodules over semirings (object-level; finite rank only)
 //   R ⟂ M ⟂ S  with M ≅ R^m as a *left* R-semimodule and *right* S-semimodule
 //   For standard free actions, the balanced tensor obeys:

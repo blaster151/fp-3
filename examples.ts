@@ -42,7 +42,9 @@ import {
   tensorBalancedMapSameR, idMap, composeMap, eqMat, FreeBimoduleStd, tensorBalancedObj,
   makeDiagonalBicomodule, bicomoduleCommutes,
   makeDiagonalAlgebra, makeDiagonalEntwining, entwiningCoassocHolds, entwiningMultHolds,
-  entwiningUnitHolds, entwiningCounitHolds, makeDiagonalEntwinedModule, entwinedLawHolds
+  entwiningUnitHolds, entwiningCounitHolds, makeDiagonalEntwinedModule, entwinedLawHolds,
+  isEntwinedModuleHom, entwinedFromComodule_AotimesM, entwinedFromLeftModule_NotimesC,
+  makeTaggedLeftModule, eye
 } from './allTS'
 
 // ====================================================================
@@ -688,6 +690,64 @@ namespace ComoduleExamples {
       console.log('✗ M violates entwining compatibility')
     }
   }
+
+  export function entwinedModuleMorphismsExample() {
+    console.log('\n--- Entwined Module Morphisms Example ---')
+    
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)
+    const C = makeDiagonalCoring(S)(2)
+    const E = makeDiagonalEntwining(A, C)
+
+    // Build entwined modules from comodules
+    const M1 = makeDiagonalComodule(C)(1, k => k)
+    const M2 = makeDiagonalComodule(C)(1, k => k)
+
+    const EM1 = entwinedFromComodule_AotimesM(E)(M1)
+    const EM2 = entwinedFromComodule_AotimesM(E)(M2)
+
+    console.log('Entwined module EM1 dimension:', EM1.m)
+    console.log('Entwined module EM2 dimension:', EM2.m)
+
+    // Test identity morphism
+    const id = eye(S)(EM1.m)
+    const isIdHom = isEntwinedModuleHom(E)(EM1, EM1, id)
+    console.log('Identity is a morphism:', isIdHom)
+
+    // Test zero morphism
+    const zero = Array.from({ length: EM1.m }, () => Array(EM1.m).fill(0))
+    const isZeroHom = isEntwinedModuleHom(E)(EM1, EM2, zero)
+    console.log('Zero map is a morphism:', isZeroHom)
+
+    if (isIdHom && isZeroHom) {
+      console.log('✓ Morphism laws verified!')
+    }
+  }
+
+  export function entwinedModuleConstructionsExample() {
+    console.log('\n--- Entwined Module Constructions Example ---')
+    
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(3)
+    const C = makeDiagonalCoring(S)(4)
+    const E = makeDiagonalEntwining(A, C)
+
+    // Construction 1: A⊗M from comodule M
+    const M = makeDiagonalComodule(C)(2, k => k % C.n)
+    const AM = entwinedFromComodule_AotimesM(E)(M)
+    console.log('A⊗M construction: dim =', AM.m, '(should be', A.k * M.m, ')')
+    console.log('A⊗M is lawful:', entwinedLawHolds(E, AM))
+
+    // Construction 2: N⊗C from left module N
+    const N = makeTaggedLeftModule(A)(2, j => j % A.k)
+    const NC = entwinedFromLeftModule_NotimesC(E)(N)
+    console.log('N⊗C construction: dim =', NC.m, '(should be', N.m * C.n, ')')
+    console.log('N⊗C is lawful:', entwinedLawHolds(E, NC))
+
+    if (entwinedLawHolds(E, AM) && entwinedLawHolds(E, NC)) {
+      console.log('✓ Both constructions produce lawful entwined modules!')
+    }
+  }
 }
 
 // ====================================================================
@@ -722,6 +782,8 @@ async function runExamples() {
   ComoduleExamples.objectMathExample()
   ComoduleExamples.entwiningExample()
   ComoduleExamples.entwinedModuleExample()
+  ComoduleExamples.entwinedModuleMorphismsExample()
+  ComoduleExamples.entwinedModuleConstructionsExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
