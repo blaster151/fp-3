@@ -867,21 +867,29 @@ namespace ComoduleExamples {
     const probXYY = hmmForward(H)(['x','y','y'])
     console.log('  P("xyy"):', probXYY.toFixed(6))
     
-    // Regex Compilation Example
-    console.log('\nRegex Compilation:')
+    // Enhanced Regex Compilation Example
+    console.log('\nEnhanced Regex Compilation:')
     
-    // Accepts strings of a's: a*
-    const Astar = compileRegexToWA('a*')
-    console.log('  a* accepts "":', waAcceptsBool(Astar)([]))              // true (ε)
-    console.log('  a* accepts "aa":', waAcceptsBool(Astar)(['a','a']))     // true
-    console.log('  a* alphabet:', Object.keys(Astar.delta))                // ['a']
+    // a+ — one or more a's
+    const Aplus = compileRegexToWA('a+')
+    console.log('  a+ accepts "":', waAcceptsBool(Aplus)([]))            // false
+    console.log('  a+ accepts "a":', waAcceptsBool(Aplus)(['a']))        // true
+    console.log('  a+ accepts "aa":', waAcceptsBool(Aplus)(['a','a']))   // true
 
-    // (ab|ac)* — any number of "ab" or "ac" blocks
-    const R = compileRegexToWA('(ab|ac)*')
-    console.log('  (ab|ac)* accepts "":', waAcceptsBool(R)([]))                // true
-    console.log('  (ab|ac)* accepts "abac":', waAcceptsBool(R)(['a','b','a','c'])) // true
-    console.log('  (ab|ac)* accepts "a":', waAcceptsBool(R)(['a']))             // false
-    console.log('  (ab|ac)* alphabet:', Object.keys(R.delta))                   // ['a', 'b', 'c']
+    // b? — optional b
+    const Bopt = compileRegexToWA('b?')
+    console.log('  b? accepts "":', waAcceptsBool(Bopt)([]))             // true
+    console.log('  b? accepts "b":', waAcceptsBool(Bopt)(['b']))         // true
+
+    // [a-c]+ — nonempty over {a,b,c}
+    const Range = compileRegexToWA('[a-c]+')
+    console.log('  [a-c]+ accepts "ac":', waAcceptsBool(Range)(['a','c'])) // true
+    console.log('  [a-c]+ alphabet:', Object.keys(Range.delta))           // ['a', 'b', 'c']
+
+    // ([a-c]b)* — any number of blocks like "ab","bb","cb"
+    const Complex = compileRegexToWA('([a-c]b)*')
+    console.log('  ([a-c]b)* accepts "":', waAcceptsBool(Complex)([]))                     // true
+    console.log('  ([a-c]b)* accepts "abcb":', waAcceptsBool(Complex)(['a','b','c','b'])) // true
     
     // Transitive Closure Example
     console.log('\nTransitive Closure:')

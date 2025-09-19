@@ -13022,24 +13022,78 @@ export const transitiveClosureBool = (
 }
 
 // ---------------------------------------------
-// Regex → WA<boolean>
-// Grammar (minimal):
-//   R  := Alt
-//   Alt := Concat ('|' Concat)*
-//   Concat := Repeat+         // implicit concatenation
-//   Repeat := Atom ('*')*
-//   Atom := '(' R ')' | literal
-// Literals are any non-special char except: ()|*
-// Escape with backslash to force literal.
+// Regex → WA<boolean> with + ? and [a-z] classes
+// Supported:
+//   literals (non-special, or escaped with \)
+//   grouping (...)
+//   alternation |
+//   concatenation (implicit)
+//   repeaters  *  +  ?
+//   character classes [a-z0-9_] (positive only; ranges OK)
 // ---------------------------------------------
 
 type RX =
-  | { _tag: 'Lit'; ch: string }
+  | { _tag: 'Eps' }                              // ε
+  | { _tag: 'Lit'; ch: string }                  // single symbol
+  | { _tag: 'Class'; set: ReadonlyArray<string>} // positive set of symbols
   | { _tag: 'Concat'; left: RX; right: RX }
   | { _tag: 'Alt'; left: RX; right: RX }
   | { _tag: 'Star'; inner: RX }
 
-const isSpecial = (c: string) => c === '(' || c === ')' || c === '|' || c === '*'
+const isSpecialTop = (c: string) =>
+  c === '(' || c === ')' || c === '|' || c === '*' || c === '+' || c === '?' || c === '['
+
+const readEscaped = (src: string, i: number): { ch: string; i: number } => {
+  if (i >= src.length) throw new Error('regex: dangling escape')
+  return { ch: src[i]!, i: i + 1 }
+}
+
+const expandRange = (a: string, b: string): string[] => {
+  const aa = a.codePointAt(0)!, bb = b.codePointAt(0)!
+  if (aa > bb) throw new Error(`regex: bad range ${a}-${b}`)
+  const res: string[] = []
+  for (let cp = aa; cp <= bb; cp++) res.push(String.fromCodePoint(cp))
+  return res
+}
+
+const parseClass = (src: string, start: number): { node: RX; i: number } => {
+  // src[start] === '['; returns when it consumes closing ']'
+  let i = start + 1
+  const items: string[] = []
+
+  const takeChar = (): string => {
+    const c = src[i]
+    if (!c) throw new Error('regex: unterminated character class')
+    if (c === '\\') {
+      const r = readEscaped(src, i + 1)
+      i = r.i
+      return r.ch
+    }
+    if (c === ']') throw new Error('regex: empty or malformed class')
+    i++
+    return c
+  }
+
+  // read until closing ']'
+  while (true) {
+    const c = src[i]
+    if (!c) throw new Error('regex: unterminated character class')
+    if (c === ']') { i++; break }
+
+    const a = takeChar()
+    // check for range a-b
+    if (src[i] === '-' && src[i + 1] && src[i + 1] !== ']') {
+      i++ // skip '-'
+      const b = takeChar()
+      for (const ch of expandRange(a, b)) items.push(ch)
+    } else {
+      items.push(a)
+    }
+  }
+
+  if (items.length === 0) throw new Error('regex: empty character class []')
+  return { node: { _tag: 'Class', set: items }, i }
+}
 
 const parseRegex = (src: string): RX => {
   let i = 0
@@ -13049,6 +13103,7 @@ const parseRegex = (src: string): RX => {
   const parseAtom = (): RX => {
     const c = next()
     if (!c) throw new Error('regex: unexpected end')
+
     if (c === '(') {
       eat()
       const r = parseAlt()
@@ -13056,22 +13111,34 @@ const parseRegex = (src: string): RX => {
       eat()
       return r
     }
+
+    if (c === '[') {
+      const { node, i: j } = parseClass(src, i)
+      i = j
+      return node
+    }
+
     if (c === '\\') {
       eat()
-      const lit = eat()
-      if (!lit) throw new Error('regex: dangling escape')
-      return { _tag: 'Lit', ch: lit }
+      const { ch, i: j } = readEscaped(src, i)
+      i = j
+      return { _tag: 'Lit', ch }
     }
-    if (isSpecial(c)) throw new Error(`regex: unexpected ${c}`)
+
+    if (isSpecialTop(c)) throw new Error(`regex: unexpected ${c}`)
     eat()
     return { _tag: 'Lit', ch: c }
   }
 
   const parseRepeat = (): RX => {
     let node = parseAtom()
-    while (next() === '*') {
-      eat()
-      node = { _tag: 'Star', inner: node }
+    // Greedy repeaters: *, +, ? ; allow chaining like a+?* as "apply in order"
+    while (true) {
+      const c = next()
+      if (c === '*') { eat(); node = { _tag: 'Star', inner: node }; continue }
+      if (c === '+') { eat(); node = { _tag: 'Concat', left: node, right: { _tag: 'Star', inner: node } }; continue }
+      if (c === '?') { eat(); node = { _tag: 'Alt', left: { _tag: 'Eps' }, right: node }; continue }
+      break
     }
     return node
   }
@@ -13102,14 +13169,13 @@ const parseRegex = (src: string): RX => {
   return ast
 }
 
-// ε-NFA via Thompson (single start & single accept)
-// We build adjacency as sets then realize into matrices.
+// ε-NFA via Thompson, then ε-eliminate with Warshall closure
 type NFA = {
   n: number
   start: number
   accept: number
-  epsAdj: boolean[][]                   // n×n ε edges
-  symAdj: Record<string, boolean[][]>   // for each symbol, n×n edges
+  epsAdj: boolean[][]
+  symAdj: Record<string, boolean[][]>
   alphabet: string[]
 }
 
@@ -13130,13 +13196,23 @@ const buildThompson = (rx: RX): NFA => {
     }
   }
 
-  type Pair = { s: number; t: number } // fragment with start/end
-  const go = (e: RX): Pair => {
+  type Frag = { s: number; t: number }
+  const go = (e: RX): Frag => {
     switch (e._tag) {
+      case 'Eps': {
+        const s = newState(), t = newState()
+        eps[s]!.add(t)
+        return { s, t }
+      }
       case 'Lit': {
         const s = newState(), t = newState()
         ensureSym(e.ch)
         sym[e.ch]![s]!.add(t)
+        return { s, t }
+      }
+      case 'Class': {
+        const s = newState(), t = newState()
+        for (const ch of e.set) { ensureSym(ch); sym[ch]![s]!.add(t) }
         return { s, t }
       }
       case 'Concat': {
@@ -13156,7 +13232,6 @@ const buildThompson = (rx: RX): NFA => {
       case 'Star': {
         const s = newState(), t = newState()
         const a = go(e.inner)
-        // s -> a.s | t ; a.t -> a.s | t
         eps[s]!.add(a.s); eps[s]!.add(t)
         eps[a.t]!.add(a.s); eps[a.t]!.add(t)
         return { s, t }
@@ -13167,7 +13242,6 @@ const buildThompson = (rx: RX): NFA => {
   const { s, t } = go(rx)
   const alphabet = Object.keys(sym)
 
-  // realize to dense matrices
   const epsAdj: boolean[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => false))
   for (let i = 0; i < n; i++) for (const j of eps[i] ?? []) epsAdj[i]![j] = true
 
@@ -13182,13 +13256,12 @@ const buildThompson = (rx: RX): NFA => {
   return { n, start: s, accept: t, epsAdj, symAdj, alphabet }
 }
 
-// Eliminate ε: E = ε*; Δ'_a = E · Δ_a · E; init' = init·E; final' = E·final
 export const compileRegexToWA = (pattern: string): WeightedAutomaton<boolean, string> => {
   const rx = parseRegex(pattern)
   const nfa = buildThompson(rx)
   const B = SemiringBoolOrAnd
 
-  const E = transitiveClosureBool(nfa.epsAdj, true) // reflexive transitive ε-closure
+  const E = transitiveClosureBool(nfa.epsAdj, true) // ε*
 
   const delta: Record<string, Mat<boolean>> = {}
   for (const ch of nfa.alphabet) {
@@ -13196,7 +13269,6 @@ export const compileRegexToWA = (pattern: string): WeightedAutomaton<boolean, st
     delta[ch] = matMul(B)(M1, E)
   }
 
-  // init row & final column
   const init = Array.from({ length: nfa.n }, () => false)
   init[nfa.start] = true
   const final = Array.from({ length: nfa.n }, () => false)

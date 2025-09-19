@@ -306,4 +306,64 @@ describe('Regex compilation', () => {
     expect(waAcceptsBool(wa)(['('])).toBe(false)
     expect(waAcceptsBool(wa)([')'])).toBe(false)
   })
+
+  it('compiles one-or-more (+)', () => {
+    const wa = compileRegexToWA('a+')
+    
+    expect(waAcceptsBool(wa)([])).toBe(false)           // ε not accepted
+    expect(waAcceptsBool(wa)(['a'])).toBe(true)         // a
+    expect(waAcceptsBool(wa)(['a','a'])).toBe(true)     // aa
+    expect(waAcceptsBool(wa)(['a','a','a'])).toBe(true) // aaa
+  })
+
+  it('compiles optional (?)', () => {
+    const wa = compileRegexToWA('b?')
+    
+    expect(waAcceptsBool(wa)([])).toBe(true)            // ε accepted
+    expect(waAcceptsBool(wa)(['b'])).toBe(true)         // b
+    expect(waAcceptsBool(wa)(['b','b'])).toBe(false)    // bb not accepted
+  })
+
+  it('compiles character classes', () => {
+    const wa = compileRegexToWA('[abc]')
+    
+    expect(waAcceptsBool(wa)(['a'])).toBe(true)
+    expect(waAcceptsBool(wa)(['b'])).toBe(true)
+    expect(waAcceptsBool(wa)(['c'])).toBe(true)
+    expect(() => waAcceptsBool(wa)(['d'])).toThrow('unknown symbol')
+  })
+
+  it('compiles character ranges', () => {
+    const wa = compileRegexToWA('[a-c]+')
+    
+    expect(waAcceptsBool(wa)(['a','c'])).toBe(true)
+    expect(waAcceptsBool(wa)(['b','b','a'])).toBe(true)
+    expect(waAcceptsBool(wa)([])).toBe(false) // + requires at least one
+    
+    // Check alphabet includes expanded range
+    const alphabet = Object.keys(wa.delta).sort()
+    expect(alphabet).toEqual(['a', 'b', 'c'])
+  })
+
+  it('compiles complex patterns with new features', () => {
+    const wa = compileRegexToWA('([a-c]b)*')
+    
+    expect(waAcceptsBool(wa)([])).toBe(true)                      // ε
+    expect(waAcceptsBool(wa)(['a','b'])).toBe(true)               // ab
+    expect(waAcceptsBool(wa)(['b','b'])).toBe(true)               // bb
+    expect(waAcceptsBool(wa)(['c','b'])).toBe(true)               // cb
+    expect(waAcceptsBool(wa)(['a','b','c','b'])).toBe(true)       // abcb
+    expect(waAcceptsBool(wa)(['a'])).toBe(false)                  // incomplete
+  })
+
+  it('handles mixed features', () => {
+    const wa = compileRegexToWA('a+b?[0-9]*')
+    
+    expect(waAcceptsBool(wa)(['a'])).toBe(true)                   // a
+    expect(waAcceptsBool(wa)(['a','b'])).toBe(true)               // ab
+    expect(waAcceptsBool(wa)(['a','0','1'])).toBe(true)           // a01
+    expect(waAcceptsBool(wa)(['a','b','0','1','2'])).toBe(true)   // ab012
+    expect(waAcceptsBool(wa)([])).toBe(false)                     // need at least one a
+    expect(waAcceptsBool(wa)(['b'])).toBe(false)                  // need a first
+  })
 })
