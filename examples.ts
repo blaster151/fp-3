@@ -871,23 +871,23 @@ namespace ComoduleExamples {
     console.log('\nEnhanced Regex Compilation:')
     
     // a+ — one or more a's
-    const Aplus = compileRegexToWA('a+')
+    const Aplus = compileRegexToWA('a+', ['a'])
     console.log('  a+ accepts "":', waAcceptsBool(Aplus)([]))            // false
     console.log('  a+ accepts "a":', waAcceptsBool(Aplus)(['a']))        // true
     console.log('  a+ accepts "aa":', waAcceptsBool(Aplus)(['a','a']))   // true
 
     // b? — optional b
-    const Bopt = compileRegexToWA('b?')
+    const Bopt = compileRegexToWA('b?', ['b'])
     console.log('  b? accepts "":', waAcceptsBool(Bopt)([]))             // true
     console.log('  b? accepts "b":', waAcceptsBool(Bopt)(['b']))         // true
 
     // [a-c]+ — nonempty over {a,b,c}
-    const Range = compileRegexToWA('[a-c]+')
+    const Range = compileRegexToWA('[a-c]+', ['a','b','c'])
     console.log('  [a-c]+ accepts "ac":', waAcceptsBool(Range)(['a','c'])) // true
     console.log('  [a-c]+ alphabet:', Object.keys(Range.delta))           // ['a', 'b', 'c']
 
     // ([a-c]b)* — any number of blocks like "ab","bb","cb"
-    const Complex = compileRegexToWA('([a-c]b)*')
+    const Complex = compileRegexToWA('([a-c]b)*', ['a','b','c'])
     console.log('  ([a-c]b)* accepts "":', waAcceptsBool(Complex)([]))                     // true
     console.log('  ([a-c]b)* accepts "abcb":', waAcceptsBool(Complex)(['a','b','c','b'])) // true
 
@@ -896,16 +896,16 @@ namespace ComoduleExamples {
     const alphabet = ['a', 'b', 'c', 'd', 'x', 'y', 'z']
     
     // Dot matches any symbol
-    const dotWA = compileRegexToWAWithAlphabet('.+', alphabet)
+    const dotWA = compileRegexToWA('.+', alphabet)
     console.log('  .+ accepts "abc":', waAcceptsBool(dotWA)(['a','b','c']))   // true
     
     // Negated class
-    const negWA = compileRegexToWAWithAlphabet('[^xyz]+', alphabet)
+    const negWA = compileRegexToWA('[^xyz]+', alphabet)
     console.log('  [^xyz]+ accepts "abc":', waAcceptsBool(negWA)(['a','b','c'])) // true
     console.log('  [^xyz]+ accepts "x":', waAcceptsBool(negWA)(['x']))           // false
     
     // Mixed: any chars ending with non-xyz
-    const mixedWA = compileRegexToWAWithAlphabet('.*[^xyz]', alphabet)
+    const mixedWA = compileRegexToWA('.*[^xyz]', alphabet)
     console.log('  .*[^xyz] accepts "xya":', waAcceptsBool(mixedWA)(['x','y','a'])) // true
     
     // Transitive Closure Example

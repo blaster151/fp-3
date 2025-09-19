@@ -13033,10 +13033,11 @@ export const transitiveClosureBool = (
 // ---------------------------------------------
 
 type RX =
-  | { _tag: 'Eps' }                              // ε
-  | { _tag: 'Lit'; ch: string }                  // single symbol
-  | { _tag: 'Class'; set: ReadonlyArray<string>; negated: boolean } // [abc] or [^abc]
-  | { _tag: 'Dot' }                              // . (any symbol from alphabet)
+  | { _tag: 'Eps' }
+  | { _tag: 'Lit'; ch: string }
+  | { _tag: 'Class'; set: ReadonlyArray<string> }     // positive
+  | { _tag: 'NClass'; set: ReadonlyArray<string> }    // negated
+  | { _tag: 'Dot' }                                   // any from alphabet
   | { _tag: 'Concat'; left: RX; right: RX }
   | { _tag: 'Alt'; left: RX; right: RX }
   | { _tag: 'Star'; inner: RX }
@@ -13058,49 +13059,38 @@ const expandRange = (a: string, b: string): string[] => {
 }
 
 const parseClass = (src: string, start: number): { node: RX; i: number } => {
-  // src[start] === '['; returns when it consumes closing ']'
+  // src[start] === '['
   let i = start + 1
+  let neg = false
+  if (src[i] === '^') { neg = true; i++ }
   const items: string[] = []
-  
-  // Check for negation
-  let negated = false
-  if (src[i] === '^') {
-    negated = true
-    i++
-  }
 
   const takeChar = (): string => {
     const c = src[i]
-    if (!c) throw new Error('regex: unterminated character class')
+    if (!c) throw new Error('regex: unterminated [ ]')
     if (c === '\\') {
-      const r = readEscaped(src, i + 1)
-      i = r.i
-      return r.ch
+      const r = readEscaped(src, i + 1); i = r.i; return r.ch
     }
     if (c === ']') throw new Error('regex: empty or malformed class')
-    i++
-    return c
+    i++; return c
   }
 
-  // read until closing ']'
   while (true) {
     const c = src[i]
-    if (!c) throw new Error('regex: unterminated character class')
+    if (!c) throw new Error('regex: unterminated [ ]')
     if (c === ']') { i++; break }
-
     const a = takeChar()
-    // check for range a-b
-    if (src[i] === '-' && src[i + 1] && src[i + 1] !== ']') {
-      i++ // skip '-'
+    if (src[i] === '-' && src[i+1] && src[i+1] !== ']') {
+      i++
       const b = takeChar()
-      for (const ch of expandRange(a, b)) items.push(ch)
+      items.push(...expandRange(a, b))
     } else {
       items.push(a)
     }
   }
 
-  if (items.length === 0) throw new Error('regex: empty character class []')
-  return { node: { _tag: 'Class', set: items, negated }, i }
+  if (items.length === 0) throw new Error('regex: [] empty')
+  return { node: neg ? { _tag: 'NClass', set: items } : { _tag: 'Class', set: items }, i }
 }
 
 const parseRegex = (src: string): RX => {
@@ -13192,7 +13182,7 @@ type NFA = {
   alphabet: string[]
 }
 
-const buildThompson = (rx: RX): NFA => {
+const buildThompson = (rx: RX, alphabet: ReadonlyArray<string>): NFA => {
   let n = 0
   const eps: Array<Set<number>> = []
   const sym: Record<string, Array<Set<number>>> = {}
@@ -13209,41 +13199,48 @@ const buildThompson = (rx: RX): NFA => {
     }
   }
 
+  const classToSyms = (set: ReadonlyArray<string>): string[] =>
+    Array.from(new Set(set)) // dedupe
+
+  const nclassToSyms = (set: ReadonlyArray<string>): string[] => {
+    const bad = new Set(set)
+    return alphabet.filter(a => !bad.has(a))
+  }
+
   type Frag = { s: number; t: number }
+
   const go = (e: RX): Frag => {
     switch (e._tag) {
       case 'Eps': {
         const s = newState(), t = newState()
-        eps[s]!.add(t)
-        return { s, t }
+        eps[s]!.add(t); return { s, t }
       }
       case 'Lit': {
         const s = newState(), t = newState()
-        ensureSym(e.ch)
-        sym[e.ch]![s]!.add(t)
+        ensureSym(e.ch); sym[e.ch]![s]!.add(t); return { s, t }
+      }
+      case 'Dot': {
+        const s = newState(), t = newState()
+        for (const ch of alphabet) { ensureSym(ch); sym[ch]![s]!.add(t) }
         return { s, t }
       }
       case 'Class': {
         const s = newState(), t = newState()
-        // For now, just handle positive classes - negation will be resolved at compile time
-        for (const ch of e.set) { ensureSym(ch); sym[ch]![s]!.add(t) }
+        for (const ch of classToSyms(e.set)) { ensureSym(ch); sym[ch]![s]!.add(t) }
         return { s, t }
       }
-      case 'Dot': {
+      case 'NClass': {
         const s = newState(), t = newState()
-        // Dot will be expanded to all alphabet symbols at compile time
+        for (const ch of nclassToSyms(e.set)) { ensureSym(ch); sym[ch]![s]!.add(t) }
         return { s, t }
       }
       case 'Concat': {
-        const a = go(e.left)
-        const b = go(e.right)
-        eps[a.t]!.add(b.s)
-        return { s: a.s, t: b.t }
+        const a = go(e.left), b = go(e.right)
+        eps[a.t]!.add(b.s); return { s: a.s, t: b.t }
       }
       case 'Alt': {
         const s = newState(), t = newState()
-        const a = go(e.left)
-        const b = go(e.right)
+        const a = go(e.left), b = go(e.right)
         eps[s]!.add(a.s); eps[s]!.add(b.s)
         eps[a.t]!.add(t); eps[b.t]!.add(t)
         return { s, t }
@@ -13259,126 +13256,45 @@ const buildThompson = (rx: RX): NFA => {
   }
 
   const { s, t } = go(rx)
-  const alphabet = Object.keys(sym)
-
   const epsAdj: boolean[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => false))
   for (let i = 0; i < n; i++) for (const j of eps[i] ?? []) epsAdj[i]![j] = true
 
   const symAdj: Record<string, boolean[][]> = {}
-  for (const ch of alphabet) {
+  for (const ch of Object.keys(sym)) {
     const arr = sym[ch]!
     const M: boolean[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => false))
     for (let i = 0; i < n; i++) for (const j of arr[i] ?? []) M[i]![j] = true
     symAdj[ch] = M
   }
 
-  return { n, start: s, accept: t, epsAdj, symAdj, alphabet }
+  return { n, start: s, accept: t, epsAdj, symAdj, alphabet: Array.from(alphabet) }
 }
 
-// Enhanced compilation with explicit alphabet support
-export const compileRegexToWAWithAlphabet = (
-  pattern: string, 
+export const compileRegexToWA = (
+  pattern: string,
   alphabet: ReadonlyArray<string>
 ): WeightedAutomaton<boolean, string> => {
-  // First pass: expand negated classes and dots
-  const expandNode = (node: RX): RX => {
-    switch (node._tag) {
-      case 'Class':
-        if (node.negated) {
-          const complement = alphabet.filter(ch => !node.set.includes(ch))
-          return { _tag: 'Class', set: complement, negated: false }
-        }
-        return node
-      case 'Dot':
-        return { _tag: 'Class', set: [...alphabet], negated: false }
-      case 'Concat':
-        return { _tag: 'Concat', left: expandNode(node.left), right: expandNode(node.right) }
-      case 'Alt':
-        return { _tag: 'Alt', left: expandNode(node.left), right: expandNode(node.right) }
-      case 'Star':
-        return { _tag: 'Star', inner: expandNode(node.inner) }
-      default:
-        return node
-    }
-  }
+  const rx  = parseRegex(pattern)
+  const nfa = buildThompson(rx, alphabet)
+  const B   = SemiringBoolOrAnd
 
-  const rx = expandNode(parseRegex(pattern))
-  const nfa = buildThompson(rx)
-  const B = SemiringBoolOrAnd
+  // ε-eliminate: E = ε*, Δ'_a = E·Δ_a·E
+  const E = transitiveClosureBool(nfa.epsAdj, true)
 
-  const E = transitiveClosureBool(nfa.epsAdj, true) // ε*
-
-  const delta: Record<string, Mat<boolean>> = {}
+  const delta: Record<string, boolean[][]> = {}
   for (const ch of alphabet) {
-    if (nfa.symAdj[ch]) {
-      const M1 = matMul(B)(E, nfa.symAdj[ch]!)
-      delta[ch] = matMul(B)(M1, E)
-    } else {
-      // Symbol not in regex, create zero transition
-      delta[ch] = Array.from({ length: nfa.n }, () => Array(nfa.n).fill(false))
-    }
+    const M = nfa.symAdj[ch] ?? Array.from({ length: nfa.n }, () => Array.from({ length: nfa.n }, () => false))
+    delta[ch] = matMul(B)(matMul(B)(E, M), E)
   }
 
-  const init = Array.from({ length: nfa.n }, () => false)
-  init[nfa.start] = true
-  const final = Array.from({ length: nfa.n }, () => false)
-  final[nfa.accept] = true
+  // init and final, then push through E
+  const init = Array.from({ length: nfa.n }, () => false); init[nfa.start] = true
+  const final= Array.from({ length: nfa.n }, () => false); final[nfa.accept] = true
 
   const initP = vecMat(B)(init, E)
-  const finalP = matVec(B)(E, final)
+  const finalP= matVec(B)(E, final)
 
-  return { S: B, n: nfa.n, init: initP, final: finalP, delta }
-}
-
-// Backward compatibility: auto-detect alphabet from pattern
-export const compileRegexToWA = (pattern: string): WeightedAutomaton<boolean, string> => {
-  // Parse the pattern to extract all literal symbols
-  const chars = new Set<string>()
-  
-  // Simple extraction - handle basic cases
-  let i = 0
-  while (i < pattern.length) {
-    const c = pattern[i]!
-    if (c === '\\' && i + 1 < pattern.length) {
-      chars.add(pattern[i + 1]!)
-      i += 2
-    } else if (c === '[') {
-      // Extract characters from class
-      i++
-      if (pattern[i] === '^') i++ // skip negation marker
-      while (i < pattern.length && pattern[i] !== ']') {
-        const ch = pattern[i]!
-        if (ch === '\\' && i + 1 < pattern.length) {
-          chars.add(pattern[i + 1]!)
-          i += 2
-        } else if (pattern[i + 1] === '-' && i + 2 < pattern.length && pattern[i + 2] !== ']') {
-          // Handle range
-          const start = ch.charCodeAt(0)
-          const end = pattern[i + 2]!.charCodeAt(0)
-          for (let code = start; code <= end; code++) {
-            chars.add(String.fromCharCode(code))
-          }
-          i += 3
-        } else {
-          chars.add(ch)
-          i++
-        }
-      }
-      i++ // skip ']'
-    } else if (!isSpecialTop(c)) {
-      chars.add(c)
-      i++
-    } else {
-      i++
-    }
-  }
-  
-  // Ensure we have at least some alphabet
-  if (chars.size === 0) {
-    chars.add('a') // fallback
-  }
-  
-  return compileRegexToWAWithAlphabet(pattern, [...chars].sort())
+  return { S: B, n: nfa.n, init: initP, final: finalP, delta: delta as Record<string, any> }
 }
 
 // =====================================================================

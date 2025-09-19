@@ -6,7 +6,7 @@ import {
   HMM, hmmForward, diagFromVec, normalizeRow,
   Edge, graphAdjNat, graphAdjBool, graphAdjWeights,
   countPathsOfLength, reachableWithin, shortestPathsUpTo,
-  transitiveClosureBool, compileRegexToWA, compileRegexToWAWithAlphabet,
+  transitiveClosureBool, compileRegexToWA,
   eye,
 } from '../allTS'
 
@@ -234,29 +234,25 @@ describe('Transitive closure', () => {
 
 describe('Regex compilation', () => {
   it('compiles simple literals', () => {
-    const wa = compileRegexToWA('a')
+    const wa = compileRegexToWA('a', ['a', 'b'])
     
     expect(waAcceptsBool(wa)(['a'])).toBe(true)
     expect(waAcceptsBool(wa)([])).toBe(false)
     expect(waAcceptsBool(wa)(['a','a'])).toBe(false)
-    
-    // Unknown symbols should throw (expected behavior)
-    expect(() => waAcceptsBool(wa)(['b'])).toThrow('unknown symbol')
+    expect(waAcceptsBool(wa)(['b'])).toBe(false) // b not in pattern
   })
 
   it('compiles Kleene star', () => {
-    const wa = compileRegexToWA('a*')
+    const wa = compileRegexToWA('a*', ['a', 'b'])
     
     expect(waAcceptsBool(wa)([])).toBe(true)           // ε
     expect(waAcceptsBool(wa)(['a'])).toBe(true)        // a
     expect(waAcceptsBool(wa)(['a','a'])).toBe(true)    // aa
-    
-    // Unknown symbols should throw
-    expect(() => waAcceptsBool(wa)(['b'])).toThrow('unknown symbol')
+    expect(waAcceptsBool(wa)(['b'])).toBe(false)       // b not in pattern
   })
 
   it('compiles concatenation', () => {
-    const wa = compileRegexToWA('ab')
+    const wa = compileRegexToWA('ab', ['a', 'b'])
     
     expect(waAcceptsBool(wa)(['a','b'])).toBe(true)
     expect(waAcceptsBool(wa)(['a'])).toBe(false)
@@ -265,18 +261,17 @@ describe('Regex compilation', () => {
   })
 
   it('compiles alternation', () => {
-    const wa = compileRegexToWA('a|b')
+    const wa = compileRegexToWA('a|b', ['a', 'b', 'c'])
     
     expect(waAcceptsBool(wa)(['a'])).toBe(true)
     expect(waAcceptsBool(wa)(['b'])).toBe(true)
     expect(waAcceptsBool(wa)([])).toBe(false)
     
-    // Unknown symbols should throw
-    expect(() => waAcceptsBool(wa)(['c'])).toThrow('unknown symbol')
+    expect(waAcceptsBool(wa)(['c'])).toBe(false) // c not in pattern
   })
 
   it('compiles complex patterns', () => {
-    const wa = compileRegexToWA('(ab|ac)*')
+    const wa = compileRegexToWA('(ab|ac)*', ['a', 'b', 'c', 'd'])
     
     expect(waAcceptsBool(wa)([])).toBe(true)                      // ε
     expect(waAcceptsBool(wa)(['a','b'])).toBe(true)               // ab
@@ -285,12 +280,11 @@ describe('Regex compilation', () => {
     expect(waAcceptsBool(wa)(['a','b','a','b'])).toBe(true)       // abab
     expect(waAcceptsBool(wa)(['a'])).toBe(false)                  // incomplete
     
-    // Unknown symbols should throw
-    expect(() => waAcceptsBool(wa)(['a','d'])).toThrow('unknown symbol')
+    expect(waAcceptsBool(wa)(['a','d'])).toBe(false) // d not in pattern
   })
 
   it('handles nested groups and stars', () => {
-    const wa = compileRegexToWA('(a*b)*')
+    const wa = compileRegexToWA('(a*b)*', ['a', 'b'])
     
     expect(waAcceptsBool(wa)([])).toBe(true)                      // ε
     expect(waAcceptsBool(wa)(['b'])).toBe(true)                   // b
@@ -300,7 +294,7 @@ describe('Regex compilation', () => {
   })
 
   it('handles escape sequences', () => {
-    const wa = compileRegexToWA('\\(\\)')
+    const wa = compileRegexToWA('\\(\\)', ['(', ')'])
     
     expect(waAcceptsBool(wa)(['(', ')'])).toBe(true)
     expect(waAcceptsBool(wa)(['('])).toBe(false)
@@ -308,7 +302,7 @@ describe('Regex compilation', () => {
   })
 
   it('compiles one-or-more (+)', () => {
-    const wa = compileRegexToWA('a+')
+    const wa = compileRegexToWA('a+', ['a'])
     
     expect(waAcceptsBool(wa)([])).toBe(false)           // ε not accepted
     expect(waAcceptsBool(wa)(['a'])).toBe(true)         // a
@@ -317,7 +311,7 @@ describe('Regex compilation', () => {
   })
 
   it('compiles optional (?)', () => {
-    const wa = compileRegexToWA('b?')
+    const wa = compileRegexToWA('b?', ['b'])
     
     expect(waAcceptsBool(wa)([])).toBe(true)            // ε accepted
     expect(waAcceptsBool(wa)(['b'])).toBe(true)         // b
@@ -325,16 +319,16 @@ describe('Regex compilation', () => {
   })
 
   it('compiles character classes', () => {
-    const wa = compileRegexToWA('[abc]')
+    const wa = compileRegexToWA('[abc]', ['a', 'b', 'c', 'd'])
     
     expect(waAcceptsBool(wa)(['a'])).toBe(true)
     expect(waAcceptsBool(wa)(['b'])).toBe(true)
     expect(waAcceptsBool(wa)(['c'])).toBe(true)
-    expect(() => waAcceptsBool(wa)(['d'])).toThrow('unknown symbol')
+    expect(waAcceptsBool(wa)(['d'])).toBe(false) // d not in pattern
   })
 
   it('compiles character ranges', () => {
-    const wa = compileRegexToWA('[a-c]+')
+    const wa = compileRegexToWA('[a-c]+', ['a', 'b', 'c'])
     
     expect(waAcceptsBool(wa)(['a','c'])).toBe(true)
     expect(waAcceptsBool(wa)(['b','b','a'])).toBe(true)
@@ -346,7 +340,7 @@ describe('Regex compilation', () => {
   })
 
   it('compiles complex patterns with new features', () => {
-    const wa = compileRegexToWA('([a-c]b)*')
+    const wa = compileRegexToWA('([a-c]b)*', ['a', 'b', 'c'])
     
     expect(waAcceptsBool(wa)([])).toBe(true)                      // ε
     expect(waAcceptsBool(wa)(['a','b'])).toBe(true)               // ab
@@ -357,7 +351,7 @@ describe('Regex compilation', () => {
   })
 
   it('handles mixed features', () => {
-    const wa = compileRegexToWA('a+b?[0-9]*')
+    const wa = compileRegexToWA('a+b?[0-9]*', ['a', 'b', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
     
     expect(waAcceptsBool(wa)(['a'])).toBe(true)                   // a
     expect(waAcceptsBool(wa)(['a','b'])).toBe(true)               // ab
@@ -369,7 +363,7 @@ describe('Regex compilation', () => {
 
   it('compiles dot with explicit alphabet', () => {
     const alphabet = ['a', 'b', 'c']
-    const wa = compileRegexToWAWithAlphabet('.+', alphabet)
+    const wa = compileRegexToWA('.+', alphabet)
     
     expect(waAcceptsBool(wa)(['a'])).toBe(true)
     expect(waAcceptsBool(wa)(['b'])).toBe(true)
@@ -380,7 +374,7 @@ describe('Regex compilation', () => {
 
   it('compiles negated character classes', () => {
     const alphabet = ['a', 'b', 'c', 'd']
-    const wa = compileRegexToWAWithAlphabet('[^ab]+', alphabet)
+    const wa = compileRegexToWA('[^ab]+', alphabet)
     
     expect(waAcceptsBool(wa)(['c'])).toBe(true)
     expect(waAcceptsBool(wa)(['d'])).toBe(true)
@@ -392,7 +386,7 @@ describe('Regex compilation', () => {
 
   it('handles mixed dot and negated classes', () => {
     const alphabet = ['a', 'b', 'c', 'x', 'y', 'z']
-    const wa = compileRegexToWAWithAlphabet('.*[^xyz]', alphabet)
+    const wa = compileRegexToWA('.*[^xyz]', alphabet)
     
     expect(waAcceptsBool(wa)(['a'])).toBe(true)           // ends with a (not xyz)
     expect(waAcceptsBool(wa)(['b','c','a'])).toBe(true)   // ends with a
