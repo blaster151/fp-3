@@ -36,7 +36,9 @@ import {
   // Advanced evaluators
   evalExprNum2, evalExprR, evalExprRR, showExprMinParens2,
   // Monoids
-  MonoidArray
+  MonoidArray,
+  // Categorical theory
+  SemiringNat, makeDiagonalCoring, makeDiagonalComodule, comoduleCoassocHolds, comoduleCounitHolds
 } from './allTS'
 
 // ====================================================================
@@ -536,6 +538,37 @@ namespace SafeASTEvolutionExamples {
 }
 
 // ====================================================================
+// 8. CATEGORICAL THEORY - Comodules over Corings
+// ====================================================================
+
+namespace ComoduleExamples {
+  export function runAll() {
+    console.log('\n--- Comodule Examples ---')
+    
+    // Create a diagonal coring on R^3
+    const C = makeDiagonalCoring(SemiringNat)(3)
+    console.log('Diagonal coring C on R^3 created')
+    
+    // Create a diagonal comodule M ≅ R^2 with ρ(e0)=e0⊗c0, ρ(e1)=e1⊗c1
+    const M = makeDiagonalComodule(C)(2, k => k % 3)
+    console.log('Diagonal comodule M ≅ R^2 created with tagging function k ↦ k mod 3')
+    
+    // Check coaction laws
+    const coassocHolds = comoduleCoassocHolds(M)
+    const counitHolds = comoduleCounitHolds(M)
+    
+    console.log(`Coassociativity law holds: ${coassocHolds}`)
+    console.log(`Counit law holds: ${counitHolds}`)
+    
+    if (coassocHolds && counitHolds) {
+      console.log('✓ M is a lawful right C-comodule!')
+    } else {
+      console.log('✗ M violates comodule laws')
+    }
+  }
+}
+
+// ====================================================================
 // RUNNER - Uncomment examples to test them
 // ====================================================================
 
@@ -561,6 +594,7 @@ async function runExamples() {
   // JsonStreamingExamples
   // FusedPipelineExamples
   // SafeASTEvolutionExamples
+  ComoduleExamples.runAll()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
@@ -582,7 +616,8 @@ export type {
   SequenceExamples,
   JsonStreamingExamples,
   FusedPipelineExamples,
-  SafeASTEvolutionExamples
+  SafeASTEvolutionExamples,
+  ComoduleExamples
 }
 
 // Run if this file is executed directly

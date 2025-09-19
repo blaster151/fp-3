@@ -12150,4 +12150,208 @@ const [jsonSize2, jsonDepth2] = sizeAndDepthJson(complexJson)  // [6, 3]
 
 
 
+// =====================================================================
+// Semirings and matrix utilities for categorical theory
+// =====================================================================
+export type Semiring<R> = {
+  readonly zero: R
+  readonly one: R
+  readonly add: (x: R, y: R) => R
+  readonly mul: (x: R, y: R) => R
+  readonly eq?: (x: R, y: R) => boolean
+}
+
+export const SemiringNat: Semiring<number> = {
+  zero: 0,
+  one: 1,
+  add: (x, y) => x + y,
+  mul: (x, y) => x * y,
+  eq: (x, y) => x === y,
+}
+
+export type Mat<R> = R[][] // rows x cols
+
+// Identity matrix
+export const eye = <R>(S: Semiring<R>) => (n: number): Mat<R> => {
+  const result: R[][] = []
+  for (let i = 0; i < n; i++) {
+    const row: R[] = []
+    for (let j = 0; j < n; j++) {
+      row.push(i === j ? S.one : S.zero)
+    }
+    result.push(row)
+  }
+  return result
+}
+
+// Matrix multiplication
+export const matMul = <R>(S: Semiring<R>) => (A: Mat<R>, B: Mat<R>): Mat<R> => {
+  const m = A.length
+  const k = B.length
+  const n = B[0]?.length ?? 0
+  if (A[0]?.length !== k) throw new Error('matMul: incompatible dimensions')
+  
+  const result: R[][] = []
+  for (let i = 0; i < m; i++) {
+    const row: R[] = []
+    for (let j = 0; j < n; j++) {
+      let sum = S.zero
+      for (let p = 0; p < k; p++) {
+        sum = S.add(sum, S.mul(A[i]![p]!, B[p]![j]!))
+      }
+      row.push(sum)
+    }
+    result.push(row)
+  }
+  return result
+}
+
+// =====================================================================
+// Corings over semirings
+//   A coring C over R^n is (R^n, Δ: C→C⊗C, ε: C→R) satisfying laws
+// =====================================================================
+export type Coring<R> = {
+  readonly S: Semiring<R>
+  readonly n: number         // rank of C ≅ R^n
+  readonly Delta: Mat<R>     // (n*n) x n
+  readonly Eps: Mat<R>       // 1 x n
+}
+
+// Diagonal coring: each basis element is group-like
+export const makeDiagonalCoring = <R>(S: Semiring<R>) => (n: number): Coring<R> => {
+  // Δ(c_i) = c_i ⊗ c_i
+  const Delta: R[][] = []
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const row: R[] = Array(n).fill(S.zero)
+      if (i === j) row[i] = S.one
+      Delta.push(row)
+    }
+  }
+  
+  // ε(c_i) = 1 for all i
+  const Eps: R[][] = [Array(n).fill(S.one)]
+  
+  return { S, n, Delta, Eps }
+}
+
+// =====================================================================
+// Free bimodules over semirings (object-level; finite rank only)
+//   R ⟂ M ⟂ S  with M ≅ R^m as a *left* R-semimodule and *right* S-semimodule
+//   For standard free actions, the balanced tensor obeys:
+//     (R^m_S) ⊗_S (S^n_T)  ≅  R^{m⋅n}_T
+// =====================================================================
+export type FreeBimodule<R, S> = {
+  readonly left: Semiring<R>
+  readonly right: Semiring<S>
+  readonly rank: number     // M ≅ R^rank as a set of columns
+}
+
+// canonical free objects
+export const FreeBimoduleStd = <R, S>(R: Semiring<R>, S: Semiring<S>) =>
+  (rank: number): FreeBimodule<R, S> => ({ left: R, right: S, rank })
+
+// balanced tensor on objects (no morphisms here)
+export const tensorBalancedObj =
+  <R, S, T>(
+    MS: FreeBimodule<R, S>,
+    ST: FreeBimodule<S, T>
+  ): FreeBimodule<R, T> => {
+    if (MS.right !== ST.left)
+      console.warn('tensorBalancedObj: semiring identity check skipped; ensure MS.right and ST.left represent the same S')
+    return { left: MS.left, right: ST.right, rank: MS.rank * ST.rank }
+  }
+
+// =====================================================================
+// Right C-comodules over a coring C on R^n (finite, free)
+//   - Let C = (R^n, Δ : C→C⊗C, ε : C→R).
+//   - A right C-comodule on M ≅ R^m is a coaction ρ : M → M⊗C
+//     which satisfies:
+//       (ρ ⊗ id_C) ∘ ρ  =  (id_M ⊗ Δ) ∘ ρ
+//       (id_M ⊗ ε) ∘ ρ  =  id_M
+//   - In matrices: ρ is an (m⋅n) × m matrix over R.
+// =====================================================================
+export type Comodule<R> = {
+  readonly S: Semiring<R>
+  readonly C: Coring<R>       // base coring on R^n
+  readonly m: number          // rank of M
+  readonly rho: Mat<R>        // (m*n) x m
+}
+
+// Helpers to index rows as (i,j) ↔ i*n + j
+const _row = (i: number, j: number, n: number) => i * n + j
+const _pairFrom = (r: number, n: number) => [Math.floor(r / n), r % n] as const
+
+// Coaction laws checked elementwise via sums (no reshape tricks)
+export const comoduleCoassocHolds = <R>(M: Comodule<R>): boolean => {
+  const { S, C: { n, Delta }, m, rho } = M
+  // Δ row index encodes (q, r) -> q*n + r; column is j
+  const add = S.add, mul = S.mul
+  const eq  = M.S.eq ?? ((x: R, y: R) => Object.is(x, y))
+
+  // For every basis vector e_k in M, compare coefficients of e_p ⊗ c_q ⊗ c_r
+  for (let k = 0; k < m; k++) {
+    for (let p = 0; p < m; p++) for (let q = 0; q < n; q++) for (let r = 0; r < n; r++) {
+      // LHS: sum_i rho[(i,r), k] * rho[(p,q), i]
+      let lhs = S.zero
+      for (let i = 0; i < m; i++) {
+        const a = rho[_row(i, r, n)]?.[k]
+        const b = rho[_row(p, q, n)]?.[i]
+        if (a !== undefined && b !== undefined) {
+          lhs = add(lhs, mul(a, b))
+        }
+      }
+      // RHS: sum_j rho[(p,j), k] * Δ[(q,r), j]
+      let rhs = S.zero
+      for (let j = 0; j < n; j++) {
+        const a = rho[_row(p, j, n)]?.[k]
+        const b = Delta[_row(q, r, n)]?.[j]
+        if (a !== undefined && b !== undefined) {
+          rhs = add(rhs, mul(a, b))
+        }
+      }
+      if (!eq(lhs, rhs)) return false
+    }
+  }
+  return true
+}
+
+export const comoduleCounitHolds = <R>(M: Comodule<R>): boolean => {
+  const { S, C: { n, Eps }, m, rho } = M
+  const add = S.add, mul = S.mul
+  const eq  = S.eq ?? ((x: R, y: R) => Object.is(x, y))
+  // (id ⊗ ε) ∘ ρ = id_M  ⇒  ∑_j rho[(p,j),k] * ε[j] = δ_{pk}
+  for (let k = 0; k < m; k++) for (let p = 0; p < m; p++) {
+    let acc = S.zero
+    for (let j = 0; j < n; j++) {
+      const a = rho[_row(p, j, n)]?.[k]
+      const b = Eps[0]?.[j]
+      if (a !== undefined && b !== undefined) {
+        acc = add(acc, mul(a, b))
+      }
+    }
+    const delta = (p === k) ? S.one : S.zero
+    if (!eq(acc, delta)) return false
+  }
+  return true
+}
+
+// A canonical lawful comodule for the "diagonal" coring:
+//   ρ(e_k) = e_k ⊗ c_{σ(k)}  for any choice of tag σ : {0..m-1} → {0..n-1}
+export const makeDiagonalComodule =
+  <R>(C: Coring<R>) =>
+  (m: number, sigma: (k: number) => number): Comodule<R> => {
+    const rho: R[][] = Array.from({ length: m * C.n }, () =>
+      Array.from({ length: m }, () => C.S.zero)
+    )
+    for (let k = 0; k < m; k++) {
+      const j = sigma(k) % C.n
+      const row = rho[_row(k, j, C.n)]
+      if (row) {
+        row[k] = C.S.one
+      }
+    }
+    return { S: C.S, C, m, rho }
+  }
+
 // Examples have been moved to examples.ts
