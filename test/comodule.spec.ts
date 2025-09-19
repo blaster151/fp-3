@@ -19,6 +19,8 @@ import {
   entwiningMultHolds,
   entwiningUnitHolds,
   entwiningCounitHolds,
+  makeDiagonalEntwinedModule,
+  entwinedLawHolds,
 } from '../allTS'
 
 describe('Right comodules over diagonal coring', () => {
@@ -153,5 +155,60 @@ describe('Entwinings between algebras and corings', () => {
     expect(entwiningMultHolds(E)).toBe(true)
     expect(entwiningUnitHolds(E)).toBe(true)
     expect(entwiningCounitHolds(E)).toBe(true)
+  })
+})
+
+describe('Entwined modules', () => {
+  it('diagonal entwined module satisfies compatibility law', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(3)    // A ≅ R^3
+    const C = makeDiagonalCoring(S)(4)     // C ≅ R^4
+    const E = makeDiagonalEntwining(A, C)  // Ψ = flip
+
+    const tau = (j: number) => j % A.k     // action tagging
+    const sigma = (j: number) => (j + 1) % C.n   // coaction tagging
+
+    const M = makeDiagonalEntwinedModule(E)(2, tau, sigma)
+    expect(entwinedLawHolds(E, M)).toBe(true)
+  })
+
+  it('works with different tagging functions', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)    // A ≅ R^2
+    const C = makeDiagonalCoring(S)(3)     // C ≅ R^3
+    const E = makeDiagonalEntwining(A, C)
+
+    const tau = (j: number) => (j * 2) % A.k
+    const sigma = (j: number) => (j + 2) % C.n
+
+    const M = makeDiagonalEntwinedModule(E)(4, tau, sigma)
+    expect(entwinedLawHolds(E, M)).toBe(true)
+  })
+
+  it('produces correct matrix dimensions', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(3)    // k = 3
+    const C = makeDiagonalCoring(S)(4)     // n = 4
+    const E = makeDiagonalEntwining(A, C)
+
+    const M = makeDiagonalEntwinedModule(E)(2, j => j, j => j) // m = 2
+
+    // act: m × (k*m) = 2 × 6
+    expect(M.act.length).toBe(2)
+    expect(M.act[0]?.length).toBe(6)
+
+    // rho: (m*n) × m = 8 × 2
+    expect(M.rho.length).toBe(8)
+    expect(M.rho[0]?.length).toBe(2)
+  })
+
+  it('works with single-dimensional module', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)
+    const C = makeDiagonalCoring(S)(2)
+    const E = makeDiagonalEntwining(A, C)
+
+    const M = makeDiagonalEntwinedModule(E)(1, j => j, j => j)
+    expect(entwinedLawHolds(E, M)).toBe(true)
   })
 })

@@ -12319,6 +12319,38 @@ export type Entwining<R> = {
   readonly Psi: Mat<R>             // (C.n * A.k) x (A.k * C.n)
 }
 
+// 3-factor permutation matrix P: factors [d0,d1,d2] -> permute by π
+// π = [0,1,2] is identity; π = [1,2,0] cycles (0→1→2→0)
+export const permute3 = <R>(S: Semiring<R>) =>
+  (dims: [number, number, number], perm: [number, number, number]): Mat<R> => {
+    const [d0, d1, d2] = dims
+    const total = d0 * d1 * d2
+    const M: R[][] = Array.from({ length: total }, () =>
+      Array.from({ length: total }, () => S.zero)
+    )
+    
+    // For permutation [p0, p1, p2], the target dimensions are [dims[p0], dims[p1], dims[p2]]
+    const targetDims = [dims[perm[0]], dims[perm[1]], dims[perm[2]]]
+    
+    for (let i0 = 0; i0 < d0; i0++) {
+      for (let i1 = 0; i1 < d1; i1++) {
+        for (let i2 = 0; i2 < d2; i2++) {
+          const indices = [i0, i1, i2]
+          const sourceIdx = i0 * (d1 * d2) + i1 * d2 + i2
+          
+          // Apply permutation
+          const permIndices = [indices[perm[0]!]!, indices[perm[1]!]!, indices[perm[2]!]!]
+          const [j0, j1, j2] = permIndices
+          const targetIdx = j0! * (targetDims[1]! * targetDims[2]!) + j1! * targetDims[2]! + j2!
+          
+          const row = M[targetIdx]
+          if (row) row[sourceIdx] = S.one
+        }
+      }
+    }
+    return M
+  }
+
 const I = <R>(S: Semiring<R>) => (n: number) => eye(S)(n)
 
 export const entwiningCoassocHolds = <R>(E: Entwining<R>): boolean => {
@@ -12390,6 +12422,108 @@ export const makeDiagonalEntwining =
   <R>(A: Algebra<R>, C: Coring<R>): Entwining<R> => {
     if (A.S !== C.S) console.warn('Entwining assumes A and C over the same Semiring instance')
     return { A, C, Psi: flipAC(A.S)(A.k, C.n) }
+  }
+
+// =====================================================================
+// (Left) A–module + (Right) C–comodule entwined by Ψ : A⊗C → C⊗A
+//   Data on M ≅ R^m:
+//     act : A⊗M → M         (matrix m × (k*m))
+//     rho : M → M⊗C         (matrix (m*n) × m)
+//   Compatibility (Brzeziński–Majid, left/right convention):
+//     ρ ∘ act
+//       = (act ⊗ id_C) ∘ P_(C,A,M→A,M,C) ∘ (Ψ ⊗ id_M)
+//         ∘ P_(A,M,C→A,C,M) ∘ (id_A ⊗ ρ)
+//   where P are the strict permutation matrices on 3 factors.
+//
+//   Shapes summary (k = dim A, n = dim C, m = dim M):
+//     act :      m × (k*m)
+//     rho : (m*n) × m
+// =====================================================================
+export type EntwinedModule<R> = {
+  readonly S: Semiring<R>
+  readonly A: Algebra<R>
+  readonly C: Coring<R>
+  readonly m: number
+  readonly act: Mat<R>         // m × (k*m)
+  readonly rho: Mat<R>         // (m*n) × m
+}
+
+export const entwinedLawHolds = <R>(
+  E: Entwining<R>,
+  M: EntwinedModule<R>
+): boolean => {
+  const { A: { S, k }, C: { n }, Psi } = E
+  const { m, act, rho } = M
+  if (S !== M.S || S !== E.C.S) console.warn('entwinedLawHolds: semiring instances differ')
+
+  const I = (d: number) => eye(S)(d)
+
+  // LHS: ρ ∘ act : (m*n) × (k*m)
+  const L = matMul(S)(rho, act)
+
+  // RHS pipeline:
+  // (id_A ⊗ ρ) : (k*m*n) × (k*m)
+  const step1 = kron(S)(I(k), rho)
+
+  // P_(A,M,C → A,C,M)
+  const P1 = permute3(S)([k, m, n], [0, 2, 1])
+  const step2 = matMul(S)(P1, step1)
+
+  // (Ψ ⊗ id_M)
+  const step3 = matMul(S)(kron(S)(Psi, I(m)), step2)
+
+  // P_(C,A,M → A,M,C)
+  const P2 = permute3(S)([n, k, m], [1, 2, 0])
+  const step4 = matMul(S)(P2, step3)
+
+  // (act ⊗ id_C)
+  const Rfinal = matMul(S)(kron(S)(act, I(n)), step4)
+
+  return eqMat(S)(L, Rfinal)
+}
+
+// Helper type for left modules
+export type LeftModule<R> = {
+  readonly S: Semiring<R>
+  readonly A: Algebra<R>
+  readonly m: number
+  readonly act: Mat<R>         // m × (k*m)
+}
+
+// A diagonal left A-module where each M-basis j picks an A-basis via τ(j)
+// act(e_{τ(j)} ⊗ m_j) = m_j ; all other A-basis act as 0 on m_j
+export const makeTaggedLeftModule =
+  <R>(A: Algebra<R>) =>
+  (m: number, tau: (j: number) => number): LeftModule<R> => {
+    const act: R[][] = Array.from({ length: m }, () =>
+      Array.from({ length: A.k * m }, () => A.S.zero)
+    )
+    for (let j = 0; j < m; j++) {
+      const aIdx = tau(j) % A.k
+      const row = act[j]
+      if (row) row[aIdx * m + j] = A.S.one
+    }
+    return { S: A.S, A, m, act }
+  }
+
+// Pair the above action with a diagonal right C–coaction by σ(j)
+export const makeDiagonalEntwinedModule =
+  <R>(E: Entwining<R>) =>
+  (m: number, tau: (j: number) => number, sigma: (j: number) => number): EntwinedModule<R> => {
+    const A = E.A, C = E.C, S = A.S
+    // action
+    const LM = makeTaggedLeftModule(A)(m, tau)
+    // coaction  ρ(m_j) = m_j ⊗ c_{σ(j)}
+    const rho: R[][] = Array.from({ length: m * C.n }, () =>
+      Array.from({ length: m }, () => S.zero)
+    )
+    for (let j = 0; j < m; j++) {
+      const cIdx = sigma(j) % C.n
+      const row = rho[j * C.n + cIdx]
+      if (row) row[j] = S.one
+    }
+    const M: EntwinedModule<R> = { S, A, C, m, act: LM.act, rho }
+    return M
   }
 
 // =====================================================================

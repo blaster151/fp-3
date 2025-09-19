@@ -42,7 +42,7 @@ import {
   tensorBalancedMapSameR, idMap, composeMap, eqMat, FreeBimoduleStd, tensorBalancedObj,
   makeDiagonalBicomodule, bicomoduleCommutes,
   makeDiagonalAlgebra, makeDiagonalEntwining, entwiningCoassocHolds, entwiningMultHolds,
-  entwiningUnitHolds, entwiningCounitHolds
+  entwiningUnitHolds, entwiningCounitHolds, makeDiagonalEntwinedModule, entwinedLawHolds
 } from './allTS'
 
 // ====================================================================
@@ -659,6 +659,35 @@ namespace ComoduleExamples {
       console.log('✗ E violates entwining laws')
     }
   }
+
+  export function entwinedModuleExample() {
+    console.log('\n--- Entwined Module Example ---')
+    
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(3)    // A ≅ R^3 (diagonal)
+    const C = makeDiagonalCoring(S)(4)     // C ≅ R^4 (diagonal)
+    const E = makeDiagonalEntwining(A, C)  // Ψ = flip
+
+    // M ≅ R^2 : tag each basis by τ (for action) and σ (for coaction)
+    const tau = (j: number) => j % A.k     // which A-basis acts nontrivially on m_j
+    const sigma = (j: number) => (j + 1)   // which C-basis coacts on m_j
+
+    const M = makeDiagonalEntwinedModule(E)(2, tau, sigma)
+
+    console.log('Module M has dimension:', M.m)
+    console.log('Action matrix shape:', M.act.length, 'x', M.act[0]?.length)
+    console.log('Coaction matrix shape:', M.rho.length, 'x', M.rho[0]?.length)
+
+    // Law check
+    const lawHolds = entwinedLawHolds(E, M)
+    console.log('entwined law holds:', lawHolds)
+
+    if (lawHolds) {
+      console.log('✓ M is a lawful entwined module over (A,C,Ψ)!')
+    } else {
+      console.log('✗ M violates entwining compatibility')
+    }
+  }
 }
 
 // ====================================================================
@@ -692,6 +721,7 @@ async function runExamples() {
   ComoduleExamples.bicomoduleExample()
   ComoduleExamples.objectMathExample()
   ComoduleExamples.entwiningExample()
+  ComoduleExamples.entwinedModuleExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
