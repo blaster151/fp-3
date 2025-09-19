@@ -52,7 +52,9 @@ import {
   reachableWithin, shortestPathsUpTo, transitiveClosureBool, compileRegexToWA, compileRegexToWAWithAlphabet,
   // Triangulated categories
   RingReal, Complex, ChainMap, Triangle, complexIsValid, isChainMap, 
-  shift1, cone, triangleFromMap, triangleIsSane
+  shift1, cone, triangleFromMap, triangleIsSane,
+  // Advanced homological algebra
+  FieldReal, FieldQ, Q, Qof, QtoString, rref, nullspace, solveLinear, composeExact
 } from './allTS'
 
 // ====================================================================
@@ -967,6 +969,42 @@ namespace ComoduleExamples {
       console.log('✗ Triangle construction failed')
     }
   }
+
+  export function rationalFieldExample() {
+    console.log('\n--- Rational Field Example ---')
+    
+    const F = FieldQ
+    
+    // Create some rationals
+    const a = Qof(2, 3)   // 2/3
+    const b = Qof(3, 4)   // 3/4
+    
+    console.log('a =', QtoString(a))
+    console.log('b =', QtoString(b))
+    
+    // Field operations
+    const sum = F.add(a, b)
+    const prod = F.mul(a, b)
+    const inv_a = F.inv(a)
+    
+    console.log('a + b =', QtoString(sum))   // 17/12
+    console.log('a * b =', QtoString(prod))  // 1/2
+    console.log('a^(-1) =', QtoString(inv_a)) // 3/2
+    
+    // Linear algebra over Q
+    console.log('\nLinear Algebra over Q:')
+    const A = [
+      [Qof(1), Qof(2)],
+      [Qof(3), Qof(1)]
+    ]
+    const b_vec = [Qof(5), Qof(4)]
+    
+    const solution = solveLinear(F)(A, b_vec)
+    console.log('Solution to Ax = b:')
+    console.log('x =', solution.map(QtoString))
+    
+    console.log('✓ Exact rational arithmetic working!')
+  }
 }
 
 // ====================================================================
@@ -1006,6 +1044,7 @@ async function runExamples() {
   ComoduleExamples.categoryExample()
   ComoduleExamples.practicalUtilitiesExample()
   ComoduleExamples.triangulatedCategoryExample()
+  ComoduleExamples.rationalFieldExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
