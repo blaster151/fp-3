@@ -57,7 +57,10 @@ import {
   FieldReal, FieldQ, Q, Qof, QtoString, rref, nullspace, solveLinear, composeExact,
   rrefQPivot, runLesConeProps, randomTwoTermComplex, makeHomologyShiftIso,
   // Discoverability and advanced features
-  FP_CATALOG, checkExactnessForFunctor, ComplexFunctor, idChainMapN
+  FP_CATALOG, checkExactnessForFunctor, ComplexFunctor, idChainMapN,
+  // Diagram toolkit
+  DiscDiagram, ObjId, reindexDisc, coproductComplex, LanDisc, RanDisc, 
+  checkBeckChevalleyDiscrete, registerRref
 } from './allTS'
 
 // ====================================================================
@@ -1065,6 +1068,42 @@ namespace ComoduleExamples {
     
     console.log('✓ Discoverability and power-tool catalog working!')
   }
+
+  export function diagramToolkitExample() {
+    console.log('\n--- Diagram Toolkit Example ---')
+    
+    // Register optimal RREF for rational arithmetic
+    registerRref(FieldQ, rrefQPivot)
+    console.log('Registered rrefQPivot for FieldQ')
+    
+    // Create some simple complexes for diagram operations
+    const C1 = randomTwoTermComplex(FieldReal, 1)
+    const C2 = randomTwoTermComplex(FieldReal, 1) 
+    const C3 = randomTwoTermComplex(FieldReal, 1)
+    
+    // Discrete diagram
+    const DJ: DiscDiagram<number> = { a: C1, b: C2, c: C3 }
+    console.log('Created discrete diagram with objects:', Object.keys(DJ))
+    
+    // Reindexing along a color function
+    const color = (j: ObjId) => ({ a: 'red', b: 'blue', c: 'red' }[j] ?? 'unknown')
+    const reindexed = reindexDisc(color)(DJ)
+    console.log('Reindexed by color, objects:', Object.keys(reindexed))
+    
+    // Left Kan extension (fiberwise coproduct)
+    const Lan = LanDisc(FieldReal)
+    const lanResult = Lan(color)(DJ)
+    console.log('Left Kan extension objects:', Object.keys(lanResult))
+    console.log('  red fiber dimension (degree 0):', lanResult.red?.dim[0])
+    console.log('  blue fiber dimension (degree 0):', lanResult.blue?.dim[0])
+    
+    // Coproduct of complexes
+    const coprod = coproductComplex(FieldReal)(C1, C2)
+    console.log('Coproduct dimensions (degree 0):', coprod.dim[0])
+    console.log('  = sum of individual dims:', (C1.dim[0] ?? 0) + (C2.dim[0] ?? 0))
+    
+    console.log('✓ Diagram toolkit working - ready for advanced categorical constructions!')
+  }
 }
 
 // ====================================================================
@@ -1107,6 +1146,7 @@ async function runExamples() {
   ComoduleExamples.rationalFieldExample()
   ComoduleExamples.advancedHomologyExample()
   ComoduleExamples.discoverabilityExample()
+  ComoduleExamples.diagramToolkitExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }

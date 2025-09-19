@@ -13943,6 +13943,67 @@ export const makeHomologyShiftIso =
     return { forward, backward, isoCheck }
   }
 
+// === RREF selection + linear helpers ========================================
+type RrefFn<R> = (A: ReadonlyArray<ReadonlyArray<R>>) => { R: R[][]; pivots: number[] }
+
+/** Optional registry: lets you override the RREF used for a specific Field instance. */
+const RREF_REGISTRY = new WeakMap<object, RrefFn<any>>()
+export const registerRref = <R>(F: Field<R>, rr: RrefFn<R>) => { RREF_REGISTRY.set(F as any, rr) }
+
+const getRref =
+  <R>(F: Field<R>): RrefFn<R> =>
+    (RREF_REGISTRY.get(F as any) ?? ((A: ReadonlyArray<ReadonlyArray<R>>) => rref(F)(A)))
+
+/** Column-space basis via RREF(A): take pivot columns from original A. */
+const colspaceByRref =
+  <R>(F: Field<R>) =>
+  (A: R[][]): R[][] => {
+    const { pivots } = getRref(F)(A)
+    if (!A.length) return []
+    const m = A.length
+    const B: R[][] = Array.from({ length: m }, () => [])
+    for (const j of pivots) for (let i = 0; i < m; i++) B[i]!.push(A[i]?.[j]!)
+    return B
+  }
+
+/** Nullspace basis of A x = 0 using its RREF. Returns an n×k matrix whose columns form a basis. */
+const nullspaceByRref =
+  <R>(F: Field<R>) =>
+  (A: R[][]): R[][] => {
+    const { R: U, pivots } = getRref(F)(A) // U is RREF(A), size m×n
+    const m = U.length
+    const n = (U[0]?.length ?? 0)
+    const pivotSet = new Set(pivots)
+    const free: number[] = []
+    for (let j = 0; j < n; j++) if (!pivotSet.has(j)) free.push(j)
+    const cols: R[][] = []
+    const eq = F.eq ?? ((a: R, b: R) => Object.is(a, b))
+    // Back-substitute U x = 0
+    for (const f of free) {
+      const x: R[] = Array.from({ length: n }, () => F.zero)
+      x[f] = F.one
+      // go upward through pivot rows
+      for (let i = m - 1; i >= 0; i--) {
+        // find pivot column j in row i (U is RREF so pivot entry is 1)
+        let j = -1
+        for (let c = 0; c < n; c++) if (!eq(U[i]?.[c]!, F.zero)) { j = c; break }
+        if (j < 0) continue
+        // x[j] = - Σ_{k>j} U[i][k] * x[k]
+        let s = F.zero
+        for (let k = j + 1; k < n; k++) if (!eq(U[i]?.[k]!, F.zero)) {
+          s = F.add(s, F.mul(U[i]?.[k]!, x[k]!))
+        }
+        x[j] = F.neg(s)
+      }
+      cols.push(x)
+    }
+    // pack columns to n×k
+    const K: R[][] = Array.from({ length: n }, (_, i) =>
+      cols.map(col => col[i] ?? F.zero)
+    )
+    return K
+  }
+
 /* ============================================================================
  * IMAGE / COIMAGE IN CHAIN-COMPLEX LAND (OVER A FIELD)
  * ----------------------------------------------------------------------------
@@ -13999,7 +14060,7 @@ export const imageComplex =
     // basis for im(f_n), store as columns J_n
     for (const n of degrees) {
       const fn = f.f[n] ?? ([] as R[][])          // Y_n × X_n
-      const Jn = colspace(F)(fn)                  // Y_n × r_n
+      const Jn = colspaceByRref(F)(fn)            // Y_n × r_n (auto-select RREF)
       jMat[n]  = Jn
       dim[n]   = Jn[0]?.length ?? 0
     }
@@ -14041,7 +14102,7 @@ export const coimageComplex =
     const mul = matMulHelper(F)
     const crd = coordsInHelper(F)
 
-    const kernelBasis = (A: R[][]): R[][] => nullspace(F)(A)
+    const kernelBasis = (A: R[][]): R[][] => nullspaceByRref(F)(A)
 
     const chooseComplement = (K: R[][]): R[][] => {
       // greedily extend columns of K to a basis of X_n using standard basis
@@ -14205,6 +14266,135 @@ export const checkExactnessForFunctor =
       // Diagnostic info for when full implementation is available
       message: 'Exactness checker interface ready - awaiting kernel/cokernel implementations'
     }
+  }
+
+/* ============================================================================
+ * DIAGRAMS OF COMPLEXES (finite, practical)
+ * ----------------------------------------------------------------------------
+ * We do three things:
+ *  1) Reindexing along a function on objects (discrete indices).
+ *  2) Finite (co)limits for span/cospan/square shapes via degreewise LA.
+ *  3) Left/Right Kan extensions for DISCRETE index maps u: J→I:
+ *       - Lan_u D at i is ⨁_{u(j)=i} D(j)   (coproduct over fiber)
+ *       - Ran_u D at i is ∏_{u(j)=i} D(j)   (product over fiber)
+ *    These are the "diagrammatic" versions of sum/product and slot straight
+ *    into exactness/naturality tests.
+ * ========================================================================== */
+
+export type ObjId = string
+
+/** Discrete diagram: no non-identity morphisms. */
+export type DiscDiagram<R> = Readonly<Record<ObjId, Complex<R>>>
+
+/** Reindex a discrete diagram along u: J → I (precompose). */
+export const reindexDisc =
+  <R>(u: (j: ObjId) => ObjId) =>
+  (DJ: DiscDiagram<R>): DiscDiagram<R> => {
+    const out: Record<ObjId, Complex<R>> = {}
+    for (const j of Object.keys(DJ)) {
+      const i = u(j)
+      out[i] = DJ[j]!
+    }
+    return out
+  }
+
+/** Degreewise direct sum (coproduct) of complexes. */
+export const coproductComplex =
+  <R>(F: Field<R>) =>
+  (...Xs: ReadonlyArray<Complex<R>>): Complex<R> => {
+    if (Xs.length === 0) throw new Error('coproduct of empty family')
+    const S = Xs[0]!.S
+    const degrees = Array.from(new Set(Xs.flatMap(X => X.degrees))).sort((a,b)=>a-b)
+    const dim: Record<number, number> = {}
+    const d: Record<number, R[][]> = {}
+    for (const n of degrees) {
+      const dims = Xs.map(X => X.dim[n] ?? 0)
+      dim[n] = dims.reduce((a,b)=>a+b,0)
+      // block diagonal d_n
+      const blocks = Xs.map(X => X.d[n] ?? ([] as R[][]))
+      const rows = Xs.map(X => X.d[n]?.length ?? 0).reduce((a,b)=>a+b,0)
+      const cols = Xs.map(X => X.d[n]?.[0]?.length ?? (X.dim[n] ?? 0)).reduce((a,b)=>a+b,0)
+      const M: R[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => F.zero))
+      let ro = 0, co = 0
+      for (const B of blocks) {
+        for (let i = 0; i < (B.length ?? 0); i++) {
+          for (let j = 0; j < (B[0]?.length ?? 0); j++) {
+            M[ro+i]![co+j] = B[i]?.[j]!
+          }
+        }
+        ro += (B.length ?? 0)
+        co += (B[0]?.length ?? 0)
+      }
+      d[n] = M
+    }
+    return { S, degrees, dim, d }
+  }
+
+/** Degreewise direct product (equal to coproduct for vector spaces, but keep separate). */
+export const productComplex = coproductComplex // same matrices over a field
+
+/** Left Kan extension on DISCRETE u: J→I : (Lan_u D)(i) = ⨁_{u(j)=i} D(j) */
+export const LanDisc =
+  <R>(F: Field<R>) =>
+  (u: (j: ObjId) => ObjId) =>
+  (DJ: DiscDiagram<R>): DiscDiagram<R> => {
+    const fiber: Record<ObjId, Complex<R>[]> = {}
+    for (const j of Object.keys(DJ)) {
+      const i = u(j)
+      ;(fiber[i] ??= []).push(DJ[j]!)
+    }
+    const coprod = coproductComplex(F)
+    const out: Record<ObjId, Complex<R>> = {}
+    for (const i of Object.keys(fiber)) out[i] = coprod(...fiber[i]!)
+    return out
+  }
+
+/** Right Kan extension on DISCRETE u: J→I : (Ran_u D)(i) = ∏_{u(j)=i} D(j) */
+export const RanDisc =
+  <R>(F: Field<R>) =>
+  (u: (j: ObjId) => ObjId) =>
+  (DJ: DiscDiagram<R>): DiscDiagram<R> => {
+    const fiber: Record<ObjId, Complex<R>[]> = {}
+    for (const j of Object.keys(DJ)) {
+      const i = u(j)
+      ;(fiber[i] ??= []).push(DJ[j]!)
+    }
+    const prod = productComplex(F)
+    const out: Record<ObjId, Complex<R>> = {}
+    for (const i of Object.keys(fiber)) out[i] = prod(...fiber[i]!)
+    return out
+  }
+
+/** Beck–Chevalley (discrete case): pullback square of sets ⇒ Lan commutes with reindex. */
+export const checkBeckChevalleyDiscrete =
+  <R>(F: Field<R>) =>
+  (square: {
+    //      J' --v--> J
+    //       |         |
+    //      u'        u
+    //       v         v
+    //      I' --w-->  I
+    u:  (j: ObjId) => ObjId,
+    v:  (jp: ObjId) => ObjId,
+    u_: (jp: ObjId) => ObjId,
+    w:  (iP: ObjId) => ObjId
+  }, DJ: DiscDiagram<R>) => {
+    const Lan = LanDisc(F)
+    const re  = reindexDisc<R>
+
+    // w^* (Lan_u D)   vs   Lan_{u'} (v^* D)
+    const lhs = re(square.w)(Lan(square.u)(DJ))
+    const rhs = Lan(square.u_)(re(square.v)(DJ))
+
+    // pragmatic equality = same dims per degree per object label
+    const keys = new Set([...Object.keys(lhs), ...Object.keys(rhs)])
+    for (const k of keys) {
+      const X = lhs[k], Y = rhs[k]
+      if (!X || !Y) return false
+      const degs = new Set([...X.degrees, ...Y.degrees])
+      for (const d of degs) if ((X.dim[d] ?? 0) !== (Y.dim[d] ?? 0)) return false
+    }
+    return true
   }
 
 // =====================================================================
@@ -14499,6 +14689,17 @@ export const FP_CATALOG = {
   triangleIsSane: 'Verify distinguished triangle structure',
   comoduleCoassocHolds: 'Verify comodule coassociativity law',
   entwiningCoassocHolds: 'Verify entwining Brzeziński–Majid laws',
+  
+  // Diagram toolkit
+  reindexDisc: 'Reindex a discrete diagram along u: J→I',
+  coproductComplex: 'Coproduct (degreewise direct sum) of complexes',
+  productComplex: 'Product (degreewise direct product) of complexes',
+  LanDisc: 'Left Kan extension for discrete u: J→I (fiberwise coproduct)',
+  RanDisc: 'Right Kan extension for discrete u: J→I (fiberwise product)',
+  checkBeckChevalleyDiscrete: 'Lan∘reindex ≅ reindex∘Lan on pullback squares (discrete)',
+  
+  // Backend selection
+  registerRref: 'Override RREF for a Field (e.g., registerRref(FieldQ, rrefQPivot))',
 } as const
 
 // Examples have been moved to examples.ts
