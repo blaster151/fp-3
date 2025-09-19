@@ -12821,6 +12821,40 @@ export const categoryOfEntwinedModules =
     return { id, isHom, compose: composeSafe, composeUnchecked, assertHom }
   }
 
+// ---------------------------------------------------------------------
+// Exact functor composition: (F : R→S) ∘ (G : S→T) : R→T
+//  - Pure composition on objects and maps
+//  - Witnesses are combined by delegation (no extra equality assumptions)
+// ---------------------------------------------------------------------
+
+export interface AdditiveFunctor<R, S> {
+  onComplex: (X: Complex<R>) => Complex<S>
+  onMap:     (f: ChainMap<R>) => ChainMap<S>
+}
+
+export interface ExactFunctor<R, S> extends AdditiveFunctor<R, S> {
+  preservesShift: (X: Complex<R>) => boolean
+  preservesCones: (f: ChainMap<R>) => boolean
+  imageTriangle:  (T: Triangle<R>) => Triangle<S>
+}
+
+export const composeExact =
+  <R, S, T>(F: ExactFunctor<R, S>, G: ExactFunctor<S, T>): ExactFunctor<R, T> => {
+    const onComplex = (X: Complex<R>) => G.onComplex(F.onComplex(X))
+    const onMap     = (f: ChainMap<R>) => G.onMap(F.onMap(f))
+
+    const preservesShift = (X: Complex<R>): boolean =>
+      F.preservesShift(X) && G.preservesShift(F.onComplex(X))
+
+    const preservesCones = (f: ChainMap<R>): boolean =>
+      F.preservesCones(f) && G.preservesCones(F.onMap(f))
+
+    const imageTriangle = (T0: Triangle<R>): Triangle<T> =>
+      G.imageTriangle(F.imageTriangle(T0))
+
+    return { onComplex, onMap, preservesShift, preservesCones, imageTriangle }
+  }
+
 // -------------------------------------------------------------
 // Weighted automata over a Semiring R
 //   states: n
@@ -13442,6 +13476,151 @@ export const triangleIsSane =
     isChainMap(T.f) &&
     isChainMap(T.g) &&
     isChainMap(T.h)
+
+// ---------------------------------------------------------------------
+// Field + linear algebra for homology computation
+// ---------------------------------------------------------------------
+export interface Field<R> extends Ring<R> {
+  inv: (a: R) => R        // a^{-1}, a ≠ 0
+  div: (a: R, b: R) => R  // a * b^{-1}
+}
+
+// A toy field on JS numbers (ℚ-like for small tests)
+export const FieldReal: Field<number> = {
+  ...RingReal,
+  inv: (a) => 1 / a,
+  div: (a, b) => a / b
+}
+
+type MatF<R> = ReadonlyArray<ReadonlyArray<R>>
+
+const cloneM = <R>(A: MatF<R>): R[][] => A.map(r => r.slice() as R[])
+
+// Reduced Row-Echelon Form (in place), returns pivot column indices
+export const rref =
+  <R>(F: Field<R>) =>
+  (A0: MatF<R>): { R: R[][]; pivots: number[] } => {
+    const A = cloneM(A0)
+    const m = A.length, n = (A[0]?.length ?? 0)
+    let row = 0
+    const pivots: number[] = []
+    const eq = F.eq ?? ((a: R, b: R) => Object.is(a, b))
+    
+    for (let col = 0; col < n && row < m; col++) {
+      // find pivot row
+      let pr = row
+      while (pr < m && eq(A[pr]?.[col]!, F.zero)) pr++
+      if (pr === m) continue
+      ;[A[row], A[pr]] = [A[pr]!, A[row]!]
+      const piv = A[row]?.[col]!
+      const inv = F.inv(piv)
+      // scale row
+      for (let j = col; j < n; j++) A[row]![j] = F.mul(A[row]![j]!, inv)
+      // eliminate others
+      for (let i = 0; i < m; i++) if (i !== row) {
+        const factor = A[i]?.[col]!
+        if (!eq(factor, F.zero)) {
+          for (let j = col; j < n; j++) {
+            A[i]![j] = F.sub(A[i]![j]!, F.mul(factor, A[row]![j]!))
+          }
+        }
+      }
+      pivots.push(col)
+      row++
+    }
+    return { R: A, pivots }
+  }
+
+// Nullspace basis of A (m×n): columns n×k
+export const nullspace =
+  <R>(F: Field<R>) =>
+  (A: MatF<R>): R[][] => {
+    const m = A.length, n = (A[0]?.length ?? 0)
+    const { R, pivots } = rref(F)(A)
+    const pivotSet = new Set(pivots)
+    const free = [] as number[]
+    for (let j = 0; j < n; j++) if (!pivotSet.has(j)) free.push(j)
+    const basis: R[][] = []
+    for (const f of free) {
+      const v = Array.from({ length: n }, () => F.zero)
+      v[f] = F.one
+      // back-substitute pivot columns
+      let prow = 0
+      for (const pc of pivots) {
+        // R[prow][pc] = 1 in RREF
+        // v[pc] = - sum_{j>pc} R[prow][j] * v[j]
+        let sum = F.zero
+        for (let j = pc + 1; j < n; j++) {
+          if (!F.eq?.(v[j]!, F.zero)) {
+            sum = F.add(sum, F.mul(R[prow]?.[j]!, v[j]!))
+          }
+        }
+        v[pc] = F.neg(sum)
+        prow++
+      }
+      basis.push(v)
+    }
+    return basis // n×k (each basis vector is length n)
+  }
+
+// Column space basis (return columns of A forming a basis, as matrix n×r)
+export const colspace =
+  <R>(F: Field<R>) =>
+  (A: MatF<R>): R[][] => {
+    const AT = transpose(A)
+    const { pivots } = rref(F)(AT)
+    const cols: R[][] = []
+    for (const j of pivots) cols.push(A.map(row => row[j]!))
+    // pack as n×r
+    const n = A.length ? A[0]!.length : 0
+    const M: R[][] = Array.from({ length: n }, (_, i) =>
+      cols.map(col => col[i] ?? F.zero)
+    )
+    return M
+  }
+
+const transpose = <R>(A: MatF<R>): R[][] =>
+  (A[0]?.map((_, j) => A.map(row => row[j]!)) ?? [])
+
+// Solve A x = b (least-structure; expects a solution to exist)
+export const solveLinear =
+  <R>(F: Field<R>) =>
+  (A0: MatF<R>, b0: ReadonlyArray<R>): R[] => {
+    const A = cloneM(A0)
+    const b = b0.slice() as R[]
+    const m = A.length, n = (A[0]?.length ?? 0)
+    const eq = F.eq ?? ((a: R, b: R) => Object.is(a, b))
+    let row = 0
+    
+    for (let col = 0; col < n && row < m; col++) {
+      let pr = row
+      while (pr < m && eq(A[pr]?.[col]!, F.zero)) pr++
+      if (pr === m) continue
+      ;[A[row], A[pr]] = [A[pr]!, A[row]!]; 
+      ;[b[row], b[pr]] = [b[pr]!, b[row]!]
+      const inv = F.inv(A[row]?.[col]!)
+      for (let j = col; j < n; j++) A[row]![j] = F.mul(A[row]![j]!, inv)
+      b[row] = F.mul(b[row]!, inv)
+      for (let i = 0; i < m; i++) if (i !== row) {
+        const factor = A[i]?.[col]!
+        if (!eq(factor, F.zero)) {
+          for (let j = col; j < n; j++) A[i]![j] = F.sub(A[i]![j]!, F.mul(factor, A[row]![j]!))
+          b[i] = F.sub(b[i]!, F.mul(factor, b[row]!))
+        }
+      }
+      row++
+    }
+    // read off solution (set free vars = 0)
+    const x = Array.from({ length: n }, () => F.zero)
+    let prow = 0
+    for (let col = 0; col < n && prow < m; col++) {
+      // leading one?
+      if (!eq(A[prow]?.[col]!, F.one)) continue
+      x[col] = b[prow]!
+      prow++
+    }
+    return x
+  }
 
 // =====================================================================
 // Free bimodules over semirings (object-level; finite rank only)
