@@ -60,7 +60,11 @@ import {
   FP_CATALOG, checkExactnessForFunctor, ComplexFunctor, idChainMapN,
   // Diagram toolkit
   DiscDiagram, ObjId, reindexDisc, coproductComplex, LanDisc, RanDisc, 
-  checkBeckChevalleyDiscrete, registerRref
+  checkBeckChevalleyDiscrete, registerRref,
+  // Poset diagrams
+  FinitePoset, PosetDiagram, makePosetDiagram, pushoutInDiagram, pullbackInDiagram,
+  // Namespaced exports
+  Diagram, Lin, Chain, Exactness
 } from './allTS'
 
 // ====================================================================
@@ -1104,6 +1108,77 @@ namespace ComoduleExamples {
     
     console.log('✓ Diagram toolkit working - ready for advanced categorical constructions!')
   }
+
+  export function posetDiagramExample() {
+    console.log('\n--- Poset Diagram Example ---')
+    
+    // Build a small poset: a ≤ b, a ≤ c, b ≤ d, c ≤ d
+    const I: FinitePoset = {
+      objects: ['a','b','c','d'],
+      leq: (x,y) => x===y || (x==='a' && (y==='b'||y==='c'||y==='d')) || 
+                   ((x==='b'||x==='c') && y==='d')
+    }
+    
+    console.log('Poset objects:', I.objects)
+    console.log('Sample order relations:')
+    console.log('  a ≤ b:', I.leq('a', 'b'))
+    console.log('  b ≤ a:', I.leq('b', 'a'))
+    console.log('  a ≤ d:', I.leq('a', 'd'))
+    
+    // Create the same complex for all objects (to avoid dimension mismatches)
+    const baseComplex = randomTwoTermComplex(FieldReal, 1)
+    const complexes = {
+      a: baseComplex,
+      b: baseComplex,
+      c: baseComplex,
+      d: baseComplex
+    }
+    
+    // Build diagram with identity maps (simple case)
+    const covers: [ObjId, ObjId][] = [['a','b'], ['a','c'], ['b','d'], ['c','d']]
+    const DI = makePosetDiagram(FieldReal)(
+      I, 
+      complexes,
+      covers,
+      (a, b) => idChainMapN(baseComplex) // identity maps work since all complexes are the same
+    )
+    
+    console.log('Created poset diagram with cover edges:', covers)
+    
+    // Test diagram arrows
+    const arr_ab = DI.arr('a', 'b')
+    const arr_ad = DI.arr('a', 'd') // should be composition a→b→d or a→c→d
+    
+    console.log('Direct arrow a→b exists:', !!arr_ab)
+    console.log('Composed arrow a→d exists:', !!arr_ad)
+    
+    console.log('✓ Poset diagram infrastructure working!')
+  }
+
+  export function namespacedExportsExample() {
+    console.log('\n--- Namespaced Exports Example ---')
+    
+    console.log('Available namespaces:')
+    console.log('  Diagram:', Object.keys(Diagram))
+    console.log('  Lin:', Object.keys(Lin))
+    console.log('  Chain:', Object.keys(Chain))
+    console.log('  Exactness:', Object.keys(Exactness))
+    
+    // Demonstrate usage
+    console.log('\nUsing namespaced exports:')
+    const X = randomTwoTermComplex(FieldReal, 1)
+    const Y = randomTwoTermComplex(FieldReal, 1)
+    
+    // Chain operations
+    const idX = Chain.id(FieldReal)(X)
+    console.log('  Chain.id created identity map')
+    
+    // Diagram operations  
+    const coprod = Diagram.coproductComplex(FieldReal)(X, Y)
+    console.log('  Diagram.coproductComplex dimension:', coprod.dim[0])
+    
+    console.log('✓ Namespaced exports working - great for discoverability!')
+  }
 }
 
 // ====================================================================
@@ -1147,6 +1222,8 @@ async function runExamples() {
   ComoduleExamples.advancedHomologyExample()
   ComoduleExamples.discoverabilityExample()
   ComoduleExamples.diagramToolkitExample()
+  ComoduleExamples.posetDiagramExample()
+  ComoduleExamples.namespacedExportsExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }

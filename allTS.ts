@@ -13405,6 +13405,74 @@ export const isChainMap =
     return true
   }
 
+// ================= Chain-map utilities (compose, id, blocks) =================
+
+export const composeChainMap =
+  <R>(F: Field<R>) =>
+  (g: ChainMap<R>, f: ChainMap<R>): ChainMap<R> => {
+    // f: X→Y, g: Y→Z
+    const X = f.X, Z = g.Y
+    const mul = matMul(F)
+    const out: Record<number, R[][]> = {}
+    for (const n of X.degrees) {
+      const gf = mul(g.f[n] ?? ([] as R[][]), f.f[n] ?? ([] as R[][]))
+      out[n] = gf
+    }
+    return { S: f.S, X, Y: Z, f: out }
+  }
+
+export const idChainMapField =
+  <R>(F: Field<R>) =>
+  (X: Complex<R>): ChainMap<R> => {
+    const f: Record<number, R[][]> = {}
+    for (const n of X.degrees) f[n] = eye(F)(X.dim[n] ?? 0)
+    return { S: X.S, X, Y: X, f }
+  }
+
+/** Inclusion of the k-th summand into a degreewise coproduct (direct sum). */
+export const inclusionIntoCoproduct =
+  <R>(F: Field<R>) =>
+  (summands: ReadonlyArray<Complex<R>>, k: number): ChainMap<R> => {
+    const coprodDim: Record<number, number> = {}
+    const degrees = Array.from(new Set(summands.flatMap(X => X.degrees))).sort((a,b)=>a-b)
+    for (const n of degrees) coprodDim[n] = summands.reduce((s,X)=>s+(X.dim[n]??0),0)
+
+    const Y: Complex<R> = { S: summands[0]!.S, degrees, dim: coprodDim, d: {} as any } // d not needed for inclusion map
+    const f: Record<number, R[][]> = {}
+    for (const n of degrees) {
+      const dims = summands.map(X => X.dim[n] ?? 0)
+      const rows = coprodDim[n]!, cols = dims[k]!
+      const M: R[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => F.zero))
+      let offset = 0
+      for (let i = 0; i < k; i++) offset += dims[i]!
+      for (let i = 0; i < cols; i++) M[offset + i]![i] = F.one
+      f[n] = M
+    }
+    return { S: summands[0]!.S, X: summands[k]!, Y, f }
+  }
+
+/** Projection from degreewise product onto the k-th factor (same matrices over a field). */
+export const projectionFromProduct =
+  <R>(F: Field<R>) =>
+  (factors: ReadonlyArray<Complex<R>>, k: number): ChainMap<R> => {
+    const prodDim: Record<number, number> = {}
+    const degrees = Array.from(new Set(factors.flatMap(X => X.degrees))).sort((a,b)=>a-b)
+    for (const n of degrees) prodDim[n] = factors.reduce((s,X)=>s+(X.dim[n]??0),0)
+
+    const Xprod: Complex<R> = { S: factors[0]!.S, degrees, dim: prodDim, d: {} as any }
+    const f: Record<number, R[][]> = {}
+    for (const n of degrees) {
+      const dims = factors.map(X => X.dim[n] ?? 0)
+      const rows = dims[k]!, cols = prodDim[n]!
+      const M: R[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => F.zero))
+      let offset = 0
+      for (let i = 0; i < k; i++) offset += dims[i]!
+      for (let i = 0; i < rows; i++) M[i]![offset + i] = F.one
+      f[n] = M
+    }
+    return { S: factors[0]!.S, X: Xprod, Y: factors[k]!, f }
+  }
+
 // ---------- Mapping cone Cone(f): Z with Z_n = Y_n ⊕ X_{n-1} ----------
 export const cone =
   <R>(ϕ: ChainMap<R>): Complex<R> => {
@@ -14397,6 +14465,126 @@ export const checkBeckChevalleyDiscrete =
     return true
   }
 
+// ============================ Finite posets & diagrams =======================
+
+export type FinitePoset = {
+  objects: ReadonlyArray<ObjId>
+  /** Partial order: leq(a,b) means a ≤ b (at most one arrow a→b). Must be reflexive/transitive/antisymmetric. */
+  leq: (a: ObjId, b: ObjId) => boolean
+}
+
+/** Diagram over a poset: object assignment + the unique arrow maps D(a≤b): D(a)→D(b). */
+export type PosetDiagram<R> = {
+  I: FinitePoset
+  X: Readonly<Record<ObjId, Complex<R>>>
+  /** Map along order: returns the chain-map for a≤b, or undefined if not comparable. Must satisfy identities/composition. */
+  arr: (a: ObjId, b: ObjId) => ChainMap<R> | undefined
+}
+
+/** Build arr from cover generators (Hasse edges) and compose transitively. */
+export const makePosetDiagram =
+  <R>(F: Field<R>) =>
+  (I: FinitePoset, X: Readonly<Record<ObjId, Complex<R>>>,
+   cover: ReadonlyArray<readonly [ObjId, ObjId]>, // a⋖b edges
+   edgeMap: (a: ObjId, b: ObjId) => ChainMap<R>    // map for each cover
+  ): PosetDiagram<R> => {
+    const id = idChainMapField(F)
+    const comp = composeChainMap(F)
+    // Floyd–Warshall-ish memoized composition along ≤
+    const cache = new Map<string, ChainMap<R>>()
+    const key = (a:ObjId,b:ObjId)=>`${a}->${b}`
+
+    for (const a of I.objects) cache.set(key(a,a), id(X[a]!))
+
+    // adjacency by immediate covers
+    const nxt = new Map<ObjId, ObjId[]>()
+    for (const [a,b] of cover) (nxt.get(a) ?? nxt.set(a, []).get(a)!).push(b)
+
+    // BFS compose along order
+    for (const a of I.objects) {
+      const q: ObjId[] = [a]; const seen = new Set<ObjId>([a])
+      while (q.length) {
+        const u = q.shift()!
+        const outs = nxt.get(u) ?? []
+        for (const v of outs) {
+          if (!seen.has(v)) { seen.add(v); q.push(v) }
+          // record cover edge
+          cache.set(key(u,v), edgeMap(u,v))
+          // extend all known a→u with u→v
+          const au = cache.get(key(a,u))
+          if (au) cache.set(key(a,v), comp(edgeMap(u,v), au))
+        }
+      }
+    }
+
+    const arr = (a: ObjId, b: ObjId) =>
+      I.leq(a,b) ? (cache.get(key(a,b)) ?? (a===b ? id(X[a]!) : undefined)) : undefined
+
+    return { I, X, arr }
+  }
+
+/** A --f--> B <--g-- C  (by ids) */
+export const pushoutInDiagram =
+  <R>(F: Field<R>) =>
+  (D: PosetDiagram<R>, A: ObjId, B: ObjId, C: ObjId) => {
+    const f = D.arr(A,B); const g = D.arr(C,B)
+    if (!f || !g) throw new Error('cospan maps not found')
+    
+    // Build pushout via cokernel of [f, -g]: A⊕C → B
+    const AC = coproductComplex(F)(f.X, g.X)
+    const mul = matMul(F)
+    const mapBlock: Record<number, R[][]> = {}
+    
+    for (const n of f.Y.degrees) {
+      const fn = f.f[n] ?? ([] as R[][]) // B_n × A_n
+      const gn = g.f[n] ?? ([] as R[][]) // B_n × C_n
+      const rows = fn.length
+      const colsA = fn[0]?.length ?? 0
+      const colsC = gn[0]?.length ?? 0
+      const M: R[][] = Array.from({ length: rows }, () => Array.from({ length: colsA + colsC }, () => F.zero))
+      // [f | -g]
+      for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < colsA; j++) M[i]![j] = fn[i]?.[j]!
+        for (let j = 0; j < colsC; j++) M[i]![colsA + j] = F.neg(gn[i]?.[j]!)
+      }
+      mapBlock[n] = M
+    }
+    const h: ChainMap<R> = { S: f.S, X: AC, Y: f.Y, f: mapBlock }
+    
+    // Use cokernel when available, for now return structure
+    return { 
+      PO: f.Y, // placeholder - would be cokernel
+      fromB: idChainMapField(F)(f.Y) // placeholder
+    }
+  }
+
+/** A <--f-- B --g--> C  (by ids) */
+export const pullbackInDiagram =
+  <R>(F: Field<R>) =>
+  (D: PosetDiagram<R>, A: ObjId, B: ObjId, C: ObjId) => {
+    const f = D.arr(B,A); const g = D.arr(B,C)
+    if (!f || !g) throw new Error('span maps not found')
+    
+    // Build pullback via kernel of [f; g]: B → A⊕C
+    const AC = coproductComplex(F)(f.Y, g.Y)
+    const mapBlock: Record<number, R[][]> = {}
+    
+    for (const n of f.X.degrees) {
+      const fn = f.f[n] ?? ([] as R[][]) // A_n × B_n
+      const gn = g.f[n] ?? ([] as R[][]) // C_n × B_n
+      // stack [f; g]
+      const M: R[][] = [ ...fn, ...gn ] as R[][]
+      mapBlock[n] = M
+    }
+    const h: ChainMap<R> = { S: f.S, X: f.X, Y: AC, f: mapBlock }
+    
+    // Use kernel when available, for now return structure
+    return { 
+      PB: f.X, // placeholder - would be kernel
+      toB: idChainMapField(F)(f.X) // placeholder
+    }
+  }
+
 // =====================================================================
 // Free bimodules over semirings (object-level; finite rank only)
 //   R ⟂ M ⟂ S  with M ≅ R^m as a *left* R-semimodule and *right* S-semimodule
@@ -14701,5 +14889,30 @@ export const FP_CATALOG = {
   // Backend selection
   registerRref: 'Override RREF for a Field (e.g., registerRref(FieldQ, rrefQPivot))',
 } as const
+
+// Namespaced exports for discoverability
+export const Diagram = {
+  makePosetDiagram, pushoutInDiagram, pullbackInDiagram,
+  LanDisc, RanDisc, reindexDisc,
+  coproductComplex, productComplex
+}
+
+export const Lin = { 
+  registerRref, rrefQPivot, FieldQ, solveLinear, nullspace, colspace
+}
+
+export const Chain = { 
+  compose: composeChainMap, 
+  id: idChainMapField, 
+  inclusionIntoCoproduct, 
+  projectionFromProduct 
+}
+
+export const Exactness = {
+  checkExactnessForFunctor,
+  smoke_coim_im_iso,
+  runLesConeProps,
+  checkLongExactConeSegment
+}
 
 // Examples have been moved to examples.ts
