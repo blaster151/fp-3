@@ -12949,6 +12949,221 @@ export const normalizeRow = (v: number[]): number[] => {
   return s === 0 ? v.slice() : v.map(x => x / s)
 }
 
+// ---------------------------------------------
+// Warshall/Floyd transitive closure on Bool
+// If `reflexive=true`, includes identity (ε*).
+// A is n×n, with A[i][j] = path(i→j) ? true : false
+// ---------------------------------------------
+export const transitiveClosureBool = (
+  A: Mat<boolean>,
+  reflexive = true
+): Mat<boolean> => {
+  const n = A.length
+  // clone
+  const R: boolean[][] = A.map(row => row.slice())
+  if (reflexive) {
+    for (let i = 0; i < n; i++) R[i]![i] = true
+  }
+  for (let k = 0; k < n; k++) {
+    for (let i = 0; i < n; i++) if (R[i]?.[k]) {
+      for (let j = 0; j < n; j++) {
+        // Bool semiring: add = OR, mul = AND
+        const current = R[i]?.[j] ?? false
+        const path = (R[i]?.[k] ?? false) && (R[k]?.[j] ?? false)
+        R[i]![j] = current || path
+      }
+    }
+  }
+  return R
+}
+
+// ---------------------------------------------
+// Regex → WA<boolean>
+// Grammar (minimal):
+//   R  := Alt
+//   Alt := Concat ('|' Concat)*
+//   Concat := Repeat+         // implicit concatenation
+//   Repeat := Atom ('*')*
+//   Atom := '(' R ')' | literal
+// Literals are any non-special char except: ()|*
+// Escape with backslash to force literal.
+// ---------------------------------------------
+
+type RX =
+  | { _tag: 'Lit'; ch: string }
+  | { _tag: 'Concat'; left: RX; right: RX }
+  | { _tag: 'Alt'; left: RX; right: RX }
+  | { _tag: 'Star'; inner: RX }
+
+const isSpecial = (c: string) => c === '(' || c === ')' || c === '|' || c === '*'
+
+const parseRegex = (src: string): RX => {
+  let i = 0
+  const next = () => src[i]
+  const eat = () => src[i++]
+
+  const parseAtom = (): RX => {
+    const c = next()
+    if (!c) throw new Error('regex: unexpected end')
+    if (c === '(') {
+      eat()
+      const r = parseAlt()
+      if (next() !== ')') throw new Error('regex: expected )')
+      eat()
+      return r
+    }
+    if (c === '\\') {
+      eat()
+      const lit = eat()
+      if (!lit) throw new Error('regex: dangling escape')
+      return { _tag: 'Lit', ch: lit }
+    }
+    if (isSpecial(c)) throw new Error(`regex: unexpected ${c}`)
+    eat()
+    return { _tag: 'Lit', ch: c }
+  }
+
+  const parseRepeat = (): RX => {
+    let node = parseAtom()
+    while (next() === '*') {
+      eat()
+      node = { _tag: 'Star', inner: node }
+    }
+    return node
+  }
+
+  const parseConcat = (): RX => {
+    const parts: RX[] = []
+    while (true) {
+      const c = next()
+      if (!c || c === ')' || c === '|') break
+      parts.push(parseRepeat())
+    }
+    if (parts.length === 0) throw new Error('regex: empty concat')
+    return parts.reduce((l, r) => ({ _tag: 'Concat', left: l, right: r }))
+  }
+
+  const parseAlt = (): RX => {
+    let node = parseConcat()
+    while (next() === '|') {
+      eat()
+      const r = parseConcat()
+      node = { _tag: 'Alt', left: node, right: r }
+    }
+    return node
+  }
+
+  const ast = parseAlt()
+  if (i !== src.length) throw new Error('regex: trailing input')
+  return ast
+}
+
+// ε-NFA via Thompson (single start & single accept)
+// We build adjacency as sets then realize into matrices.
+type NFA = {
+  n: number
+  start: number
+  accept: number
+  epsAdj: boolean[][]                   // n×n ε edges
+  symAdj: Record<string, boolean[][]>   // for each symbol, n×n edges
+  alphabet: string[]
+}
+
+const buildThompson = (rx: RX): NFA => {
+  let n = 0
+  const eps: Array<Set<number>> = []
+  const sym: Record<string, Array<Set<number>>> = {}
+
+  const newState = () => {
+    eps[n] = new Set()
+    for (const s of Object.values(sym)) s[n] = new Set()
+    return n++
+  }
+  const ensureSym = (ch: string) => {
+    if (!sym[ch]) {
+      sym[ch] = []
+      for (let i = 0; i < n; i++) sym[ch]![i] = new Set()
+    }
+  }
+
+  type Pair = { s: number; t: number } // fragment with start/end
+  const go = (e: RX): Pair => {
+    switch (e._tag) {
+      case 'Lit': {
+        const s = newState(), t = newState()
+        ensureSym(e.ch)
+        sym[e.ch]![s]!.add(t)
+        return { s, t }
+      }
+      case 'Concat': {
+        const a = go(e.left)
+        const b = go(e.right)
+        eps[a.t]!.add(b.s)
+        return { s: a.s, t: b.t }
+      }
+      case 'Alt': {
+        const s = newState(), t = newState()
+        const a = go(e.left)
+        const b = go(e.right)
+        eps[s]!.add(a.s); eps[s]!.add(b.s)
+        eps[a.t]!.add(t); eps[b.t]!.add(t)
+        return { s, t }
+      }
+      case 'Star': {
+        const s = newState(), t = newState()
+        const a = go(e.inner)
+        // s -> a.s | t ; a.t -> a.s | t
+        eps[s]!.add(a.s); eps[s]!.add(t)
+        eps[a.t]!.add(a.s); eps[a.t]!.add(t)
+        return { s, t }
+      }
+    }
+  }
+
+  const { s, t } = go(rx)
+  const alphabet = Object.keys(sym)
+
+  // realize to dense matrices
+  const epsAdj: boolean[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => false))
+  for (let i = 0; i < n; i++) for (const j of eps[i] ?? []) epsAdj[i]![j] = true
+
+  const symAdj: Record<string, boolean[][]> = {}
+  for (const ch of alphabet) {
+    const arr = sym[ch]!
+    const M: boolean[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => false))
+    for (let i = 0; i < n; i++) for (const j of arr[i] ?? []) M[i]![j] = true
+    symAdj[ch] = M
+  }
+
+  return { n, start: s, accept: t, epsAdj, symAdj, alphabet }
+}
+
+// Eliminate ε: E = ε*; Δ'_a = E · Δ_a · E; init' = init·E; final' = E·final
+export const compileRegexToWA = (pattern: string): WeightedAutomaton<boolean, string> => {
+  const rx = parseRegex(pattern)
+  const nfa = buildThompson(rx)
+  const B = SemiringBoolOrAnd
+
+  const E = transitiveClosureBool(nfa.epsAdj, true) // reflexive transitive ε-closure
+
+  const delta: Record<string, Mat<boolean>> = {}
+  for (const ch of nfa.alphabet) {
+    const M1 = matMul(B)(E, nfa.symAdj[ch]!)
+    delta[ch] = matMul(B)(M1, E)
+  }
+
+  // init row & final column
+  const init = Array.from({ length: nfa.n }, () => false)
+  init[nfa.start] = true
+  const final = Array.from({ length: nfa.n }, () => false)
+  final[nfa.accept] = true
+
+  const initP = vecMat(B)(init, E)
+  const finalP = matVec(B)(E, final)
+
+  return { S: B, n: nfa.n, init: initP, final: finalP, delta }
+}
+
 // =====================================================================
 // Free bimodules over semirings (object-level; finite rank only)
 //   R ⟂ M ⟂ S  with M ≅ R^m as a *left* R-semimodule and *right* S-semimodule

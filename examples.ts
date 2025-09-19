@@ -49,7 +49,7 @@ import {
   SemiringMinPlus, SemiringMaxPlus, SemiringBoolOrAnd, SemiringProb,
   WeightedAutomaton, waRun, waAcceptsBool, HMM, hmmForward, diagFromVec,
   Edge, graphAdjNat, graphAdjBool, graphAdjWeights, countPathsOfLength, 
-  reachableWithin, shortestPathsUpTo
+  reachableWithin, shortestPathsUpTo, transitiveClosureBool, compileRegexToWA
 } from './allTS'
 
 // ====================================================================
@@ -863,6 +863,28 @@ namespace ComoduleExamples {
     }
     const probXYY = hmmForward(H)(['x','y','y'])
     console.log('  P("xyy"):', probXYY.toFixed(6))
+    
+    // Regex Compilation Example
+    console.log('\nRegex Compilation:')
+    
+    // Accepts strings of a's: a*
+    const Astar = compileRegexToWA('a*')
+    console.log('  a* accepts "":', waAcceptsBool(Astar)([]))              // true (ε)
+    console.log('  a* accepts "aa":', waAcceptsBool(Astar)(['a','a']))     // true
+    console.log('  a* alphabet:', Object.keys(Astar.delta))                // ['a']
+
+    // (ab|ac)* — any number of "ab" or "ac" blocks
+    const R = compileRegexToWA('(ab|ac)*')
+    console.log('  (ab|ac)* accepts "":', waAcceptsBool(R)([]))                // true
+    console.log('  (ab|ac)* accepts "abac":', waAcceptsBool(R)(['a','b','a','c'])) // true
+    console.log('  (ab|ac)* accepts "a":', waAcceptsBool(R)(['a']))             // false
+    console.log('  (ab|ac)* alphabet:', Object.keys(R.delta))                   // ['a', 'b', 'c']
+    
+    // Transitive Closure Example
+    console.log('\nTransitive Closure:')
+    const adj = [[false, true, false], [false, false, true], [false, false, false]]
+    const closure = transitiveClosureBool(adj, true)
+    console.log('  0→2 via closure:', closure[0]?.[2]) // true (0→1→2)
     
     console.log('✓ All practical utilities working!')
   }

@@ -6,6 +6,7 @@ import {
   HMM, hmmForward, diagFromVec, normalizeRow,
   Edge, graphAdjNat, graphAdjBool, graphAdjWeights,
   countPathsOfLength, reachableWithin, shortestPathsUpTo,
+  transitiveClosureBool, compileRegexToWA,
   eye,
 } from '../allTS'
 
@@ -196,5 +197,113 @@ describe('Utility functions', () => {
     const v = [0, 0, 0]
     const normalized = normalizeRow(v)
     expect(normalized).toEqual([0, 0, 0])
+  })
+})
+
+describe('Transitive closure', () => {
+  it('computes transitive closure correctly', () => {
+    // Simple path: 0→1→2
+    const adj = [
+      [false, true, false],
+      [false, false, true], 
+      [false, false, false]
+    ]
+    
+    const closure = transitiveClosureBool(adj, true)
+    
+    expect(closure[0]?.[0]).toBe(true)  // reflexive
+    expect(closure[0]?.[1]).toBe(true)  // direct
+    expect(closure[0]?.[2]).toBe(true)  // transitive 0→1→2
+    expect(closure[1]?.[2]).toBe(true)  // direct
+    expect(closure[2]?.[0]).toBe(false) // no path back
+  })
+
+  it('handles reflexive vs non-reflexive closure', () => {
+    const adj = [[false, true], [false, false]]
+    
+    const nonReflexive = transitiveClosureBool(adj, false)
+    const reflexive = transitiveClosureBool(adj, true)
+    
+    expect(nonReflexive[0]?.[0]).toBe(false)
+    expect(reflexive[0]?.[0]).toBe(true)
+    
+    expect(nonReflexive[0]?.[1]).toBe(true) // same
+    expect(reflexive[0]?.[1]).toBe(true)    // same
+  })
+})
+
+describe('Regex compilation', () => {
+  it('compiles simple literals', () => {
+    const wa = compileRegexToWA('a')
+    
+    expect(waAcceptsBool(wa)(['a'])).toBe(true)
+    expect(waAcceptsBool(wa)([])).toBe(false)
+    expect(waAcceptsBool(wa)(['a','a'])).toBe(false)
+    
+    // Unknown symbols should throw (expected behavior)
+    expect(() => waAcceptsBool(wa)(['b'])).toThrow('unknown symbol')
+  })
+
+  it('compiles Kleene star', () => {
+    const wa = compileRegexToWA('a*')
+    
+    expect(waAcceptsBool(wa)([])).toBe(true)           // ε
+    expect(waAcceptsBool(wa)(['a'])).toBe(true)        // a
+    expect(waAcceptsBool(wa)(['a','a'])).toBe(true)    // aa
+    
+    // Unknown symbols should throw
+    expect(() => waAcceptsBool(wa)(['b'])).toThrow('unknown symbol')
+  })
+
+  it('compiles concatenation', () => {
+    const wa = compileRegexToWA('ab')
+    
+    expect(waAcceptsBool(wa)(['a','b'])).toBe(true)
+    expect(waAcceptsBool(wa)(['a'])).toBe(false)
+    expect(waAcceptsBool(wa)(['b'])).toBe(false)
+    expect(waAcceptsBool(wa)(['b','a'])).toBe(false)
+  })
+
+  it('compiles alternation', () => {
+    const wa = compileRegexToWA('a|b')
+    
+    expect(waAcceptsBool(wa)(['a'])).toBe(true)
+    expect(waAcceptsBool(wa)(['b'])).toBe(true)
+    expect(waAcceptsBool(wa)([])).toBe(false)
+    
+    // Unknown symbols should throw
+    expect(() => waAcceptsBool(wa)(['c'])).toThrow('unknown symbol')
+  })
+
+  it('compiles complex patterns', () => {
+    const wa = compileRegexToWA('(ab|ac)*')
+    
+    expect(waAcceptsBool(wa)([])).toBe(true)                      // ε
+    expect(waAcceptsBool(wa)(['a','b'])).toBe(true)               // ab
+    expect(waAcceptsBool(wa)(['a','c'])).toBe(true)               // ac
+    expect(waAcceptsBool(wa)(['a','b','a','c'])).toBe(true)       // abac
+    expect(waAcceptsBool(wa)(['a','b','a','b'])).toBe(true)       // abab
+    expect(waAcceptsBool(wa)(['a'])).toBe(false)                  // incomplete
+    
+    // Unknown symbols should throw
+    expect(() => waAcceptsBool(wa)(['a','d'])).toThrow('unknown symbol')
+  })
+
+  it('handles nested groups and stars', () => {
+    const wa = compileRegexToWA('(a*b)*')
+    
+    expect(waAcceptsBool(wa)([])).toBe(true)                      // ε
+    expect(waAcceptsBool(wa)(['b'])).toBe(true)                   // b
+    expect(waAcceptsBool(wa)(['a','b'])).toBe(true)               // ab
+    expect(waAcceptsBool(wa)(['a','a','b','b'])).toBe(true)       // aabb
+    expect(waAcceptsBool(wa)(['a'])).toBe(false)                  // no final b
+  })
+
+  it('handles escape sequences', () => {
+    const wa = compileRegexToWA('\\(\\)')
+    
+    expect(waAcceptsBool(wa)(['(', ')'])).toBe(true)
+    expect(waAcceptsBool(wa)(['('])).toBe(false)
+    expect(waAcceptsBool(wa)([')'])).toBe(false)
   })
 })

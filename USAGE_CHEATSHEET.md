@@ -18,6 +18,7 @@ This document provides a quick reference for finding the right tool for your pro
 ### **Build Automata & Language Recognition**
 | **Problem** | **Use This** | **Notes** |
 |-------------|--------------|-----------|
+| Compile regex to automaton | `compileRegexToWA(pattern)` | Supports `()`, `|`, `*`, escapes |
 | Count how many ways to parse a word | `waRun(automaton)(word)` | Use `SemiringNat` |
 | Check if word is accepted | `waAcceptsBool(automaton)(word)` | Use `SemiringBoolOrAnd` |
 | Intersect two automata | `waProduct(S)(A, B)(alphabet)` | Synchronous product |
@@ -105,6 +106,15 @@ graphAdjWeights(n, edges)    // weighted adjacency matrix
 countPathsOfLength(adj, L)    // exact L-length path counts
 reachableWithin(adj, L)       // ≤L reachability
 shortestPathsUpTo(adj, L?)    // ≤L shortest paths
+transitiveClosureBool(adj)    // Warshall transitive closure
+```
+
+### **Regex & Language Processing**
+```typescript
+compileRegexToWA(pattern)     // regex → weighted automaton
+waRun(automaton)(word)        // run automaton on word
+waAcceptsBool(dfa)(word)      // Boolean acceptance
+waProduct(S)(A, B)(alphabet)  // automata intersection
 ```
 
 ---
@@ -138,6 +148,18 @@ const hmm: HMM<number, 'x'|'y'> = {
 console.log('P(xyy):', hmmForward(hmm)(['x','y','y']))
 ```
 
+### **Regex to Automaton in 2 Lines**
+```typescript
+const regex = compileRegexToWA('(ab|ac)*')
+console.log('accepts "abac":', waAcceptsBool(regex)(['a','b','a','c'])) // true
+```
+
+### **Transitive Closure in 1 Line**
+```typescript
+const closure = transitiveClosureBool(adjacencyMatrix, true)
+console.log('0 can reach 2:', closure[0]?.[2]) // true if path exists
+```
+
 ### **Path Counting vs Reachability (Same Algorithm)**
 ```typescript
 const adj_nat = graphAdjNat(3, [[0,1], [1,2]])
@@ -164,6 +186,12 @@ console.log('Reachable:', reachableWithin(adj_bool, 2)[0]?.[2])     // true
 
 **Handle probabilities:**
 → Any algorithm + `SemiringProb` + `normalizeRow` for stability
+
+**Build regex engines:**
+→ `compileRegexToWA` + `waAcceptsBool` for pattern matching
+
+**Compute transitive closure:**
+→ `transitiveClosureBool` for reachability analysis
 
 **Process sequences:**
 → `hmmForward` (probabilistic) or `waRun` (general weighted)
