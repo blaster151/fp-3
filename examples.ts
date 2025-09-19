@@ -38,7 +38,9 @@ import {
   // Monoids
   MonoidArray,
   // Categorical theory
-  SemiringNat, makeDiagonalCoring, makeDiagonalComodule, comoduleCoassocHolds, comoduleCounitHolds
+  SemiringNat, makeDiagonalCoring, makeDiagonalComodule, comoduleCoassocHolds, comoduleCounitHolds,
+  tensorBalancedMapSameR, idMap, composeMap, eqMat, FreeBimoduleStd, tensorBalancedObj,
+  makeDiagonalBicomodule, bicomoduleCommutes
 } from './allTS'
 
 // ====================================================================
@@ -566,6 +568,65 @@ namespace ComoduleExamples {
       console.log('✗ M violates comodule laws')
     }
   }
+
+  export function tensorBalancedMapsExample() {
+    console.log('\n--- Balanced Tensor of Maps Example ---')
+    
+    const S = SemiringNat
+    // f : R^2 -> R^3  (3x2)
+    const f: number[][] = [
+      [1,0],
+      [0,1],
+      [1,1],
+    ]
+    // g : R^2 -> R^2  (2x2)
+    const g: number[][] = [
+      [1,1],
+      [0,1],
+    ]
+
+    const f_ten_g = tensorBalancedMapSameR(S)(f, g) // (3*2) x (2*2) = 6x4
+    console.log('shape f⊗g:', f_ten_g.length, 'x', f_ten_g[0]?.length) // 6 x 4
+
+    // Law check: (f∘id)⊗(g∘id) == (f⊗g)∘(id⊗id)
+    const id2 = idMap(S)(2)
+    const left  = tensorBalancedMapSameR(S)(composeMap(S)(f, id2), composeMap(S)(g, id2))
+    const right = composeMap(S)(
+      tensorBalancedMapSameR(S)(f, g),
+      tensorBalancedMapSameR(S)(id2, id2)
+    )
+    console.log('composition law holds:', eqMat(S)(left, right)) // true
+  }
+
+  export function bicomoduleExample() {
+    console.log('\n--- Bicomodule Example ---')
+    
+    const S = SemiringNat
+    const D = makeDiagonalCoring(S)(2) // left coring on R^2
+    const C = makeDiagonalCoring(S)(3) // right coring on R^3
+
+    // M ≅ R^2; tag left by [0,1], right by [1,2]
+    const B = makeDiagonalBicomodule(D, C)(2, k => k, k => (k+1))
+
+    console.log('bicomodule laws hold:', bicomoduleCommutes(B)) // true
+  }
+
+  export function objectMathExample() {
+    console.log('\n--- Object Math (Dimension Bookkeeping) Example ---')
+    
+    // Objects (0-cells): semirings R,S,T (we only use their identity here)
+    const R = SemiringNat
+    const S = SemiringNat
+    const T = SemiringNat
+
+    // 1-cells: free bimodules R–S, S–T
+    const RS = FreeBimoduleStd(R, S)(2) // rank 2
+    const ST = FreeBimoduleStd(S, T)(5) // rank 5
+
+    // Composition via balanced tensor on objects
+    const RT = tensorBalancedObj(RS, ST)
+    console.log('rank(RS ⊗_S ST) =', RT.rank) // 10 (= 2*5)
+  }
 }
 
 // ====================================================================
@@ -595,6 +656,9 @@ async function runExamples() {
   // FusedPipelineExamples
   // SafeASTEvolutionExamples
   ComoduleExamples.runAll()
+  ComoduleExamples.tensorBalancedMapsExample()
+  ComoduleExamples.bicomoduleExample()
+  ComoduleExamples.objectMathExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }

@@ -5,6 +5,14 @@ import {
   makeDiagonalComodule,
   comoduleCoassocHolds,
   comoduleCounitHolds,
+  tensorBalancedMapSameR,
+  idMap,
+  composeMap,
+  eqMat,
+  makeDiagonalBicomodule,
+  bicomoduleCommutes,
+  FreeBimoduleStd,
+  tensorBalancedObj,
 } from '../allTS'
 
 describe('Right comodules over diagonal coring', () => {
@@ -27,5 +35,68 @@ describe('Right comodules over diagonal coring', () => {
     const M = makeDiagonalComodule(C)(4, k => (k * 2) % 5) // more complex tagging
     expect(comoduleCoassocHolds(M)).toBe(true)
     expect(comoduleCounitHolds(M)).toBe(true)
+  })
+})
+
+describe('Balanced tensor of maps', () => {
+  it('satisfies composition laws', () => {
+    const S = SemiringNat
+    const f: number[][] = [[1,0], [0,1], [1,1]] // 3x2
+    const g: number[][] = [[1,1], [0,1]] // 2x2
+    const id2 = idMap(S)(2)
+
+    // Law: (f∘id)⊗(g∘id) == (f⊗g)∘(id⊗id)
+    const left = tensorBalancedMapSameR(S)(composeMap(S)(f, id2), composeMap(S)(g, id2))
+    const right = composeMap(S)(
+      tensorBalancedMapSameR(S)(f, g),
+      tensorBalancedMapSameR(S)(id2, id2)
+    )
+    expect(eqMat(S)(left, right)).toBe(true)
+  })
+
+  it('produces correct dimensions', () => {
+    const S = SemiringNat
+    const f: number[][] = [[1,0,1], [0,1,1]] // 2x3
+    const g: number[][] = [[1,1], [0,1], [1,0]] // 3x2
+    
+    const result = tensorBalancedMapSameR(S)(f, g)
+    expect(result.length).toBe(6) // 2*3 = 6 rows
+    expect(result[0]?.length).toBe(6) // 3*2 = 6 cols
+  })
+})
+
+describe('Bicomodules', () => {
+  it('diagonal bicomodule satisfies commutativity law', () => {
+    const S = SemiringNat
+    const D = makeDiagonalCoring(S)(2) // left coring
+    const C = makeDiagonalCoring(S)(3) // right coring
+    
+    const B = makeDiagonalBicomodule(D, C)(2, k => k, k => k + 1)
+    expect(bicomoduleCommutes(B)).toBe(true)
+  })
+
+  it('works with different tagging functions', () => {
+    const S = SemiringNat
+    const D = makeDiagonalCoring(S)(3)
+    const C = makeDiagonalCoring(S)(2)
+    
+    const B = makeDiagonalBicomodule(D, C)(3, k => k % 3, k => (k * 2) % 2)
+    expect(bicomoduleCommutes(B)).toBe(true)
+  })
+})
+
+describe('Object-level tensor product', () => {
+  it('computes correct ranks', () => {
+    const R = SemiringNat
+    const S = SemiringNat
+    const T = SemiringNat
+
+    const RS = FreeBimoduleStd(R, S)(3)
+    const ST = FreeBimoduleStd(S, T)(4)
+    const RT = tensorBalancedObj(RS, ST)
+    
+    expect(RT.rank).toBe(12) // 3 * 4
+    expect(RT.left).toBe(R)
+    expect(RT.right).toBe(T)
   })
 })

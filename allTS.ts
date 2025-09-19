@@ -12206,6 +12206,48 @@ export const matMul = <R>(S: Semiring<R>) => (A: Mat<R>, B: Mat<R>): Mat<R> => {
   return result
 }
 
+// Kronecker product
+export const kron = <R>(S: Semiring<R>) => (A: Mat<R>, B: Mat<R>): Mat<R> => {
+  const mA = A.length
+  const nA = A[0]?.length ?? 0
+  const mB = B.length
+  const nB = B[0]?.length ?? 0
+  
+  const result: R[][] = []
+  for (let i = 0; i < mA * mB; i++) {
+    const row: R[] = []
+    for (let j = 0; j < nA * nB; j++) {
+      const iA = Math.floor(i / mB)
+      const iB = i % mB
+      const jA = Math.floor(j / nB)
+      const jB = j % nB
+      const aVal = A[iA]?.[jA] ?? S.zero
+      const bVal = B[iB]?.[jB] ?? S.zero
+      row.push(S.mul(aVal, bVal))
+    }
+    result.push(row)
+  }
+  return result
+}
+
+// Matrix equality
+export const eqMat = <R>(S: Semiring<R>) => (A: Mat<R>, B: Mat<R>): boolean => {
+  const eq = S.eq ?? ((x: R, y: R) => Object.is(x, y))
+  if (A.length !== B.length) return false
+  if (A[0]?.length !== B[0]?.length) return false
+  
+  for (let i = 0; i < A.length; i++) {
+    for (let j = 0; j < (A[0]?.length ?? 0); j++) {
+      const aVal = A[i]?.[j]
+      const bVal = B[i]?.[j]
+      if (aVal === undefined || bVal === undefined || !eq(aVal, bVal)) {
+        return false
+      }
+    }
+  }
+  return true
+}
+
 // =====================================================================
 // Corings over semirings
 //   A coring C over R^n is (R^n, Δ: C→C⊗C, ε: C→R) satisfying laws
@@ -12261,6 +12303,31 @@ export const tensorBalancedObj =
       console.warn('tensorBalancedObj: semiring identity check skipped; ensure MS.right and ST.left represent the same S')
     return { left: MS.left, right: ST.right, rank: MS.rank * ST.rank }
   }
+
+// =====================================================================
+// Balanced tensor on maps over the *same* base semiring R
+//   M ≅ R^m, N ≅ R^n, M' ≅ R^m', N' ≅ R^n'
+//   f : M -> M'  ~ matrix (m' x m)
+//   g : N -> N'  ~ matrix (n' x n)
+//   f ⊗_R g : M⊗_R N -> M'⊗_R N'  ~ Kronecker (m'n') x (mn)
+// Laws (checkable):
+//   (f2 ∘ f1) ⊗ (g2 ∘ g1) = (f2 ⊗ g2) ∘ (f1 ⊗ g1)
+//   id ⊗ id = id
+// =====================================================================
+export const tensorBalancedMapSameR =
+  <R>(S: Semiring<R>) =>
+  (f: Mat<R>, g: Mat<R>): Mat<R> => kron(S)(f, g)
+
+// identity and composition helpers for maps (matrices)
+export const idMap =
+  <R>(S: Semiring<R>) =>
+  (n: number): Mat<R> => eye(S)(n)
+
+export const composeMap =
+  <R>(S: Semiring<R>) =>
+  (f: Mat<R>, g: Mat<R>): Mat<R> =>
+    // compose f∘g (apply g, then f) — beware shapes
+    matMul(S)(f, g)
 
 // =====================================================================
 // Right C-comodules over a coring C on R^n (finite, free)
@@ -12352,6 +12419,89 @@ export const makeDiagonalComodule =
       }
     }
     return { S: C.S, C, m, rho }
+  }
+
+// =====================================================================
+// Bicomodules over corings D (left) and C (right) on free modules
+//   - Right coaction rhoR : M -> M⊗C  ~ (m*nC) x m
+//   - Left  coaction rhoL : M -> D⊗M  ~ (nD*m) x m
+//   - Laws: (rhoL ⊗ id_C)∘rhoR = (id_D ⊗ rhoR)∘rhoL
+// =====================================================================
+export type Bicomodule<R> = {
+  readonly S: Semiring<R>
+  readonly left:  Coring<R>   // D with dim nD
+  readonly right: Coring<R>   // C with dim nC
+  readonly m: number          // rank of M
+  readonly rhoL: Mat<R>       // (nD*m) x m
+  readonly rhoR: Mat<R>       // (m*nC) x m
+}
+
+// Row indexers
+const rowRC = (p: number, j: number, nC: number) => p * nC + j      // (M⊗C) row
+const rowDM = (i: number, p: number, m: number) => i * m + p        // (D⊗M) row
+
+export const bicomoduleCommutes = <R>(B: Bicomodule<R>): boolean => {
+  const { S, left: D, right: C, m, rhoL, rhoR } = B
+  const nD = D.n, nC = C.n
+  const add = S.add, mul = S.mul
+  const eq  = S.eq ?? ((x: R, y: R) => Object.is(x, y))
+
+  // For each basis e_k in M, compare coefficients of d_i ⊗ e_p ⊗ c_j
+  for (let k = 0; k < m; k++) {
+    for (let i = 0; i < nD; i++) for (let p = 0; p < m; p++) for (let j = 0; j < nC; j++) {
+      // LHS = sum_{q} (rhoL ⊗ id_C)∘rhoR:
+      //   sum_q   rhoR[(q,j), k] * rhoL[(i,p), q]
+      let lhs = S.zero
+      for (let q = 0; q < m; q++) {
+        const a = rhoR[rowRC(q, j, nC)]?.[k]
+        const b = rhoL[rowDM(i, p, m)]?.[q]
+        if (a !== undefined && b !== undefined) {
+          lhs = add(lhs, mul(a, b))
+        }
+      }
+
+      // RHS = sum_{r} (id_D ⊗ rhoR)∘rhoL:
+      //   sum_r   rhoL[(i,r), k] * rhoR[(p,j), r]
+      let rhs = S.zero
+      for (let r = 0; r < m; r++) {
+        const a = rhoL[rowDM(i, r, m)]?.[k]
+        const b = rhoR[rowRC(p, j, nC)]?.[r]
+        if (a !== undefined && b !== undefined) {
+          rhs = add(rhs, mul(a, b))
+        }
+      }
+      if (!eq(lhs, rhs)) return false
+    }
+  }
+  return true
+}
+
+// Lawful diagonal bicomodule for diagonal corings:
+//   Choose tags σL: {0..m-1} -> {0..nD-1}, σR: {0..m-1} -> {0..nC-1}
+//   rhoL(e_k) = d_{σL(k)} ⊗ e_k
+//   rhoR(e_k) = e_k ⊗ c_{σR(k)}
+export const makeDiagonalBicomodule =
+  <R>(D: Coring<R>, C: Coring<R>) =>
+  (m: number, sigmaL: (k: number) => number, sigmaR: (k: number) => number): Bicomodule<R> => {
+    const S = D.S
+    if (S !== C.S) console.warn('Bicomodule assumes both corings over the same semiring instance')
+
+    const rhoL: R[][] = Array.from({ length: D.n * m }, () =>
+      Array.from({ length: m }, () => S.zero)
+    )
+    const rhoR: R[][] = Array.from({ length: m * C.n }, () =>
+      Array.from({ length: m }, () => S.zero)
+    )
+
+    for (let k = 0; k < m; k++) {
+      const i = sigmaL(k) % D.n
+      const j = sigmaR(k) % C.n
+      const rowL = rhoL[rowDM(i, k, m)]
+      const rowR = rhoR[rowRC(k, j, C.n)]
+      if (rowL) rowL[k] = S.one
+      if (rowR) rowR[k] = S.one
+    }
+    return { S, left: D, right: C, m, rhoL, rhoR }
   }
 
 // Examples have been moved to examples.ts
