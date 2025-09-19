@@ -12556,6 +12556,40 @@ export const isEntwinedModuleHom =
     return eqMat(S)(leftAct, rightAct) && eqMat(S)(leftCo, rightCo)
   }
 
+// ================================================
+// Hom composition for EntwinedModule morphisms
+//   If f : M→N (shape mN × mM) and g : N→P (mP × mN)
+//   then g ∘ f : M→P  (mP × mM)
+// ================================================
+export const composeEntwinedHomsUnchecked =
+  <R>(S: Semiring<R>) =>
+  (g: Mat<R>, f: Mat<R>): Mat<R> =>
+    // compose g ∘ f  (apply f, then g) — our convention matches composeMap
+    matMul(S)(g, f)
+
+// Safe version with shape + law checks
+export const composeEntwinedHoms =
+  <R>(E: Entwining<R>) =>
+  (M: EntwinedModule<R>, N: EntwinedModule<R>, P: EntwinedModule<R>) =>
+  (g: Mat<R>, f: Mat<R>): Result<string, Mat<R>> => {
+    const S = E.A.S
+    const rows = (A: Mat<R>) => A.length
+    const cols = (A: Mat<R>) => (A[0]?.length ?? 0)
+
+    // shape checks
+    if (cols(f) !== M.m) return Err(`compose: f has ${cols(f)} cols, expected ${M.m} (dom M)`)
+    if (rows(f) !== N.m) return Err(`compose: f has ${rows(f)} rows, expected ${N.m} (cod N)`)
+    if (cols(g) !== N.m) return Err(`compose: g has ${cols(g)} cols, expected ${N.m} (dom N)`)
+    if (rows(g) !== P.m) return Err(`compose: g has ${rows(g)} rows, expected ${P.m} (cod P)`)
+
+    // hom checks
+    if (!isEntwinedModuleHom(E)(M, N, f)) return Err('compose: f is not an entwined-module hom')
+    if (!isEntwinedModuleHom(E)(N, P, g)) return Err('compose: g is not an entwined-module hom')
+
+    // composition
+    return Ok(matMul(S)(g, f))
+  }
+
 // Lift A⊗M to a comodule via (id_A ⊗ ρ_M)
 export const liftAotimesToComodule = <R>(E: Entwining<R>) => (M: Comodule<R>): Comodule<R> => {
   const S = E.A.S, k = E.A.k, n = E.C.n, m = M.m
@@ -12610,6 +12644,34 @@ export const entwinedFromLeftModule_NotimesC =
     const rhoNC = kron(S)(I(m), E.C.Delta)
 
     return { S, A: E.A, C: E.C, m: m*n, act: NC.act, rho: rhoNC }
+  }
+
+// ==========================================================
+// A tiny "category" façade for entwined modules over (A,C,Ψ)
+// Gives you id, isHom, compose (safe), and composeUnchecked.
+// ==========================================================
+export const categoryOfEntwinedModules =
+  <R>(E: Entwining<R>) => {
+    const S = E.A.S
+    const id = (M: EntwinedModule<R>): Mat<R> => eye(S)(M.m)
+    const isHom = (M: EntwinedModule<R>, N: EntwinedModule<R>, f: Mat<R>) =>
+      isEntwinedModuleHom(E)(M, N, f)
+
+    const composeSafe =
+      (M: EntwinedModule<R>, N: EntwinedModule<R>, P: EntwinedModule<R>) =>
+      (g: Mat<R>, f: Mat<R>): Result<string, Mat<R>> =>
+        composeEntwinedHoms(E)(M, N, P)(g, f)
+
+    const composeUnchecked =
+      (g: Mat<R>, f: Mat<R>): Mat<R> =>
+        composeEntwinedHomsUnchecked(S)(g, f)
+
+    // optional helper: assertHom (returns Ok(f) or Err(reason))
+    const assertHom =
+      (M: EntwinedModule<R>, N: EntwinedModule<R>, f: Mat<R>): Result<string, Mat<R>> =>
+        isHom(M, N, f) ? Ok(f) : Err('assertHom: not an entwined-module hom')
+
+    return { id, isHom, compose: composeSafe, composeUnchecked, assertHom }
   }
 
 // =====================================================================

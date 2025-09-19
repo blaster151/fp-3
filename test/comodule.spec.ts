@@ -26,6 +26,10 @@ import {
   entwinedFromLeftModule_NotimesC,
   makeTaggedLeftModule,
   eye,
+  categoryOfEntwinedModules,
+  composeEntwinedHoms,
+  composeEntwinedHomsUnchecked,
+  isOk,
 } from '../allTS'
 
 // handy basis permutation m×m (σ: index -> index)
@@ -312,5 +316,105 @@ describe('Entwined modules – advanced constructions', () => {
     const N = makeTaggedLeftModule(A)(2, j => j) // m = 2
     const NC = entwinedFromLeftModule_NotimesC(E)(N)
     expect(NC.m).toBe(8) // m * n = 2 * 4
+  })
+})
+
+describe('Category of entwined modules', () => {
+  it('provides identity morphisms', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)
+    const C = makeDiagonalCoring(S)(2)
+    const E = makeDiagonalEntwining(A, C)
+    const Cat = categoryOfEntwinedModules(E)
+
+    const M = makeDiagonalComodule(C)(1, k => k)
+    const X = entwinedFromComodule_AotimesM(E)(M)
+
+    const idX = Cat.id(X)
+    expect(Cat.isHom(X, X, idX)).toBe(true)
+    expect(idX.length).toBe(X.m)
+    expect(idX[0]?.length).toBe(X.m)
+  })
+
+  it('composes morphisms safely', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)
+    const C = makeDiagonalCoring(S)(2)
+    const E = makeDiagonalEntwining(A, C)
+    const Cat = categoryOfEntwinedModules(E)
+
+    // Three identical modules for simplicity
+    const M = makeDiagonalComodule(C)(1, k => k)
+    const X = entwinedFromComodule_AotimesM(E)(M)
+    const Y = entwinedFromComodule_AotimesM(E)(M)
+    const Z = entwinedFromComodule_AotimesM(E)(M)
+
+    const f = Cat.id(X) // X -> Y
+    const g = Cat.id(Y) // Y -> Z
+
+    const hRes = Cat.compose(X, Y, Z)(g, f)
+    expect(isOk(hRes)).toBe(true)
+    
+    if (isOk(hRes)) {
+      const h = hRes.value
+      expect(Cat.isHom(X, Z, h)).toBe(true)
+    }
+  })
+
+  it('detects invalid morphisms in composition', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)
+    const C = makeDiagonalCoring(S)(2)
+    const E = makeDiagonalEntwining(A, C)
+    const Cat = categoryOfEntwinedModules(E)
+
+    const M = makeDiagonalComodule(C)(1, k => k)
+    const X = entwinedFromComodule_AotimesM(E)(M)
+    const Y = entwinedFromComodule_AotimesM(E)(M)
+    const Z = entwinedFromComodule_AotimesM(E)(M)
+
+    // Wrong dimensions
+    const wrongF = [[1, 0, 0], [0, 1, 0]] // 2×3 instead of 2×2
+    const g = Cat.id(Y)
+
+    const hRes = Cat.compose(X, Y, Z)(g, wrongF)
+    expect(isOk(hRes)).toBe(false)
+  })
+
+  it('unchecked composition works for valid inputs', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)
+    const C = makeDiagonalCoring(S)(2)
+    const E = makeDiagonalEntwining(A, C)
+    const Cat = categoryOfEntwinedModules(E)
+
+    const M = makeDiagonalComodule(C)(1, k => k)
+    const X = entwinedFromComodule_AotimesM(E)(M)
+    const Y = entwinedFromComodule_AotimesM(E)(M)
+
+    const f = Cat.id(X)
+    const g = Cat.id(Y)
+
+    const h = Cat.composeUnchecked(g, f)
+    expect(h.length).toBe(X.m)
+    expect(h[0]?.length).toBe(X.m)
+  })
+
+  it('assertHom helper works correctly', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)
+    const C = makeDiagonalCoring(S)(2)
+    const E = makeDiagonalEntwining(A, C)
+    const Cat = categoryOfEntwinedModules(E)
+
+    const M = makeDiagonalComodule(C)(1, k => k)
+    const X = entwinedFromComodule_AotimesM(E)(M)
+    const Y = entwinedFromComodule_AotimesM(E)(M)
+
+    const validHom = Cat.id(X)
+    const invalidHom = [[1, 1], [0, 1]] // not a diagonal matrix, breaks structure
+
+    expect(isOk(Cat.assertHom(X, X, validHom))).toBe(true)
+    expect(isOk(Cat.assertHom(X, Y, invalidHom))).toBe(false)
   })
 })

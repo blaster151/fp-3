@@ -44,7 +44,7 @@ import {
   makeDiagonalAlgebra, makeDiagonalEntwining, entwiningCoassocHolds, entwiningMultHolds,
   entwiningUnitHolds, entwiningCounitHolds, makeDiagonalEntwinedModule, entwinedLawHolds,
   isEntwinedModuleHom, entwinedFromComodule_AotimesM, entwinedFromLeftModule_NotimesC,
-  makeTaggedLeftModule, eye
+  makeTaggedLeftModule, eye, categoryOfEntwinedModules, isOk
 } from './allTS'
 
 // ====================================================================
@@ -748,6 +748,63 @@ namespace ComoduleExamples {
       console.log('✓ Both constructions produce lawful entwined modules!')
     }
   }
+
+  export function categoryExample() {
+    console.log('\n--- Category of Entwined Modules Example ---')
+    
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)
+    const C = makeDiagonalCoring(S)(3)
+    const E = makeDiagonalEntwining(A, C)
+    const Cat = categoryOfEntwinedModules(E)
+
+    // Build three objects: A⊗M1, A⊗M2, A⊗M3
+    const M1 = makeDiagonalComodule(C)(2, k => k % C.n)
+    const M2 = makeDiagonalComodule(C)(2, k => (k+1) % C.n)
+    const M3 = makeDiagonalComodule(C)(2, k => (k+2) % C.n)
+
+    const X = entwinedFromComodule_AotimesM(E)(M1)
+    const Y = entwinedFromComodule_AotimesM(E)(M2)
+    const Z = entwinedFromComodule_AotimesM(E)(M3)
+
+    console.log('Objects X, Y, Z have dimensions:', X.m, Y.m, Z.m)
+
+    // Some homs (permutation on A⊗M blocks)
+    const swapM = (idx: number) => {
+      // k=2, m=2 ⇒ dimension 4; swap the M-bit inside each A-block
+      const a = Math.floor(idx / 2), j = idx % 2, j2 = j ^ 1
+      return a * 2 + j2
+    }
+    const permuteBasis = (m: number, sigma: (i: number) => number): number[][] => {
+      const M = Array.from({ length: m }, () => Array.from({ length: m }, () => 0))
+      for (let i = 0; i < m; i++) M[sigma(i)]![i] = 1
+      return M
+    }
+
+    const f: number[][] = permuteBasis(X.m, swapM) // X -> Y (matches tag shift by +1)
+    const g: number[][] = permuteBasis(Y.m, swapM) // Y -> Z (another +1)
+
+    // Check and compose
+    console.log('f is hom X→Y:', Cat.isHom(X, Y, f))
+    console.log('g is hom Y→Z:', Cat.isHom(Y, Z, g))
+
+    const hRes = Cat.compose(X, Y, Z)(g, f)   // safe compose
+    if (isOk(hRes)) {
+      const h = hRes.value                    // X -> Z
+      console.log('Composition g∘f successful, shape:', h.length, 'x', h[0]?.length)
+      console.log('g∘f is hom X→Z:', Cat.isHom(X, Z, h))
+    } else {
+      console.error('Composition failed:', hRes.error)
+    }
+
+    // Test identity
+    const idX = Cat.id(X)
+    console.log('id_X is hom X→X:', Cat.isHom(X, X, idX))
+
+    if (isOk(hRes) && Cat.isHom(X, Y, f) && Cat.isHom(Y, Z, g)) {
+      console.log('✓ Category operations working correctly!')
+    }
+  }
 }
 
 // ====================================================================
@@ -784,6 +841,7 @@ async function runExamples() {
   ComoduleExamples.entwinedModuleExample()
   ComoduleExamples.entwinedModuleMorphismsExample()
   ComoduleExamples.entwinedModuleConstructionsExample()
+  ComoduleExamples.categoryExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
