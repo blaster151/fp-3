@@ -12206,6 +12206,23 @@ export const SemiringProb: Semiring<number> = {
   eq: eqStrict<number>(),
 }
 
+// ---------- Ring (Semiring + additive inverses) ----------
+export interface Ring<R> extends Semiring<R> {
+  neg: (a: R) => R
+  sub: (a: R, b: R) => R
+}
+
+// A concrete ring over number
+export const RingReal: Ring<number> = {
+  add: (a,b) => a + b,
+  zero: 0,
+  mul: (a,b) => a * b,
+  one: 1,
+  eq: eqStrict<number>(),
+  neg: a => -a,
+  sub: (a,b) => a - b
+}
+
 export type Mat<R> = R[][] // rows x cols
 
 // Identity matrix
@@ -12421,6 +12438,33 @@ export const closureUpTo =
     }
     return acc
   }
+
+// ---------- Matrix helpers that need a Ring ----------
+export const matAdd =
+  <R>(Rng: Ring<R>) =>
+  (A: Mat<R>, B: Mat<R>): Mat<R> =>
+    A.map((row,i) => row.map((x,j) => Rng.add(x, B[i]?.[j]!)))
+
+export const matNeg =
+  <R>(Rng: Ring<R>) =>
+  (A: Mat<R>): Mat<R> =>
+    A.map(row => row.map(Rng.neg))
+
+export const zerosMat =
+  <R>(rows: number, cols: number, S: Semiring<R>): Mat<R> =>
+    Array.from({ length: rows }, () => Array.from({ length: cols }, () => S.zero))
+
+export const idMat =
+  <R>(n: number, S: Semiring<R>): Mat<R> => eye(S)(n)
+
+// Block concat (no checks; keep careful with dims)
+export const hcat =
+  <R>(A: Mat<R>, B: Mat<R>): Mat<R> =>
+    A.map((row, i) => row.concat(B[i]!))
+
+export const vcat =
+  <R>(A: Mat<R>, B: Mat<R>): Mat<R> =>
+    A.concat(B)
 
 // 3-factor permutation matrix P: factors [d0,d1,d2] -> permute by π
 // π = [0,1,2] is identity; π = [1,2,0] cycles (0→1→2→0)
@@ -13163,6 +13207,152 @@ export const compileRegexToWA = (pattern: string): WeightedAutomaton<boolean, st
 
   return { S: B, n: nfa.n, init: initP, final: finalP, delta }
 }
+
+// =====================================================================
+// Triangulated Categories: Chain Complexes and Distinguished Triangles
+// =====================================================================
+
+// ---------- Complex + checks ----------
+export type Complex<R> = {
+  readonly S: Ring<R>
+  readonly degrees: ReadonlyArray<number>      // sorted ascending, e.g. [-1,0,1]
+  readonly dim: Readonly<Record<number, number>> // dim at degree n (0 allowed)
+  readonly d: Readonly<Record<number, Mat<R>>> // d_n : X_n -> X_{n-1}  shape (dim[n-1] x dim[n])
+}
+
+// Ensure shapes line up and d_{n-1} ∘ d_n = 0
+export const complexIsValid =
+  <R>(C: Complex<R>): boolean => {
+    const S = C.S
+    for (const n of C.degrees) {
+      const dn = C.d[n]
+      if (!dn) continue
+      const rows = dn.length, cols = dn[0]?.length ?? 0
+      if (rows !== (C.dim[n-1] ?? 0) || cols !== (C.dim[n] ?? 0)) return false
+      const dn1 = C.d[n-1]
+      if (dn1) {
+        const comp = matMul(S)(dn1, dn)                  // X_{n-2} x X_n
+        // zero check
+        const eq = S.eq ?? ((a: R, b: R) => Object.is(a, b))
+        for (const row of comp) for (const x of row) if (!eq(x, S.zero)) return false
+      }
+    }
+    return true
+  }
+
+// Shift functor [1] (homological: X[1]n=Xn−1, dnX[1]=−dn−1X)
+export const shift1 =
+  <R>(C: Complex<R>): Complex<R> => {
+    const S = C.S
+    const degs = C.degrees.map(n => n+1)
+    const dim: Record<number, number> = {}
+    const d: Record<number, Mat<R>> = {}
+    for (const n of C.degrees) {
+      dim[n+1] = C.dim[n] ?? 0
+      if (C.d[n]) d[n+1] = matNeg(S)(C.d[n]!) // sign flip
+    }
+    return { S, degrees: degs, dim, d }
+  }
+
+// ---------- Chain map ----------
+export type ChainMap<R> = {
+  readonly S: Ring<R>
+  readonly X: Complex<R>
+  readonly Y: Complex<R>
+  readonly f: Readonly<Record<number, Mat<R>>>  // f_n : X_n -> Y_n
+}
+
+export const isChainMap =
+  <R>(ϕ: ChainMap<R>): boolean => {
+    const S = ϕ.S
+    for (const n of ϕ.X.degrees) {
+      const fn   = ϕ.f[n]
+      const fnm1 = ϕ.f[n-1]
+      const dXn  = ϕ.X.d[n]
+      const dYn  = ϕ.Y.d[n]
+      if (!fn || !dYn || !dXn || !fnm1) continue // tolerate zeros outside overlap
+      const left  = matMul(S)(fnm1, dXn)
+      const right = matMul(S)(dYn, fn)
+      // compare
+      const eq = S.eq ?? ((a: R, b: R) => Object.is(a, b))
+      for (let i=0;i<left.length;i++)
+        for (let j=0;j<(left[0]?.length ?? 0);j++)
+          if (!eq(left[i]?.[j]!, right[i]?.[j]!)) return false
+    }
+    return true
+  }
+
+// ---------- Mapping cone Cone(f): Z with Z_n = Y_n ⊕ X_{n-1} ----------
+export const cone =
+  <R>(ϕ: ChainMap<R>): Complex<R> => {
+    const S = ϕ.S
+    const Rng = S as Ring<R>
+    const degs = Array.from(new Set([...ϕ.Y.degrees, ...ϕ.X.degrees.map(n => n+1)])).sort((a,b)=>a-b)
+    const dim: Record<number, number> = {}
+    const d: Record<number, Mat<R>> = {}
+
+    for (const n of degs) {
+      const dimY = ϕ.Y.dim[n] ?? 0
+      const dimXm1 = ϕ.X.dim[n-1] ?? 0
+      dim[n] = dimY + dimXm1
+
+      const dY  = ϕ.Y.d[n]     ?? zerosMat(ϕ.Y.dim[n-1] ?? 0, dimY, S)
+      const fn1 = ϕ.f[n-1]     ?? zerosMat(ϕ.Y.dim[n-1] ?? 0, dimXm1, S) // Y_n <- X_{n-1}
+      const dXm1= ϕ.X.d[n-1]   ?? zerosMat(ϕ.X.dim[n-2] ?? 0, dimXm1, S)
+      const minus_dXm1 = matNeg(Rng)(dXm1)
+
+      // Build block: [[dY , f_{n-1}],[0, -d_{X,n-1}]]
+      const top  = hcat(dY, fn1)
+      const botL = zerosMat((ϕ.X.dim[n-2] ?? 0), dimY, S)
+      const bot  = hcat(botL, minus_dXm1)
+      d[n] = vcat(top, bot)
+    }
+
+    return { S: Rng, degrees: degs, dim, d }
+  }
+
+// ---------- Distinguished triangles ----------
+export type Triangle<R> = {
+  readonly X: Complex<R>
+  readonly Y: Complex<R>
+  readonly Z: Complex<R>         // Cone(f)
+  readonly f: ChainMap<R>
+  readonly g: ChainMap<R>        // inclusion Y → Z
+  readonly h: ChainMap<R>        // projection Z → X[1]
+}
+
+export const triangleFromMap =
+  <R>(ϕ: ChainMap<R>): Triangle<R> => {
+    const S = ϕ.S
+    const Z = cone(ϕ)
+    const X1 = shift1(ϕ.X)
+    const incY: Record<number, Mat<R>> = {}
+    const projX1: Record<number, Mat<R>> = {}
+
+    for (const n of Z.degrees) {
+      const dimY  = ϕ.Y.dim[n] ?? 0
+      const dimXm1= ϕ.X.dim[n-1] ?? 0
+      // g_n : Y_n → Y_n ⊕ X_{n-1}
+      incY[n]  = vcat(idMat(dimY, S), zerosMat(dimXm1, dimY, S))
+      // h_n : Y_n ⊕ X_{n-1} → X[1]_n = X_{n-1}
+      projX1[n]= hcat(zerosMat(dimXm1, dimY, S), idMat(dimXm1, S))
+    }
+
+    const g: ChainMap<R> = { S, X: ϕ.Y, Y: Z, f: incY }
+    const h: ChainMap<R> = { S, X: Z, Y: X1, f: projX1 }
+
+    return { X: ϕ.X, Y: ϕ.Y, Z, f: ϕ, g, h }
+  }
+
+// Quick triangle sanity: (i) all complexes valid, (ii) chain-map laws, (iii) rotation shape sanity.
+export const triangleIsSane =
+  <R>(T: Triangle<R>): boolean =>
+    complexIsValid(T.X) &&
+    complexIsValid(T.Y) &&
+    complexIsValid(T.Z) &&
+    isChainMap(T.f) &&
+    isChainMap(T.g) &&
+    isChainMap(T.h)
 
 // =====================================================================
 // Free bimodules over semirings (object-level; finite rank only)

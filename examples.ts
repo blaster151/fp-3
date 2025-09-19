@@ -49,7 +49,10 @@ import {
   SemiringMinPlus, SemiringMaxPlus, SemiringBoolOrAnd, SemiringProb,
   WeightedAutomaton, waRun, waAcceptsBool, HMM, hmmForward, diagFromVec,
   Edge, graphAdjNat, graphAdjBool, graphAdjWeights, countPathsOfLength, 
-  reachableWithin, shortestPathsUpTo, transitiveClosureBool, compileRegexToWA
+  reachableWithin, shortestPathsUpTo, transitiveClosureBool, compileRegexToWA,
+  // Triangulated categories
+  RingReal, Complex, ChainMap, Triangle, complexIsValid, isChainMap, 
+  shift1, cone, triangleFromMap, triangleIsSane
 } from './allTS'
 
 // ====================================================================
@@ -888,6 +891,57 @@ namespace ComoduleExamples {
     
     console.log('✓ All practical utilities working!')
   }
+
+  export function triangulatedCategoryExample() {
+    console.log('\n--- Triangulated Category Example ---')
+    
+    // Ring
+    const R = RingReal
+
+    // X: dims X_{-1}=1, X_0=1, d = [ [0] ] : X_0 -> X_{-1}
+    const X: Complex<number> = {
+      S: R,
+      degrees: [-1,0],
+      dim: { [-1]: 1, [0]: 1 },
+      d:   { [0]: [[0]] }
+    }
+
+    // Y: same shape, zero differential to match X
+    const Y: Complex<number> = {
+      S: R,
+      degrees: [-1,0],
+      dim: { [-1]: 1, [0]: 1 },
+      d:   { [0]: [[0]] }    // d_Y: 1x1 matrix [0] (same as X)
+    }
+
+    // f: X → Y is identity in both degrees (now valid since both have zero differentials)
+    const fMap: ChainMap<number> = {
+      S: R, X, Y,
+      f: { [-1]: [[1]], [0]: [[1]] }
+    }
+
+    console.log('Complex X valid:', complexIsValid(X))
+    console.log('Complex Y valid:', complexIsValid(Y))
+    console.log('f is chain map:', isChainMap(fMap))
+
+    const T = triangleFromMap(fMap)
+    console.log('Triangle is sane:', triangleIsSane(T))
+
+    // Show the cone structure
+    console.log('Cone Z degrees:', T.Z.degrees)
+    console.log('Cone Z dimensions:', T.Z.dim)
+
+    // rotate once (Y → Z → X[1] → Y[1]) — you already have shift1 to view targets
+    const X1 = shift1(X)
+    console.log('X[1] degrees:', X1.degrees)
+    console.log('X[1] dimensions:', X1.dim)
+
+    if (triangleIsSane(T)) {
+      console.log('✓ Distinguished triangle X→Y→Cone(f)→X[1] constructed!')
+    } else {
+      console.log('✗ Triangle construction failed')
+    }
+  }
 }
 
 // ====================================================================
@@ -926,6 +980,7 @@ async function runExamples() {
   ComoduleExamples.entwinedModuleConstructionsExample()
   ComoduleExamples.categoryExample()
   ComoduleExamples.practicalUtilitiesExample()
+  ComoduleExamples.triangulatedCategoryExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
