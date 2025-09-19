@@ -15752,12 +15752,233 @@ export const makePosetDiagramCompat = <R>(
   return { I, X, arr }
 }
 
+/* ================================================================
+   DiagramClosure — synthesize composite arrows (functorial closure)
+   ================================================================ */
+
+export namespace DiagramClosure {
+  // ----- matrix helpers -----
+  const matMul =
+    <R>(F: Pick<Field<R>, 'add'|'mul'|'zero'>) =>
+    (B: ReadonlyArray<ReadonlyArray<R>>, A: ReadonlyArray<ReadonlyArray<R>>): R[][] => {
+      const r = B.length, k = (B[0]?.length ?? 0), c = (A[0]?.length ?? 0)
+      const Z: R[][] = Array.from({ length: r }, () => Array.from({ length: c }, () => F.zero))
+      for (let i=0;i<r;i++) for (let t=0;t<k;t++) {
+        const b = B[i]![t]!; if (b === F.zero) continue
+        for (let j=0;j<c;j++) Z[i]![j] = F.add(Z[i]![j]!, F.mul(b, A[t]![j]!))
+      }
+      return Z
+    }
+
+  // Compose chain maps g∘f (same degree, X --f--> Y --g--> Z)
+  export const composeChainMap =
+    <R>(F: Pick<Field<R>, 'add'|'mul'|'zero'>) =>
+    (g: ChainMap<R>, f: ChainMap<R>): ChainMap<R> => {
+      const mul = matMul(F)
+      const res: Record<number, R[][]> = {}
+      for (const n of f.X.degrees) {
+        const A = (f.f[n] ?? []) as R[][]                 // Y_n × X_n
+        const B = (g.f[n] ?? []) as R[][]                 // Z_n × Y_n
+        res[n] = mul(B, A)                                // Z_n × X_n
+      }
+      return { S: f.X.S, X: f.X, Y: g.Y, f: res }
+    }
+
+  // Identity map for a complex
+  const idChain =
+    <R>(F: Pick<Field<R>, 'zero'|'one'>) =>
+    (X: Complex<R>): ChainMap<R> => {
+      const f: Record<number, R[][]> = {}
+      for (const n of X.degrees) {
+        const d = X.dim[n] ?? 0
+        f[n] = Array.from({ length: d }, (_, i) =>
+          Array.from({ length: d }, (_, j) => (i===j ? F.one : F.zero))
+        )
+      }
+      return { S: X.S, X, Y: X, f }
+    }
+
+  // Build adjacency from covers for BFS
+  const adjacency = (I: FinitePoset): ReadonlyMap<ObjId, ReadonlyArray<ObjId>> => {
+    const adj = new Map<ObjId, ObjId[]>()
+    // Need to use covers from the poset - let's extract them from leq relation
+    for (const a of I.objects) {
+      for (const b of I.objects) {
+        if (a !== b && I.leq(a, b)) {
+          // Check if this is a cover (no intermediate element)
+          const isCover = !I.objects.some(c => c !== a && c !== b && I.leq(a, c) && I.leq(c, b))
+          if (isCover) {
+            if (!adj.has(a)) adj.set(a, [])
+            adj.get(a)!.push(b)
+          }
+        }
+      }
+    }
+    for (const o of I.objects) if (!adj.has(o)) adj.set(o, [])
+    return adj
+  }
+
+  // Find a (cover) path a -> ... -> b (BFS)
+  const findPath = (I: FinitePoset, a: ObjId, b: ObjId): ObjId[] | undefined => {
+    if (a === b) return [a]
+    const adj = adjacency(I)
+    const q: ObjId[] = [a]
+    const prev = new Map<ObjId, ObjId | null>([[a, null]])
+    while (q.length) {
+      const x = q.shift()!
+      for (const y of adj.get(x) ?? []) {
+        if (!prev.has(y)) {
+          prev.set(y, x)
+          if (y === b) {
+            const path: ObjId[] = [b]
+            let cur: ObjId | null = b
+            while ((cur = prev.get(cur)!) !== null) path.push(cur)
+            path.reverse()
+            return path
+          }
+          q.push(y)
+        }
+      }
+    }
+    return undefined
+  }
+
+  /** Wrap a diagram with a closure that synthesizes composites along covers.
+      - Uses provided arrows when present.
+      - Provides identities `arr(a,a)`.
+      - Otherwise, composes along a BFS-found cover path (cached).
+      If a needed cover arrow is missing, returns `undefined` for that pair. */
+  export const saturate =
+    <R>(F: Field<R>) =>
+    (D: PosetDiagram<R>): PosetDiagram<R> => {
+      const baseArr = D.arr
+      const cache = new Map<ObjId, Map<ObjId, ChainMap<R>>>()
+      const put = (a: ObjId, b: ObjId, f: ChainMap<R>) => {
+        if (!cache.has(a)) cache.set(a, new Map())
+        cache.get(a)!.set(b, f)
+      }
+      const getCached = (a: ObjId, b: ObjId) => cache.get(a)?.get(b)
+
+      const arr = (a: ObjId, b: ObjId): ChainMap<R> | undefined => {
+        // fast paths
+        const hit = getCached(a,b); if (hit) return hit
+        const given = baseArr(a,b);  if (given) { put(a,b,given); return given }
+        if (!D.I.leq(a,b)) return undefined
+        if (a === b) { const id = idChain(F)(D.X[a]!); put(a,a,id); return id }
+
+        // need to synthesize via covers
+        const path = findPath(D.I, a, b); if (!path) return undefined
+        // Compose along path: a=v0 -> v1 -> ... -> vk=b
+        let cur: ChainMap<R> | undefined
+        for (let i=0;i<path.length-1;i++) {
+          const u = path[i]!, v = path[i+1]!
+          const step = baseArr(u,v) ?? getCached(u,v)
+          if (!step) { // missing basic cover map
+            return undefined
+          }
+          cur = (i===0) ? step : composeChainMap(F)(step, cur!)
+        }
+        if (cur) put(a,b,cur)
+        return cur
+      }
+
+      return { I: D.I, X: D.X, arr }
+    }
+}
+
+/* ================================================================
+   DiagramLaws — identity / composition validation for diagrams
+   ================================================================ */
+
+export namespace DiagramLaws {
+  const eqMatrix =
+    <R>(F: Pick<Field<R>, 'eq'>) =>
+    (A: ReadonlyArray<ReadonlyArray<R>>, B: ReadonlyArray<ReadonlyArray<R>>): boolean => {
+      if (A.length !== B.length) return false
+      for (let i=0;i<A.length;i++) {
+        const Ai = A[i], Bi = B[i]
+        if ((Ai?.length ?? 0) !== (Bi?.length ?? 0)) return false
+        for (let j=0;j<(Ai?.length ?? 0);j++) if (!F.eq(Ai![j]!, Bi![j]!)) return false
+      }
+      return true
+    }
+
+  const eqChainMap =
+    <R>(F: Pick<Field<R>, 'eq'>) =>
+    (f: ChainMap<R>, g: ChainMap<R>): boolean => {
+      // quick structural guards
+      const ds = f.X.degrees
+      if (ds.length !== g.X.degrees.length) return false
+      for (let n of ds) {
+        const A = (f.f[n] ?? []) as R[][]
+        const B = (g.f[n] ?? []) as R[][]
+        if (!eqMatrix(F)(A,B)) return false
+      }
+      return true
+    }
+
+  /** Validate identities and composition:
+      - For each a: arr(a,a) ≈ id_X[a]
+      - For each a≤b≤c: arr(b,c)∘arr(a,b) ≈ arr(a,c)
+      If some arrows are missing, the corresponding checks are skipped.
+      Returns a compact report. */
+  export const validateFunctoriality =
+    <R>(F: Field<R>) =>
+    (D: PosetDiagram<R>): { ok: boolean; issues: string[] } => {
+      const issues: string[] = []
+      const eq = eqChainMap(F)
+      const idChain = (X: Complex<R>): ChainMap<R> => {
+        const f: Record<number, R[][]> = {}
+        for (const n of X.degrees) {
+          const d = X.dim[n] ?? 0
+          f[n] = Array.from({ length: d }, (_, i) =>
+            Array.from({ length: d }, (_, j) => (i===j ? F.one : F.zero))
+          )
+        }
+        return { S: X.S, X, Y: X, f }
+      }
+
+      // We validate against the *given* arrows when present; otherwise we also try closure.
+      const Closed = DiagramClosure.saturate(F)(D)
+      const compose = DiagramClosure.composeChainMap(F)
+
+      // Identities
+      for (const a of D.I.objects) {
+        const ida = D.arr(a,a) ?? Closed.arr(a,a)
+        const idX = idChain(D.X[a]!)
+        if (!ida) {
+          issues.push(`missing identity arrow arr(${a},${a})`)
+        } else if (!eq(ida, idX)) {
+          issues.push(`identity law fails at ${a}: arr(${a},${a}) ≠ id`)
+        }
+      }
+
+      // Composition: for all a≤b≤c
+      for (const a of D.I.objects) for (const b of D.I.objects) if (D.I.leq(a,b)) {
+        const fab = D.arr(a,b) ?? Closed.arr(a,b)
+        if (!fab) continue
+        for (const c of D.I.objects) if (D.I.leq(b,c)) {
+          const fbc = D.arr(b,c) ?? Closed.arr(b,c)
+          const fac = D.arr(a,c) ?? Closed.arr(a,c)
+          if (!fbc || !fac) continue
+          const lhs = compose(fbc, fab)
+          if (!eq(lhs, fac)) {
+            issues.push(`composition law fails: arr(${b},${c})∘arr(${a},${b}) ≠ arr(${a},${c})`)
+          }
+        }
+      }
+
+      return { ok: issues.length === 0, issues }
+    }
+}
+
 // Namespaced exports for discoverability
 export const Diagram = {
   makePosetDiagram, pushoutInDiagram, pullbackInDiagram,
   LanDisc, RanDisc, reindexDisc,
   LanPoset, RanPoset,
-  coproductComplex, productComplex
+  coproductComplex, productComplex,
+  makeFinitePoset, prettyPoset, makePosetDiagramCompat, idChainMapCompat
 }
 
 export const Lin = { 
@@ -15779,6 +16000,8 @@ export const Algebra = {
   applyRepAsLin, coactionAsLin, pushCoaction, 
   actionToChain, coactionToChain
 }
+
+// Namespaces are declared above and exported automatically
 
 export const Chain = { 
   compose: composeChainMap, 
