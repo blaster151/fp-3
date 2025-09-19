@@ -13943,6 +13943,232 @@ export const makeHomologyShiftIso =
     return { forward, backward, isoCheck }
   }
 
+/* ============================================================================
+ * IMAGE / COIMAGE IN CHAIN-COMPLEX LAND (OVER A FIELD)
+ * ----------------------------------------------------------------------------
+ * Category-speak in one breath:
+ * - In the additive category Ch_k (chain complexes over a field k), every map
+ *   f : X → Y has degreewise linear maps f_n.  Define:
+ *     • im(f)_n   = im(f_n)     (subspace of Y_n)     → subcomplex of Y
+ *     • coim(f)_n = X_n / ker(f_n)                    → quotient of X
+ * - These assemble into complexes Im(f) ↪ Y and X ↠ Coim(f), and the canonical
+ *   factorization X ↠ Coim(f) —η→ Im(f) ↪ Y is an isomorphism (1st iso thm).
+ *   In code we pick bases and produce matrices for these maps.
+ * - This pairs with your Ker/Coker: exact rows
+ *       0 → Ker(f) → X → Im(f) → 0           and          0 → Im(f) → Y → Coker(f) → 0
+ *   and a canonical Coim(f) ≅ Im(f).
+ * ========================================================================== */
+
+const tposeHelper = <R>(A: ReadonlyArray<ReadonlyArray<R>>): R[][] =>
+  (A[0]?.map((_, j) => A.map(r => r[j]!)) ?? [])
+
+const matMulHelper =
+  <R>(F: Field<R>) =>
+  (A: R[][], B: R[][]): R[][] => {
+    const m = A.length, k = (A[0]?.length ?? 0), n = (B[0]?.length ?? 0)
+    const Z: R[][] = Array.from({ length: m }, () => Array.from({ length: n }, () => F.zero))
+    const eq = F.eq ?? ((x: R, y: R) => Object.is(x, y))
+    for (let i = 0; i < m; i++) for (let p = 0; p < k; p++) {
+      const a = A[i]?.[p]!; if (eq(a, F.zero)) continue
+      for (let j = 0; j < n; j++) Z[i]![j] = F.add(Z[i]![j]!, F.mul(a, B[p]?.[j]!))
+    }
+    return Z
+  }
+
+const solveVecHelper =
+  <R>(F: Field<R>) =>
+  (A: R[][], b: R[]) => solveLinear(F)(tposeHelper(A), b)
+
+/** coordinates in a chosen column-basis J (assumed independent) */
+const coordsInHelper =
+  <R>(F: Field<R>) =>
+  (J: R[][], v: R[]): R[] =>
+    solveVecHelper(F)(J, v)
+
+export const imageComplex =
+  <R>(F: Field<R>) =>
+  (f: ChainMap<R>): { Im: Complex<R>; incl: ChainMap<R>; basis: Record<number, R[][]> } => {
+    const Y = f.Y
+    const degrees = Y.degrees.slice()
+    const dim: Record<number, number> = {}
+    const dIm: Record<number, R[][]> = {}
+    const jMat: Record<number, R[][]> = {} // inclusions j_n : Im_n ↪ Y_n (columns = basis)
+    const mul = matMulHelper(F)
+    const crd = coordsInHelper(F)
+
+    // basis for im(f_n), store as columns J_n
+    for (const n of degrees) {
+      const fn = f.f[n] ?? ([] as R[][])          // Y_n × X_n
+      const Jn = colspace(F)(fn)                  // Y_n × r_n
+      jMat[n]  = Jn
+      dim[n]   = Jn[0]?.length ?? 0
+    }
+
+    // d^Im_n = coords_{J_{n-1}}( d^Y_n · J_n )  ⇒ matrix of size dim(Im_{n-1}) × dim(Im_n)
+    for (const n of degrees) {
+      const Jn   = jMat[n]    ?? ([] as R[][])
+      const Jn_1 = jMat[n-1]  ?? ([] as R[][])
+      const dYn  = Y.d[n]     ?? ([] as R[][])    // Y_{n-1} × Y_n
+      const cols = Jn[0]?.length ?? 0
+      const rows = Jn_1[0]?.length ?? 0
+      if (cols === 0) continue
+      const D: R[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => F.zero))
+      const dYJ = mul(dYn as R[][], Jn as R[][])  // in Y_{n-1}
+      for (let j = 0; j < cols; j++) {
+        const v = dYJ.map(row => row[j] as R)
+        const alpha = crd(Jn_1, v)                // coords in Im_{n-1}
+        for (let i = 0; i < rows; i++) D[i]![j] = alpha[i] ?? F.zero
+      }
+      dIm[n] = D
+    }
+
+    const Im: Complex<R> = { S: f.S, degrees, dim, d: dIm }
+    const incl: ChainMap<R> = { S: f.S, X: Im, Y, f: jMat }
+    return { Im, incl, basis: jMat }
+  }
+
+export const coimageComplex =
+  <R>(F: Field<R>) =>
+  (f: ChainMap<R>): { Coim: Complex<R>; proj: ChainMap<R>; Lbasis: Record<number, R[][]> } => {
+    const X = f.X
+    const degrees = X.degrees.slice()
+    const dim: Record<number, number> = {}
+    const dC: Record<number, R[][]> = {}
+    const qMat: Record<number, R[][]> = {} // projections q_n : X_n ↠ Coim_n   (rows = coordinates)
+    const Lb:  Record<number, R[][]> = {} // inclusions L_n ↪ X_n (columns = complement basis)
+    const rr = rref(F)
+    const rank = (A: R[][]) => rr(tposeHelper(A)).pivots.length
+    const mul = matMulHelper(F)
+    const crd = coordsInHelper(F)
+
+    const kernelBasis = (A: R[][]): R[][] => nullspace(F)(A)
+
+    const chooseComplement = (K: R[][]): R[][] => {
+      // greedily extend columns of K to a basis of X_n using standard basis
+      const n = K.length
+      const std = Array.from({ length: n }, (_, i) =>
+        Array.from({ length: n }, (_, j) => (i === j ? F.one : F.zero))
+      )
+      let cur = K, picked: R[][] = []
+      const rK = rank(K)
+      for (let j = 0; j < n; j++) {
+        const ej = std.map(row => [row[j]] as R[])
+        const cand = cur.map((row,i) => row.concat(ej[i]!))
+        if (rank(cand) > rank(cur)) { picked.push(std.map(r => r[j] as R)); cur = cand }
+      }
+      return picked // columns = L_n
+    }
+
+    for (const n of degrees) {
+      const fn = f.f[n] ?? ([] as R[][])          // Y_n × X_n
+      const Kn = kernelBasis(fn)                  // X_n × k_n
+      const Ln = chooseComplement(Kn)             // X_n × l_n  with [K|L] basis of X_n
+      Lb[n]    = Ln
+      dim[n]   = Ln[0]?.length ?? 0
+
+      // projection q_n : X_n → Coim_n ~ coords in L_n
+      // matrix shape: l_n × dim(X_n), where q_n * x = coords_L(x)
+      // build q_n by columns: q_n e_j = coords_L(e_j)
+      const nDim = X.dim[n] ?? 0
+      const I = Array.from({ length: nDim }, (_, i) =>
+        Array.from({ length: nDim }, (_, j) => (i === j ? F.one : F.zero))
+      )
+      const qn: R[][] = Array.from({ length: dim[n]! }, () => Array.from({ length: nDim }, () => F.zero))
+      for (let j = 0; j < nDim; j++) {
+        const e = I.map(r => r[j] as R)
+        const [/*alpha*/, beta] = (() => {
+          const KL = Kn.concat(Ln) as R[][]
+          const coeff = solveLinear(F)(tposeHelper(KL), e) // [α;β]
+          const kdim = Kn[0]?.length ?? 0
+          return [coeff.slice(0, kdim), coeff.slice(kdim)]
+        })()
+        for (let i = 0; i < beta.length; i++) qn[i]![j] = beta[i]!
+      }
+      qMat[n] = qn
+    }
+
+    // d^Coim_n = coords_L_{n-1}( d^X_n · L_n )
+    for (const n of degrees) {
+      const Ln   = Lb[n]      ?? ([] as R[][])
+      const Ln_1 = Lb[n-1]    ?? ([] as R[][])
+      const dXn  = X.d[n]     ?? ([] as R[][])
+      const cols = Ln[0]?.length ?? 0
+      const rows = Ln_1[0]?.length ?? 0
+      if (cols === 0) continue
+      const D: R[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => F.zero))
+      const dXL = mul(dXn as R[][], Ln as R[][])
+      for (let j = 0; j < cols; j++) {
+        const v = dXL.map(row => row[j] as R)
+        const beta = crd(Ln_1, v)
+        for (let i = 0; i < rows; i++) D[i]![j] = beta[i] ?? F.zero
+      }
+      dC[n] = D
+    }
+
+    const Coim: Complex<R> = { S: f.S, degrees, dim, d: dC }
+    const proj: ChainMap<R> = { S: f.S, X, Y: Coim, f: qMat }
+    return { Coim, proj, Lbasis: Lb }
+  }
+
+/** Canonical η: Coim(f) → Im(f) as a chain map (isomorphism over a field). */
+export const coimToIm =
+  <R>(F: Field<R>) =>
+  (f: ChainMap<R>,
+   coim: { Coim: Complex<R>; proj: ChainMap<R>; Lbasis: Record<number, R[][]> },
+   im:   { Im: Complex<R>;   incl: ChainMap<R>;  basis:   Record<number, R[][]> }
+  ): ChainMap<R> => {
+    const { Lbasis } = coim
+    const { basis: J } = im
+    const mul = matMulHelper(F)
+    const crd = coordsInHelper(F)
+    const eta: Record<number, R[][]> = {}
+
+    for (const n of f.X.degrees) {
+      const Ln = Lbasis[n] ?? ([] as R[][])     // X_n × l_n
+      const Jn = J[n]      ?? ([] as R[][])     // Y_n × r_n
+      const fn = f.f[n]    ?? ([] as R[][])     // Y_n × X_n
+      if ((Ln[0]?.length ?? 0) === 0) continue
+      const YimageOfL = mul(fn as R[][], Ln as R[][])  // in Y_n
+      // coords in Im basis ⇒ matrix r_n × l_n
+      const r = Jn[0]?.length ?? 0
+      const l = Ln[0]?.length ?? 0
+      const M: R[][] = Array.from({ length: r }, () => Array.from({ length: l }, () => F.zero))
+      for (let j = 0; j < l; j++) {
+        const v = YimageOfL.map(row => row[j] as R)
+        const alpha = crd(Jn, v)
+        for (let i = 0; i < r; i++) M[i]![j] = alpha[i] ?? F.zero
+      }
+      eta[n] = M
+    }
+
+    return { S: f.S, X: coim.Coim, Y: im.Im, f: eta }
+  }
+
+/** Quick "isomorphism?" predicate degreewise using rank. */
+export const isIsoChainMap =
+  <R>(F: Field<R>) =>
+  (h: ChainMap<R>): boolean => {
+    const rr = rref(F)
+    for (const n of h.X.degrees) {
+      const l = h.X.dim[n] ?? 0
+      const r = h.Y.dim[n] ?? 0
+      if (l !== r) return false
+      const rank = rr(h.f[n] ?? ([] as R[][])).pivots.length
+      if (rank !== l) return false
+    }
+    return true
+  }
+
+// Smoke tests for preservation properties
+export const smoke_coim_im_iso =
+  <R>(F: Field<R>) =>
+  (f: ChainMap<R>) => {
+    const co = coimageComplex(F)(f)
+    const im = imageComplex(F)(f)
+    const eta = coimToIm(F)(f, co, im)
+    return isIsoChainMap(F)(eta)
+  }
+
 // =====================================================================
 // Free bimodules over semirings (object-level; finite rank only)
 //   R ⟂ M ⟂ S  with M ≅ R^m as a *left* R-semimodule and *right* S-semimodule

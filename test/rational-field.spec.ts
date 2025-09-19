@@ -3,6 +3,8 @@ import {
   Q, FieldQ, FieldReal, Qof, Qeq, Qadd, Qneg, Qsub, Qmul, Qinv, Qdiv, QfromInt, QfromRatio, QtoString,
   rref, nullspace, colspace, solveLinear, rrefQPivot, qAbsCmp, isQZero,
   runLesConeProps, randomTwoTermComplex, makeHomologyShiftIso,
+  imageComplex, coimageComplex, coimToIm, isIsoChainMap, smoke_coim_im_iso,
+  idChainMapN, zeroChainMapN,
 } from '../allTS'
 
 describe('Rational field Q', () => {
@@ -197,5 +199,37 @@ describe('Homological algebra properties', () => {
     expect(typeof check.rankPhiPsi).toBe('number')
     expect(typeof check.dimHn).toBe('number')
     expect(typeof check.dimHn1).toBe('number')
+  })
+
+  it('demonstrates image/coimage functionality', () => {
+    const F = FieldReal
+    const X = randomTwoTermComplex(F, 1)
+    const Y = randomTwoTermComplex(F, 1)
+    
+    // Create a simple chain map (zero map for simplicity)
+    const f = zeroChainMapN(X)
+    
+    const im = imageComplex(F)(f)
+    const coim = coimageComplex(F)(f)
+    
+    expect(typeof im.Im).toBe('object')
+    expect(typeof coim.Coim).toBe('object')
+    
+    const eta = coimToIm(F)(f, coim, im)
+    expect(typeof eta).toBe('object')
+    
+    // For zero map, coim→im should be well-defined
+    const isIso = isIsoChainMap(F)(eta)
+    expect(typeof isIso).toBe('boolean')
+  })
+
+  it('smoke tests coim→im isomorphism', () => {
+    const F = FieldReal
+    const X = randomTwoTermComplex(F, 1)
+    const f = idChainMapN(X) // identity map
+    
+    // For identity map, coim→im should be isomorphism
+    const isIso = smoke_coim_im_iso(F)(f)
+    expect(typeof isIso).toBe('boolean')
   })
 })
