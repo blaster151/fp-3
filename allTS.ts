@@ -15016,41 +15016,235 @@ export const arrowMatrixAtDegree =
     return (f.f[n] ?? []) as R[][]
   }
 
-// ========================= Pretty-printers =========================
+// Pretty-printers are now in the Pretty namespace
 
-export const ppMatrix =
-  <R>(F: Field<R>) =>
-  (A: ReadonlyArray<ReadonlyArray<R>>): string =>
-    A.map(row => row.map(x => String(x)).join(' ')).join('\n')
+/* =========================  VectView  =========================
+   Treat a PosetDiagram at degree `n` as a diagram in Vect:
+   objects → finite-dim vector spaces, arrows → linear maps.
+   Also includes a bridge back to ChainMap when you want to reuse
+   homology/exactness machinery at that degree.
+================================================================ */
 
-export const ppChainMap =
-  <R>(F: Field<R>) =>
-  (name: string, f: ChainMap<R>): string => {
-    const ds = f.X.degrees.slice().sort((a,b)=>a-b)
-    const parts = ds.map(n => {
-      const M = (f.f[n] ?? []) as R[][]
-      return `  degree ${n}: ${f.X.dim[n] ?? 0}→${f.Y.dim[n] ?? 0}\n${ppMatrix(F)(M)}`
+export namespace VectView {
+  export type VectorSpace<R> = {
+    readonly F: Field<R>
+    readonly dim: number
+    /** Optional basis; if omitted, use standard basis */
+    readonly B?: ReadonlyArray<ReadonlyArray<R>>
+  }
+
+  export type LinMap<R> = {
+    readonly F: Field<R>
+    readonly dom: VectorSpace<R>
+    readonly cod: VectorSpace<R>
+    /** cod.dim × dom.dim matrix in the chosen bases */
+    readonly M: ReadonlyArray<ReadonlyArray<R>>
+  }
+
+  export type VectDiagram<R> = {
+    I: FinitePoset
+    V: Readonly<Record<string, VectorSpace<R>>>
+    arr: (a: string, b: string) => LinMap<R> | undefined
+  }
+
+  export const VS =
+    <R>(F: Field<R>) =>
+    (dim: number, B?: R[][]): VectorSpace<R> => ({ F, dim, B })
+
+  /** Extract a Vect diagram for a single degree n from a PosetDiagram. */
+  export const toVectAtDegree =
+    <R>(F: Field<R>) =>
+    (D: PosetDiagram<R>, n: number): VectDiagram<R> => {
+      const V: Record<string, VectorSpace<R>> = {}
+      for (const o of D.I.objects) V[o] = VS(F)(D.X[o]!.dim[n] ?? 0)
+      const arr = (a: string, b: string): LinMap<R> | undefined => {
+        const f = D.arr(a, b)
+        if (!f) return undefined
+        const M = (f.f[n] ?? []) as R[][]
+        return { F, dom: V[a]!, cod: V[b]!, M }
+      }
+      return { I: D.I, V, arr }
+    }
+
+  /** Turn a linear map back into a 1-degree chain map at degree n. */
+  export const linToChain =
+    <R>(F: Field<R>) =>
+    (n: number, f: LinMap<R>): ChainMap<R> => ({
+      S: F as Ring<R>,
+      X: { S: F as Ring<R>, degrees: [n], dim: { [n]: f.dom.dim }, d: {} },
+      Y: { S: F as Ring<R>, degrees: [n], dim: { [n]: f.cod.dim }, d: {} },
+      f: { [n]: f.M as R[][] }
     })
-    return `${name} : ${f.X.S}→${f.Y.S}\n${parts.join('\n')}`
+
+  /** Convenience: get the raw matrix of D(a→b) at degree n (zeros if missing). */
+  export const arrowMatrixAtDegree =
+    <R>(F: Field<R>) =>
+    (D: PosetDiagram<R>, n: number, a: string, b: string): R[][] => {
+      const f = D.arr(a, b)
+      if (!f) {
+        const rows = D.X[b]!.dim[n] ?? 0
+        const cols = D.X[a]!.dim[n] ?? 0
+        return Array.from({ length: rows }, () => Array.from({ length: cols }, () => F.zero))
+      }
+      return (f.f[n] ?? []) as R[][]
+    }
+}
+
+/* ==========================  Pretty  ===========================
+   Small inspectors for debugging/teaching:
+   - matrices
+   - chain maps (per-degree dump)
+   - Vect-view of a diagram at a degree
+================================================================ */
+
+export namespace Pretty {
+  export const matrix =
+    <R>(F: Field<R>) =>
+    (A: ReadonlyArray<ReadonlyArray<R>>): string =>
+      A.length === 0
+        ? '(empty 0×0)'
+        : A.map(row => row.map(x => String(x)).join(' ')).join('\n')
+
+  export const chainMap =
+    <R>(F: Field<R>) =>
+    (name: string, f: ChainMap<R>): string => {
+      const ds = f.X.degrees.slice().sort((a, b) => a - b)
+      const parts = ds.map(n => {
+        const M = (f.f[n] ?? []) as R[][]
+        return `  degree ${n}: ${f.X.dim[n] ?? 0} → ${f.Y.dim[n] ?? 0}\n${matrix(F)(M)}`
+      })
+      return `${name} : ${f.X.S} → ${f.Y.S}\n${parts.join('\n')}`
+    }
+
+  export const vectDiagramAtDegree =
+    <R>(F: Field<R>) =>
+    (name: string, VD: VectView.VectDiagram<R>): string => {
+      const sizes = VD.I.objects.map(o => `${o}:${VD.V[o]!.dim}`).join(', ')
+      const arrows = VD.I.objects.flatMap(a =>
+        VD.I.objects
+          .filter(b => VD.I.leq(a, b))
+          .map(b => {
+            const f = VD.arr(a, b)
+            return `${a}≤${b}: ${f ? `${f.cod.dim}×${f.dom.dim}` : '—'}`
+          })
+      )
+      return `${name} @Vect\n objects { ${sizes} }\n arrows:\n  ${arrows.join('\n  ')}`
+    }
+}
+
+/* =========================  IntSNF  ============================
+   Smith Normal Form (SNF) over integers: U, S, V with U*A*V=S.
+   Use for kernels/cokernels/invariants on integer chain complexes.
+   NOTE: Optimized for small/medium matrices; pure TS, no deps.
+================================================================ */
+
+export namespace IntSNF {
+  export type SNF = { U: number[][]; S: number[][]; V: number[][] } // U*A*V=S
+
+  const clone = (A: ReadonlyArray<ReadonlyArray<number>>): number[][] => A.map(r => r.slice() as number[])
+
+  const egcd = (a: number, b: number) => {
+    let r0 = Math.abs(a), r1 = Math.abs(b)
+    let s0 = 1, s1 = 0
+    let t0 = 0, t1 = 1
+    while (r1 !== 0) {
+      const q = Math.trunc(r0 / r1)
+      ;[r0, r1] = [r1, r0 - q * r1]
+      ;[s0, s1] = [s1, s0 - q * s1]
+      ;[t0, t1] = [t1, t0 - q * t1]
+    }
+    const g = r0
+    const sign = a < 0 ? -1 : 1
+    return { g, x: s0 * sign, y: t0 * sign } // ax + by = g
   }
 
-export const ppVectDiagramAtDegree =
-  <R>(F: Field<R>) =>
-  (name: string, VD: VectDiagram<R>): string => {
-    const sizes = VD.I.objects.map(o => `${o}:${VD.V[o]!.dim}`).join(', ')
-    const edges = VD.I.objects.flatMap(a =>
-      VD.I.objects
-        .filter(b => VD.I.leq(a,b))
-        .map(b => {
-          const f = VD.arr(a,b)
-          return `${a}≤${b}: ${f ? `${f.cod.dim}×${f.dom.dim}` : '—'}`
-        }))
-    return `${name} @Vect:\n objects { ${sizes} }\n arrows:\n  ${edges.join('\n  ')}`
+  const swapRowsInt = (M: number[][], i: number, j: number) => { const t = M[i]; M[i] = M[j]; M[j] = t }
+  const swapColsInt = (M: number[][], i: number, j: number) => { for (const r of M) { const t = r[i]; r[i] = r[j]; r[j] = t } }
+
+  export const smithNormalForm = (A0: ReadonlyArray<ReadonlyArray<number>>): SNF => {
+    const m = A0.length, n = (A0[0]?.length ?? 0)
+    const A = clone(A0)
+    const U = Array.from({ length: m }, (_, i) => Array.from({ length: m }, (_, j) => (i === j ? 1 : 0)))
+    const V = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)))
+
+    const addRow = (M: number[][], dst: number, src: number, k: number) => { if (k) for (let j = 0; j < M[0]!.length; j++) M[dst]![j] += k * M[src]![j]! }
+    const addCol = (M: number[][], dst: number, src: number, k: number) => { if (k) for (let i = 0; i < M.length; i++) M[i]![dst] += k * M[i]![src]! }
+
+    let i = 0, j = 0
+    while (i < m && j < n) {
+      // choose smallest nonzero pivot by abs value in submatrix
+      let pi = -1, pj = -1, best = Infinity
+      for (let r = i; r < m; r++) for (let c = j; c < n; c++) {
+        const v = Math.abs(A[r]![c]!)
+        if (v !== 0 && v < best) { best = v; pi = r; pj = c }
+      }
+      if (best === Infinity) break
+      if (pi !== i) { swapRowsInt(A, i, pi); swapRowsInt(U, i, pi) }
+      if (pj !== j) { swapColsInt(A, j, pj); swapColsInt(V, j, pj) }
+
+      // clear column below i using gcd steps
+      for (let r = i + 1; r < m; r++) {
+        while (A[r]![j] !== 0) {
+          const { g, x, y } = egcd(A[i]![j]!, A[r]![j]!) // x*A[i][j] + y*A[r][j] = g
+          // Row ops on A and U: [row_i; row_r] ← [[x y], [-? ?]] · [row_i; row_r]
+          const ai = A[i]!.slice(), ar = A[r]!.slice()
+          for (let c = j; c < n; c++) {
+            const u0 = ai[c]!, v0 = ar[c]!
+            A[i]![c] = x * u0 + y * v0
+            A[r]![c] = Math.trunc(-A[r]![j]! / g) * u0 + Math.trunc(A[i]![j]! / g) * v0
+          }
+          const Ui = U[i]!.slice(), Ur = U[r]!.slice()
+          for (let c = 0; c < m; c++) {
+            const u0 = Ui[c]!, v0 = Ur[c]!
+            U[i]![c] = x * u0 + y * v0
+            U[r]![c] = Math.trunc(-ar[j]! / g) * u0 + Math.trunc(ai[j]! / g) * v0
+          }
+          if (Math.abs(A[i]![j]!) > Math.abs(A[r]![j]!)) { swapRowsInt(A, i, r); swapRowsInt(U, i, r) }
+        }
+      }
+
+      // clear row to the right of j
+      for (let c = j + 1; c < n; c++) {
+        while (A[i]![c] !== 0) {
+          const { g, x, y } = egcd(A[i]![j]!, A[i]![c]!)
+          // Column ops on A and V: [col_j col_c] ← [col_j col_c] · [[x y], [-? ?]]
+          const colj = A.map(row => row[j]!)
+          const colc = A.map(row => row[c]!)
+          for (let r0 = 0; r0 < m; r0++) {
+            const u0 = colj[r0]!, v0 = colc[r0]!
+            A[r0]![j] = x * u0 + y * v0
+            A[r0]![c] = Math.trunc(-colc[i]! / g) * u0 + Math.trunc(colj[i]! / g) * v0
+          }
+          const Vj = V.map(row => row[j]!)
+          const Vc = V.map(row => row[c]!)
+          for (let r0 = 0; r0 < n; r0++) {
+            const u0 = Vj[r0]!, v0 = Vc[r0]!
+            V[r0]![j] = x * u0 + y * v0
+            V[r0]![c] = Math.trunc(-colc[i]! / g) * u0 + Math.trunc(colj[i]! / g) * v0
+          }
+          if (Math.abs(A[i]![j]!) > Math.abs(A[i]![c]!)) { swapColsInt(A, j, c); swapColsInt(V, j, c) }
+        }
+      }
+
+      if (A[i]![j]! < 0) { // make pivot positive
+        for (let c = j; c < n; c++) A[i]![c] = -A[i]![c]!
+        for (let c = 0; c < m; c++) U[i]![c] = -U[i]![c]!
+      }
+
+      // tidy divisibility in row/col
+      for (let r = i + 1; r < m; r++) if (A[r]![j] !== 0) { const k = Math.trunc(A[r]![j]! / A[i]![j]!); addRow(A, r, i, -k); addRow(U, r, i, -k) }
+      for (let c = j + 1; c < n; c++) if (A[i]![c] !== 0) { const k = Math.trunc(A[i]![c]! / A[i]![j]!); addCol(A, c, j, -k); addCol(V, c, j, -k) }
+
+      i++; j++
+    }
+
+    return { U, S: A, V }
   }
 
-// ========================= Smith Normal Form (use existing implementation) =========================
-
-// Note: smithNormalForm is already implemented earlier in the file
+  /** Extract diagonal invariants d1|d2|... from S. */
+  export const diagonalInvariants = (S: ReadonlyArray<ReadonlyArray<number>>): number[] =>
+    S.map((row, i) => row[i] ?? 0).filter(d => d !== 0)
+}
 
 // ========================= Algebra bridges (actions/coactions) =========================
 
@@ -15448,6 +15642,116 @@ export const FP_CATALOG = {
   coactionToChain: 'Convert coaction to chain map at degree n',
 } as const
 
+// ---------------------------------------------
+// FinitePoset: finite set of objects + ≤ relation
+// ---------------------------------------------
+
+/** Build a finite poset from objects and Hasse covers. */
+export const makeFinitePoset = (
+  objects: ReadonlyArray<ObjId>,
+  covers: ReadonlyArray<readonly [ObjId, ObjId]>
+): FinitePoset => {
+  const uniq = Array.from(new Set(objects))
+  const idx = new Map<ObjId, number>(uniq.map((o, i) => [o, i]))
+  // validate cover endpoints
+  for (const [a, b] of covers) {
+    if (!idx.has(a) || !idx.has(b)) {
+      throw new Error(`makeFinitePoset: unknown object in cover (${a} ⋖ ${b})`)
+    }
+    if (a === b) throw new Error(`makeFinitePoset: self-cover not allowed (${a} ⋖ ${b})`)
+  }
+
+  const n = uniq.length
+  // reachability matrix; start with reflexive closure
+  const reach: boolean[][] = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: n }, (_, j) => i === j)
+  )
+  // add cover edges
+  for (const [a, b] of covers) {
+    reach[idx.get(a)!]![idx.get(b)!] = true
+  }
+  // Floyd–Warshall transitive closure
+  for (let k = 0; k < n; k++) {
+    for (let i = 0; i < n; i++) if (reach[i]![k]) {
+      for (let j = 0; j < n; j++) if (reach[k]![j]) {
+        reach[i]![j] = true
+      }
+    }
+  }
+  // antisymmetry check: i ≤ j and j ≤ i ⇒ i==j
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i !== j && reach[i]![j] && reach[j]![i]) {
+        const ai = uniq[i]!, aj = uniq[j]!
+        throw new Error(`makeFinitePoset: cycle detected (${ai} ≼ ${aj} and ${aj} ≼ ${ai})`)
+      }
+    }
+  }
+
+  const leq = (a: ObjId, b: ObjId): boolean => {
+    const ia = idx.get(a), ib = idx.get(b)
+    if (ia == null || ib == null) return false
+    return reach[ia]![ib]!
+  }
+
+  return { objects: uniq, leq }
+}
+
+/** Optional: quick text view of a poset. */
+export const prettyPoset = (P: FinitePoset): string => {
+  const lines: string[] = []
+  lines.push(`Objects: ${P.objects.join(', ')}`)
+  for (const a of P.objects) {
+    const ups = P.objects.filter(b => a !== b && P.leq(a, b))
+    if (ups.length) lines.push(`  ${a} ≤ { ${ups.join(', ')} }`)
+  }
+  return lines.join('\n')
+}
+
+/** Handy identity map builder (matches Complex shape). */
+export const idChainMapCompat =
+  <R>(X: Complex<R>, F: Field<R>): ChainMap<R> => {
+    const f: Record<number, R[][]> = {}
+    for (const n of X.degrees) {
+      const dim = X.dim[n] ?? 0
+      const I = Array.from({ length: dim }, (_, i) =>
+        Array.from({ length: dim }, (_, j) => (i === j ? F.one : F.zero))
+      )
+      f[n] = I
+    }
+    return { S: X.S, X, Y: X, f }
+  }
+
+/**
+ * Construct a PosetDiagram from:
+ *  - a poset I,
+ *  - node complexes X,
+ *  - a list of arrow entries [a, b, f] where a ≤ b.
+ */
+export const makePosetDiagramCompat = <R>(
+  I: FinitePoset,
+  X: Readonly<Record<ObjId, Complex<R>>>,
+  arrows: ReadonlyArray<readonly [ObjId, ObjId, ChainMap<R>]> = []
+): PosetDiagram<R> => {
+  // guard: nodes cover all objects
+  for (const o of I.objects) {
+    if (!X[o]) throw new Error(`makePosetDiagram: missing node complex for object '${o}'`)
+  }
+  // store arrows in a nested Map for quick lookup
+  const table = new Map<ObjId, Map<ObjId, ChainMap<R>>>()
+  const put = (a: ObjId, b: ObjId, f: ChainMap<R>) => {
+    if (!I.leq(a, b)) throw new Error(`makePosetDiagram: arrow provided where ${a} ≰ ${b}`)
+    if (!table.has(a)) table.set(a, new Map())
+    table.get(a)!.set(b, f)
+  }
+  for (const [a, b, f] of arrows) put(a, b, f)
+
+  const arr = (a: ObjId, b: ObjId): ChainMap<R> | undefined =>
+    table.get(a)?.get(b)
+
+  return { I, X, arr }
+}
+
 // Namespaced exports for discoverability
 export const Diagram = {
   makePosetDiagram, pushoutInDiagram, pullbackInDiagram,
@@ -15465,9 +15769,7 @@ export const Vect = {
   toVectAtDegree, arrowMatrixAtDegree
 }
 
-export const Pretty = {
-  ppMatrix, ppChainMap, ppVectDiagramAtDegree
-}
+// Pretty namespace is defined above
 
 export const IntegerLA = {
   smithNormalForm
