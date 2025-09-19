@@ -44,7 +44,12 @@ import {
   makeDiagonalAlgebra, makeDiagonalEntwining, entwiningCoassocHolds, entwiningMultHolds,
   entwiningUnitHolds, entwiningCounitHolds, makeDiagonalEntwinedModule, entwinedLawHolds,
   isEntwinedModuleHom, entwinedFromComodule_AotimesM, entwinedFromLeftModule_NotimesC,
-  makeTaggedLeftModule, eye, categoryOfEntwinedModules, isOk
+  makeTaggedLeftModule, eye, categoryOfEntwinedModules, isOk,
+  // Practical utilities
+  SemiringMinPlus, SemiringMaxPlus, SemiringBoolOrAnd, SemiringProb,
+  WeightedAutomaton, waRun, waAcceptsBool, HMM, hmmForward, diagFromVec,
+  Edge, graphAdjNat, graphAdjBool, graphAdjWeights, countPathsOfLength, 
+  reachableWithin, shortestPathsUpTo
 } from './allTS'
 
 // ====================================================================
@@ -805,6 +810,62 @@ namespace ComoduleExamples {
       console.log('✓ Category operations working correctly!')
     }
   }
+
+  export function practicalUtilitiesExample() {
+    console.log('\n--- Practical Utilities Demo ---')
+    
+    // Path counting vs reachability (same code, different semiring)
+    console.log('Graph Analytics:')
+    
+    // 3-node line graph: 0→1→2
+    const edges: Edge<number>[] = [[0,1,1], [1,2,1]]
+    const A_nat = graphAdjNat(3, edges)
+    const A_bool = graphAdjBool(3, edges)
+    const A_weights = graphAdjWeights(3, edges)
+    
+    // Count paths of length 2 with (ℕ, +, ×)
+    const paths2 = countPathsOfLength(A_nat, 2)
+    console.log('  paths length 2 from 0→2:', paths2[0]?.[2])     // 1
+    
+    // Reachability within 2 steps with (Bool, ∨, ∧)
+    const reach2 = reachableWithin(A_bool, 2)
+    console.log('  reachable within 2 from 0→2:', reach2[0]?.[2]) // true
+    
+    // Shortest paths
+    const shortest = shortestPathsUpTo(A_weights)
+    console.log('  shortest path 0→2:', shortest[0]?.[2])         // 2
+    
+    // Weighted Automaton Example
+    console.log('\nWeighted Automata:')
+    
+    // Automaton that counts paths spelling 'ab' on 2-state line
+    const init = [1, 0] as const
+    const final = [0, 1] as const
+    const deltaCount = {
+      a: [[0,1],[0,0]],
+      b: [[0,0],[0,1]],
+    } as const
+    const WAcount: WeightedAutomaton<number, 'a'|'b'> = { 
+      S: SemiringNat, n: 2, init, final, delta: deltaCount 
+    }
+    console.log('  paths for "ab":', waRun(WAcount)(['a','b']))     // 1
+    console.log('  paths for "aa":', waRun(WAcount)(['a','a']))     // 0
+    
+    // HMM Example
+    console.log('\nHidden Markov Model:')
+    
+    // 2-state HMM with observations 'x'/'y'
+    const T: number[][] = [[0.9,0.1],[0.2,0.8]]
+    const Ex = diagFromVec(SemiringProb)([0.7,0.1])
+    const Ey = diagFromVec(SemiringProb)([0.3,0.9])
+    const H: HMM<number,'x'|'y'> = { 
+      S: SemiringProb, n: 2, T, E: { x: Ex, y: Ey }, pi: [0.5,0.5] 
+    }
+    const probXYY = hmmForward(H)(['x','y','y'])
+    console.log('  P("xyy"):', probXYY.toFixed(6))
+    
+    console.log('✓ All practical utilities working!')
+  }
 }
 
 // ====================================================================
@@ -842,6 +903,7 @@ async function runExamples() {
   ComoduleExamples.entwinedModuleMorphismsExample()
   ComoduleExamples.entwinedModuleConstructionsExample()
   ComoduleExamples.categoryExample()
+  ComoduleExamples.practicalUtilitiesExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }

@@ -1,0 +1,200 @@
+import { describe, it, expect } from 'vitest'
+import {
+  SemiringNat, SemiringMinPlus, SemiringMaxPlus, SemiringBoolOrAnd, SemiringProb,
+  vecMat, matVec, powMat, closureUpTo,
+  WeightedAutomaton, waRun, waAcceptsBool,
+  HMM, hmmForward, diagFromVec, normalizeRow,
+  Edge, graphAdjNat, graphAdjBool, graphAdjWeights,
+  countPathsOfLength, reachableWithin, shortestPathsUpTo,
+  eye,
+} from '../allTS'
+
+describe('Practical Semirings', () => {
+  it('MinPlus semiring works for shortest paths', () => {
+    const S = SemiringMinPlus
+    expect(S.add(5, 3)).toBe(3) // min
+    expect(S.mul(5, 3)).toBe(8) // +
+    expect(S.zero).toBe(Number.POSITIVE_INFINITY)
+    expect(S.one).toBe(0)
+  })
+
+  it('MaxPlus semiring works for longest paths', () => {
+    const S = SemiringMaxPlus
+    expect(S.add(5, 3)).toBe(5) // max
+    expect(S.mul(5, 3)).toBe(8) // +
+    expect(S.zero).toBe(Number.NEGATIVE_INFINITY)
+    expect(S.one).toBe(0)
+  })
+
+  it('Boolean semiring works for reachability', () => {
+    const S = SemiringBoolOrAnd
+    expect(S.add(true, false)).toBe(true)   // ∨
+    expect(S.mul(true, false)).toBe(false)  // ∧
+    expect(S.zero).toBe(false)
+    expect(S.one).toBe(true)
+  })
+
+  it('Probability semiring works for HMMs', () => {
+    const S = SemiringProb
+    expect(S.add(0.3, 0.4)).toBe(0.7) // +
+    expect(S.mul(0.3, 0.4)).toBe(0.12) // ×
+    expect(S.zero).toBe(0)
+    expect(S.one).toBe(1)
+  })
+})
+
+describe('Vector and matrix operations', () => {
+  it('vecMat multiplies row vector with matrix', () => {
+    const v = [1, 2]
+    const M = [[1, 0, 1], [0, 1, 1]]
+    const result = vecMat(SemiringNat)(v, M)
+    expect(result).toEqual([1, 2, 3]) // [1*1+2*0, 1*0+2*1, 1*1+2*1]
+  })
+
+  it('matVec multiplies matrix with column vector', () => {
+    const M = [[1, 2], [3, 4]]
+    const v = [1, 1]
+    const result = matVec(SemiringNat)(M, v)
+    expect(result).toEqual([3, 7]) // [1*1+2*1, 3*1+4*1]
+  })
+
+  it('powMat computes matrix powers efficiently', () => {
+    const A = [[0, 1], [1, 0]] // swap matrix
+    const A2 = powMat(SemiringNat)(A, 2)
+    const A4 = powMat(SemiringNat)(A, 4)
+    
+    expect(A2).toEqual([[1, 0], [0, 1]]) // identity
+    expect(A4).toEqual([[1, 0], [0, 1]]) // identity
+  })
+
+  it('closureUpTo computes Kleene star', () => {
+    const A = [[false, true], [false, false]] // single edge 0→1
+    const closure = closureUpTo(SemiringBoolOrAnd)(A, 2)
+    
+    expect(closure[0]?.[0]).toBe(true)  // I
+    expect(closure[0]?.[1]).toBe(true)  // A
+    expect(closure[1]?.[1]).toBe(true)  // I
+  })
+})
+
+describe('Weighted Automata', () => {
+  it('counts paths in simple automaton', () => {
+    const init = [1, 0] as const
+    const final = [0, 1] as const
+    const delta = {
+      a: [[0,1],[0,0]],
+      b: [[0,0],[0,1]],
+    } as const
+    const WA: WeightedAutomaton<number, 'a'|'b'> = { 
+      S: SemiringNat, n: 2, init, final, delta 
+    }
+    
+    expect(waRun(WA)(['a','b'])).toBe(1)
+    expect(waRun(WA)(['a','a'])).toBe(0)
+    expect(waRun(WA)(['b','b'])).toBe(0)
+  })
+
+  it('accepts words with Boolean automaton', () => {
+    const init = [true, false] as const
+    const final = [false, true] as const
+    const delta = {
+      a: [[false,true],[false,false]], // from state 0: go to 1; from state 1: stuck
+      b: [[false,false],[false,true]], // from state 0: stuck; from state 1: stay
+    } as const
+    const DFA: WeightedAutomaton<boolean, 'a'|'b'> = { 
+      S: SemiringBoolOrAnd, n: 2, init, final, delta 
+    }
+    
+    expect(waAcceptsBool(DFA)(['a','b'])).toBe(true)   // 0→1→1, accept
+    expect(waAcceptsBool(DFA)(['a','a'])).toBe(false)  // 0→1→stuck, reject
+    expect(waAcceptsBool(DFA)(['b'])).toBe(false)      // 0→stuck, reject
+  })
+})
+
+describe('Hidden Markov Models', () => {
+  it('computes forward probabilities', () => {
+    const T: number[][] = [[0.9,0.1],[0.2,0.8]]
+    const Ex = diagFromVec(SemiringProb)([0.7,0.1])
+    const Ey = diagFromVec(SemiringProb)([0.3,0.9])
+    const H: HMM<number,'x'|'y'> = { 
+      S: SemiringProb, n: 2, T, E: { x: Ex, y: Ey }, pi: [0.5,0.5] 
+    }
+    
+    const probX = hmmForward(H)(['x'])
+    const probXY = hmmForward(H)(['x','y'])
+    
+    expect(probX).toBeGreaterThan(0)
+    expect(probX).toBeLessThanOrEqual(1)
+    expect(probXY).toBeGreaterThan(0)
+    expect(probXY).toBeLessThanOrEqual(1)
+  })
+
+  it('diagFromVec creates diagonal matrices', () => {
+    const w = [0.7, 0.3]
+    const diag = diagFromVec(SemiringProb)(w)
+    
+    expect(diag[0]?.[0]).toBe(0.7)
+    expect(diag[1]?.[1]).toBe(0.3)
+    expect(diag[0]?.[1]).toBe(0)
+    expect(diag[1]?.[0]).toBe(0)
+  })
+})
+
+describe('Graph DP utilities', () => {
+  it('builds adjacency matrices from edge lists', () => {
+    const edges: Edge<number>[] = [[0,1,5], [1,2,3]]
+    
+    const natAdj = graphAdjNat(3, edges.map(([u,v]) => [u,v]))
+    expect(natAdj[0]?.[1]).toBe(1)
+    expect(natAdj[1]?.[2]).toBe(1)
+    expect(natAdj[0]?.[2]).toBe(0)
+    
+    const boolAdj = graphAdjBool(3, edges)
+    expect(boolAdj[0]?.[1]).toBe(true)
+    expect(boolAdj[0]?.[2]).toBe(false)
+    
+    const weightAdj = graphAdjWeights(3, edges)
+    expect(weightAdj[0]?.[1]).toBe(5)
+    expect(weightAdj[1]?.[2]).toBe(3)
+    expect(weightAdj[0]?.[0]).toBe(0) // diagonal
+  })
+
+  it('solves graph problems with different semirings', () => {
+    // Simple path: 0→1→2
+    const edges: Edge<number>[] = [[0,1,1], [1,2,1]]
+    
+    // Path counting
+    const natAdj = graphAdjNat(3, edges.map(([u,v]) => [u,v]))
+    const paths = countPathsOfLength(natAdj, 2)
+    expect(paths[0]?.[2]).toBe(1) // exactly one path of length 2
+    
+    // Reachability
+    const boolAdj = graphAdjBool(3, edges)
+    const reach = reachableWithin(boolAdj, 2)
+    expect(reach[0]?.[2]).toBe(true) // reachable within 2 steps
+    
+    // Shortest paths
+    const weightAdj = graphAdjWeights(3, edges)
+    const shortest = shortestPathsUpTo(weightAdj)
+    expect(shortest[0]?.[2]).toBe(2) // distance 2
+  })
+})
+
+describe('Utility functions', () => {
+  it('normalizeRow handles probability vectors', () => {
+    const v = [2, 3, 5]
+    const normalized = normalizeRow(v)
+    const sum = normalized.reduce((a,b) => a + b, 0)
+    
+    expect(sum).toBeCloseTo(1, 6)
+    expect(normalized[0]).toBeCloseTo(0.2, 6) // 2/10
+    expect(normalized[1]).toBeCloseTo(0.3, 6) // 3/10
+    expect(normalized[2]).toBeCloseTo(0.5, 6) // 5/10
+  })
+
+  it('handles zero vector in normalization', () => {
+    const v = [0, 0, 0]
+    const normalized = normalizeRow(v)
+    expect(normalized).toEqual([0, 0, 0])
+  })
+})

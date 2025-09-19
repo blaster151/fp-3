@@ -12169,6 +12169,43 @@ export const SemiringNat: Semiring<number> = {
   eq: (x, y) => x === y,
 }
 
+// -------------------------------------------------------------
+// Handy semirings
+// -------------------------------------------------------------
+export const SemiringMinPlus: Semiring<number> = {
+  add: (a,b) => Math.min(a,b),
+  zero: Number.POSITIVE_INFINITY,
+  mul: (a,b) => a + b,
+  one: 0,
+  eq: eqStrict<number>(),
+}
+
+export const SemiringMaxPlus: Semiring<number> = {
+  add: (a,b) => Math.max(a,b),
+  zero: Number.NEGATIVE_INFINITY,
+  mul: (a,b) => a + b,
+  one: 0,
+  eq: eqStrict<number>(),
+}
+
+// Boolean reachability (∨ for add, ∧ for mul)
+export const SemiringBoolOrAnd: Semiring<boolean> = {
+  add: (a,b) => a || b,
+  zero: false,
+  mul: (a,b) => a && b,
+  one: true,
+  eq: eqStrict<boolean>(),
+}
+
+// Probability semiring (standard +, ×)
+export const SemiringProb: Semiring<number> = {
+  add: (a,b) => a + b,
+  zero: 0,
+  mul: (a,b) => a * b,
+  one: 1,
+  eq: eqStrict<number>(),
+}
+
 export type Mat<R> = R[][] // rows x cols
 
 // Identity matrix
@@ -12318,6 +12355,72 @@ export type Entwining<R> = {
   readonly C: Coring<R>
   readonly Psi: Mat<R>             // (C.n * A.k) x (A.k * C.n)
 }
+
+// -------------------------------------------------------------
+// Vectors + matrix powers/closures under a Semiring
+// -------------------------------------------------------------
+export type Vec<R> = ReadonlyArray<R>
+
+// row vector (1×n) × (n×m) -> (1×m)
+export const vecMat =
+  <R>(S: Semiring<R>) =>
+  (v: Vec<R>, M: Mat<R>): Vec<R> => {
+    const m = M[0]?.length ?? 0
+    const n = v.length
+    const out = Array.from({ length: m }, () => S.zero)
+    for (let j = 0; j < m; j++) {
+      let acc = S.zero
+      for (let i = 0; i < n; i++) acc = S.add(acc, S.mul(v[i]!, M[i]?.[j]!))
+      out[j] = acc
+    }
+    return out
+  }
+
+// (n×m) × (m×1) column vector -> (n×1)
+export const matVec =
+  <R>(S: Semiring<R>) =>
+  (M: Mat<R>, v: Vec<R>): Vec<R> => {
+    const n = M.length
+    const m = v.length
+    const out = Array.from({ length: n }, () => S.zero)
+    for (let i = 0; i < n; i++) {
+      let acc = S.zero
+      for (let j = 0; j < m; j++) acc = S.add(acc, S.mul(M[i]?.[j]!, v[j]!))
+      out[i] = acc
+    }
+    return out
+  }
+
+// fast exponentiation: A^k under S
+export const powMat =
+  <R>(S: Semiring<R>) =>
+  (A: Mat<R>, k: number): Mat<R> => {
+    const n = A.length, m = A[0]?.length ?? 0
+    if (n !== m) throw new Error('powMat: square matrix required')
+    const I = eye(S)(n)
+    let base = A, exp = k, res = I
+    while (exp > 0) {
+      if (exp & 1) res = matMul(S)(res, base)
+      base = matMul(S)(base, base)
+      exp >>= 1
+    }
+    return res
+  }
+
+// finite Kleene star up to L: I ⊕ A ⊕ A^2 ⊕ ... ⊕ A^L
+export const closureUpTo =
+  <R>(S: Semiring<R>) =>
+  (A: Mat<R>, L: number): Mat<R> => {
+    const n = A.length
+    let acc = eye(S)(n)
+    let p = eye(S)(n)
+    for (let i = 1; i <= L; i++) {
+      p = matMul(S)(p, A)
+      // acc = acc ⊕ p  (elementwise add)
+      acc = acc.map((row, r) => row.map((x, c) => S.add(x, p[r]?.[c]!)))
+    }
+    return acc
+  }
 
 // 3-factor permutation matrix P: factors [d0,d1,d2] -> permute by π
 // π = [0,1,2] is identity; π = [1,2,0] cycles (0→1→2→0)
@@ -12673,6 +12776,178 @@ export const categoryOfEntwinedModules =
 
     return { id, isHom, compose: composeSafe, composeUnchecked, assertHom }
   }
+
+// -------------------------------------------------------------
+// Weighted automata over a Semiring R
+//   states: n
+//   init:   1×n row vector
+//   final:  n×1 column vector (as Vec)
+//   delta:  map from symbol -> n×n matrix
+// Weight(word) = init · Π delta[s_i] · final
+// -------------------------------------------------------------
+export type WeightedAutomaton<R, Sym extends string = string> = {
+  readonly S: Semiring<R>
+  readonly n: number
+  readonly init: Vec<R>          // length n
+  readonly final: Vec<R>         // length n
+  readonly delta: Readonly<Record<Sym, Mat<R>>>
+}
+
+export const waRun =
+  <R, Sym extends string>(A: WeightedAutomaton<R, Sym>) =>
+  (word: ReadonlyArray<Sym>): R => {
+    const S = A.S
+    let v = A.init
+    for (const s of word) {
+      const M = A.delta[s as Sym]
+      if (!M) throw new Error(`waRun: unknown symbol ${String(s)}`)
+      v = vecMat(S)(v, M)
+    }
+    // dot with final
+    let acc = S.zero
+    for (let i = 0; i < A.n; i++) acc = S.add(acc, S.mul(v[i]!, A.final[i]!))
+    return acc
+  }
+
+// Product automaton (synchronous product) via Kronecker
+export const waProduct =
+  <R, S1 extends string, S2 extends string>(S: Semiring<R>) =>
+  (A: WeightedAutomaton<R, S1>, B: WeightedAutomaton<R, S2>) =>
+  (alphabet: ReadonlyArray<S1 & S2>): WeightedAutomaton<R, S1 & S2> => {
+    const n = A.n * B.n
+    const init = (() => {
+      // kron row vectors: (1×nA) ⊗ (1×nB) ~ (1×nA*nB)
+      const out: R[] = []
+      for (let i = 0; i < A.n; i++) for (let j = 0; j < B.n; j++) {
+        out.push(S.mul(A.init[i]!, B.init[j]!))
+      }
+      return out
+    })()
+    const final = (() => {
+      const out: R[] = []
+      for (let i = 0; i < A.n; i++) for (let j = 0; j < B.n; j++) {
+        out.push(S.mul(A.final[i]!, B.final[j]!))
+      }
+      return out
+    })()
+    const delta: Record<string, Mat<R>> = {}
+    for (const a of alphabet) {
+      delta[a] = kron(S)(A.delta[a as S1]!, B.delta[a as S2]!)
+    }
+    return { S, n, init, final, delta: delta as any }
+  }
+
+// Boolean acceptance: A over BoolOrAnd, accepted iff weight === true
+export const waAcceptsBool =
+  (A: WeightedAutomaton<boolean, string>) =>
+  (word: ReadonlyArray<string>): boolean =>
+    waRun(A)(word)
+
+// -------------------------------------------------------------
+// HMM forward over a semiring (Prob or Viterbi as MaxPlus)
+//   T: n×n transition
+//   E[o]: n×n diagonal emission for obs symbol o
+//   pi: 1×n initial
+//   Optional final: n weight to end; otherwise sum over states.
+// -------------------------------------------------------------
+export type HMM<R, Obs extends string = string> = {
+  readonly S: Semiring<R>
+  readonly n: number
+  readonly T: Mat<R>
+  readonly E: Readonly<Record<Obs, Mat<R>>>  // diagonal by convention
+  readonly pi: Vec<R>
+  readonly final?: Vec<R>
+}
+
+export const hmmForward =
+  <R, Obs extends string>(H: HMM<R, Obs>) =>
+  (obs: ReadonlyArray<Obs>): R => {
+    const S = H.S
+    let α = H.pi
+    for (const o of obs) {
+      const Em = H.E[o as Obs]
+      if (!Em) throw new Error(`hmmForward: unknown obs ${String(o)}`)
+      α = vecMat(S)(α, Em)   // elementwise scale
+      α = vecMat(S)(α, H.T)  // step
+    }
+    const fin = H.final ?? Array.from({ length: H.n }, () => S.one)
+    let acc = S.zero
+    for (let i = 0; i < H.n; i++) acc = S.add(acc, S.mul(α[i]!, fin[i]!))
+    return acc
+  }
+
+// -------------------------------------------------------------
+// Build adjacency from edge list
+// -------------------------------------------------------------
+export type Edge<W> = readonly [from: number, to: number, w?: W]
+
+export const graphAdjNat =
+  (n: number, edges: ReadonlyArray<Edge<number>>): Mat<number> => {
+    const A = Array.from({ length: n }, () => Array.from({ length: n }, () => 0))
+    for (const [u,v] of edges) A[u]![v]! += 1
+    return A
+  }
+
+export const graphAdjBool =
+  (n: number, edges: ReadonlyArray<Edge<unknown>>): Mat<boolean> => {
+    const A = Array.from({ length: n }, () => Array.from({ length: n }, () => false))
+    for (const [u,v] of edges) A[u]![v] = true
+    return A
+  }
+
+export const graphAdjWeights =
+  (n: number, edges: ReadonlyArray<Edge<number>>, absent = Number.POSITIVE_INFINITY): Mat<number> => {
+    const A = Array.from({ length: n }, () => Array.from({ length: n }, () => absent))
+    for (let i=0;i<n;i++) A[i]![i] = 0
+    for (const [u,v,w=1] of edges) A[u]![v] = Math.min(A[u]![v]!, w)
+    return A
+  }
+
+// -------------------------------------------------------------
+// Path counts of exact length L (ℕ semiring)
+// -------------------------------------------------------------
+export const countPathsOfLength =
+  (A: Mat<number>, L: number): Mat<number> =>
+    powMat(SemiringNat)(A, L)
+
+// Reachability within ≤L steps (Boolean semiring)
+export const reachableWithin =
+  (A: Mat<boolean>, L: number): Mat<boolean> =>
+    closureUpTo(SemiringBoolOrAnd)(A, L)
+
+// All-pairs shortest paths up to ≤L edges (MinPlus)
+// If L omitted, uses n-1 (no negative cycles support here)
+export const shortestPathsUpTo =
+  (A: Mat<number>, L?: number): Mat<number> => {
+    const n = A.length
+    const S = SemiringMinPlus
+    const I = eye(S)(n)
+    // convert weights matrix (dist) into adjacency in MinPlus:
+    // A^1 is already the edge weights; add I (0 on diag)
+    let acc = I
+    let p = I
+    // add one step
+    p = matMul(S)(p, A)
+    acc = acc.map((row,r) => row.map((x,c) => S.add(x, p[r]?.[c]!)))
+    const maxL = L ?? (n - 1)
+    for (let i = 2; i <= maxL; i++) {
+      p = matMul(S)(p, A)
+      acc = acc.map((row,r) => row.map((x,c) => S.add(x, p[r]?.[c]!)))
+    }
+    return acc
+  }
+
+// Pretty: lift a per-symbol scalar weight to a diagonal emission matrix (for HMM)
+export const diagFromVec =
+  <R>(S: Semiring<R>) =>
+  (w: Vec<R>): Mat<R> =>
+    w.map((wi, i) => w.map((_, j) => (i === j ? wi : S.zero)))
+
+// Normalize a probability row vector (defensive; not a semiring op)
+export const normalizeRow = (v: number[]): number[] => {
+  const s = v.reduce((a,b) => a + b, 0)
+  return s === 0 ? v.slice() : v.map(x => x / s)
+}
 
 // =====================================================================
 // Free bimodules over semirings (object-level; finite rank only)
