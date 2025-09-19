@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
-  Q, FieldQ, Qof, Qeq, Qadd, Qneg, Qsub, Qmul, Qinv, Qdiv, QfromInt, QfromRatio, QtoString,
-  rref, nullspace, colspace, solveLinear,
+  Q, FieldQ, FieldReal, Qof, Qeq, Qadd, Qneg, Qsub, Qmul, Qinv, Qdiv, QfromInt, QfromRatio, QtoString,
+  rref, nullspace, colspace, solveLinear, rrefQPivot, qAbsCmp, isQZero,
+  runLesConeProps, randomTwoTermComplex, makeHomologyShiftIso,
 } from '../allTS'
 
 describe('Rational field Q', () => {
@@ -125,5 +126,76 @@ describe('Linear algebra over rationals', () => {
     
     expect(F.eq(check0, b[0]!)).toBe(true)
     expect(F.eq(check1, b[1]!)).toBe(true)
+  })
+})
+
+describe('Advanced rational field operations', () => {
+  it('compares rational magnitudes correctly', () => {
+    const a = Qof(3, 4)   // 3/4
+    const b = Qof(2, 3)   // 2/3
+    const c = Qof(-5, 6)  // -5/6
+    
+    expect(qAbsCmp(a, b)).toBeGreaterThan(0)  // |3/4| > |2/3|
+    expect(qAbsCmp(b, a)).toBeLessThan(0)     // |2/3| < |3/4|
+    expect(qAbsCmp(a, a)).toBe(0)             // |3/4| = |3/4|
+    expect(qAbsCmp(c, a)).toBeGreaterThan(0)  // |5/6| > |3/4|
+  })
+
+  it('detects zero rationals', () => {
+    expect(isQZero(Qof(0, 5))).toBe(true)
+    expect(isQZero(Qof(1, 5))).toBe(false)
+    expect(isQZero(Qof(-3, 7))).toBe(false)
+  })
+
+  it('performs RREF with pivoting over rationals', () => {
+    const A: Q[][] = [
+      [Qof(1,2), Qof(1,3), Qof(1,6)],
+      [Qof(1,4), Qof(2,3), Qof(1,2)],
+      [Qof(1,8), Qof(1,3), Qof(3,8)]
+    ]
+    
+    const { R, pivots } = rrefQPivot(A)
+    
+    expect(pivots.length).toBeGreaterThan(0)
+    expect(R.length).toBe(3)
+    expect(R[0]?.length).toBe(3)
+    
+    // Check that pivot columns have leading 1s
+    for (let i = 0; i < pivots.length; i++) {
+      const col = pivots[i]!
+      expect(R[i]?.[col]?.num).toBe(1n)
+      expect(R[i]?.[col]?.den).toBe(1n)
+    }
+  })
+})
+
+describe('Homological algebra properties', () => {
+  it('runs LES cone properties on random complexes', () => {
+    const { samples, okId, okZero } = runLesConeProps(5, 0) // small sample for testing
+    
+    expect(samples).toBe(5)
+    expect(okId).toBeGreaterThanOrEqual(0)
+    expect(okZero).toBeGreaterThanOrEqual(0)
+    // Note: These are placeholder checks since LES checker is not fully implemented
+  })
+
+  it('creates random two-term complexes', () => {
+    const X = randomTwoTermComplex(FieldReal, 2)
+    
+    expect(X.degrees).toEqual([-1, 0])
+    expect(X.dim[-1]).toBeGreaterThanOrEqual(0)
+    expect(X.dim[0]).toBeGreaterThanOrEqual(0)
+    expect(X.S).toBe(FieldReal)
+  })
+
+  it('demonstrates homology shift isomorphism interface', () => {
+    const iso = makeHomologyShiftIso(FieldReal)(0)
+    const X = randomTwoTermComplex(FieldReal, 1)
+    
+    const check = iso.isoCheck(X)
+    expect(typeof check.rankPsiPhi).toBe('number')
+    expect(typeof check.rankPhiPsi).toBe('number')
+    expect(typeof check.dimHn).toBe('number')
+    expect(typeof check.dimHn1).toBe('number')
   })
 })

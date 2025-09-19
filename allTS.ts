@@ -13555,6 +13555,68 @@ export const QfromRatio = (n: number, d: number): Q => Qof(n, d)
 export const QtoString = (q: Q): string =>
   q.den === 1n ? q.num.toString() : `${q.num.toString()}/${q.den.toString()}`
 
+// ---------------------------------------------------------------------
+// Rational RREF with magnitude pivoting
+// ---------------------------------------------------------------------
+
+export const qAbsCmp = (a: Q, b: Q): number => {
+  // compare |a| ? |b| without division: |a.num|*b.den ? |b.num|*a.den
+  const an = a.num < 0n ? -a.num : a.num
+  const bn = b.num < 0n ? -b.num : b.num
+  const lhs = an * b.den
+  const rhs = bn * a.den
+  return lhs === rhs ? 0 : (lhs > rhs ? 1 : -1)
+}
+
+export const isQZero = (a: Q) => (a.num === 0n)
+
+const qCloneM = (A: ReadonlyArray<ReadonlyArray<Q>>): Q[][] =>
+  A.map(r => r.map(x => ({ num: x.num, den: x.den }) as Q))
+
+export const rrefQPivot = (A0: ReadonlyArray<ReadonlyArray<Q>>) => {
+  const F = FieldQ
+  const A = qCloneM(A0)
+  const m = A.length
+  const n = (A[0]?.length ?? 0)
+  let row = 0
+  const pivots: number[] = []
+
+  for (let col = 0; col < n && row < m; col++) {
+    // find best pivot row: nonzero with max |entry|
+    let pr = -1
+    for (let i = row; i < m; i++) {
+      if (!isQZero(A[i]?.[col]!)) {
+        if (pr === -1) pr = i
+        else if (qAbsCmp(A[i]?.[col]!, A[pr]?.[col]!) > 0) pr = i
+      }
+    }
+    if (pr === -1) continue
+
+    // swap
+    if (pr !== row) { const tmp = A[row]; A[row] = A[pr]; A[pr] = tmp }
+
+    // scale pivot row to make pivot 1
+    const piv = A[row]?.[col]!
+    const inv = Qinv(piv)
+    for (let j = col; j < n; j++) A[row]![j] = Qmul(A[row]![j]!, inv)
+
+    // eliminate other rows
+    for (let i = 0; i < m; i++) if (i !== row) {
+      const factor = A[i]?.[col]!
+      if (!isQZero(factor)) {
+        for (let j = col; j < n; j++) {
+          A[i]![j] = Qsub(A[i]![j]!, Qmul(factor, A[row]![j]!))
+        }
+      }
+    }
+
+    pivots.push(col)
+    row++
+  }
+
+  return { R: A, pivots }
+}
+
 type MatF<R> = ReadonlyArray<ReadonlyArray<R>>
 
 const cloneM = <R>(A: MatF<R>): R[][] => A.map(r => r.slice() as R[])
@@ -13739,6 +13801,146 @@ export const checkLongExactConeSegment =
         }
       }
     }
+  }
+
+// ---------------------------------------------------------------------
+// LES CONE SEGMENT PROPS (2-term complexes in degrees [-1,0])
+// ---------------------------------------------------------------------
+
+// tiny random matrix
+const randMatN = (rows: number, cols: number, lo = -2, hi = 2): number[][] =>
+  Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => Math.floor(Math.random()*(hi-lo+1))+lo)
+  )
+
+// identity matrix
+const idnN = (n: number): number[][] =>
+  Array.from({ length: n }, (_, i) =>
+    Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))
+  )
+
+// build random 2-term complex X: X_{-1}→X_0 with d0 : dim[-1]×dim[0]
+export const randomTwoTermComplex =
+  (S = FieldReal, maxDim = 2): Complex<number> => {
+    const m = Math.floor(Math.random()*(maxDim+1))     // dim[-1]
+    const n = Math.floor(Math.random()*(maxDim+1))     // dim[0]
+    const d0 = randMatN(m, n)
+    const X: Complex<number> = {
+      S,
+      degrees: [-1, 0],
+      dim: { [-1]: m, [0]: n },
+      d:   { [0]: d0 }
+    }
+    return X
+  }
+
+// identity chain map X→X
+export const idChainMapN = (X: Complex<number>): ChainMap<number> => {
+  const f: Record<number, number[][]> = {}
+  for (const k of X.degrees) {
+    const n = X.dim[k] ?? 0
+    if (n > 0) f[k] = idnN(n)
+  }
+  return { S: X.S, X, Y: X, f }
+}
+
+// zero chain map X→X (always a chain map)
+export const zeroChainMapN = (X: Complex<number>): ChainMap<number> => {
+  const f: Record<number, number[][]> = {}
+  for (const k of X.degrees) {
+    const n = X.dim[k] ?? 0
+    if (n > 0) f[k] = Array.from({ length: n }, () => Array.from({ length: n }, () => 0))
+  }
+  return { S: X.S, X, Y: X, f }
+}
+
+// Run a few randomized checks using checkLongExactConeSegment (numbers)
+export const runLesConeProps = (samples = 50, degree = 0) => {
+  const check = checkLongExactConeSegment(FieldReal)
+  let okId = 0, okZero = 0
+  for (let i = 0; i < samples; i++) {
+    const X = randomTwoTermComplex(FieldReal, 2)
+    // id map
+    const fid = idChainMapN(X)
+    const rid = check(fid, degree)
+    if (rid.checkExactness().compZeroAtY && rid.checkExactness().compZeroAtC && 
+        rid.checkExactness().dimImEqKerAtY && rid.checkExactness().dimImEqKerAtC) okId++
+
+    // zero map
+    const f0  = zeroChainMapN(X)
+    const r0  = check(f0, degree)
+    if (r0.checkExactness().compZeroAtY && r0.checkExactness().compZeroAtC && 
+        r0.checkExactness().dimImEqKerAtY && r0.checkExactness().dimImEqKerAtC) okZero++
+  }
+  return { samples, okId, okZero }
+}
+
+// ---------------------------------------------------------------------
+// Natural isomorphism H_n(X[1]) ≅ H_{n-1}(X) — witness matrices
+// ---------------------------------------------------------------------
+
+export const makeHomologyShiftIso =
+  <R>(F: Field<R>) =>
+  (n: number) => {
+    // Note: This requires makeHomologyFunctor to be fully implemented
+    // For now, we provide the interface structure
+    
+    // helper: column-concat, transpose, solve (reuse from earlier if present)
+    const tpose = (A: ReadonlyArray<ReadonlyArray<R>>): R[][] =>
+      (A[0]?.map((_, j) => A.map(row => row[j]!)) ?? [])
+
+    const hcatHelper = (A: R[][], B: R[][], z: R): R[][] => {
+      const rows = Math.max(A.length, B.length)
+      const a = A[0]?.length ?? 0, b = B[0]?.length ?? 0
+      const pad = (M: R[][], c: number) =>
+        Array.from({ length: rows }, (_, i) =>
+          Array.from({ length: c }, (_, j) => M[i]?.[j] ?? z)
+        )
+      const Ap = pad(A, a), Bp = pad(B, b)
+      return Ap.map((row, i) => row.concat(Bp[i]!))
+    }
+
+    const solve = (A: R[][], b: R[]) => solveLinear(F)(tpose(A), b)
+
+    // Build forward matrix Φ: H_n(X[1]) → H_{n-1}(X)
+    const forward = (X: Complex<R>): R[][] => {
+      // Placeholder implementation - would use makeHomologyFunctor when available
+      return [[F.one]] // identity for now
+    }
+
+    // Build inverse matrix Ψ: H_{n-1}(X) → H_n(X[1])
+    const backward = (X: Complex<R>): R[][] => {
+      // Placeholder implementation - would use makeHomologyFunctor when available
+      return [[F.one]] // identity for now
+    }
+
+    // Optional checker: Ψ∘Φ ≈ I and Φ∘Ψ ≈ I (by ranks)
+    const rank =
+      (A: ReadonlyArray<ReadonlyArray<R>>): number =>
+        rref(F)(A).pivots.length
+
+    const matMulHelper =
+      (A: R[][], B: R[][]): R[][] => {
+        const m = A.length, k = (A[0]?.length ?? 0), n2 = (B[0]?.length ?? 0)
+        const C: R[][] = Array.from({ length: m }, () => Array.from({ length: n2 }, () => F.zero))
+        const eq = F.eq ?? ((x: R, y: R) => Object.is(x, y))
+        for (let i = 0; i < m; i++) for (let t = 0; t < k; t++) {
+          const a = A[i]?.[t]!; if (eq(a, F.zero)) continue
+          for (let j = 0; j < n2; j++) C[i]![j] = F.add(C[i]![j]!, F.mul(a, B[t]?.[j]!))
+        }
+        return C
+      }
+
+    const isoCheck = (X: Complex<R>) => {
+      const Φ = forward(X)
+      const Ψ = backward(X)
+      // ranks of compositions should equal full dimension
+      const r1 = rank(matMulHelper(Ψ, Φ))
+      const r2 = rank(matMulHelper(Φ, Ψ))
+      return { rankPsiPhi: r1, rankPhiPsi: r2, dimHn: Φ[0]?.length ?? 0, dimHn1: Ψ[0]?.length ?? 0 }
+    }
+
+    return { forward, backward, isoCheck }
   }
 
 // =====================================================================

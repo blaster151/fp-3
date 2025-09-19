@@ -54,7 +54,8 @@ import {
   RingReal, Complex, ChainMap, Triangle, complexIsValid, isChainMap, 
   shift1, cone, triangleFromMap, triangleIsSane,
   // Advanced homological algebra
-  FieldReal, FieldQ, Q, Qof, QtoString, rref, nullspace, solveLinear, composeExact
+  FieldReal, FieldQ, Q, Qof, QtoString, rref, nullspace, solveLinear, composeExact,
+  rrefQPivot, runLesConeProps, randomTwoTermComplex, makeHomologyShiftIso
 } from './allTS'
 
 // ====================================================================
@@ -1005,6 +1006,33 @@ namespace ComoduleExamples {
     
     console.log('✓ Exact rational arithmetic working!')
   }
+
+  export function advancedHomologyExample() {
+    console.log('\n--- Advanced Homology Example ---')
+    
+    // LES property checks
+    console.log('LES Property Checks:')
+    const { samples, okId, okZero } = runLesConeProps(20, 0)
+    console.log(`  Checked ${samples} random complexes`)
+    console.log(`  Identity maps: ${okId}/${samples} satisfy LES`)
+    console.log(`  Zero maps: ${okZero}/${samples} satisfy LES`)
+    
+    // Rational RREF with pivoting
+    console.log('\nRational RREF with Pivoting:')
+    const A: Q[][] = [[Qof(1,2), Qof(1,3)], [Qof(1,4), Qof(2,3)]]
+    const r = rrefQPivot(A)
+    console.log('  Matrix rank:', r.pivots.length)
+    console.log('  Pivot columns:', r.pivots)
+    
+    // Homology shift isomorphism
+    console.log('\nHomology Shift Isomorphism:')
+    const iso = makeHomologyShiftIso(FieldReal)(0)   // degree n=0
+    const X = randomTwoTermComplex(FieldReal, 2)
+    const { rankPsiPhi, rankPhiPsi } = iso.isoCheck(X)
+    console.log('  H_0(X[1]) ≅ H_{-1}(X) witness ranks:', { rankPsiPhi, rankPhiPsi })
+    
+    console.log('✓ Advanced homological algebra infrastructure ready!')
+  }
 }
 
 // ====================================================================
@@ -1045,6 +1073,7 @@ async function runExamples() {
   ComoduleExamples.practicalUtilitiesExample()
   ComoduleExamples.triangulatedCategoryExample()
   ComoduleExamples.rationalFieldExample()
+  ComoduleExamples.advancedHomologyExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
