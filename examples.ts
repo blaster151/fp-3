@@ -40,7 +40,9 @@ import {
   // Categorical theory
   SemiringNat, makeDiagonalCoring, makeDiagonalComodule, comoduleCoassocHolds, comoduleCounitHolds,
   tensorBalancedMapSameR, idMap, composeMap, eqMat, FreeBimoduleStd, tensorBalancedObj,
-  makeDiagonalBicomodule, bicomoduleCommutes
+  makeDiagonalBicomodule, bicomoduleCommutes,
+  makeDiagonalAlgebra, makeDiagonalEntwining, entwiningCoassocHolds, entwiningMultHolds,
+  entwiningUnitHolds, entwiningCounitHolds
 } from './allTS'
 
 // ====================================================================
@@ -627,6 +629,36 @@ namespace ComoduleExamples {
     const RT = tensorBalancedObj(RS, ST)
     console.log('rank(RS ⊗_S ST) =', RT.rank) // 10 (= 2*5)
   }
+
+  export function entwiningExample() {
+    console.log('\n--- Entwining Example ---')
+    
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(3)   // A ≅ R^3 diagonal algebra
+    const C = makeDiagonalCoring(S)(4)    // C ≅ R^4 diagonal coring
+    const E = makeDiagonalEntwining(A, C)
+
+    console.log('Algebra A has dimension:', A.k)
+    console.log('Coring C has dimension:', C.n)
+    console.log('Entwining Ψ has shape:', E.Psi.length, 'x', E.Psi[0]?.length)
+
+    // Check all four Brzeziński–Majid laws
+    const coassoc = entwiningCoassocHolds(E)
+    const mult = entwiningMultHolds(E)
+    const unit = entwiningUnitHolds(E)
+    const counit = entwiningCounitHolds(E)
+
+    console.log('coassoc law holds:', coassoc)
+    console.log('mult law holds:   ', mult)
+    console.log('unit law holds:   ', unit)
+    console.log('counit law holds: ', counit)
+
+    if (coassoc && mult && unit && counit) {
+      console.log('✓ E is a lawful entwining between A and C!')
+    } else {
+      console.log('✗ E violates entwining laws')
+    }
+  }
 }
 
 // ====================================================================
@@ -659,6 +691,7 @@ async function runExamples() {
   ComoduleExamples.tensorBalancedMapsExample()
   ComoduleExamples.bicomoduleExample()
   ComoduleExamples.objectMathExample()
+  ComoduleExamples.entwiningExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }

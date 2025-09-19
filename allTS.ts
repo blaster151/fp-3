@@ -12277,6 +12277,121 @@ export const makeDiagonalCoring = <R>(S: Semiring<R>) => (n: number): Coring<R> 
   return { S, n, Delta, Eps }
 }
 
+// =========================================
+// Algebra on free module A ≅ R^k (finite)
+//   μ : A⊗A -> A     (k x k^2)
+//   η : R   -> A     (k x 1)
+// =========================================
+export type Algebra<R> = {
+  readonly S: Semiring<R>
+  readonly k: number
+  readonly Mu : Mat<R>  // k x (k*k)
+  readonly Eta: Mat<R>  // k x 1
+}
+
+// Diagonal algebra: basis {e_i}; μ(e_i⊗e_j)=δ_{ij} e_i, η(1)=∑ e_i
+export const makeDiagonalAlgebra =
+  <R>(S: Semiring<R>) =>
+  (k: number): Algebra<R> => {
+    const Mu: R[][] = Array.from({ length: k }, () =>
+      Array.from({ length: k * k }, () => S.zero)
+    )
+    for (let i = 0; i < k; i++) {
+      const col = i * k + i // (i,i) slot in flattened k×k
+      Mu[i]![col] = S.one
+    }
+    const Eta: R[][] = Array.from({ length: k }, () => [S.one])
+    return { S, k, Mu, Eta }
+  }
+
+// =========================================
+// Entwining between Algebra A and Coring C
+//   Ψ : A⊗C → C⊗A    ((n*k) x (k*n))
+// Laws (Brzeziński–Majid):
+//  (1) (Δ⊗id_A) Ψ = (id_C⊗Ψ)(Ψ⊗id_C)(id_A⊗Δ)
+//  (2) (id_C⊗μ)(Ψ⊗id_A)(id_A⊗Ψ) = Ψ(μ⊗id_C)
+//  (3) Ψ(η⊗id_C) = id_C⊗η
+//  (4) (ε⊗id_A)Ψ = id_A⊗ε
+// =========================================
+export type Entwining<R> = {
+  readonly A: Algebra<R>
+  readonly C: Coring<R>
+  readonly Psi: Mat<R>             // (C.n * A.k) x (A.k * C.n)
+}
+
+const I = <R>(S: Semiring<R>) => (n: number) => eye(S)(n)
+
+export const entwiningCoassocHolds = <R>(E: Entwining<R>): boolean => {
+  const { A: { S, k }, C: { n, Delta }, Psi } = E
+  const idA = I(S)(k), idC = I(S)(n)
+
+  // LHS: (Δ⊗id_A) Ψ
+  const L = matMul(S)(kron(S)(Delta, idA), Psi)
+  // RHS: (id_C⊗Ψ)(Ψ⊗id_C)(id_A⊗Δ)
+  const R1 = kron(S)(idA, Delta)
+  const R2 = matMul(S)(kron(S)(Psi, idC), R1)
+  const R  = matMul(S)(kron(S)(idC, Psi), R2)
+
+  return eqMat(S)(L, R)
+}
+
+export const entwiningMultHolds = <R>(E: Entwining<R>): boolean => {
+  const { A: { S, k, Mu }, C: { n }, Psi } = E
+  const idA = I(S)(k), idC = I(S)(n)
+
+  // LHS: (id_C⊗μ)(Ψ⊗id_A)(id_A⊗Ψ)
+  const L1 = kron(S)(idA, Psi)
+  const L2 = matMul(S)(kron(S)(Psi, idA), L1)
+  const L  = matMul(S)(kron(S)(idC, Mu), L2)
+
+  // RHS: Ψ(μ⊗id_C)
+  const R  = matMul(S)(Psi, kron(S)(Mu, idC))
+
+  return eqMat(S)(L, R)
+}
+
+export const entwiningUnitHolds = <R>(E: Entwining<R>): boolean => {
+  const { A: { S, k, Eta }, C: { n }, Psi } = E
+  const idC = I(S)(n)
+  // Ψ(η⊗id_C) = id_C⊗η  : both are (n*k) x n
+  const left  = matMul(S)(Psi, kron(S)(Eta, idC))
+  const right = kron(S)(idC, Eta)
+  return eqMat(S)(left, right)
+}
+
+export const entwiningCounitHolds = <R>(E: Entwining<R>): boolean => {
+  const { A: { S, k }, C: { n, Eps }, Psi } = E
+  const idA = I(S)(k)
+  // (ε⊗id_A)Ψ = id_A⊗ε  : both are k x (k*n)
+  const left  = matMul(S)(kron(S)(Eps, idA), Psi)
+  const right = kron(S)(idA, Eps)
+  return eqMat(S)(left, right)
+}
+
+// Permutation matrix that flips A⊗C → C⊗A in the chosen basis
+export const flipAC =
+  <R>(S: Semiring<R>) =>
+  (k: number, n: number): Mat<R> => {
+    const M: R[][] = Array.from({ length: n * k }, () =>
+      Array.from({ length: k * n }, () => S.zero)
+    )
+    // column index c = a*n + cIdx ; row index r = cIdx*k + a
+    for (let a = 0; a < k; a++) for (let cIdx = 0; cIdx < n; cIdx++) {
+      const col = a * n + cIdx
+      const row = cIdx * k + a
+      const m = M[row]
+      if (m) m[col] = S.one
+    }
+    return M
+  }
+
+// Ready-made diagonal entwining
+export const makeDiagonalEntwining =
+  <R>(A: Algebra<R>, C: Coring<R>): Entwining<R> => {
+    if (A.S !== C.S) console.warn('Entwining assumes A and C over the same Semiring instance')
+    return { A, C, Psi: flipAC(A.S)(A.k, C.n) }
+  }
+
 // =====================================================================
 // Free bimodules over semirings (object-level; finite rank only)
 //   R ⟂ M ⟂ S  with M ≅ R^m as a *left* R-semimodule and *right* S-semimodule

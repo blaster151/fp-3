@@ -13,6 +13,12 @@ import {
   bicomoduleCommutes,
   FreeBimoduleStd,
   tensorBalancedObj,
+  makeDiagonalAlgebra,
+  makeDiagonalEntwining,
+  entwiningCoassocHolds,
+  entwiningMultHolds,
+  entwiningUnitHolds,
+  entwiningCounitHolds,
 } from '../allTS'
 
 describe('Right comodules over diagonal coring', () => {
@@ -98,5 +104,54 @@ describe('Object-level tensor product', () => {
     expect(RT.rank).toBe(12) // 3 * 4
     expect(RT.left).toBe(R)
     expect(RT.right).toBe(T)
+  })
+})
+
+describe('Entwinings between algebras and corings', () => {
+  it('diagonal entwining satisfies all four laws', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(3)   // A ≅ R^3
+    const C = makeDiagonalCoring(S)(4)    // C ≅ R^4
+    const E = makeDiagonalEntwining(A, C)
+
+    expect(entwiningCoassocHolds(E)).toBe(true)
+    expect(entwiningMultHolds(E)).toBe(true)
+    expect(entwiningUnitHolds(E)).toBe(true)
+    expect(entwiningCounitHolds(E)).toBe(true)
+  })
+
+  it('works with different dimensions', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(2)   // A ≅ R^2
+    const C = makeDiagonalCoring(S)(5)    // C ≅ R^5
+    const E = makeDiagonalEntwining(A, C)
+
+    expect(entwiningCoassocHolds(E)).toBe(true)
+    expect(entwiningMultHolds(E)).toBe(true)
+    expect(entwiningUnitHolds(E)).toBe(true)
+    expect(entwiningCounitHolds(E)).toBe(true)
+  })
+
+  it('produces correct flip matrix dimensions', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(3)   // k = 3
+    const C = makeDiagonalCoring(S)(4)    // n = 4
+    const E = makeDiagonalEntwining(A, C)
+
+    // Psi: A⊗C → C⊗A should be (n*k) × (k*n) = 12 × 12
+    expect(E.Psi.length).toBe(12)         // n * k
+    expect(E.Psi[0]?.length).toBe(12)     // k * n
+  })
+
+  it('works with single-dimensional cases', () => {
+    const S = SemiringNat
+    const A = makeDiagonalAlgebra(S)(1)   // A ≅ R^1
+    const C = makeDiagonalCoring(S)(1)    // C ≅ R^1
+    const E = makeDiagonalEntwining(A, C)
+
+    expect(entwiningCoassocHolds(E)).toBe(true)
+    expect(entwiningMultHolds(E)).toBe(true)
+    expect(entwiningUnitHolds(E)).toBe(true)
+    expect(entwiningCounitHolds(E)).toBe(true)
   })
 })
