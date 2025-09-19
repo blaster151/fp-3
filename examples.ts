@@ -74,8 +74,12 @@ import {
   // Algebra bridges  
   Representation, Coaction, applyRepAsLin, coactionAsLin, pushCoaction,
   actionToChain, coactionToChain,
+  // New namespaces
+  VectView, Pretty, IntSNF, DiagramClosure, DiagramLaws, IndexedFamilies, DiscreteCategory,
+  // Infrastructure
+  makeFinitePoset, prettyPoset, makePosetDiagramCompat, idChainMapCompat,
   // Namespaced exports
-  Diagram, Lin, Chain, Exactness, Vect, Pretty, IntegerLA, Algebra
+  Diagram, Lin, Chain, Exactness, Vect, IntegerLA, Algebra
 } from './allTS'
 
 // ====================================================================
@@ -1553,6 +1557,166 @@ namespace ComoduleExamples {
     
     console.log('✓ All namespaces working!')
   }
+
+  export function diagramClosureExample() {
+    console.log('\n--- Diagram Closure and Validation ---')
+    
+    // Create a poset with covers
+    const poset = makeFinitePoset(['a', 'b', 'c', 'd'], [['a','b'], ['a','c'], ['b','d'], ['c','d']])
+    console.log('Created poset:', prettyPoset(poset))
+    
+    // Create complexes (simple 1D at degree 0)
+    const C1: Complex<number> = { S: FieldReal, degrees: [0], dim: {0:1}, d: {} }
+    const complexes = { a: C1, b: C1, c: C1, d: C1 }
+    
+    // Create diagram with only COVER arrows (not all composites)
+    const coverArrows: [ObjId, ObjId, ChainMap<number>][] = [
+      ['a', 'b', { S: FieldReal, X: C1, Y: C1, f: { 0: [[2]] } }], // a→b: scale by 2
+      ['a', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[3]] } }], // a→c: scale by 3
+      ['b', 'd', { S: FieldReal, X: C1, Y: C1, f: { 0: [[5]] } }], // b→d: scale by 5
+      ['c', 'd', { S: FieldReal, X: C1, Y: C1, f: { 0: [[7]] } }]  // c→d: scale by 7
+    ]
+    
+    const baseDiagram = makePosetDiagramCompat(poset, complexes, coverArrows)
+    
+    console.log('\nBase diagram has only cover arrows:')
+    console.log('  a→b exists:', !!baseDiagram.arr('a', 'b'))
+    console.log('  a→d exists:', !!baseDiagram.arr('a', 'd')) // should be false
+    
+    // Auto-synthesize composites
+    const closedDiagram = DiagramClosure.saturate(FieldReal)(baseDiagram)
+    
+    console.log('\nAfter closure saturation:')
+    console.log('  a→d exists:', !!closedDiagram.arr('a', 'd')) // should be true now
+    
+    const arr_ad = closedDiagram.arr('a', 'd')
+    if (arr_ad) {
+      console.log('  a→d matrix:', arr_ad.f[0]) // should be [[10]] (2*5 via b) or [[21]] (3*7 via c)
+    }
+    
+    // Validate functoriality
+    const validation = DiagramLaws.validateFunctoriality(FieldReal)(closedDiagram)
+    console.log('\nFunctoriality validation:')
+    console.log('  Valid:', validation.ok)
+    if (!validation.ok) {
+      console.log('  Issues:', validation.issues)
+    }
+    
+    console.log('✓ Diagram closure and validation working!')
+  }
+
+  export function indexedFamiliesExample() {
+    console.log('\n--- Indexed Families ---')
+    
+    // Create an indexed family of complexes
+    const family: IndexedFamilies.Family<string, Complex<number>> = (i: string) => {
+      const dim = i === 'x' ? 2 : i === 'y' ? 1 : 3
+      return { S: FieldReal, degrees: [0], dim: {0: dim}, d: {} }
+    }
+    
+    const indices = ['x', 'y', 'z']
+    console.log('Family indices:', indices)
+    console.log('Family dimensions:')
+    for (const i of indices) {
+      console.log(`  ${i}: dim ${family(i).dim[0]}`)
+    }
+    
+    // Convert to discrete diagram
+    const DD = IndexedFamilies.familyToDiscDiagram(family, indices)
+    console.log('\nConverted to DiscDiagram:')
+    console.log('  Objects:', Object.keys(DD))
+    console.log('  x dimension:', DD.x?.dim[0])
+    
+    // Convert back to family
+    const backToFamily = IndexedFamilies.discDiagramToFamily(DD)
+    console.log('\nConverted back to family:')
+    console.log('  y dimension:', backToFamily('y').dim[0])
+    
+    // Use family operations
+    const finiteIdx = IndexedFamilies.finiteIndex(indices)
+    const collected = IndexedFamilies.collectFamily(finiteIdx, family)
+    console.log('\nCollected family:')
+    collected.forEach(([i, complex]) => {
+      console.log(`  ${i}: ${complex.dim[0]}D`)
+    })
+    
+    // Reduce over family (sum dimensions)
+    const totalDim = IndexedFamilies.reduceFamily(
+      finiteIdx, 
+      family, 
+      0, 
+      (acc, complex) => acc + (complex.dim[0] ?? 0)
+    )
+    console.log('Total dimension:', totalDim)
+    
+    console.log('✓ Indexed families working!')
+  }
+
+  export function discreteCategoryExample() {
+    console.log('\n--- Discrete Category ---')
+    
+    // Create discrete category
+    const objects = ['A', 'B', 'C']
+    const disc = DiscreteCategory.create(objects)
+    
+    console.log('Discrete category objects:', disc.objects)
+    
+    // Test identity morphisms
+    const idA = disc.id('A')
+    const idB = disc.id('B')
+    console.log('Identity on A:', idA)
+    console.log('Is identity?', disc.isId(idA))
+    
+    // Test composition (should work for same object)
+    const compAA = disc.compose(idA, idA)
+    console.log('id_A ∘ id_A:', compAA)
+    
+    // Create a family and view as functor
+    const family: IndexedFamilies.Family<string, Complex<number>> = (i: string) => ({
+      S: FieldReal,
+      degrees: [0],
+      dim: { 0: i.length }, // dimension = length of object name
+      d: {}
+    })
+    
+    const functor = DiscreteCategory.familyAsFunctor(disc, family)
+    console.log('\nFamily as functor:')
+    console.log('  F(A) dimension:', functor.onObj('A').dim[0])
+    console.log('  F(B) dimension:', functor.onObj('B').dim[0])
+    console.log('  F(C) dimension:', functor.onObj('C').dim[0])
+    
+    const morphismImage = functor.onMor(idA)
+    console.log('  F(id_A) is chain map:', !!morphismImage)
+    
+    console.log('✓ Discrete category working!')
+  }
+
+  export function advancedNamespaceExample() {
+    console.log('\n--- Advanced Namespace Demo ---')
+    
+    console.log('New namespaces available:')
+    console.log('  VectView: diagram views as pure linear algebra')
+    console.log('  Pretty: debugging and teaching output')
+    console.log('  IntSNF: Smith Normal Form for integers')
+    console.log('  DiagramClosure: auto-synthesize composites')
+    console.log('  DiagramLaws: validate functoriality')
+    console.log('  IndexedFamilies: function ↔ discrete diagram bridge')
+    console.log('  DiscreteCategory: explicit categorical structure')
+    
+    // Quick demo of namespace usage
+    const testMatrix = [[1, 0], [0, 1]]
+    console.log('\nQuick demos:')
+    console.log('  Pretty.matrix:')
+    console.log('  ' + Pretty.matrix(FieldReal)(testMatrix).replace('\n', '\n  '))
+    
+    const {S} = IntSNF.smithNormalForm([[2, 4], [6, 8]])
+    console.log('  IntSNF diagonal:', IntSNF.diagonalInvariants(S))
+    
+    const idx = IndexedFamilies.finiteIndex(['x', 'y'])
+    console.log('  IndexedFamilies.finiteIndex:', idx.carrier)
+    
+    console.log('✓ All advanced namespaces working!')
+  }
 }
 
 // ====================================================================
@@ -1606,6 +1770,10 @@ async function runExamples() {
   ComoduleExamples.smithNormalFormExample()
   ComoduleExamples.algebraBridgesExample()
   ComoduleExamples.namespaceDemoExample()
+  ComoduleExamples.diagramClosureExample()
+  ComoduleExamples.indexedFamiliesExample()
+  ComoduleExamples.discreteCategoryExample()
+  ComoduleExamples.advancedNamespaceExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }

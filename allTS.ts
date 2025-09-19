@@ -15640,6 +15640,24 @@ export const FP_CATALOG = {
   pushCoaction: 'Push linear map across coaction: (id⊗g)∘δ',
   actionToChain: 'Convert action to chain map at degree n',
   coactionToChain: 'Convert coaction to chain map at degree n',
+  
+  // Diagram closure and validation
+  'DiagramClosure.saturate': 'Auto-synthesize composite arrows from covers',
+  'DiagramClosure.composeChainMap': 'Compose chain maps with automatic caching',
+  'DiagramLaws.validateFunctoriality': 'Check identity and composition laws in diagrams',
+  
+  // Indexed families
+  'IndexedFamilies.familyToDiscDiagram': 'Convert function I→Complex to DiscDiagram',
+  'IndexedFamilies.discDiagramToFamily': 'Convert DiscDiagram to function I→Complex',
+  'IndexedFamilies.mapFamily': 'Map over indexed family pointwise',
+  'IndexedFamilies.collectFamily': 'Collect family values to array (finite)',
+  'IndexedFamilies.reduceFamily': 'Reduce over family values',
+  'IndexedFamilies.familyLanDisc': 'Left Kan extension on families via discrete diagrams',
+  'IndexedFamilies.reindexFamily': 'Reindex family along function',
+  
+  // Discrete categories
+  'DiscreteCategory.create': 'Create discrete category from objects',
+  'DiscreteCategory.familyAsFunctor': 'View family as functor from discrete category',
 } as const
 
 // ---------------------------------------------
@@ -15970,6 +15988,125 @@ export namespace DiagramLaws {
 
       return { ok: issues.length === 0, issues }
     }
+}
+
+/* ================================================================
+   IndexedFamilies — bridge between functions and discrete diagrams
+   ================================================================ */
+
+export namespace IndexedFamilies {
+  /** An indexed family is just a function from index to object */
+  export type Family<I, X> = (i: I) => X
+
+  /** Finite index set with explicit carrier */
+  export interface FiniteIndex<I> {
+    readonly carrier: ReadonlyArray<I>
+  }
+
+  /** Convert family to discrete diagram (our existing DiscDiagram format) */
+  export const familyToDiscDiagram =
+    <I extends string, R>(fam: Family<I, Complex<R>>, indices: ReadonlyArray<I>): DiscDiagram<R> => {
+      const result: Record<string, Complex<R>> = {}
+      for (const i of indices) {
+        result[i] = fam(i)
+      }
+      return result
+    }
+
+  /** Convert discrete diagram back to family function */
+  export const discDiagramToFamily =
+    <I extends string, R>(DD: DiscDiagram<R>): Family<I, Complex<R>> => {
+      return (i: I) => {
+        const complex = DD[i]
+        if (!complex) throw new Error(`discDiagramToFamily: missing complex for index '${i}'`)
+        return complex
+      }
+    }
+
+  /** Map over a family pointwise */
+  export const mapFamily =
+    <I, X, Y>(f: (x: X, i: I) => Y) =>
+    (fam: Family<I, X>): Family<I, Y> => 
+      (i: I) => f(fam(i), i)
+
+  /** Collect family values into array (finite case) */
+  export const collectFamily =
+    <I, X>(Ifin: FiniteIndex<I>, fam: Family<I, X>): ReadonlyArray<[I, X]> =>
+      Ifin.carrier.map(i => [i, fam(i)] as const)
+
+  /** Reduce over family values */
+  export const reduceFamily =
+    <I, X, A>(
+      Ifin: FiniteIndex<I>,
+      fam: Family<I, X>,
+      seed: A,
+      combine: (acc: A, x: X, i: I) => A
+    ): A => {
+      let acc = seed
+      for (const i of Ifin.carrier) acc = combine(acc, fam(i), i)
+      return acc
+    }
+
+  /** Create finite index from array */
+  export const finiteIndex = <I>(carrier: ReadonlyArray<I>): FiniteIndex<I> => ({ carrier })
+
+  /** Bridge to our existing discrete diagram operations */
+  export const familyLanDisc =
+    <I extends string, R>(F: Field<R>) =>
+    (u: (j: I) => I, indices: ReadonlyArray<I>) =>
+    (fam: Family<I, Complex<R>>): Family<I, Complex<R>> => {
+      const DD = familyToDiscDiagram(fam, indices)
+      const LanDD = LanDisc(F)(u)(DD)
+      return discDiagramToFamily(LanDD)
+    }
+
+  /** Reindex a family along a function */
+  export const reindexFamily =
+    <I extends string, J extends string, R>(u: (j: J) => I) =>
+    (fam: Family<I, Complex<R>>): Family<J, Complex<R>> =>
+      (j: J) => fam(u(j))
+}
+
+/* ================================================================
+   DiscreteCategory — when you need explicit categorical structure
+   ================================================================ */
+
+export namespace DiscreteCategory {
+  /** Morphism in discrete category (only identities exist) */
+  export type DiscreteMor<I> = { readonly tag: "Id"; readonly obj: I }
+
+  /** Discrete category: only identity morphisms */
+  export interface Discrete<I> {
+    readonly kind: "Discrete"
+    readonly objects: ReadonlyArray<I>
+    readonly id: (i: I) => DiscreteMor<I>
+    readonly compose: (g: DiscreteMor<I>, f: DiscreteMor<I>) => DiscreteMor<I>
+    readonly isId: (m: DiscreteMor<I>) => boolean
+  }
+
+  /** Create discrete category from objects */
+  export const create = <I>(objects: ReadonlyArray<I>): Discrete<I> => ({
+    kind: "Discrete",
+    objects,
+    id: (i) => ({ tag: "Id", obj: i }),
+    compose: (g, f) => {
+      if (g.tag !== "Id" || f.tag !== "Id") throw new Error("Non-identity in Discrete")
+      if (g.obj !== f.obj) throw new Error("Cannot compose identities on different objects")
+      return f // or g; both are the same identity
+    },
+    isId: (m) => m.tag === "Id"
+  })
+
+  /** Bridge: family as functor from discrete category to complexes */
+  export const familyAsFunctor =
+    <I, R>(disc: Discrete<I>, fam: IndexedFamilies.Family<I, Complex<R>>) => ({
+      source: disc,
+      onObj: (i: I) => fam(i),
+      onMor: (f: DiscreteMor<I>) => {
+        const X = fam(f.obj)
+        return idChainMapCompat(X, FieldReal) // identity on the complex
+      }
+    })
 }
 
 // Namespaced exports for discoverability
