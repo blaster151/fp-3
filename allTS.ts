@@ -14723,7 +14723,7 @@ export const LanPoset =
         const qn1 = q[n-1] ?? []; const secn = sec[n] ?? []
         dC[n] = mul(qn1, mul(dP, secn))
       }
-      C.d = dC
+      Object.assign(C, { d: dC })
       const record: SliceMeta = { Js, P, Rm, s, t, U, B, q, sec, C }
       meta.set(i, record)
     }
@@ -14873,7 +14873,7 @@ export const RanPoset =
           const col = alpha[j] ?? []
           for (let i = 0; i < rows; i++) DK[i]![j] = col[i] ?? F.zero
         }
-        K.d[n] = DK
+        Object.assign(K.d, { [n]: DK })
       }
 
       // fast coordinate solver in K: α s.t. inc·α = w (precompute left solve per column)
@@ -15195,9 +15195,12 @@ export namespace IntSNF {
           }
           const Ui = U[i]!.slice(), Ur = U[r]!.slice()
           for (let c = 0; c < m; c++) {
-            const u0 = Ui[c]!, v0 = Ur[c]!
-            U[i]![c] = x * u0 + y * v0
-            U[r]![c] = Math.trunc(-ar[j]! / g) * u0 + Math.trunc(ai[j]! / g) * v0
+            const u0 = Ui[c] as number
+            const v0 = Ur[c] as number
+            (U as number[][])[i]![c] = x * u0 + y * v0
+            const coeff1 = Math.trunc(-ar[j]! / g)
+            const coeff2 = Math.trunc(ai[j]! / g)
+            ;(U as number[][])[r]![c] = coeff1 * u0 + coeff2 * v0
           }
           if (Math.abs(A[i]![j]!) > Math.abs(A[r]![j]!)) { swapRowsInt(A, i, r); swapRowsInt(U, i, r) }
         }
@@ -15218,9 +15221,12 @@ export namespace IntSNF {
           const Vj = V.map(row => row[j]!)
           const Vc = V.map(row => row[c]!)
           for (let r0 = 0; r0 < n; r0++) {
-            const u0 = Vj[r0]!, v0 = Vc[r0]!
-            V[r0]![j] = x * u0 + y * v0
-            V[r0]![c] = Math.trunc(-colc[i]! / g) * u0 + Math.trunc(colj[i]! / g) * v0
+            const u0 = Vj[r0] as number
+            const v0 = Vc[r0] as number
+            (V as number[][])[r0]![j] = x * u0 + y * v0
+            const vcoeff1 = Math.trunc(-colc[i]! / g)
+            const vcoeff2 = Math.trunc(colj[i]! / g)
+            ;(V as number[][])[r0]![c] = vcoeff1 * u0 + vcoeff2 * v0
           }
           if (Math.abs(A[i]![j]!) > Math.abs(A[i]![c]!)) { swapColsInt(A, j, c); swapColsInt(V, j, c) }
         }
@@ -15228,7 +15234,7 @@ export namespace IntSNF {
 
       if (A[i]![j]! < 0) { // make pivot positive
         for (let c = j; c < n; c++) A[i]![c] = -A[i]![c]!
-        for (let c = 0; c < m; c++) U[i]![c] = -U[i]![c]!
+        for (let c = 0; c < m; c++) (U as number[][])[i]![c] = -(U as number[][])[i]![c]!
       }
 
       // tidy divisibility in row/col
@@ -15677,6 +15683,15 @@ export const FP_CATALOG = {
   // Discrete categories
   'DiscreteCategory.create': 'Create discrete category from objects',
   'DiscreteCategory.familyAsFunctor': 'View family as functor from discrete category',
+  'DiscreteCategory.DiscreteAsGroupoid': 'View discrete category as groupoid (only identities)',
+  
+  // Groupoid indexing
+  'hasIso': 'Check if objects are isomorphic in finite groupoid',
+  'isoClasses': 'Partition objects into isomorphism classes',
+  'reindexGroupoid': 'Reindex along groupoid functor (precomposition)',
+  'lanGroupoidViaClasses': 'Left Kan extension via isomorphism classes',
+  'ranGroupoidViaClasses': 'Right Kan extension via isomorphism classes',
+  'twoObjIsoGroupoid': 'Create two-object isomorphic groupoid for tests',
   
   // Category limits
   'CategoryLimits.finiteCoproduct': 'Compute finite coproduct of family',
@@ -16361,6 +16376,26 @@ export interface Category<O, M> {
   equalMor?: (x: M, y: M) => boolean
 }
 
+/** Groupoid: category where every morphism is invertible */
+export interface Groupoid<O, M> extends Category<O, M>, ArrowFamilies.HasDomCod<O, M> {
+  inv: (m: M) => M                           // inverse for every morphism
+}
+
+/** Finite, enumerable groupoid (for algorithms/tests) */
+export interface FiniteGroupoid<O, M> extends Groupoid<O, M> {
+  objects: ReadonlyArray<O>
+  // All isomorphisms between a and b (may include only identities/empties)
+  hom: (a: O, b: O) => ReadonlyArray<M>
+}
+
+/** Functor between groupoids */
+export interface GFunctor<GO, GM, HO, HM> {
+  source: FiniteGroupoid<GO, GM>
+  target: FiniteGroupoid<HO, HM>
+  onObj: (g: GO) => HO
+  onMor: (m: GM) => HM
+}
+
 export namespace DiscreteCategory {
   /** Morphism in discrete category (only identities exist) */
   export type DiscreteMor<I> = { readonly tag: "Id"; readonly obj: I }
@@ -16394,9 +16429,180 @@ export namespace DiscreteCategory {
       onObj: (i: I) => fam(i),
       onMor: (f: DiscreteMor<I>) => {
         const X = fam(f.obj)
-        return idChainMapCompat(X, FieldReal) // identity on the complex
+        return idChainMapCompat(X, fam(f.obj).S as any) // identity on the complex
       }
     })
+
+  /** Adapter: view Discrete(I) as a (finite) groupoid (only identities) */
+  export const DiscreteAsGroupoid = <I>(Icar: ReadonlyArray<I>): FiniteGroupoid<I, DiscreteMor<I>> => {
+    const D = create(Icar)
+    return {
+      ...D,
+      objects: Icar,
+      hom: (a, b) => (a === b ? [D.id(a)] : []),
+      dom: (m) => m.obj,
+      cod: (m) => m.obj,
+      inv: (m) => m // identities invert to themselves
+    }
+  }
+}
+
+/* ================================================================
+   Groupoid utilities and Kan extensions via isomorphism classes
+   ================================================================ */
+
+/** Does there exist an isomorphism a ≅ b ? */
+export const hasIso = <O, M>(G: FiniteGroupoid<O, M>, a: O, b: O): boolean => {
+  if (a === b) return true
+  const seen = new Set<any>()
+  const q: O[] = [a]
+  seen.add(a as any)
+  while (q.length) {
+    const x = q.shift()!
+    for (const y of G.objects) {
+      if (G.hom(x, y).length > 0 && !seen.has(y as any)) {
+        if (y === b) return true
+        seen.add(y as any)
+        q.push(y)
+      }
+    }
+  }
+  return false
+}
+
+/** Partition objects into isomorphism classes (connected components) */
+export const isoClasses = <O, M>(G: FiniteGroupoid<O, M>): ReadonlyArray<ReadonlyArray<O>> => {
+  const classes: O[][] = []
+  const unvisited = new Set(G.objects as O[])
+  while (unvisited.size) {
+    const [start] = unvisited
+    const comp: O[] = []
+    const q: O[] = [start]
+    unvisited.delete(start)
+    comp.push(start)
+    while (q.length) {
+      const x = q.shift()!
+      for (const y of G.objects) {
+        if (unvisited.has(y) && (G.hom(x, y).length > 0 || G.hom(y, x).length > 0)) {
+          unvisited.delete(y)
+          comp.push(y)
+          q.push(y)
+        }
+      }
+    }
+    classes.push(comp)
+  }
+  return classes
+}
+
+/** Reindex (pullback) along a groupoid functor u: G -> H (precomposition) */
+export const reindexGroupoid = <GO, GM, HO, HM, O, M>(
+  u: GFunctor<GO, GM, HO, HM>,
+  F: { onObj: (h: HO) => O; onMor?: (m: HM) => M }
+) => ({
+  onObj: (g: GO) => F.onObj(u.onObj(g)),
+  onMor: F.onMor ? (m: GM) => F.onMor!(u.onMor(m)) : undefined
+})
+
+/** Left Kan extension along groupoid functors via isomorphism classes */
+export const lanGroupoidViaClasses = <GO, GM, HO, HM, O, M>(
+  H: FiniteGroupoid<HO, HM>,
+  G: FiniteGroupoid<GO, GM>,
+  u: GFunctor<GO, GM, HO, HM>,
+  Fobj: IndexedFamilies.Family<GO, O>,                    // object part of F : G -> C
+  IfinH: IndexedFamilies.FiniteIndex<HO>,
+  C: CategoryLimits.HasFiniteCoproducts<O, M>
+) => {
+  const classesG = isoClasses(G) // iso classes of G-objects
+  const classRep = new Map<GO, GO>()
+  for (const comp of classesG) for (const g of comp) classRep.set(g, comp[0]!)
+
+  const cacheObj = new Map<HO, O>()
+  const cacheInj = new Map<HO, ReadonlyArray<readonly [GO, M]>>()
+
+  for (const h of IfinH.carrier) {
+    // collect representative g of each G-iso-class where u(g) ≅ h
+    const reps: GO[] = []
+    const seenRep = new Set<GO>()
+    for (const g of G.objects) {
+      if (hasIso(H, u.onObj(g), h)) {
+        const r = classRep.get(g)!
+        if (!seenRep.has(r)) { seenRep.add(r); reps.push(r) }
+      }
+    }
+    const { obj, injections } = C.coproduct(reps.map((r) => Fobj(r)))
+    cacheObj.set(h, obj)
+    cacheInj.set(h, injections.map((m, k) => [reps[k]!, m] as const))
+  }
+
+  return {
+    at: (h: HO) => cacheObj.get(h)!,
+    injections: (h: HO) => cacheInj.get(h)!
+  }
+}
+
+/** Right Kan extension along groupoid functors via isomorphism classes */
+export const ranGroupoidViaClasses = <GO, GM, HO, HM, O, M>(
+  H: FiniteGroupoid<HO, HM>,
+  G: FiniteGroupoid<GO, GM>,
+  u: GFunctor<GO, GM, HO, HM>,
+  Fobj: IndexedFamilies.Family<GO, O>,
+  IfinH: IndexedFamilies.FiniteIndex<HO>,
+  C: CategoryLimits.HasFiniteProducts<O, M>
+) => {
+  const classesG = isoClasses(G)
+  const classRep = new Map<GO, GO>()
+  for (const comp of classesG) for (const g of comp) classRep.set(g, comp[0]!)
+
+  const cacheObj = new Map<HO, O>()
+  const cacheProj = new Map<HO, ReadonlyArray<readonly [GO, M]>>()
+
+  for (const h of IfinH.carrier) {
+    const reps: GO[] = []
+    const seenRep = new Set<GO>()
+    for (const g of G.objects) {
+      if (hasIso(H, u.onObj(g), h)) {
+        const r = classRep.get(g)!
+        if (!seenRep.has(r)) { seenRep.add(r); reps.push(r) }
+      }
+    }
+    const { obj, projections } = C.product(reps.map((r) => Fobj(r)))
+    cacheObj.set(h, obj)
+    cacheProj.set(h, projections.map((m, k) => [reps[k]!, m] as const))
+  }
+
+  return {
+    at: (h: HO) => cacheObj.get(h)!,
+    projections: (h: HO) => cacheProj.get(h)!
+  }
+}
+
+/** Minimal constructor for two-object isomorphic groupoid (for tests) */
+export const twoObjIsoGroupoid = <T>(a: T, b: T): FiniteGroupoid<T, { from: T; to: T; tag: 'iso' | 'id' }> => {
+  const id = (x: T) => ({ from: x, to: x, tag: 'id' } as const)
+  const iso = (x: T, y: T) => ({ from: x, to: y, tag: 'iso' } as const)
+  const objects: ReadonlyArray<T> = [a, b]
+  const hom = (x: T, y: T) => {
+    if (x === y) return [id(x)]
+    if ((x === a && y === b) || (x === b && y === a)) return [iso(x, y)]
+    return []
+  }
+  return {
+    objects,
+    id,
+    compose: (g, f) => {
+      if (f.to !== g.from) throw new Error('compose mismatch')
+      if (f.tag === 'id') return g
+      if (g.tag === 'id') return f
+      // iso ∘ iso = id (since unique up to our one-iso model)
+      return id(f.from)
+    },
+    dom: (m) => m.from,
+    cod: (m) => m.to,
+    inv: (m) => (m.tag === 'id' ? m : { from: m.to, to: m.from, tag: 'iso' }),
+    hom,
+    isId: (m) => m.tag === 'id'
+  }
 }
 
 /* ================================================================
