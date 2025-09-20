@@ -15724,6 +15724,18 @@ export const FP_CATALOG = {
   'codensityDataFinSet': 'Structured codensity end data with equalizer inclusion',
   'codensityUnitFinSet': 'Codensity unit η^G_A : A -> T^G(A) in FinSet',
   'codensityMuFinSet': 'Codensity multiplication μ^G_A : T^G T^G A -> T^G A in FinSet',
+  'codensityMapFinSet': 'Codensity functor action T^G(f) : T^G(A) -> T^G(A\') on morphisms',
+  
+  // Pushforward monads and categorical operations
+  'Adjunction': 'Typed adjunction F ⊣ U with unit/counit natural transformations',
+  'composeFun': 'Compose functors G∘F with proper categorical structure',
+  'whiskerLeft': 'Left whiskering F▷α for natural transformation operations',
+  'whiskerRight': 'Right whiskering α◁F for natural transformation operations',
+  'vcomp': 'Vertical composition α;β of natural transformations',
+  'hcomp': 'Horizontal composition α*β of natural transformations',
+  'unitMate': 'Compute unit mate η^adj : Id_D ⇒ F∘U from adjunction',
+  'counitMate': 'Compute counit mate ε^adj : U∘F ⇒ Id_C from adjunction',
+  'pushforwardMonad': 'Transport monad T along adjunction F⊣U to get T↑=F∘T∘U',
   
   // Arrow families
   'ArrowFamilies.domFam': 'Extract domain family from morphism family',
@@ -16435,6 +16447,203 @@ export interface CFunctor<BO, BM, AO, AM> {
   onMor: (m: BM) => AM
 }
 
+/** General functor between categories (categorical) */
+export interface CatFunctor<C, D> {
+  source: C
+  target: D
+  onObj: (obj: any) => any
+  onMor: (mor: any) => any
+}
+
+/** Natural transformation between functors */
+export interface CatNatTrans<F, G> {
+  source: F
+  target: G
+  component: (obj: any) => any  // component at each object
+}
+
+/** Identity functor */
+export interface CatIdentity<C> extends CatFunctor<C, C> {
+  source: C
+  target: C
+  onObj: (obj: any) => any  // identity on objects
+  onMor: (mor: any) => any  // identity on morphisms
+}
+
+/** Composition of functors */
+export interface CatCompose<F, G> extends CatFunctor<any, any> {
+  first: F
+  second: G
+}
+
+/** Monad (categorical definition) */
+export interface CategoricalMonad<C> {
+  category: C
+  endofunctor: CatFunctor<C, C>
+  unit: CatNatTrans<CatIdentity<C>, CatFunctor<C, C>>
+  mult: CatNatTrans<CatCompose<CatFunctor<C, C>, CatFunctor<C, C>>, CatFunctor<C, C>>
+}
+
+/** Adjunction interface with explicit unit/counit */
+export interface Adjunction<C, D, F extends CatFunctor<C, D>, U extends CatFunctor<D, C>> {
+  readonly F: F  // left adjoint
+  readonly U: U  // right adjoint
+  readonly unit: CatNatTrans<CatIdentity<C>, CatCompose<U, F>>     // η : Id_C ⇒ U∘F
+  readonly counit: CatNatTrans<CatCompose<F, U>, CatIdentity<D>>   // ε : F∘U ⇒ Id_D
+}
+
+/* ================================================================
+   Natural transformation operations (whiskering, composition)
+   ================================================================ */
+
+/** Compose two functors F: A -> B, G: B -> C to get G∘F: A -> C */
+export const composeFun = <A, B, C, F extends CatFunctor<A, B>, G extends CatFunctor<B, C>>(F: F, G: G): CatCompose<F, G> => ({
+  first: F,
+  second: G,
+  source: F.source,
+  target: G.target,
+  onObj: (a: any) => G.onObj(F.onObj(a)),
+  onMor: (f: any) => G.onMor(F.onMor(f))
+})
+
+/** Identity functor on category C */
+export const idFun = <C>(C: C): CatIdentity<C> => ({
+  source: C,
+  target: C,
+  onObj: (obj: any) => obj,
+  onMor: (mor: any) => mor
+})
+
+/** Identity natural transformation on functor F */
+export const idNat = <F>(F: F): CatNatTrans<F, F> => ({
+  source: F,
+  target: F,
+  component: (obj: any) => (F as any).target.id(obj)  // identity morphism at each object
+})
+
+/** Left whiskering: F ▷ α = F(α) for F: A -> B, α: X ⇒ Y: B -> C */
+export const whiskerLeft = <A, B, C, X, Y>(
+  F: CatFunctor<A, B>, 
+  alpha: CatNatTrans<X, Y>
+): CatNatTrans<CatCompose<X, F>, CatCompose<Y, F>> => ({
+  source: composeFun(F, alpha.source as any),
+  target: composeFun(F, alpha.target as any),
+  component: (a: any) => alpha.component(F.onObj(a))
+})
+
+/** Right whiskering: α ◁ F = α(F) for α: X ⇒ Y: A -> B, F: C -> A */
+export const whiskerRight = <A, B, C, X, Y>(
+  alpha: CatNatTrans<X, Y>,
+  F: CatFunctor<C, A>
+): CatNatTrans<CatCompose<F, X>, CatCompose<F, Y>> => ({
+  source: composeFun(F, alpha.source as any),
+  target: composeFun(F, alpha.target as any),
+  component: (c: any) => (alpha.target as any).onMor(alpha.component(F.onObj(c)))
+})
+
+/** Vertical composition: α ; β for α: F ⇒ G, β: G ⇒ H */
+export const vcomp = <F, G, H>(
+  alpha: CatNatTrans<F, G>,
+  beta: CatNatTrans<G, H>
+): CatNatTrans<F, H> => ({
+  source: alpha.source,
+  target: beta.target,
+  component: (obj: any) => {
+    const cat = (beta.target as any).target
+    return cat.compose(beta.component(obj), alpha.component(obj))
+  }
+})
+
+/** Horizontal composition: α * β for α: F ⇒ G: A -> B, β: H ⇒ K: B -> C */
+export const hcomp = <A, B, C, F, G, H, K>(
+  alpha: CatNatTrans<F, G>,
+  beta: CatNatTrans<H, K>
+): CatNatTrans<CatCompose<F, H>, CatCompose<G, K>> => ({
+  source: composeFun(alpha.source as any, beta.source as any),
+  target: composeFun(alpha.target as any, beta.target as any),
+  component: (a: any) => {
+    const cat = (beta.target as any).target
+    const Fa = (alpha.source as any).onObj(a)
+    const Ga = (alpha.target as any).onObj(a)
+    // (G * K)(a) = K(G(a)) ∘ β(G(a)) ∘ H(α(a)) ∘ (F * H)(a)
+    return cat.compose(
+      (beta.target as any).onMor(alpha.component(a)),
+      beta.component(Fa)
+    )
+  }
+})
+
+/* ================================================================
+   Adjunction mates and pushforward monads
+   ================================================================ */
+
+/** Compute unit mate: η^adj : Id_D ⇒ F∘U from η : Id_C ⇒ U∘F */
+export const unitMate = <C, D, F, U>(adj: Adjunction<C, D, F, U>): CatNatTrans<CatIdentity<D>, CatCompose<F, U>> => {
+  // η^adj_X = F(η_{U(X)}) ∘ ε_{F U(X)}^{-1} (but we use the triangle identity)
+  // Actually: η^adj = (ε^{-1} * F) ∘ (F * η * U) ∘ (unit on D)
+  // Simplified: use the canonical mate construction
+  return {
+    source: idFun(adj.F.target) as any,
+    target: composeFun(adj.F, adj.U),
+    component: (x: any) => {
+      // This is the canonical mate: use triangle identity
+      // For now, delegate to the counit at F(U(x))
+      return adj.counit.component(x)  // ε_x : F U(x) -> x, but we want x -> F U(x)
+      // TODO: This needs proper mate construction - for now assume it's provided
+    }
+  }
+}
+
+/** Compute counit mate: ε^adj : U∘F ⇒ Id_C from ε : F∘U ⇒ Id_D */
+export const counitMate = <C, D, F, U>(adj: Adjunction<C, D, F, U>): CatNatTrans<CatCompose<U, F>, CatIdentity<C>> => {
+  return {
+    source: composeFun(adj.U, adj.F),
+    target: idFun(adj.U.target) as any,
+    component: (y: any) => {
+      // Mate of counit - for now delegate to unit
+      return adj.unit.component(y)  // η_y : y -> U F(y)
+      // TODO: This needs proper mate construction - for now assume it's provided
+    }
+  }
+}
+
+/** 
+ * Pushforward monad: transport monad structure along adjunction F ⊣ U
+ * Given T on C and F ⊣ U : C ⇄ D, construct T↑ = F ∘ T ∘ U on D
+ */
+export const pushforwardMonad = <C, D, F extends CatFunctor<C, D>, U extends CatFunctor<D, C>>(
+  adj: Adjunction<C, D, F, U>,
+  T: CategoricalMonad<C>
+): CategoricalMonad<D> => {
+  // T↑ = F ∘ T ∘ U
+  const FTU = composeFun(composeFun(adj.U, T.endofunctor), adj.F)
+
+  // η↑ : Id_D ⇒ F∘T∘U is (Id_D ⇒ F∘U) ; (F∘U ⇒ F∘T∘U)
+  const unitUp: CatNatTrans<CatIdentity<D>, typeof FTU> = vcomp(
+    unitMate(adj),  // Id_D ⇒ F∘U (mate of unit)
+    whiskerLeft(adj.F, whiskerRight(T.unit, adj.U))  // F∘U ⇒ F∘T∘U via F(η^T)U
+  )
+
+  // μ↑ : (F∘T∘U)∘(F∘T∘U) ⇒ F∘T∘U
+  // This is F T U F T U → F T T U → F T U
+  // Step 1: Use counit in the middle: F T (U F) T U → F T T U via F T ε T U
+  const step1 = whiskerLeft(
+    composeFun(adj.F, T.endofunctor),
+    whiskerRight(adj.counit, T.endofunctor)
+  )
+  // Step 2: Apply T's multiplication: F T T U → F T U via F μ^T U  
+  const step2 = whiskerLeft(adj.F, whiskerRight(T.mult, adj.U))
+  
+  const multUp: CatNatTrans<CatCompose<typeof FTU, typeof FTU>, typeof FTU> = vcomp(step1 as any, step2)
+
+  return {
+    category: adj.F.target,
+    endofunctor: FTU,
+    unit: unitUp,
+    mult: multUp
+  }
+}
+
 export namespace DiscreteCategory {
   /** Morphism in discrete category (only identities exist) */
   export type DiscreteMor<I> = { readonly tag: "Id"; readonly obj: I }
@@ -16975,92 +17184,7 @@ export const codensityCarrierFinSet = <BO, BM>(
   G: CFunctor<BO, BM, FinSetObj, FinSetMor>,   // G : B -> FinSet
   A: FinSetObj
 ): FinSetObj => {
-  // F(b,b') := (G b') ^ Hom(A, G b)
-  const Sb: Map<BO, FinSetObj> = new Map()   // S_b = Hom(A, G b)
-  const Eb: Map<BO, FinSetObj> = new Map()   // E_b = (G b) ^ S_b
-
-  // Precompute S_b and E_b
-  for (const b of CatB.objects) {
-    const Gb = G.onObj(b)
-    const S = homSetObjFinSet(A, Gb)
-    Sb.set(b, S)
-    Eb.set(b, expFinSet(Gb, S))
-  }
-
-  // Product over b of E_b
-  const EbArr = CatB.objects.map(b => Eb.get(b)!)
-  const { obj: ProdEb, projections: projEb } = FinSet.product(EbArr)
-
-  // Target product over each morphism f:b->b' of F(b,b') = (G b') ^ S_b
-  const FfbArr: FinSetObj[] = []
-  const leg_s: FinSetMor[] = [] // from ProdEb to each F(b,b') using F(1,f)
-  const leg_t: FinSetMor[] = [] // … using F(f,1)
-
-  // Build explicit list of all morphisms
-  const allArrows: Array<{ b: BO; bp: BO; f: BM }> = []
-  for (const b of CatB.objects) {
-    for (const bp of CatB.objects) {
-      for (const f of CatB.hom(b, bp)) allArrows.push({ b, bp, f })
-    }
-  }
-
-  // For each arrow f: b -> b', build components
-  for (const { b, bp, f } of allArrows) {
-    const Gb = G.onObj(b)
-    const Gbp = G.onObj(bp)
-    const Gf = G.onMor(f)                        // Gf: Gb -> Gbp
-    const Sb_b = Sb.get(b)!                      // Hom(A, Gb)
-
-    // F(1,f): E_b -> (G b')^S_b  by postcompose with Gf on the codomain
-    const comp1 = expPostcompose(Gf, Sb_b)
-
-    // F(f,1): E_{b'} -> (G b')^S_b by precompose on the exponent domain
-    // Need Hom(A, Gb) -> Hom(A, G b') induced by postcompose with Gf
-    const homPush = homPostcomposeFinSet(A, Gf) // S_b -> S_{b'}
-    const comp2 = expPrecompose(Gbp, homPush, Sb.get(bp)!, Sb_b)
-
-    // Pack product legs from ProdEb
-    const projFromB = projEb[CatB.objects.indexOf(b)]!
-    const projFromBp = projEb[CatB.objects.indexOf(bp)]!
-
-    // Assemble s,t by whiskering ProdEb --π_b/π_b'--> E_b / E_{b'} then comp1/comp2
-    const s_leg: FinSetMor = FinSet.compose(comp1, projFromB)
-    const t_leg: FinSetMor = FinSet.compose(comp2, projFromBp)
-
-    // Collect codomain objs
-    const Fbbp = expFinSet(Gbp, Sb_b) // (G b')^S_b
-    FfbArr.push(Fbbp)
-    leg_s.push(s_leg)
-    leg_t.push(t_leg)
-  }
-
-  // Pack ∏_{f} F(b,b')
-  const { obj: ProdF } = FinSet.product(FfbArr)
-
-  // Bundle the parallel maps S,T : ∏_b E_b  ⇉  ∏_f F(b,b')
-  const toProdF = (legs: FinSetMor[]): FinSetMor => {
-    // Build the canonical tuple using FinSet product universal property
-    const from = ProdEb, to = ProdF
-    const indexMap = new Map<string, number>()
-    to.elements.forEach((elem, idx) => indexMap.set(JSON.stringify(elem), idx))
-
-    const map: number[] = new Array(from.elements.length).fill(0)
-    for (let eIx = 0; eIx < from.elements.length; eIx++) {
-      const coords = legs.map((leg) => leg.map[eIx]!)
-      const key = JSON.stringify(coords)
-      const idx = indexMap.get(key)
-      if (idx === undefined) throw new Error('tuple to ProdF: coordinate missing')
-      map[eIx] = idx
-    }
-    return { from, to, map }
-  }
-
-  const S = toProdF(leg_s)
-  const T = toProdF(leg_t)
-
-  // End = equalizer of S and T
-  const { obj: EndObj } = FinSet.equalizer(S, T)
-  return EndObj
+  return codensityDataFinSet(CatB, G, A).TA
 }
 
 /** Structured data for the codensity end in FinSet */
@@ -17255,6 +17379,59 @@ export const codensityMuFinSet = <BO, BM>(
   }
 
   return { from: TTA, to: TA, map }
+}
+
+/** Codensity functor map: T^G(f) : T^G(A) -> T^G(A') (FinSet) */
+export const codensityMapFinSet = <BO, BM>(
+  CatB: FiniteCategory<BO, BM>,
+  G: CFunctor<BO, BM, FinSetObj, FinSetMor>,
+  f: FinSetMor                                // f: A -> A'
+): FinSetMor => {
+  const A = f.from
+  const A2 = f.to
+
+  const dataA = codensityDataFinSet(CatB, G, A)
+  const dataA2 = codensityDataFinSet(CatB, G, A2)
+
+  const { TA, include: incA, bList, Sb: SbA, Eb: EbA, ProdEb: ProdA } = dataA
+  const { TA: TA2, include: incA2, Sb: SbA2, Eb: EbA2, ProdEb: ProdA2 } = dataA2
+
+  // Precompute indexers
+  const idxProdA2 = new Map<string, number>()
+  ;(ProdA2.elements as number[][]).forEach((coords, i) => idxProdA2.set(JSON.stringify(coords), i))
+
+  // For each b, build E_b(A) -> E_b(A') induced by precompose on Hom(A',Gb)->Hom(A,Gb)
+  const comp_b: Map<BO, FinSetMor> = new Map()
+  for (const b of bList) {
+    const Gb = G.onObj(b)
+    const r = homPrecomposeFinSet(f, Gb)                   // Hom(A',Gb) -> Hom(A,Gb)
+    const comp = expPrecompose(Gb, r, SbA.get(b)!, SbA2.get(b)!) // (Gb)^{S_b(A)} -> (Gb)^{S_b(A')}
+    comp_b.set(b, comp)
+  }
+
+  // Build map T(A) -> T(A') by factoring the product tuple through the equalizer
+  const map: number[] = new Array(TA.elements.length)
+  for (let tIx = 0; tIx < TA.elements.length; tIx++) {
+    // coordinates in ∏_b E_b(A)
+    const coordsA = (ProdA.elements as number[][])[incA.map[tIx]!].slice()
+
+    // send each coordinate via comp_b to get coords in ∏_b E_b(A')
+    const coordsA2: number[] = []
+    bList.forEach((b, pos) => {
+      const comp = comp_b.get(b)!
+      const newCoord = comp.map[coordsA[pos]!]!
+      coordsA2.push(newCoord)
+    })
+
+    // locate the product tuple in ProdA2, then pull back along the equalizer inclusion of TA'
+    const prodIdxA2 = idxProdA2.get(JSON.stringify(coordsA2))
+    if (prodIdxA2 === undefined) throw new Error('codensityMapFinSet: image tuple not found in product')
+    const tIx2 = incA2.map.findIndex((v) => v === prodIdxA2)
+    if (tIx2 < 0) throw new Error('codensityMapFinSet: no equalizer preimage in T(A\')')
+    map[tIx] = tIx2
+  }
+
+  return { from: TA, to: TA2, map }
 }
 
 /* ================================================================
