@@ -13661,7 +13661,7 @@ export const rrefQPivot = (A0: ReadonlyArray<ReadonlyArray<Q>>) => {
     if (pr === -1) continue
 
     // swap
-    if (pr !== row) { const tmp = A[row]; A[row] = A[pr]; A[pr] = tmp }
+    if (pr !== row) { const tmp = A[row]!; A[row] = A[pr]!; A[pr] = tmp }
 
     // scale pivot row to make pivot 1
     const piv = A[row]?.[col]!
@@ -14590,7 +14590,7 @@ export const pullbackInDiagram =
 
 /* ========= Left/Right Kan extensions with TRUE universal morphisms ===== */
 
-const tpose = <R>(A: ReadonlyArray<ReadonlyArray<R>>): R[][] => (A[0]?.map((_, j) => A.map(r => r[j])) ?? [])
+const tpose = <R>(A: ReadonlyArray<ReadonlyArray<R>>): R[][] => (A[0]?.map((_, j) => A.map(r => r[j]!)) ?? [])
 
 /** Left Kan along u: J→I with REAL universal arr(a,b). */
 export const LanPoset =
@@ -14624,8 +14624,8 @@ export const LanPoset =
       let cur = U.map(col => col.slice()), picked: R[][] = []
       const r0 = rank(cur)
       for (let j = 0; j < dimP; j++) {
-        const cand = cur.concat([Istd.map(row => row[j])])
-        if (rank(cand) > rank(cur)) { picked.push(Istd.map(row => row[j])); cur = cand }
+        const cand = cur.concat([Istd.map(row => row[j]!)])
+        if (rank(cand) > rank(cur)) { picked.push(Istd.map(row => row[j]!)); cur = cand }
         if (picked.length + r0 >= dimP) break
       }
       return picked
@@ -14948,7 +14948,7 @@ export type LinMap<R> = {
 
 export const VS =
   <R>(F: Field<R>) =>
-  (dim: number, B?: R[][]): VectorSpace<R> => ({ F, dim, B })
+  (dim: number, B?: R[][]): VectorSpace<R> => B ? ({ F, dim, B }) : ({ F, dim })
 
 export const idL =
   <R>(F: Field<R>) =>
@@ -15049,7 +15049,7 @@ export namespace VectView {
 
   export const VS =
     <R>(F: Field<R>) =>
-    (dim: number, B?: R[][]): VectorSpace<R> => ({ F, dim, B })
+    (dim: number, B?: R[][]): VectorSpace<R> => B ? ({ F, dim, B }) : ({ F, dim })
 
   /** Extract a Vect diagram for a single degree n from a PosetDiagram. */
   export const toVectAtDegree =
@@ -15158,8 +15158,8 @@ export namespace IntSNF {
     return { g, x: s0 * sign, y: t0 * sign } // ax + by = g
   }
 
-  const swapRowsInt = (M: number[][], i: number, j: number) => { const t = M[i]; M[i] = M[j]; M[j] = t }
-  const swapColsInt = (M: number[][], i: number, j: number) => { for (const r of M) { const t = r[i]; r[i] = r[j]; r[j] = t } }
+  const swapRowsInt = (M: number[][], i: number, j: number) => { const t = M[i]!; M[i] = M[j]!; M[j] = t }
+  const swapColsInt = (M: number[][], i: number, j: number) => { for (const r of M) { const t = r[i]!; r[i] = r[j]!; r[j] = t } }
 
   export const smithNormalForm = (A0: ReadonlyArray<ReadonlyArray<number>>): SNF => {
     const m = A0.length, n = (A0[0]?.length ?? 0)
@@ -15167,8 +15167,8 @@ export namespace IntSNF {
     const U = Array.from({ length: m }, (_, i) => Array.from({ length: m }, (_, j) => (i === j ? 1 : 0)))
     const V = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)))
 
-    const addRow = (M: number[][], dst: number, src: number, k: number) => { if (k) for (let j = 0; j < M[0]!.length; j++) M[dst]![j] += k * M[src]![j]! }
-    const addCol = (M: number[][], dst: number, src: number, k: number) => { if (k) for (let i = 0; i < M.length; i++) M[i]![dst] += k * M[i]![src]! }
+    const addRow = (M: number[][], dst: number, src: number, k: number) => { if (k) for (let j = 0; j < M[0]!.length; j++) M[dst]![j]! += k * M[src]![j]! }
+    const addCol = (M: number[][], dst: number, src: number, k: number) => { if (k) for (let i = 0; i < M.length; i++) M[i]![dst]! += k * M[i]![src]! }
 
     let i = 0, j = 0
     while (i < m && j < n) {
@@ -15303,8 +15303,11 @@ export const pushCoaction =
 /** Convert action to chain map at degree n */
 export const actionToChain =
   <A,R>(F: Field<R>) =>
-  (n: number, ρ: Representation<A,R>, a: A): ChainMap<R> =>
-    linToChain(F)(n, applyRepAsLin(F)(ρ, a))
+  (n: number, ρ: Representation<A,R>, a: A): ChainMap<R> => {
+    const V = VS(F)(ρ.dimV)
+    const linMap: LinMap<R> = { F, dom: V, cod: V, M: ρ.mat(a) }
+    return linToChain(F)(n, linMap)
+  }
 
 /** Convert coaction to chain map at degree n */
 export const coactionToChain =
@@ -16056,7 +16059,7 @@ export namespace DiagramLaws {
       for (let i=0;i<A.length;i++) {
         const Ai = A[i], Bi = B[i]
         if ((Ai?.length ?? 0) !== (Bi?.length ?? 0)) return false
-        for (let j=0;j<(Ai?.length ?? 0);j++) if (!F.eq(Ai![j]!, Bi![j]!)) return false
+        for (let j=0;j<(Ai?.length ?? 0);j++) if (!F.eq!(Ai![j]!, Bi![j]!)) return false
       }
       return true
     }
@@ -16196,7 +16199,7 @@ export namespace IndexedFamilies {
     (u: (j: I) => I, indices: ReadonlyArray<I>) =>
     (fam: Family<I, Complex<R>>): Family<I, Complex<R>> => {
       const DD = familyToDiscDiagram(fam, indices)
-      const LanDD = LanDisc(F)(u)(DD)
+      const LanDD = LanDisc(F)(u as unknown as (j: string) => string)(DD)
       return discDiagramToFamily(LanDD)
     }
 
@@ -17308,7 +17311,7 @@ export const listMonadFinSet = (): CatMonad<any> => {
       const ListT = ListFunctor.onObj(f.to)
       const map = ListS.elements.map((list: any[]) => {
         const mappedList = (list as any[]).map(x => f.to.elements[f.map[f.from.elements.indexOf(x)]!])
-        return ListT.elements.findIndex(l => JSON.stringify(l) === JSON.stringify(mappedList))
+        return ListT.elements.findIndex((l: any) => JSON.stringify(l) === JSON.stringify(mappedList))
       })
       return { from: ListS, to: ListT, map }
     }
@@ -17320,7 +17323,7 @@ export const listMonadFinSet = (): CatMonad<any> => {
     component: (S: FinSetObj) => {
       // η_S : S -> List(S) sends x to [x]
       const ListS = ListFunctor.onObj(S)
-      const map = S.elements.map(x => ListS.elements.findIndex(list => JSON.stringify(list) === JSON.stringify([x])))
+      const map = S.elements.map(x => ListS.elements.findIndex((list: any) => JSON.stringify(list) === JSON.stringify([x])))
       return { from: S, to: ListS, map }
     }
   }
@@ -17334,7 +17337,7 @@ export const listMonadFinSet = (): CatMonad<any> => {
       const ListListS = ListFunctor.onObj(ListS)
       const map = ListListS.elements.map((nestedList: any) => {
         const flattened = (nestedList as any[][]).flat()
-        return ListS.elements.findIndex(list => JSON.stringify(list) === JSON.stringify(flattened))
+        return ListS.elements.findIndex((list: any) => JSON.stringify(list) === JSON.stringify(flattened))
       })
       return { from: ListListS, to: ListS, map }
     }
@@ -17427,7 +17430,7 @@ export const isoClasses = <O, M>(G: FiniteGroupoid<O, M>): ReadonlyArray<Readonl
   const classes: O[][] = []
   const unvisited = new Set(G.objects as O[])
   while (unvisited.size) {
-    const [start] = unvisited
+    const start = unvisited.values().next().value as O
     const comp: O[] = []
     const q: O[] = [start]
     unvisited.delete(start)
@@ -17561,7 +17564,7 @@ export const lanGroupoidFull = <GO, GM, HO, HM, O, M>(
     let inj = injections.slice()
 
     const eqH = (m1: HM, m2: HM) =>
-      H.dom(m1) === H.dom(m2) && H.cod(m1) === H.cod(m2) && H.isId(H.compose(H.inv(m1), m2))
+      H.dom(m1) === H.dom(m2) && H.cod(m1) === H.cod(m2) && H.isId!(H.compose(H.inv(m1), m2))
 
     for (let s = 0; s < objs.length; s++) {
       for (let t = 0; t < objs.length; t++) {
@@ -17608,7 +17611,7 @@ export const ranGroupoidFull = <GO, GM, HO, HM, O, M>(
     }
 
     const eqH = (m1: HM, m2: HM) =>
-      H.dom(m1) === H.dom(m2) && H.cod(m1) === H.cod(m2) && H.isId(H.compose(H.inv(m1), m2))
+      H.dom(m1) === H.dom(m2) && H.cod(m1) === H.cod(m2) && H.isId!(H.compose(H.inv(m1), m2))
 
     const { obj: Prod0, projections } = C.product(objs.map(o => F.onObj(o.g)))
     let Pobj = Prod0
@@ -18045,7 +18048,7 @@ export const codensityMuFinSet = <BO, BM>(
 
       // θ_b : S'_b -> Gb  where S'_b = Hom(TA, Gb); element of E'_b
       const Eprime_b = expFinSet(Gb, homSetObjFinSet(TA, Gb))
-      const theta_b = Eprime_b.elements[tupleT[bPos]!] as number[]
+      const theta_b = Eprime_b.elements[tupleT![bPos]!] as number[]
 
       // Build ψ_b : Sb_b -> Gb as array over |Sb_b|
       const out: number[] = []
@@ -18057,7 +18060,7 @@ export const codensityMuFinSet = <BO, BM>(
         for (let tIx = 0; tIx < TA.elements.length; tIx++) {
           // t_b is the b-component of t: lookup via inclusion into ∏ E_b
           const tupleTA = (TAdata.ProdEb.elements as number[][])[inclTA.map[tIx]!]
-          const e_b_idx = tupleTA[bPos]!
+          const e_b_idx = tupleTA![bPos]!
           const t_b = (E_b.elements[e_b_idx] as number[]) // function Sb_b -> Gb (as array)
           const val = t_b[kIx]!
           hVals.push(val)
@@ -18117,7 +18120,7 @@ export const codensityMapFinSet = <BO, BM>(
   const map: number[] = new Array(TA.elements.length)
   for (let tIx = 0; tIx < TA.elements.length; tIx++) {
     // coordinates in ∏_b E_b(A)
-    const coordsA = (ProdA.elements as number[][])[incA.map[tIx]!].slice()
+    const coordsA = (ProdA.elements as number[][])[incA.map[tIx]!]!.slice()
 
     // send each coordinate via comp_b to get coords in ∏_b E_b(A')
     const coordsA2: number[] = []
@@ -18172,7 +18175,7 @@ export namespace EnhancedVect {
       for (let i = 0; i < rows; i++) {
         for (let k = 0; k < mid; k++) {
           for (let j = 0; j < cols; j++) {
-            out[i]![j] += m[i]![k]! * n[k]![j]!
+            out[i]![j]! += m[i]![k]! * n[k]![j]!
           }
         }
       }
