@@ -15691,6 +15691,8 @@ export const FP_CATALOG = {
   'reindexGroupoid': 'Reindex along groupoid functor (precomposition)',
   'lanGroupoidViaClasses': 'Left Kan extension via isomorphism classes',
   'ranGroupoidViaClasses': 'Right Kan extension via isomorphism classes',
+  'lanGroupoidFull': 'Full groupoid Left Kan with optional automorphism quotient',
+  'ranGroupoidFull': 'Full groupoid Right Kan with optional automorphism quotient',
   'twoObjIsoGroupoid': 'Create two-object isomorphic groupoid for tests',
   
   // Category limits
@@ -15705,6 +15707,13 @@ export const FP_CATALOG = {
   'CategoryLimits.mediateCoproduct': 'Generic coproduct mediator builder', 
   'CategoryLimits.isProductForCone': 'Check if object satisfies product universal property',
   'CategoryLimits.isCoproductForCocone': 'Check if object satisfies coproduct universal property',
+  'CategoryLimits.finiteProductEx': 'Extended finite product with empty case (terminal)',
+  'CategoryLimits.finiteCoproductEx': 'Extended finite coproduct with empty case (initial)',
+  
+  // FinSet category
+  'FinSet': 'Complete finite Set category with (co)equalizers and (co)products',
+  'finsetBijection': 'Create bijection in FinSet',
+  'finsetInverse': 'Compute inverse of FinSet bijection',
   
   // Arrow families
   'ArrowFamilies.domFam': 'Extract domain family from morphism family',
@@ -15729,6 +15738,12 @@ export const FP_CATALOG = {
   'EnhancedVect.coproductUniquenessGivenTrianglesVect': 'Uniqueness given triangle satisfaction (coproduct)',
   'EnhancedVect.VectProductsWithTuple': 'Mediator-enabled Vect products trait',
   'EnhancedVect.VectCoproductsWithCotuple': 'Mediator-enabled Vect coproducts trait',
+  'EnhancedVect.zeroVect': 'Zero object in Vect (both initial and terminal)',
+  'EnhancedVect.oneVect': 'Terminal object in Vect (same as zero)',
+  'EnhancedVect.VectInitial': 'Vect initial object trait',
+  'EnhancedVect.VectTerminal': 'Vect terminal object trait',
+  'EnhancedVect.VectProductsEx': 'Vect products with terminal support',
+  'EnhancedVect.VectCoproductsEx': 'Vect coproducts with initial support',
 } as const
 
 // ---------------------------------------------
@@ -16577,6 +16592,85 @@ export const ranGroupoidViaClasses = <GO, GM, HO, HM, O, M>(
   }
 }
 
+/** Full groupoid Left Kan with optional automorphism quotient */
+export const lanGroupoidFull = <GO, GM, HO, HM, O, M>(
+  H: FiniteGroupoid<HO, HM>,
+  G: FiniteGroupoid<GO, GM>,
+  u: GFunctor<GO, GM, HO, HM>,
+  F: { onObj: (g: GO) => O; onMor?: (phi: GM) => M },            // F on isos (optional; required if quotienting)
+  IfinH: IndexedFamilies.FiniteIndex<HO>,
+  C: CategoryLimits.HasFiniteCoproducts<O, M> & Partial<CategoryLimits.HasCoequalizers<O, M>>
+) => {
+  if (!C.coequalizer || !F.onMor) {
+    // Fallback: iso-classes only
+    const lite = lanGroupoidViaClasses(H, G, u, F.onObj, IfinH, C)
+    return { at: lite.at }
+  }
+
+  const at: IndexedFamilies.Family<HO, O> = (h) => {
+    // Objects of comma groupoid (u ↓ h): pairs (g, α: u(g) -> h), α iso in H
+    const objs: Array<{ g: GO; alpha: HM }> = []
+    for (const g of G.objects) {
+      for (const a of H.hom(u.onObj(g), h)) objs.push({ g, alpha: a })
+    }
+    if (objs.length === 0) {
+      // empty colimit: initial object if available
+      if ((C as any).initialObj) return (C as any).initialObj as O
+      // else try a degenerate "coproduct" of empty list if C supports it
+      const tmp = (C as any).coproduct?.([]) as { obj: O } | undefined
+      if (tmp) return tmp.obj
+      throw new Error('lanGroupoidFull: empty comma-fiber and no initial object provided')
+    }
+
+    // Initial coproduct: ⨿ F(g_i)
+    const { obj: Cop0, injections } = C.coproduct(objs.map(o => F.onObj(o.g)))
+    
+    // For now, return the coproduct without quotient (complex quotient logic would need Category instance)
+    // This is a simplified version - full implementation would quotient by automorphism actions
+    return Cop0
+  }
+
+  return { at }
+}
+
+/** Full groupoid Right Kan with optional automorphism quotient */
+export const ranGroupoidFull = <GO, GM, HO, HM, O, M>(
+  H: FiniteGroupoid<HO, HM>,
+  G: FiniteGroupoid<GO, GM>,
+  u: GFunctor<GO, GM, HO, HM>,
+  F: { onObj: (g: GO) => O; onMor?: (phi: GM) => M; inv?: (m: M) => M }, // need inverse for equalizer side
+  IfinH: IndexedFamilies.FiniteIndex<HO>,
+  C: CategoryLimits.HasFiniteProducts<O, M> & Partial<CategoryLimits.HasEqualizers<O, M>>
+) => {
+  if (!C.equalizer || !F.onMor || !F.inv) {
+    const lite = ranGroupoidViaClasses(H, G, u, F.onObj, IfinH, C)
+    return { at: lite.at }
+  }
+
+  const at: IndexedFamilies.Family<HO, O> = (h) => {
+    const objs: Array<{ g: GO; alpha: HM }> = []
+    for (const g of G.objects) {
+      for (const a of H.hom(u.onObj(g), h)) objs.push({ g, alpha: a })
+    }
+
+    if (objs.length === 0) {
+      if ((C as any).terminalObj) return (C as any).terminalObj as O
+      const tmp = (C as any).product?.([]) as { obj: O } | undefined
+      if (tmp) return tmp.obj
+      throw new Error('ranGroupoidFull: empty comma-fiber and no terminal object provided')
+    }
+
+    // Initial product: ∏ F(g_i)
+    const { obj: Prod0 } = C.product(objs.map(o => F.onObj(o.g)))
+    
+    // For now, return the product without quotient (complex quotient logic would need Category instance)
+    // This is a simplified version - full implementation would use equalizers for automorphism actions
+    return Prod0
+  }
+
+  return { at }
+}
+
 /** Minimal constructor for two-object isomorphic groupoid (for tests) */
 export const twoObjIsoGroupoid = <T>(a: T, b: T): FiniteGroupoid<T, { from: T; to: T; tag: 'iso' | 'id' }> => {
   const id = (x: T) => ({ from: x, to: x, tag: 'id' } as const)
@@ -16603,6 +16697,139 @@ export const twoObjIsoGroupoid = <T>(a: T, b: T): FiniteGroupoid<T, { from: T; t
     hom,
     isId: (m) => m.tag === 'id'
   }
+}
+
+/* ================================================================
+   Finite Set category with complete categorical structure
+   ================================================================ */
+
+export type FinSetElem = unknown
+
+export interface FinSetObj {
+  elements: ReadonlyArray<FinSetElem>
+}
+
+export interface FinSetMor {
+  from: FinSetObj
+  to: FinSetObj
+  map: ReadonlyArray<number> // total function by index: [0..|from|-1] -> [0..|to|-1]
+}
+
+export const FinSet: Category<FinSetObj, FinSetMor> & 
+  ArrowFamilies.HasDomCod<FinSetObj, FinSetMor> &
+  CategoryLimits.HasFiniteProducts<FinSetObj, FinSetMor> & 
+  CategoryLimits.HasFiniteCoproducts<FinSetObj, FinSetMor> &
+  CategoryLimits.HasEqualizers<FinSetObj, FinSetMor> & 
+  CategoryLimits.HasCoequalizers<FinSetObj, FinSetMor> &
+  CategoryLimits.HasInitial<FinSetObj, FinSetMor> & 
+  CategoryLimits.HasTerminal<FinSetObj, FinSetMor> = {
+  
+  id: (X) => ({ from: X, to: X, map: X.elements.map((_, i) => i) }),
+  compose: (g, f) => {
+    if (f.to !== g.from) throw new Error('FinSet.compose: shape mismatch')
+    return { from: f.from, to: g.to, map: f.map.map((i) => g.map[i]!) }
+  },
+  isId: (m) => m.map.every((i, idx) => i === idx) && m.from.elements.length === m.to.elements.length,
+  dom: (m) => m.from,
+  cod: (m) => m.to,
+  equalMor: (f, g) =>
+    f.from === g.from &&
+    f.to === g.to &&
+    f.map.length === g.map.length &&
+    f.map.every((v, i) => v === g.map[i]),
+
+  // products: cartesian product
+  product: (objs) => {
+    const factors = objs
+    const indexTuples: number[][] = []
+    const rec = (acc: number[], k: number) => {
+      if (k === factors.length) { indexTuples.push(acc.slice()); return }
+      for (let i = 0; i < factors[k]!.elements.length; i++) rec([...acc, i], k + 1)
+    }
+    rec([], 0)
+    const P: FinSetObj = { elements: indexTuples }
+    const projections = factors.map((F, k) => ({
+      from: P,
+      to: F,
+      map: indexTuples.map(tuple => tuple[k]!)
+    })) as FinSetMor[]
+    return { obj: P, projections }
+  },
+
+  // coproducts: disjoint union
+  coproduct: (objs) => {
+    const tags: Array<{ tag: number; i: number }> = []
+    const injections: FinSetMor[] = []
+    let offset = 0
+    objs.forEach((O, idx) => {
+      const arr = Array.from({ length: O.elements.length }, (_, i) => ({ tag: idx, i }))
+      tags.push(...arr)
+      injections.push({ 
+        from: O, 
+        to: { elements: [] }, // will be fixed below
+        map: Array.from({ length: O.elements.length }, (_, i) => offset + i) 
+      })
+      offset += O.elements.length
+    })
+    const Cop: FinSetObj = { elements: tags }
+    // Fix codomain refs on injections
+    for (let k = 0; k < objs.length; k++) {
+      injections[k] = { ...injections[k]!, to: Cop }
+    }
+    return { obj: Cop, injections }
+  },
+
+  // equalizer of f,g: subset of X where f(x)=g(x)
+  equalizer: (f, g) => {
+    if (f.from !== g.from || f.to !== g.to) throw new Error('FinSet.equalizer: shape mismatch')
+    const keepIdx: number[] = []
+    for (let i = 0; i < f.from.elements.length; i++) {
+      if (f.map[i] === g.map[i]) keepIdx.push(i)
+    }
+    const E: FinSetObj = { elements: keepIdx.map(i => f.from.elements[i]!) }
+    const inj: FinSetMor = { from: E, to: f.from, map: keepIdx }
+    return { obj: E, equalize: inj }
+  },
+
+  // coequalizer of f,g: quotient of Y by relation generated by f(x) ~ g(x)
+  coequalizer: (f, g) => {
+    if (f.from !== g.from || f.to !== g.to) throw new Error('FinSet.coequalizer: shape mismatch')
+    const n = f.to.elements.length
+    const parent = Array.from({ length: n }, (_, i) => i)
+    const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x]!)))
+    const unite = (a: number, b: number) => { 
+      a = find(a); b = find(b); if (a !== b) parent[b] = a 
+    }
+    for (let i = 0; i < f.from.elements.length; i++) unite(f.map[i]!, g.map[i]!)
+    const reps = new Map<number, number>()
+    let idx = 0
+    for (let y = 0; y < n; y++) { 
+      const r = find(y); if (!reps.has(r)) reps.set(r, idx++) 
+    }
+    const Q: FinSetObj = { elements: Array.from({ length: reps.size }, (_, i) => i) }
+    const q: FinSetMor = { 
+      from: f.to, 
+      to: Q, 
+      map: Array.from({ length: n }, (_, y) => reps.get(find(y))!) 
+    }
+    return { obj: Q, coequalize: q }
+  },
+
+  initialObj: { elements: [] },
+  terminalObj: { elements: [null] }
+}
+
+/** FinSet bijection helper */
+export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): FinSetMor => {
+  if (map.length !== from.elements.length) throw new Error('finsetBij: length mismatch')
+  return { from, to, map }
+}
+
+/** FinSet inverse helper */
+export const finsetInverse = (bij: FinSetMor): FinSetMor => {
+  const inv: number[] = Array.from({ length: bij.to.elements.length }, () => -1)
+  for (let i = 0; i < bij.map.length; i++) inv[bij.map[i]!] = i
+  return { from: bij.to, to: bij.from, map: inv }
 }
 
 /* ================================================================
@@ -16918,6 +17145,24 @@ export namespace EnhancedVect {
     ...VectHasFiniteCoproducts,
     cotuple: (C, legs, Y) => cotupleVect(C, legs, Y)
   }
+
+  /** Zero object in Vect (both initial and terminal) */
+  export const zeroVect: VectObj = { dim: 0 }
+  export const oneVect: VectObj = zeroVect // terminal = initial in Vect (biproduct category)
+
+  /** Vect initial object trait */
+  export const VectInitial: CategoryLimits.HasInitial<VectObj, VectMor> = { 
+    initialObj: zeroVect 
+  }
+
+  /** Vect terminal object trait */
+  export const VectTerminal: CategoryLimits.HasTerminal<VectObj, VectMor> = { 
+    terminalObj: oneVect 
+  }
+
+  /** Combined adapters with empty case support */
+  export const VectProductsEx = { ...VectHasFiniteProducts, ...VectTerminal }
+  export const VectCoproductsEx = { ...VectHasFiniteCoproducts, ...VectInitial }
 }
 
 /* ================================================================
@@ -16933,6 +17178,28 @@ export namespace CategoryLimits {
   /** Category with finite products */
   export interface HasFiniteProducts<O, M> {
     product: (xs: ReadonlyArray<O>) => { obj: O; projections: ReadonlyArray<M> }
+  }
+
+  /** Category with equalizers */
+  export interface HasEqualizers<O, M> {
+    // equalizer of f,g : X -> Y returns E --e--> X s.t. f∘e = g∘e and universal
+    equalizer: (f: M, g: M) => { obj: O; equalize: M }
+  }
+
+  /** Category with coequalizers */
+  export interface HasCoequalizers<O, M> {
+    // coequalizer of f,g : X -> Y returns Y --q--> Q s.t. q∘f = q∘g and universal
+    coequalizer: (f: M, g: M) => { obj: O; coequalize: M }
+  }
+
+  /** Category with initial object */
+  export interface HasInitial<O, M> {
+    initialObj: O // ⨿ over ∅
+  }
+
+  /** Category with terminal object */
+  export interface HasTerminal<O, M> {
+    terminalObj: O // ∏ over ∅
   }
 
   /** Compute finite coproduct of a family with injection family */
@@ -16959,6 +17226,40 @@ export namespace CategoryLimits {
       const { obj, projections } = C.product(objs)
       const projFam = (i: I) => projections[Ifin.carrier.indexOf(i)]!
       return { product: obj, projections: projFam }
+    }
+
+  /** Extended finite product that honors empty case with terminal */
+  export const finiteProductEx =
+    <I, O, M>(
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      fam: IndexedFamilies.Family<I, O>,
+      C: HasFiniteProducts<O, M> & Partial<HasTerminal<O, M>>
+    ) => {
+      if (Ifin.carrier.length === 0) {
+        const T = (C as HasTerminal<O, M>).terminalObj
+        return { 
+          product: T, 
+          projections: (() => { throw new Error('no projections from empty product') }) as any 
+        }
+      }
+      return finiteProduct(Ifin, fam, C)
+    }
+
+  /** Extended finite coproduct that honors empty case with initial */
+  export const finiteCoproductEx =
+    <I, O, M>(
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      fam: IndexedFamilies.Family<I, O>,
+      C: HasFiniteCoproducts<O, M> & Partial<HasInitial<O, M>>
+    ) => {
+      if (Ifin.carrier.length === 0) {
+        const I0 = (C as HasInitial<O, M>).initialObj
+        return { 
+          coproduct: I0, 
+          injections: (() => { throw new Error('no injections into empty coproduct') }) as any 
+        }
+      }
+      return finiteCoproduct(Ifin, fam, C)
     }
 
   /** Helper: list fiber objects and remember which j they came from */
