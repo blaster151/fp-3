@@ -15719,7 +15719,11 @@ export const FP_CATALOG = {
   'expPrecompose': 'Precompose on exponentials: X^S -> X^{S\'} via (- ∘ r)',
   'homSetObjFinSet': 'Hom-set as FinSet object',
   'homPostcomposeFinSet': 'Functorial map on Hom-sets via postcomposition',
+  'homPrecomposeFinSet': 'Hom-precompose: Hom(T,X) -> Hom(A,X) via (- ∘ η)',
   'codensityCarrierFinSet': 'Codensity carrier T^G(A) via end formula in FinSet',
+  'codensityDataFinSet': 'Structured codensity end data with equalizer inclusion',
+  'codensityUnitFinSet': 'Codensity unit η^G_A : A -> T^G(A) in FinSet',
+  'codensityMuFinSet': 'Codensity multiplication μ^G_A : T^G T^G A -> T^G A in FinSet',
   
   // Arrow families
   'ArrowFamilies.domFam': 'Extract domain family from morphism family',
@@ -16943,6 +16947,28 @@ export const homPostcomposeFinSet = (A: FinSetObj, h: FinSetMor): FinSetMor => {
   return { from: S, to: T, map }
 }
 
+/** Helper: index a FinSet object's elements by JSON */
+const indexObj = (obj: FinSetObj): Map<string, number> => {
+  const m = new Map<string, number>()
+  obj.elements.forEach((e, i) => m.set(JSON.stringify(e as any), i))
+  return m
+}
+
+/** Hom-precompose: given η: A -> T, send Hom(T, X) -> Hom(A, X) */
+export const homPrecomposeFinSet = (eta: FinSetMor, X: FinSetObj): FinSetMor => {
+  // Domain: Hom(T, X) : arrays length |T|; Codomain: Hom(A, X) : arrays length |A|
+  const Sprime = homSetObjFinSet(eta.to, X)
+  const S = homSetObjFinSet(eta.from, X)
+  const map = Sprime.elements.map((_arr, idxT) => {
+    // For each function h: T->X (encoded as array over |T|), produce h∘η: A->X
+    const h = Sprime.elements[idxT] as number[]
+    const out = eta.map.map((tIx) => h[tIx]!)
+    const indexS = indexObj(S).get(JSON.stringify(out))!
+    return indexS
+  })
+  return { from: Sprime, to: S, map }
+}
+
 /** Codensity carrier T^G(A) in FinSet via end formula */
 export const codensityCarrierFinSet = <BO, BM>(
   CatB: FiniteCategory<BO, BM>,
@@ -17035,6 +17061,200 @@ export const codensityCarrierFinSet = <BO, BM>(
   // End = equalizer of S and T
   const { obj: EndObj } = FinSet.equalizer(S, T)
   return EndObj
+}
+
+/** Structured data for the codensity end in FinSet */
+export const codensityDataFinSet = <BO, BM>(
+  CatB: FiniteCategory<BO, BM>,
+  G: CFunctor<BO, BM, FinSetObj, FinSetMor>,   // G : B -> FinSet
+  A: FinSetObj
+) => {
+  // S_b and E_b
+  const bList = [...CatB.objects]
+  const Sb: Map<BO, FinSetObj> = new Map()
+  const Eb: Map<BO, FinSetObj> = new Map()
+  for (const b of bList) {
+    const Gb = G.onObj(b)
+    const S = homSetObjFinSet(A, Gb)
+    Sb.set(b, S)
+    Eb.set(b, expFinSet(Gb, S))
+  }
+
+  // ∏_b E_b
+  const EbArr = bList.map((b) => Eb.get(b)!)
+  const { obj: ProdEb, projections: projEb } = FinSet.product(EbArr)
+
+  // collect all arrows of B
+  const arrows: Array<{ b: BO; bp: BO; f: BM }> = []
+  for (const b of bList) for (const bp of bList) for (const f of CatB.hom(b, bp)) arrows.push({ b, bp, f })
+
+  // Build parallel maps S,T : ∏_b E_b ⇉ ∏_f (G b')^{S_b}
+  const FfbArr: FinSetObj[] = []
+  const legsS: FinSetMor[] = []
+  const legsT: FinSetMor[] = []
+  for (const { b, bp, f } of arrows) {
+    const Gb = G.onObj(b)
+    const Gbp = G.onObj(bp)
+    const Gf = G.onMor(f)
+    const Sb_b = Sb.get(b)!
+    const Sbp = Sb.get(bp)!
+
+    const comp1 = expPostcompose(Gf, Sb_b)                  // F(1,f): E_b -> (G b')^S_b
+    const homPush = homPostcomposeFinSet(A, Gf)             // S_b -> S_{b'}
+    const comp2 = expPrecompose(Gbp, homPush, Sbp, Sb_b)    // F(f,1): E_{b'} -> (G b')^S_b
+
+    const projFromB = projEb[bList.indexOf(b)]!
+    const projFromBp = projEb[bList.indexOf(bp)]!
+    const s_leg = FinSet.compose(comp1, projFromB)
+    const t_leg = FinSet.compose(comp2, projFromBp)
+
+    FfbArr.push(expFinSet(Gbp, Sb_b))
+    legsS.push(s_leg)
+    legsT.push(t_leg)
+  }
+
+  const { obj: ProdF } = FinSet.product(FfbArr)
+
+  // Tuple-into-product helper (FinSet)
+  const tupleInto = (from: FinSetObj, to: FinSetObj, legs: FinSetMor[]): FinSetMor => {
+    const indexTo = new Map<string, number>()
+    to.elements.forEach((elem, idx) => indexTo.set(JSON.stringify(elem as any), idx))
+    const map = from.elements.map((_, eIx) => {
+      const coords = legs.map((leg) => leg.map[eIx]!)
+      const key = JSON.stringify(coords)
+      const idx = indexTo.get(key)
+      if (idx === undefined) throw new Error('tupleInto: coordinate missing')
+      return idx
+    })
+    return { from, to, map }
+  }
+
+  const S = tupleInto(ProdEb, ProdF, legsS)
+  const T = tupleInto(ProdEb, ProdF, legsT)
+
+  const { obj: TA, equalize: include } = FinSet.equalizer(S, T)
+  return { TA, include, bList, Sb, Eb, ProdEb }
+}
+
+// Update the convenience wrapper to use the structured version
+export const codensityCarrierFinSetUpdated = <BO, BM>(
+  CatB: FiniteCategory<BO, BM>,
+  G: CFunctor<BO, BM, FinSetObj, FinSetMor>,
+  A: FinSetObj
+): FinSetObj => {
+  return codensityDataFinSet(CatB, G, A).TA
+}
+
+/** Codensity unit η^G_A : A -> T^G(A) (FinSet) */
+export const codensityUnitFinSet = <BO, BM>(
+  CatB: FiniteCategory<BO, BM>,
+  G: CFunctor<BO, BM, FinSetObj, FinSetMor>,
+  A: FinSetObj
+): FinSetMor => {
+  const data = codensityDataFinSet(CatB, G, A)
+  const { TA, include, bList, Sb, Eb, ProdEb } = data
+
+  const EbIndex = new Map<BO, Map<string, number>>()
+  for (const b of bList) EbIndex.set(b, indexObj(Eb.get(b)!))
+  const ProdIndex = indexObj(ProdEb)
+
+  const map: number[] = []
+  for (let aIx = 0; aIx < A.elements.length; aIx++) {
+    // Build the product coordinate tuple: for each b, element of E_b = (G b)^{S_b}
+    const coords: number[] = []
+    for (const b of bList) {
+      const Gb = G.onObj(b)
+      const S = Sb.get(b)!                  // Hom(A,Gb)
+      const E = Eb.get(b)!                  // (Gb)^S
+      // evaluation at 'a' : S -> Gb  ==> an element of E
+      const arr = (S.elements as number[][]).map((k) => k[aIx]!)
+      const eIdx = EbIndex.get(b)!.get(JSON.stringify(arr))!
+      coords.push(eIdx)
+    }
+    const prodIdx = ProdIndex.get(JSON.stringify(coords))!
+    // factor through equalizer by searching the unique preimage
+    const tIx = include.map.findIndex((v) => v === prodIdx)
+    if (tIx < 0) throw new Error('codensityUnitFinSet: missing equalizer preimage')
+    map.push(tIx)
+  }
+  return { from: A, to: TA, map }
+}
+
+/** Codensity multiplication μ^G_A : T^G T^G A -> T^G A (FinSet) */
+export const codensityMuFinSet = <BO, BM>(
+  CatB: FiniteCategory<BO, BM>,
+  G: CFunctor<BO, BM, FinSetObj, FinSetMor>,
+  A: FinSetObj
+): FinSetMor => {
+  // Data for TA and for TTA
+  const TAdata = codensityDataFinSet(CatB, G, A)
+  const TA = TAdata.TA
+  const TTAdata = codensityDataFinSet(CatB, G, TA)
+  const TTA = TTAdata.TA
+
+  const { include: inclTA, bList, Sb, Eb, ProdEb } = TAdata
+  const { include: inclTTA } = TTAdata
+
+  const EbIndex = new Map<BO, Map<string, number>>()
+  for (const b of bList) {
+    EbIndex.set(b, indexObj(Eb.get(b)!))
+  }
+  const ProdIndex = indexObj(ProdEb)
+
+  // For each θ ∈ TTA, compute μ(θ) ∈ TA by:
+  // ψ_b(κ) = θ_b( h ), where h : TA -> G b is defined by h(t) = t_b(κ)
+  const map: number[] = []
+  for (let thetaIx = 0; thetaIx < TTA.elements.length; thetaIx++) {
+    // Get the tuple of components of θ in ∏_b E'_b, then per b build ψ_b
+    const tupleT = (TTAdata.ProdEb.elements as number[][])[inclTTA.map[thetaIx]!] // indices into E'_b
+    const coordsForTA: number[] = []
+
+    bList.forEach((b, bPos) => {
+      // domain/codomain sets for this b
+      const Gb = G.onObj(b)
+      const Sb_b = Sb.get(b)!         // Hom(A,Gb)
+      const E_b = Eb.get(b)!         // (Gb)^Sb_b
+
+      // θ_b : S'_b -> Gb  where S'_b = Hom(TA, Gb); element of E'_b
+      const Eprime_b = expFinSet(Gb, homSetObjFinSet(TA, Gb))
+      const theta_b = Eprime_b.elements[tupleT[bPos]!] as number[]
+
+      // Build ψ_b : Sb_b -> Gb as array over |Sb_b|
+      const out: number[] = []
+      for (let kIx = 0; kIx < Sb_b.elements.length; kIx++) {
+        const k = (Sb_b.elements[kIx] as number[])   // k : A -> Gb
+
+        // h : TA -> Gb, h(t) = t_b(k)
+        const hVals: number[] = []
+        for (let tIx = 0; tIx < TA.elements.length; tIx++) {
+          // t_b is the b-component of t: lookup via inclusion into ∏ E_b
+          const tupleTA = (TAdata.ProdEb.elements as number[][])[inclTA.map[tIx]!]
+          const e_b_idx = tupleTA[bPos]!
+          const t_b = (E_b.elements[e_b_idx] as number[]) // function Sb_b -> Gb (as array)
+          const val = t_b[kIx]!
+          hVals.push(val)
+        }
+
+        // Find index of h in S'_b = Hom(TA, Gb)
+        const Sprime_b = homSetObjFinSet(TA, Gb)
+        const hIdx = indexObj(Sprime_b).get(JSON.stringify(hVals))!
+        // Evaluate θ_b at h
+        const valGb = theta_b[hIdx]!
+        out.push(valGb)
+      }
+
+      // Encode ψ_b as an element of E_b and record its index
+      const eIdx = EbIndex.get(b)!.get(JSON.stringify(out))!
+      coordsForTA.push(eIdx)
+    })
+
+    const prodIdx = ProdIndex.get(JSON.stringify(coordsForTA))!
+    const tIx = inclTA.map.findIndex((v) => v === prodIdx)
+    if (tIx < 0) throw new Error('codensityMuFinSet: missing equalizer preimage')
+    map.push(tIx)
+  }
+
+  return { from: TTA, to: TA, map }
 }
 
 /* ================================================================
