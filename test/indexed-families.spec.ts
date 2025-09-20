@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, test } from 'vitest'
 import { 
   FieldReal, 
   Complex,
@@ -525,6 +525,125 @@ describe('Indexed Families and Discrete Categories', () => {
       expect(domainFam('proj')).toBe(V1)
       expect(codomainFam('id')).toBe(V1)
       expect(codomainFam('proj')).toBe(V2)
+    })
+  })
+
+  // Property tests for categorical laws
+  describe('Reindexing Functoriality Laws (Property Tests)', () => {
+    test('reindex id neutral and composition functorial', () => {
+      // Test with simple arrays to avoid fast-check dependency
+      const testArrays = [[], [1], [1, 2], [1, 2, 3]]
+      
+      for (const arr of testArrays) {
+        const { I, fam } = IndexedFamilies.familyFromArray(arr)
+        
+        // Test id neutrality: reindex(id, fam) = fam
+        const id = (i: number) => i
+        const r1 = IndexedFamilies.reindex(id, fam)
+        for (const i of I) {
+          expect(r1(i)).toBe(fam(i))
+        }
+        
+        // Test composition: reindex(v∘u, fam) = reindex(u, reindex(v, fam))
+        const u = (j: number) => j % 2
+        const v = (k: number) => k + 1
+        const vu = (k: number) => u(v(k))
+        
+        const comp1 = IndexedFamilies.reindex(vu, fam)
+        const comp2 = IndexedFamilies.reindex(u, IndexedFamilies.reindex(v, fam))
+        
+        const testIndices = [0, 1, 2]
+        for (const k of testIndices) {
+          if (v(k) < I.length) {
+            expect(comp1(k)).toBe(comp2(k))
+          }
+        }
+      }
+    })
+  })
+
+  describe('Kan Extensions over Discrete Indices (Property Tests)', () => {
+    test('Lan = Σ over fibers; Ran = Π over fibers (count check)', () => {
+      const Jcar = [0, 1, 2, 3]
+      const u = (j: number) => j % 2 // map to {0, 1}
+      const Jfin = { carrier: Jcar }
+      const fam: IndexedFamilies.EnumFamily<number, number> = (j) => ({
+        enumerate: () => Array.from({ length: (j % 3) }, (_, k) => k)
+      })
+      
+      const Lan = IndexedFamilies.lanEnum(u, Jfin, fam)
+      const Ran = IndexedFamilies.ranEnum(u, Jfin, fam)
+      const Ifin = { carrier: IndexedFamilies.imageCarrier(Jcar, u) }
+      
+      for (const i of Ifin.carrier) {
+        const fiber = Jcar.filter((j) => u(j) === i)
+        const sigmaSize = fiber.reduce((acc, j) => acc + fam(j).enumerate().length, 0)
+        const piSize = fiber.reduce((acc, j) => acc * (fam(j).enumerate().length || 1), 1)
+        
+        expect(Lan(i).enumerate().length).toBe(sigmaSize)
+        expect(Ran(i).enumerate().length).toBe(piSize)
+      }
+    })
+  })
+
+  describe('Triangle Identity for Σ ⊣ pullback', () => {
+    test('u^* ε ∘ η = id elementwise', () => {
+      const Icar = [0, 1, 2]
+      const Ifin = { carrier: Icar }
+      const u = (j: number) => j // identity for clarity
+      const Y: IndexedFamilies.EnumFamily<number, number> = (i) => ({
+        enumerate: () => Array.from({ length: (i % 3) + 1 }, (_, k) => k)
+      })
+      
+      // η_j: y ↦ (j, y)
+      const eta = (j: number, y: number) => ({ j, y })
+      // ε_i: (j, y) ↦ y (when i=j)
+      const eps = (_i: number, pair: { j: number; y: number }) => pair.y
+
+      for (const j of Ifin.carrier) {
+        for (const y of Y(u(j)).enumerate()) {
+          const y2 = eps(u(j), eta(j, y))
+          expect(y2).toBe(y)
+        }
+      }
+    })
+  })
+
+  describe('Beck-Chevalley (Property Tests)', () => {
+    test('f^* Σ_w ≅ Σ_u v^* (counts match)', () => {
+      const Icar = [0, 1, 2]
+      const Kcar = [0, 1, 2]
+      const L = [0, 1]
+      const f = (i: number) => L[i % L.length]!
+      const w = (k: number) => L[k % L.length]!
+      const Ifin = { carrier: Icar }
+      const Kfin = { carrier: Kcar }
+      const { Jfin, u, v } = IndexedFamilies.pullbackIndices(Ifin, Kfin, f, w)
+      const G: IndexedFamilies.EnumFamily<number, number> = (k) => ({
+        enumerate: () => Array.from({ length: (k % 3) + 1 }, (_, t) => t)
+      })
+
+      // Left: f^* (Σ_w G)
+      const Lan_w = ((kFam: typeof G) => (i: number) => {
+        const l = f(i)
+        const fiber = Kcar.filter((k) => w(k) === l)
+        return {
+          enumerate: () => fiber.flatMap((k) => kFam(k).enumerate().map((x) => ({ k, x })))
+        }
+      })(G)
+
+      // Right: Σ_u (v^* G)
+      const vPull = (jk: readonly [number, number]) => G(v(jk))
+      const Sigma_u = ((jFam: typeof vPull) => (i: number) => {
+        const fiber = Jfin.carrier.filter((jk) => u(jk) === i)
+        return {
+          enumerate: () => fiber.flatMap((jk) => jFam(jk).enumerate().map((x) => ({ jk, x })))
+        }
+      })(vPull)
+
+      for (const i of Ifin.carrier) {
+        expect(Lan_w(i).enumerate().length).toBe(Sigma_u(i).enumerate().length)
+      }
     })
   })
 

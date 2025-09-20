@@ -76,6 +76,7 @@ import {
   actionToChain, coactionToChain,
   // New namespaces
   VectView, Pretty, IntSNF, DiagramClosure, DiagramLaws, IndexedFamilies, DiscreteCategory,
+  EnhancedVect, ArrowFamilies, CategoryLimits,
   // Infrastructure
   makeFinitePoset, prettyPoset, makePosetDiagramCompat, idChainMapCompat,
   // Namespaced exports
@@ -1717,6 +1718,116 @@ namespace ComoduleExamples {
     
     console.log('✓ All advanced namespaces working!')
   }
+
+  export function enhancedIndexedFamiliesExample() {
+    console.log('\n--- Enhanced Indexed Families ---')
+    
+    // Test reindexing operations
+    const originalFamily = (i: number) => i * i
+    const u = (j: string) => j.length
+    const reindexed = IndexedFamilies.reindex(u, originalFamily)
+    
+    console.log('Reindexing example:')
+    console.log('  Original family f(2) =', originalFamily(2))
+    console.log('  Reindexed via u("ab") =', reindexed("ab")) // u("ab") = 2, so f(2) = 4
+    
+    // Test enumerable operations
+    const enumFam: IndexedFamilies.EnumFamily<string, number> = (i) => ({
+      enumerate: () => Array.from({ length: i.length }, (_, k) => k)
+    })
+    
+    const idx = IndexedFamilies.finiteIndex(['a', 'bb'])
+    const sigmaResult = IndexedFamilies.sigmaEnum(idx, enumFam)
+    const piResult = IndexedFamilies.piEnum(idx, enumFam)
+    
+    console.log('\nEnumerable operations:')
+    console.log('  Sigma (disjoint union):', sigmaResult)
+    console.log('  Pi (cartesian product):', piResult)
+    
+    // Test sugar functions
+    const { I, Ifin, fam } = IndexedFamilies.familyFromArray([10, 20, 30])
+    console.log('\nSugar functions:')
+    console.log('  familyFromArray indices:', I)
+    console.log('  fam(1) =', fam(1))
+    
+    console.log('✓ Enhanced indexed families working!')
+  }
+
+  export function categoryLimitsExample() {
+    console.log('\n--- Category Limits ---')
+    
+    // Create family of vector objects
+    const vectorFamily = (i: number) => ({ dim: i + 1 })
+    const idx = IndexedFamilies.finiteIndex([0, 1, 2])
+    
+    // Test finite product using trait
+    const { product, projections } = CategoryLimits.finiteProduct(
+      idx, 
+      vectorFamily, 
+      EnhancedVect.VectHasFiniteProducts
+    )
+    
+    console.log('Finite product:')
+    console.log('  Product dimension:', product.dim)
+    console.log('  Projection 0 from/to:', projections(0).from.dim, '→', projections(0).to.dim)
+    
+    // Test finite coproduct using trait
+    const { coproduct, injections } = CategoryLimits.finiteCoproduct(
+      idx,
+      vectorFamily,
+      EnhancedVect.VectHasFiniteCoproducts
+    )
+    
+    console.log('\nFinite coproduct:')
+    console.log('  Coproduct dimension:', coproduct.dim)
+    console.log('  Injection 1 from/to:', injections(1).from.dim, '→', injections(1).to.dim)
+    
+    console.log('✓ Category limits working!')
+  }
+
+  export function arrowCategoryExample() {
+    console.log('\n--- Arrow Category and Morphism Families ---')
+    
+    // Create vector objects
+    const V1: EnhancedVect.VectObj = { dim: 1 }
+    const V2: EnhancedVect.VectObj = { dim: 2 }
+    
+    // Create family of morphisms
+    const morphFamily: IndexedFamilies.Family<string, { f: EnhancedVect.VectMor }> = (i) => ({
+      f: {
+        matrix: i === 'double' ? [[2]] : [[1, 0]],
+        from: i === 'proj' ? V2 : V1,
+        to: V1
+      }
+    })
+    
+    console.log('Morphism family:')
+    console.log('  double: 1×1 matrix [[2]]')
+    console.log('  proj: 1×2 matrix [[1,0]]')
+    
+    // Extract domain and codomain families
+    const domains = ArrowFamilies.domFam(EnhancedVect.Vect, morphFamily)
+    const codomains = ArrowFamilies.codFam(EnhancedVect.Vect, morphFamily)
+    
+    console.log('\nDomain/codomain families:')
+    console.log('  dom(double):', domains('double').dim)
+    console.log('  dom(proj):', domains('proj').dim)
+    console.log('  cod(double):', codomains('double').dim)
+    console.log('  cod(proj):', codomains('proj').dim)
+    
+    // Test arrow category
+    const f: EnhancedVect.VectMor = { matrix: [[1, 2]], from: V2, to: V1 }
+    const arrowObj: EnhancedVect.ArrowObj = { f }
+    const idArrow = EnhancedVect.ArrowVect.id(arrowObj)
+    
+    console.log('\nArrow category:')
+    console.log('  Identity arrow left/right are identities:', 
+      EnhancedVect.Vect.isId!(idArrow.left), 
+      EnhancedVect.Vect.isId!(idArrow.right)
+    )
+    
+    console.log('✓ Arrow category working!')
+  }
 }
 
 // ====================================================================
@@ -1774,6 +1885,9 @@ async function runExamples() {
   ComoduleExamples.indexedFamiliesExample()
   ComoduleExamples.discreteCategoryExample()
   ComoduleExamples.advancedNamespaceExample()
+  ComoduleExamples.enhancedIndexedFamiliesExample()
+  ComoduleExamples.categoryLimitsExample()
+  ComoduleExamples.arrowCategoryExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }

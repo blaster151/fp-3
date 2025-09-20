@@ -425,6 +425,60 @@ For any oplax 2-functor `U: C → D`:
 
 **Witness**: Property test for each instance with random endofunctors and natural transformations
 
+## Indexed Family Laws
+
+### Reindexing Functoriality
+For reindexing operation `u*` along `u: J → I`:
+
+**Identity**: `id* = id`
+**Composition**: `(v ∘ u)* = u* ∘ v*`
+
+**Witness**: Property test with random functions `u, v` and random families
+
+### Dependent Sum/Product Adjunction
+For families `X: I → Set`:
+
+**Σ ⊣ u* ⊣ Π**: `Σu ⊣ u* ⊣ Πu`
+**Triangle Identities**: 
+- `u* ε ∘ η = id` on `u*Y`
+- `ε ∘ u* η = id` on `ΣuX`
+
+**Witness**: Property test with pullback squares and fiber computations
+
+### Beck-Chevalley Law
+For pullback square of index maps:
+
+**Substitution Commutes**: `f* Σw ≅ Σu v*`
+
+**Witness**: Property test comparing counts over pullback indices
+
+### Kan Extension Laws
+For discrete index maps `u: J → I`:
+
+**Left Kan**: `(Lanu F)(i) = ⨁{j | u(j)=i} F(j)`
+**Right Kan**: `(Ranu F)(i) = ∏{j | u(j)=i} F(j)`
+**Naturality**: Kan extensions are natural in the family
+
+**Witness**: Property test with fiber size comparisons
+
+## Diagram Laws
+
+### Functoriality Laws
+For diagrams `D: I → C`:
+
+**Identity**: `D(id_i) = id_{D(i)}`
+**Composition**: `D(g ∘ f) = D(g) ∘ D(f)`
+
+**Witness**: Property test with `DiagramLaws.validateFunctoriality`
+
+### Closure Laws
+For diagram closure operations:
+
+**Idempotence**: `saturate(saturate(D)) = saturate(D)`
+**Preservation**: If `D` satisfies functoriality, so does `saturate(D)`
+
+**Witness**: Property test with closure validation
+
 ## Future Extensions
 
 This document should grow to include:

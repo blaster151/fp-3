@@ -15658,6 +15658,14 @@ export const FP_CATALOG = {
   'IndexedFamilies.sigma': 'Dependent sum (Σ): disjoint union of fibers',
   'IndexedFamilies.pi': 'Dependent product (Π): choice functions',
   'IndexedFamilies.sigmaFromRecord': 'Extract tagged union from record',
+  'IndexedFamilies.imageCarrier': 'Compute image of carrier under function',
+  'IndexedFamilies.sigmaEnum': 'Dependent sum for enumerable families',
+  'IndexedFamilies.piEnum': 'Dependent product for enumerable families',
+  'IndexedFamilies.lanEnum': 'Left Kan extension for enumerable families',
+  'IndexedFamilies.ranEnum': 'Right Kan extension for enumerable families',
+  'IndexedFamilies.familyFromArray': 'Sugar: create family from array',
+  'IndexedFamilies.familyFromRecord': 'Sugar: create family from record',
+  'IndexedFamilies.pullbackIndices': 'Compute pullback indices for Beck-Chevalley tests',
   
   // Discrete categories
   'DiscreteCategory.create': 'Create discrete category from objects',
@@ -15671,6 +15679,15 @@ export const FP_CATALOG = {
   'ArrowFamilies.domFam': 'Extract domain family from morphism family',
   'ArrowFamilies.codFam': 'Extract codomain family from morphism family',
   'ArrowFamilies.composeFam': 'Pointwise composition of morphism families',
+  
+  // Enhanced Vect category
+  'EnhancedVect.Vect': 'Vect category with dom/cod and equality operations',
+  'EnhancedVect.ArrowVect': 'Arrow category for Vect (commutative squares)',
+  'EnhancedVect.squareCommutes': 'Check if a square commutes in Vect',
+  'EnhancedVect.finiteProductVect': 'Finite product in Vect with projections',
+  'EnhancedVect.finiteCoproductVect': 'Finite coproduct in Vect with injections',
+  'EnhancedVect.VectHasFiniteProducts': 'Vect implements finite products trait',
+  'EnhancedVect.VectHasFiniteCoproducts': 'Vect implements finite coproducts trait',
 } as const
 
 // ---------------------------------------------
@@ -16217,6 +16234,23 @@ export namespace IndexedFamilies {
       const fam: Family<K, X> = (k) => rec[k]!
       return { keys, Ifin, fam, Idisc: DiscreteCategory.create(keys) } as const
     }
+
+  /** Pullback indices for Beck-Chevalley tests */
+  export const pullbackIndices =
+    <I, K, L>(
+      Ifin: { carrier: ReadonlyArray<I> },
+      Kfin: { carrier: ReadonlyArray<K> },
+      f: (i: I) => L,
+      w: (k: K) => L
+    ) => {
+      const J = Ifin.carrier.flatMap((i) =>
+        Kfin.carrier.filter((k) => f(i) === w(k)).map((k) => [i, k] as const)
+      )
+      const Jfin = { carrier: J }
+      const u = (jk: readonly [I, K]) => jk[0]
+      const v = (jk: readonly [I, K]) => jk[1]
+      return { J, Jfin, u, v }
+    }
 }
 
 /* ================================================================
@@ -16377,6 +16411,42 @@ export namespace EnhancedVect {
   export const directSumDims =
     <I>(Ifin: FiniteIndex<I>, fam: Family<I, VectObj>): number =>
       reduceFamily(Ifin, fam, 0, (acc, v) => acc + v.dim)
+
+  /** Vect implements finite products trait */
+  export const VectHasFiniteProducts: CategoryLimits.HasFiniteProducts<VectObj, VectMor> = {
+    product: (objs) => {
+      const dims = objs.map((o) => o.dim)
+      const total = dims.reduce((a, b) => a + b, 0)
+      const prod: VectObj = { dim: total }
+      const projections: VectMor[] = []
+      let offset = 0
+      for (const d of dims) {
+        const M = Array.from({ length: total }, () => Array(d).fill(0))
+        for (let r = 0; r < d; r++) M[offset + r]![r] = 1       // pick the block for this factor
+        projections.push({ matrix: M, from: prod, to: { dim: d } })
+        offset += d
+      }
+      return { obj: prod, projections }
+    }
+  }
+
+  /** Vect implements finite coproducts trait */
+  export const VectHasFiniteCoproducts: CategoryLimits.HasFiniteCoproducts<VectObj, VectMor> = {
+    coproduct: (objs) => {
+      const dims = objs.map((o) => o.dim)
+      const total = dims.reduce((a, b) => a + b, 0)
+      const cop: VectObj = { dim: total }
+      const injections: VectMor[] = []
+      let offset = 0
+      for (const d of dims) {
+        const M = Array.from({ length: d }, () => Array(total).fill(0))
+        for (let r = 0; r < d; r++) M[r]![offset + r] = 1       // place block for this summand
+        injections.push({ matrix: M, from: { dim: d }, to: cop })
+        offset += d
+      }
+      return { obj: cop, injections }
+    }
+  }
 }
 
 /* ================================================================
@@ -16386,36 +16456,38 @@ export namespace EnhancedVect {
 export namespace CategoryLimits {
   /** Category with finite coproducts */
   export interface HasFiniteCoproducts<O, M> {
-    zeroObj: O
     coproduct: (xs: ReadonlyArray<O>) => { obj: O; injections: ReadonlyArray<M> }
   }
 
   /** Category with finite products */
   export interface HasFiniteProducts<O, M> {
-    terminalObj: O
     product: (xs: ReadonlyArray<O>) => { obj: O; projections: ReadonlyArray<M> }
   }
 
-  /** Compute finite coproduct of a family */
+  /** Compute finite coproduct of a family with injection family */
   export const finiteCoproduct =
     <I, O, M>(
-      Ifin: IndexedFamilies.FiniteIndex<I>,
-      fam: IndexedFamilies.Family<I, O>,
+      Ifin: { carrier: ReadonlyArray<I> },
+      fam: (i: I) => O,
       C: HasFiniteCoproducts<O, M>
     ) => {
-      const objects = Ifin.carrier.map(fam)
-      return C.coproduct(objects)
+      const objs = Ifin.carrier.map((i) => fam(i))
+      const { obj, injections } = C.coproduct(objs)
+      const injFam = (i: I) => injections[Ifin.carrier.indexOf(i)]!
+      return { coproduct: obj, injections: injFam }
     }
 
-  /** Compute finite product of a family */
+  /** Compute finite product of a family with projection family */
   export const finiteProduct =
     <I, O, M>(
-      Ifin: IndexedFamilies.FiniteIndex<I>,
-      fam: IndexedFamilies.Family<I, O>,
+      Ifin: { carrier: ReadonlyArray<I> },
+      fam: (i: I) => O,
       C: HasFiniteProducts<O, M>
     ) => {
-      const objects = Ifin.carrier.map(fam)
-      return C.product(objects)
+      const objs = Ifin.carrier.map((i) => fam(i))
+      const { obj, projections } = C.product(objs)
+      const projFam = (i: I) => projections[Ifin.carrier.indexOf(i)]!
+      return { product: obj, projections: projFam }
     }
 }
 
