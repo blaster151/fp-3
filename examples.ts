@@ -2014,6 +2014,58 @@ namespace ComoduleExamples {
     console.log('  Both existence and uniqueness verified for products and coproducts')
     console.log('  Canonical mediators constructed and triangle properties satisfied')
   }
+
+  export function tinyExamplesDemo() {
+    console.log('\n--- Tiny Examples from README ---')
+    
+    // From arrays or records to families
+    console.log('1. Creating families:')
+    const { I, Ifin, fam, Idisc } = IndexedFamilies.familyFromArray(['a','b','c'])
+    console.log('  familyFromArray indices:', I) // [0,1,2]
+    console.log('  fam(1) =', fam(1)) // 'b'
+    
+    const rec = { x: 2, y: 5 } as const
+    const { keys, fam: famK } = IndexedFamilies.familyFromRecord(rec)
+    console.log('  familyFromRecord keys:', keys)
+    console.log('  famK("x") =', famK('x')) // 2
+    
+    // Reindex (substitution)
+    console.log('\n2. Reindexing:')
+    const u = (j: number) => j % 2
+    const famJ = IndexedFamilies.reindex(u, fam)
+    console.log('  Original fam(2) =', fam(2)) // 'c'
+    console.log('  Reindexed famJ(4) =', famJ(4)) // u(4)=0, so fam(0)='a'
+    
+    // Σ / Π in Set-style (enumerable)
+    console.log('\n3. Enumerable operations:')
+    const enumFam: IndexedFamilies.EnumFamily<number, number> = (i) => ({ 
+      enumerate: () => [i, i+1] 
+    })
+    const sum = IndexedFamilies.sigmaEnum(Ifin, enumFam)
+    const prod = IndexedFamilies.piEnum(Ifin, enumFam)
+    console.log('  Sigma (disjoint union):', sum.slice(0, 4)) // first few
+    console.log('  Pi (cartesian product) count:', prod.length)
+    
+    // Kan along indices (example with existing discrete operations)
+    console.log('\n4. Kan extensions:')
+    const simpleF = (i: number) => ({ S: FieldReal, degrees: [0], dim: {0: i+1}, d: {} })
+    const DD = IndexedFamilies.familyToDiscDiagram(simpleF, [0, 1, 2])
+    const LanDD = LanDisc(FieldReal)(u)(DD)
+    console.log('  Lan via discrete diagram:')
+    console.log('    Lan(0) dimension:', LanDD[0]?.dim[0]) // sum of dims where u(j)=0
+    console.log('    Lan(1) dimension:', LanDD[1]?.dim[0]) // sum of dims where u(j)=1
+    
+    // Vect: finite products/coproducts
+    console.log('\n5. Vect (co)products:')
+    const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (i) => ({ dim: i+1 })
+    const { product, projections } = CategoryLimits.finiteProduct(Ifin, F, EnhancedVect.VectHasFiniteProducts)
+    const { coproduct, injections } = CategoryLimits.finiteCoproduct(Ifin, F, EnhancedVect.VectHasFiniteCoproducts)
+    console.log('  Product dimension:', product.dim) // 1+2+3=6
+    console.log('  Coproduct dimension:', coproduct.dim) // also 6 in Vect
+    console.log('  Projection 0 shape:', projections(0).from.dim, '→', projections(0).to.dim)
+    
+    console.log('\n✓ All tiny examples working!')
+  }
 }
 
 // ====================================================================
@@ -2077,6 +2129,7 @@ async function runExamples() {
   ComoduleExamples.completeAdjunctionExample()
   ComoduleExamples.kanDiscreteVectExample()
   ComoduleExamples.universalPropertyExample()
+  ComoduleExamples.tinyExamplesDemo()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }

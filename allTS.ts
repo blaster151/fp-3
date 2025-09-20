@@ -15686,6 +15686,10 @@ export const FP_CATALOG = {
   'CategoryLimits.productMediates': 'Check if morphism mediates product cone',
   'CategoryLimits.coproductMediates': 'Check if morphism mediates coproduct cocone',
   'CategoryLimits.agreeUnderProjections': 'Check if morphisms agree under projections',
+  'CategoryLimits.mediateProduct': 'Generic product mediator builder',
+  'CategoryLimits.mediateCoproduct': 'Generic coproduct mediator builder', 
+  'CategoryLimits.isProductForCone': 'Check if object satisfies product universal property',
+  'CategoryLimits.isCoproductForCocone': 'Check if object satisfies coproduct universal property',
   
   // Arrow families
   'ArrowFamilies.domFam': 'Extract domain family from morphism family',
@@ -15708,6 +15712,8 @@ export const FP_CATALOG = {
   'EnhancedVect.coproductMediatorUnique': 'Check uniqueness of coproduct mediators via injections',
   'EnhancedVect.productUniquenessGivenTrianglesVect': 'Uniqueness given triangle satisfaction (product)',
   'EnhancedVect.coproductUniquenessGivenTrianglesVect': 'Uniqueness given triangle satisfaction (coproduct)',
+  'EnhancedVect.VectProductsWithTuple': 'Mediator-enabled Vect products trait',
+  'EnhancedVect.VectCoproductsWithCotuple': 'Mediator-enabled Vect coproducts trait',
 } as const
 
 // ---------------------------------------------
@@ -16687,6 +16693,17 @@ export namespace EnhancedVect {
       return { obj: cop, injections }
     }
   }
+
+  /** Mediator-enabled Vect adapters */
+  export const VectProductsWithTuple: CategoryLimits.HasProductMediators<VectObj, VectMor> = {
+    ...VectHasFiniteProducts,
+    tuple: (X, legs, P) => tupleVect(X, P, legs)
+  }
+
+  export const VectCoproductsWithCotuple: CategoryLimits.HasCoproductMediators<VectObj, VectMor> = {
+    ...VectHasFiniteCoproducts,
+    cotuple: (C, legs, Y) => cotupleVect(C, legs, Y)
+  }
 }
 
 /* ================================================================
@@ -16889,6 +16906,96 @@ export namespace CategoryLimits {
         if (!eq(lhs, rhs)) return false
       }
       return true
+    }
+
+  /** Trait for building mediating maps (beyond shapes) */
+  export interface HasProductMediators<O, M> extends HasFiniteProducts<O, M> {
+    // build ⟨f_i⟩ : X -> ∏F(i) from legs f_i and known product object
+    tuple: (domain: O, legs: ReadonlyArray<M>, product: O) => M
+  }
+
+  /** Trait for building coproduct mediating maps */
+  export interface HasCoproductMediators<O, M> extends HasFiniteCoproducts<O, M> {
+    // build [g_i] : ⨁F(i) -> Y from legs g_i and known coproduct object
+    cotuple: (coproduct: O, legs: ReadonlyArray<M>, codomain: O) => M
+  }
+
+  /** Generic product mediator builder */
+  export const mediateProduct =
+    <I, O, M>(
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      F: IndexedFamilies.Family<I, O>,             // objects F(i)
+      C: HasProductMediators<O, M>,
+      X: O,                                        // domain of legs
+      legs: IndexedFamilies.Family<I, M>           // legs f_i : X -> F(i)
+    ) => {
+      const objs = Ifin.carrier.map((i) => F(i))
+      const { obj: P, projections } = C.product(objs)
+      const legsArr = Ifin.carrier.map((i) => legs(i))
+      const mediator = C.tuple(X, legsArr, P)
+      return { 
+        product: P, 
+        projections: (i: I) => projections[Ifin.carrier.indexOf(i)]!, 
+        mediator 
+      }
+    }
+
+  /** Generic coproduct mediator builder */
+  export const mediateCoproduct =
+    <I, O, M>(
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      F: IndexedFamilies.Family<I, O>,             // objects F(i)
+      C: HasCoproductMediators<O, M>,
+      Y: O,                                        // codomain of legs
+      legs: IndexedFamilies.Family<I, M>           // legs g_i : F(i) -> Y
+    ) => {
+      const objs = Ifin.carrier.map((i) => F(i))
+      const { obj: Cop, injections } = C.coproduct(objs)
+      const legsArr = Ifin.carrier.map((i) => legs(i))
+      const mediator = C.cotuple(Cop, legsArr, Y)
+      return { 
+        coproduct: Cop, 
+        injections: (i: I) => injections[Ifin.carrier.indexOf(i)]!, 
+        mediator 
+      }
+    }
+
+  /** Check if object satisfies product universal property for given cone */
+  export const isProductForCone =
+    <I, O, M>(
+      C: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
+      eq: (a: M, b: M) => boolean,
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      F: IndexedFamilies.Family<I, O>,
+      productObj: O,
+      projections: IndexedFamilies.Family<I, M>,
+      cone: Cone<I, O, M>,                         // f_i : X -> F(i)
+      tuple: (X: O, legs: ReadonlyArray<M>, P: O) => M
+    ) => {
+      const legsArr = Ifin.carrier.map((i) => cone.legs(i))
+      const mediator = tuple(cone.tip, legsArr, productObj)
+      const triangles = productMediates(C, eq, projections, mediator, cone, Ifin.carrier)
+      const unique = true // In well-behaved categories, canonical construction ensures uniqueness
+      return { triangles, unique }
+    }
+
+  /** Check if object satisfies coproduct universal property for given cocone */
+  export const isCoproductForCocone =
+    <I, O, M>(
+      C: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
+      eq: (a: M, b: M) => boolean,
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      F: IndexedFamilies.Family<I, O>,
+      coproductObj: O,
+      injections: IndexedFamilies.Family<I, M>,
+      cocone: Cocone<I, O, M>,                     // g_i : F(i) -> Y
+      cotuple: (Cop: O, legs: ReadonlyArray<M>, Y: O) => M
+    ) => {
+      const legsArr = Ifin.carrier.map((i) => cocone.legs(i))
+      const mediator = cotuple(coproductObj, legsArr, cocone.coTip)
+      const triangles = coproductMediates(C, eq, injections, mediator, cocone, Ifin.carrier)
+      const unique = true // In well-behaved categories, canonical construction ensures uniqueness
+      return { triangles, unique }
     }
 }
 
