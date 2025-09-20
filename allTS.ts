@@ -15674,6 +15674,8 @@ export const FP_CATALOG = {
   // Category limits
   'CategoryLimits.finiteCoproduct': 'Compute finite coproduct of family',
   'CategoryLimits.finiteProduct': 'Compute finite product of family',
+  'CategoryLimits.lanDiscretePre': 'Left Kan extension along discrete index map (generic)',
+  'CategoryLimits.ranDiscretePre': 'Right Kan extension along discrete index map (generic)',
   
   // Arrow families
   'ArrowFamilies.domFam': 'Extract domain family from morphism family',
@@ -16488,6 +16490,92 @@ export namespace CategoryLimits {
       const { obj, projections } = C.product(objs)
       const projFam = (i: I) => projections[Ifin.carrier.indexOf(i)]!
       return { product: obj, projections: projFam }
+    }
+
+  /** Helper: list fiber objects and remember which j they came from */
+  const fiberObjs =
+    <J, I, O>(
+      Jfin: IndexedFamilies.FiniteIndex<J>,
+      u: (j: J) => I,
+      i: I,
+      F: IndexedFamilies.Family<J, O>
+    ): ReadonlyArray<{ j: J; obj: O }> => {
+      const js = Jfin.carrier.filter((j) => u(j) === i)
+      return js.map((j) => ({ j, obj: F(j) }))
+    }
+
+  /** LEFT KAN: Lan_u F at i is coproduct over fiber u^{-1}(i) */
+  export const lanDiscretePre =
+    <J, I, O, M>(
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      Jfin: IndexedFamilies.FiniteIndex<J>,
+      u: (j: J) => I,
+      F: IndexedFamilies.Family<J, O>,
+      C: HasFiniteCoproducts<O, M>
+    ) => {
+      // Precompute for each i
+      const cacheObj = new Map<I, O>()
+      const cacheInj = new Map<I, ReadonlyArray<readonly [J, M]>>()
+
+      for (const i of Ifin.carrier) {
+        const items = fiberObjs(Jfin, u, i, F)
+        const { obj, injections } = C.coproduct(items.map((x) => x.obj))
+        cacheObj.set(i, obj)
+        cacheInj.set(i, injections.map((m, k) => [items[k]!.j, m] as const))
+      }
+
+      return {
+        at: (i: I) => {
+          const o = cacheObj.get(i)
+          if (o === undefined) {
+            // On-demand fallback for i not in Ifin
+            const items = fiberObjs(Jfin, u, i, F)
+            return C.coproduct(items.map((x) => x.obj)).obj
+          }
+          return o
+        },
+        injections: (i: I) => cacheInj.get(i) ?? (() => {
+          const items = fiberObjs(Jfin, u, i, F)
+          const { injections } = C.coproduct(items.map((x) => x.obj))
+          return injections.map((m, k) => [items[k]!.j, m] as const)
+        })()
+      }
+    }
+
+  /** RIGHT KAN: Ran_u F at i is product over fiber u^{-1}(i) */
+  export const ranDiscretePre =
+    <J, I, O, M>(
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      Jfin: IndexedFamilies.FiniteIndex<J>,
+      u: (j: J) => I,
+      F: IndexedFamilies.Family<J, O>,
+      C: HasFiniteProducts<O, M>
+    ) => {
+      const cacheObj = new Map<I, O>()
+      const cacheProj = new Map<I, ReadonlyArray<readonly [J, M]>>()
+
+      for (const i of Ifin.carrier) {
+        const items = fiberObjs(Jfin, u, i, F)
+        const { obj, projections } = C.product(items.map((x) => x.obj))
+        cacheObj.set(i, obj)
+        cacheProj.set(i, projections.map((m, k) => [items[k]!.j, m] as const))
+      }
+
+      return {
+        at: (i: I) => {
+          const o = cacheObj.get(i)
+          if (o === undefined) {
+            const items = fiberObjs(Jfin, u, i, F)
+            return C.product(items.map((x) => x.obj)).obj
+          }
+          return o
+        },
+        projections: (i: I) => cacheProj.get(i) ?? (() => {
+          const items = fiberObjs(Jfin, u, i, F)
+          const { projections } = C.product(items.map((x) => x.obj))
+          return projections.map((m, k) => [items[k]!.j, m] as const)
+        })()
+      }
     }
 }
 

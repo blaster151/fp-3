@@ -1828,6 +1828,50 @@ namespace ComoduleExamples {
     
     console.log('✓ Arrow category working!')
   }
+
+  export function kanDiscreteVectExample() {
+    console.log('\n--- Kan Extensions in Vect (Discrete Indices) ---')
+    
+    // Example: Kan in Vect over u:J→I (finite)
+    const Icar = [0, 1] as const
+    const Jcar = [0, 1, 2, 3] as const
+    const Ifin = { carrier: Icar as readonly number[] }
+    const Jfin = { carrier: Jcar as readonly number[] }
+    const u = (j: number) => j % 2
+
+    // family of Vect objects over J
+    const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (j) => ({ dim: j + 1 })
+
+    console.log('Setup:')
+    console.log('  J indices:', Jcar)
+    console.log('  I indices:', Icar)
+    console.log('  u maps j to j%2')
+    console.log('  F(j) has dimension j+1')
+    console.log('  Fibers: i=0 gets {0,2} with dims [1,3], i=1 gets {1,3} with dims [2,4]')
+
+    // LEFT KAN (coproducts over fibers)
+    const Lan = CategoryLimits.lanDiscretePre(Ifin, Jfin, u, F, EnhancedVect.VectHasFiniteCoproducts)
+    
+    console.log('\nLeft Kan (coproducts):')
+    console.log('  Lan(0) dimension:', Lan.at(0).dim) // should be 1+3=4
+    console.log('  Lan(1) dimension:', Lan.at(1).dim) // should be 2+4=6
+    console.log('  Lan(0) injections count:', Lan.injections(0).length) // should be 2
+    console.log('  Lan(1) injections count:', Lan.injections(1).length) // should be 2
+
+    // RIGHT KAN (products over fibers)
+    const Ran = CategoryLimits.ranDiscretePre(Ifin, Jfin, u, F, EnhancedVect.VectHasFiniteProducts)
+    
+    console.log('\nRight Kan (products):')
+    console.log('  Ran(0) dimension:', Ran.at(0).dim) // also 4 in Vect (direct sum)
+    console.log('  Ran(1) dimension:', Ran.at(1).dim) // also 6 in Vect (direct sum)
+    console.log('  Ran(0) projections count:', Ran.projections(0).length) // should be 2
+    console.log('  Ran(1) projections count:', Ran.projections(1).length) // should be 2
+
+    console.log('\nNote: In Vect, both products and coproducts are direct sums')
+    console.log('  So Lan and Ran have same dimensions but different universal properties')
+
+    console.log('✓ Kan extensions in Vect working!')
+  }
 }
 
 // ====================================================================
@@ -1888,6 +1932,7 @@ async function runExamples() {
   ComoduleExamples.enhancedIndexedFamiliesExample()
   ComoduleExamples.categoryLimitsExample()
   ComoduleExamples.arrowCategoryExample()
+  ComoduleExamples.kanDiscreteVectExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }

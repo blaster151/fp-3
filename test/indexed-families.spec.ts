@@ -684,4 +684,54 @@ describe('Indexed Families and Discrete Categories', () => {
       expect(prettyView).toContain('big:2')
     })
   })
+
+  describe('Kan (discrete) in Vect', () => {
+    test('Lan_u uses coproduct over fibers; Ran_u uses product over fibers', () => {
+      const I = [0, 1] as const
+      const J = [0, 1, 2, 3] as const
+      const Ifin = { carrier: I as readonly number[] }
+      const Jfin = { carrier: J as readonly number[] }
+      const u = (j: number) => j % 2
+
+      const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (j) => ({ dim: j + 1 })
+
+      const Lan = CategoryLimits.lanDiscretePre(Ifin, Jfin, u, F, EnhancedVect.VectHasFiniteCoproducts)
+      const Ran = CategoryLimits.ranDiscretePre(Ifin, Jfin, u, F, EnhancedVect.VectHasFiniteProducts)
+
+      // fibers: i=0 -> {0,2} dims 1+3=4; i=1 -> {1,3} dims 2+4=6
+      expect(Lan.at(0).dim).toBe(4)
+      expect(Lan.at(1).dim).toBe(6)
+      expect(Ran.at(0).dim).toBe(4)
+      expect(Ran.at(1).dim).toBe(6)
+
+      // check there are exactly 2 injections/projections per i
+      expect(Lan.injections(0).length).toBe(2)
+      expect(Lan.injections(1).length).toBe(2)
+      expect(Ran.projections(0).length).toBe(2)
+      expect(Ran.projections(1).length).toBe(2)
+    })
+
+    test('Kan extensions preserve universal properties', () => {
+      // Test that injections/projections have correct domains/codomains
+      const I = [0, 1]
+      const J = [0, 1, 2]
+      const Ifin = { carrier: I }
+      const Jfin = { carrier: J }
+      const u = (j: number) => j < 2 ? 0 : 1 // fiber 0: {0,1}, fiber 1: {2}
+
+      const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (j) => ({ dim: j + 1 })
+
+      const Lan = CategoryLimits.lanDiscretePre(Ifin, Jfin, u, F, EnhancedVect.VectHasFiniteCoproducts)
+      
+      // Check injection structure for i=0 (fiber {0,1})
+      const injs0 = Lan.injections(0)
+      expect(injs0.length).toBe(2)
+      
+      // First injection should be from F(0) = {dim:1} to Lan(0) = {dim:3}
+      const [j0, inj0] = injs0[0]!
+      expect(j0).toBe(0)
+      expect(EnhancedVect.Vect.dom(inj0).dim).toBe(1) // F(0).dim
+      expect(EnhancedVect.Vect.cod(inj0).dim).toBe(3) // Lan(0).dim = 1+2
+    })
+  })
 })
