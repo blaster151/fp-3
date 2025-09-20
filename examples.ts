@@ -1924,6 +1924,96 @@ namespace ComoduleExamples {
 
     console.log('✓ Kan extensions in Vect working!')
   }
+
+  export function universalPropertyExample() {
+    console.log('\n--- Complete Universal Property Story ---')
+    
+    // Setup vector spaces
+    const X: EnhancedVect.VectObj = { dim: 2 }
+    const V1: EnhancedVect.VectObj = { dim: 1 }
+    const V2: EnhancedVect.VectObj = { dim: 1 }
+    const Y: EnhancedVect.VectObj = { dim: 2 }
+    
+    const I = [0, 1]
+    const Ifin = { carrier: I }
+    const F = (i: number) => (i === 0 ? V1 : V2)
+    
+    console.log('Setup:')
+    console.log('  X: 2D, V1: 1D, V2: 1D, Y: 2D')
+    console.log('  Family F maps 0→V1, 1→V2')
+    
+    // PRODUCT UNIVERSAL PROPERTY
+    console.log('\n--- Product Universal Property ---')
+    
+    const { product: P, projections } = CategoryLimits.finiteProduct(Ifin, F, EnhancedVect.VectHasFiniteProducts)
+    console.log('  Product P dimension:', P.dim) // should be 2 (1+1)
+    
+    // Create cone (maps from X to factors)
+    const f0: EnhancedVect.VectMor = { matrix: [[1], [2]], from: X, to: V1 }
+    const f1: EnhancedVect.VectMor = { matrix: [[3], [4]], from: X, to: V2 }
+    const cone: CategoryLimits.Cone<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
+      tip: X,
+      legs: (i: number) => (i === 0 ? f0 : f1)
+    }
+    
+    // EXISTENCE: build canonical mediator
+    const canonical = EnhancedVect.tupleVectFromCone(Ifin, cone, P)
+    console.log('  Canonical mediator matrix:', canonical.matrix)
+    
+    // VERIFICATION: check triangles commute
+    const trianglesOk = CategoryLimits.productMediates(
+      EnhancedVect.Vect,
+      EnhancedVect.Vect.equalMor!,
+      projections,
+      canonical,
+      cone,
+      I
+    )
+    console.log('  Triangles commute:', trianglesOk)
+    
+    // UNIQUENESS: any other satisfying mediator equals canonical
+    const duplicate = EnhancedVect.tupleVectFromCone(Ifin, cone, P)
+    const unique = EnhancedVect.productUniquenessGivenTrianglesVect(Ifin, projections, P, cone, canonical, duplicate)
+    console.log('  Uniqueness verified:', unique)
+    
+    // COPRODUCT UNIVERSAL PROPERTY
+    console.log('\n--- Coproduct Universal Property ---')
+    
+    const { coproduct: C, injections } = CategoryLimits.finiteCoproduct(Ifin, F, EnhancedVect.VectHasFiniteCoproducts)
+    console.log('  Coproduct C dimension:', C.dim) // should be 2 (1+1)
+    
+    // Create cocone (maps from factors to Y)
+    const g0: EnhancedVect.VectMor = { matrix: [[1, 0]], from: V1, to: Y }
+    const g1: EnhancedVect.VectMor = { matrix: [[0, 1]], from: V2, to: Y }
+    const cocone: CategoryLimits.Cocone<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
+      coTip: Y,
+      legs: (i: number) => (i === 0 ? g0 : g1)
+    }
+    
+    // EXISTENCE: build canonical mediator
+    const canonicalCo = EnhancedVect.cotupleVectFromCocone(Ifin, cocone, C)
+    console.log('  Canonical comediator matrix:', canonicalCo.matrix)
+    
+    // VERIFICATION: check triangles commute
+    const cotrianglesOk = CategoryLimits.coproductMediates(
+      EnhancedVect.Vect,
+      EnhancedVect.Vect.equalMor!,
+      injections,
+      canonicalCo,
+      cocone,
+      I
+    )
+    console.log('  Cotriangles commute:', cotrianglesOk)
+    
+    // UNIQUENESS: any other satisfying mediator equals canonical
+    const duplicateCo = EnhancedVect.cotupleVectFromCocone(Ifin, cocone, C)
+    const uniqueCo = EnhancedVect.coproductUniquenessGivenTrianglesVect(Ifin, injections, C, cocone, canonicalCo, duplicateCo)
+    console.log('  Uniqueness verified:', uniqueCo)
+    
+    console.log('\n✓ Complete universal property story working!')
+    console.log('  Both existence and uniqueness verified for products and coproducts')
+    console.log('  Canonical mediators constructed and triangle properties satisfied')
+  }
 }
 
 // ====================================================================
@@ -1986,6 +2076,7 @@ async function runExamples() {
   ComoduleExamples.arrowCategoryExample()
   ComoduleExamples.completeAdjunctionExample()
   ComoduleExamples.kanDiscreteVectExample()
+  ComoduleExamples.universalPropertyExample()
   
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }

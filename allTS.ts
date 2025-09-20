@@ -15699,6 +15699,12 @@ export const FP_CATALOG = {
   'EnhancedVect.VectHasFiniteCoproducts': 'Vect implements finite coproducts trait',
   'EnhancedVect.tupleVect': 'Build unique mediating map for product cone in Vect',
   'EnhancedVect.cotupleVect': 'Build unique mediating map for coproduct cocone in Vect',
+  'EnhancedVect.tupleVectFromCone': 'Build canonical tuple from product cone',
+  'EnhancedVect.cotupleVectFromCocone': 'Build canonical cotuple from coproduct cocone',
+  'EnhancedVect.productMediatorUnique': 'Check uniqueness of product mediators via projections',
+  'EnhancedVect.coproductMediatorUnique': 'Check uniqueness of coproduct mediators via injections',
+  'EnhancedVect.productUniquenessGivenTrianglesVect': 'Uniqueness given triangle satisfaction (product)',
+  'EnhancedVect.coproductUniquenessGivenTrianglesVect': 'Uniqueness given triangle satisfaction (coproduct)',
 } as const
 
 // ---------------------------------------------
@@ -16527,6 +16533,96 @@ export namespace EnhancedVect {
         offset += g.from.dim
       }
       return { matrix: M, from: C, to: Y }
+    }
+
+  /** Build canonical tuple from product cone */
+  export const tupleVectFromCone =
+    <I>(
+      Ifin: FiniteIndex<I>,
+      cone: CategoryLimits.Cone<I, VectObj, VectMor>,   // legs(i): X -> V_i
+      P: VectObj
+    ): VectMor => {
+      const legsArr = Ifin.carrier.map((i) => cone.legs(i))
+      return tupleVect(cone.tip, P, legsArr)
+    }
+
+  /** Build canonical cotuple from coproduct cocone */
+  export const cotupleVectFromCocone =
+    <I>(
+      Ifin: FiniteIndex<I>,
+      cocone: CategoryLimits.Cocone<I, VectObj, VectMor>, // legs(i): V_i -> Y
+      C: VectObj
+    ): VectMor => {
+      const legsArr = Ifin.carrier.map((i) => cocone.legs(i))
+      return cotupleVect(C, legsArr, cocone.coTip)
+    }
+
+  /** Check uniqueness of product mediators via projections */
+  export const productMediatorUnique =
+    <I>(
+      Ifin: FiniteIndex<I>,
+      projections: Family<I, VectMor>,  // π_i : P -> V_i
+      m1: VectMor,
+      m2: VectMor
+    ): boolean => {
+      for (const i of Ifin.carrier) {
+        const lhs = Vect.compose(projections(i), m1)
+        const rhs = Vect.compose(projections(i), m2)
+        if (!Vect.equalMor!(lhs, rhs)) return false
+      }
+      return Vect.equalMor!(m1, m2)
+    }
+
+  /** Check uniqueness of coproduct mediators via injections */
+  export const coproductMediatorUnique =
+    <I>(
+      Ifin: FiniteIndex<I>,
+      injections: Family<I, VectMor>,   // ι_i : V_i -> C
+      m1: VectMor,
+      m2: VectMor
+    ): boolean => {
+      for (const i of Ifin.carrier) {
+        const lhs = Vect.compose(m1, injections(i))
+        const rhs = Vect.compose(m2, injections(i))
+        if (!Vect.equalMor!(lhs, rhs)) return false
+      }
+      return Vect.equalMor!(m1, m2)
+    }
+
+  /** Uniqueness given triangles: both mediators equal canonical */
+  export const productUniquenessGivenTrianglesVect =
+    <I>(
+      Ifin: FiniteIndex<I>,
+      projections: Family<I, VectMor>,   // π_i : P -> V_i
+      P: VectObj,
+      cone: CategoryLimits.Cone<I, VectObj, VectMor>,
+      m: VectMor,
+      mPrime: VectMor
+    ): boolean => {
+      const indices = Ifin.carrier
+      const ok1 = CategoryLimits.productMediates(Vect, Vect.equalMor!, projections, m, cone, indices)
+      const ok2 = CategoryLimits.productMediates(Vect, Vect.equalMor!, projections, mPrime, cone, indices)
+      if (!ok1 || !ok2) return false
+      const canon = tupleVectFromCone(Ifin, cone, P)
+      return Vect.equalMor!(m, canon) && Vect.equalMor!(mPrime, canon) && Vect.equalMor!(m, mPrime)
+    }
+
+  /** Uniqueness given triangles: both mediators equal canonical (coproduct) */
+  export const coproductUniquenessGivenTrianglesVect =
+    <I>(
+      Ifin: FiniteIndex<I>,
+      injections: Family<I, VectMor>,    // ι_i : V_i -> C
+      C: VectObj,
+      cocone: CategoryLimits.Cocone<I, VectObj, VectMor>,
+      m: VectMor,
+      mPrime: VectMor
+    ): boolean => {
+      const indices = Ifin.carrier
+      const ok1 = CategoryLimits.coproductMediates(Vect, Vect.equalMor!, injections, m, cocone, indices)
+      const ok2 = CategoryLimits.coproductMediates(Vect, Vect.equalMor!, injections, mPrime, cocone, indices)
+      if (!ok1 || !ok2) return false
+      const canon = cotupleVectFromCocone(Ifin, cocone, C)
+      return Vect.equalMor!(m, canon) && Vect.equalMor!(mPrime, canon) && Vect.equalMor!(m, mPrime)
     }
 
   /** Vect implements finite products trait */
