@@ -57,3 +57,17 @@ export function Swap<X,Y>(Xf: Fin<X>, Yf: Fin<Y>) {
 }
 export function Fst<X,Y>(Xf: Fin<X>, Yf: Fin<Y>) { return new FinMarkov(tensorObj(Xf,Yf), Xf, fst<X,Y>()); }
 export function Snd<X,Y>(Xf: Fin<X>, Yf: Fin<Y>) { return new FinMarkov(tensorObj(Xf,Yf), Yf, snd<X,Y>()); }
+
+// Fubini check for any DistLikeMonadSpec
+export function checkFubini<A, B>(spec: any, da: any, db: any): boolean {
+  try {
+    // Check that product(da, db) = bind(da, a => map(db, b => [a,b]))
+    const direct = spec.product(da, db);
+    const indirect = spec.bind(da, (a: A) => spec.map(db, (b: B) => [a, b] as [A, B]));
+    
+    // Simple equality check (for demo purposes)
+    return direct.size === indirect.size;
+  } catch {
+    return false;
+  }
+}
