@@ -268,6 +268,62 @@ describe('Indexed Families and Discrete Categories', () => {
   })
 
   // Property tests for categorical laws (inspired by LAWS.md)
+  describe('Reindexing Functoriality Laws', () => {
+    it('reindex(id) = id (identity law)', () => {
+      const family = (i: string) => i.length
+      const id = (x: string) => x
+      
+      const reindexed = IndexedFamilies.reindex(id, family)
+      
+      // Test on several inputs
+      const testInputs = ['a', 'bb', 'ccc']
+      for (const input of testInputs) {
+        expect(reindexed(input)).toBe(family(input))
+      }
+    })
+
+    it('reindex(v∘u) = reindex(u)∘reindex(v) (composition law)', () => {
+      const family = (i: number) => i * i
+      const u = (j: string) => j.length
+      const v = (k: boolean) => k ? 1 : 0
+      
+      // Left side: reindex(v∘u)
+      const vu = (k: boolean) => u(v(k) === 1 ? 'x' : '')
+      const leftSide = IndexedFamilies.reindex(vu, family)
+      
+      // Right side: reindex(u)∘reindex(v)  
+      const reindexV = IndexedFamilies.reindex(v, (n: number) => n)
+      const reindexU = IndexedFamilies.reindex(u, family)
+      const rightSide = IndexedFamilies.reindex((k: boolean) => v(k), reindexU)
+      
+      // Test equivalence
+      expect(leftSide(true)).toBe(rightSide(true))
+      expect(leftSide(false)).toBe(rightSide(false))
+    })
+
+    it('dependent sum/product adjunction properties', () => {
+      // Test Σ and Π operations
+      const family = (i: string) => i.length
+      const idx = IndexedFamilies.finiteIndex(['a', 'bb', 'ccc'])
+      
+      // Dependent sum
+      const sumResult = IndexedFamilies.sigma(idx, family)
+      expect(sumResult).toEqual([
+        { i: 'a', x: 1 },
+        { i: 'bb', x: 2 },
+        { i: 'ccc', x: 3 }
+      ])
+      
+      // Dependent product  
+      const prodResult = IndexedFamilies.pi(['a', 'bb', 'ccc'] as const, family)
+      expect(prodResult).toEqual({ a: 1, bb: 2, ccc: 3 })
+      
+      // Round-trip property: sigmaFromRecord ∘ pi ≈ sigma
+      const fromRecord = IndexedFamilies.sigmaFromRecord(prodResult)
+      expect(fromRecord.length).toBe(sumResult.length)
+    })
+  })
+
   describe('Categorical Laws (Property Tests)', () => {
     it('discrete category satisfies identity laws', () => {
       const disc = DiscreteCategory.create(['X', 'Y', 'Z'])

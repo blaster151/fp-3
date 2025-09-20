@@ -15654,10 +15654,23 @@ export const FP_CATALOG = {
   'IndexedFamilies.reduceFamily': 'Reduce over family values',
   'IndexedFamilies.familyLanDisc': 'Left Kan extension on families via discrete diagrams',
   'IndexedFamilies.reindexFamily': 'Reindex family along function',
+  'IndexedFamilies.reindex': 'General reindexing for any family type',
+  'IndexedFamilies.sigma': 'Dependent sum (Σ): disjoint union of fibers',
+  'IndexedFamilies.pi': 'Dependent product (Π): choice functions',
+  'IndexedFamilies.sigmaFromRecord': 'Extract tagged union from record',
   
   // Discrete categories
   'DiscreteCategory.create': 'Create discrete category from objects',
   'DiscreteCategory.familyAsFunctor': 'View family as functor from discrete category',
+  
+  // Category limits
+  'CategoryLimits.finiteCoproduct': 'Compute finite coproduct of family',
+  'CategoryLimits.finiteProduct': 'Compute finite product of family',
+  
+  // Arrow families
+  'ArrowFamilies.domFam': 'Extract domain family from morphism family',
+  'ArrowFamilies.codFam': 'Extract codomain family from morphism family',
+  'ArrowFamilies.composeFam': 'Pointwise composition of morphism families',
 } as const
 
 // ---------------------------------------------
@@ -16065,6 +16078,51 @@ export namespace IndexedFamilies {
     <I extends string, J extends string, R>(u: (j: J) => I) =>
     (fam: Family<I, Complex<R>>): Family<J, Complex<R>> =>
       (j: J) => fam(u(j))
+
+  /** General reindexing for any family type (not just Complex<R>) */
+  export const reindex =
+    <J, I, X>(u: (j: J) => I, fam: Family<I, X>): Family<J, X> =>
+      (j: J) => fam(u(j))
+
+  // Laws: reindex(id) = id; reindex(v∘u) = reindex(u)∘reindex(v)
+
+  /** Dependent sum (Σ): disjoint union of all fibers */
+  export const sigma =
+    <I, X>(Ifin: FiniteIndex<I>, fam: Family<I, X>): ReadonlyArray<{ i: I; x: X }> => {
+      const result: { i: I; x: X }[] = []
+      for (const i of Ifin.carrier) {
+        result.push({ i, x: fam(i) })
+      }
+      return result
+    }
+
+  /** Dependent product (Π): choice functions (for finite literal types) */
+  export type Pi<R extends Record<PropertyKey, unknown>> = { [K in keyof R]: R[K] }
+
+  /** Build dependent product from family over finite literal index */
+  export const pi =
+    <I extends PropertyKey, X>(
+      indices: ReadonlyArray<I>, 
+      fam: Family<I, X>
+    ): Record<I, X> => {
+      const result = {} as Record<I, X>
+      for (const i of indices) {
+        result[i] = fam(i)
+      }
+      return result
+    }
+
+  /** Extract dependent sum as tagged union */
+  export const sigmaFromRecord =
+    <R extends Record<PropertyKey, unknown>>(
+      record: R
+    ): ReadonlyArray<{ i: keyof R; x: R[keyof R] }> => {
+      const result: { i: keyof R; x: R[keyof R] }[] = []
+      for (const [key, value] of Object.entries(record)) {
+        result.push({ i: key as keyof R, x: value as R[keyof R] })
+      }
+      return result
+    }
 }
 
 /* ================================================================
@@ -16107,6 +16165,77 @@ export namespace DiscreteCategory {
         return idChainMapCompat(X, FieldReal) // identity on the complex
       }
     })
+}
+
+/* ================================================================
+   General (co)limit interfaces for categories
+   ================================================================ */
+
+export namespace CategoryLimits {
+  /** Category with finite coproducts */
+  export interface HasFiniteCoproducts<O, M> {
+    zeroObj: O
+    coproduct: (xs: ReadonlyArray<O>) => { obj: O; injections: ReadonlyArray<M> }
+  }
+
+  /** Category with finite products */
+  export interface HasFiniteProducts<O, M> {
+    terminalObj: O
+    product: (xs: ReadonlyArray<O>) => { obj: O; projections: ReadonlyArray<M> }
+  }
+
+  /** Compute finite coproduct of a family */
+  export const finiteCoproduct =
+    <I, O, M>(
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      fam: IndexedFamilies.Family<I, O>,
+      C: HasFiniteCoproducts<O, M>
+    ) => {
+      const objects = Ifin.carrier.map(fam)
+      return C.coproduct(objects)
+    }
+
+  /** Compute finite product of a family */
+  export const finiteProduct =
+    <I, O, M>(
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      fam: IndexedFamilies.Family<I, O>,
+      C: HasFiniteProducts<O, M>
+    ) => {
+      const objects = Ifin.carrier.map(fam)
+      return C.product(objects)
+    }
+}
+
+/* ================================================================
+   Arrow category operations for families of morphisms
+   ================================================================ */
+
+export namespace ArrowFamilies {
+  /** Category with domain/codomain operations */
+  export interface HasDomCod<O, M> {
+    dom: (f: M) => O
+    cod: (f: M) => O
+  }
+
+  /** Extract domain family from family of morphisms */
+  export const domFam =
+    <I, O, M>(C: HasDomCod<O, M>, G: IndexedFamilies.Family<I, { f: M }>): IndexedFamilies.Family<I, O> =>
+      (i: I) => C.dom(G(i).f)
+
+  /** Extract codomain family from family of morphisms */
+  export const codFam =
+    <I, O, M>(C: HasDomCod<O, M>, G: IndexedFamilies.Family<I, { f: M }>): IndexedFamilies.Family<I, O> =>
+      (i: I) => C.cod(G(i).f)
+
+  /** Pointwise composition of morphism families (when types align) */
+  export const composeFam =
+    <I, M>(
+      compose: (g: M, f: M) => M,
+      H: IndexedFamilies.Family<I, { f: M }>,
+      G: IndexedFamilies.Family<I, { f: M }>
+    ): IndexedFamilies.Family<I, { f: M }> =>
+      (i: I) => ({ f: compose(H(i).f, G(i).f) })
 }
 
 // Namespaced exports for discoverability
