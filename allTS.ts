@@ -16353,6 +16353,14 @@ export namespace IndexedFamilies {
    DiscreteCategory — when you need explicit categorical structure
    ================================================================ */
 
+/** Lightweight Category interface */
+export interface Category<O, M> {
+  id: (a: O) => M
+  compose: (g: M, f: M) => M
+  isId?: (m: M) => boolean
+  equalMor?: (x: M, y: M) => boolean
+}
+
 export namespace DiscreteCategory {
   /** Morphism in discrete category (only identities exist) */
   export type DiscreteMor<I> = { readonly tag: "Id"; readonly obj: I }
@@ -16469,12 +16477,12 @@ export namespace EnhancedVect {
 
   /** Finite product in Vect */
   export const finiteProductVect =
-    <I>(Ifin: FiniteIndex<I>, fam: Family<I, VectObj>) => {
+    <I>(Ifin: IndexedFamilies.FiniteIndex<I>, fam: IndexedFamilies.Family<I, VectObj>) => {
       const dims = Ifin.carrier.map((i) => fam(i).dim)
       const total = dims.reduce((a, b) => a + b, 0)
       const product: VectObj = { dim: total }
       
-      const projections: Family<I, VectMor> = (i) => {
+      const projections: IndexedFamilies.Family<I, VectMor> = (i) => {
         const leftDims = Ifin.carrier.slice(0, Ifin.carrier.indexOf(i)).reduce((a, j) => a + fam(j).dim, 0)
         const kDim = fam(i).dim
         const M = Array.from({ length: kDim }, () => Array(total).fill(0))
@@ -16487,12 +16495,12 @@ export namespace EnhancedVect {
 
   /** Finite coproduct in Vect */
   export const finiteCoproductVect =
-    <I>(Ifin: FiniteIndex<I>, fam: Family<I, VectObj>) => {
+    <I>(Ifin: IndexedFamilies.FiniteIndex<I>, fam: IndexedFamilies.Family<I, VectObj>) => {
       const dims = Ifin.carrier.map((i) => fam(i).dim)
       const total = dims.reduce((a, b) => a + b, 0)
       const coproduct: VectObj = { dim: total }
       
-      const injections: Family<I, VectMor> = (i) => {
+      const injections: IndexedFamilies.Family<I, VectMor> = (i) => {
         const leftDims = Ifin.carrier.slice(0, Ifin.carrier.indexOf(i)).reduce((a, j) => a + fam(j).dim, 0)
         const kDim = fam(i).dim
         const M = Array.from({ length: total }, () => Array(kDim).fill(0))
@@ -16505,8 +16513,8 @@ export namespace EnhancedVect {
 
   /** Sum of dimensions */
   export const directSumDims =
-    <I>(Ifin: FiniteIndex<I>, fam: Family<I, VectObj>): number =>
-      reduceFamily(Ifin, fam, 0, (acc, v) => acc + v.dim)
+    <I>(Ifin: IndexedFamilies.FiniteIndex<I>, fam: IndexedFamilies.Family<I, VectObj>): number =>
+      IndexedFamilies.reduceFamily(Ifin, fam, 0, (acc, v) => acc + v.dim)
 
   /**
    * tupleVect: given maps f_i : X -> V_i and a product object P = ⨉_i V_i,
@@ -16571,7 +16579,7 @@ export namespace EnhancedVect {
   /** Build canonical tuple from product cone */
   export const tupleVectFromCone =
     <I>(
-      Ifin: FiniteIndex<I>,
+      Ifin: IndexedFamilies.FiniteIndex<I>,
       cone: CategoryLimits.Cone<I, VectObj, VectMor>,   // legs(i): X -> V_i
       P: VectObj
     ): VectMor => {
@@ -16582,7 +16590,7 @@ export namespace EnhancedVect {
   /** Build canonical cotuple from coproduct cocone */
   export const cotupleVectFromCocone =
     <I>(
-      Ifin: FiniteIndex<I>,
+      Ifin: IndexedFamilies.FiniteIndex<I>,
       cocone: CategoryLimits.Cocone<I, VectObj, VectMor>, // legs(i): V_i -> Y
       C: VectObj
     ): VectMor => {
@@ -16593,8 +16601,8 @@ export namespace EnhancedVect {
   /** Check uniqueness of product mediators via projections */
   export const productMediatorUnique =
     <I>(
-      Ifin: FiniteIndex<I>,
-      projections: Family<I, VectMor>,  // π_i : P -> V_i
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      projections: IndexedFamilies.Family<I, VectMor>,  // π_i : P -> V_i
       m1: VectMor,
       m2: VectMor
     ): boolean => {
@@ -16609,8 +16617,8 @@ export namespace EnhancedVect {
   /** Check uniqueness of coproduct mediators via injections */
   export const coproductMediatorUnique =
     <I>(
-      Ifin: FiniteIndex<I>,
-      injections: Family<I, VectMor>,   // ι_i : V_i -> C
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      injections: IndexedFamilies.Family<I, VectMor>,   // ι_i : V_i -> C
       m1: VectMor,
       m2: VectMor
     ): boolean => {
@@ -16625,8 +16633,8 @@ export namespace EnhancedVect {
   /** Uniqueness given triangles: both mediators equal canonical */
   export const productUniquenessGivenTrianglesVect =
     <I>(
-      Ifin: FiniteIndex<I>,
-      projections: Family<I, VectMor>,   // π_i : P -> V_i
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      projections: IndexedFamilies.Family<I, VectMor>,   // π_i : P -> V_i
       P: VectObj,
       cone: CategoryLimits.Cone<I, VectObj, VectMor>,
       m: VectMor,
@@ -16643,8 +16651,8 @@ export namespace EnhancedVect {
   /** Uniqueness given triangles: both mediators equal canonical (coproduct) */
   export const coproductUniquenessGivenTrianglesVect =
     <I>(
-      Ifin: FiniteIndex<I>,
-      injections: Family<I, VectMor>,    // ι_i : V_i -> C
+      Ifin: IndexedFamilies.FiniteIndex<I>,
+      injections: IndexedFamilies.Family<I, VectMor>,    // ι_i : V_i -> C
       C: VectObj,
       cocone: CategoryLimits.Cocone<I, VectObj, VectMor>,
       m: VectMor,
