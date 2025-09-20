@@ -560,33 +560,267 @@ export function renormalizeKernel<X, Y>(k: SubKernel<X, Y>): Kernel<X, Y> {
 export function isZeroMass<T>(d: Dist<T>, tol = 1e-12): boolean { return mass(d) <= tol; }
 
 // ===============================================================================================
-// (5) Advanced Features (To Be Implemented)                                                   
+// (A) Distribution monad API (probability/Giry-on-finite analogue)
 // ===============================================================================================
-// 
-// The following advanced features are planned for future implementation:
-//
-// **Distribution Monad API**
-// - First-class DistMonad with of/η, map, bind, join, and product (Fubini) operations
-// - isAffine1 flag for probability distributions (mass = 1)
-// - Makes the "Kleisli of the probability monad" explicit
-//
-// **Generic Kleisli Builder**
-// - makeKleisli(spec) builds full Kleisli categories from any Map-based distribution monad
-// - Provides composition, tensor via product/Fubini, deterministic embedding, copy, discard, swap
-// - FinKleisli wrapper with .then, .tensor, .pretty() methods
-// - isMarkovCategory flag to gate Markov-only laws
-//
-// **Swappable Monads**
-// - ProbMonad (normalized) → Markov (affine)
-// - SubProbMonad (mass ≤ 1, no renorm) → not Markov  
-// - WeightedMonad (scores) → not Markov
-// - Convenience factories: KleisliProb, KleisliSubProb, KleisliWeighted
-//
-// **Law Checks & Diagnostics**
-// - checkFubini(M, da, db) verifies product-measure coherence
-// - monadIsAffine1(M) and assertMarkov(M) to guard Markov-only APIs
-//
-// These features will be added in a future update to provide complete
-// distribution monad infrastructure and generic Kleisli category support.
+
+// Monad operations over Map<T, number> viewed as probability distributions
+export const DistMonad = {
+  // η / unit
+  of<T>(x: T): Dist<T> { return dirac(x); },
+
+  // fmap
+  map<A, B>(da: Dist<A>, f: (a: A) => B): Dist<B> {
+    const m = new Map<B, number>();
+    for (const [a, p] of da) m.set(f(a), (m.get(f(a)) ?? 0) + p);
+    return normalize(m);
+  },
+
+  // bind (Kleisli)
+  bind<A, B>(da: Dist<A>, k: (a: A) => Dist<B>): Dist<B> {
+    const acc = new Map<B, number>();
+    for (const [a, pa] of da) for (const [b, pb] of k(a)) acc.set(b, (acc.get(b) ?? 0) + pa * pb);
+    return normalize(acc);
+  },
+
+  // join
+  join<A>(dda: Dist<Dist<A>>): Dist<A> {
+    const acc = new Map<A, number>();
+    for (const [da, p] of dda) for (const [a, q] of da) acc.set(a, (acc.get(a) ?? 0) + p * q);
+    return normalize(acc);
+  },
+
+  // strength / product measure (Fubini): Dist<A> × Dist<B> -> Dist<[A,B]>
+  product<A, B>(da: Dist<A>, db: Dist<B>): Dist<[A, B]> {
+    const out = new Map<[A, B], number>();
+    for (const [a, pa] of da) for (const [b, pb] of db) out.set([a, b], (out.get([a, b]) ?? 0) + pa * pb);
+    return normalize(out);
+  },
+
+  // Affineness witness: T(1) ≅ 1 (singleton distribution is unique)
+  isAffine1: true as const,
+};
+
+// ===============================================================================================
+// (B) Generic Kleisli builder for Dist-like monads over finite products
+// ===============================================================================================
+
+// A Dist-like monad is one whose carrier is Map<T, number>, with configurable normalization.
+export interface DistLikeMonadSpec {
+  of<T>(x: T): Dist<T>;
+  map<A, B>(da: Dist<A>, f: (a: A) => B): Dist<B>;
+  bind<A, B>(da: Dist<A>, k: (a: A) => Dist<B>): Dist<B>;
+  product<A, B>(da: Dist<A>, db: Dist<B>): Dist<[A, B]>; // Fubini/product measure
+  isAffine1: boolean; // whether T(1) is a singleton
+}
+
+export function makeKleisli(spec: DistLikeMonadSpec) {
+  type Kleisli<X, Y> = (x: X) => Dist<Y>;
+
+  const composeK = <X, Y, Z>(f: Kleisli<X, Y>, g: Kleisli<Y, Z>): Kleisli<X, Z> => x => spec.bind(f(x), g);
+
+  const tensorK = <X1, Y1, X2, Y2>(f: Kleisli<X1, Y1>, g: Kleisli<X2, Y2>): Kleisli<[X1, X2], [Y1, Y2]> =>
+    ([x1, x2]) => spec.product(f(x1), g(x2));
+
+  const detKleisli = <X, Y>(Xf: Fin<X>, Yf: Fin<Y>, f: (x: X) => Y): Kleisli<X, Y> => x => spec.of(f(x));
+
+  const copyK = <X>(): Kleisli<X, [X, X]> => x => spec.of([x, x]);
+  const discardK = <X>(): Kleisli<X, I> => _x => spec.of({});
+
+  const swapK = <X, Y>(): Kleisli<[X, Y], [Y, X]> => ([x, y]) => spec.of([y, x]);
+
+  class FinKleisli<X, Y> {
+    constructor(public X: Fin<X>, public Y: Fin<Y>, public k: Kleisli<X, Y>) {}
+    then<Z>(that: FinKleisli<Y, Z>): FinKleisli<X, Z> { return new FinKleisli(this.X, that.Y, composeK(this.k, that.k)); }
+    tensor<Z, W>(that: FinKleisli<Z, W>): FinKleisli<[X, Z], [Y, W]> {
+      const dom = tensorObj(this.X, that.X);
+      const cod = tensorObj(this.Y, that.Y);
+      return new FinKleisli(dom, cod, tensorK(this.k, that.k));
+    }
+    matrix(): number[][] { return kernelToMatrix(this.X, this.Y, this.k); }
+    pretty(digits = 4): string { return prettyMatrix(this.matrix(), digits); }
+  }
+
+  return {
+    // core
+    composeK, tensorK, detKleisli, copyK, discardK, swapK, FinKleisli,
+    // feature flag for Markov-ness
+    isMarkovCategory: spec.isAffine1,
+  } as const;
+}
+
+// ===============================================================================================
+// (C) Concrete monads you can swap in
+// ===============================================================================================
+
+// 1) Probability monad (normalized) — this *is* a Markov category
+export const ProbMonad: DistLikeMonadSpec = DistMonad;
+
+// 2) Subprobability monad (mass ≤ 1, no normalization) — NOT affine
+export const SubProbMonad: DistLikeMonadSpec = {
+  of<T>(x: T): Dist<T> { return new Map([[x, 1]]); },
+  map<A, B>(da: Dist<A>, f: (a: A) => B): Dist<B> {
+    const m = new Map<B, number>();
+    for (const [a, p] of da) m.set(f(a), (m.get(f(a)) ?? 0) + p);
+    return prune(m); // do not normalize
+  },
+  bind<A, B>(da: Dist<A>, k: (a: A) => Dist<B>): Dist<B> {
+    const acc = new Map<B, number>();
+    for (const [a, pa] of da) for (const [b, pb] of k(a)) acc.set(b, (acc.get(b) ?? 0) + pa * pb);
+    return prune(acc); // do not normalize
+  },
+  product<A, B>(da: Dist<A>, db: Dist<B>): Dist<[A, B]> {
+    const out = new Map<[A, B], number>();
+    for (const [a, pa] of da) for (const [b, pb] of db) out.set([a, b], (out.get([a, b]) ?? 0) + pa * pb);
+    return prune(out); // do not normalize
+  },
+  isAffine1: false,
+};
+
+// 3) Weighted/semiring monad (nonnegative scores), same carrier, NOT affine
+export const WeightedMonad: DistLikeMonadSpec = {
+  of<T>(x: T): Dist<T> { return new Map([[x, 1]]); },
+  map<A, B>(da: Dist<A>, f: (a: A) => B): Dist<B> {
+    const m = new Map<B, number>();
+    for (const [a, p] of da) m.set(f(a), (m.get(f(a)) ?? 0) + p);
+    return prune(m);
+  },
+  bind<A, B>(da: Dist<A>, k: (a: A) => Dist<B>): Dist<B> {
+    const acc = new Map<B, number>();
+    for (const [a, pa] of da) for (const [b, pb] of k(a)) acc.set(b, (acc.get(b) ?? 0) + pa * pb);
+    return prune(acc);
+  },
+  product<A, B>(da: Dist<A>, db: Dist<B>): Dist<[A, B]> {
+    const out = new Map<[A, B], number>();
+    for (const [a, pa] of da) for (const [b, pb] of db) out.set([a, b], (out.get([a, b]) ?? 0) + pa * pb);
+    return prune(out);
+  },
+  isAffine1: false,
+};
+
+// Convenience factories
+export const KleisliProb = makeKleisli(ProbMonad);
+export const KleisliSubProb = makeKleisli(SubProbMonad);
+export const KleisliWeighted = makeKleisli(WeightedMonad);
+
+// ===============================================================================================
+// (D) Law checks and diagnostics tailored to the monad hypotheses
+// ===============================================================================================
+
+// Check Fubini/product coherence: two equivalent constructions of product measure
+export function checkFubini<A, B>(M: DistLikeMonadSpec, da: Dist<A>, db: Dist<B>, tol = 1e-9): boolean {
+  // Left: product directly
+  const lhs = M.product(da, db);
+  // Right: bind/map route
+  const rhs = M.bind(da, (a) => M.map(db, (b) => [a, b] as const));
+  const L = [...lhs.entries()].sort();
+  const R = [...rhs.entries()].sort();
+  if (L.length !== R.length) return false;
+  for (let i = 0; i < L.length; i++) {
+    const [kl, vl] = L[i] as unknown as [[A, B], number];
+    const [kr, vr] = R[i] as unknown as [[A, B], number];
+    if (kl[0] !== kr[0] || kl[1] !== kr[1]) return false;
+    if (Math.abs(vl - vr) > tol) return false;
+  }
+  return true;
+}
+
+// Simple affineness gate expose
+export function monadIsAffine1(M: DistLikeMonadSpec): boolean { return M.isAffine1; }
+
+// If a user tries to access Markov-only ops with a non-affine monad, we can warn via this helper
+export function assertMarkov(M: DistLikeMonadSpec) {
+  if (!M.isAffine1) throw new Error("This Kleisli category is not Markov (monad is not affine: T(1) ≄ 1)");
+}
+
+// ===============================================================================================
+// (E) Named types & morphism/law predicates (developer-facing API)
+// ===============================================================================================
+
+// Aliases for clarity
+export type MarkovKernel<X, Y> = Kernel<X, Y>;
+export type StochasticMatrix = number[][]; // rows sum to ~1
+
+// Comonoid structure attached to an object X
+export interface Comonoid<X> {
+  copy: Kernel<X, Pair<X, X>>;   // Δ_X
+  discard: Kernel<X, I>;         // !_X
+}
+
+export function mkComonoid<X>(Xf: Fin<X>): Comonoid<X> {
+  return { copy: copy<X>(), discard: discard<X>() };
+}
+
+// Law report containers
+export interface CopyDiscardLaws {
+  copyCoassoc: boolean;
+  copyCommut: boolean;
+  copyCounitL: boolean;
+  copyCounitR: boolean;
+}
+
+export interface ComonoidHomReport {
+  preservesCopy: boolean;     // Δ_Y ∘ f == (f ⊗ f) ∘ Δ_X
+  preservesDiscard: boolean;  // !_Y ∘ f == !_X
+}
+
+// Deterministic kernel predicate: every row is a Dirac measure
+export function isDeterministicKernel<X, Y>(Xf: Fin<X>, k: Kernel<X, Y>, tol = 1e-12): boolean {
+  for (const x of Xf.elems) {
+    const d = k(x);
+    const m = mass(d);
+    if (Math.abs(m - 1) > tol) return false; // must be a (sub)probability with full mass
+    let nonzero = 0;
+    for (const _ of d) nonzero++;
+    if (nonzero !== 1) return false;
+  }
+  return true;
+}
+
+// Check that f: X→Y is a comonoid homomorphism (deterministic arrows satisfy this)
+export function checkComonoidHom<X, Y>(Xf: Fin<X>, Yf: Fin<Y>, f: Kernel<X, Y>): ComonoidHomReport {
+  const ΔX = copyK(Xf);                    // X → X×X
+  const ΔY = copyK(Yf);                    // Y → Y×Y
+  const fK = new FinMarkov(Xf, Yf, f);     // X → Y
+
+  // Right side: (f ⊗ f) ∘ Δ_X
+  const tens_ff = new FinMarkov(tensorObj(Xf, Xf), tensorObj(Yf, Yf), tensor(f, f));
+  const rhs = ΔX.then(tens_ff);
+
+  // Left side: Δ_Y ∘ f
+  const lhs = fK.then(ΔY);
+
+  const preservesCopy = approxEqualMatrix(lhs.matrix(), rhs.matrix());
+
+  // Discard law: !_Y ∘ f == !_X
+  const discX = discardK(Xf);
+  const discY = discardK(Yf);
+
+  const preservesDiscard = approxEqualMatrix(fK.then(discY).matrix(), discX.matrix());
+
+  return { preservesCopy, preservesDiscard };
+}
+
+// Row-stochastic matrix predicate
+export function isRowStochastic(M: StochasticMatrix, tol = 1e-9): boolean {
+  for (const row of M) {
+    const s = row.reduce((a, b) => a + b, 0);
+    if (Math.abs(s - 1) > tol) return false;
+    if (row.some(x => x < -tol)) return false;
+  }
+  return true;
+}
+
+// Named base morphisms (typed helpers)
+export function Copy<X>(Xf: Fin<X>): FinMarkov<X, Pair<X, X>> { return copyK(Xf); }
+export function Discard<X>(Xf: Fin<X>): FinMarkov<X, I> { return discardK(Xf); }
+export function Swap<X, Y>(Xf: Fin<X>, Yf: Fin<Y>): FinMarkov<Pair<X, Y>, Pair<Y, X>> { return new FinMarkov(tensorObj(Xf, Yf), tensorObj(Yf, Xf), swap<X, Y>()); }
+export function Fst<X, Y>(Xf: Fin<X>, Yf: Fin<Y>): FinMarkov<Pair<X, Y>, X> { return new FinMarkov(tensorObj(Xf, Yf), Xf, fst<X, Y>()); }
+export function Snd<X, Y>(Xf: Fin<X>, Yf: Fin<Y>): FinMarkov<Pair<X, Y>, Y> { return new FinMarkov(tensorObj(Xf, Yf), Yf, snd<X, Y>()); }
+
+// Aggregate law runner for a single object
+export function lawsFor<X>(Xf: Fin<X>): { cd: CopyDiscardLaws } {
+  const cd = checkComonoidLaws(Xf);
+  return { cd };
+}
 
 // ===============================================================================================
