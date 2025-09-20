@@ -15676,6 +15676,9 @@ export const FP_CATALOG = {
   'CategoryLimits.finiteProduct': 'Compute finite product of family',
   'CategoryLimits.lanDiscretePre': 'Left Kan extension along discrete index map (generic)',
   'CategoryLimits.ranDiscretePre': 'Right Kan extension along discrete index map (generic)',
+  'CategoryLimits.productMediates': 'Check if morphism mediates product cone',
+  'CategoryLimits.coproductMediates': 'Check if morphism mediates coproduct cocone',
+  'CategoryLimits.agreeUnderProjections': 'Check if morphisms agree under projections',
   
   // Arrow families
   'ArrowFamilies.domFam': 'Extract domain family from morphism family',
@@ -15690,6 +15693,8 @@ export const FP_CATALOG = {
   'EnhancedVect.finiteCoproductVect': 'Finite coproduct in Vect with injections',
   'EnhancedVect.VectHasFiniteProducts': 'Vect implements finite products trait',
   'EnhancedVect.VectHasFiniteCoproducts': 'Vect implements finite coproducts trait',
+  'EnhancedVect.tupleVect': 'Build unique mediating map for product cone in Vect',
+  'EnhancedVect.cotupleVect': 'Build unique mediating map for coproduct cocone in Vect',
 } as const
 
 // ---------------------------------------------
@@ -16414,6 +16419,66 @@ export namespace EnhancedVect {
     <I>(Ifin: FiniteIndex<I>, fam: Family<I, VectObj>): number =>
       reduceFamily(Ifin, fam, 0, (acc, v) => acc + v.dim)
 
+  /**
+   * tupleVect: given maps f_i : X -> V_i and a product object P = ⨉_i V_i,
+   * build the unique ⟨f_i⟩ : X -> P whose block-columns are the f_i.
+   */
+  export const tupleVect =
+    (
+      X: VectObj,
+      P: VectObj,                                  // P.dim = Σ dims(V_i)
+      maps: ReadonlyArray<VectMor>                 // each from X to V_i
+    ): VectMor => {
+      const n = X.dim
+      const total = maps.reduce((acc, m) => {
+        if (m.from.dim !== n) throw new Error("tupleVect: domain mismatch")
+        return acc + m.to.dim
+      }, 0)
+      if (total !== P.dim) throw new Error("tupleVect: codomain dim != product dim")
+
+      const M = Array.from({ length: n }, () => Array(total).fill(0))
+      let offset = 0
+      for (const m of maps) {
+        for (let r = 0; r < n; r++) {
+          for (let c = 0; c < m.to.dim; c++) {
+            M[r]![offset + c] = m.matrix[r]![c]!
+          }
+        }
+        offset += m.to.dim
+      }
+      return { matrix: M, from: X, to: P }
+    }
+
+  /**
+   * cotupleVect: given maps g_i : V_i -> Y and a coproduct object C = ⨁_i V_i,
+   * build the unique [g_i] : C -> Y whose block-rows are the g_i.
+   */
+  export const cotupleVect =
+    (
+      C: VectObj,                                  // C.dim = Σ dims(V_i)
+      maps: ReadonlyArray<VectMor>,                // each from V_i to Y
+      Y: VectObj
+    ): VectMor => {
+      const m = Y.dim
+      const total = maps.reduce((acc, g) => {
+        if (g.to.dim !== m) throw new Error("cotupleVect: codomain mismatch")
+        return acc + g.from.dim
+      }, 0)
+      if (total !== C.dim) throw new Error("cotupleVect: domain dim != coproduct dim")
+
+      const M = Array.from({ length: C.dim }, () => Array(m).fill(0))
+      let offset = 0
+      for (const g of maps) {
+        for (let r = 0; r < g.from.dim; r++) {
+          for (let c = 0; c < m; c++) {
+            M[offset + r]![c] = g.matrix[r]![c]!
+          }
+        }
+        offset += g.from.dim
+      }
+      return { matrix: M, from: C, to: Y }
+    }
+
   /** Vect implements finite products trait */
   export const VectHasFiniteProducts: CategoryLimits.HasFiniteProducts<VectObj, VectMor> = {
     product: (objs) => {
@@ -16576,6 +16641,81 @@ export namespace CategoryLimits {
           return projections.map((m, k) => [items[k]!.j, m] as const)
         })()
       }
+    }
+
+  /** Cone over a family (for product universal property) */
+  export type Cone<I, O, M> = {
+    tip: O                                // X
+    legs: IndexedFamilies.Family<I, M>    // f_i : X -> F(i)
+  }
+
+  /** Cocone over a family (for coproduct universal property) */
+  export type Cocone<I, O, M> = {
+    coTip: O                              // Y
+    legs: IndexedFamilies.Family<I, M>    // g_i : F(i) -> Y
+  }
+
+  /** Check if a morphism mediates a product cone */
+  export const productMediates =
+    <I, O, M>(
+      C: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
+      eq: (x: M, y: M) => boolean,
+      projections: IndexedFamilies.Family<I, M>,      // π_i : P -> F(i)
+      mediator: M,                                     // ⟨f_i⟩ : X -> P
+      cone: Cone<I, O, M>,                            // legs f_i : X -> F(i)
+      indices: ReadonlyArray<I>                        // explicit index carrier
+    ): boolean => {
+      // type sanity: dom(mediator) = X; cod(mediator) = P
+      if (C.dom(mediator) !== cone.tip) return false
+      
+      // triangles: π_i ∘ ⟨f⟩ = f_i
+      for (const i of indices) {
+        const lhs = C.compose(projections(i), mediator)
+        const rhs = cone.legs(i)
+        if (!eq(lhs, rhs)) return false
+      }
+      return true
+    }
+
+  /** Check if a morphism mediates a coproduct cocone */
+  export const coproductMediates =
+    <I, O, M>(
+      C: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
+      eq: (x: M, y: M) => boolean,
+      injections: IndexedFamilies.Family<I, M>,       // ι_i : F(i) -> C
+      mediator: M,                                     // [g_i] : C -> Y
+      cocone: Cocone<I, O, M>,                        // legs g_i : F(i) -> Y
+      indices: ReadonlyArray<I>                        // explicit index carrier
+    ): boolean => {
+      // type sanity: cod(mediator) = Y
+      if (C.cod(mediator) !== cocone.coTip) return false
+      
+      // triangles: [g] ∘ ι_i = g_i
+      for (const i of indices) {
+        const lhs = C.compose(mediator, injections(i)) // [g] ∘ ι_i : F(i) -> Y
+        const rhs = cocone.legs(i)                     // g_i
+        if (!eq(lhs, rhs)) return false
+      }
+      return true
+    }
+
+  /** Helper to check agreement under projections */
+  export const agreeUnderProjections =
+    <I, O, M>(
+      C: Category<O, M>,
+      eq: (x: M, y: M) => boolean,
+      projections: IndexedFamilies.Family<I, M>, 
+      m1: M, 
+      m2: M,
+      indices: ReadonlyArray<I>
+    ): boolean => {
+      // π_i ∘ m1 == π_i ∘ m2 for all i
+      for (const i of indices) {
+        const lhs = C.compose(projections(i), m1)
+        const rhs = C.compose(projections(i), m2)
+        if (!eq(lhs, rhs)) return false
+      }
+      return true
     }
 }
 
