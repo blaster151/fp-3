@@ -1,85 +1,143 @@
-# tiny-fp
+# Pattern Discovery & Integration (PDI) System
 
-A compact, practical functional programming toolkit for TypeScript.
+*The PDI system provides systematic approaches to discovering existing patterns and integrating them into new and existing code.*
 
-## Features
+## What is PDI?
 
-- **Zero dependencies** - Pure TypeScript implementation
-- **Tree-shakeable** - Import only what you need
-- **Type-safe** - Full TypeScript support
-- **Functional** - Immutable data structures and pure functions
-- **Comprehensive** - Covers monads, functors, optics, and more
+**Pattern Discovery & Integration** is a methodology for:
+- 🔍 **Discovering** existing patterns and utilities in your codebase
+- 🔗 **Integrating** them into new and existing code
+- 📚 **Maintaining** knowledge about what's available
+- 🚀 **Scaling** development efficiency as projects grow
+
+## Two Independent Systems
+
+This PDI folder contains **TWO DISTINCT SYSTEMS**:
+
+### **System 1: Pattern Discovery & Integration (PDI)**
+- **Purpose**: "Remember these handy shortcuts exist now"
+- **Value**: Discover existing patterns, integrate them into new code
+- **Standalone**: Works independently for any codebase improvement
+
+### **System 2: Recurring Task System**
+- **Purpose**: "Recur the following: X"
+- **Value**: Automate maintenance tasks, keep context fresh
+- **Standalone**: Works for any recurring task (not just PDI)
+
+**The synergy**: We use System 2 to keep System 1 "top of mind" automatically!
+
+## PDI Files
+
+### Core Documentation
+- **`AI_DEV_GUIDELINES.md`** - Detailed processes for AI-assisted development
+- **`HUMAN_DEV_GUIDELINES.md`** - Concise overview for human developers
+- **`KNOWLEDGE_BASE.md`** - Patterns, utilities, and LLM hints
+- **`UPGRADE_BACKLOG.md`** - Tracked improvement opportunities
+
+### Supporting Files
+- **`REMINDERS.md`** - Maintenance checklist
+- **`DEVELOPMENT_STRUCTURE.md`** - File organization guide
+- **`RECOVERY_STRATEGY.md`** - Recovering lost knowledge
+- **`SYSTEM_ARCHITECTURE.md`** - Two independent systems explained
+
+### Tools
+- **`upgrade-analyzer.js`** - Analyze patterns and manage backlog
+- **`maintenance-reminder.js`** - Check maintenance status
+- **`task-scheduler.js`** - Recurring task system
+- **`cloud-task-scheduler.js`** - Cloud-native task management
+- **`docs-checker.js`** - Keep documentation evergreen
 
 ## Quick Start
 
-```typescript
-import { Option, Some, None, mapO, flatMapO } from './allTS'
-
-const result = Some(42)
-  .pipe(mapO(x => x * 2))
-  .pipe(flatMapO(x => x > 50 ? Some(x) : None))
-
-console.log(result) // Some(84)
-```
-
-## Development
-
-This project uses the **Pattern Discovery & Integration (PDI)** system for systematic development.
-
 ### For Human Developers
-- See `pdi/HUMAN_DEV_GUIDELINES.md` for quick reference
-- Use `npm run maintenance:check` for status updates
-- Review `pdi/REMINDERS.md` for regular tasks
+```bash
+# Check maintenance status
+npm run maintenance:check
+
+# View upgrade opportunities
+npm run upgrade:backlog
+
+# See backlog statistics
+npm run upgrade:stats
+
+# Check recurring tasks
+npm run tasks:check
+
+# List all tasks
+npm run tasks:list
+
+# Check documentation staleness
+npm run docs:check
+```
 
 ### For AI-Assisted Development
-- Follow `pdi/AI_DEV_GUIDELINES.md` for systematic processes
-- Use `pdi/KNOWLEDGE_BASE.md` for pattern discovery
-- Track opportunities in `pdi/UPGRADE_BACKLOG.md`
+1. Follow `AI_DEV_GUIDELINES.md` for systematic processes
+2. Use `KNOWLEDGE_BASE.md` for pattern discovery
+3. Update `UPGRADE_BACKLOG.md` for deferred opportunities
+4. Use recurring task system for automated maintenance
+5. Keep documentation evergreen with docs checker
 
-### PDI Commands
+### Cloud Integration (Optional)
 ```bash
-npm run upgrade:backlog      # View upgrade opportunities
-npm run upgrade:stats        # See backlog statistics
-npm run maintenance:check    # Check maintenance status
-npm run maintenance:remind   # Show development reminders
+# Set up cloud provider
+node pdi/cloud-task-scheduler.js setup
+
+# Check cloud tasks
+node pdi/cloud-task-scheduler.js check
+
+# Sync with cloud
+node pdi/cloud-task-scheduler.js sync
 ```
 
-## Bootstrapping PDI in New Projects
+## The PDI Process
 
-To set up PDI in your own project:
+### 1. **Pattern Discovery**
+- Identify what patterns exist in your codebase
+- Document them in the knowledge base
+- Create LLM hints for discoverability
 
-```bash
-# Copy the PDI system
-cp -r pdi/ your-project/pdi/
+### 2. **Integration Analysis**
+- After adding new features, find existing code that could benefit
+- Use ripgrep patterns to find candidate call sites
+- Assess benefits and risks
 
-# Initialize in your project
-cd your-project
-node pdi/bootstrap-pdi.js init
-```
+### 3. **Systematic Implementation**
+- Implement immediate wins (clear benefits, low risk)
+- Defer complex changes to the backlog
+- Track progress and success metrics
 
-## Project Structure
+## Universal Applicability
 
-- **`allTS.ts`** - Main library implementation
-- **`run-examples-simple.ts`** - Comprehensive examples
-- **`pdi/`** - Pattern Discovery & Integration system
-- **`test/laws/`** - Law-based testing with witnesses
-- **`LAWS.md`** - Mathematical laws and properties
+**PDI works for any project type**:
+- **Web**: New hooks → Find components that could use them
+- **Backend**: New utilities → Find manual implementations
+- **Mobile**: New patterns → Find inconsistent code
+- **Desktop**: New optimizations → Find slow code paths
 
-## Testing
+## Bootstrapping New Projects
 
-```bash
-npm run test:laws           # Run law-based tests
-npm run test:ci            # Run tests in CI mode
-npm run coverage           # Check law coverage
-```
+The PDI system can be bootstrapped into new projects:
+- Copy the `pdi/` folder
+- Update project-specific patterns
+- Integrate with existing workflows
+- Customize for project needs
 
-## Contributing
+## Success Metrics
 
-1. Follow the PDI system guidelines
-2. Ensure all laws are properly tested
-3. Update documentation as needed
-4. Use the upgrade analysis process
+- **Pattern Discovery Rate**: How many existing patterns are found
+- **Integration Success**: How many opportunities are implemented
+- **Knowledge Retention**: How well patterns are documented
+- **Development Efficiency**: Reduction in redundant implementations
 
-## License
+## Future Enhancements
 
-MIT
+- **Automated Pattern Discovery**: AI-powered pattern detection
+- **Real-time Integration**: Live suggestions during development
+- **Cross-project Learning**: Share patterns between projects
+- **Performance Impact**: Measure efficiency improvements
+- **Cloud-Native Collaboration**: Multi-LLM task coordination
+- **Evergreen Documentation**: Auto-updating READMEs and guides
+
+---
+
+*PDI: Making every project more efficient through systematic pattern discovery and integration.*
