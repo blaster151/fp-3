@@ -15666,6 +15666,8 @@ export const FP_CATALOG = {
   'IndexedFamilies.familyFromArray': 'Sugar: create family from array',
   'IndexedFamilies.familyFromRecord': 'Sugar: create family from record',
   'IndexedFamilies.pullbackIndices': 'Compute pullback indices for Beck-Chevalley tests',
+  'IndexedFamilies.unitPiEnum': 'Π-side unit: A(i) → Π_{j ∈ u^{-1}(i)} A(i)',
+  'IndexedFamilies.counitPiEnum': 'Π-side counit: (u^* Π_u B)(j) → B(j)',
   
   // Discrete categories
   'DiscreteCategory.create': 'Create discrete category from objects',
@@ -16223,6 +16225,27 @@ export namespace IndexedFamilies {
           return acc
         }
       })
+
+  /** Π-side unit: A(i) → Π_{j ∈ u^{-1}(i)} A(i) (constant choice) */
+  export const unitPiEnum =
+    <J, I, X>(
+      u: (j: J) => I,
+      Jfin: { carrier: ReadonlyArray<J> }
+    ) => (i: I) => (a: X): ReadonlyArray<readonly [J, X]> =>
+      Jfin.carrier
+        .filter((j) => u(j) === i)
+        .map((j) => [j, a] as const)
+
+  /** Π-side counit: (u^* Π_u B)(j) → B(j) (extract j-component) */
+  export const counitPiEnum =
+    <J, I, X>(
+      u: (j: J) => I,
+      Jfin: { carrier: ReadonlyArray<J> }
+    ) => (j: J) => (choice: ReadonlyArray<readonly [J, X]>): X => {
+      const hit = choice.find(([jj]) => jj === j)
+      if (!hit) throw new Error("counitPiEnum: missing j in choice")
+      return hit[1]
+    }
 
   /** Sugar: create family from array */
   export const familyFromArray =
