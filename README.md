@@ -1,119 +1,143 @@
-# Indexed Families + Discrete Categories
+# Pattern Discovery & Integration (PDI) System
 
-Tiny, composable building blocks to model **indexed families** as functors out of a **discrete category**, with handy Set/Vect realizations, (co)limits for finite families, **Kan extensions along index maps**, and **universal-property** helpers.
+*The PDI system provides systematic approaches to discovering existing patterns and integrating them into new and existing code.*
+
+## What is PDI?
+
+**Pattern Discovery & Integration** is a methodology for:
+- 🔍 **Discovering** existing patterns and utilities in your codebase
+- 🔗 **Integrating** them into new and existing code
+- 📚 **Maintaining** knowledge about what's available
+- 🚀 **Scaling** development efficiency as projects grow
+
+## Two Independent Systems
+
+This PDI folder contains **TWO DISTINCT SYSTEMS**:
+
+### **System 1: Pattern Discovery & Integration (PDI)**
+- **Purpose**: "Remember these handy shortcuts exist now"
+- **Value**: Discover existing patterns, integrate them into new code
+- **Standalone**: Works independently for any codebase improvement
+
+### **System 2: Recurring Task System**
+- **Purpose**: "Recur the following: X"
+- **Value**: Automate maintenance tasks, keep context fresh
+- **Standalone**: Works for any recurring task (not just PDI)
+
+**The synergy**: We use System 2 to keep System 1 "top of mind" automatically!
+
+## PDI Files
+
+### Core Documentation
+- **`AI_DEV_GUIDELINES.md`** - Detailed processes for AI-assisted development
+- **`HUMAN_DEV_GUIDELINES.md`** - Concise overview for human developers
+- **`KNOWLEDGE_BASE.md`** - Patterns, utilities, and LLM hints
+- **`UPGRADE_BACKLOG.md`** - Tracked improvement opportunities
+
+### Supporting Files
+- **`REMINDERS.md`** - Maintenance checklist
+- **`DEVELOPMENT_STRUCTURE.md`** - File organization guide
+- **`RECOVERY_STRATEGY.md`** - Recovering lost knowledge
+- **`SYSTEM_ARCHITECTURE.md`** - Two independent systems explained
+
+### Tools
+- **`upgrade-analyzer.js`** - Analyze patterns and manage backlog
+- **`maintenance-reminder.js`** - Check maintenance status
+- **`task-scheduler.js`** - Recurring task system
+- **`cloud-task-scheduler.js`** - Cloud-native task management
+- **`docs-checker.js`** - Keep documentation evergreen
+
+## Quick Start
+
+### For Human Developers
+```bash
+# Check maintenance status
+npm run maintenance:check
+
+# View upgrade opportunities
+npm run upgrade:backlog
+
+# See backlog statistics
+npm run upgrade:stats
+
+# Check recurring tasks
+npm run tasks:check
+
+# List all tasks
+npm run tasks:list
+
+# Check documentation staleness
+npm run docs:check
+```
+
+### For AI-Assisted Development
+1. Follow `AI_DEV_GUIDELINES.md` for systematic processes
+2. Use `KNOWLEDGE_BASE.md` for pattern discovery
+3. Update `UPGRADE_BACKLOG.md` for deferred opportunities
+4. Use recurring task system for automated maintenance
+5. Keep documentation evergreen with docs checker
+
+### Cloud Integration (Optional)
+```bash
+# Set up cloud provider
+node pdi/cloud-task-scheduler.js setup
+
+# Check cloud tasks
+node pdi/cloud-task-scheduler.js check
+
+# Sync with cloud
+node pdi/cloud-task-scheduler.js sync
+```
+
+## The PDI Process
+
+### 1. **Pattern Discovery**
+- Identify what patterns exist in your codebase
+- Document them in the knowledge base
+- Create LLM hints for discoverability
+
+### 2. **Integration Analysis**
+- After adding new features, find existing code that could benefit
+- Use ripgrep patterns to find candidate call sites
+- Assess benefits and risks
+
+### 3. **Systematic Implementation**
+- Implement immediate wins (clear benefits, low risk)
+- Defer complex changes to the backlog
+- Track progress and success metrics
+
+## Universal Applicability
+
+**PDI works for any project type**:
+- **Web**: New hooks → Find components that could use them
+- **Backend**: New utilities → Find manual implementations
+- **Mobile**: New patterns → Find inconsistent code
+- **Desktop**: New optimizations → Find slow code paths
+
+## Bootstrapping New Projects
+
+The PDI system can be bootstrapped into new projects:
+- Copy the `pdi/` folder
+- Update project-specific patterns
+- Integrate with existing workflows
+- Customize for project needs
+
+## Success Metrics
+
+- **Pattern Discovery Rate**: How many existing patterns are found
+- **Integration Success**: How many opportunities are implemented
+- **Knowledge Retention**: How well patterns are documented
+- **Development Efficiency**: Reduction in redundant implementations
+
+## Future Enhancements
+
+- **Automated Pattern Discovery**: AI-powered pattern detection
+- **Real-time Integration**: Live suggestions during development
+- **Cross-project Learning**: Share patterns between projects
+- **Performance Impact**: Measure efficiency improvements
+- **Cloud-Native Collaboration**: Multi-LLM task coordination
+- **Evergreen Documentation**: Auto-updating READMEs and guides
 
 ---
 
-## Install (dev setup)
-
-```bash
-# deps you probably already have
-pnpm add -D typescript vitest fast-check
-
-# run tests
-pnpm vitest
-```
-
-## Core ideas
-
-- **Indexed family**: a function `I -> X`, or in a category `C`, a functor `Disc(I) -> C`.
-- **Reindexing**: change indices via `u:J->I` (`reindex(u, fam)`).
-- **(Co)limits for discrete diagrams**: finite products / coproducts over `I`.
-- **Kan over discrete**: along `u:J->I`
-  - **Left Kan** `Lan_u F` = coproducts over fibers `u^{-1}(i)`.
-  - **Right Kan** `Ran_u F` = products over fibers.
-
-## Quick glossary (main exports)
-
-- **Families**: `IndexedFamily`, `familyFromArray`, `familyFromRecord`, `reindex`.
-- **Set-like (enumerable)**: `EnumFamily`, `sigmaEnum` (Σ), `piEnum` (Π), `lanEnum` (Σ over fibers), `ranEnum` (Π over fibers).
-- **Kan (generic)**: `lanDiscretePre`, `ranDiscretePre` with traits `HasFiniteCoproducts`, `HasFiniteProducts`.
-- **Vect**: `Vect` (cat), `VectHasFiniteProducts`, `VectHasFiniteCoproducts`, `tupleVect`, `cotupleVect`, mediators from cones/cocones, and uniqueness helpers.
-- **Arrow category**: `ArrowCategory`, `domFam`/`codFam`/`composeFam`.
-- **Tests**: property tests for reindexing, Σ/Π triangles, Beck–Chevalley, Kan (Vect), universal properties & uniqueness.
-
-## Tiny examples
-
-### From arrays or records to families
-```ts
-const { I, Ifin, fam, Idisc } = familyFromArray(['a','b','c']); // I = [0,1,2]
-const rec = { x: 2, y: 5 } as const;
-const { keys, Ifin: IfinK, fam: famK } = familyFromRecord(rec);
-```
-
-### Reindex (substitution)
-```ts
-const u = (j: number) => j % 2;
-const famJ = reindex(u, fam); // J-indexed family
-```
-
-### Σ / Π in Set-style (enumerable)
-```ts
-const enumFam = (i: number) => ({ enumerate: () => [i, i+1] });
-const sum = sigmaEnum(Ifin, enumFam); // array of { i, x }
-const prod = piEnum(Ifin, enumFam);   // array of dependent choices (I×…)
-```
-
-### Kan along indices (generic)
-```ts
-// In a category C with finite (co)products
-const Lan = lanDiscretePre(IfinI, IfinJ, u, F, CWithCoproducts);
-const Ran = ranDiscretePre(IfinI, IfinJ, u, F, CWithProducts);
-```
-
-### Vect: finite products/coproducts (direct sums)
-```ts
-const F: IndexedFamily<number, VectObj> = (i) => ({ dim: i+1 });
-const { product, projections }  = finiteProduct(Ifin, F, VectHasFiniteProducts);
-const { coproduct, injections } = finiteCoproduct(Ifin, F, VectHasFiniteCoproducts);
-```
-
-### Universal properties & uniqueness (Vect)
-```ts
-// Build canonical mediators from a cone/cocone
-const tuple = tupleVectFromCone(Ifin, cone, product);
-const cotup = cotupleVectFromCocone(Ifin, cocone, coproduct);
-
-// Check triangles + uniqueness
-productMediates(Vect, Vect.equalMor!, projections, tuple, {...cone, index: Ifin});
-productUniquenessGivenTrianglesVect(Ifin, projections, product, cone, tuple, tuple);
-```
-
-## Laws we check (property tests)
-
-- **Reindex**: `id* = id`, `(v∘u)* = u*∘v*`.
-- **Adjunctions over discrete indices**:
-  - **Σ ⊣ pullback**: both triangles; Beck–Chevalley (Σ).
-  - **pullback ⊣ Π**: both triangles; Beck–Chevalley (Π).
-- **Kan (Vect)**: object shapes & arity match expected fibers.
-- **Universal properties (Vect)**: triangles commute; canonical mediators are unique.
-
-## Project Structure
-
-```
-├── allTS.ts                           # Main mathematical toolkit
-├── examples.ts                        # Comprehensive examples
-├── test/
-│   ├── indexed-families.spec.ts       # Core indexed family tests
-│   ├── adjunction-right.spec.ts       # Π-side first triangle
-│   ├── adjunction-right-2nd.spec.ts   # Π-side second triangle  
-│   ├── adjunction-left-2nd.spec.ts    # Σ-side second triangle
-│   ├── beck-chevalley-right-enum.spec.ts  # Beck-Chevalley Π (enumerable)
-│   ├── beck-chevalley-right-vect.spec.ts  # Beck-Chevalley Π (Vect)
-│   ├── universal-properties.spec.ts   # Universal property verification
-│   └── uniqueness.spec.ts            # Mediator uniqueness tests
-├── LAWS.md                           # Categorical laws documentation
-└── README.md                         # This file
-```
-
-## Mathematical Background
-
-This toolkit implements a complete theory of **indexed families** and **Kan extensions** over discrete categories, providing:
-
-- **Complete adjunction theory**: Σ ⊣ u* ⊣ Π with explicit units/counits
-- **Beck-Chevalley verification**: Substitution commutes with Kan extensions  
-- **Universal property verification**: Existence + uniqueness for all constructions
-- **Generic categorical framework**: Works with any category having finite (co)products
-- **Concrete implementations**: Full verification in vector spaces (Vect)
-
-The implementation bridges abstract category theory with practical computation, making advanced mathematical constructions immediately usable while maintaining complete theoretical rigor.
+*PDI: Making every project more efficient through systematic pattern discovery and integration.*
