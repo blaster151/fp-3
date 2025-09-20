@@ -15668,6 +15668,9 @@ export const FP_CATALOG = {
   'IndexedFamilies.pullbackIndices': 'Compute pullback indices for Beck-Chevalley tests',
   'IndexedFamilies.unitPiEnum': 'Π-side unit: A(i) → Π_{j ∈ u^{-1}(i)} A(i)',
   'IndexedFamilies.counitPiEnum': 'Π-side counit: (u^* Π_u B)(j) → B(j)',
+  'IndexedFamilies.unitSigmaEnum': 'Σ-side unit: Y(u(j)) → (u^* Σ_u Y)(j)',
+  'IndexedFamilies.counitSigmaEnum': 'Σ-side counit: (Σ_u u^* X)(i) → X(i)',
+  'IndexedFamilies.sigmaOfUnitEnum': 'Σ-side second triangle helper: (Σ_u η)_i',
   'IndexedFamilies.etaForPiEnum': 'Π-side second triangle unit: (Π_u B)(i) → Π_{j∈u^{-1}(i)} (u^* Π_u B)(j)',
   'IndexedFamilies.PiOfEpsEnum': 'Π-side second triangle: (Π_u ε_B)_i composition',
   
@@ -16253,6 +16256,30 @@ export namespace IndexedFamilies {
       const hit = choice.find(([jj]) => jj === j)
       if (!hit) throw new Error("counitPiEnum: missing j in choice")
       return hit[1]
+    }
+
+  /** Σ-side unit: Y(u(j)) -> (u^* Σ_u Y)(j) = Σ_u Y (at i = u(j)) */
+  export const unitSigmaEnum =
+    <J, I, X>(
+      u: (j: J) => I,
+      _Jfin: { carrier: ReadonlyArray<J> } // kept for symmetry/future use
+    ) => (j: J) => (y: X): { j: J; x: X } => ({ j, x: y })
+
+  /** Σ-side counit: (Σ_u u^* X)(i) -> X(i) */
+  export const counitSigmaEnum =
+    <J, I, X>(
+      _u: (j: J) => I,
+      _Jfin: { carrier: ReadonlyArray<J> }
+    ) => (i: I) => (pair: { j: J; x: X }): X => pair.x
+
+  /** Σ-side second triangle helper: (Σ_u η)_i : Σ_u A (i) -> Σ_u(u^*Σ_u A)(i) */
+  export const sigmaOfUnitEnum =
+    <J, I, X>(
+      u: (j: J) => I,
+      Jfin: { carrier: ReadonlyArray<J> }
+    ) => (i: I) => (elem: { j: J; x: X }): { j: J; x: { j: J; x: X } } => {
+      const eta = unitSigmaEnum<J, I, X>(u, Jfin)
+      return { j: elem.j, x: eta(elem.j)(elem.x) }
     }
 
   /** Π-side second triangle: η_{Π_u B,i} : (Π_u B)(i) -> Π_{j∈u^{-1}(i)} (u^* Π_u B)(j) */
