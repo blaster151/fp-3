@@ -9,6 +9,9 @@ import {
   DiagramLaws, 
   IndexedFamilies, 
   DiscreteCategory,
+  EnhancedVect,
+  ArrowFamilies,
+  CategoryLimits,
   makeFinitePoset,
   makePosetDiagramCompat,
   idChainMapCompat,
@@ -322,6 +325,72 @@ describe('Indexed Families and Discrete Categories', () => {
       const fromRecord = IndexedFamilies.sigmaFromRecord(prodResult)
       expect(fromRecord.length).toBe(sumResult.length)
     })
+
+    it('enumerable operations work correctly', () => {
+      // Create enumerable family
+      const enumFam: IndexedFamilies.EnumFamily<string, number> = (i: string) => ({
+        enumerate: () => Array.from({ length: i.length }, (_, k) => k)
+      })
+      
+      const idx = IndexedFamilies.finiteIndex(['a', 'bb'])
+      
+      // Test sigma enumeration
+      const sigmaResult = IndexedFamilies.sigmaEnum(idx, enumFam)
+      expect(sigmaResult).toEqual([
+        { i: 'a', x: 0 },
+        { i: 'bb', x: 0 },
+        { i: 'bb', x: 1 }
+      ])
+      
+      // Test pi enumeration (cartesian product)
+      const piResult = IndexedFamilies.piEnum(idx, enumFam)
+      expect(piResult).toEqual([
+        [['a', 0], ['bb', 0]],
+        [['a', 0], ['bb', 1]]
+      ])
+    })
+
+    it('Kan extensions for enumerable families', () => {
+      const u = (j: number) => j % 2 // map to {0, 1}
+      const Jfin = IndexedFamilies.finiteIndex([0, 1, 2, 3])
+      const fam: IndexedFamilies.EnumFamily<number, string> = (j) => ({
+        enumerate: () => [String.fromCharCode(65 + j)] // 'A', 'B', 'C', 'D'
+      })
+      
+      // Left Kan: colimit over fibers
+      const lanResult = IndexedFamilies.lanEnum(u, Jfin, fam)
+      expect(lanResult(0).enumerate()).toEqual([
+        { j: 0, x: 'A' },
+        { j: 2, x: 'C' }
+      ])
+      expect(lanResult(1).enumerate()).toEqual([
+        { j: 1, x: 'B' },
+        { j: 3, x: 'D' }
+      ])
+      
+      // Right Kan: limit over fibers  
+      const ranResult = IndexedFamilies.ranEnum(u, Jfin, fam)
+      expect(ranResult(0).enumerate()).toEqual([
+        [[0, 'A'], [2, 'C']]
+      ])
+      expect(ranResult(1).enumerate()).toEqual([
+        [[1, 'B'], [3, 'D']]
+      ])
+    })
+
+    it('sugar functions work', () => {
+      // Test familyFromArray
+      const { I, Ifin, fam, Idisc } = IndexedFamilies.familyFromArray([10, 20, 30])
+      expect(I).toEqual([0, 1, 2])
+      expect(fam(1)).toBe(20)
+      expect(Idisc.objects).toEqual([0, 1, 2])
+      
+      // Test familyFromRecord
+      const { keys, fam: recFam } = IndexedFamilies.familyFromRecord({ x: 'hello', y: 'world' })
+      expect(keys).toContain('x')
+      expect(keys).toContain('y')
+      expect(recFam('x')).toBe('hello')
+    })
   })
 
   describe('Categorical Laws (Property Tests)', () => {
@@ -384,6 +453,78 @@ describe('Indexed Families and Discrete Categories', () => {
       const validation = DiagramLaws.validateFunctoriality(FieldReal)(closedDiagram)
       
       expect(validation.ok).toBe(true)
+    })
+  })
+
+  describe('EnhancedVect category', () => {
+    it('creates vector objects and morphisms with dom/cod', () => {
+      const V2: EnhancedVect.VectObj = { dim: 2 }
+      const V3: EnhancedVect.VectObj = { dim: 3 }
+      
+      const f: EnhancedVect.VectMor = {
+        matrix: [[1, 2], [3, 4], [5, 6]],
+        from: V2,
+        to: V3
+      }
+      
+      expect(EnhancedVect.Vect.dom(f)).toBe(V2)
+      expect(EnhancedVect.Vect.cod(f)).toBe(V3)
+    })
+
+    it('composes morphisms correctly', () => {
+      const V1: EnhancedVect.VectObj = { dim: 1 }
+      const V2: EnhancedVect.VectObj = { dim: 2 }
+      const V3: EnhancedVect.VectObj = { dim: 3 }
+      
+      const f: EnhancedVect.VectMor = { matrix: [[1], [2]], from: V1, to: V2 }
+      const g: EnhancedVect.VectMor = { matrix: [[1, 2], [3, 4], [5, 6]], from: V2, to: V3 }
+      
+      const comp = EnhancedVect.Vect.compose(g, f)
+      expect(comp.from).toBe(V1)
+      expect(comp.to).toBe(V3)
+      expect(comp.matrix).toEqual([[5], [11], [17]]) // g * f
+    })
+
+    it('creates finite products and coproducts', () => {
+      const fam = (i: number) => ({ dim: i + 1 }) // dims: 1, 2, 3
+      const idx = IndexedFamilies.finiteIndex([0, 1, 2])
+      
+      const { product, projections } = EnhancedVect.finiteProductVect(idx, fam)
+      expect(product.dim).toBe(6) // 1 + 2 + 3
+      
+      const proj0 = projections(0)
+      expect(proj0.from).toBe(product)
+      expect(proj0.to.dim).toBe(1)
+      
+      const { coproduct, injections } = EnhancedVect.finiteCoproductVect(idx, fam)
+      expect(coproduct.dim).toBe(6) // same in Vect
+      
+      const inj1 = injections(1)
+      expect(inj1.from.dim).toBe(2)
+      expect(inj1.to).toBe(coproduct)
+    })
+  })
+
+  describe('Arrow families', () => {
+    it('extracts domain and codomain families', () => {
+      const V1: EnhancedVect.VectObj = { dim: 1 }
+      const V2: EnhancedVect.VectObj = { dim: 2 }
+      
+      const morphFam: IndexedFamilies.Family<string, { f: EnhancedVect.VectMor }> = (i: string) => ({
+        f: {
+          matrix: i === 'id' ? [[1]] : [[2]],
+          from: V1,
+          to: i === 'double' ? V1 : V2
+        }
+      })
+      
+      const domainFam = ArrowFamilies.domFam(EnhancedVect.Vect, morphFam)
+      const codomainFam = ArrowFamilies.codFam(EnhancedVect.Vect, morphFam)
+      
+      expect(domainFam('id')).toBe(V1)
+      expect(domainFam('proj')).toBe(V1)
+      expect(codomainFam('id')).toBe(V1)
+      expect(codomainFam('proj')).toBe(V2)
     })
   })
 

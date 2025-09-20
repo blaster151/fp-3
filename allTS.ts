@@ -16123,6 +16123,100 @@ export namespace IndexedFamilies {
       }
       return result
     }
+
+  /** Helper for reindexing: compute image of carrier under function */
+  export const imageCarrier =
+    <J, I>(Jcar: ReadonlyArray<J>, u: (j: J) => I): ReadonlyArray<I> => {
+      const seen = new Set<I>()
+      const out: I[] = []
+      for (const j of Jcar) {
+        const i = u(j)
+        if (!seen.has(i)) { seen.add(i); out.push(i) }
+      }
+      return out
+    }
+
+  /** Enumerable family: each fiber can be enumerated */
+  export interface Enumerable<X> { enumerate: () => ReadonlyArray<X> }
+  export type EnumFamily<I, X> = Family<I, Enumerable<X>>
+
+  /** Dependent sum for enumerable families (Σ) */
+  export const sigmaEnum =
+    <I, X>(Ifin: FiniteIndex<I>, fam: EnumFamily<I, X>): ReadonlyArray<{ i: I; x: X }> => {
+      const out: Array<{ i: I; x: X }> = []
+      for (const i of Ifin.carrier) {
+        for (const x of fam(i).enumerate()) {
+          out.push({ i, x })
+        }
+      }
+      return out
+    }
+
+  /** Dependent product for enumerable families (Π) */
+  export type Choice<I, X> = ReadonlyArray<readonly [I, X]>
+  export const piEnum =
+    <I, X>(Ifin: FiniteIndex<I>, fam: EnumFamily<I, X>): ReadonlyArray<Choice<I, X>> => {
+      let acc: Array<Choice<I, X>> = [[]]
+      for (const i of Ifin.carrier) {
+        const next: Array<Choice<I, X>> = []
+        const xs = fam(i).enumerate()
+        for (const ch of acc) {
+          for (const x of xs) {
+            next.push([...ch, [i, x]] as const)
+          }
+        }
+        acc = next
+      }
+      return acc
+    }
+
+  /** Left Kan extension for enumerable families */
+  export const lanEnum =
+    <J, I, X>(u: (j: J) => I, Jfin: FiniteIndex<J>, fam: EnumFamily<J, X>): EnumFamily<I, { j: J; x: X }> =>
+      (i: I) => ({
+        enumerate: () => Jfin.carrier
+          .filter((j) => u(j) === i)
+          .flatMap((j) => fam(j).enumerate().map((x) => ({ j, x })))
+      })
+
+  /** Right Kan extension for enumerable families */
+  export const ranEnum =
+    <J, I, X>(u: (j: J) => I, Jfin: FiniteIndex<J>, fam: EnumFamily<J, X>): EnumFamily<I, Choice<J, X>> =>
+      (i: I) => ({
+        enumerate: () => {
+          const fiber = Jfin.carrier.filter((j) => u(j) === i)
+          let acc: Array<Choice<J, X>> = [[]]
+          for (const j of fiber) {
+            const next: Array<Choice<J, X>> = []
+            const xs = fam(j).enumerate()
+            for (const ch of acc) {
+              for (const x of xs) {
+                next.push([...ch, [j, x]] as const)
+              }
+            }
+            acc = next
+          }
+          return acc
+        }
+      })
+
+  /** Sugar: create family from array */
+  export const familyFromArray =
+    <X>(xs: ReadonlyArray<X>) => {
+      const I = xs.map((_, i) => i)
+      const Ifin: FiniteIndex<number> = { carrier: I }
+      const fam: Family<number, X> = (i) => xs[i]!
+      return { I, Ifin, fam, Idisc: DiscreteCategory.create(I) } as const
+    }
+
+  /** Sugar: create family from record */
+  export const familyFromRecord =
+    <K extends string | number | symbol, X>(rec: Record<K, X>) => {
+      const keys = Object.keys(rec) as K[]
+      const Ifin: FiniteIndex<K> = { carrier: keys }
+      const fam: Family<K, X> = (k) => rec[k]!
+      return { keys, Ifin, fam, Idisc: DiscreteCategory.create(keys) } as const
+    }
 }
 
 /* ================================================================
@@ -16165,6 +16259,124 @@ export namespace DiscreteCategory {
         return idChainMapCompat(X, FieldReal) // identity on the complex
       }
     })
+}
+
+/* ================================================================
+   Enhanced Vect category with dom/cod and Arrow category support
+   ================================================================ */
+
+export namespace EnhancedVect {
+  export interface VectObj { readonly dim: number }
+  export interface VectMor { 
+    readonly matrix: ReadonlyArray<ReadonlyArray<number>>
+    readonly from: VectObj
+    readonly to: VectObj 
+  }
+
+  /** Arrow category object (morphism in Vect) */
+  export type ArrowObj = { f: VectMor }
+  
+  /** Arrow category morphism (commutative square) */
+  export type ArrowMor = { left: VectMor; right: VectMor }
+
+  export const Vect: Category<VectObj, VectMor> & ArrowFamilies.HasDomCod<VectObj, VectMor> = {
+    id: (v) => ({ 
+      matrix: Array.from({ length: v.dim }, (_, r) => 
+        Array.from({ length: v.dim }, (_, c) => (r === c ? 1 : 0))
+      ), 
+      from: v, 
+      to: v 
+    }),
+    compose: (g, f) => {
+      if (f.to.dim !== g.from.dim) throw new Error("Matrix dimension mismatch for composition")
+      const m = f.matrix, n = g.matrix
+      const rows = m.length, cols = n[0]?.length ?? 0, mid = n.length
+      const out: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0))
+      for (let i = 0; i < rows; i++) {
+        for (let k = 0; k < mid; k++) {
+          for (let j = 0; j < cols; j++) {
+            out[i]![j] += m[i]![k]! * n[k]![j]!
+          }
+        }
+      }
+      return { matrix: out, from: f.from, to: g.to }
+    },
+    dom: (m) => m.from,
+    cod: (m) => m.to,
+    isId: (m) => m.from.dim === m.to.dim && 
+      m.matrix.every((row, r) => row.every((x, c) => (r === c ? x === 1 : x === 0))),
+    equalMor: (x, y) => x.from.dim === y.from.dim && x.to.dim === y.to.dim && 
+      x.matrix.length === y.matrix.length && 
+      x.matrix.every((row, r) => row.every((v, c) => v === y.matrix[r]![c]))
+  }
+
+  /** Create zero morphism */
+  export const zero = (v: VectObj, w: VectObj): VectMor => ({ 
+    matrix: Array.from({ length: v.dim }, () => Array(w.dim).fill(0)), 
+    from: v, 
+    to: w 
+  })
+
+  /** Create identity morphism */
+  export const idMap = (v: VectObj): VectMor => Vect.id(v)
+
+  /** Arrow category for Vect */
+  export const ArrowVect: Category<ArrowObj, ArrowMor> = {
+    id: (obj: ArrowObj): ArrowMor => ({ 
+      left: Vect.id(Vect.dom(obj.f)), 
+      right: Vect.id(Vect.cod(obj.f)) 
+    }),
+    compose: (g: ArrowMor, f: ArrowMor): ArrowMor => ({ 
+      left: Vect.compose(g.left, f.left), 
+      right: Vect.compose(g.right, f.right) 
+    }),
+    isId: (m: ArrowMor) => Vect.isId!(m.left) && Vect.isId!(m.right)
+  }
+
+  /** Check if a square commutes */
+  export const squareCommutes = (f: VectMor, g: VectMor, left: VectMor, right: VectMor): boolean =>
+    Vect.equalMor!(Vect.compose(right, f), Vect.compose(g, left))
+
+  /** Finite product in Vect */
+  export const finiteProductVect =
+    <I>(Ifin: FiniteIndex<I>, fam: Family<I, VectObj>) => {
+      const dims = Ifin.carrier.map((i) => fam(i).dim)
+      const total = dims.reduce((a, b) => a + b, 0)
+      const product: VectObj = { dim: total }
+      
+      const projections: Family<I, VectMor> = (i) => {
+        const leftDims = Ifin.carrier.slice(0, Ifin.carrier.indexOf(i)).reduce((a, j) => a + fam(j).dim, 0)
+        const kDim = fam(i).dim
+        const M = Array.from({ length: kDim }, () => Array(total).fill(0))
+        for (let r = 0; r < kDim; r++) M[r]![leftDims + r] = 1
+        return { matrix: M, from: product, to: fam(i) }
+      }
+      
+      return { product, projections }
+    }
+
+  /** Finite coproduct in Vect */
+  export const finiteCoproductVect =
+    <I>(Ifin: FiniteIndex<I>, fam: Family<I, VectObj>) => {
+      const dims = Ifin.carrier.map((i) => fam(i).dim)
+      const total = dims.reduce((a, b) => a + b, 0)
+      const coproduct: VectObj = { dim: total }
+      
+      const injections: Family<I, VectMor> = (i) => {
+        const leftDims = Ifin.carrier.slice(0, Ifin.carrier.indexOf(i)).reduce((a, j) => a + fam(j).dim, 0)
+        const kDim = fam(i).dim
+        const M = Array.from({ length: total }, () => Array(kDim).fill(0))
+        for (let r = 0; r < kDim; r++) M[leftDims + r]![r] = 1
+        return { matrix: M, from: fam(i), to: coproduct }
+      }
+      
+      return { coproduct, injections }
+    }
+
+  /** Sum of dimensions */
+  export const directSumDims =
+    <I>(Ifin: FiniteIndex<I>, fam: Family<I, VectObj>): number =>
+      reduceFamily(Ifin, fam, 0, (acc, v) => acc + v.dim)
 }
 
 /* ================================================================
