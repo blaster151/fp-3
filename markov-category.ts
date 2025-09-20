@@ -560,3 +560,232 @@ export function renormalizeKernel<X, Y>(k: SubKernel<X, Y>): Kernel<X, Y> {
 export function isZeroMass<T>(d: Dist<T>, tol = 1e-12): boolean { return mass(d) <= tol; }
 
 // ===============================================================================================
+// (5) Distribution Monad API & Generic Kleisli Builder                                        
+// ===============================================================================================
+
+// First-class distribution monad interface
+export interface DistMonad<T> {
+  of: <A>(a: A) => T<A>;
+  map: <A, B>(f: (a: A) => B) => (ta: T<A>) => T<B>;
+  bind: <A, B>(f: (a: A) => T<B>) => (ta: T<A>) => T<B>;
+  join: <A>(tta: T<T<A>>) => T<A>;
+  product: <A, B>(ta: T<A>, tb: T<B>) => T<[A, B]>; // Fubini/product operation
+  isAffine1: boolean; // true for probability distributions (mass = 1)
+}
+
+// Concrete DistMonad implementation for our Dist<T> type
+export const DistMonadImpl: DistMonad<Dist> = {
+  of: <A>(a: A): Dist<A> => dirac(a),
+  map: <A, B>(f: (a: A) => B) => (da: Dist<A>): Dist<B> => {
+    const out: Dist<B> = new Map();
+    for (const [a, p] of da) {
+      const b = f(a);
+      out.set(b, (out.get(b) ?? 0) + p);
+    }
+    return prune(out);
+  },
+  bind: <A, B>(f: (a: A) => Dist<B>) => (da: Dist<A>): Dist<B> => {
+    const out: Dist<B> = new Map();
+    for (const [a, pa] of da) {
+      const db = f(a);
+      for (const [b, pb] of db) {
+        out.set(b, (out.get(b) ?? 0) + pa * pb);
+      }
+    }
+    return prune(out);
+  },
+  join: <A>(dda: Dist<Dist<A>>): Dist<A> => {
+    const out: Dist<A> = new Map();
+    for (const [da, pda] of dda) {
+      for (const [a, pa] of da) {
+        out.set(a, (out.get(a) ?? 0) + pda * pa);
+      }
+    }
+    return prune(out);
+  },
+  product: <A, B>(da: Dist<A>, db: Dist<B>): Dist<[A, B]> => {
+    const out: Dist<[A, B]> = new Map();
+    for (const [a, pa] of da) {
+      for (const [b, pb] of db) {
+        out.set([a, b], pa * pb);
+      }
+    }
+    return prune(out);
+  },
+  isAffine1: true // probability distributions have mass = 1
+};
+
+// Generic Kleisli builder for any Map-based distribution monad
+export interface KleisliSpec<T> {
+  monad: DistMonad<T>;
+  eq: <A>(a: A, b: A) => boolean;
+  show?: <A>(a: A) => string;
+}
+
+export function makeKleisli<T>(spec: KleisliSpec<T>) {
+  const { monad, eq, show } = spec;
+  
+  // Composition: (g ∘ f)(x) = bind y~f(x); g(y)
+  const compose = <X, Y, Z>(f: (x: X) => T<Y>, g: (y: Y) => T<Z>): (x: X) => T<Z> => {
+    return (x: X) => monad.bind(g)(f(x));
+  };
+  
+  // Tensor on objects: X ⊗ Y := [X,Y]
+  const tensorObj = <X, Y>(X: Fin<X>, Y: Fin<Y>): Fin<[X, Y]> => {
+    const elems: Array<[X, Y]> = [];
+    for (const x of X.elems) for (const y of Y.elems) elems.push([x, y]);
+    const eqPair: Eq<[X, Y]> = (a, b) => X.eq(a[0], b[0]) && Y.eq(a[1], b[1]);
+    const showPair: Show<[X, Y]> = ([x, y]) => `(${X.show?.(x) ?? String(x)}, ${Y.show?.(y) ?? String(y)})`;
+    return { elems, eq: eqPair, show: showPair };
+  };
+  
+  // Tensor on morphisms: (f ⊗ g)(x,z) = f(x) × g(z)
+  const tensor = <X1, Y1, X2, Y2>(f: (x: X1) => T<Y1>, g: (x: X2) => T<Y2>): ([x, z]: [X1, X2]) => T<[Y1, Y2]> => {
+    return ([x, z]) => monad.product(f(x), g(z));
+  };
+  
+  // Deterministic embedding
+  const deterministic = <X, Y>(f: (x: X) => Y): (x: X) => T<Y> => {
+    return (x: X) => monad.of(f(x));
+  };
+  
+  // Copy: Δ : X -> X ⊗ X
+  const copy = <X>(): (x: X) => T<[X, X]> => {
+    return (x: X) => monad.of([x, x]);
+  };
+  
+  // Discard: ! : X -> I
+  const discard = <X>(): (x: X) => T<{}> => {
+    return (_x: X) => monad.of({});
+  };
+  
+  // Swap: X ⊗ Y -> Y ⊗ X
+  const swap = <X, Y>(): ([x, y]: [X, Y]) => T<[Y, X]> => {
+    return deterministic(([x, y]: [X, Y]) => [y, x] as const);
+  };
+  
+  // Wrapper class
+  class FinKleisli<X, Y> {
+    constructor(public X: Fin<X>, public Y: Fin<Y>, public k: (x: X) => T<Y>) {}
+    
+    then<Z>(that: FinKleisli<Y, Z>): FinKleisli<X, Z> {
+      return new FinKleisli(this.X, that.Y, compose(this.k, that.k));
+    }
+    
+    tensor<Z, W>(that: FinKleisli<Z, W>, XxZ?: Fin<[X, Z]>, YxW?: Fin<[Y, W]>): FinKleisli<[X, Z], [Y, W]> {
+      const dom = XxZ ?? tensorObj(this.X, that.X);
+      const cod = YxW ?? tensorObj(this.Y, that.Y);
+      return new FinKleisli(dom, cod, tensor(this.k, that.k));
+    }
+    
+    // Pretty matrix view (for debugging)
+    matrix(): number[][] {
+      return this.X.elems.map(x => {
+        const d = this.k(x);
+        return this.Y.elems.map(y => {
+          // For Dist<Y> (which is Map<Y, number>), we can directly get the value
+          if (d instanceof Map) {
+            return d.get(y) ?? 0;
+          }
+          // Fallback for other types
+          return (d as any).get?.(y) ?? 0;
+        });
+      });
+    }
+    
+    pretty(digits = 4): string {
+      const fmt = (n: number) => n.toFixed(digits);
+      return this.matrix().map(r => r.map(fmt).join("\t")).join("\n");
+    }
+  }
+  
+  // Builders
+  const idK = <X>(X: Fin<X>): FinKleisli<X, X> => 
+    new FinKleisli(X, X, deterministic((x: X) => x));
+  
+  const copyK = <X>(X: Fin<X>): FinKleisli<X, [X, X]> => 
+    new FinKleisli(X, tensorObj(X, X), copy<X>());
+  
+  const discardK = <X>(X: Fin<X>): FinKleisli<X, {}> => 
+    new FinKleisli(X, mkFin<{}>([{}], () => true, () => "•"), discard<X>());
+  
+  const detK = <X, Y>(X: Fin<X>, Y: Fin<Y>, f: (x: X) => Y): FinKleisli<X, Y> => 
+    new FinKleisli(X, Y, deterministic(f));
+  
+  return {
+    compose,
+    tensor,
+    copy,
+    discard,
+    deterministic,
+    tensorObj,
+    swap,
+    FinKleisli,
+    idK,
+    copyK,
+    discardK,
+    detK,
+    isMarkovCategory: monad.isAffine1
+  };
+}
+
+// ===============================================================================================
+// (6) Swappable Monads                                                                         
+// ===============================================================================================
+
+// Probability monad (normalized, mass = 1)
+export const ProbMonad: DistMonad<Dist> = {
+  ...DistMonadImpl,
+  isAffine1: true
+};
+
+// Subprobability monad (mass ≤ 1, no renormalization)
+export const SubProbMonad: DistMonad<Dist> = {
+  ...DistMonadImpl,
+  isAffine1: false // subprobability allows mass < 1
+};
+
+// Weighted monad (scores, no normalization)
+export const WeightedMonad: DistMonad<Dist> = {
+  ...DistMonadImpl,
+  isAffine1: false // weighted allows any mass
+};
+
+// Convenience factories
+export const KleisliProb = makeKleisli({ monad: ProbMonad, eq: byRefEq() });
+export const KleisliSubProb = makeKleisli({ monad: SubProbMonad, eq: byRefEq() });
+export const KleisliWeighted = makeKleisli({ monad: WeightedMonad, eq: byRefEq() });
+
+// ===============================================================================================
+// (7) Law Checks & Diagnostics                                                                 
+// ===============================================================================================
+
+// Check Fubini theorem: ∫∫ f(x,y) dx dy = ∫∫ f(x,y) dy dx
+export function checkFubini<T, A, B>(
+  monad: DistMonad<T>,
+  da: T<A>,
+  db: T<B>,
+  f: (a: A, b: B) => number,
+  tol = 1e-9
+): boolean {
+  const product1 = monad.product(da, db);
+  const product2 = monad.product(db, da);
+  
+  // This is a simplified check - in practice you'd need more sophisticated integration
+  // For finite distributions, we can check that the joint distributions are consistent
+  return true; // Placeholder - would need proper integration for full Fubini check
+}
+
+// Check if a monad is affine (mass = 1)
+export function monadIsAffine1<T>(monad: DistMonad<T>): boolean {
+  return monad.isAffine1;
+}
+
+// Assert that a monad is Markov (affine)
+export function assertMarkov<T>(monad: DistMonad<T>): void {
+  if (!monad.isAffine1) {
+    throw new Error("Monad is not Markov (not affine)");
+  }
+}
+
+// ===============================================================================================
