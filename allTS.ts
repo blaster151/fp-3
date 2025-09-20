@@ -15668,6 +15668,8 @@ export const FP_CATALOG = {
   'IndexedFamilies.pullbackIndices': 'Compute pullback indices for Beck-Chevalley tests',
   'IndexedFamilies.unitPiEnum': 'Π-side unit: A(i) → Π_{j ∈ u^{-1}(i)} A(i)',
   'IndexedFamilies.counitPiEnum': 'Π-side counit: (u^* Π_u B)(j) → B(j)',
+  'IndexedFamilies.etaForPiEnum': 'Π-side second triangle unit: (Π_u B)(i) → Π_{j∈u^{-1}(i)} (u^* Π_u B)(j)',
+  'IndexedFamilies.PiOfEpsEnum': 'Π-side second triangle: (Π_u ε_B)_i composition',
   
   // Discrete categories
   'DiscreteCategory.create': 'Create discrete category from objects',
@@ -16245,6 +16247,31 @@ export namespace IndexedFamilies {
       const hit = choice.find(([jj]) => jj === j)
       if (!hit) throw new Error("counitPiEnum: missing j in choice")
       return hit[1]
+    }
+
+  /** Π-side second triangle: η_{Π_u B,i} : (Π_u B)(i) -> Π_{j∈u^{-1}(i)} (u^* Π_u B)(j) */
+  export const etaForPiEnum =
+    <J, I, X>(
+      u: (j: J) => I,
+      Jfin: { carrier: ReadonlyArray<J> }
+    ) => (i: I) => (choice: ReadonlyArray<readonly [J, X]>): ReadonlyArray<readonly [J, ReadonlyArray<readonly [J, X]>]> => {
+      const fiber = Jfin.carrier.filter((j) => u(j) === i)
+      return fiber.map((j) => [j, choice] as const)
+    }
+
+  /** Π-side second triangle: (Π_u ε_B)_i : Π_{j∈u^{-1}(i)} (u^* Π_u B)(j) -> (Π_u B)(i) */
+  export const PiOfEpsEnum =
+    <J, I, X>(
+      u: (j: J) => I,
+      Jfin: { carrier: ReadonlyArray<J> }
+    ) => (i: I) => (bundle: ReadonlyArray<readonly [J, ReadonlyArray<readonly [J, X]>]>): ReadonlyArray<readonly [J, X]> => {
+      const eps = counitPiEnum<J, I, X>(u, Jfin) // (u^* Π_u B)(j) -> B(j)
+      const fiber = Jfin.carrier.filter((j) => u(j) === i)
+      return fiber.map((j) => {
+        const comp = bundle.find(([jj]) => jj === j)?.[1]
+        if (!comp) throw new Error("PiOfEpsEnum: missing component for j")
+        return [j, eps(j)(comp)] as const
+      })
     }
 
   /** Sugar: create family from array */
