@@ -15714,6 +15714,12 @@ export const FP_CATALOG = {
   'FinSet': 'Complete finite Set category with (co)equalizers and (co)products',
   'finsetBijection': 'Create bijection in FinSet',
   'finsetInverse': 'Compute inverse of FinSet bijection',
+  'expFinSet': 'FinSet exponential: X^S (all functions S -> X)',
+  'expPostcompose': 'Postcompose on exponentials: X^S -> Y^S via (h ∘ -)',
+  'expPrecompose': 'Precompose on exponentials: X^S -> X^{S\'} via (- ∘ r)',
+  'homSetObjFinSet': 'Hom-set as FinSet object',
+  'homPostcomposeFinSet': 'Functorial map on Hom-sets via postcomposition',
+  'codensityCarrierFinSet': 'Codensity carrier T^G(A) via end formula in FinSet',
   
   // Arrow families
   'ArrowFamilies.domFam': 'Extract domain family from morphism family',
@@ -16411,6 +16417,20 @@ export interface GFunctor<GO, GM, HO, HM> {
   onMor: (m: GM) => HM
 }
 
+/** Finite small category for end constructions */
+export interface FiniteCategory<O, M> extends Category<O, M>, ArrowFamilies.HasDomCod<O, M> {
+  objects: ReadonlyArray<O>
+  hom: (a: O, b: O) => ReadonlyArray<M>
+}
+
+/** Functor for codensity constructions */
+export interface CFunctor<BO, BM, AO, AM> {
+  source: FiniteCategory<BO, BM>
+  target: Category<AO, AM> & ArrowFamilies.HasDomCod<AO, AM>
+  onObj: (b: BO) => AO
+  onMor: (m: BM) => AM
+}
+
 export namespace DiscreteCategory {
   /** Morphism in discrete category (only identities exist) */
   export type DiscreteMor<I> = { readonly tag: "Id"; readonly obj: I }
@@ -16594,53 +16614,65 @@ export const ranGroupoidViaClasses = <GO, GM, HO, HM, O, M>(
 
 /** Full groupoid Left Kan with optional automorphism quotient */
 export const lanGroupoidFull = <GO, GM, HO, HM, O, M>(
+  Cat: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
   H: FiniteGroupoid<HO, HM>,
   G: FiniteGroupoid<GO, GM>,
   u: GFunctor<GO, GM, HO, HM>,
-  F: { onObj: (g: GO) => O; onMor?: (phi: GM) => M },            // F on isos (optional; required if quotienting)
+  F: { onObj: (g: GO) => O; onMor?: (phi: GM) => M },   // F on isos (optional; req'd if quotienting)
   IfinH: IndexedFamilies.FiniteIndex<HO>,
-  C: CategoryLimits.HasFiniteCoproducts<O, M> & Partial<CategoryLimits.HasCoequalizers<O, M>>
+  C: CategoryLimits.HasFiniteCoproducts<O, M> & Partial<CategoryLimits.HasCoequalizers<O, M>> & Partial<CategoryLimits.HasInitial<O, M>>
 ) => {
   if (!C.coequalizer || !F.onMor) {
-    // Fallback: iso-classes only
     const lite = lanGroupoidViaClasses(H, G, u, F.onObj, IfinH, C)
     return { at: lite.at }
   }
 
   const at: IndexedFamilies.Family<HO, O> = (h) => {
-    // Objects of comma groupoid (u ↓ h): pairs (g, α: u(g) -> h), α iso in H
+    // objects in (u ↓ h): pairs (g, α:u(g)→h) with α iso in H
     const objs: Array<{ g: GO; alpha: HM }> = []
-    for (const g of G.objects) {
-      for (const a of H.hom(u.onObj(g), h)) objs.push({ g, alpha: a })
-    }
+    for (const g of G.objects) for (const a of H.hom(u.onObj(g), h)) objs.push({ g, alpha: a })
     if (objs.length === 0) {
-      // empty colimit: initial object if available
       if ((C as any).initialObj) return (C as any).initialObj as O
-      // else try a degenerate "coproduct" of empty list if C supports it
       const tmp = (C as any).coproduct?.([]) as { obj: O } | undefined
       if (tmp) return tmp.obj
-      throw new Error('lanGroupoidFull: empty comma-fiber and no initial object provided')
+      throw new Error('lanGroupoidFull: empty fiber and no initial object')
     }
 
-    // Initial coproduct: ⨿ F(g_i)
+    // start: ⨿ F(g_i)
     const { obj: Cop0, injections } = C.coproduct(objs.map(o => F.onObj(o.g)))
-    
-    // For now, return the coproduct without quotient (complex quotient logic would need Category instance)
-    // This is a simplified version - full implementation would quotient by automorphism actions
-    return Cop0
-  }
+    let Cobj = Cop0
+    let inj = injections.slice()
 
+    const eqH = (m1: HM, m2: HM) =>
+      H.dom(m1) === H.dom(m2) && H.cod(m1) === H.cod(m2) && H.isId(H.compose(H.inv(m1), m2))
+
+    for (let s = 0; s < objs.length; s++) {
+      for (let t = 0; t < objs.length; t++) {
+        const src = objs[s]!, dst = objs[t]!
+        for (const phi of G.hom(src.g, dst.g)) {
+          if (!eqH(H.compose(dst.alpha, u.onMor(phi)), src.alpha)) continue
+          const f = inj[s] as M                            // F(g) → C
+          const g2 = Cat.compose(inj[t] as any, F.onMor!(phi) as any) as M // F(g) → C via Fφ then ι_t
+          const { obj: Q, coequalize: q } = (C as CategoryLimits.HasCoequalizers<O, M>).coequalizer!(f, g2)
+          Cobj = Q
+          for (let k = 0; k < inj.length; k++) inj[k] = Cat.compose(q as any, inj[k] as any)
+        }
+      }
+    }
+    return Cobj
+  }
   return { at }
 }
 
 /** Full groupoid Right Kan with optional automorphism quotient */
 export const ranGroupoidFull = <GO, GM, HO, HM, O, M>(
+  Cat: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
   H: FiniteGroupoid<HO, HM>,
   G: FiniteGroupoid<GO, GM>,
   u: GFunctor<GO, GM, HO, HM>,
-  F: { onObj: (g: GO) => O; onMor?: (phi: GM) => M; inv?: (m: M) => M }, // need inverse for equalizer side
+  F: { onObj: (g: GO) => O; onMor?: (phi: GM) => M; inv?: (m: M) => M }, // need inverse for equalizer-side
   IfinH: IndexedFamilies.FiniteIndex<HO>,
-  C: CategoryLimits.HasFiniteProducts<O, M> & Partial<CategoryLimits.HasEqualizers<O, M>>
+  C: CategoryLimits.HasFiniteProducts<O, M> & Partial<CategoryLimits.HasEqualizers<O, M>> & Partial<CategoryLimits.HasTerminal<O, M>>
 ) => {
   if (!C.equalizer || !F.onMor || !F.inv) {
     const lite = ranGroupoidViaClasses(H, G, u, F.onObj, IfinH, C)
@@ -16649,25 +16681,38 @@ export const ranGroupoidFull = <GO, GM, HO, HM, O, M>(
 
   const at: IndexedFamilies.Family<HO, O> = (h) => {
     const objs: Array<{ g: GO; alpha: HM }> = []
-    for (const g of G.objects) {
-      for (const a of H.hom(u.onObj(g), h)) objs.push({ g, alpha: a })
-    }
+    for (const g of G.objects) for (const a of H.hom(u.onObj(g), h)) objs.push({ g, alpha: a })
 
     if (objs.length === 0) {
       if ((C as any).terminalObj) return (C as any).terminalObj as O
       const tmp = (C as any).product?.([]) as { obj: O } | undefined
       if (tmp) return tmp.obj
-      throw new Error('ranGroupoidFull: empty comma-fiber and no terminal object provided')
+      throw new Error('ranGroupoidFull: empty fiber and no terminal object')
     }
 
-    // Initial product: ∏ F(g_i)
-    const { obj: Prod0 } = C.product(objs.map(o => F.onObj(o.g)))
-    
-    // For now, return the product without quotient (complex quotient logic would need Category instance)
-    // This is a simplified version - full implementation would use equalizers for automorphism actions
-    return Prod0
-  }
+    const eqH = (m1: HM, m2: HM) =>
+      H.dom(m1) === H.dom(m2) && H.cod(m1) === H.cod(m2) && H.isId(H.compose(H.inv(m1), m2))
 
+    const { obj: Prod0, projections } = C.product(objs.map(o => F.onObj(o.g)))
+    let Pobj = Prod0
+    let proj = projections.slice()
+
+    for (let s = 0; s < objs.length; s++) {
+      for (let t = 0; t < objs.length; t++) {
+        const src = objs[s]!, dst = objs[t]!
+        for (const phi of G.hom(src.g, dst.g)) {
+          if (!eqH(H.compose(dst.alpha, u.onMor(phi)), src.alpha)) continue
+          const pi_s = proj[s]!
+          const pi_t = proj[t]!
+          const rhs = Cat.compose(F.inv!(F.onMor!(phi)) as any, pi_t as any) as M
+          const { obj: E, equalize: e } = (C as CategoryLimits.HasEqualizers<O, M>).equalizer!(pi_s as any, rhs)
+          Pobj = E
+          for (let k = 0; k < proj.length; k++) proj[k] = Cat.compose(proj[k] as any, e as any)
+        }
+      }
+    }
+    return Pobj
+  }
   return { at }
 }
 
@@ -16830,6 +16875,166 @@ export const finsetInverse = (bij: FinSetMor): FinSetMor => {
   const inv: number[] = Array.from({ length: bij.to.elements.length }, () => -1)
   for (let i = 0; i < bij.map.length; i++) inv[bij.map[i]!] = i
   return { from: bij.to, to: bij.from, map: inv }
+}
+
+/** FinSet exponential: X^S (all functions S -> X) */
+export const expFinSet = (X: FinSetObj, S: FinSetObj): FinSetObj => {
+  // elements = all functions S -> X (represented as arrays of indices in X of length |S|)
+  const nS = S.elements.length, nX = X.elements.length
+  const funcs: number[][] = []
+  const rec = (acc: number[], k: number) => {
+    if (k === nS) { funcs.push(acc.slice()); return }
+    for (let i = 0; i < nX; i++) rec([...acc, i], k + 1)
+  }
+  rec([], 0)
+  return { elements: funcs }
+}
+
+/** Postcompose on exponentials: given h: X -> Y, map X^S -> Y^S by (h ∘ -) */
+export const expPostcompose = (h: FinSetMor, S: FinSetObj): FinSetMor => {
+  const XtoY = h.map
+  const YpowS = expFinSet(h.to, S)
+  const indexMap = new Map<string, number>()
+  YpowS.elements.forEach((arr, idx) => indexMap.set(JSON.stringify(arr), idx))
+  const XpowS = expFinSet(h.from, S)
+  const map = XpowS.elements.map(arr => {
+    const out = (arr as number[]).map((ix) => XtoY[ix]!)
+    return indexMap.get(JSON.stringify(out))!
+  })
+  return { from: XpowS, to: YpowS, map }
+}
+
+/** Precompose on exponentials: given r: S' -> S, map X^S -> X^{S'} by (- ∘ r) */
+export const expPrecompose = (X: FinSetObj, r: FinSetMor, S: FinSetObj, Sprime: FinSetObj): FinSetMor => {
+  const XpowS = expFinSet(X, S)
+  const XpowSprim = expFinSet(X, Sprime)
+  const indexMap = new Map<string, number>()
+  XpowSprim.elements.forEach((arr, idx) => indexMap.set(JSON.stringify(arr), idx))
+  const map = XpowS.elements.map(arr => {
+    const out = r.map.map((j) => (arr as number[])[j]!) // g[s'] = f[r(s')]
+    return indexMap.get(JSON.stringify(out))!
+  })
+  return { from: XpowS, to: XpowSprim, map }
+}
+
+/** All FinSet morphisms A -> X as a FinSet object (the Hom-set object) */
+export const homSetObjFinSet = (A: FinSetObj, X: FinSetObj): FinSetObj => {
+  // Elements are arrays len |A| with entries in [0..|X|-1]
+  const nA = A.elements.length, nX = X.elements.length
+  const maps: number[][] = []
+  const rec = (acc: number[], k: number) => {
+    if (k === nA) { maps.push(acc.slice()); return }
+    for (let i = 0; i < nX; i++) rec([...acc, i], k + 1)
+  }
+  rec([], 0)
+  return { elements: maps }
+}
+
+/** The functorial map Hom(A, X) -> Hom(A, Y) induced by h: X->Y (postcompose) */
+export const homPostcomposeFinSet = (A: FinSetObj, h: FinSetMor): FinSetMor => {
+  const S = homSetObjFinSet(A, h.from)
+  const T = homSetObjFinSet(A, h.to)
+  const indexMap = new Map<string, number>()
+  T.elements.forEach((arr, idx) => indexMap.set(JSON.stringify(arr), idx))
+  const map = S.elements.map(arr => {
+    const out = (arr as number[]).map(aIx => h.map[aIx]!)
+    return indexMap.get(JSON.stringify(out))!
+  })
+  return { from: S, to: T, map }
+}
+
+/** Codensity carrier T^G(A) in FinSet via end formula */
+export const codensityCarrierFinSet = <BO, BM>(
+  CatB: FiniteCategory<BO, BM>,
+  G: CFunctor<BO, BM, FinSetObj, FinSetMor>,   // G : B -> FinSet
+  A: FinSetObj
+): FinSetObj => {
+  // F(b,b') := (G b') ^ Hom(A, G b)
+  const Sb: Map<BO, FinSetObj> = new Map()   // S_b = Hom(A, G b)
+  const Eb: Map<BO, FinSetObj> = new Map()   // E_b = (G b) ^ S_b
+
+  // Precompute S_b and E_b
+  for (const b of CatB.objects) {
+    const Gb = G.onObj(b)
+    const S = homSetObjFinSet(A, Gb)
+    Sb.set(b, S)
+    Eb.set(b, expFinSet(Gb, S))
+  }
+
+  // Product over b of E_b
+  const EbArr = CatB.objects.map(b => Eb.get(b)!)
+  const { obj: ProdEb, projections: projEb } = FinSet.product(EbArr)
+
+  // Target product over each morphism f:b->b' of F(b,b') = (G b') ^ S_b
+  const FfbArr: FinSetObj[] = []
+  const leg_s: FinSetMor[] = [] // from ProdEb to each F(b,b') using F(1,f)
+  const leg_t: FinSetMor[] = [] // … using F(f,1)
+
+  // Build explicit list of all morphisms
+  const allArrows: Array<{ b: BO; bp: BO; f: BM }> = []
+  for (const b of CatB.objects) {
+    for (const bp of CatB.objects) {
+      for (const f of CatB.hom(b, bp)) allArrows.push({ b, bp, f })
+    }
+  }
+
+  // For each arrow f: b -> b', build components
+  for (const { b, bp, f } of allArrows) {
+    const Gb = G.onObj(b)
+    const Gbp = G.onObj(bp)
+    const Gf = G.onMor(f)                        // Gf: Gb -> Gbp
+    const Sb_b = Sb.get(b)!                      // Hom(A, Gb)
+
+    // F(1,f): E_b -> (G b')^S_b  by postcompose with Gf on the codomain
+    const comp1 = expPostcompose(Gf, Sb_b)
+
+    // F(f,1): E_{b'} -> (G b')^S_b by precompose on the exponent domain
+    // Need Hom(A, Gb) -> Hom(A, G b') induced by postcompose with Gf
+    const homPush = homPostcomposeFinSet(A, Gf) // S_b -> S_{b'}
+    const comp2 = expPrecompose(Gbp, homPush, Sb.get(bp)!, Sb_b)
+
+    // Pack product legs from ProdEb
+    const projFromB = projEb[CatB.objects.indexOf(b)]!
+    const projFromBp = projEb[CatB.objects.indexOf(bp)]!
+
+    // Assemble s,t by whiskering ProdEb --π_b/π_b'--> E_b / E_{b'} then comp1/comp2
+    const s_leg: FinSetMor = FinSet.compose(comp1, projFromB)
+    const t_leg: FinSetMor = FinSet.compose(comp2, projFromBp)
+
+    // Collect codomain objs
+    const Fbbp = expFinSet(Gbp, Sb_b) // (G b')^S_b
+    FfbArr.push(Fbbp)
+    leg_s.push(s_leg)
+    leg_t.push(t_leg)
+  }
+
+  // Pack ∏_{f} F(b,b')
+  const { obj: ProdF } = FinSet.product(FfbArr)
+
+  // Bundle the parallel maps S,T : ∏_b E_b  ⇉  ∏_f F(b,b')
+  const toProdF = (legs: FinSetMor[]): FinSetMor => {
+    // Build the canonical tuple using FinSet product universal property
+    const from = ProdEb, to = ProdF
+    const indexMap = new Map<string, number>()
+    to.elements.forEach((elem, idx) => indexMap.set(JSON.stringify(elem), idx))
+
+    const map: number[] = new Array(from.elements.length).fill(0)
+    for (let eIx = 0; eIx < from.elements.length; eIx++) {
+      const coords = legs.map((leg) => leg.map[eIx]!)
+      const key = JSON.stringify(coords)
+      const idx = indexMap.get(key)
+      if (idx === undefined) throw new Error('tuple to ProdF: coordinate missing')
+      map[eIx] = idx
+    }
+    return { from, to, map }
+  }
+
+  const S = toProdF(leg_s)
+  const T = toProdF(leg_t)
+
+  // End = equalizer of S and T
+  const { obj: EndObj } = FinSet.equalizer(S, T)
+  return EndObj
 }
 
 /* ================================================================
