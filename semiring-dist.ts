@@ -36,7 +36,11 @@ export const samp = <X>(px: Dist<X>): X => {
 export const dirac = delta;
 
 // ---- Numeric semiring -------------------------------------------------------
+// Note: Using CSRig from semiring-utils.ts for the main interface
 
+import type { CSRig } from "./semiring-utils";
+
+// Legacy interface for backward compatibility
 export interface NumSemiring {
   add: (a: number, b: number) => number;     // ⊕
   mul: (a: number, b: number) => number;     // ⊗
@@ -50,7 +54,8 @@ const defaultEq = (a: number, b: number) => Math.abs(a - b) <= 1e-12;
 
 // ---- DR monad from a numeric semiring --------------------------------------
 
-export function DRMonad(R: NumSemiring): DistLikeMonadSpec {
+// Overloaded for both legacy NumSemiring and new CSRig
+export function DRMonad(R: NumSemiring | CSRig<number>): DistLikeMonadSpec {
   const eq = R.eq ?? defaultEq;
 
   // η
@@ -97,11 +102,11 @@ export function DRMonad(R: NumSemiring): DistLikeMonadSpec {
 
 // Convenience builders
 
-export const KleisliDR = (R: NumSemiring) => makeKleisli(DRMonad(R));
+export const KleisliDR = (R: NumSemiring | CSRig<number>) => makeKleisli(DRMonad(R));
 
 // Builders for distributions in each semiring (ensure "sum = 1_R")
 
-export function mkRDist<T>(R: NumSemiring, pairs: Array<[T, number]>): Dist<T> {
+export function mkRDist<T>(R: NumSemiring | CSRig<number>, pairs: Array<[T, number]>): Dist<T> {
   const m = new Map<T, number>();
   for (const [x, w] of pairs) {
     const current = m.get(x) ?? R.zero;
@@ -114,18 +119,21 @@ export function mkRDist<T>(R: NumSemiring, pairs: Array<[T, number]>): Dist<T> {
 //  - For ℝ₊: divide by Σ
 //  - For LogProb: subtract log-sum-exp to make sum=0
 //  - For Tropical: subtract max so "sum" (max) = 0
-export function normalizeR<T>(R: NumSemiring, d: Dist<T>): Dist<T> {
-  if (R === RPlus) {
+export function normalizeR<T>(R: NumSemiring | CSRig<number>, d: Dist<T>): Dist<T> {
+  // Import the semirings for comparison
+  const { Prob, LogProb, MaxPlus } = require("./semiring-utils");
+  
+  if (R === Prob || (R as any).zero === 0 && (R as any).one === 1) {
     let s = 0; for (const v of d.values()) s += v; if (s===0) return d;
     const out = new Map<T, number>(); for (const [k,v] of d) out.set(k, v/s); return out;
   }
-  if (R === LogProb) {
+  if (R === LogProb || (R as any).zero === -Infinity && (R as any).one === 0) {
     let m = -Infinity; for (const v of d.values()) m = Math.max(m, v);
     let lse = 0; for (const v of d.values()) lse += Math.exp(v - m);
     const logZ = m + Math.log(lse);
     const out = new Map<T, number>(); for (const [k,v] of d) out.set(k, v - logZ); return out;
   }
-  if (R === TropicalMaxPlus) {
+  if (R === MaxPlus || ((R as any).zero === -Infinity && (R as any).one === 0 && typeof (R as any).add === 'function')) {
     let mx = -Infinity; for (const v of d.values()) mx = Math.max(mx, v);
     const out = new Map<T, number>(); for (const [k,v] of d) out.set(k, v - mx); return out;
   }
@@ -134,7 +142,7 @@ export function normalizeR<T>(R: NumSemiring, d: Dist<T>): Dist<T> {
 }
 
 // Quick predicates
-export function isDirac<T>(R: NumSemiring, d: Dist<T>): boolean {
+export function isDirac<T>(R: NumSemiring | CSRig<number>, d: Dist<T>): boolean {
   let count = 0;
   for (const w of d.values()) if (!(R.eq ?? defaultEq)(w, R.zero)) count++;
   return count === 1;
