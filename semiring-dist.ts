@@ -1,7 +1,39 @@
 // semiring-dist.ts — DR monad (generalized distributions over a numeric semiring R)
+// Keep probability/monad mechanics here; category-level interfaces in markov-category.ts
 
-import { Dist, Fin, Pair, I, tensorObj, Kernel, dirac } from "./markov-category";
+import { Fin, Pair, I, tensorObj, Kernel } from "./markov-category";
 import { DistLikeMonadSpec, makeKleisli } from "./probability-monads";
+
+// ===== Core Dist Type =====
+export type Dist<X> = Map<X, number>; // stays numeric for now; parametrize by R later
+
+// ===== Sampling & Representability Core =====
+export type Samp<X> = (px: Dist<X>) => X;          // sampling map (total for finite tests)
+export type Dirac<X> = (x: X) => Dist<X>;
+
+export const delta = <X>(x: X): Dist<X> => new Map([[x, 1]]);
+
+// Deterministic sampling via argmax (for property tests)
+export const samp = <X>(px: Dist<X>): X => {
+  let bestX: X | undefined;
+  let bestWeight = -Infinity;
+  
+  for (const [x, weight] of px) {
+    if (weight > bestWeight) {
+      bestWeight = weight;
+      bestX = x;
+    }
+  }
+  
+  if (bestX === undefined) {
+    throw new Error("Cannot sample from empty distribution");
+  }
+  
+  return bestX;
+};
+
+// Legacy alias
+export const dirac = delta;
 
 // ---- Numeric semiring -------------------------------------------------------
 
@@ -61,32 +93,7 @@ export function DRMonad(R: NumSemiring): DistLikeMonadSpec {
   return { of, map, bind, product, isAffine1: true };
 }
 
-// Ready-made semirings (all with no zero divisors)
-
-export const RPlus: NumSemiring = {
-  add: (a,b)=>a+b, mul: (a,b)=>a*b, zero: 0, one: 1, eq: defaultEq, noZeroDivisors: true,
-};
-
-export const BoolRig: NumSemiring = {
-  add: (a,b)=> (a||b ? 1 : 0), mul: (a,b)=> (a&&b ? 1 : 0), zero: 0, one: 1,
-  eq: (a,b)=> (a?1:0) === (b?1:0), noZeroDivisors: true,
-};
-
-export const TropicalMaxPlus: NumSemiring = {
-  add: (a,b)=>Math.max(a,b), mul: (a,b)=>a+b, zero: -Infinity, one: 0,
-  eq: (a,b) => Math.abs(a - b) <= 1e-12 || (a === -Infinity && b === -Infinity), noZeroDivisors: true,
-};
-
-export const LogProb: NumSemiring = {
-  // Work in log-space: ⊕ = logsumexp, ⊗ = +, 0_R = -∞, 1_R = 0
-  add: (a,b)=> {
-    if (a===-Infinity) return b; if (b===-Infinity) return a;
-    const m = Math.max(a,b); return m + Math.log(Math.exp(a-m)+Math.exp(b-m));
-  },
-  mul: (a,b)=>a+b, zero: -Infinity, one: 0, 
-  eq: (a,b) => Math.abs(a - b) <= 1e-12 || (a === -Infinity && b === -Infinity), 
-  noZeroDivisors: true,
-};
+// Note: Semiring instances moved to semiring-utils.ts for centralization
 
 // Convenience builders
 

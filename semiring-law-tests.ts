@@ -1,7 +1,7 @@
 // semiring-law-tests.ts
 import { mkFin } from "./markov-category";
-import { DRMonad, RPlus, BoolRig, TropicalMaxPlus, LogProb } from "./semiring-dist";
-import { fromPairsR } from "./semiring-utils";
+import { DRMonad } from "./semiring-dist";
+import { Prob, LogProb, MaxPlus, Bool, fromPairsR } from "./semiring-utils";
 import { checkFubini as checkFubiniGeneric } from "./markov-laws"; // the one that takes a DistLikeMonadSpec
 import { pullbackSquareHolds, checkPullbackRandom } from "./pullback-check";
 
@@ -9,10 +9,10 @@ export function runSemiringLawSuite() {
   const Θ = mkFin(["t1","t2","t3"] as const, (a,b)=>a===b);
 
   const specs = [
-    { name: "RPlus (probabilities)",     R: RPlus,           M: DRMonad(RPlus) },
+    { name: "Prob (probabilities)",     R: Prob,           M: DRMonad(Prob) },
     { name: "LogProb (log-space)",       R: LogProb,         M: DRMonad(LogProb) },
-    { name: "Tropical max-plus (Viterbi)", R: TropicalMaxPlus, M: DRMonad(TropicalMaxPlus) },
-    { name: "Bool (nondeterminism)",     R: BoolRig,         M: DRMonad(BoolRig) },
+    { name: "MaxPlus (Viterbi)", R: MaxPlus, M: DRMonad(MaxPlus) },
+    { name: "Bool (nondeterminism)",     R: Bool,         M: DRMonad(Bool) },
   ] as const;
 
   const results = specs.map(({ name, R, M }) => {

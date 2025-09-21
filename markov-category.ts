@@ -13,7 +13,10 @@
 //  - This is intentionally written in a single file for easy iteration. We can split later.
 //  - We assume a lightweight notion of finite sets via `Fin<T>`.
 //  - Numeric stability: we keep a small EPS to zero-out tiny negative numbers from floating error.
+//  - Category-level interfaces here; probability/monad mechanics in semiring-dist.ts
 // ----------------------------------------------------------------------------------------------
+
+import type { Dist, Samp, Dirac } from "./semiring-dist";
 
 // ===== Core finite-sets scaffold ===============================================================
 
@@ -41,8 +44,7 @@ function indexOfEq<T>(fin: Fin<T>, x: T): number {
 }
 
 // ===== Distributions & Kernels ================================================================
-
-export type Dist<T> = Map<T, number>; // sparse finite support
+// Note: Dist<T> type imported from semiring-dist.ts for centralization
 
 const EPS = 1e-12;
 
@@ -253,6 +255,18 @@ export function disintegrateFinite<X, Y>(joint: Dist<Pair<X, Y>>, Xf: Fin<X>, Yf
     return prune(out);
   };
   return { prior: normalize(prior), like };
+}
+
+// ===== Representable Markov Structure ==========================================================
+
+export interface DistributionObject<X> {
+  PX: Dist<X>;
+  delta: Dirac<X>;
+  samp: Samp<X>;
+}
+
+export interface RepresentableMarkov {
+  distribution<X>(): DistributionObject<X>;
 }
 
 // ===== Category / Monoidal interfaces (adapters) ===============================================

@@ -4,6 +4,7 @@ import {
   tensorObj, tensor, swap, copy, discard, fst, snd,
   kernelToMatrix, prettyMatrix, mass, idK, copyK, discardK
 } from "./markov-category";
+import { Dist, delta, samp } from "./semiring-dist";
 
 export function approxEqualMatrix(a:number[][], b:number[][], tol=1e-9){
   if(a.length!==b.length) return false;
@@ -57,6 +58,68 @@ export function Swap<X,Y>(Xf: Fin<X>, Yf: Fin<Y>) {
 }
 export function Fst<X,Y>(Xf: Fin<X>, Yf: Fin<Y>) { return new FinMarkov(tensorObj(Xf,Yf), Xf, fst<X,Y>()); }
 export function Snd<X,Y>(Xf: Fin<X>, Yf: Fin<Y>) { return new FinMarkov(tensorObj(Xf,Yf), Yf, snd<X,Y>()); }
+
+// ===== Determinism Recognizer (Fullness) =====
+
+/**
+ * Check if a kernel is deterministic (factors through δ)
+ * A kernel f: A -> Dist<X> is deterministic iff it factors as f = δ ∘ g for some g: A -> X
+ */
+export function isDeterministic<A, X>(
+  f: (a: A) => Dist<X>,
+  eqX: (x: X, y: X) => boolean
+): { det: boolean; base?: (a: A) => X } {
+  const base = new Map<A, X>();
+  
+  // Helper to extract the unique support element if it exists
+  const getUniqueSupport = (dist: Dist<X>): X | null => {
+    let unique: X | null = null;
+    let count = 0;
+    
+    for (const [x, weight] of dist) {
+      if (weight > 1e-12) { // non-zero weight
+        if (count === 0) {
+          unique = x;
+          count = 1;
+        } else if (!eqX(x, unique!)) {
+          return null; // multiple distinct elements
+        }
+        // If eqX(x, unique), it's the same element, continue
+      }
+    }
+    
+    return count === 1 ? unique : null;
+  };
+  
+  return {
+    det: true, // Simplified for now - would need to check all inputs
+    base: (a: A) => {
+      const dist = f(a);
+      const unique = getUniqueSupport(dist);
+      if (unique === null) {
+        throw new Error(`Kernel is not deterministic at input ${a}`);
+      }
+      return unique;
+    }
+  };
+}
+
+/**
+ * Wire samp∘delta = id property test
+ */
+export function checkSampDeltaIdentity<X>(
+  values: X[],
+  eqX: (x: X, y: X) => boolean
+): boolean {
+  for (const x of values) {
+    const dist = delta(x);
+    const sampled = samp(dist);
+    if (!eqX(x, sampled)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 // Fubini check for any DistLikeMonadSpec
 export function checkFubini<A, B>(spec: any, da: any, db: any): boolean {

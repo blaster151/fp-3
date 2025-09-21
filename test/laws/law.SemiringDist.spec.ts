@@ -17,10 +17,10 @@
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 import {
-  DRMonad, NumSemiring, RPlus, BoolRig, TropicalMaxPlus, LogProb,
-  mkRDist, normalizeR, isDirac, KleisliDR
+  DRMonad, NumSemiring, mkRDist, normalizeR, isDirac, KleisliDR
 } from '../../semiring-dist'
-import { Dist, mass } from '../../markov-category'
+import { Prob, LogProb, MaxPlus, Bool, Dist } from '../../semiring-utils'
+import { mass } from '../../markov-category'
 import { checkFubini } from '../../markov-laws'
 import { testMonadLaws, commonGenerators } from '../laws/law-helpers'
 
@@ -35,8 +35,8 @@ describe("LAW: Semiring Distribution Laws", () => {
     genWeight: () => fc.Arbitrary<number>
   }> = [
     {
-      name: "RPlus (Standard Probability)",
-      R: RPlus,
+      name: "Prob (Standard Probability)",
+      R: Prob,
       isAffine: true,
       genElement: () => fc.integer({ min: -5, max: 5 }),
       genWeight: () => fc.float({ min: 0, max: 2, noNaN: true })
@@ -49,15 +49,15 @@ describe("LAW: Semiring Distribution Laws", () => {
       genWeight: () => fc.float({ min: -10, max: 2, noNaN: true })
     },
     {
-      name: "Tropical (Viterbi/Shortest Path)",
-      R: TropicalMaxPlus, 
+      name: "MaxPlus (Viterbi/Shortest Path)",
+      R: MaxPlus, 
       isAffine: true,
       genElement: () => fc.integer({ min: -5, max: 5 }),
       genWeight: () => fc.float({ min: -10, max: 10, noNaN: true })
     },
     {
       name: "Bool (Nondeterminism)",
-      R: BoolRig,
+      R: Bool,
       isAffine: true,
       genElement: () => fc.integer({ min: -5, max: 5 }),
       genWeight: () => fc.constantFrom(0, 1)

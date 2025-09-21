@@ -13,13 +13,15 @@
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 import {
-  mkFin, FinMarkov, Kernel, Dist, Pair, I,
+  mkFin, FinMarkov, Kernel, Pair, I,
   copyK, discardK, idK, detK, swap, tensor,
   checkComonoidLaws, checkComonoidHom, isDeterministicKernel,
-  checkRowStochastic, mass, dirac, fromWeights,
+  checkRowStochastic, mass, fromWeights,
   MarkovCategory, approxEqualMatrix
 } from '../../markov-category'
-import { DRMonad, RPlus, LogProb, TropicalMaxPlus, BoolRig } from '../../semiring-dist'
+import { DRMonad } from '../../semiring-dist'
+import { Prob, LogProb, MaxPlus, Bool, Dist } from '../../semiring-utils'
+import { delta } from '../../semiring-dist'
 import { KleisliProb, DistMonad } from '../../probability-monads'
 
 describe("LAW: Markov Category Laws", () => {
@@ -49,7 +51,7 @@ describe("LAW: Markov Category Laws", () => {
     
     it("return preserves unit mass", () => {
       const semirings = [
-        { name: "RPlus", R: RPlus, M: DRMonad(RPlus) },
+        { name: "Prob", R: Prob, M: DRMonad(Prob) },
         { name: "LogProb", R: LogProb, M: DRMonad(LogProb) },
       ]
 
@@ -67,7 +69,7 @@ describe("LAW: Markov Category Laws", () => {
     })
 
     it("bind preserves unit mass for stochastic kernels", () => {
-      const R = RPlus
+      const R = Prob
       const M = DRMonad(R)
       
       fc.assert(
