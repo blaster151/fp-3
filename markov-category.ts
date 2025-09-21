@@ -16,7 +16,27 @@
 //  - Category-level interfaces here; probability/monad mechanics in semiring-dist.ts
 // ----------------------------------------------------------------------------------------------
 
-import type { Dist, Samp, Dirac } from "./semiring-dist";
+import type { Dist, Samp } from "./dist";
+import type { CSRig } from "./semiring-utils";
+
+// ===== Markov Category Façade ==================================================================
+
+// Deterministic morphism A→B
+export type Det<A, B> = (a: A) => B;
+
+// Stochastic morphism A→B
+export type Stoch<R, A, B> = (a: A) => Dist<R, B>;
+
+// Distribution object interface
+export interface DistributionObject<R, X> {
+  delta: (x: X) => Dist<R, X>;
+  samp: Samp<R, X>;
+}
+
+// Representable Markov façade
+export interface RepresentableMarkov<R> {
+  distribution<X>(): DistributionObject<R, X>;
+}
 
 // ===== Core finite-sets scaffold ===============================================================
 
