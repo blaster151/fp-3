@@ -4,6 +4,8 @@ import {
   tensorObj, tensor, swap, copy, discard, fst, snd,
   kernelToMatrix, prettyMatrix, mass, idK, copyK, discardK
 } from "./markov-category";
+import { Dist } from "./dist";
+import { CSRig } from "./semiring-utils";
 
 export function approxEqualMatrix(a:number[][], b:number[][], tol=1e-9){
   if(a.length!==b.length) return false;
@@ -57,6 +59,105 @@ export function Swap<X,Y>(Xf: Fin<X>, Yf: Fin<Y>) {
 }
 export function Fst<X,Y>(Xf: Fin<X>, Yf: Fin<Y>) { return new FinMarkov(tensorObj(Xf,Yf), Xf, fst<X,Y>()); }
 export function Snd<X,Y>(Xf: Fin<X>, Yf: Fin<Y>) { return new FinMarkov(tensorObj(Xf,Yf), Yf, snd<X,Y>()); }
+
+// ===== Enhanced Determinism Recognizer (Step 3) =====
+
+/**
+ * A Kleisli arrow f: A→PX is deterministic iff each f(a) is Dirac.
+ * Based on "Dirac-support" (fullness / δ factorization).
+ */
+export function isDeterministic<R, A, B>(
+  R: CSRig<R>,
+  f: (a: A) => Dist<R, B>,
+  sampleAs: readonly A[]
+): { det: boolean; base?: (a: A) => B } {
+  const baseMap = new Map<A, B>();
+  
+  // First pass: check that each f(a) is Dirac and record the unique support element
+  for (const a of sampleAs) {
+    const d = f(a);
+    let theB: B | undefined;
+    let nonzeroCount = 0;
+    
+    d.w.forEach((p, b) => {
+      if (!(R.isZero?.(p) ?? R.eq(p, R.zero))) {
+        nonzeroCount++;
+        theB = b; // Take the last non-zero element (should be only one)
+      }
+    });
+    
+    if (nonzeroCount !== 1 || theB === undefined) {
+      return { det: false };
+    }
+    
+    baseMap.set(a, theB);
+  }
+  
+  // If we get here, all samples are Dirac distributions
+  // Create the base function that works for any input
+  const base = (a: A): B => {
+    if (baseMap.has(a)) {
+      return baseMap.get(a)!;
+    }
+    // For new inputs, compute f(a) and extract the unique support
+    const d = f(a);
+    let theB: B | undefined;
+    let nonzeroCount = 0;
+    
+    d.w.forEach((p, b) => {
+      if (!(R.isZero?.(p) ?? R.eq(p, R.zero))) {
+        nonzeroCount++;
+        theB = b;
+      }
+    });
+    
+    if (nonzeroCount !== 1 || theB === undefined) {
+      throw new Error(`Function is not deterministic at input ${a}`);
+    }
+    
+    return theB;
+  };
+  
+  return { det: true, base };
+}
+
+/**
+ * Legacy determinism recognizer for backward compatibility
+ * @deprecated Use the enhanced version with CSRig parameter
+ */
+export function isDeterministicLegacy<A, X>(
+  f: (a: A) => Map<X, number>,
+  eqX: (x: X, y: X) => boolean,
+  sampleAs: readonly A[]
+): { det: boolean; base?: (a: A) => X } {
+  // Convert to use the new recognizer with Prob semiring
+  const { Prob } = require("./semiring-utils");
+  const newF = (a: A): Dist<number, X> => ({
+    R: Prob,
+    w: f(a)
+  });
+  return isDeterministic(Prob, newF, sampleAs);
+}
+
+/**
+ * Wire samp∘delta = id property test
+ */
+export function checkSampDeltaIdentity<R, X>(
+  R: CSRig<R>,
+  delta: (x: X) => Dist<R, X>,
+  samp: (d: Dist<R, X>) => X,
+  values: readonly X[],
+  eqX: (x: X, y: X) => boolean
+): boolean {
+  for (const x of values) {
+    const dist = delta(x);
+    const sampled = samp(dist);
+    if (!eqX(x, sampled)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 // Fubini check for any DistLikeMonadSpec
 export function checkFubini<A, B>(spec: any, da: any, db: any): boolean {
