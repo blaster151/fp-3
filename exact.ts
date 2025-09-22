@@ -150,7 +150,7 @@ export const makeShiftExactFunctor =
     const onComplex = (X: Complex<R>) => shift1(X)
     const onMap = (f: ChainMap<R>): ChainMap<R> => {
       // shift map: (f_n : X_n→Y_n) becomes (f_{n-1} : X[1]_n = X_{n-1} → Y[1]_n = Y_{n-1})
-      const g: Record<number, any> = {}
+      const g: Record<number, Mat<R>> = {}
       for (const n of f.X.degrees) if (f.f[n-1]) g[n] = f.f[n-1]!
       return { S, X: shift1(f.X), Y: shift1(f.Y), f: g }
     }
