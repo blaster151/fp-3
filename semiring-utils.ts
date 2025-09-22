@@ -143,7 +143,7 @@ export function isEntire<R>(R: CSRig<R>, probes = 128): boolean {
 
   // Fallback randomized check (only meaningful if you can sample R; for numbers we probe ± random)
   // Here we assume number-like; callers can override probes=0 to skip.
-  const sample = (): any => Math.random() * 2 - 1; // crude
+  const sample = (): number => Math.random() * 2 - 1; // crude
   for (let i = 0; i < probes; i++) {
     const a = sample();
     const b = sample();

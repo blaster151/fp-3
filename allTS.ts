@@ -5581,7 +5581,7 @@ export const fromEntries = <
   V
 >(pairs: ReadonlyArray<readonly [K, V]>): Readonly<Record<K, V>> => {
   const out = {} as Record<K, V>
-  for (const [k, v] of pairs) (out as any)[k] = v
+  for (const [k, v] of pairs) out[k] = v
   return out
 }
 
@@ -5593,7 +5593,7 @@ export const fromEntries = <
  *   // R: { readonly a: "a:1"; readonly b: "b:2" }
  */
 export const mapValues = <
-  T extends Record<PropertyKey, any>,
+  T extends Record<PropertyKey, unknown>,
   B
 >(
   obj: T,
@@ -5618,7 +5618,7 @@ export const mapValues = <
  *   // R: Readonly<Record<"A" | "B", number>>
  */
 export const mapEntries = <
-  T extends Record<PropertyKey, any>,
+  T extends Record<PropertyKey, unknown>,
   NK extends PropertyKey,
   B
 >(
@@ -5630,7 +5630,7 @@ export const mapEntries = <
     if (hasOwn(obj, k)) {
       const key = k as keyof T
       const [nk, nv] = f([key, obj[key]])
-      ;(out as any)[nk] = nv
+      out[nk] = nv
     }
   }
   return out
@@ -5662,7 +5662,7 @@ export function filterValues<T extends Record<PropertyKey, unknown>>(
     if (hasOwn(obj, k)) {
       const key = k as keyof T
       const v = obj[key]
-      if (pred(v, key)) (out as any)[key] = v
+      if (pred(v, key)) out[key] = v
     }
   }
   return out
@@ -7128,28 +7128,31 @@ export const traverseArrayTRSeq = <E, A, B>(
 // Parallel over object of TaskResults → TaskResult of object
 export const sequenceStructTRPar = <
   E,
-  S extends Record<string, TaskResult<E, any>>
+  S extends Record<string, TaskResult<E, unknown>>
 >(s: S): TaskResult<E, { readonly [K in keyof S]: UnwrapTR<S[K]> }> => async () => {
   const ks = Object.keys(s) as Array<keyof S>
   const rs = await Promise.all(ks.map(k => s[k]!()))
-  const firstErr = rs.find(isErr as any) as Err<E> | undefined
+  const firstErr = rs.find((r): r is Err<E> => isErr(r))
   if (firstErr) return firstErr
   const out = {} as { [K in keyof S]: UnwrapTR<S[K]> }
-  ks.forEach((k, i) => { (out as any)[k] = (rs[i] as Ok<any>).value })
+  ks.forEach((k, i) => {
+    const ok = rs[i] as Ok<UnwrapTR<S[typeof k]>>
+    out[k] = ok.value
+  })
   return Ok(out as { readonly [K in keyof S]: UnwrapTR<S[K]> })
 }
 
 // Sequential over object (deterministic order by key array you pass in)
 export const sequenceStructTRSeq = <
   E,
-  S extends Record<string, TaskResult<E, any>>
+  S extends Record<string, TaskResult<E, unknown>>
 >(s: S, order?: ReadonlyArray<keyof S>): TaskResult<E, { readonly [K in keyof S]: UnwrapTR<S[K]> }> => async () => {
   const ks = (order ?? (Object.keys(s) as Array<keyof S>))
   const out = {} as { [K in keyof S]: UnwrapTR<S[K]> }
   for (const k of ks) {
     const r = await s[k]!()
-    if (isErr(r)) return r as any
-    ;(out as any)[k] = (r as Ok<any>).value
+    if (isErr(r)) return r
+    out[k] = (r as Ok<UnwrapTR<S[typeof k]>>).value
   }
   return Ok(out as { readonly [K in keyof S]: UnwrapTR<S[K]> })
 }

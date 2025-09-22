@@ -1,6 +1,7 @@
 // triangle.ts
 // Distinguished triangle from a map and a quick sanity checker.
 
+import type { Mat } from './allTS'
 import type { Complex } from './complex'
 import { shift1, complexIsValid } from './complex'
 import type { ChainMap } from './cone'
@@ -21,8 +22,8 @@ export const triangleFromMap =
     const X1 = shift1(f.X)
 
     // degreewise maps (assembled from helpers)
-    const gMaps: Record<number, any> = {}
-    const hMaps: Record<number, any> = {}
+    const gMaps: Record<number, Mat<R>> = {}
+    const hMaps: Record<number, Mat<R>> = {}
     for (const n of Z.degrees) {
       gMaps[n] = inclusionYIntoCone(f)(n)
       hMaps[n] = projectionConeToShiftX(f)(n)
