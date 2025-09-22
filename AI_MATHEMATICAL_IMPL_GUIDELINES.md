@@ -253,17 +253,65 @@ export function checkNewProperty<R, Input>(
 
 ### **Boundary Markers**
 
-Use these special comments to mark mathematical implementation boundaries:
+Use these special comments/prompts to mark mathematical implementation boundaries:
+
+#### **Starting Mathematical Work**
+```
+BEGIN_MATH: [Concept Name]
+Brief: [One-line description]  
+Domain: [Category theory/Probability/etc.]
+Integration: [How it connects to existing work]
+```
+
+#### **Ending Mathematical Work**
+```
+END_MATH: [Concept Name]
+Oracles: [List of new oracles implemented]
+Laws: [List of mathematical laws covered]  
+Tests: [Number of tests added]
+```
+
+### **Forgotten BEGIN_MATH Detection**
+
+#### **Automatic Detection Strategies**
+
+1. **File Pattern Analysis**: If new `*.spec.ts` files are created in `test/laws/` without a recent `BEGIN_MATH`, assume one
+2. **Oracle Implementation Detection**: If new functions matching oracle patterns are created, prompt for missing `BEGIN_MATH`
+3. **Mathematical Keyword Detection**: If mathematical terms appear in commits/messages, check for boundary markers
+4. **Explicit Confirmation**: When in doubt, ask: "Should I assume we're in a mathematical implementation phase?"
+
+#### **Detection Heuristics**
 
 ```typescript
-// BEGIN_MATH: [Concept Name] - [Brief Description]
-// ... implementation ...
-// END_MATH: [Concept Name]
+// Trigger BEGIN_MATH assumption if:
+const mathematicalIndicators = [
+  "oracle", "witness", "law", "theorem", "lemma", "proof",
+  "category", "functor", "monad", "semiring", "distribution",
+  "morphism", "pullback", "dilation", "garbling", "BSS"
+];
+
+const implementationIndicators = [
+  "check[A-Z]", "is[A-Z]", "verify[A-Z]", "test[A-Z]",
+  "*.spec.ts", "law.*.spec.ts", "*-oracles.ts"
+];
+```
+
+#### **Confirmation Prompts**
+
+When mathematical work is detected without `BEGIN_MATH`:
+
+```
+🔮 DETECTED: Mathematical implementation activity
+📁 Files: [list of files being modified]
+🎯 Indicators: [mathematical terms found]
+
+Should I assume BEGIN_MATH: [InferredConcept]?
+(Reply 'yes' to proceed with math boundaries, 'no' to continue without)
 ```
 
 ### **Pre-Commit Checklist Trigger**
 
-When `END_MATH:` is encountered, run comprehensive checks:
+When `END_MATH:` is encountered (or assumed), run comprehensive checks:
 
 #### **Automated Checks**
 - [ ] All new oracles registered in appropriate registries
