@@ -256,19 +256,25 @@ export function checkNewProperty<R, Input>(
 Use these special comments/prompts to mark mathematical implementation boundaries:
 
 #### **Starting Mathematical Work**
+**User provides**: Simple trigger like `"Let's implement [concept]"` or `"Add support for [mathematical structure]"`
+
+**LLM auto-generates**:
 ```
-BEGIN_MATH: [Concept Name]
-Brief: [One-line description]  
-Domain: [Category theory/Probability/etc.]
-Integration: [How it connects to existing work]
+🔮 BEGIN_MATH: [Inferred Concept Name]
+📝 Brief: [LLM-inferred one-line description]  
+🏗️ Domain: [LLM-analyzed: Category theory/Probability/Algebra/etc.]
+🔗 Integration: [LLM-identified connection points with existing work]
+📋 Plan: [LLM-generated implementation steps]
 ```
 
 #### **Ending Mathematical Work**
+**LLM auto-generates**:
 ```
-END_MATH: [Concept Name]
-Oracles: [List of new oracles implemented]
-Laws: [List of mathematical laws covered]  
-Tests: [Number of tests added]
+✅ END_MATH: [Concept Name]
+🔮 Oracles: [List of new oracles implemented]
+📜 Laws: [List of mathematical laws covered]  
+🧪 Tests: [Number of tests added]
+📊 Coverage: [Integration verification results]
 ```
 
 ### **Forgotten BEGIN_MATH Detection**
