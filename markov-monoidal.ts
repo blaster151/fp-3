@@ -4,6 +4,7 @@
 import type { CSRig } from "./semiring-utils";
 import type { Dist } from "./dist";
 import { dirac, bind, map, strength } from "./dist";
+export { independentIndexedProduct, independentInfObj } from "./markov-infinite";
 
 // Stable key for Map (only used if you want string keys elsewhere)
 const pair = <X, Y>(x: X, y: Y): [X, Y] => [x, y] as [X, Y];

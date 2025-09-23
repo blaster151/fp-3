@@ -7,6 +7,235 @@ This document catalogs the algebraic laws that our functional programming constr
 
 ## Core Algebraic Structures
 
+### Initial tensor unit induces semicartesian structure
+
+- **Domain**: Symmetric monoidal categories whose tensor unit is an initial object.
+- **Statement**: For every object \(X\), the canonical arrow \(!_{X} : I \to X\) induced by initiality is unique, yielding a semicartesian structure.
+- **Rationale**: These canonical global elements supply the discard-style maps required for the paper's weak infinite products.
+- **Oracle**: `checkInitialUnitSemicartesian(data, targets, samples)` → `{ holds, witness, details, failures }`
+- **Witness**: `SemicartesianStructure` exposing `globalElement(X)` for each object.
+- **Tests**: `law.SemicartesianCRingPlus.spec.ts`
+- **Examples**: `CRing_⊕` with initial object `ℤ` via `checkCRingPlusInitialSemicartesian`.
+- **Implementation Notes**: Extendable to any category providing an `InitialObjectWitness` whose object matches the tensor unit.
+
+### CRing⊕ causality counterexample
+
+- **Domain**: Additive/unit-preserving morphisms between commutative rings regarded as objects of `CRing_⊕`.
+- **Statement**: There exist morphisms \(h_1, h_2 : \mathbb{Z}[t] \to \mathbb{Z}[t]\), \(g : \mathbb{Z}[t] \to \mathbb{Z}[t]\), and \(f : \mathbb{Z}[t] \to \mathbb{Z}[t]\) such that \(f \circ g \circ h_1 = f \circ g \circ h_2\) yet \(g \circ h_1 \neq g \circ h_2\), demonstrating a failure of the causal no-signalling principle.
+- **Rationale**: Demonstrates that semicartesian structure alone does not enforce the causal no-signalling principle, motivating the paper’s distinction between semicartesian and Markov infinite products.
+- **Oracle**: `checkCRingPlusCausalityCounterexample()` → `{ holds, equalAfterObservation, equalBeforeObservation, witness, homChecks, details }`
+- **Witness**: `buildCRingPlusCausalityScenario()` packages the canonical evaluation and shift morphisms on \(\mathbb{Z}[t]\) whose composites satisfy the counterexample.
+- **Tests**: `law.CRingPlusCausalityCounterexample.spec.ts`
+- **Examples**: Polynomial evaluation at 0 and 1 together with the substitution \(t \mapsto t+1\) supply the morphisms.
+- **Implementation Notes**: Witness extraction records explicit polynomials separating \(g \circ h_1\) from \(g \circ h_2\) while confirming each morphism preserves 0, 1, addition, and negation.
+
+### Complex numbers as a C*-algebra
+
+- **Domain**: The C*-algebra of complex numbers with conjugation and the standard absolute-value norm.
+- **Statement**: Complex conjugation is an involutive *-anti-automorphism, \(\|z^* z\| = \|z\|^2\) for every \(z \in \mathbb{C}\), and canonical *-homomorphisms are contractive.
+- **Rationale**: Supplies the baseline C*-algebra promised in the paper so additional operator-algebra structures can reuse concrete witnesses and diagnostics.
+- **Oracles**: `checkComplexCStarAxioms(samples, scalars, tolerance)` and `checkComplexIdentityHomomorphism(samples, scalars, tolerance)`.
+- **Witness**: `ComplexCStarAlgebra` packages the algebraic operations, star, norm, and positivity; `identityComplexHom` exposes the canonical *-homomorphism.
+- **Tests**: `law.CStarAlgebra.spec.ts`
+- **Examples**: Default samples include \(0\), \(1\), \(i\), and \(-2 + 3i\) together with scalars \(1\), \(i\), and \(2 - i\).
+- **Implementation Notes**: Diagnostics report the failing axiom along with tolerance-aware discrepancies whenever a user-supplied structure or morphism misbehaves.
+
+### Spectral decomposition of complex C*-algebra elements
+
+- **Domain**: The complex C*-algebra \(\mathbb{C}\) equipped with conjugation and the absolute-value norm.
+- **Statement**: Every element \(z \in \mathbb{C}\) decomposes uniquely as \(z = y + i z'\) with \(y, z'\) self-adjoint (real-valued) and both \(y = \frac{1}{2}(z + z^*)\) and \(z' = -\frac{i}{2}(z - z^*)\) lying in the self-adjoint subspace.
+- **Rationale**: Encodes the spectral-theory prerequisite that tail-event constructions rely on—showing that even in the base C*-algebra, self-adjoint parts and normal elements are observable with executable witnesses.
+- **Oracle**: `checkComplexSpectralTheory(samples, tolerance)` and the general `checkCStarSpectralTheory(algebra, elements, tolerance)`.
+- **Witness**: `ComplexCStarAlgebra` combined with `realPartCStar`/`imaginaryPartCStar` expose the decomposition, while `isSelfAdjoint` and `isNormal` certify structural properties.
+- **Tests**: `law.CStarAlgebra.spec.ts` exercises decomposition, normality, and the canonical helper.
+- **Examples**: Default samples \(0, 1, i, -2 + 3i\) illustrate real/imaginary projections and certify the normality of complex scalars.
+- **Implementation Notes**: Reports include tolerance-aware discrepancy norms so alternative C*-algebra instances can diagnose failures in their spectral decomposition data.
+
+### Copy/discard witness a commutative comonoid on every object
+
+- **Domain**: Markov categories equipped with designated copy \(\Delta_X: X \to X \otimes X\) and discard \(!_{X}: X \to I\) morphisms.
+- **Statement**: The chosen \(\Delta_X\) and \(!_{X}\) satisfy coassociativity, commutativity, and the left/right counit diagrams, making \(X\) a commutative comonoid.
+- **Rationale**: Packages copy/discard data as law-checked structure rather than implicit assumptions, enabling reuse with inverse limits and other carriers.
+- **Oracle**: `checkMarkovComonoid(witness)` → `{ holds, failures, details, copyCoassoc, copyCommut, copyCounitL, copyCounitR }`
+- **Witness**: `MarkovComonoidWitness` bundling the object, copy, and discard morphisms (optionally relabelled).
+- **Tests**: `law.MarkovCategory.spec.ts`
+- **Examples**: Finite Markov kernels via `buildMarkovComonoidWitness(mkFin([...]))` and deterministic comonoid homomorphisms in the same spec.
+- **Implementation Notes**: Homomorphisms validated with `checkMarkovComonoidHom(domain, codomain, f)` returning detailed preservation diagnostics.
+
+### Deterministic morphisms are precisely comonoid homomorphisms
+
+- **Domain**: Markov categories whose objects carry `MarkovComonoidWitness` data.
+- **Statement**: A morphism \(f : X \to Y\) is deterministic iff it preserves copy and discard; equivalently, \(f\) is a comonoid homomorphism between \(X\) and \(Y\).
+- **Rationale**: Characterizes the deterministic subcategory `C_det` highlighted in the paper and exposes executable checks for its cartesian behaviour.
+- **Oracle**: `checkDeterministicComonoid(witness)` → `{ holds, deterministic, comonoidHom, equivalent, failures, details }`
+- **Witness**: `MarkovDeterministicWitness` constructed via `buildMarkovDeterministicWitness` or `certifyDeterministicFunction` to pair kernels with their comonoid structures.
+- **Tests**: `law.MarkovCategory.spec.ts`
+- **Examples**: Dirac kernels over finite carriers, and nondeterministic mixtures that trigger the counterexample diagnostics.
+- **Implementation Notes**: Equivalence failures report when deterministic recognition and comonoid preservation disagree, mirroring the paper’s discussion of deterministic subcategories.
+
+### p-almost-sure equality relative to a kernel
+
+- **Domain**: Markov categories equipped with explicit finite witnesses for morphisms \(p : A \to X\) and \(f, g : X \to Y\).
+- **Statement**: Morphisms \(f\) and \(g\) are \(p\)-almost surely equal precisely when their composites with \(p\) coincide, i.e. \(f \circ p = g \circ p\), equivalently they agree on every point of \(X\) that occurs with non-zero weight under \(p\).
+- **Rationale**: Encapsulates the “agree on the support of \(p\)” intuition so the notion becomes an executable predicate that can power zero-one law diagnostics and tail-event witnesses.
+- **Oracle**: `checkAlmostSureEquality(witness, { tolerance })` → `{ holds, support, failures, composite, equalComposite, details }`
+- **Witness**: `MarkovAlmostSureWitness` produced by `buildMarkovAlmostSureWitness(prior, left, right, { label })` bundling \(p, f, g\) and optional metadata.
+- **Tests**: `law.MarkovAlmostSureEquality.spec.ts`
+- **Examples**: Kernels that differ outside the support of \(p\) satisfy the law, while differing on a supported point yields diagnostic counterexamples listing the responsible inputs and output discrepancies.
+- **Implementation Notes**: Support tracking aggregates which domain elements contribute to each support point, enabling downstream tooling to surface causal provenance when almost-sure equality breaks.
+
+### Conditional independence via factorization
+
+- **Domain**: Markov categories equipped with copy/discard structure on the conditioning object and output factors.
+- **Statement**: A kernel \(p : A \to X_1 \otimes \dots \otimes X_n\) displays conditional independence \(X_1 \perp \dots \perp X_n \mid A\) precisely when it equals the tensor product of its marginals composed with the iterated copy of \(A\), and this equality is invariant under permutations of the tensor factors.
+- **Rationale**: Makes conditional independence a law-checked, witness-driven notion so stochastic processes and tails reuse the factorization principle without diagram chasing.
+- **Oracle**: `checkConditionalIndependence(witness, { permutations })` → `{ holds, equality, components, factorized, failures, permutations, details }`
+- **Witness**: `buildMarkovConditionalWitness(domain, outputs, p, { projections, label })` supplying comonoid data, the kernel, and (optionally) custom projections.
+- **Tests**: `law.MarkovConditionalIndependence.spec.ts`
+- **Examples**: Independent stochastic kernels built via `pair` or correlated counterexamples that fail the factorization check.
+- **Implementation Notes**: Default projections assume left-associated tensor products; exotic codomains can override them via the witness options.
+
+### Deterministic composites from conditional independence
+
+- **Domain**: Finite Markov categories carrying conditional-independence witnesses together with deterministic arrows between output factors.
+- **Statement**: Whenever a witness records \(X \perp T \mid A\) for a joint kernel \(p_{XT} : A \to X \otimes T\) and the arrow \(s : X \to T\) is deterministic, the composite \(s \circ p\) coincides with the \(T\)-marginal and is itself deterministic.
+- **Rationale**: Encodes the determinism lemma so that conditional independence immediately yields executable certification that downstream statistics remain deterministic—a key ingredient for zero–one laws.
+- **Oracle**: `checkDeterminismLemma({ conditional, p, deterministic, xIndex, tIndex }, { permutations, tolerance })` → `{ holds, conditional, deterministic, composite, marginals, failures, details }`
+- **Witness**: `DeterminismLemmaWitness` bundles the conditional witness, the marginal \(p\), the deterministic arrow \(s\), and optional factor indices.
+- **Tests**: `law.MarkovConditionalIndependence.spec.ts`
+- **Examples**: Constant statistics extracted from noisy measurements certify determinism, while identity statistics over non-degenerate marginals trigger the conditional-independence failure path.
+- **Implementation Notes**: Reports validate marginal alignment, re-use `checkConditionalIndependence`, and surface detailed failure reasons for independence breaks, non-deterministic components, or mismatched composites.
+
+### Semicartesian infinite tensor products
+
+- **Domain**: Semicartesian symmetric monoidal categories equipped with finite tensor products over every finite subset of an index set.
+- **Statement**: The chosen object \(X_J\) together with projections \(\pi_F : X_J \to X_F\) forms a cone compatible with all restriction maps and is universal among such cones.
+- **Rationale**: Encodes the universal property underpinning infinite tensor products so that joint states can be reasoned about synthetically.
+- **Oracles**: `checkSemicartesianProductCone(product, restrictions)` and `checkSemicartesianUniversalProperty(product, cones, subsets)`.
+- **Witness**: `SemicartesianProductWitness` bundling the diagram, projections, and factorization builder; cones supplied via `SemicartesianCone`.
+- **Tests**: `law.SemicartesianInfiniteProduct.spec.ts`
+- **Examples**: Finite-set cones extending assignments by restriction and deterministic completions that witness uniqueness.
+- **Implementation Notes**: Mediator candidates expose uniqueness diagnostics, while subset selections keep the compatibility checks tractable for large index sets.
+
+### CRing⊕ infinite tensors as filtered colimits
+
+- **Domain**: Commutative rings and additive/unit-preserving morphisms viewed inside `CRing_⊕` together with index families of tensor factors.
+- **Statement**: The formal sum object generated by finitely supported elementary tensors realises the filtered colimit of the finite tensor diagram; inclusions from finite subsets commute with restrictions and every element is determined by a finite support.
+- **Rationale**: Implements Example 3.4 by turning the folklore “finite sums of elementary tensors” description into executable colimit structure on the algebraic side of the paper.
+- **Oracles**: `checkFilteredCompatibility(witness, inclusions)` and `checkColimitCoverage(witness, samples)`.
+- **Witness**: `defaultFilteredWitness(family)` derived from `TensorFamily` data packages inclusions, restrictions, and support tracking for the filtered diagram.
+- **Tests**: `law.CRingPlusInfiniteTensorColimit.spec.ts`
+- **Examples**: Tensor families generated from copies of `ℤ` confirm that addition, multiplication, and inclusions respect the filtered system, with samples covering mixed-support sums.
+- **Implementation Notes**: Normalisation removes unit-valued factors and merges duplicate elementary tensors so compatibility can be checked symbolically.
+
+### Finite-index reduction for Kolmogorov products
+
+- **Domain**: Projective families in Markov categories endowed with Kolmogorov-consistent marginals and a chosen distribution on the limit carrier.
+- **Statement**: When the index set \(J\) is finite, pushing a projective family's measure forward along the universal projection \(\pi_J\) reproduces the canonical finite tensor marginal specified by the family.
+- **Rationale**: Confirms Theorem 3.2 that the abstract infinite tensor coincides with the ordinary finite tensor product whenever only finitely many factors are involved.
+- **Oracle**: `checkFiniteProductReduction(obj, measure, subset)` → `{ ok, expected, actual }`.
+- **Witness**: Uses the family’s marginal distributions together with the supplied limit measure; no additional witness extraction is required.
+- **Tests**: `law.MarkovInfinite.spec.ts`
+- **Examples**: Independent Bernoulli product measures whose two-factor pushforwards yield the same \(\mathrm{Bernoulli}^{\otimes 2}\) distribution computed directly from coordinates.
+- **Implementation Notes**: Raises whenever the provided measure’s semiring disagrees with the family, keeping cross-semiring reasoning sound.
+
+### Copy/discard compatibility of infinite projections
+
+- **Domain**: Infinite product objects in Markov categories equipped with commutative comonoid (copy/discard) structure.
+- **Statement**: For every finite subset \(F \subseteq J\), the projection \(\pi_F\) factors through copy followed by discarding one leg and projecting the other, matching the canonical diagram from Remark 3.3.
+- **Rationale**: Demonstrates that the universal projections cooperate with comonoid data, ensuring tail constructions respect the Markov-category copy/discard intuition.
+- **Oracle**: `checkCopyDiscardCompatibility(obj, subsets, samples)` → `{ ok, failures }`.
+- **Witness**: Diagnostics list offending samples together with direct and copy/discard-composed pushforwards when compatibility fails.
+- **Tests**: `law.MarkovInfinite.spec.ts`
+- **Examples**: IID Bernoulli cylinders where every tested section yields identical pushforwards whether projected directly or via copy/discard composition.
+- **Implementation Notes**: Works with deterministic copy maps returned by `createInfObj`, but also surfaces violations for bespoke infinite carriers that implement non-standard copy semantics.
+
+### Kolmogorov products via deterministic marginals
+
+- **Domain**: Infinite tensor products in Markov categories whose canonical projections land in finite tensor factors.
+- **Statement**: The projections \(\pi_F : X_J \to X_F\) of a Kolmogorov product are deterministic and commute with the copy/discard comonoid, so every tested sample yields a unique finite section and matches the copy–discard factorization.
+- **Rationale**: Encodes the Kolmogorov compatibility requirement between infinite tensor products and comonoid structure, distinguishing Kolmogorov products from merely semicartesian cones.
+- **Oracle**: `checkKolmogorovProduct(obj, subsets, samples)` → `{ ok, deterministic, copyDiscard, determinismFailures }`.
+- **Witness**: Failure reports return the offending subset, sample, and aggregated marginal distribution whenever determinism breaks.
+- **Tests**: `law.MarkovInfinite.spec.ts`
+- **Examples**: Independent Bernoulli families satisfy the determinism and copy/discard conditions, whereas modified projective families with randomized projections fail the determinism check while keeping copy/discard data intact.
+- **Implementation Notes**: Builds atop `checkCopyDiscardCompatibility`, reusing countability and measurability diagnostics already threaded through infinite product objects.
+
+### Deterministic mediators for Kolmogorov products
+
+- **Domain**: Kolmogorov product objects whose projective families carry positivity metadata and deterministic singleton projections.
+- **Statement**: Any deterministic family of component arrows \((f_j)_{j\in F}\) into the coordinates of a Kolmogorov product factors uniquely through the universal deterministic mediator, and any competing mediator agreeing on the chosen coordinates coincides on all tested inputs.
+- **Rationale**: Operationalises Proposition 4.3 by providing executable evidence for the categorical product universal property inside the deterministic subcategory, rather than relying on external reasoning.
+- **Oracle**: `checkDeterministicProductUniversalProperty(witness, candidate, subset, options)` → `{ ok, components, factorization, mediatorAgreement, mismatches, uniqueness, partitions, … }`.
+- **Witness**: Uses `DeterministicKolmogorovProductWitness` to assemble mediators via the projective-family extension; the oracle also records deterministic component checks performed with positivity-aware marginal diagnostics.
+- **Tests**: `law.MarkovInfinite.spec.ts`
+- **Examples**: Deterministic coin-flip mediators over independent Bernoulli coordinates certify unique factorisation, while non-deterministic components or perturbed mediators yield counterexamples with explicit cylinder sections.
+- **Implementation Notes**: Reports reuse countability, measurability, and positivity metadata so downstream zero–one law tooling can consume the same diagnostics without recomputation.
+
+### FinStoch infinite tensor obstruction
+
+- **Domain**: Families of finite stochastic objects (`Fin`) indexed by a countable set inside the `FinStoch` Markov category.
+- **Statement**: When no factor is empty and infinitely many factors have at least two elements, the FinStoch infinite tensor object fails to exist (Example 3.7).
+- **Rationale**: Highlights the categorical limitation that prevents building path-space style objects inside FinStoch, motivating richer categories such as `BorelStoch` for infinite products.
+- **Oracle**: `analyzeFinStochInfiniteTensor(index, carrier, options)` → `{ status, details, inspected, sampleLimit, exhausted, truncated, emptyFactors, multiValuedFactors, multiValuedCount, countability }`.
+- **Witness**: Not required; the oracle samples the enumeration, recording empty factors and multi-valued examples as constructive evidence.
+- **Tests**: `law.MarkovInfinite.spec.ts`
+- **Examples**: Alternating singleton and two-point factors trigger a `likelyObstructed` status, while finite index sets and empty factors report the appropriate `ok` or `obstructed` statuses.
+- **Implementation Notes**: Sampling is capped (`options.sampleLimit`) to keep diagnostics finite; callers can tighten `options.threshold` to demand more evidence before reporting the Example 3.7 obstruction.
+
+### Kolmogorov extension witnesses for projective families
+
+- **Domain**: Projective families in Markov categories that supply an extension operator turning finite cylinder sections into elements of the limit carrier.
+- **Statement**: The Kolmogorov extension measure obtained from any finite subfamily reproduces every tested marginal, providing the “probability measures are consistent families” bijection stated in Remark 3.5.
+- **Rationale**: Bridges the semicartesian definition with the probabilistic interpretation by packaging the Kolmogorov extension theorem as an executable universal property.
+- **Oracle**: `checkKolmogorovExtensionUniversalProperty(obj, subsets)` → `{ ok, baseSubset, measure, reductions }`.
+- **Witness**: Reuses the projective family’s marginals together with its extension adapter; no additional user-supplied witness is required.
+- **Tests**: `law.MarkovInfinite.spec.ts`
+- **Examples**: IID Bernoulli product families extend their one- and two-dimensional marginals to a global measure whose projections match the originals.
+- **Implementation Notes**: Aggregates subsets into a controlling finite index so the constructed measure only depends on marginals that the caller requests.
+
+### Tail independence for Kolmogorov products
+
+- **Domain**: Kolmogorov product objects equipped with a global measure and deterministic tail-event predicates valued in booleans.
+- **Statement**: Every tested tail event is independent from the σ-algebra generated by any chosen finite coordinate subset; concretely \(\mathbb{P}(E \wedge C) = \mathbb{P}(E)\mathbb{P}(C)\) for all sampled cylinder events \(C\).
+- **Rationale**: Encodes Lemma 5.1’s “tail σ-algebra is independent of finite marginals” conclusion as an executable diagnostic feeding the zero–one law story.
+- **Oracle**: `checkTailSigmaIndependence(obj, measure, tailEvent, subsets)` → `{ ok, tailProbability, subsets }` with per-subset factorizations and counterexamples.
+- **Witness**: The oracle tabulates each cylinder section’s probability, the joint mass with the tail event, and the expected product; discrepancies surface explicit independence failures.
+- **Tests**: `law.MarkovInfinite.spec.ts`
+- **Examples**: Independent Bernoulli paths where tail events depending on later coordinates factor from early cylinders, while events tied to the head coordinate violate independence.
+- **Implementation Notes**: Reuses countability and measurability metadata threaded through `InfObj`, so diagnostics still report when foundational hypotheses are absent.
+
+### Kolmogorov zero-one law
+
+- **Domain**: Kolmogorov product objects with a chosen measure, deterministic tail predicate, and conditional-independence witnesses relating the product mediator to the tail event.
+- **Statement**: When the tail event is independent of every tested finite marginal and the determinism lemma hypotheses hold, the composite \(s \circ p\) becomes deterministic, so the tail event has probability 0 or 1.
+- **Rationale**: Encodes Theorem 5.3’s categorical zero–one law as an executable report combining conditional independence, tail independence, and deterministic mediator diagnostics.
+- **Oracle**: `checkKolmogorovZeroOneLaw(witness, options)` → `{ ok, zeroOne, tail, independence, tailConditional, determinism, universal }`.
+- **Witness**: `KolmogorovZeroOneLawWitness` packages the deterministic Kolmogorov product, domain comonoid data, determinism-lemma witness, optional conditional-independence witnesses, and the tail predicate.
+- **Tests**: `law.MarkovInfinite.spec.ts`
+- **Implementation Notes**: Aggregates optional deterministic-product data so universal-property checks can be reused when provided.
+
+### Hewitt–Savage zero-one law
+
+- **Domain**: Kolmogorov zero–one witnesses paired with permutation actions exhibiting exchangeability of the chosen measure.
+- **Statement**: If the underlying measure is exchangeable for the supplied finite permutations and the Kolmogorov zero–one diagnostics succeed, the tail event remains deterministic, mirroring Theorem 5.4.
+- **Rationale**: Elevates the Hewitt–Savage zero–one law to an oracle that simultaneously checks exchangeability, permutation invariance of the tail event, and the Kolmogorov zero–one hypotheses.
+- **Oracle**: `checkHewittSavageZeroOneLaw(witness, options)` → `{ ok, exchangeability, zeroOne, tail, determinism, … }`.
+- **Witness**: `HewittSavageZeroOneLawWitness` extends the Kolmogorov witness with a permutation family, enabling reusable exchangeability diagnostics.
+- **Tests**: `law.MarkovInfinite.spec.ts`
+- **Implementation Notes**: Reuses the exchangeability witness from `hewittSavageZeroOneWitness` so permutation diagnostics stay consistent across oracles.
+
+### Set-based multivalued morphisms and products
+
+- **Domain**: The SetMult category of sets with multi-valued morphisms equipped with copy/discard structure and indexed products.
+- **Statement**: Copy and discard maps satisfy the semicartesian comonoid laws on every sampled object; the cartesian product of a SetMult family projects to each finite coordinate subset; and a SetMult morphism is deterministic precisely when every fibre is singleton.
+- **Rationale**: Implements the paper’s Set-based multi-valued morphisms so infinite products and determinism checks are executable alongside the Markov infrastructure.
+- **Oracles**: `checkSetMultComonoid(obj, samples)`; `checkSetMultInfiniteProduct(family, assignment, tests)`; `checkSetMultDeterminism(witness)` and the lightweight `checkSetMultDeterministic(witness, samples)`.
+- **Witness**: `buildSetMultDeterminismWitness(domain, codomain, morphism)` packages finite carriers with their SetMult morphisms for deterministic comparisons.
+- **Tests**: `law.SetMult.spec.ts`
+- **Examples**: Boolean carriers with copy/discard; deterministic indicator functions; finite Boolean products whose projections recover the original tuple.
+- **Implementation Notes**: Determinism reports cross-check SetMult fibres against optional finite Markov kernels, providing explicit counterexamples when supports disagree.
+
 ### Monoid Laws
 For any monoid `(M, ⊕, ε)`:
 
@@ -481,7 +710,7 @@ For diagram closure operations:
 
 ## Markov Category Laws
 
-### Law 3.4: Faithfulness via Monomorphisms
+### Faithfulness via monomorphisms
 
 - **Domain**: Markov category with commutative semiring R
 - **Statement**: ∇ is split mono ⇒ monic (Δ ∘ ∇ = id)
@@ -490,16 +719,16 @@ For diagram closure operations:
 - **Witness**: Split mono witness + δ monicity proof
 - **Tests**: `law.PullbackCheck.spec.ts`
 
-### Law 3.6: Entirety Implies Representability
+### Entirety implies representability
 
 - **Domain**: Commutative semiring R with no zero divisors
-- **Statement**: If R is entire, then pullback square (3.8) always holds
+- **Statement**: If R is entire, then the relevant pullback square always holds
 - **Rationale**: Connects algebraic properties to categorical representability
 - **Oracle**: `checkEntirety(R, domain, f, g)` → `boolean`
 - **Witness**: Pullback square verification for entire semirings
 - **Tests**: `law.EntiretyCheck.spec.ts`
 
-### Law 3.8: Pullback Square Uniqueness
+### Pullback square uniqueness
 
 - **Domain**: Deterministic morphisms f: A→X, g: A→Y in Markov category
 - **Statement**: Only joint with Dirac marginals is the Dirac pair
@@ -508,7 +737,7 @@ For diagram closure operations:
 - **Witness**: Counterexample detection for exotic semirings
 - **Tests**: `law.PullbackSquare.spec.ts`
 
-### Law 3.14: Thunkability ⇔ Determinism
+### Thunkability ⇔ determinism
 
 - **Domain**: Kleisli morphisms f: A → P(B) in Markov category
 - **Statement**: f is thunkable ⇔ f is deterministic (factors through δ)
@@ -517,7 +746,7 @@ For diagram closure operations:
 - **Witness**: Extracted base function for deterministic morphisms
 - **Tests**: `law.MarkovThunkable.spec.ts`
 
-### Laws 3.15-3.16: Monoidal Structure
+### Monoidal structure
 
 - **Domain**: Symmetric monoidal Markov category
 - **Statement**: δ and sampling are monoidal; strength is natural in second argument
@@ -526,7 +755,7 @@ For diagram closure operations:
 - **Witness**: Commuting diagrams for monoidal coherence
 - **Tests**: `law.MarkovMonoidalSimple.spec.ts`
 
-### Law 5.15: Sampling Cancellation
+### Sampling cancellation
 
 - **Domain**: Kleisli morphisms with sampling function in a.s.-compatible setting
 - **Statement**: If samp∘f# = samp∘g# (a.s.), then f# = g# (a.s.)
@@ -535,7 +764,7 @@ For diagram closure operations:
 - **Witness**: Counterexample (Ghost semiring) where cancellation fails
 - **Tests**: `law.ASEquality.spec.ts`, `law.GhostCounterexample.spec.ts`
 
-### Example 3.26: Ghost Semiring Counterexample
+### Ghost semiring counterexample
 
 - **Domain**: Ghost semiring Rε = {0, ε, 1}
 - **Statement**: Representable but not a.s.-compatible (f# ≠ g# but samp∘f# = samp∘g#)
@@ -544,7 +773,7 @@ For diagram closure operations:
 - **Witness**: Concrete distributions differing by ε-weights
 - **Tests**: `law.GhostCounterexample.spec.ts`
 
-## Dominance Theory Laws (Section 4)
+## Dominance Theory Laws
 
 ### SOSD via Dilation Witnesses
 
@@ -564,7 +793,7 @@ For diagram closure operations:
 - **Witness**: Verification that evaluation is preserved
 - **Tests**: `law.SOSD.spec.ts`
 
-## Information Theory Laws (Section 5)
+## Information Theory Laws
 
 ### Blackwell Sufficiency (Informativeness)
 
@@ -597,10 +826,10 @@ For diagram closure operations:
 
 | Domain | Laws Covered | Oracles Implemented | Tests |
 |--------|--------------|-------------------|-------|
-| **Foundational** | 3.4, 3.6, 3.8, 3.14, 3.15-3.16, 5.15 | 15+ | 139 |
-| **Dominance** | Section 4 (SOSD, dilations) | 5+ | 25 |
-| **Information** | Section 5 (Blackwell, BSS) | 8+ | 47 |
-| **Counterexamples** | 3.26 (Ghost semiring) | 3+ | 10 |
+| **Foundational** | Faithfulness, entirety, pullbacks, thunkability, monoidal coherence, sampling cancellation | 15+ | 139 |
+| **Dominance** | SOSD, dilations | 5+ | 25 |
+| **Information** | Blackwell sufficiency, BSS equivalence | 8+ | 47 |
+| **Counterexamples** | Ghost semiring | 3+ | 10 |
 | **Infrastructure** | Semirings, distributions | 10+ | 23 |
 
 **Total**: 41+ oracles, 244 tests, complete coverage of advanced probability theory

@@ -20,6 +20,16 @@ export const RingReal: Ring<number> = {
   sub: (a,b) => a - b,
 }
 
+export const RingInteger: Ring<bigint> = {
+  add: (a, b) => a + b,
+  zero: 0n,
+  mul: (a, b) => a * b,
+  one: 1n,
+  eq: (a, b) => a === b,
+  neg: (a) => -a,
+  sub: (a, b) => a - b,
+}
+
 // Elementwise matrix addition (same shape)
 export const matAdd =
   <R>(Rng: Ring<R>) =>

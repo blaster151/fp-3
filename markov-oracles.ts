@@ -17,52 +17,139 @@ import { sosdFromWitness, isDilation } from "./sosd";
 import { moreInformativeClassic, testInformativenessDetailed } from "./garbling";
 import { standardMeasure, posterior } from "./standard-experiment";
 import { bssCompare, testBSSDetailed } from "./bss";
+import {
+  buildMarkovAlmostSureWitness,
+  checkAlmostSureEquality,
+  pAlmostSureEqual,
+} from "./markov-almost-sure";
+import {
+  runKolmogorovConsistency,
+  checkTailEventInvariance,
+  checkTailSigmaIndependence,
+  kolmogorovZeroOneWitness,
+  hewittSavageZeroOneWitness,
+  checkKolmogorovZeroOneLaw,
+  checkHewittSavageZeroOneLaw,
+  checkFiniteProductReduction,
+  checkCopyDiscardCompatibility,
+  checkKolmogorovProduct,
+  checkKolmogorovExtensionUniversalProperty,
+  checkDeterministicProductUniversalProperty,
+  analyzeFinStochInfiniteTensor,
+} from "./markov-infinite-oracles";
+import {
+  buildMarkovComonoidWitness,
+  checkMarkovComonoid,
+  checkMarkovComonoidHom,
+} from "./markov-comonoid-structure";
+import {
+  buildMarkovDeterministicWitness,
+  certifyDeterministicFunction,
+  checkDeterministicComonoid,
+  checkDeterminismLemma,
+  buildSetMultDeterminismWitness,
+  checkSetMultDeterminism,
+} from "./markov-deterministic-structure";
+import {
+  checkSetMultComonoid,
+  checkSetMultDeterministic,
+  checkSetMultInfiniteProduct,
+} from "./setmult-oracles";
+import {
+  buildMarkovConditionalWitness,
+  checkConditionalIndependence,
+} from "./markov-conditional-independence";
 
 // ===== Domain-Specific Oracle Registry =====
 
 export const MarkovOracles = {
-  // ===== Foundational Theory (Laws 3.4-3.26) =====
-  
-  // Law 3.4: Faithfulness via monomorphisms
+  // ===== Foundational Theory =====
+
+  // Faithfulness via monomorphisms
   faithfulness: {
     splitMono: checkSplitMono,
     deltaMonic: checkDeltaMonic,
     combined: checkFaithfulness,
   },
   
-  // Law 3.6: Entirety implies representability
+  // Entirety implies representability
   entirety: {
     basic: checkEntirety,
     detailed: checkEntiretyDetailed,
     semiring: isEntire,
   },
   
-  // Law 3.8: Pullback square uniqueness
+  // Pullback square uniqueness
   pullbackSquare: {
     basic: checkPullbackSquare,
   },
   
-  // Law 3.14: Thunkability ⇔ determinism
+  // Thunkability ⇔ determinism
   determinism: {
     recognizer: isDeterministic,
     thunkability: isThunkable,
     robust: checkThunkabilityRobust,
+    witness: certifyDeterministicFunction,
+    comonoid: checkDeterministicComonoid,
+    lemma: checkDeterminismLemma,
   },
   
-  // Laws 3.15-3.16: Monoidal structure
+  // Monoidal structure
   monoidal: {
     diracMonoidal: checkDiracMonoidal,
     strengthNaturality: checkStrengthNaturality,
     samplingMonoidal: checkSamplingMonoidal,
   },
+
+  // Copy/discard as commutative comonoids
+  comonoid: {
+    witness: buildMarkovComonoidWitness,
+    laws: checkMarkovComonoid,
+    homomorphism: checkMarkovComonoidHom,
+    deterministic: buildMarkovDeterministicWitness,
+  },
+
+  setMult: {
+    comonoid: checkSetMultComonoid,
+    infiniteProduct: checkSetMultInfiniteProduct,
+    deterministic: checkSetMultDeterminism,
+    deterministicSummary: checkSetMultDeterministic,
+    deterministicWitness: buildSetMultDeterminismWitness,
+  },
+
+  // Conditional independence witnesses
+  conditionalIndependence: {
+    witness: buildMarkovConditionalWitness,
+    oracle: checkConditionalIndependence,
+  },
+
+  // Infinite products and tail laws
+  infiniteProducts: {
+    kolmogorovConsistency: runKolmogorovConsistency,
+    tailInvariance: checkTailEventInvariance,
+    tailIndependence: checkTailSigmaIndependence,
+    kolmogorovZeroOne: kolmogorovZeroOneWitness,
+    hewittSavageZeroOne: hewittSavageZeroOneWitness,
+    kolmogorovZeroOneLaw: checkKolmogorovZeroOneLaw,
+    hewittSavageZeroOneLaw: checkHewittSavageZeroOneLaw,
+    finiteReduction: checkFiniteProductReduction,
+    copyDiscardCompatibility: checkCopyDiscardCompatibility,
+    kolmogorovProduct: checkKolmogorovProduct,
+    kolmogorovExtension: checkKolmogorovExtensionUniversalProperty,
+    deterministicUniversalProperty: checkDeterministicProductUniversalProperty,
+    finstochObstruction: analyzeFinStochInfiniteTensor,
+  },
   
-  // Law 5.15: A.S.-equality and sampling cancellation
+  // Almost-sure equality and sampling cancellation
   asEquality: {
     equality: equalDistAS,
     cancellation: samplingCancellation,
+    witness: buildMarkovAlmostSureWitness,
+    oracle: checkAlmostSureEquality,
+    predicate: pAlmostSureEqual,
   },
   
-  // ===== Dominance Theory (Section 4) =====
+  // ===== Dominance Theory =====
   
   // SOSD via dilation witnesses
   dominance: {
@@ -70,7 +157,7 @@ export const MarkovOracles = {
     dilation: isDilation,
   },
   
-  // ===== Information Theory (Section 5) =====
+  // ===== Information Theory =====
   
   // Blackwell sufficiency and garbling
   informativeness: {
@@ -124,6 +211,13 @@ export function checkAllMarkovLaws<R>(
     experiments: boolean;
     bss: boolean;
   };
+  infinite: {
+    kolmogorovConsistency: boolean;
+    tailInvariance: boolean;
+    kolmogorovZeroOne: boolean;
+    hewittSavageZeroOne: boolean;
+    kolmogorovExtension: boolean;
+  };
   overall: boolean;
   details: string;
   failures: string[];
@@ -157,19 +251,29 @@ export function checkAllMarkovLaws<R>(
     experiments: true, // Would need specific test data
     bss: true,        // Would need specific test data
   };
-  
+
+  const infinite = {
+    kolmogorovConsistency: true,
+    tailInvariance: true,
+    kolmogorovZeroOne: true,
+    hewittSavageZeroOne: true,
+    kolmogorovExtension: true,
+  };
+
   const overall = Object.values(foundational).every(x => x) &&
                   Object.values(dominance).every(x => x) &&
-                  Object.values(information).every(x => x);
-  
-  const details = overall 
+                  Object.values(information).every(x => x) &&
+                  Object.values(infinite).every(x => x);
+
+  const details = overall
     ? `All Markov category laws verified for ${R.toString?.(R.one) ?? 'semiring'}`
     : `Some laws failed: ${failures.join(', ')}`;
-  
+
   return {
     foundational,
-    dominance, 
+    dominance,
     information,
+    infinite,
     overall,
     details,
     failures

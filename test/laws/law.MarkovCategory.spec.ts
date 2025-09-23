@@ -13,14 +13,23 @@
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 import {
-  mkFin, FinMarkov, Kernel, Pair, I,
-  copyK, discardK, idK, detK, swap, tensor,
-  checkComonoidLaws, checkComonoidHom, isDeterministicKernel,
+  mkFin, Fin, FinMarkov, Kernel, Pair, I,
+  idK, detK, tensor,
   checkRowStochastic, mass, fromWeights,
   MarkovCategory, approxEqualMatrix
 } from '../../markov-category'
+import {
+  buildMarkovComonoidWitness,
+  checkMarkovComonoid,
+} from '../../markov-comonoid-structure'
+import {
+  buildMarkovDeterministicWitness,
+  checkDeterministicComonoid,
+  buildMarkovPositivityWitness,
+  checkDeterministicTensorViaMarginals,
+} from '../../markov-deterministic-structure'
 import { DRMonad } from '../../semiring-dist'
-import { Prob, LogProb, MaxPlus, Bool, Dist } from '../../semiring-utils'
+import { Prob, LogProb, MaxPlus, BoolRig, RPlus, TropicalMaxPlus } from '../../semiring-utils'
 import { delta } from '../../semiring-dist'
 import { KleisliProb, DistMonad } from '../../probability-monads'
 
@@ -97,18 +106,31 @@ describe("LAW: Markov Category Laws", () => {
 
   describe("5.2 Comonoid Laws for Objects", () => {
     /**
-     * Name: Comonoid Structure Laws  
+     * Name: Comonoid Structure Laws
      * Domain: Any object X in Markov category
      * Statement: Copy (Δ) and discard (!) satisfy comonoid laws
      * Rationale: Essential for Markov category structure
      * Test Oracle: Matrix equality up to numerical tolerance
      */
 
+    const comonoidReport = (Xf: any) =>
+      checkMarkovComonoid(buildMarkovComonoidWitness(Xf))
+
+    it("copy/discard witness forms a commutative comonoid", () => {
+      fc.assert(
+        fc.property(genSmallFin(), (Xf) => {
+          const report = comonoidReport(Xf)
+          return report.holds && report.failures.length === 0
+        }),
+        { numRuns: 20 }
+      )
+    })
+
     it("copy is coassociative: (Δ ⊗ id) ∘ Δ = (id ⊗ Δ) ∘ Δ (up to reassociation)", () => {
       fc.assert(
         fc.property(genSmallFin(), (Xf) => {
-          const laws = checkComonoidLaws(Xf)
-          return laws.copyCoassoc
+          const report = comonoidReport(Xf)
+          return report.copyCoassoc
         }),
         { numRuns: 20 }
       )
@@ -117,8 +139,8 @@ describe("LAW: Markov Category Laws", () => {
     it("copy is commutative: σ ∘ Δ = Δ", () => {
       fc.assert(
         fc.property(genSmallFin(), (Xf) => {
-          const laws = checkComonoidLaws(Xf)
-          return laws.copyCommut
+          const report = comonoidReport(Xf)
+          return report.copyCommut
         }),
         { numRuns: 20 }
       )
@@ -127,8 +149,8 @@ describe("LAW: Markov Category Laws", () => {
     it("copy satisfies left counit: (! ⊗ id) ∘ Δ = id", () => {
       fc.assert(
         fc.property(genSmallFin(), (Xf) => {
-          const laws = checkComonoidLaws(Xf)
-          return laws.copyCounitL
+          const report = comonoidReport(Xf)
+          return report.copyCounitL
         }),
         { numRuns: 20 }
       )
@@ -137,58 +159,142 @@ describe("LAW: Markov Category Laws", () => {
     it("copy satisfies right counit: (id ⊗ !) ∘ Δ = id", () => {
       fc.assert(
         fc.property(genSmallFin(), (Xf) => {
-          const laws = checkComonoidLaws(Xf)
-          return laws.copyCounitR
+          const report = comonoidReport(Xf)
+          return report.copyCounitR
         }),
         { numRuns: 20 }
       )
     })
   })
 
-  describe("5.3 Deterministic Maps as Comonoid Homomorphisms", () => {
+  describe("Deterministic ⇔ comonoid homomorphism", () => {
     /**
-     * Name: Deterministic Comonoid Homomorphism
-     * Domain: Deterministic morphisms f: X → Y in Markov category
-     * Statement: f preserves copy and discard: Δ_Y ∘ f = (f ⊗ f) ∘ Δ_X, !_Y ∘ f = !_X
-     * Rationale: Deterministic maps respect the comonoid structure
-     * Test Oracle: Matrix equality for composition diagrams
+     * Name: Deterministic Comonoid Oracle
+     * Domain: Morphisms equipped with MarkovComonoidWitness structures on source/target
+     * Statement: f is deterministic iff it preserves copy and discard
+     * Rationale: Captures the deterministic/comonoid correspondence within our executable oracle framework
+     * Test Oracle: checkDeterministicComonoid
      */
 
-    it("deterministic maps preserve copy structure", () => {
-      fc.assert(
-        fc.property(
-          genSmallFin(),
-          genSmallFin(),
-          fc.func(fc.constant(fc.integer())),
-          (Xf, Yf, f) => {
-            // Make f actually map X to Y elements
-            const deterministicF = (x: any) => Yf.elems[Math.abs(f(x)) % Yf.elems.length]
-            const kernel: Kernel<any, any> = (x) => dirac(deterministicF(x))
-            
-            const report = checkComonoidHom(Xf, Yf, kernel)
-            return report.preservesCopy
+    const sampleFins: Array<Fin<any>> = [
+      mkFin([0, 1] as const, (a, b) => a === b),
+      mkFin([0, 1, 2] as const, (a, b) => a === b),
+      mkFin(["a", "b"] as const, (a, b) => a === b)
+    ]
+
+    const indexOfEq = <T>(fin: Fin<T>, value: T): number => {
+      for (let i = 0; i < fin.elems.length; i++) {
+        if (fin.eq(fin.elems[i], value)) return i
+      }
+      throw new Error("Value not found in finite carrier")
+    }
+
+    const enumerateOutputs = <X, Y>(Xf: Fin<X>, Yf: Fin<Y>): Y[][] => {
+      const results: Y[][] = []
+      const current: Y[] = new Array(Xf.elems.length)
+
+      const assign = (idx: number) => {
+        if (idx === Xf.elems.length) {
+          results.push([...current])
+          return
+        }
+        for (const y of Yf.elems) {
+          current[idx] = y
+          assign(idx + 1)
+        }
+      }
+
+      assign(0)
+      return results
+    }
+
+    it("Dirac kernels satisfy the determinism oracle", () => {
+      for (const Xf of sampleFins) {
+        const domain = buildMarkovComonoidWitness(Xf)
+        for (const Yf of sampleFins) {
+          const codomain = buildMarkovComonoidWitness(Yf)
+          for (const outputs of enumerateOutputs(Xf, Yf)) {
+            const base = (x: any) => outputs[indexOfEq(Xf, x)]
+            const arrow = detK(Xf, Yf, base)
+            const witness = buildMarkovDeterministicWitness(domain, codomain, arrow, { base })
+            const report = checkDeterministicComonoid(witness)
+
+            expect(report.holds).toBe(true)
+            expect(report.equivalent).toBe(true)
+            expect(report.failures.length).toBe(0)
           }
-        ),
-        { numRuns: 20 }
-      )
+        }
+      }
     })
 
-    it("deterministic maps preserve discard structure", () => {
-      fc.assert(
-        fc.property(
-          genSmallFin(),
-          genSmallFin(),
-          fc.func(fc.constant(fc.integer())),
-          (Xf, Yf, f) => {
-            const deterministicF = (x: any) => Yf.elems[Math.abs(f(x)) % Yf.elems.length]
-            const kernel: Kernel<any, any> = (x) => dirac(deterministicF(x))
-            
-            const report = checkComonoidHom(Xf, Yf, kernel)
-            return report.preservesDiscard
-          }
-        ),
-        { numRuns: 20 }
+    it("nondeterministic kernels fail determinism and comonoid preservation", () => {
+      const X = mkFin([0, 1] as const, (a, b) => a === b)
+      const Y = mkFin(["H", "T"] as const, (a, b) => a === b)
+      const domain = buildMarkovComonoidWitness(X)
+      const codomain = buildMarkovComonoidWitness(Y)
+
+      const noisy: Kernel<number, string> = (x) =>
+        x === 0
+          ? fromWeights([
+              ["H", 0.6],
+              ["T", 0.4]
+            ])
+          : fromWeights([
+              ["H", 0.2],
+              ["T", 0.8]
+            ])
+
+      const arrow = new FinMarkov(X, Y, noisy)
+      const witness = buildMarkovDeterministicWitness(domain, codomain, arrow, { label: "biased coin" })
+      const report = checkDeterministicComonoid(witness)
+
+      expect(report.holds).toBe(false)
+      expect(report.deterministic).toBe(false)
+      expect(report.comonoidHom).toBe(false)
+      expect(report.equivalent).toBe(true)
+      expect(report.failures.some(f => f.law === "determinism")).toBe(true)
+    })
+  })
+
+  describe("Positivity reduces tensor determinism to marginal checks", () => {
+    const domain = buildMarkovComonoidWitness(mkFin([0, 1] as const, (a, b) => a === b))
+    const left = buildMarkovComonoidWitness(mkFin(["L", "R"] as const, (a, b) => a === b))
+    const right = buildMarkovComonoidWitness(mkFin(["x", "y"] as const, (a, b) => a === b))
+    const positivity = buildMarkovPositivityWitness(left, right, { label: "left ⊗ right" })
+
+    it("confirms that deterministic tensors have deterministic marginals", () => {
+      const arrow = detK(domain.object, positivity.tensor.object, (value: 0 | 1) =>
+        value === 0
+          ? [left.object.elems[0], right.object.elems[0]] as const
+          : [left.object.elems[1], right.object.elems[1]] as const
       )
+
+      const report = checkDeterministicTensorViaMarginals(domain, positivity, arrow, { label: "deterministic tensor" })
+
+      expect(report.holds).toBe(true)
+      expect(report.equivalent).toBe(true)
+      expect(report.tensor.deterministic).toBe(true)
+      expect(report.left.deterministic).toBe(true)
+      expect(report.right.deterministic).toBe(true)
+    })
+
+    it("detects nondeterministic marginals when tensor determinism fails", () => {
+      const arrow = new FinMarkov(domain.object, positivity.tensor.object, (value: 0 | 1) => {
+        if (value === 0) {
+          return new Map([
+            [[left.object.elems[0], right.object.elems[0]] as const, 0.5],
+            [[left.object.elems[0], right.object.elems[1]] as const, 0.5],
+          ])
+        }
+        return new Map([[[left.object.elems[1], right.object.elems[1]] as const, 1]])
+      })
+
+      const report = checkDeterministicTensorViaMarginals(domain, positivity, arrow, { label: "nondeterministic tensor" })
+
+      expect(report.tensor.deterministic).toBe(false)
+      expect(report.left.deterministic).toBe(true)
+      expect(report.right.deterministic).toBe(false)
+      expect(report.holds).toBe(true)
     })
   })
 
