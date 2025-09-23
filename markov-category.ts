@@ -194,7 +194,15 @@ export function pair<X, Y, Z>(f: Kernel<Z, X>, g: Kernel<Z, Y>): Kernel<Z, Pair<
 export function kernelToMatrix<X, Y>(Xf: Fin<X>, Yf: Fin<Y>, k: Kernel<X, Y>): number[][] {
   return Xf.elems.map(x => {
     const d = k(x);
-    return Yf.elems.map(y => d.get(y) ?? 0);
+    return Yf.elems.map(y => {
+      let total = 0;
+      for (const [z, p] of d) {
+        if (Yf.eq(z, y)) {
+          total += p;
+        }
+      }
+      return total;
+    });
   });
 }
 
@@ -465,19 +473,48 @@ export function approxEqualMatrix(a: number[][], b: number[][], tol = 1e-9): boo
 }
 
 // Check comonoid laws for Δ and ! on a finite object X, diagrammatically via matrices
-export function checkComonoidLaws<X>(Xf: Fin<X>): { copyCoassoc: boolean; copyCommut: boolean; copyCounitL: boolean; copyCounitR: boolean; } {
+export function checkComonoidLaws<X>(
+  Xf: Fin<X>,
+  morphisms?: {
+    copy?: Kernel<X, Pair<X, X>>;
+    discard?: Kernel<X, I>;
+  },
+): { copyCoassoc: boolean; copyCommut: boolean; copyCounitL: boolean; copyCounitR: boolean; } {
   const XxX = tensorObj(Xf, Xf);
   const XxXxX = tensorObj(Xf, XxX);
   const XxXxX_alt = tensorObj(XxX, Xf);
 
-  const Δ = new FinMarkov(Xf, XxX, copy<X>());
-  const Δ12 = new FinMarkov(XxX, XxXxX, tensor(copy<X>(), idK(Xf).k as any));
-  const Δ23 = new FinMarkov(XxX, XxXxX_alt, tensor(idK(Xf).k as any, copy<X>()));
+  const copyKernel = morphisms?.copy ?? copy<X>();
+  const discardKernel = morphisms?.discard ?? discard<X>();
+
+  const Δ = new FinMarkov(Xf, XxX, copyKernel);
+  const Δ12 = new FinMarkov(
+    XxX,
+    XxXxX,
+    tensor(copyKernel as Kernel<X, Pair<X, X>>, idK(Xf).k as Kernel<X, X>),
+  );
+  const Δ23 = new FinMarkov(
+    XxX,
+    XxXxX_alt,
+    tensor(idK(Xf).k as Kernel<X, X>, copyKernel as Kernel<X, Pair<X, X>>),
+  );
 
   // Coassociativity: (Δ ; (Δ ⊗ id)) == (Δ ; (id ⊗ Δ)) up to reassociation isos (we compare via deterministic rebracketing)
   const reassocLtoR = detK(XxXxX, XxXxX_alt, ([[x,y], z]) => [x, [y, z]] as any);
-  const lhs = Δ.then(new FinMarkov(XxX, XxXxX, tensor(copy<X>(), deterministic((x: X)=>x) as any))).then(reassocLtoR);
-  const rhs = Δ.then(new FinMarkov(XxX, XxXxX_alt, tensor(deterministic((x: X)=>x) as any, copy<X>())));
+  const lhs = Δ.then(
+    new FinMarkov(
+      XxX,
+      XxXxX,
+      tensor(copyKernel as Kernel<X, Pair<X, X>>, deterministic((x: X) => x) as Kernel<X, X>),
+    ),
+  ).then(reassocLtoR);
+  const rhs = Δ.then(
+    new FinMarkov(
+      XxX,
+      XxXxX_alt,
+      tensor(deterministic((x: X) => x) as Kernel<X, X>, copyKernel as Kernel<X, Pair<X, X>>),
+    ),
+  );
 
   const copyCoassoc = approxEqualMatrix(lhs.matrix(), rhs.matrix());
 
@@ -486,8 +523,16 @@ export function checkComonoidLaws<X>(Xf: Fin<X>): { copyCoassoc: boolean; copyCo
   const copyCommut = approxEqualMatrix(Δ.then(swapXX).matrix(), Δ.matrix());
 
   // Counit: (Δ ; (id ⊗ !)) == id  and  (Δ ; (! ⊗ id)) == id
-  const exR = new FinMarkov(XxX, tensorObj(Xf, IFin), tensor(idK(Xf).k as any, discard<X>()));
-  const exL = new FinMarkov(XxX, tensorObj(IFin, Xf), tensor(discard<X>(), idK(Xf).k as any));
+  const exR = new FinMarkov(
+    XxX,
+    tensorObj(Xf, IFin),
+    tensor(idK(Xf).k as Kernel<X, X>, discardKernel as Kernel<X, I>),
+  );
+  const exL = new FinMarkov(
+    XxX,
+    tensorObj(IFin, Xf),
+    tensor(discardKernel as Kernel<X, I>, idK(Xf).k as Kernel<X, X>),
+  );
   const prR = new FinMarkov(tensorObj(Xf, IFin), Xf, fst<X, I>());
   const prL = new FinMarkov(tensorObj(IFin, Xf), Xf, snd<I, X>());
 
