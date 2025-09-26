@@ -108,6 +108,35 @@ import {
   // Result utilities
   isOk
 } from './allTS'
+import {
+  mkFin,
+  detK,
+  tensorObj,
+  FinMarkov,
+  fst,
+  snd,
+  swap,
+} from './markov-category'
+import {
+  buildDeterminismLemmaWitness,
+  checkDeterminismLemma,
+} from './markov-determinism-lemma'
+import {
+  buildKolmogorovZeroOneWitness,
+  checkKolmogorovZeroOne,
+  buildHewittSavageWitness,
+  checkHewittSavageZeroOne,
+} from './markov-zero-one'
+import type { FinitePermutation } from './markov-permutation'
+import { makeZeroOneOracle } from './markov-zero-one-factory'
+import { makeTextbookToolkit } from './textbook-toolkit'
+import { runSliceCosliceDemo } from './examples/slice-coslice-demo'
+import { SetCat } from './set-cat'
+import { RelCat } from './rel'
+import { MatCat } from './mat'
+import { DynCat } from './dynsys'
+import { makeFinitePullbackCalculator } from './pullback'
+import type { FiniteCategory } from './finite-cat'
 
 async function runExamples() {
   console.log('=== NEW FILTERMAP/COLLECT HELPERS ===')
@@ -3648,6 +3677,161 @@ const r_bindHO = A_Reader.bindK_HO(
         const resultWithEnv = ok(['context', 42] as [string, number])
         const resultStrengthened = resultStrength.st(resultWithEnv)
         console.log(`Result strength: ${JSON.stringify(resultStrengthened)}`)
+
+        console.log('\n=== MARKOV ORACLES (ZERO-ONE) ===')
+        const bit = mkFin([0, 1] as const, (a, b) => a === b)
+        const pair = tensorObj(bit, bit)
+        const AFin = mkFin(['a0', 'a1'] as const, (a, b) => a === b)
+
+        const prior = detK(AFin, pair, (a) =>
+          a === 'a0' ? ([0, 0] as [number, number]) : ([1, 1] as [number, number])
+        )
+        const stat = detK(pair, bit, ([x]) => x as 0 | 1)
+
+        const determinismWitness = buildDeterminismLemmaWitness(prior, stat, {
+          label: 'determinism-example',
+        })
+        const determinismReport = checkDeterminismLemma(determinismWitness)
+        console.log('Determinism lemma:', {
+          holds: determinismReport.holds,
+          ciVerified: determinismReport.ciVerified,
+          deterministic: determinismReport.deterministic,
+        })
+
+        const piFirst = new FinMarkov(pair, bit, fst<number, number>())
+        const piSecond = new FinMarkov(pair, bit, snd<number, number>())
+        const finiteMarginals = [
+          { F: 'first', piF: piFirst },
+          { F: 'second', piF: piSecond },
+        ]
+
+        const kolmogorovWitness = buildKolmogorovZeroOneWitness(prior, stat, finiteMarginals, {
+          label: 'kolmogorov-example',
+        })
+        const kolmogorovReport = checkKolmogorovZeroOne(kolmogorovWitness)
+        console.log('Kolmogorov zero-one:', {
+          holds: kolmogorovReport.holds,
+          ciFamilyVerified: kolmogorovReport.ciFamilyVerified,
+          deterministic: kolmogorovReport.deterministic,
+        })
+
+        const statSym = detK(pair, bit, ([x, y]) => ((x ^ y) as 0 | 1))
+        const swapSymmetry: FinitePermutation<[number, number]> = {
+          name: 'swap',
+          sigmaHat: new FinMarkov(pair, pair, swap<number, number>()),
+        }
+
+        const hewittSavageWitness = buildHewittSavageWitness(
+          prior,
+          statSym,
+          finiteMarginals,
+          [swapSymmetry],
+          { label: 'hewitt-savage-example' },
+        )
+        const hewittSavageReport = checkHewittSavageZeroOne(hewittSavageWitness)
+        console.log('Hewitt–Savage zero-one:', {
+          holds: hewittSavageReport.holds,
+          permutationInvariant: hewittSavageReport.permutationInvariant,
+        })
+
+        console.log('\n=== TEXTBOOK CONSTRUCTIONS TOOLKIT ===')
+        type ToolkitObj = 'Task' | 'User' | 'Project'
+        interface ToolkitArrow { name: string; src: ToolkitObj; dst: ToolkitObj }
+        const idArrow = (o: ToolkitObj): ToolkitArrow => ({ name: `id_${o}`, src: o, dst: o })
+        const tAnchor: ToolkitArrow = { name: 'anchorT', src: 'Task', dst: 'Project' }
+        const uAnchor: ToolkitArrow = { name: 'anchorU', src: 'User', dst: 'Project' }
+        const assigned: ToolkitArrow = { name: 'assigned', src: 'Task', dst: 'User' }
+        const toolkitObjects: ReadonlyArray<ToolkitObj> = ['Task', 'User', 'Project']
+        const composeToolkit = (g: ToolkitArrow, f: ToolkitArrow): ToolkitArrow => {
+          if (f.dst !== g.src) throw new Error('toolkit compose mismatch')
+          const key = `${g.name}∘${f.name}`
+          switch (key) {
+            case 'anchorU∘assigned':
+              return tAnchor
+            case 'id_Task∘assigned':
+              return assigned
+            case 'anchorT∘id_Task':
+              return tAnchor
+            case 'anchorU∘id_User':
+              return uAnchor
+            case 'id_User∘assigned':
+              return assigned
+            default:
+              if (g.name === `id_${g.dst}`) return f
+              if (f.name === `id_${f.src}`) return g
+              throw new Error(`missing toolkit composition for ${key}`)
+          }
+        }
+        const toolkitArrows: ReadonlyArray<ToolkitArrow> = [
+          idArrow('Task'),
+          idArrow('User'),
+          idArrow('Project'),
+          tAnchor,
+          uAnchor,
+          assigned,
+        ]
+        const toolkitBase: FiniteCategory<ToolkitObj, ToolkitArrow> = {
+          objects: toolkitObjects,
+          arrows: toolkitArrows,
+          id: idArrow,
+          compose: composeToolkit,
+          src: (arrow) => arrow.src,
+          dst: (arrow) => arrow.dst,
+          eq: (a, b) => a.name === b.name,
+        }
+        const toolkit = makeTextbookToolkit(toolkitBase, {
+          pullbacks: makeFinitePullbackCalculator(toolkitBase),
+        })
+        const projectSlice = toolkit.sliceAt('Project')
+        console.log(
+          'Slice objects:',
+          projectSlice.category.objects.map((object) => `${object.domain}->${object.arrowToAnchor.dst}`),
+        )
+        const dual = toolkit.dual()
+        console.log('Dual anchorT maps:', dual.src(tAnchor), '→', dual.dst(tAnchor))
+
+        console.log('\n=== SLICE / COSLICE WALKTHROUGH ===')
+        runSliceCosliceDemo()
+
+        console.log('\n=== CONCRETE CATEGORY BACKENDS ===')
+        const naturalSet = SetCat.obj([0, 1, 2])
+        const paritySet = SetCat.obj(['even', 'odd'])
+        const parityFn = SetCat.hom(naturalSet, paritySet, (n: number) => (n % 2 === 0 ? 'even' : 'odd'))
+        console.log('SetCat parity(2):', parityFn.map(2))
+
+        const parityRel = RelCat.hom(
+          [0, 1, 2],
+          ['even', 'odd'],
+          [
+            [0, 'even'],
+            [1, 'odd'],
+            [2, 'even'],
+          ],
+        )
+        const relParity = Array.from(RelCat.compose(parityRel, RelCat.id(['even', 'odd'])))
+        console.log('RelCat parity relation pairs:', relParity)
+
+        const flip = MatCat.hom(2, 2, [
+          [0, 1],
+          [1, 0],
+        ])
+        const matIdentity = MatCat.compose(flip, flip)
+        console.log('MatCat flip squared:', matIdentity)
+
+        const dynTask = DynCat.obj(['todo', 'done'], (state: 'todo' | 'done') => (state === 'todo' ? 'done' : 'done'))
+        const dynLog = DynCat.obj([0, 1], (value: 0 | 1) => (value === 0 ? 1 : 1))
+        const dynMorph = DynCat.hom(dynTask, dynLog, (state) => (state === 'todo' ? 0 : 1))
+        console.log('DynCat morphism valid?', DynCat.isHom(dynMorph))
+
+        console.log('\n=== SYNTHESIZED ZERO-ONE ORACLE ===')
+        const synthesized = makeZeroOneOracle({
+          prior,
+          statistic: statSym,
+          finiteMarginals,
+          symmetries: [swapSymmetry],
+        })
+        const synthReport = synthesized.check()
+        console.log('Kolmogorov + symmetry synthesis holds?', synthReport.holds)
 
         console.log('\n✅ All examples completed successfully!')
 }

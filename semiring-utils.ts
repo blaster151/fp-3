@@ -53,7 +53,10 @@ export const MaxPlus: CSRig<number> = {
   one: 0,          // multiplicative identity for +
   add: (a, b) => Math.max(a, b),
   mul: (a, b) => a + b,
-  eq: (a, b) => a === b || (Number.isFinite(a) === false && Number.isFinite(b) === false && a === b),
+  eq: (a, b) => {
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return a === b;
+    return Math.abs(a - b) <= 1e-12;
+  },
   toString: a => (a === -Infinity ? "-∞" : `${a}`),
   // Entire: max-plus "multiplication" is +; a+b = -∞ only if one is -∞ (i.e., zero).
   entire: true,

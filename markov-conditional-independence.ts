@@ -13,14 +13,14 @@ import type { MarkovComonoidWitness } from "./markov-comonoid-structure";
 
 export interface MarkovConditionalWitnessOptions {
   readonly label?: string;
-  readonly projections?: ReadonlyArray<FinMarkov<any, any>>;
+  readonly projections?: ReadonlyArray<FinMarkov<unknown, unknown>>;
 }
 
 export interface MarkovConditionalWitness<A> {
   readonly domain: MarkovComonoidWitness<A>;
-  readonly outputs: ReadonlyArray<MarkovComonoidWitness<any>>;
-  readonly arrow: FinMarkov<A, any>;
-  readonly projections: ReadonlyArray<FinMarkov<any, any>>;
+  readonly outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>;
+  readonly arrow: FinMarkov<A, unknown>;
+  readonly projections: ReadonlyArray<FinMarkov<unknown, unknown>>;
   readonly label?: string;
   readonly arity: number;
 }
@@ -46,8 +46,8 @@ export interface ConditionalFailure {
 
 export interface MarkovConditionalReport<A> {
   readonly witness: MarkovConditionalWitness<A>;
-  readonly components: ReadonlyArray<FinMarkov<A, any>>;
-  readonly factorized: FinMarkov<A, any>;
+  readonly components: ReadonlyArray<FinMarkov<A, unknown>>;
+  readonly factorized: FinMarkov<A, unknown>;
   readonly holds: boolean;
   readonly equality: boolean;
   readonly permutations: ReadonlyArray<ConditionalPermutationReport>;
@@ -55,7 +55,7 @@ export interface MarkovConditionalReport<A> {
   readonly details: string;
 }
 
-function productCardinality(outputs: ReadonlyArray<MarkovComonoidWitness<any>>): number {
+function productCardinality(outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>): number {
   return outputs.reduce((acc, witness) => acc * witness.object.elems.length, 1);
 }
 
@@ -104,19 +104,19 @@ function validatePermutation(permutation: ReadonlyArray<number>, arity: number):
 }
 
 function buildProjection(
-  codomain: Fin<any>,
-  target: Fin<any>,
+  codomain: Fin<unknown>,
+  target: Fin<unknown>,
   arity: number,
   index: number,
-): FinMarkov<any, any> {
+): FinMarkov<unknown, unknown> {
   const proj = deterministic((value: unknown) => extractCoordinate(value, index, arity));
-  return new FinMarkov(codomain, target, proj as Kernel<any, any>);
+  return new FinMarkov(codomain, target, proj);
 }
 
 function inferDefaultProjections(
-  codomain: Fin<any>,
-  outputs: ReadonlyArray<MarkovComonoidWitness<any>>,
-): ReadonlyArray<FinMarkov<any, any>> {
+  codomain: Fin<unknown>,
+  outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>,
+): ReadonlyArray<FinMarkov<unknown, unknown>> {
   if (outputs.length === 0) {
     throw new Error("Cannot infer projections without at least one output object.");
   }
@@ -132,8 +132,8 @@ function inferDefaultProjections(
 
 export function buildMarkovConditionalWitness<A>(
   domain: MarkovComonoidWitness<A>,
-  outputs: ReadonlyArray<MarkovComonoidWitness<any>>,
-  arrow: FinMarkov<A, any>,
+  outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>,
+  arrow: FinMarkov<A, unknown>,
   options: MarkovConditionalWitnessOptions = {},
 ): MarkovConditionalWitness<A> {
   if (arrow.X !== domain.object) {
@@ -168,17 +168,17 @@ export function buildMarkovConditionalWitness<A>(
 
 export function conditionalMarginals<A>(
   witness: MarkovConditionalWitness<A>,
-): ReadonlyArray<FinMarkov<A, any>> {
+): ReadonlyArray<FinMarkov<A, unknown>> {
   return witness.projections.map((projection) => witness.arrow.then(projection));
 }
 
-export function factorizeConditional<A>(witness: MarkovConditionalWitness<A>): FinMarkov<A, any> {
+export function factorizeConditional<A>(witness: MarkovConditionalWitness<A>): FinMarkov<A, unknown> {
   const components = conditionalMarginals(witness);
   if (components.length === 0) {
     throw new Error("Cannot factorize a conditional witness without components.");
   }
-  let kernel: Kernel<A, any> = components[0].k;
-  let codomain: Fin<any> = components[0].Y;
+  let kernel: Kernel<A, unknown> = components[0].k;
+  let codomain: Fin<unknown> = components[0].Y;
   for (let i = 1; i < components.length; i++) {
     kernel = pair(kernel, components[i].k);
     codomain = tensorObj(codomain, components[i].Y);
@@ -192,17 +192,17 @@ export function factorizeConditional<A>(witness: MarkovConditionalWitness<A>): F
 }
 
 function permutationKernel(
-  codomain: Fin<any>,
+  codomain: Fin<unknown>,
   arity: number,
   permutation: ReadonlyArray<number>,
-): FinMarkov<any, any> {
+): FinMarkov<unknown, unknown> {
   validatePermutation(permutation, arity);
   const action = deterministic((value: unknown) => {
     const flat = flattenProduct(value, arity);
     const permuted = permutation.map((idx) => flat[idx]);
     return rebuildProduct(permuted);
   });
-  return new FinMarkov(codomain, codomain, action as Kernel<any, any>);
+  return new FinMarkov(codomain, codomain, action);
 }
 
 export interface ConditionalIndependenceOptions {
@@ -222,7 +222,7 @@ export function checkConditionalIndependence<A>(
     });
   }
 
-  let factorized: FinMarkov<A, any>;
+  let factorized: FinMarkov<A, unknown>;
   const components = conditionalMarginals(witness);
   try {
     factorized = factorizeConditional(witness);

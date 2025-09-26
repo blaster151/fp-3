@@ -7,8 +7,8 @@ const S = makeSimplicialFromComonadK1(W)
 
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
-const nestPair = (layers: number, env: string, a: unknown): any => {
-  let v: any = a
+const nestPair = (layers: number, env: string, a: unknown): unknown => {
+  let v: unknown = a
   for (let k = 0; k < layers; k++) v = [env, v] as const
   return v
 }

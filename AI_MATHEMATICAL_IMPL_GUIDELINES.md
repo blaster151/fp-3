@@ -555,7 +555,7 @@ src/oracles/index.ts             // Main oracle registry
 
 #### **Oracles**
 - `check[Property]`: Boolean property checking
-- `is[Property]`: Predicate-style checking  
+- `is[Property]`: Predicate-style checking
 - `find[Object]`: Existence search with witness
 - `verify[Relationship]`: Relationship verification
 - `test[Property]Detailed`: Detailed analysis version
@@ -569,6 +569,80 @@ src/oracles/index.ts             // Main oracle registry
 - `[Domain]Oracles`: Domain-specific oracle collection
 - `All[Domain]Laws`: Meta-oracle for complete domain checking
 - `check[Domain]Consistency`: Cross-oracle consistency checking
+
+### **Examples: BorelStoch specialization**
+
+The abstract Kolmogorov and Hewitt–Savage zero–one laws are implemented via the reusable
+`MarkovOracles.zeroOne.kolmogorov` and `.hewittSavage` hooks. When specialising to the
+BorelStoch category, adapt samplers and indicators into those witnesses instead of creating a new
+oracle:
+
+- **Sampler**: model the base probability space \(\Omega\) with an explicit weighted support.
+- **Coordinates**: provide the coordinate maps \(f_i : \Omega \to X_i\) as deterministic functions.
+- **Product constructor**: assemble the Kolmogorov power \(X_J\) from the coordinate values.
+- **Finite marginals**: list a handful of projections \(\pi_F : X_J \to X_F\) to feed the oracle.
+- **Statistic**: expose the tail-event indicator \(s : X_J \to \{0,1\}\), optionally generalised to a
+  different boolean object.
+
+Wrap these ingredients with `buildBorelKolmogorovWitness` (see `borelstoch-examples.ts`) and run the
+standard zero–one check. Determinism of `s ∘ p` then reports that the tail event has probability 0 or
+1, recovering the familiar measure-theoretic corollaries without duplicating any oracle logic.
+
+For Hewitt–Savage style symmetry assumptions, reuse the same setup but also list a finite family of
+permutation actions \(\hat\sigma : X_J \to X_J\) as deterministic functions. Pass these along with a
+permutation-invariant indicator to `buildBorelHewittSavageWitness`, then run
+`MarkovOracles.zeroOne.borelHewittSavage.check`. The report combines the Kolmogorov diagnostics with
+explicit permutation invariance checks, so determinism of `s ∘ p` again encodes \(P(T) \in \{0,1\}\).
+
+## Implementation Roadmap for New Categories
+
+When extending the repository to support additional Markov categories
+(e.g. Top/Vietoris, Measurable Spaces with new monads), follow this sequence:
+
+1. **LAWS.md Annotation**  
+   - Add a subsection under the appropriate category.  
+   - Record the categorical guarantee (e.g. existence of Kolmogorov products,
+     Hewitt–Savage applicability).  
+   - Cite the relevant proposition/theorem.  
+   - Mark oracle status (e.g. "oracles apply formally, but no witness builder yet").
+
+2. **Stub File Creation**  
+   - Add a scaffold file in the appropriate module folder, e.g.
+     `top-vietoris-examples.ts`.  
+   - Export placeholder functions (`buildKolmogorovWitness`, etc.) that throw
+     `NotImplementedError` with a pointer to LAWS.md.
+
+3. **Witness Builder Implementation**  
+   - Implement explicit functions constructing the required witness:
+     - product objects and marginal projections,
+     - statistics (tail- or permutation-invariant),
+     - check preservation conditions.  
+   - These mirror the approach used in BorelStoch.
+
+4. **Tests and Examples**  
+   - Add example scripts demonstrating the witness for concrete finite products.  
+   - Cross-link the examples in LAWS.md to verify consistency.
+
+> **Note:** If a category is not causal (for example, the Vietoris Kleisli
+> category Kl(H)), implement Hewitt–Savage oracles as explicit throwing stubs
+> rather than leaving them
+> undefined, so limitations are visible at runtime.
+
+### Examples: Top/Vietoris Specialization
+
+- **Kolmogorov Product Guarantee**: Kl(H) admits Kolmogorov products of arbitrary
+  cardinality as infinite products of topological spaces with the product
+  topology. Future witness builders can delegate directly to these product
+  constructions.
+
+- **Constant-Function Phenomenon**: In Kl(H), any continuous map from
+  \(\prod X_i\) into a Hausdorff space that is independent of all finite
+  coordinate subsets must be constant. This mirrors the “tail-measurable
+  functions are trivial” intuition for topological hyperspaces.
+
+- **Non-Causality Caveat**: Kl(H) is not causal, so Hewitt–Savage zero–one does
+  not apply. Document adapters should therefore advertise Kolmogorov support
+  while flagging the causal obstruction for permutation-based laws.
 
 ## 🔄 **Continuous Integration**
 

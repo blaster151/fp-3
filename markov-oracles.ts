@@ -46,7 +46,7 @@ import {
   buildMarkovDeterministicWitness,
   certifyDeterministicFunction,
   checkDeterministicComonoid,
-  checkDeterminismLemma,
+  checkDeterminismLemma as checkStructuredDeterminismLemma,
   buildSetMultDeterminismWitness,
   checkSetMultDeterminism,
 } from "./markov-deterministic-structure";
@@ -59,6 +59,29 @@ import {
   buildMarkovConditionalWitness,
   checkConditionalIndependence,
 } from "./markov-conditional-independence";
+import {
+  buildDeterminismLemmaWitness,
+  checkDeterminismLemma,
+} from "./markov-determinism-lemma";
+import {
+  buildKolmogorovZeroOneWitness,
+  checkKolmogorovZeroOne,
+  buildHewittSavageWitness,
+  checkHewittSavageZeroOne,
+} from "./markov-zero-one";
+import {
+  buildZeroOneSynthesisWitness,
+  checkZeroOneSynthesis,
+  makeZeroOneOracle,
+} from "./markov-zero-one-factory";
+import { checkFinitePermutationInvariance } from "./markov-permutation";
+import {
+  buildBorelKolmogorovWitness,
+  buildBorelHewittSavageWitness,
+  checkBorelKolmogorovZeroOne,
+  checkBorelHewittSavageZeroOne,
+} from "./borelstoch-examples";
+import { SetOracles } from "./oracles/set-oracles";
 
 // ===== Domain-Specific Oracle Registry =====
 
@@ -91,7 +114,9 @@ export const MarkovOracles = {
     robust: checkThunkabilityRobust,
     witness: certifyDeterministicFunction,
     comonoid: checkDeterministicComonoid,
+    lemmaWitness: buildDeterminismLemmaWitness,
     lemma: checkDeterminismLemma,
+    detailedLemma: checkStructuredDeterminismLemma,
   },
   
   // Monoidal structure
@@ -117,6 +142,8 @@ export const MarkovOracles = {
     deterministicWitness: buildSetMultDeterminismWitness,
   },
 
+  set: SetOracles,
+
   // Conditional independence witnesses
   conditionalIndependence: {
     witness: buildMarkovConditionalWitness,
@@ -141,6 +168,11 @@ export const MarkovOracles = {
   },
   
   // Almost-sure equality and sampling cancellation
+  almostSure: {
+    witness: buildMarkovAlmostSureWitness,
+    check: checkAlmostSureEquality,
+    holds: pAlmostSureEqual,
+  },
   asEquality: {
     equality: equalDistAS,
     cancellation: samplingCancellation,
@@ -155,6 +187,38 @@ export const MarkovOracles = {
   dominance: {
     sosd: sosdFromWitness,
     dilation: isDilation,
+  },
+
+  zeroOne: {
+    kolmogorov: {
+      witness: buildKolmogorovZeroOneWitness,
+      check: checkKolmogorovZeroOne,
+    },
+    borel: {
+      witness: buildBorelKolmogorovWitness,
+      check: checkBorelKolmogorovZeroOne,
+    },
+    hewittSavage: {
+      witness: buildHewittSavageWitness,
+      check: checkHewittSavageZeroOne,
+    },
+    borelHewittSavage: {
+      witness: buildBorelHewittSavageWitness,
+      check: checkBorelHewittSavageZeroOne,
+    },
+    synthesized: {
+      witness: buildZeroOneSynthesisWitness,
+      check: checkZeroOneSynthesis,
+      make: makeZeroOneOracle,
+    },
+    permutation: checkFinitePermutationInvariance,
+  },
+
+  top: {
+    vietoris: {
+      status:
+        "Kolmogorov witnesses supported in principle; Hewitt–Savage unavailable because Kl(H) is not causal.",
+    },
   },
   
   // ===== Information Theory =====
@@ -188,10 +252,10 @@ export const MarkovOracles = {
 export function checkAllMarkovLaws<R>(
   R: CSRig<R>,
   testData?: {
-    samples?: any[];
-    distributions?: Array<Dist<R, any>>;
-    functions?: any[];
-    domain?: any[];
+    samples?: Array<unknown>;
+    distributions?: Array<Dist<R, unknown>>;
+    functions?: Array<unknown>;
+    domain?: Array<unknown>;
   }
 ): {
   foundational: {
@@ -285,13 +349,15 @@ export function checkAllMarkovLaws<R>(
  */
 export function getMarkovOracle(path: string): Function | undefined {
   const parts = path.split('.');
-  let current: any = MarkovOracles;
-  
+  let current: unknown = MarkovOracles;
+
   for (const part of parts) {
-    current = current[part];
-    if (!current) return undefined;
+    if (typeof current !== 'object' || current === null) return undefined;
+    const next = (current as Record<string, unknown>)[part];
+    if (next === undefined) return undefined;
+    current = next;
   }
-  
+
   return typeof current === 'function' ? current : undefined;
 }
 
@@ -304,20 +370,20 @@ export function listMarkovOracles(): Array<{
   domain: string;
 }> {
   const oracles: Array<{ path: string; name: string; domain: string }> = [];
-  
-  const traverse = (obj: any, prefix: string, domain: string) => {
+
+  const traverse = (obj: Record<string, unknown>, prefix: string, domain: string) => {
     for (const [key, value] of Object.entries(obj)) {
       const path = prefix ? `${prefix}.${key}` : key;
-      
+
       if (typeof value === 'function') {
         oracles.push({ path, name: key, domain });
-      } else if (typeof value === 'object') {
-        traverse(value, path, domain);
+      } else if (value && typeof value === 'object') {
+        traverse(value as Record<string, unknown>, path, domain);
       }
     }
   };
-  
-  traverse(MarkovOracles, '', 'markov');
+
+  traverse(MarkovOracles as Record<string, unknown>, '', 'markov');
   return oracles;
 }
 

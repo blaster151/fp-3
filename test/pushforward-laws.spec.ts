@@ -24,8 +24,8 @@ describe('Pushforward Monad Law Checking', () => {
     const mockFunctor = {
       source: 'A',
       target: 'B',
-      onObj: (x: any) => `F(${x})`,
-      onMor: (f: any) => `F(${f})`
+      onObj: (x: string) => `F(${x})`,
+      onMor: (f: string) => `F(${f})`
     }
 
     const leftToMiddle = reassociate.leftToMiddle(mockFunctor)
@@ -59,13 +59,13 @@ describe('Pushforward Monad Law Checking', () => {
     const f = {
       from: { elements: ['x'] },
       to: { elements: [['y']] },
-      compose: (x: any) => [x] // x -> [x]
+      compose: (x: string) => [x] // x -> [x]
     }
-    
+
     const g = {
       from: { elements: [['y']] },
       to: { elements: [['z', 'w']] },
-      compose: (list: any) => list.concat(['z']) // [y] -> [y,z]
+      compose: (list: ReadonlyArray<string>) => list.concat(['z']) // [y] -> [y,z]
     }
     
     const composed = kleisliCompose(listMonad, f, g)
@@ -122,8 +122,8 @@ describe('Pushforward Monad Law Checking', () => {
     const G = {
       source: { objects: ['b'] },
       target: FinSet,
-      onObj: (b: any) => ({ elements: [0, 1] }),
-      onMor: (m: any) => FinSet.id({ elements: [0, 1] })
+      onObj: (_b: string) => ({ elements: [0, 1] }),
+      onMor: (_m: unknown) => FinSet.id({ elements: [0, 1] })
     }
     
     const A = { elements: ['x', 'y'] }

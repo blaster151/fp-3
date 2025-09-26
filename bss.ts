@@ -308,10 +308,20 @@ export function testBSSMatrix<Θ extends string | number, X>(
   moreInformative: boolean;
   dilationFound: boolean;
 }>> {
-  const results: Array<Array<any>> = [];
-  
+  const results: Array<Array<{
+    from: string;
+    to: string;
+    moreInformative: boolean;
+    dilationFound: boolean;
+  }>> = [];
+
   for (let i = 0; i < experiments.length; i++) {
-    const row: Array<any> = [];
+    const row: Array<{
+      from: string;
+      to: string;
+      moreInformative: boolean;
+      dilationFound: boolean;
+    }> = [];
     for (let j = 0; j < experiments.length; j++) {
       const from = experiments[i];
       const to = experiments[j];

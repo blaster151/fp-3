@@ -33,18 +33,18 @@ import {
 describe('Complete Pushforward Monad Implementation', () => {
   test('can construct categorical structures', () => {
     // Test basic functor composition
-    const F: CatFunctor<any, any> = {
+    const F: CatFunctor<string, string> = {
       source: 'A',
       target: 'B',
-      onObj: (x: any) => `F(${x})`,
-      onMor: (f: any) => `F(${f})`
+      onObj: (x: string) => `F(${x})`,
+      onMor: (f: string) => `F(${f})`
     }
 
-    const G: CatFunctor<any, any> = {
+    const G: CatFunctor<string, string> = {
       source: 'B',
       target: 'C',
-      onObj: (x: any) => `G(${x})`,
-      onMor: (f: any) => `G(${f})`
+      onObj: (x: string) => `G(${x})`,
+      onMor: (f: string) => `G(${f})`
     }
 
     const GF = composeFun(F, G)
@@ -55,31 +55,31 @@ describe('Complete Pushforward Monad Implementation', () => {
   })
 
   test('natural transformation operations work', () => {
-    const F: CatFunctor<any, any> = {
+    const F: CatFunctor<string, string> = {
       source: 'A',
       target: 'B',
-      onObj: (x: any) => `F(${x})`,
-      onMor: (f: any) => `F(${f})`
+      onObj: (x: string) => `F(${x})`,
+      onMor: (f: string) => `F(${f})`
     }
 
-    const G: CatFunctor<any, any> = {
+    const G: CatFunctor<string, string> = {
       source: 'A',
       target: 'B',
-      onObj: (x: any) => `G(${x})`,
-      onMor: (f: any) => `G(${f})`
+      onObj: (x: string) => `G(${x})`,
+      onMor: (f: string) => `G(${f})`
     }
 
-    const alpha: CatNatTrans<any, any> = {
+    const alpha: CatNatTrans<typeof F, typeof G> = {
       source: F,
       target: G,
-      component: (x: any) => `α(${x})`
+      component: (x: string) => `α(${x})`
     }
 
-    const H: CatFunctor<any, any> = {
+    const H: CatFunctor<string, string> = {
       source: 'C',
       target: 'A',
-      onObj: (x: any) => `H(${x})`,
-      onMor: (f: any) => `H(${f})`
+      onObj: (x: string) => `H(${x})`,
+      onMor: (f: string) => `H(${f})`
     }
 
     // Test whiskering
@@ -88,10 +88,10 @@ describe('Complete Pushforward Monad Implementation', () => {
     expect(alphaH.component).toBeDefined()
 
     // Test vertical composition
-    const beta: CatNatTrans<any, any> = {
+    const beta: CatNatTrans<typeof G, typeof F> = {
       source: G,
       target: F,
-      component: (x: any) => `β(${x})`
+      component: (x: string) => `β(${x})`
     }
 
     const comp = vcomp(alpha, beta)
@@ -101,33 +101,33 @@ describe('Complete Pushforward Monad Implementation', () => {
 
   test('adjunction mates work', () => {
     // Create a simple adjunction
-    const F: CatFunctor<any, any> = {
+    const F: CatFunctor<string, string> = {
       source: 'C',
       target: 'D',
-      onObj: (x: any) => `F(${x})`,
-      onMor: (f: any) => `F(${f})`
+      onObj: (x: string) => `F(${x})`,
+      onMor: (f: string) => `F(${f})`
     }
 
-    const U: CatFunctor<any, any> = {
+    const U: CatFunctor<string, string> = {
       source: 'D',
       target: 'C',
-      onObj: (x: any) => `U(${x})`,
-      onMor: (f: any) => `U(${f})`
+      onObj: (x: string) => `U(${x})`,
+      onMor: (f: string) => `U(${f})`
     }
 
-    const unit: CatNatTrans<any, any> = {
+    const unit: CatNatTrans<CatId<string>, CatCompose<typeof U, typeof F>> = {
       source: idFun('C'),
       target: composeFun(U, F),
-      component: (x: any) => `η(${x})`
+      component: (x: string) => `η(${x})`
     }
 
-    const counit: CatNatTrans<any, any> = {
+    const counit: CatNatTrans<CatCompose<typeof F, typeof U>, CatId<string>> = {
       source: composeFun(F, U),
       target: idFun('D'),
-      component: (x: any) => `ε(${x})`
+      component: (x: string) => `ε(${x})`
     }
 
-    const adj: Adjunction<any, any, any, any> = {
+    const adj: Adjunction<string, string, typeof F, typeof U> = {
       F, U, unit, counit
     }
 
@@ -145,52 +145,52 @@ describe('Complete Pushforward Monad Implementation', () => {
 
   test('pushforward monad construction', () => {
     // Create a simple monad
-    const T: CatMonad<any> = {
+    const T: CatMonad<string> = {
       category: 'C',
       endofunctor: {
         source: 'C',
         target: 'C',
-        onObj: (x: any) => `T(${x})`,
-        onMor: (f: any) => `T(${f})`
+        onObj: (x: string) => `T(${x})`,
+        onMor: (f: string) => `T(${f})`
       },
       unit: {
         source: idFun('C'),
-        target: {} as any,
-        component: (x: any) => `η^T(${x})`
+        target: {} as unknown as CatFunctor<string, string>,
+        component: (x: string) => `η^T(${x})`
       },
       mult: {
-        source: {} as any,
-        target: {} as any,
-        component: (x: any) => `μ^T(${x})`
+        source: {} as unknown as CatCompose<CatFunctor<string, string>, CatFunctor<string, string>>,
+        target: {} as unknown as CatFunctor<string, string>,
+        component: (x: string) => `μ^T(${x})`
       }
     }
 
     // Create adjunction
-    const F: CatFunctor<any, any> = {
+    const F: CatFunctor<string, string> = {
       source: 'C',
       target: 'D',
-      onObj: (x: any) => `F(${x})`,
-      onMor: (f: any) => `F(${f})`
+      onObj: (x: string) => `F(${x})`,
+      onMor: (f: string) => `F(${f})`
     }
 
-    const U: CatFunctor<any, any> = {
+    const U: CatFunctor<string, string> = {
       source: 'D',
       target: 'C',
-      onObj: (x: any) => `U(${x})`,
-      onMor: (f: any) => `U(${f})`
+      onObj: (x: string) => `U(${x})`,
+      onMor: (f: string) => `U(${f})`
     }
 
-    const adj: Adjunction<any, any, any, any> = {
+    const adj: Adjunction<string, string, typeof F, typeof U> = {
       F, U,
       unit: {
         source: idFun('C'),
         target: composeFun(U, F),
-        component: (x: any) => `η(${x})`
+        component: (x: string) => `η(${x})`
       },
       counit: {
         source: composeFun(F, U),
         target: idFun('D'),
-        component: (x: any) => `ε(${x})`
+        component: (x: string) => `ε(${x})`
       }
     }
 
@@ -205,31 +205,39 @@ describe('Complete Pushforward Monad Implementation', () => {
 
   test('colax morphism construction', () => {
     // Simple test for colax morphism
-    const T: CatMonad<any> = {
+    const T: CatMonad<string> = {
       category: 'C',
       endofunctor: {
         source: 'C',
         target: 'C',
-        onObj: (x: any) => `T(${x})`,
-        onMor: (f: any) => `T(${f})`
+        onObj: (x: string) => `T(${x})`,
+        onMor: (f: string) => `T(${f})`
       },
       unit: {
         source: idFun('C'),
-        target: {} as any,
-        component: (x: any) => `η^T(${x})`
+        target: {} as unknown as CatFunctor<string, string>,
+        component: (x: string) => `η^T(${x})`
       },
       mult: {
-        source: {} as any,
-        target: {} as any,
-        component: (x: any) => `μ^T(${x})`
+        source: {} as unknown as CatCompose<CatFunctor<string, string>, CatFunctor<string, string>>,
+        target: {} as unknown as CatFunctor<string, string>,
+        component: (x: string) => `μ^T(${x})`
       }
     }
 
-    const adj: Adjunction<any, any, any, any> = {
-      F: { source: 'C', target: 'D', onObj: (x: any) => x, onMor: (f: any) => f },
-      U: { source: 'D', target: 'C', onObj: (x: any) => x, onMor: (f: any) => f },
-      unit: { source: idFun('C'), target: {} as any, component: (x: any) => x },
-      counit: { source: {} as any, target: idFun('D'), component: (x: any) => x }
+    const adj: Adjunction<string, string, CatFunctor<string, string>, CatFunctor<string, string>> = {
+      F: { source: 'C', target: 'D', onObj: (x: string) => x, onMor: (f: string) => f },
+      U: { source: 'D', target: 'C', onObj: (x: string) => x, onMor: (f: string) => f },
+      unit: {
+        source: idFun('C'),
+        target: {} as unknown as CatCompose<CatFunctor<string, string>, CatFunctor<string, string>>,
+        component: (x: string) => x
+      },
+      counit: {
+        source: {} as unknown as CatCompose<CatFunctor<string, string>, CatFunctor<string, string>>,
+        target: idFun('D'),
+        component: (x: string) => x
+      }
     }
 
     const colax = colaxAlongLeftAdjoint(adj, T)
@@ -268,11 +276,11 @@ describe('Complete Pushforward Monad Implementation', () => {
     expect(ListS.elements.length).toBeGreaterThan(0)
 
     // Should contain at least the empty list and singleton lists
-    const hasEmptyList = ListS.elements.some((list: any) => 
+    const hasEmptyList = ListS.elements.some((list: unknown) =>
       Array.isArray(list) && list.length === 0
     )
-    const hasSingleton = ListS.elements.some((list: any) => 
-      Array.isArray(list) && list.length === 1 && list[0] === 'a'
+    const hasSingleton = ListS.elements.some((list: unknown) =>
+      Array.isArray(list) && list.length === 1 && (list as unknown[])[0] === 'a'
     )
     
     expect(hasEmptyList).toBe(true)
@@ -306,7 +314,7 @@ describe('Complete Pushforward Monad Implementation', () => {
     // Simple algebra: sum operation on lists of numbers
     const sumAlgebra = {
       carrier: { elements: [1, 2, 3] },
-      action: (lists: any) => {
+      action: (lists: unknown) => {
         // This would sum all numbers in all lists
         return lists
       }

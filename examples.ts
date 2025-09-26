@@ -1,9 +1,9 @@
 /**
- * tiny-fp Examples
+ * fp-3 Examples
  * ================
  * 
  * This file contains runnable examples demonstrating the various concepts
- * and patterns in the tiny-fp library. Examples are organized from simple
+ * and patterns in the fp-3 library. Examples are organized from simple
  * to complex, following a logical learning progression.
  * 
  * To run these examples:
@@ -2073,7 +2073,7 @@ namespace ComoduleExamples {
 // ====================================================================
 
 async function runExamples() {
-  console.log('tiny-fp Examples')
+  console.log('fp-3 Examples')
   console.log('================')
   
   // Uncomment the examples you want to run:

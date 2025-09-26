@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "outDir": "./dist",
+    "rootDir": "./",
+    "types": ["node"],
+    "verbatimModuleSyntax": false
+  },
+  "files": ["run-examples-simple.ts"]
+}

@@ -84,7 +84,7 @@ describe("LAW: Markov Category Laws", () => {
       fc.assert(
         fc.property(
           fc.array(fc.tuple(fc.integer(), fc.float({ min: 0, max: 1 })), { minLength: 1, maxLength: 5 }),
-          fc.func(fc.constant(fc.array(fc.tuple(fc.string(), fc.float({ min: 0, max: 1 })), { minLength: 1, maxLength: 3 }))),
+          fc.func(fc.array(fc.tuple(fc.string(), fc.float({ min: 0, max: 1 })), { minLength: 1, maxLength: 3 })),
           (pairs, kGen) => {
             // Create normalized distribution
             const dist = fromWeights(pairs, true)
@@ -369,8 +369,9 @@ describe("LAW: Markov Category Laws", () => {
     it("tensor unit is properly handled", () => {
       const X = mkFin([0, 1], (a,b) => a === b)
       const unit = mkFin([{}], () => true)
-      
+
       // X ⊗ I ≅ X (up to canonical isomorphism)
+      const f = idK(X)
       const tensorWithUnit = f.tensor(idK(unit))
       // This would require implementing unit isomorphisms properly
       // For now we just check the dimensions work out

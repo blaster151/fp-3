@@ -77,10 +77,23 @@ export function mass<T>(d: Dist<T>): number {
 export function normalize<T>(d: Dist<T>): Dist<T> {
   const m = mass(d);
   const out: Dist<T> = new Map();
-  if (m <= 0) return out; // empty
-  for (const [k, v] of d) {
-    const w = v / m;
-    if (w > EPS) out.set(k, w);
+
+  if (m > EPS) {
+    for (const [k, v] of d) {
+      const w = v / m;
+      if (w > EPS) out.set(k, w);
+    }
+    return out;
+  }
+
+  // Degenerate input: all weights are ≈ 0. Instead of returning an empty
+  // distribution (which would violate affine/Markov expectations), fall back
+  // to an equal-weight distribution over the existing support.
+  if (d.size === 0) return out;
+
+  const uniform = 1 / d.size;
+  for (const [k] of d) {
+    out.set(k, uniform);
   }
   return out;
 }
