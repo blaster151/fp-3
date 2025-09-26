@@ -60,7 +60,7 @@ describe("LAW: Semiring Distribution Laws", () => {
       R: Bool,
       isAffine: true,
       genElement: () => fc.integer({ min: -5, max: 5 }),
-      genWeight: () => fc.constantFrom(0, 1)
+      genWeight: () => fc.boolean()
     }
   ]
 
@@ -135,10 +135,10 @@ describe("LAW: Semiring Distribution Laws", () => {
           genA: genElement,
           genFA: () => fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 5 })
                      .map(pairs => mkRDist(R, pairs)),
-          genK: () => fc.func(fc.constant(
+          genK: () => fc.func(
             fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 })
               .map(pairs => mkRDist(R, pairs))
-          )),
+          ),
           pure: M.of,
           chain: <A, B>(k: (a: A) => Dist<B>) => (fa: Dist<A>) => M.bind(fa, k),
           eq: (a: Dist<any>, b: Dist<any>) => {
@@ -192,11 +192,14 @@ describe("LAW: Semiring Distribution Laws", () => {
             fc.assert(
               fc.property(
                 genElement(),
-                fc.func(fc.constant(fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 })
-                  .map(pairs => normalizeToUnit(mkRDist(R, pairs))))),
+                fc.func(
+                  fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 })
+                    .map(pairs => normalizeToUnit(mkRDist(R, pairs)))
+                ),
                 (x, k) => {
                   const unitDist = M.of(x)
-                  const result = M.bind(unitDist, k)
+                  const kernel = k(x)
+                  const result = M.bind(unitDist, (_) => kernel)
                   const totalWeight = [...result.values()].reduce((acc, w) => R.add(acc, w), R.zero)
                   return eq(totalWeight, R.one)
                 }
@@ -298,8 +301,10 @@ describe("LAW: Semiring Distribution Laws", () => {
           it("Kleisli identity is left/right neutral", () => {
             fc.assert(
               fc.property(
-                fc.func(fc.constant(fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 })
-                  .map(pairs => normalizeToUnit(mkRDist(R, pairs))))),
+                fc.func(
+                  fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 })
+                    .map(pairs => normalizeToUnit(mkRDist(R, pairs)))
+                ),
                 genElement(),
                 (k, x) => {
                   const id = M.of
@@ -320,9 +325,9 @@ describe("LAW: Semiring Distribution Laws", () => {
           it("Kleisli composition is associative", () => {
             fc.assert(
               fc.property(
-                fc.func(fc.constant(M.of(fc.integer()))),
-                fc.func(fc.constant(M.of(fc.string()))), 
-                fc.func(fc.constant(M.of(fc.boolean()))),
+                fc.func(fc.integer({ min: -5, max: 5 }).map((n) => M.of(n))),
+                fc.func(fc.string().map((s) => M.of(s))),
+                fc.func(fc.boolean().map((b) => M.of(b))),
                 genElement(),
                 (f, g, h, x) => {
                   // (h >=> g) >=> f = h >=> (g >=> f)

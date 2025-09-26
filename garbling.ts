@@ -62,7 +62,7 @@ export function moreInformativeClassic<R, Θ, X, Y>(
   return { ok: false };
 }
 
-// ===== Build a joint from a garbling witness (Theorem 5.4: (i)→(ii)) =====
+// ===== Build a joint from a garbling witness (garbling theorem forward direction) =====
 
 // Given c: X→Y and f: Θ→PX, produce h: Θ→P(X×Y) with marginals f and g=c∘f.
 export function jointFromGarbling<R, Θ, X, Y>(

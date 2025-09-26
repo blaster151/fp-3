@@ -29,7 +29,7 @@ describe('Pair comonad simplicial chain complex', () => {
     const E = ['L','R'] as const   // nonempty environment
     const A = ['•'] as const       // single point
     const N = 2
-    const { dims, d } = buildBoundariesForPair(E as any[], A as any[], N)
+    const { dims, d } = buildBoundariesForPair([...E], [...A], N)
 
     const bettiTilde = bettiReduced(dims, d, N)
     const betti      = bettiUnreduced(dims, d, N, A.length)
@@ -48,7 +48,7 @@ describe('Pair comonad simplicial chain complex', () => {
     const E = [0, 1] as const
     const A = ['a'] as const
     const N = 2
-    const { dims, d } = buildBoundariesForPair(E as any[], A as any[], N)
+    const { dims, d } = buildBoundariesForPair([...E], [...A], N)
 
     // X_0 = E×A = {(0,a), (1,a)} → dim = 2
     // X_1 = E²×A = {(0,(0,a)), (0,(1,a)), (1,(0,a)), (1,(1,a))} → dim = 4
@@ -69,7 +69,7 @@ describe('Pair comonad simplicial chain complex', () => {
     const E = ['x'] as const      // single environment element
     const A = [1, 2] as const     // two points
     const N = 2
-    const { d } = buildBoundariesForPair(E as any[], A as any[], N)
+    const { d } = buildBoundariesForPair([...E], [...A], N)
 
     // Check ∂_0 ∘ ∂_1 = 0
     if (d[0] && d[1]) {
@@ -114,7 +114,7 @@ describe('Pair comonad simplicial chain complex', () => {
     const E = ['e'] as const
     const A = ['pt'] as const
     const N = 1
-    const { dims, d } = buildBoundariesForPair(E as any[], A as any[], N)
+    const { dims, d } = buildBoundariesForPair([...E], [...A], N)
 
     const bettiTilde = bettiReduced(dims, d, N)
     const betti = bettiUnreduced(dims, d, N, A.length)
@@ -153,7 +153,7 @@ describe('Pair comonad simplicial chain complex', () => {
     const E = ['L', 'R'] as const
     const A = ['*'] as const
     const N = 1
-    const { dims, d } = buildBoundariesForPair(E as any[], A as any[], N)
+    const { dims, d } = buildBoundariesForPair([...E], [...A], N)
 
     console.log('Chain complex dimensions:', dims)
     console.log('Boundary matrix ∂_0 (augmentation):', d[0])

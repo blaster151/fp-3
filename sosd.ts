@@ -239,7 +239,14 @@ export function testSOSDRelationships<R, A>(
   direction: "qFromP" | "pFromQ";
   details: string;
 }> {
-  const results: Array<any> = [];
+  const results: Array<{
+    pIndex: number;
+    qIndex: number;
+    dilationIndex: number;
+    sosdHolds: boolean;
+    direction: "qFromP" | "pFromQ";
+    details: string;
+  }> = [];
   
   for (let i = 0; i < distributions.length; i++) {
     for (let j = 0; j < distributions.length; j++) {

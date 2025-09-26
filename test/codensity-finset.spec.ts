@@ -29,7 +29,7 @@ describe('Codensity carrier via end in FinSet', () => {
     const B = discCat(['b0','b1'])
     const X0: FinSetObj = { elements: [0,1] }      // |X0|=2
     const X1: FinSetObj = { elements: ['x'] }      // |X1|=1
-    const G: CFunctor<string, any, FinSetObj, FinSetMor> = {
+    const G: CFunctor<string, { from: string; to: string }, FinSetObj, FinSetMor> = {
       source: B, 
       target: FinSet, 
       onObj: (b) => (b==='b0'? X0 : X1), 
@@ -93,7 +93,7 @@ describe('Codensity carrier via end in FinSet', () => {
 
   test('End construction handles empty categories', () => {
     const emptyB = discCat([])
-    const G: CFunctor<string, any, FinSetObj, FinSetMor> = {
+    const G: CFunctor<string, { from: string; to: string }, FinSetObj, FinSetMor> = {
       source: emptyB,
       target: FinSet,
       onObj: (_b) => ({ elements: [] }),

@@ -4,7 +4,7 @@
 
 ## Overview
 
-This document provides systematic processes for AI-assisted development of the tiny-fp functional programming library.
+This document provides systematic processes for AI-assisted development of the fp-3 functional programming library.
 
 ## Features
 

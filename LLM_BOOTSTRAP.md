@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is **tiny-fp** - a TypeScript-first functional programming library that has evolved into a comprehensive **categorical theory toolkit**. What started as basic FP utilities (Option, Result, pipe/flow) has grown into a mathematically rigorous framework for:
+This is **fp-3** - a TypeScript-first functional programming library that has evolved into a comprehensive **categorical theory toolkit**. What started as basic FP utilities (Option, Result, pipe/flow) has grown into a mathematically rigorous framework for:
 
 - **Category theory** (functors, natural transformations, monads)
 - **Homological algebra** (chain complexes, triangulated categories)

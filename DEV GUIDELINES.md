@@ -1,6 +1,6 @@
-# tiny-fp
+# fp-3
 
-A compact, practical functional programming toolkit for TypeScript.
+fp-3 is a compact, practical functional programming toolkit for TypeScript.
 
 ## Features
 
@@ -317,6 +317,10 @@ put the NEW example in an appropriately named function of its own, rather than e
 the giant "RUN ALL EXAMPLES" that's currently there.
 
 **Keep both approaches**: Witness tests for law compliance + runnable examples for integration testing.
+
+**Coverage tip**: Run `npm run test:coverage` to produce V8 coverage reports for
+the Vitest suite (outputs to `./coverage`). Keep large feature drops honest by
+including a coverage snapshot in the PR checklist when relevant.
 
 ## KNOWLEDGE CAPTURE
 

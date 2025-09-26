@@ -1,5 +1,5 @@
 /**
- * tiny-fp — a compact, practical FP toolkit for TypeScript
+ * fp-3 — a compact, practical FP toolkit for TypeScript
  * --------------------------------------------------------
  * Goals
  *  - Zero deps, tree-shakeable, pragmatic types
@@ -7,10 +7,10 @@
  *  - Small but extensible: start with Option, Result, pipe/flow, pattern matching, and a few typeclasses
  *
  * Usage
- *  import { Option, Some, None, Result, Ok, Err, pipe, flow } from "./tiny-fp";
+ *  import { Option, Some, None, Result, Ok, Err, pipe, flow } from "./fp-3";
  *
  * Build
- *  tsc --target ES2019 --module ES2020 tiny-fp.ts
+ *  tsc --target ES2019 --module ES2020 fp-3.ts
  */
 
 // Some guidelines
@@ -50,7 +50,7 @@ export function pipe(a: unknown, ...fns: Array<(x: unknown) => unknown>): unknow
 }
 
 export const flow =
-  <A extends any[], B>(ab: (...a: A) => B) => ab
+  <A extends unknown[], B>(ab: (...a: A) => B) => ab
 
 export const compose = <A, B, C>(bc: (b: B) => C, ab: (a: A) => B) => (a: A): C => bc(ab(a))
 
@@ -153,21 +153,24 @@ export type DoResultBuilder<E, T extends _ObjectLike> = {
 export const DoR = <E = never>() => {
   const start: Result<E, {}> = Ok({})
   const make = <T extends _ObjectLike>(acc: Result<E, T>): DoResultBuilder<E, T> => ({
-    bind: (k, ra) =>
-      make(
-        isOk(acc)
-          ? isOk(ra)
-            ? Ok({ ...(acc.value as any), [k]: ra.value } as T)
-            : (ra as any)
-          : (acc as any)
-      ),
-    let: (k, a) =>
-      make(
-        isOk(acc)
-          ? Ok({ ...(acc.value as any), [k]: a } as T)
-          : (acc as any)
-      ),
-    map: (f) => mapR<E, T, any>(f)(acc),
+    bind: <K extends string, A>(k: K, ra: Result<E, A>) => {
+      if (isOk(acc)) {
+        if (isOk(ra)) {
+          const next = { ...acc.value, [k]: ra.value } as T & { readonly [P in K]: A }
+          return make(Ok(next))
+        }
+        return make(ra as Err<E> as Result<E, T & { readonly [P in K]: A }>)
+      }
+      return make(acc as Err<E> as Result<E, T & { readonly [P in K]: A }>)
+    },
+    let: <K extends string, A>(k: K, a: A) => {
+      if (isOk(acc)) {
+        const next = { ...acc.value, [k]: a } as T & { readonly [P in K]: A }
+        return make(Ok(next))
+      }
+      return make(acc as Err<E> as Result<E, T & { readonly [P in K]: A }>)
+    },
+    map: <B>(f: (t: T) => B): Result<E, B> => (isOk(acc) ? Ok(f(acc.value)) : (acc as Err<E>)),
     done: () => acc,
   })
   return make(start)
@@ -262,15 +265,15 @@ export const ResultM = <E>() => ({
   of: <A>(a: A): Result<E, A> => Ok(a) as Result<E, A>,
   map: <A, B>(f: (a: A) => B) =>
     (ra: Result<E, A>): Result<E, B> =>
-      isOk(ra) ? Ok(f(ra.value)) : (ra as any),
+      isOk(ra) ? Ok(f(ra.value)) : (ra as Err<E>),
   chain: <A, B>(f: (a: A) => Result<E, B>) =>
     (ra: Result<E, A>): Result<E, B> =>
-      isOk(ra) ? f(ra.value) : (ra as any),
+      isOk(ra) ? f(ra.value) : (ra as Err<E>),
   ap: <A, B>(rfab: Result<E, (a: A) => B>) =>
     (ra: Result<E, A>): Result<E, B> =>
       isOk(rfab) && isOk(ra)
         ? Ok(rfab.value(ra.value))
-        : (isErr(rfab) ? rfab : (ra as any)),
+        : (isErr(rfab) ? rfab : (ra as Err<E>)),
   // still handy to keep around
   mapErr: <F>(_: (e: E) => F) =>
     <A>(ra: Result<E, A>): Result<E, A> =>
@@ -326,7 +329,10 @@ export const composeK_ResultE =
   <E>() =>
   <A, B, C>(f: (a: A) => Result<E, B>, g: (b: B) => Result<E, C>) =>
   (a: A): Result<E, C> =>
-    isOk(f(a)) ? g((f(a) as Ok<B>).value) : (f(a) as any)
+    {
+      const fb = f(a)
+      return isOk(fb) ? g(fb.value) : (fb as Err<E>)
+    }
 
 // =============== 2-Cat of Endofunctors on Types ==================
 // A minimal "functor-like" shape (unary endofunctor on TS types)
@@ -356,16 +362,16 @@ export const vcompNatK1 =
 export const leftWhisker =
   <F>(F: EndofunctorK1<F>) =>
   <H, K>(beta: NatK1<H, K>) => ({
-    app: <A>(fha: any /* F<H<A>> */) =>
-      F.map<any, any>((ha: any) => beta.app<A>(ha))(fha) // F.map applied to β_A
-  }) as NatK1<any /* F∘H */, any /* F∘K */>
+    app: <A>(fha: unknown /* F<H<A>> */) =>
+      F.map<unknown, unknown>((ha) => beta.app<A>(ha))(fha) // F.map applied to β_A
+  }) as NatK1<unknown /* F∘H */, unknown /* F∘K */>
 
 // Right whisker:  α ∘ H : F∘H ⇒ G∘H   with (α ∘ H)_A = α_{H A}
 export const rightWhisker =
   <F, G>(alpha: NatK1<F, G>) =>
   <H>(/* H: EndofunctorK1<H> not needed at runtime */) => ({
-    app: <A>(fha: any /* F<H<A>> */) => alpha.app<any>(fha)
-  }) as NatK1<any /* F∘H */, any /* G∘H */>
+    app: <A>(fha: unknown /* F<H<A>> */) => alpha.app<unknown>(fha)
+  }) as NatK1<unknown /* F∘H */, unknown /* G∘H */>
 
 // Horizontal composition (component form):
 //   (α ⋆ β)_A : F<H<A>> → G<K<A>>
@@ -373,11 +379,11 @@ export const rightWhisker =
 export const hcompNatK1_component =
   <F, G>(F: EndofunctorK1<F>) =>
   <H, K>(alpha: NatK1<F, G>, beta: NatK1<H, K>) => ({
-    app: <A>(fha: any /* F<H<A>> */) =>
-      alpha.app<any>(
-        F.map<any, any>((ha: any) => beta.app<A>(ha))(fha)
+    app: <A>(fha: unknown /* F<H<A>> */) =>
+      alpha.app<unknown>(
+        F.map<unknown, unknown>((ha) => beta.app<A>(ha))(fha)
       )
-  }) as { app: <A>(fha: any /* F<H<A>> */) => any /* G<K<A>> */ }
+  }) as { app: <A>(fha: unknown /* F<H<A>> */) => unknown /* G<K<A>> */ }
 
 /**
  * Laws (informal):
@@ -398,31 +404,31 @@ export const IdK1: EndofunctorK1<'IdK1'> = {
 // Horizontal composition of endofunctors: (F ∘ G).map = F.map ∘ G.map
 export const composeEndoK1 =
   <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>): EndofunctorK1<['Comp', F, G]> => ({
-    map: <A, B>(f: (a: A) => B) => (fga: any) => F.map(G.map(f))(fga)
+    map: <A, B>(f: (a: A) => B) => (fga: unknown) => F.map(G.map(f))(fga)
   })
 
 // ================= 2-Functor Interfaces =================
 // Strict 2-functor between our one-object 2-cats (Type → Type)
 export interface TwoFunctorK1 {
-  on1:  <F>(F: EndofunctorK1<F>) => EndofunctorK1<any>              // map 1-cells
-  on2:  <F, G>(α: NatK1<F, G>) => NatK1<any, any>                  // map 2-cells
+  on1:  <F>(F: EndofunctorK1<F>) => EndofunctorK1<unknown>              // map 1-cells
+  on2:  <F, G>(α: NatK1<F, G>) => NatK1<unknown, unknown>              // map 2-cells
 }
 
 // Lax 2-functor: preserves comp/unit up to specified 2-cells (directions as in "lax")
 export interface LaxTwoFunctorK1 extends TwoFunctorK1 {
   // μ_{F,G} : on1(F) ∘ on1(G) ⇒ on1(F ∘ G)
-  mu:  <F, G>() => NatK1<any, any>
+  mu:  <F, G>() => NatK1<unknown, unknown>
   // η : Id ⇒ on1(Id)
-  eta: () => NatK1<any, any>
+  eta: () => NatK1<unknown, unknown>
   // (laws: unit & associativity coherence; naturality in F,G)
 }
 
 // Oplax 2-functor: structure maps go the other way
 export interface OplaxTwoFunctorK1 extends TwoFunctorK1 {
   // μ^op_{F,G} : on1(F ∘ G) ⇒ on1(F) ∘ on1(G)
-  muOp:  <F, G>() => NatK1<any, any>
+  muOp:  <F, G>() => NatK1<unknown, unknown>
   // η^op : on1(Id) ⇒ Id
-  etaOp: () => NatK1<any, any>
+  etaOp: () => NatK1<unknown, unknown>
 }
 
 // ================= Concrete Lax 2-Functor: PostcomposeReader<R> =================
@@ -501,7 +507,7 @@ export const EnvEndo = <E>(): EndofunctorK1<['Env', E]> => ({
 
 // Strength wrt Env:  st_F : F<[E,A]> -> [E, F<A>]
 export type StrengthEnv<F, E> = {
-  st: <A>(fea: any /* F<Env<E,A>> */) => Env<E, any /* F<A> */>
+  st: <A>(fea: unknown /* F<Env<E,A>> */) => Env<E, unknown /* F<A> */>
 }
 
 // Oplax 2-functor: PrecomposeEnv<E> given a strength for every F you use
@@ -511,7 +517,7 @@ export const PrecomposeEnv2 =
   const on1 = <F>(F: EndofunctorK1<F>) => composeEndoK1(F, EnvEndo<E>()) // F ∘ Env<E,_>
 
   const on2 = <F, G>(α: NatK1<F, G>) => ({
-    app: <A>(fea: any /* F<Env<E,A>> */): any /* G<Env<E,A>> */ =>
+    app: <A>(fea: unknown /* F<Env<E,A>> */): unknown /* G<Env<E,A>> */ =>
       α.app<Env<E, A>>(fea)
   })
 
@@ -524,15 +530,15 @@ export const PrecomposeEnv2 =
   //   F<G<Env<E,A>>>  →  F<Env<E, G<Env<E,A>>>>  →  Env<E, F<G<Env<E,A>>>>
   //   using st_G then st_F
   const muOp = <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) => ({
-    app: <A>(fg_ea: any): any => {
+    app: <A>(fg_ea: unknown): unknown => {
       const sG = strengthFor(G).st
       const sF = strengthFor(F).st
       // step 1: push Env through G
-      const f_env_g_ea = F.map((g_ea: any) => sG<any>(g_ea))(fg_ea)     // F<Env<E, G<A>>>
+      const f_env_g_ea = F.map((g_ea: unknown) => sG<unknown>(g_ea))(fg_ea)     // F<Env<E, G<A>>>
       // step 2: push Env through F
-      return sF<any>(f_env_g_ea)                                        // Env<E, F<G<A>>>
+      return sF<unknown>(f_env_g_ea)                                        // Env<E, F<G<A>>>
     }
-  }) as NatK1<any, any>
+  }) as NatK1<unknown, unknown>
 
   return { on1, on2, etaOp, muOp: <F, G>() => ({ app: muOp as any } as any) }
 }
@@ -541,26 +547,30 @@ export const PrecomposeEnv2 =
 
 // Option: st<Option>(Option<[E,A]>) -> [E, Option<A>]
 export const strengthEnvOption = <E>(): StrengthEnv<'Option', E> => ({
-  st: <A>(oea: any) =>
-    (oea && oea._tag === 'Some')
-      ? [oea.value[0] as E, { _tag:'Some', value: (oea.value[1] as A) }] as const
-      : [undefined as unknown as E, { _tag:'None' }]
+  st: <A>(oea: unknown) => {
+    const opt = oea as { _tag: 'Some'; value: readonly [E, A] } | { _tag: 'None' }
+    return (opt && opt._tag === 'Some')
+      ? [opt.value[0], { _tag: 'Some', value: opt.value[1] }] as const
+      : [undefined as unknown as E, { _tag: 'None' }]
+  }
 })
 
 // Result<E2,_>: st<Result>(Result<[E,A]>) -> [E, Result<A>]
 //   If Err, we must still supply an E; we thread a "defaultE" you choose.
 export const strengthEnvResult = <E, E2>(defaultE: E): StrengthEnv<'Result', E> => ({
-  st: <A>(rea: any) =>
-    (rea && rea._tag === 'Ok')
-      ? [rea.value[0] as E, { _tag:'Ok', value: (rea.value[1] as A) }] as const
-      : [defaultE, rea]
+  st: <A>(rea: unknown) => {
+    const res = rea as { _tag: 'Ok'; value: readonly [E, A] } | { _tag: 'Err'; error: E2 }
+    return (res && res._tag === 'Ok')
+      ? [res.value[0], { _tag: 'Ok', value: res.value[1] }] as const
+      : [defaultE, res]
+  }
 })
 
 // Reader<R,_>: st<Reader>(Reader<[E,A]>) -> [E, Reader<A>]
 export const strengthEnvReader = <E, R>(): StrengthEnv<'Reader', E> => ({
-  st: <A>(r_ea: (r: R) => readonly [E, A]) => {
+  st: <A>(r_ea: unknown) => {
+    const sample = r_ea as (r: R) => readonly [E, A]
     // choose E from the current read (effectively "snapshot" E at run)
-    const sample = r_ea as any as (r: R) => readonly [E, A]
     return [undefined as unknown as E,
       ((r: R) => sample(r)[1]) // Reader<R, A>
     ] as const
@@ -606,10 +616,12 @@ export const SumEndo =
 export const strengthEnvFromSum =
   <E>() =>
   <F, G>(sF: StrengthEnv<F, E>, sG: StrengthEnv<G, E>): StrengthEnv<['Sum', F, G], E> => ({
-    st: <A>(v: SumVal<F, G, Env<E, A>>) =>
-      v._sum === 'L'
-        ? (() => { const [e, fa] = sF.st<A>(v.left);  return [e, inL<F, G, A>(fa)] as const })()
-        : (() => { const [e, ga] = sG.st<A>(v.right); return [e, inR<F, G, A>(ga)] as const })()
+    st: <A>(v: unknown) => {
+      const sum = v as SumVal<F, G, Env<E, A>>
+      return sum._sum === 'L'
+        ? (() => { const [e, fa] = sF.st<A>(sum.left);  return [e, inL<F, G, A>(fa)] as const })()
+        : (() => { const [e, ga] = sG.st<A>(sum.right); return [e, inR<F, G, A>(ga)] as const })()
+    }
   })
 
 // (optional) case-analysis helper
@@ -645,9 +657,10 @@ export const ProdEndo =
 export const strengthEnvFromProd =
   <E>() =>
   <F, G>(sF: StrengthEnv<F, E>, sG: StrengthEnv<G, E>): StrengthEnv<['Prod', F, G], E> => ({
-    st: <A>(p: ProdVal<F, G, Env<E, A>>) => {
-      const [e1, fa] = sF.st<A>(p.left)
-      const [_,  ga] = sG.st<A>(p.right)
+    st: <A>(p: unknown) => {
+      const prodVal = p as ProdVal<F, G, Env<E, A>>
+      const [e1, fa] = sF.st<A>(prodVal.left)
+      const [_,  ga] = sG.st<A>(prodVal.right)
       return [e1, prod<F, G, A>(fa, ga)] as const
     }
   })
@@ -795,11 +808,14 @@ export type Const<C, A> = C
 
 // Additional strength helpers for Pair and Const
 export const strengthEnvFromPair = <E>() => <C>(): StrengthEnv<['Pair', C], E> => ({
-  st: <A>(p: readonly [C, Env<E, A>]) => [p[1][0], [p[0], p[1][1]] as const] as const
+  st: <A>(p: unknown) => {
+    const pair = p as readonly [C, Env<E, A>]
+    return [pair[1][0], [pair[0], pair[1][1]] as const] as const
+  }
 })
 
 export const strengthEnvFromConst = <E, C>(defaultE: E): StrengthEnv<['Const', C], E> => ({
-  st: <A>(_c: C) => [defaultE, _c] as const
+  st: <A>(_c: unknown) => [defaultE, _c as C] as const
 })
 
 // Composition strength helper
@@ -2133,14 +2149,16 @@ export const DoReader = <R>() => {
   const start: Reader<R, {}> = Reader.of<R, {}>({})
   const make = <T extends Record<string, unknown>>(acc: Reader<R, T>): DoReaderBuilder<R, T> => ({
     bind: <K extends string, A>(k: K, ra: Reader<R, A>) =>
-      make<T & { readonly [P in K]: A }>((r) =>
-        ({ ...(acc(r) as any), [k]: ra(r) } as T & { readonly [P in K]: A })
-      ),
+      make<T & { readonly [P in K]: A }>((r) => {
+        const base = acc(r)
+        return { ...base, [k]: ra(r) } as T & { readonly [P in K]: A }
+      }),
 
     let: <K extends string, A>(k: K, a: A) =>
-      make<T & { readonly [P in K]: A }>((r) =>
-        ({ ...(acc(r) as any), [k]: a } as T & { readonly [P in K]: A })
-      ),
+      make<T & { readonly [P in K]: A }>((r) => {
+        const base = acc(r)
+        return { ...base, [k]: a } as T & { readonly [P in K]: A }
+      }),
 
     map:  <B>(f: (t: T) => B): Reader<R, B> =>
       (r) => f(acc(r)),
@@ -4447,9 +4465,9 @@ export const apRR =
   (rra: RRes<Env, E, A>): RRes<Env, E, B> =>
   (env) => {
     const rf = rrf(env)
-    if (isErr(rf)) return rf as any
+    if (isErr(rf)) return rf as Err<E>
     const ra = rra(env)
-    if (isErr(ra)) return ra as any
+    if (isErr(ra)) return ra as Err<E>
     return Ok(rf.value(ra.value))
   }
 
@@ -6208,13 +6226,15 @@ export const DoRWST =
         make<T & { readonly [P in K]: A }>((r) => async (s0) => {
           const [obj, s1, w1] = await acc(r)(s0)
           const [a,   s2, w2] = await m(r)(s1)
-          return [{ ...(obj as any), [k]: a } as T & { readonly [P in K]: A }, s2, M.concat(w1, w2)] as const
+          const next = { ...obj, [k]: a } as T & { readonly [P in K]: A }
+          return [next, s2, M.concat(w1, w2)] as const
         }),
 
       let: <K extends string, A>(k: K, a: A) =>
         make<T & { readonly [P in K]: A }>((r) => async (s0) => {
           const [obj, s1, w1] = await acc(r)(s0)
-          return [{ ...(obj as any), [k]: a } as T & { readonly [P in K]: A }, s1, w1] as const
+          const next = { ...obj, [k]: a } as T & { readonly [P in K]: A }
+          return [next, s1, w1] as const
         }),
 
       map: <B>(f: (t: T) => B): RWST<R, W, S, B> =>
@@ -6384,7 +6404,7 @@ export const deepFreeze = <T>(input: T): DeepReadonly<T> => {
 
   // Map
   if (input instanceof Map) {
-    const m = new Map<any, any>()
+    const m = new Map<unknown, unknown>()
     for (const [k, v] of input) m.set(deepFreeze(k), deepFreeze(v))
     // Option A: Proxy to block mutations at runtime
     return _readonlyMapProxy(m) as any
@@ -6394,7 +6414,7 @@ export const deepFreeze = <T>(input: T): DeepReadonly<T> => {
 
   // Set
   if (input instanceof Set) {
-    const s = new Set<any>()
+    const s = new Set<unknown>()
     for (const v of input) s.add(deepFreeze(v))
     return _readonlySetProxy(s) as any
     // Or without proxy:
@@ -6405,8 +6425,8 @@ export const deepFreeze = <T>(input: T): DeepReadonly<T> => {
   const obj = input as Record<PropertyKey, unknown>
   // Freeze each own property first
   for (const k of Object.keys(obj)) {
-    const v = (obj as any)[k]
-    ;(obj as any)[k] = deepFreeze(v)
+    const v = obj[k]
+    obj[k] = deepFreeze(v)
   }
   return Object.freeze(obj) as any
 }
@@ -6866,7 +6886,7 @@ const odds = filter([1,2,3,4,5], n => n % 2 === 1)
 */
 
 /**
- * tiny-fp — a compact, practical FP toolkit for TypeScript
+* fp-3 — a compact, practical FP toolkit for TypeScript
  * --------------------------------------------------------
  * Goals
  *  - Zero deps, tree-shakeable, pragmatic types
@@ -7191,7 +7211,10 @@ export const prismToOptional = <S, A>(pr: Prism<S, A>): Optional<S, A> => option
 )
 
 export const optionalProp = <S>() => <K extends keyof S>(k: K): Optional<S, NonNullable<S[K]>> => optional(
-  (s: S) => fromNullable(s[k] as any),
+  (s: S) => {
+    const value = s[k]
+    return value == null ? None : Some(value as NonNullable<S[K]>)
+  },
   (a, s) => ({ ...s, [k]: a } as S)
 )
 
@@ -7208,7 +7231,11 @@ export const traversalArray = <A>(): Traversal<ReadonlyArray<A>, A> => traversal
 
 export const traversalPropArray = <S>() => <K extends keyof S>(k: K & (S[K] extends ReadonlyArray<infer T> ? K : never)):
   Traversal<S, S[K] extends ReadonlyArray<infer T> ? T : never> => traversal(
-    (f) => (s: S) => ({ ...s, [k]: (s[k] as ReadonlyArray<any>).map(f) }) as S
+    (f) => (s: S) => {
+      type Elem = S[K] extends ReadonlyArray<infer T> ? T : never
+      const current = s[k] as ReadonlyArray<Elem>
+      return { ...s, [k]: current.map(f) } as S
+    }
 )
 
 export const optionalToTraversal = <S, A>(opt: Optional<S, A>): Traversal<S, A> => traversal(
@@ -7310,7 +7337,7 @@ export const ReaderTaskResult = {
     (rtra: ReaderTask<R, Result<E, A>>): ReaderTask<R, Result<E | F, B>> =>
     async (r: R) => {
       const ra = await rtra(r)
-      return isOk(ra) ? f(ra.value)(r) : (ra as any)
+      return isOk(ra) ? f(ra.value)(r) : (ra as Err<E>)
     },
 }
 
@@ -7321,16 +7348,16 @@ export const RTR_ =
 
 export const genRTR =
   <R, E>() =>
-  <A>(f: () => Generator<ReaderTaskResult<R, E, any>, A, any>): ReaderTaskResult<R, E, A> =>
+  <A>(f: () => Generator<ReaderTaskResult<R, E, unknown>, A, unknown>): ReaderTaskResult<R, E, A> =>
   async (r: R) => {
     const it = f()
-    let last: any = undefined
+    let last: unknown = undefined
     while (true) {
       const n = it.next(last)
       if (n.done) return Ok(n.value as A)
-      const rr = await (n.value as ReaderTaskResult<R, E, any>)(r)
+      const rr = await n.value(r)
       if (isErr(rr)) return rr
-      last = (rr as Ok<any>).value
+      last = rr.value
     }
   }
 
@@ -7360,16 +7387,16 @@ export const TR_ =
 /** Turn a generator of TaskResults into a single TaskResult. */
 export const genTR =
   <E>() =>
-  <A>(f: () => Generator<TaskResult<E, any>, A, any>): TaskResult<E, A> =>
+  <A>(f: () => Generator<TaskResult<E, unknown>, A, unknown>): TaskResult<E, A> =>
   async () => {
     const it = f()
-    let last: any = undefined
+    let last: unknown = undefined
     while (true) {
       const n = it.next(last)
       if (n.done) return Ok(n.value as A)
-      const r = await (n.value as TaskResult<E, any>)()
+      const r = await n.value()
       if (isErr(r)) return r
-      last = (r as Ok<any>).value
+      last = r.value
     }
   }
 
@@ -7407,7 +7434,7 @@ export const TaskOption = {
   none: (): TaskOption<never> => Task.of(None),
   fromOption: <A>(oa: Option<A>): TaskOption<A> => Task.of(oa),
   fromNullable: <A>(a: A | null | undefined): TaskOption<NonNullable<A>> =>
-    Task.of(fromNullable(a as any) as any),
+    Task.of(a == null ? None : Some(a as NonNullable<A>)),
 
   map: <A, B>(f: (a: A) => B) => (ta: TaskOption<A>): TaskOption<B> =>
     () => ta().then(mapO(f)),
@@ -7545,13 +7572,13 @@ export const RTO_ =
 
 export const genRTO =
   <R>() =>
-  <A>(f: () => Generator<ReaderTaskOption<R, any>, A, any>): ReaderTaskOption<R, A> =>
+  <A>(f: () => Generator<ReaderTaskOption<R, unknown>, A, unknown>): ReaderTaskOption<R, A> =>
   async (r: R) => {
     const it = f()
-    const step = async (input?: any): Promise<Option<A>> => {
+    const step = async (input?: unknown): Promise<Option<A>> => {
       const n = it.next(input)
       if (n.done) return Some(n.value as A)
-      const oa = await (n.value as ReaderTaskOption<R, any>)(r)
+      const oa = await n.value(r)
       return isSome(oa) ? step(oa.value) : None
     }
     return step()
@@ -7592,7 +7619,7 @@ export const apV =
   (va: Validation<E, A>): Validation<E, B> => {
     if (isVOk(vfab) && isVOk(va)) return VOk(vfab.value(va.value))
     if (isVErr(vfab) && isVErr(va)) return VErr(...concat(vfab.errors, va.errors))
-    return isVErr(vfab) ? vfab : (va as any)
+    return isVErr(vfab) ? vfab : (va as VErr<E>)
   }
 
 export const validate =
@@ -7737,37 +7764,45 @@ export const traverseArrayValidation = <E, A, B>(
   sequenceArrayValidation(as.map(f), concat)
 
 // ---------- Structs: Result (short-circuit) ----------
+type SequenceStructResultValue<S> = { readonly [K in keyof S]: UnwrapResult<S[K]> }
+
 export const sequenceStructResult = <
   E,
-  S extends Record<string, Result<E, any>>
->(s: S): Result<E, { readonly [K in keyof S]: UnwrapResult<S[K]> }> => {
-  const out: Record<string, unknown> = {}
+  S extends Record<string, Result<E, unknown>>
+>(s: S): Result<E, SequenceStructResultValue<S>> => {
+  const out: Partial<SequenceStructResultValue<S>> = {}
   for (const k in s) {
-    const r = s[k]
-    if (isErr(r!)) return r as any
-    out[k] = (r as Ok<any>).value
+    const result = s[k]!
+    if (isErr(result)) return result
+    out[k] = result.value as UnwrapResult<S[typeof k]>
   }
-  return Ok(out as { readonly [K in keyof S]: UnwrapResult<S[K]> })
+  return Ok(out as SequenceStructResultValue<S>)
 }
 
 // ---------- Structs: Validation (accumulate) ----------
+type SequenceStructValidationValue<S> = { readonly [K in keyof S]: UnwrapValidation<S[K]> }
+
 export const sequenceStructValidation = <
   E,
-  S extends Record<string, Validation<E, any>>
+  S extends Record<string, Validation<E, unknown>>
 >(
   s: S,
   concat: (x: ReadonlyArray<E>, y: ReadonlyArray<E>) => ReadonlyArray<E>
-): Validation<E, { readonly [K in keyof S]: UnwrapValidation<S[K]> }> => {
-  const out: Record<string, unknown> = {}
+): Validation<E, SequenceStructValidationValue<S>> => {
+  const out: Partial<SequenceStructValidationValue<S>> = {}
   let errs: ReadonlyArray<E> | null = null
   for (const k in s) {
-    const v = s[k]
-    if (isVOk(v!)) out[k] = v.value
-    else errs = errs ? concat(errs, (v as any).errors) : (v as any).errors
+    const validation = s[k]!
+    if (isVOk(validation)) {
+      out[k] = validation.value as UnwrapValidation<S[typeof k]>
+    } else {
+      const errors = validation.errors
+      errs = errs ? concat(errs, errors) : errors
+    }
   }
   return errs
     ? VErr(...errs)
-    : VOk(out as { readonly [K in keyof S]: UnwrapValidation<S[K]> })
+    : VOk(out as SequenceStructValidationValue<S>)
 }
 
 
@@ -8008,7 +8043,7 @@ export const chainRTResult =
   (rtra: ReaderTask<R, Result<E, A>>): ReaderTask<R, Result<E | F, B>> =>
   async (r) => {
     const ra = await rtra(r)
-    return isOk(ra) ? f(ra.value)(r) : (ra as any)
+    return isOk(ra) ? f(ra.value)(r) : (ra as Err<E>)
   }
 
 // Helpful: pretty-print the error path list from Decoder results
@@ -8367,17 +8402,17 @@ export const RWST_ =
 export const genRWST =
   <W>(M: Monoid<W>) =>
   <R, S>() =>
-  <A>(f: () => Generator<RWST<R, W, S, any>, A, any>): RWST<R, W, S, A> =>
+  <A>(f: () => Generator<RWST<R, W, S, unknown>, A, unknown>): RWST<R, W, S, A> =>
   (r: R) =>
   async (s0: S) => {
     const it = f()
     let s = s0
     let wAcc = M.empty
-    let last: any = undefined
+    let last: unknown = undefined
     while (true) {
       const n = it.next(last)
       if (n.done) return [n.value as A, s, wAcc] as const
-      const [a, s1, w] = await (n.value as RWST<R, W, S, any>)(r)(s)
+      const [a, s1, w] = await n.value(r)(s)
       last = a
       s = s1
       wAcc = M.concat(wAcc, w)
@@ -10137,10 +10172,10 @@ export interface MonadK2C<F extends HK.Id2, L> extends ApplicativeK2C<F, L> {
 export const ResultK1 = <E>() => ({
   map:  <A, B>(f: (a: A) => B) => (ra: Result<E, A>): Result<E, B> => mapR<E, A, B>(f)(ra),
   ap:   <A, B>(rf: Result<E, (a: A) => B>) => (ra: Result<E, A>): Result<E, B> =>
-        isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : ra) as any,
+        isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : (ra as Err<E>)),
   of:   <A>(a: A): Result<E, A> => Ok(a),
   chain:<A, B>(f: (a: A) => Result<E, B>) => (ra: Result<E, A>): Result<E, B> =>
-        isOk(ra) ? f(ra.value) : ra as any,
+        isOk(ra) ? f(ra.value) : (ra as Err<E>),
 })
 
 export const ValidationK1 = <E>() => ({
@@ -10151,7 +10186,7 @@ export const ValidationK1 = <E>() => ({
         (va: Validation<E, A>): Validation<E, B> => apV<E>(concat)<A, B>(vf)(va),
   of:   <A>(a: A): Validation<E, A> => VOk(a),
   chain:<A, B>(f: (a: A) => Validation<E, B>) => (va: Validation<E, A>): Validation<E, B> =>
-        isVOk(va) ? f(va.value) : va as any,
+        isVOk(va) ? f(va.value) : (va as VErr<E>),
 })
 
 // Fix Reader/ReaderTask environment to get a K1 endofunctor
@@ -10444,17 +10479,17 @@ export const ReaderTaskK = <R>(): MonadK2C<'ReaderTask', R> => ({
 export const ResultK = <E>(): MonadK2C<'Result', E> => ({
   map: <A, B>(f: (a: A) => B) =>
     (ra: Result<E, A>): Result<E, B> =>
-      isOk(ra) ? Ok(f(ra.value)) : (ra as any),
+      isOk(ra) ? Ok(f(ra.value)) : (ra as Err<E>),
 
   of: <A>(a: A): Result<E, A> => Ok(a) as Result<E, A>,
 
   ap:  <A, B>(rf: Result<E, (a: A) => B>) =>
        (ra: Result<E, A>): Result<E, B> =>
-         isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : ra as any),
+         isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : (ra as Err<E>)),
 
   chain: <A, B>(f: (a: A) => Result<E, B>) =>
     (ra: Result<E, A>): Result<E, B> =>
-      isOk(ra) ? f(ra.value) : (ra as any),
+      isOk(ra) ? f(ra.value) : (ra as Err<E>),
 })
 
 // =======================
@@ -10495,8 +10530,8 @@ export const readerToReaderTask =
 // ---------- Kleisli "category" over any MonadK1 + ready-made instances ----------
 // Minimal MonadK1 shape we rely on
 export type MonadK1Like<F> = {
-  of: <A>(a: A) => any
-  chain: <A, B>(f: (a: A) => any) => (fa: any) => any
+  of: <A>(a: A) => FunctorValue<F, A>
+  chain: <A, B>(f: (a: A) => FunctorValue<F, B>) => (fa: FunctorValue<F, A>) => FunctorValue<F, B>
 }
 
 // Kleisli composition: (B -> M C) ∘ (A -> M B) -> (A -> M C)
@@ -10662,66 +10697,83 @@ export const WriterInReaderTask = <W>(M: Monoid<W>) => WriterT<W>(M)(K_ReaderTas
 // ----- EitherT (tiny) + prewired aliases -----
 export const EitherT = <F>(F: MonadK1Like<F>) => ({
   // Constructors
-  right:  <A>(a: A) => F.of<Result<never, A>>(Ok(a)) as any,
-  left:   <E>(e: E) => F.of<Result<E, never>>(Err(e)) as any,
-  of:     <A>(a: A) => F.of<Result<never, A>>(Ok(a)) as any,
+  right:  <A>(a: A) => F.of<Result<never, A>>(Ok(a)),
+  left:   <E>(e: E) => F.of<Result<E, never>>(Err(e)),
+  of:     <A>(a: A) => F.of<Result<never, A>>(Ok(a)),
 
   // Lift a pure F<A> into F<Result<never,A>>
-  liftF:  <A>(fa: any) => F.chain<A, Result<never, A>>((a: A) => F.of(Ok(a)))(fa),
+  liftF:  <A>(fa: FunctorValue<F, A>) =>
+    F.chain<A, Result<never, A>>((a: A) => F.of(Ok(a)))(fa),
 
   // Functor/Bifunctor
   map:
     <E, A, B>(f: (a: A) => B) =>
-    (fea: any) =>
+    (fea: FunctorValue<F, Result<E, A>>) =>
       F.chain<Result<E, A>, Result<E, B>>((ra) => F.of(mapR<E, A, B>(f)(ra)))(fea),
 
   mapLeft:
     <E, F2, A>(f: (e: E) => F2) =>
-    (fea: any) =>
+    (fea: FunctorValue<F, Result<E, A>>) =>
       F.chain<Result<E, A>, Result<F2, A>>((ra) => F.of(mapErr<E, F2, A>(f)(ra)))(fea),
 
   bimap:
     <E, F2, A, B>(l: (e: E) => F2, r: (a: A) => B) =>
-    (fea: any) =>
-      F.chain<Result<E, A>, Result<F2, B>>((ra) => F.of(isOk(ra) ? Ok(r(ra.value)) : Err(l((ra as Err<E>).error))))(fea),
+    (fea: FunctorValue<F, Result<E, A>>) =>
+      F.chain<Result<E, A>, Result<F2, B>>((ra) =>
+        F.of(
+          isOk(ra) ? Ok(r(ra.value)) : Err<F2>(l(ra.error))
+        )
+      )(fea),
 
   // Apply/Chain
   ap:
-    <E, A, B>(ff: any /* F<Result<E,(a:A)=>B>> */) =>
-    (fa: any /* F<Result<E,A>> */) =>
+    <E, A, B>(ff: FunctorValue<F, Result<E, (a: A) => B>>) =>
+    (fa: FunctorValue<F, Result<E, A>>) =>
       F.chain<Result<E, (a: A) => B>, Result<E, B>>((rf) =>
         isOk(rf)
           ? F.chain<Result<E, A>, Result<E, B>>((ra) =>
-              F.of(isOk(ra) ? Ok(rf.value(ra.value)) : (ra as any))
+              F.of(
+                isOk(ra)
+                  ? Ok(rf.value(ra.value))
+                  : Err<E>(ra.error)
+              )
             )(fa)
-          : F.of(rf as any)
+          : F.of(rf)
       )(ff),
 
   chain:
     // note error union E|E2
-    <E, A, E2, B>(f: (a: A) => any /* F<Result<E2,B>> */) =>
-    (fea: any /* F<Result<E,A>> */) =>
-      F.chain<Result<E, A>, Result<E | E2, B>>((ra) => (isOk(ra) ? f(ra.value) : F.of(ra as any)))(fea),
+    <E, A, E2, B>(f: (a: A) => FunctorValue<F, Result<E2, B>>) =>
+    (fea: FunctorValue<F, Result<E, A>>) =>
+      F.chain<Result<E, A>, Result<E | E2, B>>((ra) =>
+        isOk(ra) ? f(ra.value) : F.of<Result<E | E2, B>>(Err<E | E2>(ra.error))
+      )(fea),
 
   orElse:
-    <E, A, E2>(f: (e: E) => any /* F<Result<E2, A>> */) =>
-    (fea: any /* F<Result<E,A>> */) =>
-      F.chain<Result<E, A>, Result<E | E2, A>>((ra) => (isErr(ra) ? f(ra.error) : F.of(ra)))(fea),
+    <E, A, E2>(f: (e: E) => FunctorValue<F, Result<E2, A>>) =>
+    (fea: FunctorValue<F, Result<E, A>>) =>
+      F.chain<Result<E, A>, Result<E | E2, A>>((ra) =>
+        isErr(ra) ? f(ra.error) : F.of<Result<E | E2, A>>(ra)
+      )(fea),
 
   // Eliminators/util
   getOrElse:
     <E, A>(onErr: (e: E) => A) =>
-    (fea: any) =>
+    (fea: FunctorValue<F, Result<E, A>>) =>
       F.chain<Result<E, A>, A>((ra) => F.of(getOrElseR<E, A>(onErr)(ra)))(fea),
 
   fold:
     <E, A, B>(onErr: (e: E) => B, onOk: (a: A) => B) =>
-    (fea: any) =>
-      F.chain<Result<E, A>, B>((ra) => F.of(isOk(ra) ? onOk(ra.value) : onErr((ra as Err<E>).error)))(fea),
+    (fea: FunctorValue<F, Result<E, A>>) =>
+      F.chain<Result<E, A>, B>((ra) =>
+        F.of(isOk(ra) ? onOk(ra.value) : onErr(ra.error))
+      )(fea),
 
   swap:
-    <E, A>(fea: any) =>
-      F.chain<Result<E, A>, Result<A, E>>((ra) => F.of(isOk(ra) ? Err(ra.value as any) : Ok((ra as Err<E>).error as any)))(fea),
+    <E, A>(fea: FunctorValue<F, Result<E, A>>) =>
+      F.chain<Result<E, A>, Result<A, E>>((ra) =>
+        F.of(isOk(ra) ? Err<A>(ra.value) : Ok(ra.error))
+      )(fea),
 })
 
 // ----- Prewired specializations (aliases) -----
@@ -10818,43 +10870,69 @@ export type DoRTEBuilder<R, T, E> = {
   done: ReaderTaskEither<R, E, T>
 }
 
+const mergeField = <Base, K extends string, A>(
+  base: Base,
+  key: K,
+  value: A
+): _Merge<Base, { readonly [P in K]: A }> =>
+  ({ ...(base as Record<string, unknown>), [key]: value }) as _Merge<
+    Base,
+    { readonly [P in K]: A }
+  >
+
 export const DoRTE = <R>() => {
   const make = <T, E>(rte: ReaderTaskEither<R, E, T>): DoRTEBuilder<R, T, E> => ({
-    bind: (k, rtea) =>
-      make(
-        RTE.chain<T, E, any, _Merge<T, Record<typeof k, any>>>((t) =>
-          RTE.map((a: any) => ({ ...(t as any), [k]: a } as const))(rtea)
-        )(rte) as any
-      ),
+    bind: <K extends string, E2, A>(k: K, rtea: ReaderTaskEither<R, E2, A>) =>
+      make(async (r): Promise<Result<E | E2, _Merge<T, { readonly [P in K]: A }>>> => {
+        const current = await rte(r)
+        if (isErr(current)) return Err<E | E2>(current.error)
+        const next = await rtea(r)
+        if (isErr(next)) return Err<E | E2>(next.error)
+        return Ok(mergeField(current.value, k, next.value))
+      }),
 
-    apS: (k, rtea) =>
-      make(
-        RTE.chain<T, E, any, _Merge<T, Record<typeof k, any>>>((t) =>
-          RTE.map((a: any) => ({ ...(t as any), [k]: a } as const))(rtea)
-        )(rte) as any
-      ),
+    apS: <K extends string, E2, A>(k: K, rtea: ReaderTaskEither<R, E2, A>) =>
+      make(async (r): Promise<Result<E | E2, _Merge<T, { readonly [P in K]: A }>>> => {
+        const current = await rte(r)
+        if (isErr(current)) return Err<E | E2>(current.error)
+        const next = await rtea(r)
+        if (isErr(next)) return Err<E | E2>(next.error)
+        return Ok(mergeField(current.value, k, next.value))
+      }),
 
-    let: (k, f) =>
-      make(RTE.map((t: T) => ({ ...(t as any), [k]: f(t) } as const))(rte)),
+    let: <K extends string, A>(k: K, f: (t: T) => A) =>
+      make(async (r): Promise<Result<E, _Merge<T, { readonly [P in K]: A }>>> => {
+        const current = await rte(r)
+        if (isErr(current)) return Err<E>(current.error)
+        return Ok(mergeField(current.value, k, f(current.value)))
+      }),
 
-    apFirst: (rtea) =>
-      make(
-        RTE.chain<T, E, any, T>((t) =>
-          RTE.map(() => t)(rtea)
-        )(rte) as any
-      ),
+    apFirst: <E2, A>(rtea: ReaderTaskEither<R, E2, A>) =>
+      make(async (r): Promise<Result<E | E2, T>> => {
+        const current = await rte(r)
+        if (isErr(current)) return Err<E | E2>(current.error)
+        const next = await rtea(r)
+        if (isErr(next)) return Err<E | E2>(next.error)
+        return Ok(current.value)
+      }),
 
-    apSecond: (rtea) =>
-      make(
-        RTE.chain<T, E, any, any>(() => rtea)(rte) as any
-      ) as any, // resulting builder's T is the Ok value type of rtea
+    apSecond: <E2, A>(rtea: ReaderTaskEither<R, E2, A>) =>
+      make(async (r): Promise<Result<E | E2, A>> => {
+        const current = await rte(r)
+        if (isErr(current)) return Err<E | E2>(current.error)
+        const next = await rtea(r)
+        if (isErr(next)) return Err<E | E2>(next.error)
+        return Ok(next.value)
+      }),
 
-    tap: (f) =>
-      make(
-        RTE.chain<T, any, any, T>((t) =>
-          RTE.map(() => t)(f(t) as any)
-        )(rte) as any
-      ) as any,
+    tap: <E2>(f: (t: T) => ReaderTaskEither<R, E2, unknown>) =>
+      make(async (r): Promise<Result<E | E2, T>> => {
+        const current = await rte(r)
+        if (isErr(current)) return Err<E | E2>(current.error)
+        const effect = await f(current.value)(r)
+        if (isErr(effect)) return Err<E | E2>(effect.error)
+        return Ok(current.value)
+      }),
 
     map: (f) => RTE.map(f)(rte),
 
@@ -11021,7 +11099,10 @@ export const deriveStrengthEnv =
   <S extends string, E>(sd: StrengthDict<S, E>) =>
   (t: EndoTerm<S>): StrengthEnv<any, E> => {
     switch (t.tag) {
-      case 'Id':    return { st: <A>(ea: Env<E, A>) => [ea[0], ea[1]] as const }
+      case 'Id':    return { st: <A>(ea: unknown) => {
+        const env = ea as Env<E, A>
+        return [env[0], env[1]] as const
+      } }
       case 'Base':  return sd[t.name]
       case 'Sum':   return strengthEnvFromSum<E>()(deriveStrengthEnv(sd)(t.left), deriveStrengthEnv(sd)(t.right))
       case 'Prod':  return strengthEnvFromProd<E>()(deriveStrengthEnv(sd)(t.left), deriveStrengthEnv(sd)(t.right))
@@ -11569,7 +11650,7 @@ export const ReaderTaskResultK =
         const [rfab, rfa] = await Promise.all([ff(env), fa(env)])
         return (isOk(rfab) && isOk(rfa))
           ? Ok(rfab.value(rfa.value))
-          : (isErr(rfab) ? rfab : rfa as any)
+          : (isErr(rfab) ? rfab : (rfa as Err<E>))
       },
 
     chain: <A, B>(f: (a: A) =>
@@ -11578,7 +11659,7 @@ export const ReaderTaskResultK =
               HK.Kind3<'ReaderTaskResult', R, E, B> =>
       async (env: R) => {
         const ra = await fa(env)
-        return isOk(ra) ? f(ra.value)(env) : ra as any
+        return isOk(ra) ? f(ra.value)(env) : (ra as Err<E>)
       },
   })
 
@@ -13331,7 +13412,7 @@ export const compileRegexToWA = (
   const initP = vecMat(B)(init, E)
   const finalP= matVec(B)(E, final)
 
-  return { S: B, n: nfa.n, init: initP, final: finalP, delta: delta as Record<string, any> }
+  return { S: B, n: nfa.n, init: initP, final: finalP, delta }
 }
 
 // =====================================================================
@@ -17084,16 +17165,22 @@ export const pushforwardMonadEnhanced = (
 }
 
 /** Kleisli composition for law checking */
+interface SimpleKleisliMorph {
+  readonly from: unknown
+  readonly to: unknown
+  readonly compose: (x: unknown) => unknown
+}
+
 export const kleisliCompose = (
-  T: CatMonad<any>,
-  f: any,  // X -> T Y
-  g: any   // Y -> T Z  
+  T: CatMonad<unknown>,
+  f: SimpleKleisliMorph,  // X -> T Y
+  g: SimpleKleisliMorph   // Y -> T Z
 ) => {
   // Kleisli composition: f >=> g = μ ∘ T(g) ∘ f
   return {
     from: f.from,
     to: g.to,
-    compose: (x: any) => {
+    compose: (x: unknown) => {
       const Tf_x = f.compose(x)  // in T Y
       const TTg_Tf_x = T.endofunctor.onMor(g).compose(Tf_x)  // in T T Z
       return T.mult.component(g.to)(TTg_Tf_x)  // in T Z
@@ -17103,13 +17190,13 @@ export const kleisliCompose = (
 
 /** Check unit laws for pushforward monad */
 export const checkPushforwardUnitLaws = (
-  adj: Adjunction<any, any, any, any>,
-  T: CatMonad<any>,
-  testObjects: any[]
+  adj: Adjunction<unknown, unknown, CatFunctor<unknown, unknown>, CatFunctor<unknown, unknown>>,
+  T: CatMonad<unknown>,
+  testObjects: ReadonlyArray<unknown>
 ) => {
   const TUp = pushforwardMonadEnhanced(adj, T)
   const results: boolean[] = []
-  
+
   for (const X of testObjects) {
     try {
       // Left unit: μ↑ ∘ η↑ = id
@@ -17136,13 +17223,13 @@ export const checkPushforwardUnitLaws = (
 
 /** Check associativity law for pushforward monad */
 export const checkPushforwardAssociativity = (
-  adj: Adjunction<any, any, any, any>,
-  T: CatMonad<any>,
-  testObjects: any[]
+  adj: Adjunction<unknown, unknown, CatFunctor<unknown, unknown>, CatFunctor<unknown, unknown>>,
+  T: CatMonad<unknown>,
+  testObjects: ReadonlyArray<unknown>
 ) => {
   const TUp = pushforwardMonadEnhanced(adj, T)
   const results: boolean[] = []
-  
+
   for (const X of testObjects) {
     try {
       // μ↑ ∘ T↑(μ↑) = μ↑ ∘ μ↑T↑ on T↑T↑T↑ X
@@ -17168,9 +17255,9 @@ export const checkPushforwardAssociativity = (
 
 /** Complete law checker for pushforward monads */
 export const checkPushforwardMonadLaws = (
-  adj: Adjunction<any, any, any, any>,
-  T: CatMonad<any>,
-  testObjects: any[] = []
+  adj: Adjunction<unknown, unknown, CatFunctor<unknown, unknown>, CatFunctor<unknown, unknown>>,
+  T: CatMonad<unknown>,
+  testObjects: ReadonlyArray<unknown> = []
 ) => {
   // Use small test objects if none provided
   const tests = testObjects.length > 0 ? testObjects : [
@@ -17194,9 +17281,9 @@ export const checkPushforwardMonadLaws = (
 
 /** Compare codensity monad across adjunction */
 export const compareCodensityAcrossAdjunction = (
-  adj: Adjunction<any, any, any, any>,
-  G: CFunctor<any, any, any, any>,
-  A: any
+  adj: Adjunction<unknown, unknown, CatFunctor<unknown, unknown>, CatFunctor<unknown, unknown>>,
+  G: CFunctor<unknown, unknown, FinSetObj, FinSetMor>,
+  A: FinSetObj
 ) => {
   // This would compare T^G(A) with T^{G'}(F(A)) where G' = F ∘ G ∘ U
   // For equivalences, these should be naturally isomorphic
@@ -17288,17 +17375,20 @@ export const freeForgetfulAdjunction = (): Adjunction<any, any, any, any> => {
 }
 
 /** Example: List monad on FinSet */
-export const listMonadFinSet = (): CatMonad<any> => {
-  const ListFunctor: CatFunctor<any, any> = {
+export const listMonadFinSet = (): CatMonad<typeof FinSet> => {
+  const ListFunctor: CatFunctor<typeof FinSet, typeof FinSet> = {
     source: FinSet,
     target: FinSet,
     onObj: (S: FinSetObj) => {
       // List(S) = ⋃_{n≥0} S^n (finite lists over S)
-      const lists: any[][] = [[]]  // empty list
+      const lists: Array<ReadonlyArray<FinSetElem>> = [[]]
       for (let len = 1; len <= 3; len++) {  // limit to length 3 for finiteness
-        const genLists = (current: any[], remaining: number): any[][] => {
+        const genLists = (
+          current: ReadonlyArray<FinSetElem>,
+          remaining: number
+        ): Array<ReadonlyArray<FinSetElem>> => {
           if (remaining === 0) return [current]
-          const result: any[][] = []
+          const result: Array<ReadonlyArray<FinSetElem>> = []
           for (const elem of S.elements) {
             result.push(...genLists([...current, elem], remaining - 1))
           }
@@ -17306,41 +17396,48 @@ export const listMonadFinSet = (): CatMonad<any> => {
         }
         lists.push(...genLists([], len))
       }
-      return { elements: lists }
+      return { elements: lists as unknown as ReadonlyArray<FinSetElem> }
     },
     onMor: (f: FinSetMor) => {
       // List(f) maps each list elementwise
       const ListS = ListFunctor.onObj(f.from)
       const ListT = ListFunctor.onObj(f.to)
-      const map = ListS.elements.map((list: any[]) => {
-        const mappedList = (list as any[]).map(x => f.to.elements[f.map[f.from.elements.indexOf(x)]!])
-        return ListT.elements.findIndex((l: any) => JSON.stringify(l) === JSON.stringify(mappedList))
+      const domainLists = ListS.elements as unknown as ReadonlyArray<ReadonlyArray<FinSetElem>>
+      const codomainLists = ListT.elements as unknown as ReadonlyArray<ReadonlyArray<FinSetElem>>
+      const map = domainLists.map((list) => {
+        const mappedList = list.map((x) => f.to.elements[f.map[f.from.elements.indexOf(x)]!])
+        return codomainLists.findIndex((l) => JSON.stringify(l) === JSON.stringify(mappedList))
       })
       return { from: ListS, to: ListT, map }
     }
   }
-  
-  const unit: CatNatTrans<any, any> = {
+
+  const unit: CatNatTrans<CatId<typeof FinSet>, typeof ListFunctor> = {
     source: idFun(FinSet),
     target: ListFunctor,
     component: (S: FinSetObj) => {
       // η_S : S -> List(S) sends x to [x]
       const ListS = ListFunctor.onObj(S)
-      const map = S.elements.map(x => ListS.elements.findIndex((list: any) => JSON.stringify(list) === JSON.stringify([x])))
+      const listsForS = ListS.elements as unknown as ReadonlyArray<ReadonlyArray<FinSetElem>>
+      const map = S.elements.map((x) =>
+        listsForS.findIndex((list) => JSON.stringify(list) === JSON.stringify([x]))
+      )
       return { from: S, to: ListS, map }
     }
   }
-  
-  const mult: CatNatTrans<any, any> = {
+
+  const mult: CatNatTrans<CatCompose<typeof ListFunctor, typeof ListFunctor>, typeof ListFunctor> = {
     source: composeFun(ListFunctor, ListFunctor),
     target: ListFunctor,
     component: (S: FinSetObj) => {
       // μ_S : List(List(S)) -> List(S) flattens nested lists
       const ListS = ListFunctor.onObj(S)
       const ListListS = ListFunctor.onObj(ListS)
-      const map = ListListS.elements.map((nestedList: any) => {
-        const flattened = (nestedList as any[][]).flat()
-        return ListS.elements.findIndex((list: any) => JSON.stringify(list) === JSON.stringify(flattened))
+      const nestedLists = ListListS.elements as unknown as ReadonlyArray<ReadonlyArray<ReadonlyArray<FinSetElem>>>
+      const listsForS = ListS.elements as unknown as ReadonlyArray<ReadonlyArray<FinSetElem>>
+      const map = nestedLists.map((nestedList) => {
+        const flattened = nestedList.flat()
+        return listsForS.findIndex((list) => JSON.stringify(list) === JSON.stringify(flattened))
       })
       return { from: ListListS, to: ListS, map }
     }
@@ -18882,9 +18979,124 @@ export const IntegerLA = {
 }
 
 export const Algebra = {
-  applyRepAsLin, coactionAsLin, pushCoaction, 
+  applyRepAsLin, coactionAsLin, pushCoaction,
   actionToChain, coactionToChain
 }
+
+export { makeSubcategory, makeFullSubcategory, isFullSubcategory } from "./subcategory"
+export { ProductCat, Pi1, Pi2, Pairing } from "./product-cat"
+export { Dual } from "./dual-cat"
+export { Contra, isContravariant } from "./contravariant"
+export type { SimpleCat } from "./simple-cat"
+export {
+  makeFinitePullbackCalculator,
+  type PullbackCalculator,
+  type PullbackData,
+} from "./pullback"
+export {
+  makeReindexingFunctor,
+  type ReindexingFunctor,
+} from "./reindexing"
+export {
+  checkReindexIdentityLaw,
+  checkReindexCompositionLaw,
+  sampleSlice,
+  type SliceSamples,
+} from "./reindexing-laws"
+export {
+  makeSlice,
+  makeCoslice,
+  makePostcomposeOnSlice,
+  type SliceObject,
+  type SliceArrow,
+  type CosliceObject,
+  type CosliceArrow,
+  type SlicePostcomposeFunctor,
+} from "./slice-cat"
+export {
+  makeSliceTripleArrow,
+  composeSliceTripleArrows,
+  idSliceTripleArrow,
+  sliceArrowToTriple,
+  sliceTripleToArrow,
+  type SliceTripleArrow,
+  type SliceTripleObject,
+} from "./slice-triple"
+export {
+  makeCosliceTripleArrow,
+  composeCosliceTripleArrows,
+  idCosliceTripleArrow,
+  cosliceArrowToTriple,
+  cosliceTripleToArrow,
+  type CosliceTripleArrow,
+  type CosliceTripleObject,
+} from "./coslice-triple"
+export {
+  makeCoslicePrecomposition,
+  type CoslicePrecomposition,
+} from "./coslice-precompose"
+export {
+  makeFinitePushoutCalculator,
+  type PushoutCalculator,
+  type PushoutData,
+} from "./pushout"
+export { makeToyPushouts } from "./pushout-toy"
+export {
+  makeCosliceReindexingFunctor,
+  type CosliceReindexingFunctor,
+} from "./coslice-reindexing"
+export {
+  explainSliceMismatch,
+  explainCoSliceMismatch,
+} from "./diagnostics"
+export {
+  makeArrowCategory,
+  makeArrowDomainFunctor,
+  makeArrowCodomainFunctor,
+  type ArrowSquare,
+} from "./arrow-category"
+export {
+  makeComma,
+  type Functor as CommaFunctor,
+  type CommaObject,
+  type CommaArrow,
+} from "./comma"
+export {
+  isMono,
+  isEpi,
+} from "./kinds/mono-epi"
+export {
+  inverse,
+  isIso,
+  isoWitness,
+  areIsomorphic,
+  type IsoWitness,
+} from "./kinds/iso"
+export {
+  epiMonoFactor,
+  type Factor as EpiMonoFactor,
+} from "./kinds/epi-mono-factor"
+export {
+  catFromGroup,
+  type FinGroup,
+} from "./kinds/group-as-category"
+export {
+  isGroupoid,
+  actionGroupoid,
+} from "./kinds/groupoid"
+export {
+  makeTextbookToolkit,
+  type TextbookToolkit,
+  type TextbookToolkitOptions,
+  type SliceToolkit,
+  type CosliceToolkit,
+  type ProductToolkit,
+  type SubcategoryToolkit,
+} from "./textbook-toolkit"
+export {
+  checkSliceCategoryLaws,
+  type SliceCategoryLawReport,
+} from "./slice-laws"
 
 // Namespaces are declared above and exported automatically
 

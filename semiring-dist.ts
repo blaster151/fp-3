@@ -39,6 +39,7 @@ export const dirac = delta;
 // Note: Using CSRig from semiring-utils.ts for the main interface
 
 import type { CSRig } from "./semiring-utils";
+import { Prob, LogProb, MaxPlus } from "./semiring-utils";
 
 // Legacy interface for backward compatibility
 export interface NumSemiring {
@@ -83,6 +84,9 @@ export function DRMonad(R: NumSemiring | CSRig<number>): DistLikeMonadSpec {
         out.set(b, R.add(out.get(b) ?? R.zero, R.mul(wa, wb)));
       }
     }
+    if (R === MaxPlus) {
+      return normalizeR(R, out);
+    }
     return out;
   }
 
@@ -112,6 +116,24 @@ export function mkRDist<T>(R: NumSemiring | CSRig<number>, pairs: Array<[T, numb
     const current = m.get(x) ?? R.zero;
     m.set(x, R.add(current, w)); // use semiring addition
   }
+  const eq = R.eq ?? defaultEq;
+  let hasSupport = false;
+  for (const v of m.values()) {
+    if (!eq(v, R.zero)) {
+      hasSupport = true;
+      break;
+    }
+  }
+  if (!hasSupport && m.size > 0) {
+    const iterator = m.entries();
+    const first = iterator.next();
+    if (!first.done) {
+      m.set(first.value[0], R.one);
+    }
+  }
+  if (R === MaxPlus) {
+    return normalizeR(R, m);
+  }
   return m;
 }
 
@@ -120,22 +142,67 @@ export function mkRDist<T>(R: NumSemiring | CSRig<number>, pairs: Array<[T, numb
 //  - For LogProb: subtract log-sum-exp to make sum=0
 //  - For Tropical: subtract max so "sum" (max) = 0
 export function normalizeR<T>(R: NumSemiring | CSRig<number>, d: Dist<T>): Dist<T> {
-  // Import the semirings for comparison
-  const { Prob, LogProb, MaxPlus } = require("./semiring-utils");
-  
-  if (R === Prob || (R as any).zero === 0 && (R as any).one === 1) {
-    let s = 0; for (const v of d.values()) s += v; if (s===0) return d;
-    const out = new Map<T, number>(); for (const [k,v] of d) out.set(k, v/s); return out;
+  if (R === Prob || ((R as any).zero === 0 && (R as any).one === 1)) {
+    let s = 0;
+    for (const v of d.values()) s += v;
+    if (s <= 0) {
+      if (d.size === 0) return d;
+      const uniform = 1 / d.size;
+      const out = new Map<T, number>();
+      for (const [k] of d) out.set(k, uniform);
+      return out;
+    }
+    const out = new Map<T, number>();
+    for (const [k, v] of d) out.set(k, v / s);
+    return out;
   }
-  if (R === LogProb || (R as any).zero === -Infinity && (R as any).one === 0) {
-    let m = -Infinity; for (const v of d.values()) m = Math.max(m, v);
-    let lse = 0; for (const v of d.values()) lse += Math.exp(v - m);
+  if (
+    R === MaxPlus ||
+    ((R as any).zero === -Infinity &&
+      (R as any).one === 0 &&
+      typeof (R as any).add === "function" &&
+      ((R as any).eq?.((R as any).add((R as any).one, (R as any).one), (R as any).one) ??
+        defaultEq((R as any).add((R as any).one, (R as any).one), (R as any).one)))
+  ) {
+    let mx = -Infinity;
+    for (const v of d.values()) mx = Math.max(mx, v);
+    if (mx === -Infinity) {
+      if (d.size === 0) return d;
+      const [[firstKey]] = d.entries();
+      const out = new Map<T, number>();
+      out.set(firstKey, 0);
+      for (const [k] of d) if (!Object.is(k, firstKey)) out.set(k, -Infinity);
+      return out;
+    }
+    const out = new Map<T, number>();
+    for (const [k, v] of d) out.set(k, v - mx);
+    return out;
+  }
+  if (R === LogProb || ((R as any).zero === -Infinity && (R as any).one === 0)) {
+    let m = -Infinity;
+    for (const v of d.values()) m = Math.max(m, v);
+    if (m === -Infinity) {
+      if (d.size === 0) return d;
+      const [[firstKey]] = d.entries();
+      const out = new Map<T, number>();
+      out.set(firstKey, 0);
+      for (const [k] of d) if (!Object.is(k, firstKey)) out.set(k, -Infinity);
+      return out;
+    }
+    let lse = 0;
+    for (const v of d.values()) lse += Math.exp(v - m);
+    if (lse === 0) {
+      if (d.size === 0) return d;
+      const [[firstKey]] = d.entries();
+      const out = new Map<T, number>();
+      out.set(firstKey, 0);
+      for (const [k] of d) if (!Object.is(k, firstKey)) out.set(k, -Infinity);
+      return out;
+    }
     const logZ = m + Math.log(lse);
-    const out = new Map<T, number>(); for (const [k,v] of d) out.set(k, v - logZ); return out;
-  }
-  if (R === MaxPlus || ((R as any).zero === -Infinity && (R as any).one === 0 && typeof (R as any).add === 'function')) {
-    let mx = -Infinity; for (const v of d.values()) mx = Math.max(mx, v);
-    const out = new Map<T, number>(); for (const [k,v] of d) out.set(k, v - mx); return out;
+    const out = new Map<T, number>();
+    for (const [k, v] of d) out.set(k, v - logZ);
+    return out;
   }
   // Bool doesn't need normalization (require at least one 1)
   return d;
