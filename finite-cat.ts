@@ -1,10 +1,12 @@
 import type { SimpleCat } from "./simple-cat";
+import type { CatTraits } from "./kinds/traits";
 
 /** A small (finite) category with explicit object and arrow listings. */
 export interface FiniteCategory<Obj, Arr> extends SimpleCat<Obj, Arr> {
   readonly objects: ReadonlyArray<Obj>;
   readonly arrows: ReadonlyArray<Arr>;
   readonly eq: (x: Arr, y: Arr) => boolean;
+  readonly traits?: CatTraits;
 }
 
 /** Utility to deduplicate using a supplied equality predicate. */
