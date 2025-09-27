@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-  RingReal, Complex, ChainMap, Triangle,
+  RingReal,
   complexIsValid, isChainMap, shift1, cone, triangleFromMap, triangleIsSane,
   matAdd, matNeg, zerosMat, idMat, hcat, vcat,
 } from '../allTS'
+import type { Complex, ChainMap, Triangle } from '../allTS'
 
 describe('Ring operations', () => {
   it('RingReal implements ring operations correctly', () => {

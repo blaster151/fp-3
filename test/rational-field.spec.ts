@@ -1,11 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import {
-  Q, FieldQ, FieldReal, Qof, Qeq, Qadd, Qneg, Qsub, Qmul, Qinv, Qdiv, QfromInt, QfromRatio, QtoString,
+  FieldQ, FieldReal, Qof, Qeq, Qadd, Qneg, Qsub, Qmul, Qinv, Qdiv, QfromInt, QfromRatio, QtoString,
   rref, nullspace, colspace, solveLinear, rrefQPivot, qAbsCmp, isQZero,
   runLesConeProps, randomTwoTermComplex, makeHomologyShiftIso,
   imageComplex, coimageComplex, coimToIm, isIsoChainMap, smoke_coim_im_iso,
   idChainMapN, zeroChainMapN,
 } from '../allTS'
+import type { Q } from '../allTS'
+
+const requireEq = <R>(eq: ((x: R, y: R) => boolean) | undefined) => {
+  if (!eq) {
+    throw new Error('Expected field equality predicate to be available')
+  }
+  return eq
+}
 
 describe('Rational field Q', () => {
   it('creates and normalizes rationals correctly', () => {
@@ -59,8 +67,9 @@ describe('Rational field Q', () => {
     expect(one.den).toBe(1n)
     
     const a = Qof(5, 7)
-    expect(F.eq(F.add(a, zero), a)).toBe(true)
-    expect(F.eq(F.mul(a, one), a)).toBe(true)
+    const eq = requireEq(F.eq)
+    expect(eq(F.add(a, zero), a)).toBe(true)
+    expect(eq(F.mul(a, one), a)).toBe(true)
   })
 
   it('pretty prints rationals', () => {
@@ -126,8 +135,9 @@ describe('Linear algebra over rationals', () => {
     const check0 = F.add(F.mul(A[0]![0]!, x[0]!), F.mul(A[0]![1]!, x[1]!))
     const check1 = F.add(F.mul(A[1]![0]!, x[0]!), F.mul(A[1]![1]!, x[1]!))
     
-    expect(F.eq(check0, b[0]!)).toBe(true)
-    expect(F.eq(check1, b[1]!)).toBe(true)
+    const eq = requireEq(F.eq)
+    expect(eq(check0, b[0]!)).toBe(true)
+    expect(eq(check1, b[1]!)).toBe(true)
   })
 })
 

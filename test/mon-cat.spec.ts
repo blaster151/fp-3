@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { MonCat, isMonoidHom } from "../mon-cat";
-import { Monoid } from "../monoid-cat";
+import type { Monoid } from "../monoid-cat";
 
 const BoolAnd: Monoid<boolean> = {
   e: true,

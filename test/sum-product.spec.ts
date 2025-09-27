@@ -1,12 +1,31 @@
 import { describe, it, expect } from 'vitest'
 import {
   Some, None, Ok, Err, isOk, isSome, mapO,
-  EndofunctorK1, ResultK1,
-  SumVal, SumEndo, inL, inR, strengthEnvFromSum, matchSum,
-  ProdVal, ProdEndo, prod, strengthEnvFromProd,
+  ResultK1,
+  SumEndo, inL, inR, strengthEnvFromSum, matchSum,
+  ProdEndo, prod, strengthEnvFromProd,
   strengthEnvOption, strengthEnvResult,
+} from '../allTS'
+import type {
+  EndofunctorK1,
+  SumVal,
+  ProdVal,
   Env
 } from '../allTS'
+
+const extractSumLeft = <F, G, A>(value: SumVal<F, G, A>) => {
+  if (value._sum !== 'L') {
+    throw new Error('Expected left sum value during test execution')
+  }
+  return value.left
+}
+
+const extractSumRight = <F, G, A>(value: SumVal<F, G, A>) => {
+  if (value._sum !== 'R') {
+    throw new Error('Expected right sum value during test execution')
+  }
+  return value.right
+}
 
 describe('Sum Endofunctor (F ⊕ G)', () => {
   const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
@@ -18,14 +37,14 @@ describe('Sum Endofunctor (F ⊕ G)', () => {
       const leftVal = inL<typeof OptionF, typeof ResultF, number>(Some(42))
       
       expect(leftVal._sum).toBe('L')
-      expect(leftVal.left).toEqual({ _tag: 'Some', value: 42 })
+      expect(extractSumLeft(leftVal)).toEqual({ _tag: 'Some', value: 42 })
     })
 
     it('should create right values with inR', () => {
       const rightVal = inR<typeof OptionF, typeof ResultF, number>(Ok(24))
       
       expect(rightVal._sum).toBe('R')
-      expect(rightVal.right).toEqual({ _tag: 'Ok', value: 24 })
+      expect(extractSumRight(rightVal)).toEqual({ _tag: 'Ok', value: 24 })
     })
   })
 
@@ -58,14 +77,14 @@ describe('Sum Endofunctor (F ⊕ G)', () => {
       const mapped = SumFG.map((n: number) => n * 2)(leftVal)
       
       expect(mapped._sum).toBe('L')
-      expect(mapped.left).toEqual({ _tag: 'Some', value: 20 })
+      expect(extractSumLeft(mapped)).toEqual({ _tag: 'Some', value: 20 })
     })
 
     it('should map over right branch correctly', () => {
       const mapped = SumFG.map((n: number) => n + 5)(rightVal)
       
       expect(mapped._sum).toBe('R')
-      expect(mapped.right).toEqual({ _tag: 'Ok', value: 25 })
+      expect(extractSumRight(mapped)).toEqual({ _tag: 'Ok', value: 25 })
     })
   })
 
@@ -102,11 +121,14 @@ describe('Sum Endofunctor (F ⊕ G)', () => {
         Some(['test-env', 100] as const)
       )
       
-      const [env, sumVal] = sSum.st<number>(envSum)
+      const [env, sumVal] = sSum.st<number>(envSum) as Env<
+        string,
+        SumVal<typeof OptionF, typeof ResultF, number>
+      >
       
       expect(env).toBe('test-env')
       expect(sumVal._sum).toBe('L')
-      expect(sumVal.left).toEqual({ _tag: 'Some', value: 100 })
+      expect(extractSumLeft(sumVal)).toEqual({ _tag: 'Some', value: 100 })
     })
 
     it('should push environment through right branch', () => {
@@ -114,11 +136,14 @@ describe('Sum Endofunctor (F ⊕ G)', () => {
         Ok(['context', 200] as const)
       )
       
-      const [env, sumVal] = sSum.st<number>(envSum)
+      const [env, sumVal] = sSum.st<number>(envSum) as Env<
+        string,
+        SumVal<typeof OptionF, typeof ResultF, number>
+      >
       
       expect(env).toBe('context')
       expect(sumVal._sum).toBe('R')
-      expect(sumVal.right).toEqual({ _tag: 'Ok', value: 200 })
+      expect(extractSumRight(sumVal)).toEqual({ _tag: 'Ok', value: 200 })
     })
   })
 })
@@ -176,7 +201,10 @@ describe('Product Endofunctor (F ⊗ G)', () => {
         Ok(['shared-env', 75] as const)
       )
       
-      const [env, prodVal] = sProd.st<number>(envProd)
+      const [env, prodVal] = sProd.st<number>(envProd) as Env<
+        string,
+        ProdVal<typeof OptionF, typeof ResultF, number>
+      >
       
       // Takes environment from left component (by design)
       expect(env).toBe('shared-env')
@@ -190,7 +218,10 @@ describe('Product Endofunctor (F ⊗ G)', () => {
         Ok(['context', 100] as const)
       )
       
-      const [env, prodVal] = sProd.st<number>(envProd)
+      const [env, prodVal] = sProd.st<number>(envProd) as Env<
+        string,
+        ProdVal<typeof OptionF, typeof ResultF, number>
+      >
       
       // Note: strengthEnvOption returns undefined for None, but we cast it
       expect(prodVal.left).toEqual({ _tag: 'None' })
@@ -203,7 +234,10 @@ describe('Product Endofunctor (F ⊗ G)', () => {
         Err('test-error')
       )
       
-      const [env, prodVal] = sProd.st<number>(envProd)
+      const [env, prodVal] = sProd.st<number>(envProd) as Env<
+        string,
+        ProdVal<typeof OptionF, typeof ResultF, number>
+      >
       
       expect(env).toBe('env1')
       expect(prodVal.left).toEqual({ _tag: 'Some', value: 25 })
@@ -223,20 +257,22 @@ describe('Sum and Product Integration', () => {
     
     const leftProd = prod<typeof OptionF, typeof ResultF, number>(Some(10), Ok(20))
     const rightProd = prod<typeof OptionF, typeof ResultF, number>(None, Err('error'))
-    
-    const sumLeft = inL<typeof ProdFG, typeof ProdFG, number>(leftProd)
-    const sumRight = inR<typeof ProdFG, typeof ProdFG, number>(rightProd)
-    
+
+    const sumLeftValue = inL<typeof ProdFG, typeof ProdFG, number>(leftProd)
+    const sumRightValue = inR<typeof ProdFG, typeof ProdFG, number>(rightProd)
+
     // Map over the complex structure
-    const mappedLeft = SumOfProds.map((n: number) => n + 100)(sumLeft)
-    const mappedRight = SumOfProds.map((n: number) => n + 100)(sumRight)
-    
+    const mappedLeft = SumOfProds.map((n: number) => n + 100)(sumLeftValue)
+    const mappedRight = SumOfProds.map((n: number) => n + 100)(sumRightValue)
+
     expect(mappedLeft._sum).toBe('L')
-    expect(mappedLeft.left.left).toEqual({ _tag: 'Some', value: 110 })
-    expect(mappedLeft.left.right).toEqual({ _tag: 'Ok', value: 120 })
-    
+    const mappedLeftProd = extractSumLeft(mappedLeft)
+    expect(mappedLeftProd.left).toEqual({ _tag: 'Some', value: 110 })
+    expect(mappedLeftProd.right).toEqual({ _tag: 'Ok', value: 120 })
+
     expect(mappedRight._sum).toBe('R')
-    expect(mappedRight.right.left).toEqual({ _tag: 'None' })
-    expect(mappedRight.right.right).toEqual({ _tag: 'Err', error: 'error' })
+    const mappedRightProd = extractSumRight(mappedRight)
+    expect(mappedRightProd.left).toEqual({ _tag: 'None' })
+    expect(mappedRightProd.right).toEqual({ _tag: 'Err', error: 'error' })
   })
 })

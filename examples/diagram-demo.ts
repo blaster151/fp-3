@@ -1,6 +1,5 @@
+import type { Arrow, Path } from "../diagram";
 import {
-  Arrow,
-  Path,
   allCommute,
   allCommuteTweaked,
   commutes,
@@ -21,8 +20,8 @@ const log = (label: string, value: unknown) => {
   const h: Arrow<number, number> = x => x * 2;
   const j: Arrow<number, number> = x => x - 3;
 
-  const left: Path<number, number> = [g, h, j];
-  const right: Path<number, number> = [g, (x: number) => j(h(x))];
+  const left = [g, h, j] as Path<number, number>;
+  const right = [g, (x: number) => j(h(x))] as Path<number, number>;
   const sample = [0, 1, 2, 5];
 
   log("triangle commutes?", commutes(left, right, sample));
@@ -51,16 +50,16 @@ const log = (label: string, value: unknown) => {
   const l: Arrow<number, number> = x => (x - 1) * 3; // C → E matches k ∘ h
 
   const squareLeft: Path<number, number>[] = [
-    [f, g],
-    [j],
+    [f, g] as Path<number, number>,
+    [j] as Path<number, number>,
   ];
   const squareRight: Path<number, number>[] = [
-    [h, k],
-    [l],
+    [h, k] as Path<number, number>,
+    [l] as Path<number, number>,
   ];
 
-  const rect1 = paste(squareLeft[0], squareRight[0]);
-  const rect2 = paste(squareLeft[1], squareRight[1]);
+  const rect1 = paste(squareLeft[0]!, squareRight[0]!);
+  const rect2 = paste(squareLeft[1]!, squareRight[1]!);
   const sample = [0, 3];
 
   log("left square commutes?", allCommute(squareLeft, sample));
@@ -76,11 +75,25 @@ const log = (label: string, value: unknown) => {
   const sampleE = [0, 1, 2];
   const sampleA = [3, 4];
 
-  log("parallel arrows allowed", commutesTweaked([f], [g], sampleA));
-  log("fork commutes", commutesTweaked([f, e], [g, e], sampleE));
+  log(
+    "parallel arrows allowed",
+    commutesTweaked([f] as Path<number, number>, [g] as Path<number, number>, sampleA)
+  );
+  log(
+    "fork commutes",
+    commutesTweaked(
+      [f, e] as Path<number, number>,
+      [g, e] as Path<number, number>,
+      sampleE
+    )
+  );
   log(
     "detects non-commuting",
-    !commutesTweaked([f, () => 2], [g, e], sampleE)
+    !commutesTweaked(
+      [f, () => 2] as Path<number, number>,
+      [g, e] as Path<number, number>,
+      sampleE
+    )
   );
 }
 
@@ -94,10 +107,10 @@ const log = (label: string, value: unknown) => {
     "family commutes (tweaked)",
     allCommuteTweaked(
       [
-        [f],
-        [g],
-        [f, e],
-        [g, e],
+        [f] as Path<number, number>,
+        [g] as Path<number, number>,
+        [f, e] as Path<number, number>,
+        [g, e] as Path<number, number>,
       ],
       [0, 1, 2]
     )

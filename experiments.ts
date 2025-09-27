@@ -1,5 +1,7 @@
 // experiments.ts — families of measures + priors + risks
-import { Fin, Kernel, Dist, normalize } from "./markov-category";
+import type { Fin, Kernel } from "./markov-category";
+import { normalize } from "./markov-category";
+import type { LegacyDist as Dist } from "./dist";
 
 export type Experiment<Theta, Obs> = Kernel<Theta, Obs>;
 export type PosteriorSupport<Theta> = { post: Dist<Theta>, weight: number };  // Blackwell support point-list

@@ -1,6 +1,5 @@
 import { describe, test, expect } from 'vitest'
 import {
-  // Law checking infrastructure
   reassociate,
   pushforwardMonadEnhanced,
   kleisliCompose,
@@ -9,24 +8,24 @@ import {
   checkPushforwardMonadLaws,
   compareCodensityAcrossAdjunction,
   prettyPrintPushedMonad,
-  // Existing infrastructure
   freeForgetfulAdjunction,
   listMonadFinSet,
-  CatMonad,
-  Adjunction,
   FinSet,
-  FinSetObj,
   EnhancedVect
 } from '../allTS'
+import type { CatMonad, Adjunction, FinSetObj } from '../allTS'
+
+type SimpleKleisliMorph = {
+  readonly from: unknown
+  readonly to: unknown
+  readonly compose: (x: unknown) => unknown
+}
 
 describe('Pushforward Monad Law Checking', () => {
   test('reassociate helpers work', () => {
-    const mockFunctor = {
-      source: 'A',
-      target: 'B',
-      onObj: (x: string) => `F(${x})`,
-      onMor: (f: string) => `F(${f})`
-    }
+    const adj = freeForgetfulAdjunction()
+    const listMonad = listMonadFinSet()
+    const mockFunctor = adj.F
 
     const leftToMiddle = reassociate.leftToMiddle(mockFunctor)
     expect(leftToMiddle).toBeDefined()
@@ -34,7 +33,7 @@ describe('Pushforward Monad Law Checking', () => {
     expect(leftToMiddle.target).toBeDefined()
     expect(leftToMiddle.component).toBeDefined()
 
-    const middleToRight = reassociate.middleToRight(mockFunctor, mockFunctor, mockFunctor)
+    const middleToRight = reassociate.middleToRight(adj.F, listMonad.endofunctor, adj.U)
     expect(middleToRight).toBeDefined()
     expect(middleToRight.source).toBeDefined()
     expect(middleToRight.target).toBeDefined()
@@ -56,16 +55,17 @@ describe('Pushforward Monad Law Checking', () => {
     const listMonad = listMonadFinSet()
     
     // Mock Kleisli arrows
-    const f = {
+    const f: SimpleKleisliMorph = {
       from: { elements: ['x'] },
       to: { elements: [['y']] },
-      compose: (x: string) => [x] // x -> [x]
+      compose: (x: unknown) => [x] as unknown // x -> [x]
     }
 
-    const g = {
+    const g: SimpleKleisliMorph = {
       from: { elements: [['y']] },
       to: { elements: [['z', 'w']] },
-      compose: (list: ReadonlyArray<string>) => list.concat(['z']) // [y] -> [y,z]
+      compose: (list: unknown) =>
+        Array.isArray(list) ? [...list, 'z'] : [list] // [y] -> [y,z]
     }
     
     const composed = kleisliCompose(listMonad, f, g)

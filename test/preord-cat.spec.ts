@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { PreordCat, isMonotone } from "../preord-cat";
-import { Preorder } from "../preorder-cat";
+import type { Preorder } from "../preorder-cat";
 
 const naturalOrder: Preorder<number> = {
   elems: [0, 1, 2, 3],

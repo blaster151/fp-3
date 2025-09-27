@@ -1,23 +1,27 @@
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
 import {
-  // core
-  SimpleApplicativeK1,
-  // data + traversables
   Some, None, Ok, Err, isOk, isSome, mapO, mapR,
   EitherEndo, ResultK1, TraversableEitherK1,
-  TraversableOptionK1, TraversableNEAK1, NEA,
-  PairEndo, TraversablePairK1, Pair,
-  ConstEndo, TraversableConstK1, Const,
-  // helpers
-  distributePromiseK1, TraversableArrayK1, PromiseApp,
-  // smart registry
+  TraversableOptionK1, TraversableNEAK1,
+  PairEndo, TraversablePairK1,
+  ConstEndo, TraversableConstK1,
+  distributePromiseK1, PromiseApp,
   makeTraversableRegistryK1, makeSmartGetTraversableK1,
   SumEndoM, ProdEndoM, CompEndoM, PairEndoM, ConstEndoM,
   inL, inR, prod
 } from '../allTS'
+import type { SimpleApplicativeK1, EndofunctorK1 } from '../allTS'
 
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
+const toNEA = <A>(xs: readonly A[]): readonly [A, ...A[]] => {
+  if (xs.length === 0) {
+    throw new Error('Expected non-empty array for NEA')
+  }
+  const [head, ...tail] = xs
+  return [head, ...tail] as readonly [A, ...A[]]
+}
 
 // Identity applicative for laws
 const Id: SimpleApplicativeK1<'Id'> = {
@@ -55,14 +59,14 @@ describe('Traversable laws', () => {
 
   it('NEA: identity & Promise composition', async () => {
     fc.assert(fc.property(fc.array(fc.integer(), { minLength: 1 }), (xs) => {
-      const nea = xs as readonly [number, ...number[]]
+      const nea = toNEA(xs)
       const lhs = TraversableNEAK1.traverse(Id)<number, number>(x => Id.of(x))(nea)
       const rhs = Id.of(nea)
       return eq(lhs, rhs)
     }))
 
     await fc.assert(fc.asyncProperty(fc.array(fc.integer(), { minLength: 1 }), async (xs) => {
-      const nea = xs as readonly [number, ...number[]]
+      const nea = toNEA(xs)
       const seq = distributePromiseK1(TraversableNEAK1)
       const out = await seq.app(nea.map(n => Promise.resolve(n + 1)) as any)
       expect(eq(out, nea.map(n => n + 1))).toBe(true)
