@@ -57,11 +57,16 @@ describe("Operations layer rewrites", () => {
   const [isoRule, upgradeRule, balancedRule, epiMonoRule, objectIsoRule, mergeRule] =
     defaultOperationRules<string, FuncArr>()
 
+  if (!isoRule || !upgradeRule || !balancedRule || !epiMonoRule || !objectIsoRule || !mergeRule) {
+    throw new Error("defaultOperationRules must provide the expected six rules for the test fixtures")
+  }
+
   it("suggests cancelling inverse pairs", () => {
     const rewriter = new Rewriter([isoRule])
     const suggestions = rewriter.analyze({ category, path: [u, v, u] })
     expect(suggestions).toHaveLength(1)
-    const [suggestion] = suggestions
+    const suggestion = suggestions[0]
+    if (!suggestion) throw new Error("expected a suggestion for inverse pair cancellation")
     expect(suggestion.severity).toBe("safe")
     expect(suggestion.rewrites[0]?.kind).toBe("NormalizeComposite")
   })
@@ -70,7 +75,8 @@ describe("Operations layer rewrites", () => {
     const rewriter = new Rewriter([upgradeRule])
     const suggestions = rewriter.analyze({ category, focus: u })
     expect(suggestions).toHaveLength(1)
-    const [suggestion] = suggestions
+    const suggestion = suggestions[0]
+    if (!suggestion) throw new Error("expected a suggestion for upgrading monic arrows")
     expect(suggestion.rewrites.some((rewrite) => rewrite.kind === "UpgradeToIso")).toBe(true)
   })
 
@@ -78,7 +84,8 @@ describe("Operations layer rewrites", () => {
     const rewriter = new Rewriter([balancedRule])
     const suggestions = rewriter.analyze({ category, focus: u })
     expect(suggestions).toHaveLength(1)
-    const [suggestion] = suggestions
+    const suggestion = suggestions[0]
+    if (!suggestion) throw new Error("expected a suggestion for balanced mono/epi upgrades")
     expect(suggestion.oracle).toBe("BalancedMonoEpicIsIso")
     expect(suggestion.rewrites.some((rewrite) => rewrite.kind === "UpgradeToIso")).toBe(true)
   })
@@ -87,7 +94,8 @@ describe("Operations layer rewrites", () => {
     const rewriter = new Rewriter([mergeRule])
     const suggestions = rewriter.analyze({ category })
     expect(suggestions).toHaveLength(1)
-    const [suggestion] = suggestions
+    const suggestion = suggestions[0]
+    if (!suggestion) throw new Error("expected a suggestion for merging monomorphisms")
     expect(suggestion.rewrites.every((rewrite) => rewrite.kind === "MergeSubobjects")).toBe(true)
   })
 
@@ -95,7 +103,8 @@ describe("Operations layer rewrites", () => {
     const rewriter = new Rewriter([objectIsoRule])
     const suggestions = rewriter.analyze({ category })
     expect(suggestions).toHaveLength(1)
-    const [suggestion] = suggestions
+    const suggestion = suggestions[0]
+    if (!suggestion) throw new Error("expected a suggestion for object merges")
     expect(suggestion.rewrites.every((rewrite) => rewrite.kind === "MergeObjects")).toBe(true)
   })
 
@@ -103,7 +112,8 @@ describe("Operations layer rewrites", () => {
     const rewriter = new Rewriter([epiMonoRule])
     const suggestions = rewriter.analyze({ category, focus: r })
     expect(suggestions).toHaveLength(1)
-    const [suggestion] = suggestions
+    const suggestion = suggestions[0]
+    if (!suggestion) throw new Error("expected a suggestion for epi-mono factorisation")
     expect(suggestion.oracle).toBe("EpiMonoFactorization")
     expect(suggestion.rewrites).toEqual([
       {

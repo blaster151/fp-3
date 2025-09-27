@@ -2,13 +2,14 @@ import { describe, it, expect } from 'vitest'
 import {
   SemiringNat, SemiringMinPlus, SemiringMaxPlus, SemiringBoolOrAnd, SemiringProb,
   vecMat, matVec, powMat, closureUpTo,
-  WeightedAutomaton, waRun, waAcceptsBool,
-  HMM, hmmForward, diagFromVec, normalizeRow,
-  Edge, graphAdjNat, graphAdjBool, graphAdjWeights,
+  waRun, waAcceptsBool,
+  hmmForward, diagFromVec, normalizeRow,
+  graphAdjNat, graphAdjBool, graphAdjWeights,
   countPathsOfLength, reachableWithin, shortestPathsUpTo,
   transitiveClosureBool, compileRegexToWA,
   eye,
 } from '../allTS'
+import type { WeightedAutomaton, HMM, Edge } from '../allTS'
 
 describe('Practical Semirings', () => {
   it('MinPlus semiring works for shortest paths', () => {
@@ -82,10 +83,10 @@ describe('Weighted Automata', () => {
   it('counts paths in simple automaton', () => {
     const init = [1, 0] as const
     const final = [0, 1] as const
-    const delta = {
-      a: [[0,1],[0,0]],
-      b: [[0,0],[0,1]],
-    } as const
+    const delta: Record<'a' | 'b', number[][]> = {
+      a: [[0, 1], [0, 0]],
+      b: [[0, 0], [0, 1]]
+    }
     const WA: WeightedAutomaton<number, 'a'|'b'> = { 
       S: SemiringNat, n: 2, init, final, delta 
     }
@@ -98,10 +99,10 @@ describe('Weighted Automata', () => {
   it('accepts words with Boolean automaton', () => {
     const init = [true, false] as const
     const final = [false, true] as const
-    const delta = {
-      a: [[false,true],[false,false]], // from state 0: go to 1; from state 1: stuck
-      b: [[false,false],[false,true]], // from state 0: stuck; from state 1: stay
-    } as const
+    const delta: Record<'a' | 'b', boolean[][]> = {
+      a: [[false, true], [false, false]], // from state 0: go to 1; from state 1: stuck
+      b: [[false, false], [false, true]]  // from state 0: stuck; from state 1: stay
+    }
     const DFA: WeightedAutomaton<boolean, 'a'|'b'> = { 
       S: SemiringBoolOrAnd, n: 2, init, final, delta 
     }

@@ -1,26 +1,29 @@
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
 import {
-  // core
-  EndofunctorK1, SimpleApplicativeK1, TraversableK1,
   // functors & data
   Some, None, Ok, Err, isOk, isSome, mapO, mapR,
   EitherEndo, ResultK1,
-  PairEndo, Pair,
-  SumEndo, inL, inR, SumVal,
-  ProdEndo, prod, ProdVal,
+  PairEndo,
+  SumEndo, inL, inR,
+  ProdEndo, prod,
   TraversableArrayK1, PromiseApp,
   // new registry glue
   makeTraversableRegistryK1,
-  TraversableOptionK1, TraversableEitherK1, TraversableNEAK1,
+  TraversableOptionK1, TraversableEitherK1,
   TraversablePairK1, TraversableConstK1,
   deriveTraversableSumK1, deriveTraversableProdK1, deriveTraversableCompK1,
   registerEitherTraversable, registerPairTraversable, registerConstTraversable,
   registerSumDerived, registerProdDerived, registerCompDerived,
-  distributePromiseK1, makePostcomposePromise2WithRegistry,
+  distributePromiseK1,
   // alignment
-  buildNatForTerms, BaseT, SumT, ProdT, EndoDict, idNatK1,
+  buildNatForTerms, BaseT, SumT, ProdT, idNatK1,
   EndoTermAlignError
+} from '../allTS'
+import type {
+  EndofunctorK1,
+  SimpleApplicativeK1,
+  EndoDict
 } from '../allTS'
 
 // util: JSON equality

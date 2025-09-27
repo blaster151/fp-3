@@ -1,4 +1,4 @@
-import { DiGraph, NodeId } from './graph';
+import type { DiGraph, NodeId } from './graph';
 
 export interface Path {
   readonly src: NodeId;

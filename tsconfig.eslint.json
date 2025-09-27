@@ -1,4 +1,9 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "resolvePackageJsonExports": true,
+    "types": ["node", "vitest"]
+  },
   "include": ["**/*.ts", "eslint-plugin-tinyfp/**/*.js"]
 }

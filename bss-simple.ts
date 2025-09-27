@@ -11,7 +11,11 @@ export type StandardMeasure<Θ> = Dist<number, Posterior<Θ>>;
  * Enhanced BSS compare with simple dilation search
  * Tests identity, uniform spread, and simple convex combinations
  */
-export function bssCompare<Θ extends string | number, X, Y>(
+export function bssCompare<
+  Θ extends string | number,
+  X extends string | number,
+  Y extends string | number
+>(
   m: Dist<number, Θ>,
   f: (θ: Θ) => Dist<number, X>,
   g: (θ: Θ) => Dist<number, Y>,
@@ -66,7 +70,11 @@ export function bssCompare<Θ extends string | number, X, Y>(
 /**
  * Test BSS equivalence with detailed reporting
  */
-export function testBSSDetailed<Θ extends string | number, X, Y>(
+export function testBSSDetailed<
+  Θ extends string | number,
+  X extends string | number,
+  Y extends string | number
+>(
   m: Dist<number, Θ>,
   f: (θ: Θ) => Dist<number, X>,
   g: (θ: Θ) => Dist<number, Y>,
@@ -105,7 +113,11 @@ export function testBSSDetailed<Θ extends string | number, X, Y>(
 /**
  * Analyze BSS relationship with standard measure details
  */
-export function analyzeBSS<Θ extends string | number, X, Y>(
+export function analyzeBSS<
+  Θ extends string | number,
+  X extends string | number,
+  Y extends string | number
+>(
   m: Dist<number, Θ>,
   f: (θ: Θ) => Dist<number, X>,
   g: (θ: Θ) => Dist<number, Y>,

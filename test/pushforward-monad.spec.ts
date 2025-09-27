@@ -1,32 +1,28 @@
 import { describe, test, expect } from 'vitest'
 import {
-  // Basic types
+  // Basic structures
   FinSet,
-  FinSetObj,
-  FinSetMor,
-  // Categorical structures
-  CatFunctor,
-  CatNatTrans,
-  CatIdentity,
-  CatCompose,
-  CategoricalMonad,
-  Adjunction,
   // Operations
   composeFun,
   idFun,
   whiskerLeft,
   whiskerRight,
-  vcomp,
-  hcomp,
-  unitMate,
-  counitMate,
   pushforwardMonad
+} from '../allTS'
+import type {
+  FinSetObj,
+  CatFunctor,
+  CatNatTrans,
+  CatId,
+  CatCompose,
+  CatMonad,
+  Adjunction
 } from '../allTS'
 
 describe('Pushforward monads', () => {
   test('can construct basic categorical structures', () => {
     // Create a simple identity functor
-    const idFinSet: CatIdentity<typeof FinSet> = {
+    const idFinSet: CatId<typeof FinSet> = {
       source: FinSet,
       target: FinSet,
       onObj: (obj: any) => obj,
@@ -84,13 +80,13 @@ describe('Pushforward monads', () => {
     }
 
     // Mock natural transformations for adjunction
-    const unit: CatNatTrans<CatIdentity<typeof C>, CatCompose<typeof U, typeof F>> = {
+    const unit: CatNatTrans<CatId<typeof C>, CatCompose<typeof U, typeof F>> = {
       source: idFun(C),
       target: composeFun(U, F),
       component: (x: any) => `η(${x})`
     }
 
-    const counit: CatNatTrans<CatCompose<typeof F, typeof U>, CatIdentity<typeof D>> = {
+    const counit: CatNatTrans<CatCompose<typeof F, typeof U>, CatId<typeof D>> = {
       source: composeFun(F, U),
       target: idFun(D),
       component: (x: any) => `ε(${x})`
@@ -101,7 +97,7 @@ describe('Pushforward monads', () => {
     }
 
     // Mock monad on C
-    const T: CategoricalMonad<typeof C> = {
+    const T: CatMonad<typeof C> = {
       category: C,
       endofunctor: {
         source: C,

@@ -57,8 +57,13 @@ const parent: SmallCategory<Obj, Arr> = {
 };
 
 describe("subcategory saturation", () => {
+  const objectsABC: readonly Obj[] = ["A", "B", "C"]
+  const objectsAB: readonly Obj[] = ["A", "B"]
+  const arrowsFG: readonly Arr[] = [f, g]
+  const arrowsF: readonly Arr[] = [f]
+
   it("adds identities and stays closed under composition", () => {
-    const S = makeSubcategory(parent, ["A", "B", "C"], [f, g]);
+    const S = makeSubcategory(parent, objectsABC, arrowsFG);
     expect(S.arrows.has(f)).toBe(true);
     expect(S.arrows.has(g)).toBe(true);
     expect(S.arrows.has(h)).toBe(true);
@@ -68,7 +73,7 @@ describe("subcategory saturation", () => {
   });
 
   it("builds a full subcategory on chosen objects", () => {
-    const full = makeFullSubcategory(parent, ["A", "B"]);
+    const full = makeFullSubcategory(parent, objectsAB);
     expect(full.arrows.has(f)).toBe(true);
     expect(full.arrows.has(idA)).toBe(true);
     expect(full.arrows.has(idB)).toBe(true);
@@ -77,7 +82,7 @@ describe("subcategory saturation", () => {
   });
 
   it("detects non-full subcategories", () => {
-    const nonFull = makeSubcategory(parent, ["A", "B"], [f]);
+    const nonFull = makeSubcategory(parent, objectsAB, arrowsF);
     expect(isFullSubcategory(nonFull, parent)).toBe(false);
   });
 });

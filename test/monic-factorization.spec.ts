@@ -46,7 +46,8 @@ describe("Monic factorisation oracles", () => {
   it("detects mutually factoring monomorphisms", () => {
     const witnesses = findMutualMonicFactorizations(category)
     expect(witnesses).toHaveLength(1)
-    const [witness] = witnesses
+    const witness = witnesses[0]
+    if (!witness) throw new Error("expected a mutual monic factorization witness")
     expect(category.eq(category.compose(s, witness.forward), witness.left)).toBe(true)
     expect(category.eq(category.compose(r, witness.backward), witness.right)).toBe(true)
   })

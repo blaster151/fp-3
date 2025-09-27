@@ -1,15 +1,6 @@
 import { describe, test, expect } from 'vitest'
 import {
-  // Basic types
   FinSet,
-  FinSetObj,
-  FinSetMor,
-  // Categorical structures
-  CatFunctor,
-  CatNatTrans,
-  CatMonad,
-  Adjunction,
-  // Operations
   composeFun,
   idFun,
   whiskerLeft,
@@ -21,13 +12,21 @@ import {
   pushforwardMonad,
   colaxAlongLeftAdjoint,
   pushforwardAlgebra,
-  // Examples
   freeVectFunctor,
   forgetVectFunctor,
   freeForgetfulAdjunction,
   listMonadFinSet,
-  // Enhanced Vect
   EnhancedVect
+} from '../allTS'
+import type {
+  FinSetObj,
+  FinSetMor,
+  CatFunctor,
+  CatNatTrans,
+  CatMonad,
+  Adjunction,
+  CatId,
+  CatCompose
 } from '../allTS'
 
 describe('Complete Pushforward Monad Implementation', () => {

@@ -3,7 +3,8 @@
 //
 // Depends on: markov-category.ts, semiring-dist.ts, semiring-utils.ts
 //
-import { Fin, Kernel, Dist } from "./markov-category";
+import type { Fin, Kernel } from "./markov-category";
+import type { LegacyDist as Dist } from "./dist";
 import { TropicalMaxPlus, LogProb, RPlus, normalizeR } from "./semiring-dist";
 import { fromScoresMax, fromLogits, fromProbs, argBestR } from "./semiring-utils";
 

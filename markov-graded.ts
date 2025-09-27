@@ -1,7 +1,11 @@
 // markov-graded.ts
 import { Kernel, Dist, dirac, prune } from "./markov-category";
 
-export interface Monoid<G> { empty: G; concat: (a:G,b:G)=>G; equals?: (a:G,b:G>)=>boolean; }
+export interface Monoid<G> {
+  empty: G;
+  concat: (a: G, b: G) => G;
+  equals?: (a: G, b: G) => boolean;
+}
 export type GradedKernel<G,X,Y> = (x:X)=>{ dist: Dist<Y>; grade: G };
 
 export function gDeterministic<G,X,Y>(M:Monoid<G>, f:(x:X)=>Y, g:G): GradedKernel<G,X,Y> {
