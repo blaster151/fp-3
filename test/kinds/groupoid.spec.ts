@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { catFromGroup, type FinGroup } from "../../kinds/group-as-category"
+import { catFromGroup, groupFromOneObjectGroupoid, type FinGroup } from "../../kinds/group-as-category"
 import { isGroupoid, actionGroupoid } from "../../kinds/groupoid"
 
 describe("kinds/groupoid", () => {
@@ -13,6 +13,23 @@ describe("kinds/groupoid", () => {
   it("treats a group as a one-object groupoid", () => {
     const category = catFromGroup(z2)
     expect(isGroupoid(category)).toBe(true)
+  })
+
+  it("recovers the original group from its one-object groupoid", () => {
+    const category = catFromGroup(z2)
+    const { group } = groupFromOneObjectGroupoid(category)
+
+    const names = group.elements.map((arrow) => (arrow as any).element).sort()
+    expect(names).toEqual(["e", "s"])
+
+    const elementByName = (name: string) =>
+      group.elements.find((arrow) => (arrow as any).element === name)!
+
+    const s = elementByName("s")
+    const product = group.multiply(s, s)
+    expect((product as any).element).toBe("e")
+    const inverse = group.inverse(s)
+    expect((inverse as any).element).toBe("s")
   })
 
   it("builds an action groupoid for Z2 acting on three points", () => {

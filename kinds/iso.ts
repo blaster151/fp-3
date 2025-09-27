@@ -1,4 +1,7 @@
 import type { FiniteCategory } from "../finite-cat"
+import { twoSidedInverses } from "./inverses"
+
+export { isIso } from "./inverses"
 
 export interface IsoWitness<Arr> {
   readonly forward: Arr
@@ -9,23 +12,9 @@ export const inverse = <Obj, Arr>(
   category: FiniteCategory<Obj, Arr>,
   arrow: Arr,
 ): Arr | null => {
-  const source = category.src(arrow)
-  const target = category.dst(arrow)
-  for (const candidate of category.arrows) {
-    if (category.src(candidate) !== target || category.dst(candidate) !== source) continue
-    const left = category.compose(candidate, arrow)
-    const right = category.compose(arrow, candidate)
-    if (category.eq(left, category.id(source)) && category.eq(right, category.id(target))) {
-      return candidate
-    }
-  }
-  return null
+  const [candidate] = twoSidedInverses(category, arrow)
+  return candidate ?? null
 }
-
-export const isIso = <Obj, Arr>(
-  category: FiniteCategory<Obj, Arr>,
-  arrow: Arr,
-): boolean => inverse(category, arrow) !== null
 
 export const isoWitness = <Obj, Arr>(
   category: FiniteCategory<Obj, Arr>,

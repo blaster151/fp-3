@@ -1,6 +1,6 @@
 import type { FiniteCategory } from "./finite-cat";
 import type { CosliceArrow, CosliceObject } from "./slice-cat";
-import type { PushoutCalculator } from "./pushout";
+import type { PushoutCalc } from "./pushout";
 
 export interface CosliceReindexingFunctor<Obj, Arr> {
   readonly F0: (object: CosliceObject<Obj, Arr>) => CosliceObject<Obj, Arr>;
@@ -9,7 +9,7 @@ export interface CosliceReindexingFunctor<Obj, Arr> {
 
 export function makeCosliceReindexingFunctor<Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
-  calculator: PushoutCalculator<Obj, Arr>,
+  calculator: PushoutCalc<Obj, Arr>,
   h: Arr,
   sourceAnchor: Obj,
   targetAnchor: Obj,

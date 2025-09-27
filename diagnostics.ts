@@ -40,3 +40,54 @@ export function explainCoSliceMismatch<Obj, Arr>(
     `  mediating∘source = ${describeArrow(base, lhs)}`,
   ].join("\n");
 }
+
+type CounterexampleCapable<Obj, Arr> = FiniteCategory<Obj, Arr> & {
+  readonly counterexample?: (
+    left: Arr,
+    right: Arr,
+  ) => { readonly pretty?: string } | null
+}
+
+const inverseEquationLabel = (kind: "left" | "right"): "g∘f" | "f∘g" =>
+  kind === "left" ? "g∘f" : "f∘g"
+
+export const describeInverseEquation = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  forward: Arr,
+  candidate: Arr,
+  kind: "left" | "right",
+): string => {
+  const composite =
+    kind === "left"
+      ? base.compose(candidate, forward)
+      : base.compose(forward, candidate)
+  const identity = kind === "left" ? base.id(base.src(forward)) : base.id(base.dst(forward))
+  const identityName = kind === "left" ? `id_${String(base.src(forward))}` : `id_${String(base.dst(forward))}`
+  return [
+    `${inverseEquationLabel(kind)} = ${describeArrow(base, composite)}`,
+    `${identityName} = ${describeArrow(base, identity)}`,
+  ].join(" | ")
+}
+
+export const checkInverseEquation = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  forward: Arr,
+  candidate: Arr,
+  kind: "left" | "right",
+): { readonly ok: boolean; readonly msg: string } => {
+  const composite =
+    kind === "left"
+      ? base.compose(candidate, forward)
+      : base.compose(forward, candidate)
+  const identity = kind === "left" ? base.id(base.src(forward)) : base.id(base.dst(forward))
+  if (base.eq(composite, identity)) {
+    return { ok: true, msg: "" }
+  }
+
+  const enriched = base as CounterexampleCapable<Obj, Arr>
+  const witness = enriched.counterexample?.(composite, identity)
+  const detail = witness?.pretty ?? describeInverseEquation(base, forward, candidate, kind)
+  const identityName = kind === "left" ? `id_${String(base.src(forward))}` : `id_${String(base.dst(forward))}`
+  const prefix = `${inverseEquationLabel(kind)} ≠ ${identityName}`
+  return { ok: false, msg: `${prefix}. ${detail}` }
+}

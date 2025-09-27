@@ -19036,7 +19036,9 @@ export {
   type CoslicePrecomposition,
 } from "./coslice-precompose"
 export {
+  makeFinitePushoutCalc,
   makeFinitePushoutCalculator,
+  type PushoutCalc,
   type PushoutCalculator,
   type PushoutData,
 } from "./pushout"
@@ -19048,6 +19050,8 @@ export {
 export {
   explainSliceMismatch,
   explainCoSliceMismatch,
+  describeInverseEquation,
+  checkInverseEquation,
 } from "./diagnostics"
 export {
   makeArrowCategory,
@@ -19065,6 +19069,61 @@ export {
   isMono,
   isEpi,
 } from "./kinds/mono-epi"
+export { withMonoEpiCache, type MonoEpiCache } from "./kinds/mono-epi-cache"
+export {
+  identityIsMono,
+  identityIsEpi,
+  composeMonosAreMono,
+  composeEpisAreEpi,
+  rightFactorOfMono,
+  leftFactorOfEpi,
+  saturateMonoEpi,
+  type MonoEpiClosure,
+} from "./kinds/mono-epi-laws"
+export { forkCommutes, isMonoByForks } from "./kinds/fork"
+export {
+  leftInverses,
+  rightInverses,
+  hasLeftInverse,
+  hasRightInverse,
+  twoSidedInverses,
+  isIso as isIsoByInverseSearch,
+} from "./kinds/inverses"
+export { type CatTraits } from "./kinds/traits"
+export { arrowGlyph, prettyArrow } from "./pretty"
+export { isMonoByGlobals, type HasTerminal } from "./traits/global-elements"
+export { nonEpiWitnessInSet, type NonEpiWitness } from "./kinds/epi-witness-set"
+export {
+  FinSetCat,
+  type FinSetName,
+  type FuncArr,
+  type FinSetCategory,
+  isInjective,
+  isSurjective,
+} from "./models/finset-cat"
+export {
+  buildLeftInverseForInjective,
+  buildRightInverseForSurjective,
+} from "./models/finset-inverses"
+export {
+  FinPosCat,
+  FinPos,
+  type FinPosCategory,
+  type FinPosObj,
+  type MonoMap,
+} from "./models/finpos-cat"
+export {
+  FinGrpCat,
+  FinGrp,
+  type FinGrpCategory,
+  type FinGrpObj,
+  type Hom as FinGrpHom,
+} from "./models/fingroup-cat"
+export {
+  kernelElements,
+  nonMonoWitness as finGrpNonMonoWitness,
+  type KernelWitness as FinGrpKernelWitness,
+} from "./models/fingroup-kernel"
 export {
   inverse,
   isIso,
@@ -19073,11 +19132,20 @@ export {
   type IsoWitness,
 } from "./kinds/iso"
 export {
+  findMutualMonicFactorizations,
+  verifyMutualMonicFactorizations,
+  type MutualMonicFactorization,
+  type FactorisationCheckResult,
+} from "./kinds/monic-factorization"
+export {
   epiMonoFactor,
+  epiMonoMiddleIso,
   type Factor as EpiMonoFactor,
+  type FactorIso as EpiMonoFactorIso,
 } from "./kinds/epi-mono-factor"
 export {
   catFromGroup,
+  groupFromOneObjectGroupoid,
   type FinGroup,
 } from "./kinds/group-as-category"
 export {
@@ -19094,13 +19162,44 @@ export {
   type SubcategoryToolkit,
 } from "./textbook-toolkit"
 export {
+  LeftInverseImpliesMono,
+  RightInverseImpliesEpi,
+  IsoIsMonoAndEpi,
+  MonoWithRightInverseIsIso,
+  EpiWithLeftInverseIsIso,
+  type ArrowOracle,
+} from "./oracles/inverses-oracles"
+export {
+  detectBalancedPromotions,
+  type BalancedPromotion,
+} from "./oracles/balanced"
+export {
+  MonicFactorizationYieldsIso,
+  type CategoryOracle,
+} from "./oracles/monic-factorization"
+export {
   checkSliceCategoryLaws,
   type SliceCategoryLawReport,
 } from "./slice-laws"
+export {
+  Rewriter,
+  defaultOperationRules,
+  type OperationRule,
+  type OperationContext,
+  type Suggestion as OperationSuggestion,
+  type Rewrite as OperationRewrite,
+  type NormalizeCompositeRewrite,
+  type UpgradeToIsoRewrite,
+  type ReplaceWithIdentityRewrite,
+  type MergeSubobjectsRewrite,
+  type MergeObjectsRewrite,
+  type FactorThroughEpiMonoRewrite,
+} from "./operations/rewriter"
+export { UnionFind } from "./operations/union-find"
 
 // Namespaces are declared above and exported automatically
 
-export const Chain = { 
+export const Chain = {
   compose: composeChainMap, 
   id: idChainMapField, 
   inclusionIntoCoproduct, 
