@@ -20,7 +20,7 @@ export function runSemiringLawSuite() {
     const da = fromPairsR(R, [["t1", 0.3], ["t2", 1.1], ["t3", 0.7]]);
     const db = fromPairsR(R, [["t1", 2.0], ["t2", 0.2], ["t3", 0.5]]);
 
-    const fubini = checkFubiniGeneric(M, da as any, db as any); // uses M.product vs bind/map route
+    const fubini = checkFubiniGeneric(M, da, db); // uses M.product vs bind/map route
     const pullback = pullbackSquareHolds(R, Θ) && checkPullbackRandom(R, Θ, 64);
 
     return { semiring: name, fubini, pullback };

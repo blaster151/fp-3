@@ -21,7 +21,7 @@ export function dominatesInConvexOrder_viaGarbling<Theta, X, Y>(
 
 // Optional: approximate convex-grid test (sufficient but not necessary).
 // Checks E_ĝ[φ_k] ≥ E_f̂[φ_k] for a small family of convex φ_k on Δ(Θ).
-// Here φ_v(π) = (⟨v, π⟩)^2 which is convex for any v.
+// Here φ_v(π) = (⟨v, π⟩)^2 which is convex for every vector v.
 export function dominatesInConvexOrder_grid<Theta, X>(
   ThetaFin: Fin<Theta>,
   prior: Map<Theta,number>,

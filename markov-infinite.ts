@@ -325,7 +325,7 @@ const getWeight = <R, X>(dist: Dist<R, X>, key: X): R | undefined => {
   return undefined;
 };
 
-const collectKeys = <X>(a: Dist<any, X>, b: Dist<any, X>): X[] => {
+const collectKeys = <R, X>(a: Dist<R, X>, b: Dist<R, X>): X[] => {
   const keys: X[] = [];
   a.w.forEach((_v, k) => {
     keys.push(k);

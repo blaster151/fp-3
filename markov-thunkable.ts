@@ -1,7 +1,7 @@
 // markov-thunkable.ts — Thunkability ⇔ Determinism (Law ~3.14)
 // Executable oracle for thunkable maps and their commuting behavior
 
-import type { CSRig } from "./semiring-utils";
+import { type CSRig, isNumericRig } from "./semiring-utils";
 import type { Dist } from "./dist";
 import { dirac as delta, bind } from "./dist";
 
@@ -132,19 +132,19 @@ export function generateProbeDists<R, A>(
   }
   
   // Add some mixed distributions (for numeric semirings)
-  if (R.eq(R.one, 1 as any) && domain.length >= 2) {
+  if (isNumericRig(R) && domain.length >= 2) {
     // Probability-like semiring
     const w1 = new Map<A, R>();
     const w2 = new Map<A, R>();
-    
-    w1.set(domain[0], 0.7 as any);
-    w1.set(domain[1], 0.3 as any);
+
+    w1.set(domain[0], 0.7);
+    w1.set(domain[1], 0.3);
     probes.push({ R, w: w1 });
-    
+
     if (domain.length >= 3) {
-      w2.set(domain[0], 0.2 as any);
-      w2.set(domain[1], 0.3 as any);
-      w2.set(domain[2], 0.5 as any);
+      w2.set(domain[0], 0.2);
+      w2.set(domain[1], 0.3);
+      w2.set(domain[2], 0.5);
       probes.push({ R, w: w2 });
     }
   }

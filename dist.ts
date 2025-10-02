@@ -87,20 +87,18 @@ export const strength = <R, X, Y>(R: CSRig<R>) =>
 export type LegacyDist<X> = Map<X, number>;
 
 // Convert between parametric and legacy representations
-export const toLegacy = <R, X>(d: Dist<R, X>): LegacyDist<X> => {
-  // Only works for numeric semirings
+export const toLegacy = <X>(d: Dist<number, X>): LegacyDist<X> => {
   const result = new Map<X, number>();
   d.w.forEach((weight, x) => {
-    result.set(x, weight as any); // Type assertion for numeric semirings
+    result.set(x, weight);
   });
   return result;
 };
 
-export const fromLegacy = <R, X>(R: CSRig<R>, legacy: LegacyDist<X>): Dist<R, X> => {
-  // Only works for numeric semirings  
-  const w = new Map<X, R>();
+export const fromLegacy = <X>(R: CSRig<number>, legacy: LegacyDist<X>): Dist<number, X> => {
+  const w = new Map<X, number>();
   legacy.forEach((weight, x) => {
-    w.set(x, weight as any); // Type assertion for numeric semirings
+    w.set(x, weight);
   });
   return { R, w };
 };

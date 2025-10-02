@@ -11,7 +11,7 @@ import {
   SumEndoM, ProdEndoM, CompEndoM, PairEndoM, ConstEndoM,
   inL, inR, prod
 } from '../allTS'
-import type { SimpleApplicativeK1, EndofunctorK1 } from '../allTS'
+import type { SimpleApplicativeK1, EndofunctorK1, NEA } from '../allTS'
 
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
@@ -24,10 +24,12 @@ const toNEA = <A>(xs: readonly A[]): readonly [A, ...A[]] => {
 }
 
 // Identity applicative for laws
+type IdBox<A> = { readonly _id: A }
+
 const Id: SimpleApplicativeK1<'Id'> = {
-  of:  <A>(a: A) => ({ _id: a }),
-  map: <A, B>(f: (a: A) => B) => (x: any) => ({ _id: f(x._id) }),
-  ap:  <A, B>(ff: any) => (fa: any) => ({ _id: ff._id(fa._id) }),
+  of:  <A>(a: A): IdBox<A> => ({ _id: a }),
+  map: <A, B>(f: (a: A) => B) => (x: IdBox<A>): IdBox<B> => ({ _id: f(x._id) }),
+  ap:  <A, B>(ff: IdBox<(a: A) => B>) => (fa: IdBox<A>): IdBox<B> => ({ _id: ff._id(fa._id) }),
 }
 
 describe('Traversable laws', () => {
@@ -51,7 +53,7 @@ describe('Traversable laws', () => {
   it('Either<L,_>: identity', () => {
     const T = TraversableEitherK1<'e'>()
     fc.assert(fc.property(fc.oneof(fc.integer().map(Ok), fc.constant(Err<'e'>('e'))), (e) => {
-      const lhs = T.traverse(Id)<number, number>(x => Id.of(x))(e as any)
+      const lhs = T.traverse(Id)<number, number>(x => Id.of(x))(e)
       const rhs = Id.of(e)
       return eq(lhs, rhs)
     }))
@@ -67,9 +69,14 @@ describe('Traversable laws', () => {
 
     await fc.assert(fc.asyncProperty(fc.array(fc.integer(), { minLength: 1 }), async (xs) => {
       const nea = toNEA(xs)
+      const [head, ...tail] = nea
+      const promises = [
+        Promise.resolve(head + 1),
+        ...tail.map((n) => Promise.resolve(n + 1)),
+      ] as NEA<Promise<number>>
       const seq = distributePromiseK1(TraversableNEAK1)
-      const out = await seq.app(nea.map(n => Promise.resolve(n + 1)) as any)
-      expect(eq(out, nea.map(n => n + 1))).toBe(true)
+      const out = await seq.app(promises)
+      expect(eq(out, nea.map((n) => n + 1))).toBe(true)
     }))
   })
 
@@ -83,13 +90,13 @@ describe('Traversable laws', () => {
     }))
 
     const seq = distributePromiseK1(TraversablePairK1<7>())
-    const out = await seq.app([7 as const, Promise.resolve(9)] as any)
+    const out = await seq.app([7 as const, Promise.resolve(9)] as const)
     expect(eq(out, [7, 9])).toBe(true)
   })
 
   it('Const<C,_>: traverse ignores f', () => {
     const T = TraversableConstK1<'unit'>()
-    const cx = 'unit' as any // Const<'unit', A> is just 'unit'
+    const cx = 'unit' as const // Const<'unit', A> is just 'unit'
     const lhs = T.traverse(Id)<number, string>(() => { throw new Error('should not be called') })(cx)
     expect(eq(lhs, Id.of(cx))).toBe(true)
   })
@@ -99,10 +106,10 @@ describe('Traversable laws', () => {
     const getTrav = makeSmartGetTraversableK1(R)
     
     // Register base traversables
-    const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
+    const OptionF: EndofunctorK1<'Option'> = { map: mapO }
     const ResultF = ResultK1<string>()
-    R.register(OptionF as any, TraversableOptionK1 as any)
-    R.register(ResultF as any, TraversableEitherK1<string>() as any)
+    R.register(OptionF, TraversableOptionK1)
+    R.register(ResultF, TraversableEitherK1<string>())
     
     // Build composite with meta (auto-derivable)
     const SumM = SumEndoM(OptionF, ResultF)
@@ -127,8 +134,8 @@ describe('Traversable laws', () => {
     const prodVal = prod<'Option', ['Result', 'string'], number>(Some(Promise.resolve(10)), Ok(Promise.resolve(20)))
     const prodSeq = distributePromiseK1(TProdM!)
     const prodResult = await prodSeq.app(prodVal)
-    expect(eq((prodResult as any).left, Some(10))).toBe(true)
-    expect(eq((prodResult as any).right, Ok(20))).toBe(true)
+    expect(eq(prodResult.left, Some(10))).toBe(true)
+    expect(eq(prodResult.right, Ok(20))).toBe(true)
     
     // Comp: Option<Result<string, Promise<number>>> -> Promise<Option<Result<string, number>>>
     const compVal = Some(Ok(Promise.resolve(5)))

@@ -1,7 +1,7 @@
 // pullback-square.ts — Full pullback square (3.8) checker
 // The "only possible joint is the Dirac at the pair" rule
 
-import type { CSRig } from "./semiring-utils";
+import { type CSRig, isBooleanRig, isNumericRig } from "./semiring-utils";
 import type { Dist } from "./dist";
 import { dirac as delta } from "./dist";
 
@@ -62,9 +62,9 @@ export function diracPairAt<R, A, X, Y>(R: CSRig<R>, x: X, y: Y): Dist<R, string
  *   - R : your CSRig
  *   - Avals : finite sample of points in A
  *   - f, g : deterministic arrows A→X and A→Y (we use them as the bottom/left legs of the square)
- *   - candidates (optional): supply any alternative joint builders to "try to break" uniqueness
+ *   - candidates (optional): supply alternative joint builders to "try to break" uniqueness
  *
- * Returns false as soon as any candidate produces a non-Dirac joint with the same marginals.
+ * Returns false as soon as one candidate produces a non-Dirac joint with the same marginals.
  */
 export function checkPullbackSquare<R, A, X, Y>(
   R: CSRig<R>,
@@ -139,9 +139,9 @@ export function generateCheatingCandidates<R, A, X, Y>(
       try {
         // Attempt to create a "half" weight (this is semiring-dependent)
         let half: R;
-        if (R.eq(R.one, 1 as any)) {
-          half = 0.5 as any; // Only works for Prob-like semirings
-        } else if (R.eq(R.one, true as any)) {
+        if (isNumericRig(R)) {
+          half = 0.5;
+        } else if (isBooleanRig(R)) {
           half = R.one; // Bool: can't really split
         } else {
           half = R.one; // Default: just use one (won't actually split)

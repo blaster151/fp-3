@@ -2,7 +2,7 @@
 
 // Examples demonstrating Sum ⊕ and Product ⊗ endofunctors
 import {
-  Some, None, Ok, Err, isOk, isSome, mapO,
+  Some, None, Ok, isOk, isSome, mapO,
   EndofunctorK1, ResultK1,
   SumVal, SumEndo, inL, inR, strengthEnvFromSum, matchSum,
   ProdVal, ProdEndo, prod, strengthEnvFromProd,
@@ -13,7 +13,7 @@ import {
 console.log('🔀 Testing Sum ⊕ and Product ⊗ Endofunctors\n')
 
 // Create simple endofunctors
-const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
+const OptionF: EndofunctorK1<'Option'> = { map: mapO }
 const ResultF = ResultK1<string>()
 
 // =============================================================================
@@ -71,8 +71,8 @@ console.log('Mapped product (×3):', mappedProduct)
 
 // Extract values from product
 const extractFromProduct = (p: ProdVal<typeof OptionF, typeof ResultF, number>): string => {
-  const leftResult: number = isSome(p.left as any) ? (p.left as any).value : 0
-  const rightResult: number = isOk(p.right as any) ? (p.right as any).value : 0
+  const leftResult: number = isSome(p.left) ? p.left.value : 0
+  const rightResult: number = isOk(p.right) ? p.right.value : 0
   return `Left: ${leftResult}, Right: ${rightResult}, Sum: ${leftResult + rightResult}`
 }
 

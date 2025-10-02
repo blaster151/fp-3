@@ -201,19 +201,19 @@ export function expectedUtility<Θ extends string | number>(
 /**
  * Find the optimal action under a standard measure
  */
-export function optimalAction<Θ, A>(
+export function optimalAction<Θ extends string | number, A>(
   sm: StandardMeasure<Θ>,
   actions: readonly A[],
   utility: (action: A, theta: Θ) => number
 ): { action: A; expectedUtility: number } {
   let bestAction = actions[0];
   let bestUtility = -Infinity;
-  
+
   for (const action of actions) {
     let totalUtility = 0;
-    
+
     sm.w.forEach((weight, posterior) => {
-      const posteriorUtility = expectedUtility(posterior as any, (theta: Θ) => utility(action, theta));
+      const posteriorUtility = expectedUtility(posterior, (theta: Θ) => utility(action, theta));
       totalUtility += weight * posteriorUtility;
     });
     
@@ -244,15 +244,19 @@ export function valueOfInformation<Θ extends string | number, X extends string 
   valueOfInfo: number;
 } {
   // Expected utility without information (just use prior)
+  const priorAsStandardMeasure: StandardMeasure<Θ> = {
+    R: m.R,
+    w: new Map<Posterior<Θ>, number>([[m, 1]])
+  };
   const withoutInfo = optimalAction(
-    { R: m.R, w: new Map([[m, 1]]) } as any, // Treat prior as single posterior
+    priorAsStandardMeasure,
     actions,
     utility
   ).expectedUtility;
-  
+
   // Expected utility with information (use standard measure)
   const sm = standardMeasure(m, f, xVals);
-  const withInfo = optimalAction(sm as any, actions, utility).expectedUtility;
+  const withInfo = optimalAction(sm, actions, utility).expectedUtility;
   
   return {
     withInfo,

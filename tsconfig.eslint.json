@@ -5,5 +5,5 @@
     "resolvePackageJsonExports": true,
     "types": ["node", "vitest"]
   },
-  "include": ["**/*.ts", "eslint-plugin-tinyfp/**/*.js"]
+  "include": ["**/*.ts", "eslint-plugin-fp-3/**/*.js"]
 }

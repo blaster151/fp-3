@@ -113,6 +113,13 @@ console.log('\n=== Microservice Data Aggregation ===')
 type DataField = 'userId' | 'profile' | 'permissions' | 'preferences' | 'activity'
 type Service = 'userService' | 'authService' | 'prefsService'
 
+type ServiceFieldValue =
+  | string
+  | ReadonlyArray<string>
+  | { readonly name: string; readonly email: string }
+  | { readonly theme: string; readonly lang: string }
+  | { readonly lastLogin: string; readonly loginCount: number }
+
 const serviceCover: RecordCover<Service, DataField> = {
   userService: new Set(['userId', 'profile']),
   authService: new Set(['userId', 'permissions']),
@@ -120,7 +127,7 @@ const serviceCover: RecordCover<Service, DataField> = {
 }
 
 // Simulate successful data fetch from services
-const serviceData: Sections<Service, DataField, any> = {
+const serviceData: Sections<Service, DataField, ServiceFieldValue> = {
   userService: {
     userId: 'user-123',
     profile: { name: 'Alice', email: 'alice@example.com' }

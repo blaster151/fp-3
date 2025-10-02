@@ -11,12 +11,12 @@ module.exports = {
     "@typescript-eslint",
     // Reference the local plugin by path using ESLint's "plugins" resolution:
     // If using ESLint <9, it resolves node_modules only. Add NODE_PATH=.
-    // Easiest: use the "plugin:" prefix via 'eslint-plugin-tinyfp' symlink in node_modules
+    // Easiest: use the "plugin:" prefix via 'eslint-plugin-fp-3' symlink in node_modules
     // or use ESLint flat config. Simpler: require() in overrides (see below).
-    "tinyfp"
+    "fp-3"
   ],
   settings: {},
   rules: {
-    "tinyfp/no-json-stringify-on-json": "error"
+    "fp-3/no-json-stringify-on-json": "error"
   },
 };

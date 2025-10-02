@@ -88,7 +88,7 @@ const smoothedStore = StoreComonad<number>().extend((ctx: Store<number, TimeSeri
 const smoothedData = collectStore(data.length)(smoothedStore)
 
 console.log('Smoothed data:')
-smoothedData.forEach((ts: any) => {
+smoothedData.forEach(ts => {
   console.log(`${ts.name}: [${ts.series.map((n: number) => Math.round(n*100)/100).join(', ')}] ${ts.metadata.units}`)
 })
 
@@ -105,7 +105,7 @@ const focusedStore = focusStoreWithLens(seriesLens)(timeSeriesStore)
 console.log('Focused on series field - first series:', focusedStore.peek(0))
 
 // Apply moving average through the lens (preserving the rest of the structure)
-const lensSmoothedStore = extendThroughLens(seriesLens)(
+const lensSmoothedStore: Store<number, TimeSeries> = extendThroughLens(seriesLens)(
   (ctx: Store<number, ReadonlyArray<number>>) => {
     // Create a Store over the array and apply moving average
     const arrayStore = storeFromArray(ctx.peek(ctx.pos), 0)
@@ -114,10 +114,10 @@ const lensSmoothedStore = extendThroughLens(seriesLens)(
   }
 )(timeSeriesStore)
 
-const lensSmoothedData = collectStore(data.length)(lensSmoothedStore as any)
+const lensSmoothedData = collectStore(data.length)(lensSmoothedStore)
 
 console.log('Lens-smoothed data (preserving structure):')
-lensSmoothedData.forEach((ts: any) => {
+lensSmoothedData.forEach(ts => {
   console.log(`${ts.name}: [${ts.series.map((n: number) => Math.round(n*100)/100).join(', ')}] ${ts.metadata.units}`)
   console.log(`  metadata preserved: ${JSON.stringify(ts.metadata)}`)
 })
@@ -146,7 +146,7 @@ for (let i = 0; i < data[0].series.length; i++) {
 const helperSmoothedData = collectStore(data.length)(helperSmoothedStore)
 
 console.log('Helper-smoothed data:')
-helperSmoothedData.forEach((ts: any) => {
+helperSmoothedData.forEach(ts => {
   console.log(`${ts.name}: [${ts.series.map((n: number) => Math.round(n*100)/100).join(', ')}] ${ts.metadata.units}`)
 })
 
@@ -168,7 +168,7 @@ const manualSmoothed = data.map(ts => {
 })
 
 console.log('Manual approach (for comparison):')
-manualSmoothed.forEach((ts: any) => {
+manualSmoothed.forEach(ts => {
   console.log(`${ts.name}: [${ts.series.map((n: number) => Math.round(n*100)/100).join(', ')}] ${ts.metadata.units}`)
 })
 

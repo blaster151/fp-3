@@ -5,7 +5,7 @@ import {
   MixedDistK1, liftMonadToGCoalgK1, liftComonadToTAlgK1,
   MixedDist_Result_Store, MixedDist_Task_Store,
   MonadK1, ComonadK1, StoreComonad, ResultK1, PairComonad,
-  Result, Store, Task, Pair, Ok, Err, isOk, isErr
+  Result, Store, Task, Pair, Ok, Err, isOk, isErr, HK
 } from './allTS'
 
 console.log('🔄 Mixed Distributive Laws: Monad × Comonad Interactions\n')
@@ -19,6 +19,14 @@ console.log('=== Result × Store: Error-aware contextual computation ===')
 type UserProfile = { name: string; age: number; email: string }
 type ValidationError = 'INVALID_EMAIL' | 'UNDERAGE' | 'MISSING_NAME'
 
+declare module './allTS' {
+  namespace HK {
+    interface Registry1<A> {
+      Result: Result<ValidationError, A>
+    }
+  }
+}
+
 const validateEmail = (email: string): Result<ValidationError, string> =>
   email.includes('@') ? Ok(email) : Err('INVALID_EMAIL')
 
@@ -29,7 +37,9 @@ const validateName = (name: string): Result<ValidationError, string> =>
   name.trim().length > 0 ? Ok(name.trim()) : Err('MISSING_NAME')
 
 // Create a Store that validates different aspects of a user profile
-const validationStore: Store<keyof UserProfile, (profile: UserProfile) => Result<ValidationError, any>> = {
+type FieldValidation = Result<ValidationError, UserProfile[keyof UserProfile]>
+
+const validationStore: Store<keyof UserProfile, (profile: UserProfile) => FieldValidation> = {
   pos: 'email',
   peek: (field: keyof UserProfile) => {
     switch (field) {
@@ -74,7 +84,13 @@ console.log('\n=== Task × Store: Async contextual computation ===')
 type APIConfig = { baseUrl: string; apiKey: string; timeout: number }
 type APIEndpoint = 'users' | 'posts' | 'comments'
 
-const mockApiCall = (config: APIConfig, endpoint: APIEndpoint): Promise<any> =>
+type ApiResponse = {
+  readonly data: string
+  readonly timestamp: number
+  readonly apiKey: string
+}
+
+const mockApiCall = (config: APIConfig, endpoint: APIEndpoint): Promise<ApiResponse> =>
   new Promise(resolve => 
     setTimeout(() => resolve({
       data: `Mock data from ${config.baseUrl}/${endpoint}`,
@@ -84,7 +100,9 @@ const mockApiCall = (config: APIConfig, endpoint: APIEndpoint): Promise<any> =>
   )
 
 // Create an async Store that makes API calls based on configuration
-const createApiStore = async (defaultConfig: APIConfig): Promise<Store<APIEndpoint, (config: APIConfig) => Promise<any>>> => {
+type ApiStore = Store<APIEndpoint, (config: APIConfig) => Promise<ApiResponse>>
+
+const createApiStore = async (defaultConfig: APIConfig): Promise<ApiStore> => {
   console.log('  🔧 Setting up API store...')
   await new Promise(resolve => setTimeout(resolve, 50)) // simulate setup time
   
@@ -97,7 +115,7 @@ const createApiStore = async (defaultConfig: APIConfig): Promise<Store<APIEndpoi
 const taskDist = MixedDist_Task_Store<APIConfig>()
 
 // The Task that produces our Store
-const apiStoreTask: Task<Store<APIEndpoint, (config: APIConfig) => Promise<any>>> = 
+const apiStoreTask: Task<ApiStore> =
   () => createApiStore({ baseUrl: 'https://api.example.com', apiKey: 'key123', timeout: 100 })
 
 // Distribute: Task<Store<Endpoint, Config -> Promise<Data>>> -> Store<Endpoint, Config -> Task<Data>>
@@ -127,7 +145,7 @@ Promise.all([
 
 console.log('\n=== Lifting: Monad to G-Coalgebra ===')
 
-const ResultM: MonadK1<'Result'> = ResultK1 as any
+const ResultM: MonadK1<'Result'> = ResultK1<ValidationError>()
 const StoreC = StoreComonad<string>()
 const liftDist = MixedDist_Result_Store<string, string>('default')
 

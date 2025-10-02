@@ -2,22 +2,24 @@
 
 // Advanced Functor Examples: Natural Transformations, Traversable, Free Algebra
 import {
-  Some, None, Ok, Err, isOk, isSome, mapO, mapR,
-  EndofunctorK1, ResultK1, idNatK1,
-  // Sum/Product functors and natural transformations
-  SumVal, SumEndo, inL, inR, sumNat, sumNatL, sumNatR, matchSum,
-  ProdVal, ProdEndo, prod, prodNat, prodNatL, prodNatR,
-  // Traversable and Promise distribution
-  SimpleApplicativeK1, TraversableK1, PromiseApp, TaskApp,
+  Some, None, Ok, Err, isOk, isSome, mapO,
+  ResultK1, idNatK1,
+  SumEndo, inL, inR, sumNat, sumNatL, sumNatR, matchSum,
+  ProdEndo, prod, prodNat, prodNatL, prodNatR,
+  PromiseApp, TaskApp,
   distributePromiseK1, distributeTaskK1, sequencePromiseK1,
-  TraversableArrayK1, Task, TaskEndo, makePostcomposePromise2,
-  // Free algebra
-  EndoTerm, IdT, BaseT, SumT, ProdT, CompT, PairT, ConstT,
-  EndoDict, StrengthDict, NatDict, evalEndo, deriveStrengthEnv, hoistEndo,
+  TraversableArrayK1, TaskEndo, makePostcomposePromise2,
+  IdT, BaseT, SumT, ProdT, CompT, PairT, ConstT,
+  evalEndo, deriveStrengthEnv, hoistEndo,
   PairEndo, ConstEndo, strengthEnvFromPair, strengthEnvFromConst,
-  // Utilities
   IdK1, composeEndoK1, hcompNatK1_component,
-  Env, strengthEnvOption, strengthEnvResult
+  strengthEnvOption, strengthEnvResult
+} from './allTS'
+import type {
+  Option, Result,
+  EndofunctorK1, SumVal, ProdVal,
+  SimpleApplicativeK1, TraversableK1, Task,
+  EndoTerm, EndoDict, StrengthDict, NatDict
 } from './allTS'
 
 console.log('🚀 Advanced Functor Examples: Nat Transforms, Traversable, Free Algebra\n')
@@ -29,7 +31,7 @@ console.log('🚀 Advanced Functor Examples: Nat Transforms, Traversable, Free A
 console.log('=== Natural Transformations on Sum/Product ===')
 
 // Set up basic functors
-const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
+const OptionF: EndofunctorK1<'Option'> = { map: mapO }
 const ResultF = ResultK1<string>()
 
 // Identity natural transformations
@@ -138,7 +140,8 @@ console.log('\n=== Hoisting with Natural Transformations ===')
 
 // Define a mapping that transforms Option -> ResultString
 const optionToResult = {
-  app: <A>(oa: any) => isSome(oa) ? Ok(oa.value) : Err('None converted to error')
+  app: <A>(oa: Option<A>): Result<string, A> =>
+    isSome(oa) ? Ok<A>(oa.value) : Err<string>('None converted to error')
 }
 
 const natMapping: NatDict<'Option', 'ResultString'> = (name) => {
@@ -192,14 +195,16 @@ console.log('\n=== Lax 2-Functor with Promise ===')
 // Create a registry that knows about Array traversability
 const travRegistry = <F>(F: EndofunctorK1<F>): TraversableK1<F> | null => {
   // In real code, you'd match on F's identity/structure
-  if (F === TraversableArrayK1 as any) return TraversableArrayK1
+  if (F === TraversableArrayK1) {
+    return TraversableArrayK1 as TraversableK1<F>
+  }
   return null
 }
 
 const PromiseLax2 = makePostcomposePromise2(travRegistry)
 
 // The 2-functor can compose Promise with other functors
-const PromiseArrayEndo = PromiseLax2.on1(TraversableArrayK1 as any)
+const PromiseArrayEndo = PromiseLax2.on1(TraversableArrayK1)
 
 console.log('Promise ∘ Array endofunctor created successfully!')
 

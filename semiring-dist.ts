@@ -142,7 +142,13 @@ export function mkRDist<T>(R: NumSemiring | CSRig<number>, pairs: Array<[T, numb
 //  - For LogProb: subtract log-sum-exp to make sum=0
 //  - For Tropical: subtract max so "sum" (max) = 0
 export function normalizeR<T>(R: NumSemiring | CSRig<number>, d: Dist<T>): Dist<T> {
-  if (R === Prob || ((R as any).zero === 0 && (R as any).one === 1)) {
+  const eq = R.eq ?? defaultEq;
+  const isUnitIntervalRig = R.zero === 0 && R.one === 1;
+  const addOneToOne = R.add(R.one, R.one);
+  const isTropicalLike = R.zero === -Infinity && R.one === 0 && eq(addOneToOne, R.one);
+  const isLogProbLike = R.zero === -Infinity && R.one === 0;
+
+  if (R === Prob || isUnitIntervalRig) {
     let s = 0;
     for (const v of d.values()) s += v;
     if (s <= 0) {
@@ -156,14 +162,7 @@ export function normalizeR<T>(R: NumSemiring | CSRig<number>, d: Dist<T>): Dist<
     for (const [k, v] of d) out.set(k, v / s);
     return out;
   }
-  if (
-    R === MaxPlus ||
-    ((R as any).zero === -Infinity &&
-      (R as any).one === 0 &&
-      typeof (R as any).add === "function" &&
-      ((R as any).eq?.((R as any).add((R as any).one, (R as any).one), (R as any).one) ??
-        defaultEq((R as any).add((R as any).one, (R as any).one), (R as any).one)))
-  ) {
+  if (R === MaxPlus || isTropicalLike) {
     let mx = -Infinity;
     for (const v of d.values()) mx = Math.max(mx, v);
     if (mx === -Infinity) {
@@ -178,7 +177,7 @@ export function normalizeR<T>(R: NumSemiring | CSRig<number>, d: Dist<T>): Dist<
     for (const [k, v] of d) out.set(k, v - mx);
     return out;
   }
-  if (R === LogProb || ((R as any).zero === -Infinity && (R as any).one === 0)) {
+  if (R === LogProb || isLogProbLike) {
     let m = -Infinity;
     for (const v of d.values()) m = Math.max(m, v);
     if (m === -Infinity) {

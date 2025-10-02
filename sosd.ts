@@ -190,8 +190,8 @@ export function symmetricSpread(
     const right = a + spreadAmount;
     
     // For Prob semiring, use equal weights
-    if (R.eq(R.one, 1 as any)) {
-      return { R, w: new Map([[left, 0.5 as any], [right, 0.5 as any]]) };
+    if (R.eq(R.one, 1)) {
+      return { R, w: new Map([[left, 0.5], [right, 0.5]]) };
     } else {
       // For other semirings, use unit weights
       return { R, w: new Map([[left, R.one], [right, R.one]]) };

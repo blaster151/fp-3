@@ -914,7 +914,7 @@ namespace ComoduleExamples {
     console.log('  [a-c]+ accepts "ac":', waAcceptsBool(Range)(['a','c'])) // true
     console.log('  [a-c]+ alphabet:', Object.keys(Range.delta))           // ['a', 'b', 'c']
 
-    // ([a-c]b)* — any number of blocks like "ab","bb","cb"
+    // ([a-c]b)* — an arbitrary number of blocks like "ab","bb","cb"
     const Complex = compileRegexToWA('([a-c]b)*', ['a','b','c'])
     console.log('  ([a-c]b)* accepts "":', waAcceptsBool(Complex)([]))                     // true
     console.log('  ([a-c]b)* accepts "abcb":', waAcceptsBool(Complex)(['a','b','c','b'])) // true
@@ -923,7 +923,7 @@ namespace ComoduleExamples {
     console.log('\nAdvanced Regex Features:')
     const alphabet = ['a', 'b', 'c', 'd', 'x', 'y', 'z']
     
-    // Dot matches any symbol
+    // Dot matches every symbol
     const dotWA = compileRegexToWA('.+', alphabet)
     console.log('  .+ accepts "abc":', waAcceptsBool(dotWA)(['a','b','c']))   // true
     
@@ -932,7 +932,7 @@ namespace ComoduleExamples {
     console.log('  [^xyz]+ accepts "abc":', waAcceptsBool(negWA)(['a','b','c'])) // true
     console.log('  [^xyz]+ accepts "x":', waAcceptsBool(negWA)(['x']))           // false
     
-    // Mixed: any chars ending with non-xyz
+    // Mixed: strings of arbitrary characters ending with non-xyz
     const mixedWA = compileRegexToWA('.*[^xyz]', alphabet)
     console.log('  .*[^xyz] accepts "xya":', waAcceptsBool(mixedWA)(['x','y','a'])) // true
     
@@ -1971,7 +1971,7 @@ namespace ComoduleExamples {
     )
     console.log('  Triangles commute:', trianglesOk)
     
-    // UNIQUENESS: any other satisfying mediator equals canonical
+    // UNIQUENESS: every other satisfying mediator equals canonical
     const duplicate = EnhancedVect.tupleVectFromCone(Ifin, cone, P)
     const unique = EnhancedVect.productUniquenessGivenTrianglesVect(Ifin, projections, P, cone, canonical, duplicate)
     console.log('  Uniqueness verified:', unique)
@@ -2005,7 +2005,7 @@ namespace ComoduleExamples {
     )
     console.log('  Cotriangles commute:', cotrianglesOk)
     
-    // UNIQUENESS: any other satisfying mediator equals canonical
+    // UNIQUENESS: every other satisfying mediator equals canonical
     const duplicateCo = EnhancedVect.cotupleVectFromCocone(Ifin, cocone, C)
     const uniqueCo = EnhancedVect.coproductUniquenessGivenTrianglesVect(Ifin, injections, C, cocone, canonicalCo, duplicateCo)
     console.log('  Uniqueness verified:', uniqueCo)
