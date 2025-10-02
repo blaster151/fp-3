@@ -58,10 +58,10 @@ export const isIsoOrd = (h: OrdHom): boolean => {
   return seen.size === h.cod
 }
 
-export const transportToOrd = (
-  f: Map<any, any>,
-  bijA: Map<any, number>,
-  bijBInv: Map<number, any>,
+export const transportToOrd = <A, B>(
+  f: Map<A, B>,
+  bijA: Map<A, number>,
+  bijBInv: Map<number, B>,
 ): OrdHom => {
   const n = bijA.size as Ord
   const m = bijBInv.size as Ord

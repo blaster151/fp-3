@@ -21,7 +21,7 @@ export const forkCommutes = <Obj, Arr>(
 }
 
 /**
- * Determine monicity by inspecting all forks over the arrow and ensuring any
+ * Determine monicity by inspecting all forks over the arrow and ensuring every
  * commuting fork has identical legs. An optional callback reports the first
  * counterexample discovered.
  */

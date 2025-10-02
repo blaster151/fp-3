@@ -71,7 +71,7 @@ export function checkEntiretyDetailed<R, A, X, Y>(
  * Batch test entirety law across multiple semirings
  */
 export function checkEntiretyAcrossSemirings<A, X, Y>(
-  semirings: Array<{ name: string; R: CSRig<any> }>,
+  semirings: Array<{ name: string; R: CSRig<unknown> }>,
   A: readonly A[],
   f: (a: A) => X,
   g: (a: A) => Y
@@ -110,7 +110,7 @@ export function satisfiesEntiretyLaw<R, A, X, Y>(
  * (should be empty for well-behaved semirings)
  */
 export function findEntiretyCounterexamples<A, X, Y>(
-  semirings: Array<{ name: string; R: CSRig<any> }>,
+  semirings: Array<{ name: string; R: CSRig<unknown> }>,
   A: readonly A[],
   f: (a: A) => X,
   g: (a: A) => Y

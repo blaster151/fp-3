@@ -23,13 +23,13 @@ function wEmit<S, O>(emit: Kernel<S, O>, s: S, o: O, fallback = -Infinity): numb
   return w === undefined ? fallback : w;
 }
 
-/** Viterbi decode under Tropical max-plus (scores=log-probs or any additive scores). */
+/** Viterbi decode under Tropical max-plus (scores=log-probs or arbitrary additive scores). */
 export function viterbiDecode<S, O>(
   Sfin: Fin<S>,
   Ofin: Fin<O>,
   hmm: HMM<S, O>,
   obs: O[],
-  priorScores: Array<[S, number]> // usually log-probs; any additive scores work
+  priorScores: Array<[S, number]> // usually log-probs; arbitrary additive scores work
 ): { path: S[]; bestFinal: S; score: number; last: Dist<S> } {
   // Represent scores in Tropical; normalize so max=0 (optional but tidy)
   let cur: Dist<S> = fromScoresMax(priorScores);
@@ -89,7 +89,7 @@ export function forwardLog<S, O>(
   priorLog: Array<[S, number]>
 ): { logZ: number; alphas: Dist<S>[] } {
   let alpha: Dist<S> = fromLogits(priorLog); // log-weights
-  const alphas: Dist<S>[] = [new Map(alpha)]; // t=0 before any obs
+  const alphas: Dist<S>[] = [new Map(alpha)]; // t=0 before observing data
 
   for (const y of obs) {
     // add emission (log ⊗ = +)

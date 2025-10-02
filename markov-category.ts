@@ -513,7 +513,11 @@ export function checkComonoidLaws<X>(
   );
 
   // Coassociativity: (Δ ; (Δ ⊗ id)) == (Δ ; (id ⊗ Δ)) up to reassociation isos (we compare via deterministic rebracketing)
-  const reassocLtoR = detK(XxXxX, XxXxX_alt, ([[x,y], z]) => [x, [y, z]] as any);
+  const reassocLtoR = detK(
+    XxXxX,
+    XxXxX_alt,
+    ([[x, y], z]): Pair<X, Pair<X, X>> => [x, [y, z] as Pair<X, X>],
+  );
   const lhs = Δ.then(
     new FinMarkov(
       XxX,

@@ -43,7 +43,7 @@ import {
   // Development Utilities
   assertMonoidalFnCoherence, assertMonoidalKleisliRTECoherence,
   // Monoidal Functor Structure
-  MonoidalFunctorK1, monoidalFromApplicative, zipWithFromMonoidal, zipFromMonoidal,
+  MonoidalFunctorK1, FunctorValue, monoidalFromApplicative, zipWithFromMonoidal, zipFromMonoidal,
   // Monoidal Functor Instances
   MonoidalOption, zipOption, zipWithOption,
   MonoidalResult, zipResult, zipWithResult,
@@ -108,6 +108,7 @@ import {
   // Result utilities
   isOk
 } from './allTS'
+import type { Result } from './allTS'
 import {
   mkFin,
   detK,
@@ -693,7 +694,7 @@ const r_bindHO = A_Reader.bindK_HO(
     const A_ReaderTaskResult = makeKleisliArrowRTR<EnvRTR, E>()
 
     // Helpers
-    const show = (label: string) => (r: any) =>
+    const show = (label: string) => (r: Result<E, unknown>) =>
       console.log(label, isErr(r) ? `Err(${r.error})` : `Ok(${JSON.stringify(r.value)})`)
 
     // mapK (A = number)
@@ -2283,7 +2284,8 @@ const r_bindHO = A_Reader.bindK_HO(
         // Define a complex pipeline
         const validate = (n: number) => n > 0 ? Ok(n) : Err('Must be positive')
         const process = (n: number) => Task.of(n * 2)
-        const log = (n: number) => Reader.of((env: any) => n + ' processed in ' + env.context)
+        type PipelineEnv = { readonly context: string }
+        const log = (n: number) => Reader.of((env: PipelineEnv) => n + ' processed in ' + env.context)
 
         // Compose the pipeline
         const pipeline = K_ReaderTask.compose(
@@ -2463,8 +2465,9 @@ const r_bindHO = A_Reader.bindK_HO(
         console.log('\n📊 Do-notation for ReaderTaskEither:')
         
         // Mock functions for demonstration
-        const getUserRTE = (id: string) => RTE.right({ name: `User${id}`, id })
-        const getProfileRTE = (user: any) => RTE.right({ ...user, profile: 'premium' })
+        type User = { readonly name: string; readonly id: string }
+        const getUserRTE = (id: string) => RTE.right<User>({ name: `User${id}`, id })
+        const getProfileRTE = (user: User) => RTE.right({ ...user, profile: 'premium' as const })
         
         // Using Do-notation
         const prog = DoRTE<{ env: string }>()
@@ -2510,7 +2513,8 @@ const r_bindHO = A_Reader.bindK_HO(
         
         const existingRTE = RTE.right({ name: 'John', age: 30 })
         const lifted = W.liftRTE(existingRTE)
-        const processed = W.chain((user: any) => W.of(user.name + ' is ' + user.age))(
+        type Person = { readonly name: string; readonly age: number }
+        const processed = W.chain((user: Person) => W.of(`${user.name} is ${user.age}`))(
           W.chain(() => lifted)(
             W.tell(['Processing user'])
           )
@@ -3082,7 +3086,7 @@ const r_bindHO = A_Reader.bindK_HO(
         // 9) Generic endofunctor usage
         console.log('\n📊 Generic endofunctor usage:')
         
-        // Function that works with any endofunctor
+        // Function that works with every endofunctor
         const doubleEndofunctor = <F extends HK.Id1>(F: EndofunctorK1<F>) => 
           <A>(fa: HK.Kind1<F, A>): HK.Kind1<F, A> => 
             F.map((x: A) => x * 2)(fa)
@@ -3488,9 +3492,9 @@ const r_bindHO = A_Reader.bindK_HO(
         // 10) Generic monoidal functor usage
         console.log('\n📊 Generic monoidal functor usage:')
         
-        // Function that works with any monoidal functor
-        const combineMonoidal = <F>(M: MonoidalFunctorK1<F>) => 
-          <A, B>(fa: any, fb: any) => M.tensor<A, B>(fa, fb)
+        // Function that works with every monoidal functor
+        const combineMonoidal = <F>(M: MonoidalFunctorK1<F>) =>
+          <A, B>(fa: FunctorValue<F, A>, fb: FunctorValue<F, B>) => M.tensor<A, B>(fa, fb)
         
         // Use with Option
         const optionCombine = combineMonoidal(MonoidalOption)
@@ -3517,8 +3521,9 @@ const r_bindHO = A_Reader.bindK_HO(
         console.log(`Store extend: ${StoreC.extract(around)}`)
 
         // Env example
+        const envComonad = EnvC<{ locale: 'en' }>()
         const e1: Env<{locale:'en'}, number> = [{ locale: 'en' }, 42] as const
-        const out = EnvC.extend(w => `(${EnvC.ask(w).locale})=${EnvC.extract(w)}`)(e1) // [{locale:'en'},"(en)=42"]
+        const out = envComonad.extend(w => `(${envComonad.ask(w).locale})=${envComonad.extract(w)}`)(e1) // [{locale:'en'},"(en)=42"]
         console.log(`Env extend: ${JSON.stringify(out)}`)
 
         // Traced with Sum monoid
@@ -3646,8 +3651,18 @@ const r_bindHO = A_Reader.bindK_HO(
         
         // Create strength registry for common functors
         const strengthRegistry = <F>(F: EndofunctorK1<F>): StrengthEnv<F, string> => {
-          if (F === OptionEndo) return strengthEnvOption<string>() as any
-          if (F === IdK1) return { st: <A>(a: A) => ['default', a] as any }
+          if (F === OptionEndo) {
+            return strengthEnvOption<string>() as StrengthEnv<F, string>
+          }
+          if (F === IdK1) {
+            const idStrength: StrengthEnv<'IdK1', string> = {
+              st: <A>(envValue) => {
+                const pair = envValue as Env<string, A>
+                return ['default', pair[1]] as const
+              },
+            }
+            return idStrength as StrengthEnv<F, string>
+          }
           throw new Error(`No strength defined for ${F}`)
         }
         

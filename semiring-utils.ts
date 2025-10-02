@@ -23,6 +23,14 @@ export interface CSRig<R> {
 const mkIsZero = <R>(R: CSRig<R>) => (a: R) => R.eq(a, R.zero);
 const mkIsOne  = <R>(R: CSRig<R>) => (a: R) => R.eq(a, R.one);
 
+export function isNumericRig(R: CSRig<unknown>): R is CSRig<number> {
+  return typeof R.one === "number" && typeof R.zero === "number";
+}
+
+export function isBooleanRig(R: CSRig<unknown>): R is CSRig<boolean> {
+  return typeof R.one === "boolean" && typeof R.zero === "boolean";
+}
+
 // ---------- Number / Probability ( + , × ) ----------
 export const Prob: CSRig<number> = {
   zero: 0,
@@ -146,12 +154,14 @@ export function isEntire<R>(R: CSRig<R>, probes = 128): boolean {
 
   // Fallback randomized check (only meaningful if you can sample R; for numbers we probe ± random)
   // Here we assume number-like; callers can override probes=0 to skip.
+  if (!isNumericRig(R)) return true;
+
   const sample = (): number => Math.random() * 2 - 1; // crude
   for (let i = 0; i < probes; i++) {
     const a = sample();
     const b = sample();
     if (isZero(a) || isZero(b)) continue;
-    if (isZero((R as any).mul(a, b))) return false;
+    if (isZero(R.mul(a, b))) return false;
   }
   return true;
 }
@@ -202,37 +212,29 @@ export function fromBoolSupport<T>(support: Iterable<T>): Map<T, boolean> {
 
 // Read off the "best" key(s) for a distribution under a semiring
 export function argBestR<R, T>(R: CSRig<R>, d: Map<T, R>): T[] {
-  if (R === Prob || R === LogProb) {
-    let best: R = R.zero;
+  if (isNumericRig(R)) {
+    let best: number | null = null;
     let out: T[] = [];
     for (const [x, w] of d) {
-      if (R.eq(w, best)) {
-        out.push(x);
-      } else if ((R as any).add(w, R.zero) === w && (R as any).add(best, R.zero) === best) {
-        // Simple comparison for numbers
-        if ((w as any) > (best as any)) {
-          best = w;
-          out = [x];
-        }
+      if (best === null) {
+        best = w;
+        out = [x];
+        continue;
       }
-    }
-    return out;
-  }
-  
-  if (R === MaxPlus || R === MinPlus) {
-    let best: R = R.zero;
-    let out: T[] = [];
-    for (const [x, w] of d) {
+
       if (R.eq(w, best)) {
         out.push(x);
-      } else if ((w as any) > (best as any)) {
+        continue;
+      }
+
+      if (w > best) {
         best = w;
         out = [x];
       }
     }
     return out;
   }
-  
+
   // Bool: everything with weight true is "reachable"
   const out: T[] = [];
   for (const [x, w] of d) {

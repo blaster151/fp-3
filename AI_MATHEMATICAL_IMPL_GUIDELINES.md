@@ -442,7 +442,7 @@ Create custom ESLint rules when:
 
 ### **Rule Implementation Template**
 ```typescript
-// eslint-plugin-tinyfp/rules/prefer-oracle-over-manual.js
+// eslint-plugin-fp-3/rules/prefer-oracle-over-manual.js
 module.exports = {
   meta: {
     type: "suggestion",

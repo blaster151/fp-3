@@ -2,7 +2,8 @@
 import {
   Fin, Pair, I, Kernel, FinMarkov,
   tensorObj, tensor, swap, copy, discard, fst, snd,
-  kernelToMatrix, prettyMatrix, mass, idK, copyK, discardK
+  kernelToMatrix, prettyMatrix, mass, idK, copyK, discardK,
+  deterministic, IFin
 } from "./markov-category";
 import { Dist } from "./dist";
 import { CSRig } from "./semiring-utils";
@@ -21,8 +22,32 @@ export function checkComonoidLaws<X>(Xf: Fin<X>) {
   const copyCommut  = approxEqualMatrix(swapXX.then(Δ).matrix(), Δ.matrix());
 
   // Counits (using fst/snd via tensor with I)
-  const copyCounitR = approxEqualMatrix(Δ.then(new FinMarkov(XxX, tensorObj(Xf, {elems:[{} as I], eq:()=>true}), tensor((x:any)=>new Map([[x,1]]) as any, discard<X>()))).then(new FinMarkov(tensorObj(Xf, {elems:[{} as I], eq:()=>true}), Xf, fst<X,I>())).matrix(), idK(Xf).matrix());
-  const copyCounitL = approxEqualMatrix(Δ.then(new FinMarkov(XxX, tensorObj({elems:[{} as I], eq:()=>true}, Xf), tensor(discard<X>(), (x:any)=>new Map([[x,1]]) as any))).then(new FinMarkov(tensorObj({elems:[{} as I], eq:()=>true}, Xf), Xf, snd<I,X>())).matrix(), idK(Xf).matrix());
+  const copyCounitR = approxEqualMatrix(
+    Δ
+      .then(
+        new FinMarkov(
+          XxX,
+          tensorObj(Xf, IFin),
+          tensor(deterministic((x: X) => x), discard<X>())
+        )
+      )
+      .then(new FinMarkov(tensorObj(Xf, IFin), Xf, fst<X, I>()))
+      .matrix(),
+    idK(Xf).matrix()
+  );
+  const copyCounitL = approxEqualMatrix(
+    Δ
+      .then(
+        new FinMarkov(
+          XxX,
+          tensorObj(IFin, Xf),
+          tensor(discard<X>(), deterministic((x: X) => x))
+        )
+      )
+      .then(new FinMarkov(tensorObj(IFin, Xf), Xf, snd<I, X>()))
+      .matrix(),
+    idK(Xf).matrix()
+  );
 
   // Coassoc (up to reassociation iso). For brevity we assert true; for rigorous, add reassociation matrix as in earlier file.
   const copyCoassoc = true;
@@ -94,7 +119,7 @@ export function isDeterministic<R, A, B>(
   }
   
   // If we get here, all samples are Dirac distributions
-  // Create the base function that works for any input
+  // Create the base function that works for every input
   const base = (a: A): B => {
     if (baseMap.has(a)) {
       return baseMap.get(a)!;
@@ -159,16 +184,5 @@ export function checkSampDeltaIdentity<R, X>(
   return true;
 }
 
-// Fubini check for any DistLikeMonadSpec
-export function checkFubini<A, B>(spec: any, da: any, db: any): boolean {
-  try {
-    // Check that product(da, db) = bind(da, a => map(db, b => [a,b]))
-    const direct = spec.product(da, db);
-    const indirect = spec.bind(da, (a: A) => spec.map(db, (b: B) => [a, b] as [A, B]));
-    
-    // Simple equality check (for demo purposes)
-    return direct.size === indirect.size;
-  } catch {
-    return false;
-  }
-}
+// Fubini check re-exported for backwards compatibility
+export { checkFubini } from "./markov-category";

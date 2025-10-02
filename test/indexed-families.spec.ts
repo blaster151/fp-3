@@ -231,9 +231,9 @@ describe('Indexed Families and Discrete Categories', () => {
       const complexes = { a: C1, b: C1, c: C1 }
       
       const arrows = [
-        ['a', 'a', idChainMapCompat(C1, FieldReal)],
-        ['b', 'b', idChainMapCompat(C1, FieldReal)],
-        ['c', 'c', idChainMapCompat(C1, FieldReal)],
+        ['a', 'a', idChainMapCompat(C1)],
+        ['b', 'b', idChainMapCompat(C1)],
+        ['c', 'c', idChainMapCompat(C1)],
         ['a', 'b', { S: FieldReal, X: C1, Y: C1, f: { 0: [[2]] } }],
         ['b', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[3]] } }],
         ['a', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[6]] } }] // 2*3=6
@@ -253,9 +253,9 @@ describe('Indexed Families and Discrete Categories', () => {
       const complexes = { a: C1, b: C1, c: C1 }
       
       const arrows = [
-        ['a', 'a', idChainMapCompat(C1, FieldReal)],
-        ['b', 'b', idChainMapCompat(C1, FieldReal)],
-        ['c', 'c', idChainMapCompat(C1, FieldReal)],
+        ['a', 'a', idChainMapCompat(C1)],
+        ['b', 'b', idChainMapCompat(C1)],
+        ['c', 'c', idChainMapCompat(C1)],
         ['a', 'b', { S: FieldReal, X: C1, Y: C1, f: { 0: [[2]] } }],
         ['b', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[3]] } }],
         ['a', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[7]] } }] // Wrong! Should be 6

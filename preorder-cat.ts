@@ -1,7 +1,7 @@
 // preorder-cat.ts — thin categories arising from preorders
 // -----------------------------------------------------------------------------
 // A preorder (P, ≤) can be viewed as a category whose objects are the elements
-// of P and where there is at most one morphism between any two objects. A
+// of P and where there is at most one morphism between each ordered pair of objects. A
 // morphism x → y exists exactly when x ≤ y. Identities correspond to
 // reflexivity and composition to transitivity of the preorder relation.
 

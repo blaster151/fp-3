@@ -161,7 +161,7 @@ describe("Standard experiment / standard measure", () => {
           }
         };
       
-      const result = optimalAction(sm as any, actions, utility);
+      const result = optimalAction(sm, actions, utility);
       
       // act1: 0.8*10 + 0.2*0 = 8
       // act2: 0.8*5 + 0.2*8 = 4 + 1.6 = 5.6

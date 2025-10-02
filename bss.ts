@@ -60,7 +60,7 @@ function linSolve(A: number[][], b: number[], eps = 1e-12): number[] | null {
 // ===== Barycentric solvers for k = 1, 2, 3 =====
 
 function barycentric2(p: number[], q1: number[], q2: number[], eps = 1e-12): number[] | null {
-  // Solve p = w*q1 + (1-w)*q2 ⇒ for any coord with q1≠q2:
+// Solve p = w*q1 + (1-w)*q2 ⇒ for each coordinate with q1≠q2:
   for (let i = 0; i < p.length; i++) {
     const d = q1[i] - q2[i];
     if (Math.abs(d) > eps) {

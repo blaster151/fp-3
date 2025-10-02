@@ -17,11 +17,26 @@ const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 // run Reader/ReaderTask/RTE at a few env samples and compare
 const sampleRs = [0, 1, 42]
-const eqReader = <R, A>(ra: (r:R)=>A, rb: (r:R)=>A) =>
-  sampleRs.every(r => eq(ra(r as any), rb(r as any)))
+const eqReader = <A>(ra: (r:number)=>A, rb: (r:number)=>A) =>
+  sampleRs.every(r => eq(ra(r), rb(r)))
 
-const eqReaderTask = async <R, A>(ra: (r:R)=>Promise<A>, rb: (r:R)=>Promise<A>) =>
-  (await Promise.all(sampleRs.map(async r => eq(await ra(r as any), await rb(r as any))))).every(Boolean)
+const eqReaderTask = async <A>(ra: (r:number)=>Promise<A>, rb: (r:number)=>Promise<A>) =>
+  (await Promise.all(sampleRs.map(async r => eq(await ra(r), await rb(r))))).every(Boolean)
+
+const eqReaderTaskUnknown = (
+  ra: (r:number)=>Promise<unknown>,
+  rb: (r:number)=>Promise<unknown>
+) => eqReaderTask(ra, rb)
+
+const eqRTE = async <E, A>(ra: RTE<number, E, A>, rb: RTE<number, E, A>) => {
+  for (const r of sampleRs) {
+    const [fa, fb] = await Promise.all([ra(r), rb(r)])
+    if (!eq(fa, fb)) {
+      return false
+    }
+  }
+  return true
+}
 
 // ---------- Arbitraries for your datatypes ----------
 // Option
@@ -48,29 +63,49 @@ const arbRTE = <R, E, A>(arbE: fc.Arbitrary<E>, arbA: fc.Arbitrary<A>) =>
 
 // ---------- Instances under test (use the ones from your lib) ----------
 // Option
-const None = { _tag:'None' } as const
-const Some = <A>(a: A) => ({ _tag:'Some' as const, value:a })
-const isSome = <A>(o:any): o is { _tag:'Some'; value:A } => o && o._tag === 'Some'
+type None = { _tag:'None' }
+type Some<A> = { _tag:'Some'; value:A }
+type Option<A> = None | Some<A>
 
-const mapO = <A,B>(f:(a:A)=>B) => (oa:any) => isSome<A>(oa) ? Some(f(oa.value)) : None
-const apO  = <A,B>(ff:any) => (fa:any) => isSome<(a:A)=>B>(ff) && isSome<A>(fa) ? Some(ff.value(fa.value)) : None
-const AppOption = { of: Some, map: mapO as any, ap: apO as any }
+const None: None = { _tag:'None' }
+const Some = <A>(a: A): Option<A> => ({ _tag:'Some', value:a })
+const isSome = <A>(o: Option<A>): o is Some<A> => o._tag === 'Some'
+
+const mapO = <A,B>(f:(a:A)=>B) => (oa: Option<A>): Option<B> => isSome(oa) ? Some(f(oa.value)) : None
+const apO  = <A,B>(ff: Option<(a:A)=>B>) => (fa: Option<A>): Option<B> =>
+  isSome(ff) && isSome(fa) ? Some(ff.value(fa.value)) : None
+const AppOption = { of: Some, map: mapO, ap: apO }
 const MonoidalOption = {
   unit: AppOption.of<void>(undefined),
-  tensor: <A,B>(fa:any, fb:any) => AppOption.ap(AppOption.map((a:A)=>(b:B)=>[a,b] as const)(fa))(fb),
+  tensor: <A,B>(fa: Option<A>, fb: Option<B>): Option<readonly [A, B]> =>
+    AppOption.ap(AppOption.map((a:A)=>(b:B)=>[a,b] as const)(fa))(fb),
   map: AppOption.map
 }
 
 // Result<E,_>
-const Ok = <A>(a:A) => ({ _tag:'Ok' as const, value:a })
-const Err = <E>(e:E) => ({ _tag:'Err' as const, error:e })
-const isOk = (r:any) => r && r._tag === 'Ok'
-const mapR = <E,A,B>(f:(a:A)=>B) => (ra:any) => isOk(ra) ? Ok(f(ra.value)) : ra
-const apR  = <E,A,B>(rf:any) => (ra:any) => isOk(rf)&&isOk(ra) ? Ok(rf.value(ra.value)) : (rf._tag==='Err'? rf: ra)
-const AppResult = <E>() => ({ of: Ok as any, map: mapR as any, ap: apR as any })
+type Err<E> = { _tag:'Err'; error:E }
+type Ok<A> = { _tag:'Ok'; value:A }
+type Result<E, A> = Err<E> | Ok<A>
+
+const Ok = <A>(a:A): Result<never, A> => ({ _tag:'Ok', value:a })
+const Err = <E>(e:E): Result<E, never> => ({ _tag:'Err', error:e })
+const isOk = <E, A>(r: Result<E, A>): r is Ok<A> => r._tag === 'Ok'
+const mapResult = <E>() => <A,B>(f:(a:A)=>B) => (ra: Result<E, A>): Result<E, B> =>
+  isOk(ra) ? Ok(f(ra.value)) : ra
+const apResult  = <E>() => <A,B>(rf: Result<E, (a:A)=>B>) => (ra: Result<E, A>): Result<E, B> => {
+  if (!isOk(rf)) return rf
+  if (!isOk(ra)) return ra
+  return Ok(rf.value(ra.value))
+}
+const AppResult = <E>() => ({
+  of: <A>(a:A): Result<E, A> => Ok(a) as Result<E, A>,
+  map: mapResult<E>(),
+  ap: apResult<E>()
+})
 const MonoidalResult = <E>() => ({
   unit: AppResult<E>().of<void>(undefined),
-  tensor: <A,B>(fa:any, fb:any) => AppResult<E>().ap(AppResult<E>().map((a:A)=>(b:B)=>[a,b] as const)(fa))(fb),
+  tensor: <A,B>(fa: Result<E, A>, fb: Result<E, B>): Result<E, readonly [A, B]> =>
+    AppResult<E>().ap(AppResult<E>().map((a:A)=>(b:B)=>[a,b] as const)(fa))(fb),
   map: AppResult<E>().map
 })
 
@@ -109,16 +144,19 @@ const MonoidalReaderTask = <R>() => ({
 })
 
 // RTE<R,E,_>
-type RTE<R,E,A> = (r:R)=>Promise<{ _tag:'Err'; error:E } | { _tag:'Ok'; value:A }>
+type RTE<R,E,A> = (r:R)=>Promise<Result<E, A>>
 const RTE = {
   of:  <R,E,A>(a:A): RTE<R,E,A> => async (_:R)=>Ok(a),
   map: <E,A,B>(f:(a:A)=>B) => <R>(rte:RTE<R,E,A>): RTE<R,E,B> =>
-    async (r)=>{ const ra = await rte(r); return isOk(ra)? Ok(f(ra.value)): ra as any },
+    async (r) => {
+      const ra = await rte(r)
+      return isOk(ra) ? Ok(f(ra.value)) : ra
+    },
   ap:  <R,E,A,B>(rf:RTE<R,E,(a:A)=>B>) => (ra:RTE<R,E,A>): RTE<R,E,B> =>
     async (r)=> {
       const [f, a] = await Promise.all([rf(r), ra(r)])
-      if (!isOk(f)) return f as any
-      if (!isOk(a)) return a as any
+      if (!isOk(f)) return f
+      if (!isOk(a)) return a
       return Ok(f.value(a.value))
     }
 }
@@ -127,66 +165,72 @@ const MonoidalRTE = <R,E>() => ({
   tensor: <A,B>(fa:RTE<R,E,A>, fb:RTE<R,E,B>): RTE<R,E, readonly[A,B]> =>
     async (r:R) => {
       const [ra, rb] = await Promise.all([fa(r), fb(r)])
-      if (!isOk(ra)) return ra as any
-      if (!isOk(rb)) return rb as any
+      if (!isOk(ra)) return ra
+      if (!isOk(rb)) return rb
       return Ok([ra.value, rb.value] as const)
     },
   map: RTE.map
 })
 
 // ---------- Generic law runners ----------
-const testFunctorLaws = <F>(F:{ map:<A,B>(f:(a:A)=>B)=>(fa:any)=>any }, arbFA: fc.Arbitrary<any>, eqF:(x:any,y:any)=>boolean) =>
-  fc.assert(fc.property(arbFA, fc.func(fc.anything()), fa => eqF(F.map(id as any)(fa), fa))) &&
+const testFunctorLaws = (
+  F:{ map:<A,B>(f:(a:A)=>B)=>(fa:unknown)=>unknown },
+  arbFA: fc.Arbitrary<unknown>,
+  eqF:(x:unknown,y:unknown)=>boolean
+) =>
+  fc.assert(fc.property(arbFA, fc.func(fc.anything()), fa => eqF(F.map(id)(fa), fa))) &&
   fc.assert(fc.property(arbFA, fc.func(fc.anything()), fc.func(fc.anything()),
-    (fa, f:any, g:any) => eqF(F.map(compose(g,f) as any)(fa), F.map(g as any)(F.map(f as any)(fa)))
+    (fa, f: (a:unknown)=>unknown, g: (a:unknown)=>unknown) =>
+      eqF(F.map(compose(g,f))(fa), F.map(g)(F.map(f)(fa)))
   ))
 
-const testMonoidalLawsSync = <F>(M:{ unit:any; tensor:(fa:any,fb:any)=>any; map:<A,B>(f:(a:A)=>B)=>(fa:any)=>any },
-  arbFA: fc.Arbitrary<any>, arbFB: fc.Arbitrary<any>, arbFC: fc.Arbitrary<any>,
-  eqF: (x:any,y:any)=>boolean) => {
+const testMonoidalLawsSync = (
+  M:{ unit:unknown; tensor:(fa:unknown,fb:unknown)=>unknown; map:<A,B>(f:(a:A)=>B)=>(fa:unknown)=>unknown },
+  arbFA: fc.Arbitrary<unknown>, arbFB: fc.Arbitrary<unknown>, arbFC: fc.Arbitrary<unknown>,
+  eqF: (x:unknown,y:unknown)=>boolean) => {
   // Left/Right unit
-  fc.assert(fc.property(arbFA, fa => eqF(M.map(lFrom as any)(fa), M.tensor(M.unit, fa))))
-  fc.assert(fc.property(arbFA, fa => eqF(M.map(rFrom as any)(fa), M.tensor(fa, M.unit))))
+  fc.assert(fc.property(arbFA, fa => eqF(M.map(lFrom)(fa), M.tensor(M.unit, fa))))
+  fc.assert(fc.property(arbFA, fa => eqF(M.map(rFrom)(fa), M.tensor(fa, M.unit))))
   // Associativity
   fc.assert(fc.property(arbFA, arbFB, arbFC, (fa, fb, fc_) => {
-    const left  = M.map(assocFrom as any)(M.tensor(M.tensor(fa, fb), fc_))
+    const left  = M.map(assocFrom)(M.tensor(M.tensor(fa, fb), fc_))
     const right = M.tensor(fa, M.tensor(fb, fc_))
     return eqF(left, right)
   }))
   // Naturality
   fc.assert(fc.property(
     arbFA, arbFB, fc.func(fc.anything()), fc.func(fc.anything()),
-    (fa, fb, f:any, g:any) => {
+    (fa, fb, f: (a:unknown)=>unknown, g: (a:unknown)=>unknown) => {
       const left  = M.tensor(M.map(f)(fa), M.map(g)(fb))
-      const right = M.map(bimap(f,g) as any)(M.tensor(fa, fb))
+      const right = M.map(bimap(f,g))(M.tensor(fa, fb))
       return eqF(left, right)
     }))
 }
 
 // Async version (ReaderTask / RTE)
-const testMonoidalLawsAsync = async <F>(
-  M:{ unit:any; tensor:(fa:any,fb:any)=>any; map:<A,B>(f:(a:A)=>B)=>(fa:any)=>any },
-  arbFA: fc.Arbitrary<any>, arbFB: fc.Arbitrary<any>, arbFC: fc.Arbitrary<any>,
-  eqAF: (x:any,y:any)=>Promise<boolean>
+const testMonoidalLawsAsync = async (
+  M:{ unit:unknown; tensor:(fa:unknown,fb:unknown)=>unknown; map:<A,B>(f:(a:A)=>B)=>(fa:unknown)=>unknown },
+  arbFA: fc.Arbitrary<unknown>, arbFB: fc.Arbitrary<unknown>, arbFC: fc.Arbitrary<unknown>,
+  eqAF: (x:unknown,y:unknown)=>Promise<boolean>
 ) => {
   await fc.assert(
-    fc.asyncProperty(arbFA, async (fa) => await eqAF(M.map(lFrom as any)(fa), M.tensor(M.unit, fa)))
+    fc.asyncProperty(arbFA, async (fa) => await eqAF(M.map(lFrom)(fa), M.tensor(M.unit, fa)))
   )
   await fc.assert(
-    fc.asyncProperty(arbFA, async (fa) => await eqAF(M.map(rFrom as any)(fa), M.tensor(fa, M.unit)))
+    fc.asyncProperty(arbFA, async (fa) => await eqAF(M.map(rFrom)(fa), M.tensor(fa, M.unit)))
   )
   await fc.assert(
     fc.asyncProperty(arbFA, arbFB, arbFC, async (fa, fb, fc_) => {
-      const left  = M.map(assocFrom as any)(M.tensor(M.tensor(fa, fb), fc_))
+      const left  = M.map(assocFrom)(M.tensor(M.tensor(fa, fb), fc_))
       const right = M.tensor(fa, M.tensor(fb, fc_))
       return await eqAF(left, right)
     })
   )
   await fc.assert(
     fc.asyncProperty(arbFA, arbFB, fc.func(fc.anything()), fc.func(fc.anything()),
-      async (fa, fb, f:any, g:any) => {
+      async (fa, fb, f: (a:unknown)=>unknown, g: (a:unknown)=>unknown) => {
         const left  = M.tensor(M.map(f)(fa), M.map(g)(fb))
-        const right = M.map(bimap(f,g) as any)(M.tensor(fa, fb))
+        const right = M.map(bimap(f,g))(M.tensor(fa, fb))
         return await eqAF(left, right)
       })
   )
@@ -210,7 +254,7 @@ const runTests = async () => {
     arbReaderTask<number, number>(fc.integer()),
     arbReaderTask<number, string>(fc.string()),
     arbReaderTask<number, boolean>(fc.boolean()),
-    (x:any,y:any)=>eqReaderTask(x,y)
+    eqReaderTaskUnknown
   )
 
   // RTE<number, string, _>
@@ -219,14 +263,7 @@ const runTests = async () => {
     arbRTE<number, string, number>(fc.string(), fc.integer()),
     arbRTE<number, string, string>(fc.string(), fc.string()),
     arbRTE<number, string, boolean>(fc.string(), fc.boolean()),
-    async (f:any,g:any)=> {
-      // eq over envs
-      for (const r of sampleRs) {
-        const [ra, rb] = await Promise.all([f(r as any), g(r as any)])
-        if (!eq(ra, rb)) return false
-      }
-      return true
-    }
+    (f, g) => eqRTE(f, g)
   )
 
   console.log('✓ Monoidal functor laws passed for Option, Result<string,_>, Reader, ReaderTask, ReaderTaskEither')

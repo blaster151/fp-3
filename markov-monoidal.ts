@@ -1,7 +1,7 @@
 // markov-monoidal.ts — Monoidal / Independence laws (Step 8)
 // Covers "δ and samp are monoidal" + strength naturality-on-second-arg square
 
-import type { CSRig } from "./semiring-utils";
+import { type CSRig, isBooleanRig, isNumericRig } from "./semiring-utils";
 import type { Dist } from "./dist";
 import { dirac, bind, map, strength } from "./dist";
 export { independentIndexedProduct, independentInfObj } from "./markov-infinite";
@@ -207,17 +207,12 @@ export function generateMonoidalTestData<R>(
   sampPair: (d: Dist<R, [string, number]>) => [string, number];
 } {
   // Create appropriate weights for the semiring
-  let weight1: R, weight2: R;
-  if (R.eq(R.one, 1 as any)) {
-    // Probability-like semiring
-    weight1 = 0.3 as any;
-    weight2 = 0.7 as any;
-  } else if (R.eq(R.one, true as any)) {
-    // Boolean semiring
-    weight1 = R.one;
-    weight2 = R.one;
+  let weight1: R;
+  let weight2: R;
+  if (isNumericRig(R)) {
+    weight1 = 0.3;
+    weight2 = 0.7;
   } else {
-    // Other semirings (MaxPlus, etc.)
     weight1 = R.one;
     weight2 = R.one;
   }
@@ -229,16 +224,11 @@ export function generateMonoidalTestData<R>(
   const dx: Dist<R, string> = { R, w: new Map([["x", weight1], ["y", weight2]]) };
   
   // Create appropriate samplers
-  const compare = (a: R, b: R): number => {
-    if (R.eq(R.one, 1 as any)) {
-      return (a as any) - (b as any); // Numeric comparison
-    } else if (R.eq(R.one, true as any)) {
-      return (a as any) ? 1 : 0; // Boolean: true > false
-    } else {
-      // For other semirings, use a default comparison
-      return R.eq(a, b) ? 0 : 1;
-    }
-  };
+  const compare: (a: R, b: R) => number = isNumericRig(R)
+    ? ((a: number, b: number) => a - b)
+    : isBooleanRig(R)
+    ? ((a: boolean, b: boolean) => (a ? 1 : 0) - (b ? 1 : 0))
+    : (a, b) => (R.eq(a, b) ? 0 : 1);
   
   const sampX = createArgmaxSampler(R, compare);
   const sampY = createArgmaxSampler(R, compare);

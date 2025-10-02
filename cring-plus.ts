@@ -33,8 +33,8 @@ export interface CRingPlusHom<A, B> {
   readonly label?: string;
 }
 
-export type CRingPlusObj = CRingPlusObject<any>;
-export type CRingPlusMor = CRingPlusHom<any, any>;
+export type CRingPlusObj = CRingPlusObject<unknown>;
+export type CRingPlusMor = CRingPlusHom<unknown, unknown>;
 
 type HomCheck = { description: string };
 
