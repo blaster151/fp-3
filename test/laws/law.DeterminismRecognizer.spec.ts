@@ -155,10 +155,10 @@ describe("Determinism recognizer", () => {
   describe("Samp-Delta Round-trips", () => {
     it("verifies samp∘delta = id for Prob", () => {
       const delta = dirac(Prob);
-      const samp = (d: any) => {
-        let best: any = null;
+      const samp = <X>(d: Dist<number, X>) => {
+        let best: X | null = null;
         let bestWeight = -1;
-        d.w.forEach((weight: number, key: any) => {
+        d.w.forEach((weight: number, key: X) => {
           if (weight > bestWeight) {
             bestWeight = weight;
             best = key;
@@ -180,7 +180,7 @@ describe("Determinism recognizer", () => {
 
     it("verifies samp∘delta = id for BoolRig", () => {
       const delta = dirac(BoolRig);
-      const samp = (d: any) => {
+      const samp = <X>(d: Dist<boolean, X>) => {
         // For Boolean semiring, just pick any non-false element
         for (const [key, weight] of d.w) {
           if (weight === true) return key;

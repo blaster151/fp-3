@@ -19,7 +19,7 @@ import {
 } from "../../pullback-square";
 
 // Helper to create distributions
-const d = (R: any, w: [string, any][]): Dist<any, string> => ({ R, w: new Map(w) });
+const d = <R>(R: CSRig<R>, w: [string, R][]): Dist<R, string> => ({ R, w: new Map(w) });
 
 // A trivial "spoof" generator to try to cheat the joint (should FAIL to cheat for Prob)
 const spoof = (xa: string, ya: string) => (a: unknown): Dist<number, string> => {

@@ -36,12 +36,12 @@ describe('Core Adjunction Framework', () => {
     // Test functor composition
     const F: CoreFunctor<string, number> = {
       onObj: (s: string) => s.length,
-      onMor: (f: any) => f
+      onMor: (f: unknown) => f
     }
 
     const G: CoreFunctor<number, boolean> = {
       onObj: (n: number) => n > 0,
-      onMor: (f: any) => f
+      onMor: (f: unknown) => f
     }
 
     const GF = coreComposeFun(F, G)
@@ -52,22 +52,22 @@ describe('Core Adjunction Framework', () => {
   test('natural transformation operations work', () => {
     const F: CoreFunctor<string, string> = {
       onObj: (s: string) => `F(${s})`,
-      onMor: (f: any) => `F(${f})`
+      onMor: (f: unknown) => `F(${f})`
     }
 
     const G: CoreFunctor<string, string> = {
       onObj: (s: string) => `G(${s})`,
-      onMor: (f: any) => `G(${f})`
+      onMor: (f: unknown) => `G(${f})`
     }
 
     const alpha: CoreNatTrans<typeof F, typeof G> = {
-      at: (x: any) => `α(${x})`
+      at: (x: unknown) => `α(${x})`
     }
 
     // Test whiskering
     const H: CoreFunctor<number, string> = {
       onObj: (n: number) => n.toString(),
-      onMor: (f: any) => f
+      onMor: (f: unknown) => f
     }
 
     const whiskerL = coreWhiskerLeft(H, alpha)
@@ -78,7 +78,7 @@ describe('Core Adjunction Framework', () => {
 
     // Test vertical composition
     const beta: CoreNatTrans<typeof G, typeof F> = {
-      at: (x: any) => `β(${x})`
+      at: (x: unknown) => `β(${x})`
     }
 
     const comp = coreVcomp(alpha, beta)
@@ -91,21 +91,21 @@ describe('Core Adjunction Framework', () => {
     const D = { name: 'D' }
 
     const F: CoreFunctor<typeof C, typeof D> = {
-      onObj: (c: any) => `F(${c})`,
-      onMor: (f: any) => `F(${f})`
+      onObj: (c: unknown) => `F(${c})`,
+      onMor: (f: unknown) => `F(${f})`
     }
 
     const U: CoreFunctor<typeof D, typeof C> = {
-      onObj: (d: any) => `U(${d})`,
-      onMor: (f: any) => `U(${f})`
+      onObj: (d: unknown) => `U(${d})`,
+      onMor: (f: unknown) => `U(${f})`
     }
 
-    const unit: CoreNatTrans<any, any> = {
-      at: (x: any) => `η(${x})`
+    const unit: CoreNatTrans<CoreFunctor<unknown, unknown>, CoreFunctor<unknown, unknown>> = {
+      at: (x: unknown) => `η(${x})`
     }
 
-    const counit: CoreNatTrans<any, any> = {
-      at: (x: any) => `ε(${x})`
+    const counit: CoreNatTrans<CoreFunctor<unknown, unknown>, CoreFunctor<unknown, unknown>> = {
+      at: (x: unknown) => `ε(${x})`
     }
 
     const adj: CoreAdjunction<typeof C, typeof D, typeof F, typeof U> = {
@@ -124,35 +124,35 @@ describe('Core Adjunction Framework', () => {
     const D = { name: 'D' }
 
     const F: CoreFunctor<typeof C, typeof D> = {
-      onObj: (c: any) => `F(${c})`,
-      onMor: (f: any) => `F(${f})`
+      onObj: (c: unknown) => `F(${c})`,
+      onMor: (f: unknown) => `F(${f})`
     }
 
     const U: CoreFunctor<typeof D, typeof C> = {
-      onObj: (d: any) => `U(${d})`,
-      onMor: (f: any) => `U(${f})`
+      onObj: (d: unknown) => `U(${d})`,
+      onMor: (f: unknown) => `U(${f})`
     }
 
     const adj: CoreAdjunction<typeof C, typeof D, typeof F, typeof U> = {
       F, U,
-      unit: { at: (x: any) => `η(${x})` },
-      counit: { at: (x: any) => `ε(${x})` }
+      unit: { at: (x: unknown) => `η(${x})` },
+      counit: { at: (x: unknown) => `ε(${x})` }
     }
 
     // Create test functors H: C -> E, K: D -> E
-    const H: CoreFunctor<typeof C, any> = {
-      onObj: (c: any) => `H(${c})`,
-      onMor: (f: any) => `H(${f})`
+    const H: CoreFunctor<typeof C, string> = {
+      onObj: (c: unknown) => `H(${c})`,
+      onMor: (f: unknown) => `H(${f})`
     }
 
-    const K: CoreFunctor<typeof D, any> = {
-      onObj: (d: any) => `K(${d})`,
-      onMor: (f: any) => `K(${f})`
+    const K: CoreFunctor<typeof D, string> = {
+      onObj: (d: unknown) => `K(${d})`,
+      onMor: (f: unknown) => `K(${f})`
     }
 
     // Test natural transformation α : F∘H ⇒ K
-    const alpha: CoreNatTrans<any, any> = {
-      at: (x: any) => `α(${x})`
+    const alpha: CoreNatTrans<CoreFunctor<unknown, unknown>, CoreFunctor<unknown, unknown>> = {
+      at: (x: unknown) => `α(${x})`
     }
 
     // Compute left mate
@@ -161,8 +161,8 @@ describe('Core Adjunction Framework', () => {
     expect(alphaMate.at).toBeDefined()
 
     // Compute right mate
-    const beta: CoreNatTrans<any, any> = {
-      at: (x: any) => `β(${x})`
+    const beta: CoreNatTrans<CoreFunctor<unknown, unknown>, CoreFunctor<unknown, unknown>> = {
+      at: (x: unknown) => `β(${x})`
     }
 
     const betaMate = rightMate(adj, beta, H, K)
@@ -175,33 +175,33 @@ describe('Core Adjunction Framework', () => {
     const D = { name: 'D' }
 
     const F: CoreFunctor<typeof C, typeof D> = {
-      onObj: (c: any) => `F(${c})`,
-      onMor: (f: any) => `F(${f})`
+      onObj: (c: unknown) => `F(${c})`,
+      onMor: (f: unknown) => `F(${f})`
     }
 
     const U: CoreFunctor<typeof D, typeof C> = {
-      onObj: (d: any) => `U(${d})`,
-      onMor: (f: any) => `U(${f})`
+      onObj: (d: unknown) => `U(${d})`,
+      onMor: (f: unknown) => `U(${f})`
     }
 
     const adj: CoreAdjunction<typeof C, typeof D, typeof F, typeof U> = {
       F, U,
-      unit: { at: (x: any) => `η(${x})` },
-      counit: { at: (x: any) => `ε(${x})` }
+      unit: { at: (x: unknown) => `η(${x})` },
+      counit: { at: (x: unknown) => `ε(${x})` }
     }
 
-    const H: CoreFunctor<typeof C, any> = {
-      onObj: (c: any) => `H(${c})`,
-      onMor: (f: any) => `H(${f})`
+    const H: CoreFunctor<typeof C, string> = {
+      onObj: (c: unknown) => `H(${c})`,
+      onMor: (f: unknown) => `H(${f})`
     }
 
-    const K: CoreFunctor<typeof D, any> = {
-      onObj: (d: any) => `K(${d})`,
-      onMor: (f: any) => `K(${f})`
+    const K: CoreFunctor<typeof D, string> = {
+      onObj: (d: unknown) => `K(${d})`,
+      onMor: (f: unknown) => `K(${f})`
     }
 
-    const alpha: CoreNatTrans<any, any> = {
-      at: (x: any) => `α(${x})`
+    const alpha: CoreNatTrans<CoreFunctor<unknown, unknown>, CoreFunctor<unknown, unknown>> = {
+      at: (x: unknown) => `α(${x})`
     }
 
     const sampleObjs = ['c1', 'c2']
@@ -214,19 +214,19 @@ describe('Core Adjunction Framework', () => {
     const D = { name: 'D' }
 
     const F: CoreFunctor<typeof C, typeof D> = {
-      onObj: (c: any) => `F(${c})`,
-      onMor: (f: any) => `F(${f})`
+      onObj: (c: unknown) => `F(${c})`,
+      onMor: (f: unknown) => `F(${f})`
     }
 
     const U: CoreFunctor<typeof D, typeof C> = {
-      onObj: (d: any) => `U(${d})`,
-      onMor: (f: any) => `U(${f})`
+      onObj: (d: unknown) => `U(${d})`,
+      onMor: (f: unknown) => `U(${f})`
     }
 
     const adj: CoreAdjunction<typeof C, typeof D, typeof F, typeof U> = {
       F, U,
-      unit: { at: (x: any) => `η(${x})` },
-      counit: { at: (x: any) => `ε(${x})` }
+      unit: { at: (x: unknown) => `η(${x})` },
+      counit: { at: (x: unknown) => `ε(${x})` }
     }
 
     const sampleCObjs = ['c1', 'c2']
@@ -245,42 +245,42 @@ describe('Core Adjunction Framework', () => {
     const D = { name: 'D' }
 
     const F: CoreFunctor<typeof C, typeof D> = {
-      onObj: (c: any) => `F(${c})`,
-      onMor: (f: any) => `F(${f})`
+      onObj: (c: unknown) => `F(${c})`,
+      onMor: (f: unknown) => `F(${f})`
     }
 
     const U: CoreFunctor<typeof D, typeof C> = {
-      onObj: (d: any) => `U(${d})`,
-      onMor: (f: any) => `U(${f})`
+      onObj: (d: unknown) => `U(${d})`,
+      onMor: (f: unknown) => `U(${f})`
     }
 
     const adj: CoreAdjunction<typeof C, typeof D, typeof F, typeof U> = {
       F, U,
-      unit: { at: (x: any) => `η(${x})` },
-      counit: { at: (x: any) => `ε(${x})` }
+      unit: { at: (x: unknown) => `η(${x})` },
+      counit: { at: (x: unknown) => `ε(${x})` }
     }
 
-    const H: CoreFunctor<typeof C, any> = {
-      onObj: (c: any) => `H(${c})`,
-      onMor: (f: any) => `H(${f})`
+    const H: CoreFunctor<typeof C, string> = {
+      onObj: (c: unknown) => `H(${c})`,
+      onMor: (f: unknown) => `H(${f})`
     }
 
-    const K: CoreFunctor<typeof D, any> = {
-      onObj: (d: any) => `K(${d})`,
-      onMor: (f: any) => `K(${f})`
+    const K: CoreFunctor<typeof D, string> = {
+      onObj: (d: unknown) => `K(${d})`,
+      onMor: (f: unknown) => `K(${f})`
     }
 
     // Test dual shapes
-    const gamma: CoreNatTrans<any, any> = {
-      at: (x: any) => `γ(${x})`
+    const gamma: CoreNatTrans<CoreFunctor<unknown, unknown>, CoreFunctor<unknown, unknown>> = {
+      at: (x: unknown) => `γ(${x})`
     }
 
     const leftDual = leftMateRightShape(adj, gamma, H, K)
     expect(leftDual).toBeDefined()
     expect(leftDual.at).toBeDefined()
 
-    const alpha: CoreNatTrans<any, any> = {
-      at: (x: any) => `α(${x})`
+    const alpha: CoreNatTrans<CoreFunctor<unknown, unknown>, CoreFunctor<unknown, unknown>> = {
+      at: (x: unknown) => `α(${x})`
     }
 
     const rightDual = rightMateRightShape(adj, alpha, H, K)

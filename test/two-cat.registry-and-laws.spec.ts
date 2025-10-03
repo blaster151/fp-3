@@ -32,16 +32,16 @@ const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 // A tiny Identity applicative for Traversable laws
 const IdApp: SimpleApplicativeK1<'Id'> = {
   of:  <A>(a: A) => ({ _id: a }),
-  map: <A, B>(f: (a: A) => B) => (gx: any) => ({ _id: f(gx._id) }),
-  ap:  <A, B>(gf: any) => (ga: any) => ({ _id: gf._id(ga._id) }),
+  map: <A, B>(f: (a: A) => B) => (gx: { _id: A }) => ({ _id: f(gx._id) }),
+  ap:  <A, B>(gf: { _id: (a: A) => B }) => (ga: { _id: A }) => ({ _id: gf._id(ga._id) }),
 }
 
 // Compose applicative (Composition of two applicatives)
 const ComposeApp = <G, H>(G: SimpleApplicativeK1<G>, H: SimpleApplicativeK1<H>): SimpleApplicativeK1<['Compose', G, H]> => ({
   of:  <A>(a: A) => G.of(H.of(a)),
-  map: <A, B>(f: (a: A) => B) => (gha: any) => G.map(H.map(f))(gha),
-  ap:  <A, B>(ghf: any) => (gha: any) =>
-        G.ap(G.map((hf: any) => (ha: any) => H.ap(hf)(ha))(ghf))(gha),
+  map: <A, B>(f: (a: A) => B) => <GHA extends EndofunctorValue<G, EndofunctorValue<H, A>>>(gha: GHA) => G.map(H.map(f))(gha),
+  ap:  <A, B>(ghf: EndofunctorValue<G, EndofunctorValue<H, (a: A) => B>>) => (gha: EndofunctorValue<G, EndofunctorValue<H, A>>) =>
+        G.ap(G.map(<HF extends EndofunctorValue<H, (a: A) => B>>(hf: HF) => <HA extends EndofunctorValue<H, A>>(ha: HA) => H.ap(hf)(ha))(ghf))(gha),
 })
 
 describe('Traversable registry + laws', () => {
@@ -56,8 +56,8 @@ describe('Traversable registry + laws', () => {
 
     // Sequence via distributive law explicitly:
     const seqArr = distributePromiseK1(TraversableArrayK1)
-    const explicit = await seqArr.app( await nested ).then((arr: any[]) =>
-      Promise.all(arr.map((po: Promise<any>) => po)).then((oas) => oas)
+    const explicit = await seqArr.app( await nested ).then((arr: Array<Promise<ReturnType<typeof Some>>>) =>
+      Promise.all(arr.map((po) => po)).then((oas) => oas)
     )
 
     // Check the result has the expected structure
@@ -126,8 +126,8 @@ describe('Traversable registry + laws', () => {
     const CompEO  = registerCompDerived(R, EitherE as any, OptionF as any)
 
     // check we can sequence Promise through each via registry lookups
-    const seq = (F: EndofunctorK1<any>, val: any) =>
-      (distributePromiseK1 as any)(R.get(F)!).app(val)
+    const seq = <F>(F: EndofunctorK1<F>, val: unknown) =>
+      (distributePromiseK1 as typeof distributePromiseK1<F>)(R.get(F)!).app(val)
 
     // Sum<Either,Option>
     const sVal = inR<any, any, number>(Some(Promise.resolve(10)))

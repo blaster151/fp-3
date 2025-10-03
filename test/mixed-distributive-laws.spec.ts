@@ -86,7 +86,7 @@ describe('Mixed Distributive Laws', () => {
             error: fc.string()
           })
         ),
-        (tga: any) => {
+        (tga: Result<string, Store<number, string>>) => {
           const result = dist.dist(tga)
           const left = StoreC.extract(result)
           const right = ResultM.map(StoreC.extract as any)(tga)

@@ -18,8 +18,10 @@ const categories = {
       /any \/\* .* \*\//,   // any /* F<A> */ - HKT placeholders
       /satisfies.*as any/,  // satisfies SomeInterface as any
       /return.*as any/,     // return expr as any (often for complex type inference)
+      /CoreFunctor<any, any>/, // Type constraint definitions - necessary for variance
+      /CoreFunctor<.*any.*>/,  // Generic type constraints with any - necessary for variance
     ],
-    description: 'HKT placeholders and complex type inference workarounds'
+    description: 'HKT placeholders, complex type inference workarounds, and necessary type constraints'
   },
   
   typeAssertions: {

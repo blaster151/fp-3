@@ -113,7 +113,7 @@ describe("LAW: Markov Category Laws", () => {
      * Test Oracle: Matrix equality up to numerical tolerance
      */
 
-    const comonoidReport = (Xf: any) =>
+    const comonoidReport = <X>(Xf: Fin<X>) =>
       checkMarkovComonoid(buildMarkovComonoidWitness(Xf))
 
     it("copy/discard witness forms a commutative comonoid", () => {
@@ -214,7 +214,7 @@ describe("LAW: Markov Category Laws", () => {
         for (const Yf of sampleFins) {
           const codomain = buildMarkovComonoidWitness(Yf)
           for (const outputs of enumerateOutputs(Xf, Yf)) {
-            const base = (x: any) => outputs[indexOfEq(Xf, x)]
+            const base = (x: unknown) => outputs[indexOfEq(Xf, x)]
             const arrow = detK(Xf, Yf, base)
             const witness = buildMarkovDeterministicWitness(domain, codomain, arrow, { base })
             const report = checkDeterministicComonoid(witness)

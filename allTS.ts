@@ -17354,7 +17354,7 @@ export interface CoreFunctor<CObj, DObj> {
   onMor: (f: unknown) => unknown
 }
 
-type AnyCoreFunctor = CoreFunctor<unknown, unknown>
+type AnyCoreFunctor = CoreFunctor<any, any>
 
 export interface CoreNatTrans<
   F extends AnyCoreFunctor,

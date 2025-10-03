@@ -122,7 +122,7 @@ describe("LAW: Recursion Scheme laws", () => {
           )({ tag: 'Sum', n })
           
           const right = hyloExpr(
-            (s: any) => mapExprF(f)(coalgExpr_sum1toN(s)),
+            (s: { tag: 'Sum', n: number }) => mapExprF(f)(coalgExpr_sum1toN(s)),
             alg
           )({ tag: 'Sum', n })
           

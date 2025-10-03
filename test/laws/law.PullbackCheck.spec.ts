@@ -17,7 +17,7 @@ import {
 } from "../../pullback-check";
 
 // Helper function to create distributions
-const d = (R: any, w: [string, any][]): Dist<any, string> => ({ R, w: new Map(w) });
+const d = <R>(R: CSRig<R>, w: [string, R][]): Dist<R, string> => ({ R, w: new Map(w) });
 
 describe("Pullback/faithfulness (3.4) — Δ∘∇ = id", () => {
   
