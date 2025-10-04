@@ -10,6 +10,28 @@ Split the monolithic `allTS.ts` (420KB+) into manageable, cohesive modules while
 ## 📦 Module Structure
 
 
+### Equipment & relative layers (top-level helpers)
+
+- **`virtual-equipment/`** — Core interfaces, restriction helpers, and analyzers
+  for companions, conjoints, loose monads, skew multicategory substitution, and
+  weighted limit/extension witnesses.  Serves as the ambient double-category
+  scaffolding for upcoming relative constructions.
+- **`relative/`** — Relative staging area covering Definition 4.1 monad framing,
+  Definition 5.1 adjunction data, the Definition 5.14/5.18/5.23 morphism
+  analyzers (left/right/strict morphisms plus the Lemma 5.17/5.21 embeddings),
+  Section 6 Kleisli/Eilenberg–Moore presentations, Corollary 5.34/5.40
+  composition analyzers, loose-monoid conversion helpers, and the dual
+  relative-comonad analyzers from Section 7.  The folder exposes
+  `RelativeAdjunctionData`, framing/hom-isomorphism oracles, morphism checks,
+  universal-property analyzers, composition oracles, and Lemma 5.5
+  unit/counit analyzers that validate boundary data whenever a presentation
+  accompanies the adjunction. Proposition 5.8/5.10/5.11 executables recover
+  relative adjoints from pointwise left lifts, left extensions along fully
+  faithful roots, and shared colimit preservation data, while the new Theorem
+  5.24 resolution registry entry and the remaining strengthened universal
+  properties promised by Theorem 6.49 stay visible as follow-up work.
+
+
 ### CORE (`src/core`)
 
 - **`hkt.ts`**: Higher-kinded type system and utilities

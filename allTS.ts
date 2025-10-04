@@ -13,6 +13,10 @@
  *  tsc --target ES2019 --module ES2020 fp-3.ts
  */
 
+// Aggregated exports for the emerging virtual equipment and relative layers.
+export * from "./virtual-equipment";
+export * from "./relative";
+
 // Some guidelines
 // Prefer the “3-then-<R>” shape for helpers:
 
@@ -17454,6 +17458,12 @@ export function coreIdNat<F extends AnyCoreFunctor>(F_: F): CoreNatTrans<F, F> {
    Adjunction Interface and Triangle Identities
    ================================================================ */
 
+// TODO(virtual-equipment): Equipment-level adjunctions and relative variants
+// are staged in `virtual-equipment/`.  Keep this notice so contributors who
+// search here discover the dedicated module boundary.
+// TODO(relative-monads): Definition 4.1 framing analyzers and law catalogues
+// now live in `relative/`.  Future refactors should wire the classic monad
+// helpers through that layer once the relative adjunction calculus is ready.
 /**
  * An adjunction F ⊣ U : C ↔ D given by unit η : Id_C ⇒ U∘F and
  * counit ε : F∘U ⇒ Id_D.

@@ -3,6 +3,12 @@
     // File Layout
     "rootDir": "./",
     "outDir": "./dist",
+    "baseUrl": "./",
+    "paths": {
+      "virtual-equipment/*": ["virtual-equipment/*"],
+      "relative/*": ["relative/*"],
+      "scripts/*": ["scripts/*"]
+    },
 
         // Environment Settings - Latest standards
         "target": "ES2020",

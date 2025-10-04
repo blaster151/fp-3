@@ -40,6 +40,38 @@ This PDI folder contains **TWO DISTINCT SYSTEMS**:
 - **`RECOVERY_STRATEGY.md`** - Recovering lost knowledge
 - **`SYSTEM_ARCHITECTURE.md`** - Two independent systems explained
 
+### Virtual Equipment Scaffolding
+
+- **`virtual-equipment/`** - Dedicated module boundary for the formal-category
+  equipment layer.  Exports tight-side aliases, `VirtualEquipment` interfaces,
+  restriction builders that surface `RepresentabilityWitness` metadata,
+  companion/conjoint placeholders, loose-monoid and skew-multicategory
+  analyzers, loose adjunction map/right lift/right extension analyzers, weighted
+  cone/cocone and
+  restriction checkers, density/absolute colimit analyzers, and pending
+  oracles so future relative-monad work can plug into the oracle registry
+  without rediscovering where the scaffolding lives.
+- **`relative/`** - Home for the emerging relative layer.  It now bundles
+  Definition 4.1 analyzers (`analyzeRelativeMonadFraming`,
+  `analyzeRelativeMonadRepresentability`,
+  `analyzeRelativeMonadIdentityReduction`, the Theorem 4.29 skew-monoid
+  bridge, composition/representation analyzers, and loose-monoid conversion
+  helpers) together with Definition 5.1 relative-adjunction scaffolding
+  (`RelativeAdjunctionData`, framing/hom-isomorphism analyzers, composition
+  checks, and oracles), the new Definition 5.14/5.18/5.23 morphism analyzers
+  (left/right/strict morphisms and their slice/coslice embeddings), Section 6
+  Kleisli/Eilenberg–Moore framing checks, and the dual relative-comonad
+  machinery from Section 7.  Identity-case constructors make the Vitest suites
+  executable without external data, while pending associativity checks,
+  strengthened universal properties, and the Theorem 5.24 resolution entry keep
+  the remaining theorems visible in `LAWS.md`.  The
+  `unitCounit.presentation` oracle validates Lemma 5.5 boundary data whenever
+  an explicit unit/counit presentation accompanies the adjunction, and the
+  Proposition 5.8/5.10/5.11 oracles (pointwise left lifts, left extensions
+  along fully faithful roots, and shared colimit preservation) now sit beside
+  the left/right/strict morphism checks to keep these operational insights
+  executable alongside the existing framing checks.
+
 ### Tools
 - **`upgrade-analyzer.js`** - Analyze patterns and manage backlog
 - **`maintenance-reminder.js`** - Check maintenance status
