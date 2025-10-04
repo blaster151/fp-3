@@ -17,6 +17,16 @@ import type {
 } from './allTS'
 
 import {
+  pendingCompanion,
+  pendingConjoint,
+  promoteFunctor,
+  summarizeEquipmentOracles,
+  virtualizeFiniteCategory,
+} from './virtual-equipment'
+import { TwoObjectCategory, nonIdentity } from './two-object-cat'
+import type { TwoArrow, TwoObject } from './two-object-cat'
+
+import {
   // Core values
   Some, None, Ok, Err, VOk, VErr,
   // Monads
@@ -1829,6 +1839,44 @@ namespace ComoduleExamples {
     console.log('✓ Arrow category working!')
   }
 
+  export function virtualEquipmentCompanionDemo() {
+    console.log('\n--- Virtual Equipment: Companion/Conjoint scaffolding ---')
+
+    const { functor: identityTight, report } = promoteFunctor<TwoObject, TwoArrow, TwoObject, TwoArrow>(
+      TwoObjectCategory,
+      TwoObjectCategory,
+      {
+        F0: (object: TwoObject) => object,
+        F1: (arrow: TwoArrow) => arrow,
+      },
+      {
+        objects: TwoObjectCategory.objects,
+        composablePairs: [
+          { f: TwoObjectCategory.id('•'), g: TwoObjectCategory.id('•') },
+          { f: nonIdentity, g: TwoObjectCategory.id('★') },
+        ],
+      },
+    )
+
+    console.log('Identity functor law report:')
+    console.log('  preserves identities:', report.preservesIdentities)
+    console.log('  preserves composition:', report.preservesComposition)
+
+    const equipment = virtualizeFiniteCategory(TwoObjectCategory)
+
+    const companion = pendingCompanion('id_{TwoObjectCategory}')(equipment, identityTight)
+    console.log('\nCompanion availability:', companion.available)
+    console.log('Companion details:', companion.details)
+
+    const conjoint = pendingConjoint('id_{TwoObjectCategory}')(equipment, identityTight)
+    console.log('\nConjoint availability:', conjoint.available)
+    console.log('Conjoint details:', conjoint.details)
+
+    const oracleSummary = summarizeEquipmentOracles()
+    console.log('\nOracle summary (pending until builders land):')
+    console.log(JSON.stringify(oracleSummary, null, 2))
+  }
+
   export function completeAdjunctionExample() {
     console.log('\n--- Complete Adjunction Theory: Σ ⊣ u* ⊣ Π ---')
     
@@ -2126,6 +2174,7 @@ async function runExamples() {
   ComoduleExamples.enhancedIndexedFamiliesExample()
   ComoduleExamples.categoryLimitsExample()
   ComoduleExamples.arrowCategoryExample()
+  ComoduleExamples.virtualEquipmentCompanionDemo()
   ComoduleExamples.completeAdjunctionExample()
   ComoduleExamples.kanDiscreteVectExample()
   ComoduleExamples.universalPropertyExample()

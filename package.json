@@ -42,6 +42,7 @@
     "laws": "tsx laws.monoidal.ts",
     "gen:stubs": "ts-node --compiler-options '{\"module\":\"CommonJS\",\"verbatimModuleSyntax\":false}' scripts/gen-oracle-stubs.ts",
     "check:stubs": "ts-node --compiler-options '{\"module\":\"CommonJS\",\"verbatimModuleSyntax\":false}' scripts/gen-oracle-stubs.ts --dry",
+    "generate:virtual-equipment": "node scripts/generate-virtual-equipment.mjs",
     "prepare": "node scripts/setup-git-hooks.cjs"
   },
   "keywords": [

@@ -30,6 +30,201 @@ This document catalogs the algebraic laws that our functional programming constr
 - A contravariant functor \(F: C \to D\) is a covariant functor \(C \to D^{\mathrm{op}}\). Build one with `Contra(C, D, F0, F1op)` and verify the identity/reversed-composition laws using `isContravariant(C, D, F, objects, arrows)`.
 - Duality principle: any first-order statement about categories remains valid when arrows are reversed. In code, wrap property testers with `dualizeProperty(P)` to automatically obtain the dual assertion.
 
+### Virtual equipment coherence (scaffolding)
+
+- `virtual-equipment/equipment-laws.ts` enumerates the coherence laws we plan to
+  check for companions, conjoints, loose monads, and the emerging right
+  extension/right lift calculus once the equipment layer is live.  Each law
+  is tagged with a registry path such as `virtualEquipment.companion.unit`.
+- **Registry Path:** `virtualEquipment` (with nested entries `companion.unit`,
+  `companion.counit`, `conjoint.unit`, `conjoint.counit`,
+  `looseMonad.unit`, `looseMonad.multiplication`, `skew.composition`, `maps.representableRight`,
+  `extensions.rightExtension`, `extensions.rightLift`,
+  `extensions.compatibility`, `weighted.cone`, `weighted.cocone`,
+  `weighted.colimitRestriction`, `weighted.limitRestriction`,
+  `weighted.leftExtension`, `density.identity`,
+  `faithfulness.restrictions`, `faithfulness.pointwise`,
+  `faithfulness.leftExtension`, `absolute.colimit`,
+  `absolute.leftExtension`, `absolute.pointwiseLeftLift`).
+- **Witness Builder:** `enumeratePendingEquipmentOracles()` currently records
+  the outstanding checks so the oracle registry can surface TODO status.
+- **Check:** `EquipmentOracles` functions (`companion.unit`, etc.) return
+  structured `{ pending: true }` results until concrete implementations are
+  wired up.
+- **Implementation Notes:** the oracle stubs live alongside the law catalogue in
+  `virtual-equipment/equipment-oracles.ts`, making it straightforward to swap in
+  executable witnesses in later steps without changing documentation links.
+- **Remark 4.5 / Theorem 4.7 hook:** `virtualEquipment.skew.composition`
+  documents the associative-normal left-skew multicategory substitution law.
+  The new `virtual-equipment/skew-multicategory.ts` analyzer checks that each
+  substitution slot in a loose composite receives a multimorphism with the same
+  loose arrow framing and identity vertical boundaries, setting the stage for the
+  paper’s Proposition 4.12 equivalence between relative monads and loose
+  monoids.
+- **Remark 2.20 hook:** `virtualEquipment.maps.representableRight` will certify
+  that a loose adjunction whose right leg is representable classifies its left
+  leg as a map; until implemented the oracle remains pending but the law is
+  catalogued for future automation.
+- **Definition 3.2 / Lemma 3.4 hooks:** the pending laws
+  `virtualEquipment.extensions.rightExtension`,
+  `virtualEquipment.extensions.rightLift`, and
+  `virtualEquipment.extensions.compatibility` mirror the paper’s right
+  extension/right lift framing requirements and their interplay.  The new
+  analyzers in `virtual-equipment/extensions.ts` enforce the structural
+  preconditions so executable oracles can be wired in later.
+- **Definition 3.9 / Lemma 3.13 / Lemma 3.14 hooks:** the pending laws
+  `virtualEquipment.weighted.cone`, `virtualEquipment.weighted.cocone`,
+  `virtualEquipment.weighted.colimitRestriction`,
+  `virtualEquipment.weighted.limitRestriction`, and
+  `virtualEquipment.weighted.leftExtension` are now catalogued.  The
+  corresponding analyzers in `virtual-equipment/limits.ts` check that weighted
+  cones/cocones reuse the appropriate boundaries, that B(f,1)/B(1,g)
+  restrictions respect those boundaries, and that left extensions computed by
+  weighted colimits inherit the cocone framing, paving the way for executable
+  oracles mirroring Lemmas 3.13–3.14.
+- **Definitions 3.19–3.24 hooks:** new registry entries
+  `virtualEquipment.density.identity`, `virtualEquipment.absolute.colimit`,
+  `virtualEquipment.absolute.leftExtension`, and
+  `virtualEquipment.absolute.pointwiseLeftLift` document the density and
+  absolute-colimit checks introduced in `virtual-equipment/absoluteness.ts`.
+  The accompanying analyzers ensure identity restrictions witness companions,
+  j-absolute colimits carry left-opcartesian comparisons, left extensions reuse
+  those witnesses, and pointwise left lifts reference the same tight 1-cell.
+- **Definitions 3.26–3.29 hooks:** registry paths
+  `virtualEquipment.faithfulness.restrictions`,
+  `virtualEquipment.faithfulness.pointwise`, and
+  `virtualEquipment.faithfulness.leftExtension` catalogue the new analyzers in
+  `virtual-equipment/faithfulness.ts`.  They enforce that fully faithful tight
+  1-cells admit identity restrictions with representability witnesses, that
+  pointwise left extensions and left lifts share their framing data, and that
+  left extensions along fully faithful cells carry invertible counits.
+
+### Relative monad scaffolding
+
+- `relative/relative-laws.ts` mirrors Definition 4.1’s unit and extension
+  diagrams.  The `relativeMonad.unit.framing` and
+  `relativeMonad.extension.framing` entries back the structural invariant
+  oracle `RelativeMonadOracles.framing`, ensuring the chosen 2-cells reuse the
+  designated root/carrier boundaries.  `relativeMonad.extension.associativity`
+  records the pending equality witness for the two composites that appear in
+  the associativity pasting diagram.  Use `RelativeMonadOracles` to obtain the
+  executable framing report (with issues enumerated) and a placeholder pending
+  result for associativity until tight 2-cell comparisons land.
+- `relativeMonad.representableLooseMonoid` captures Theorem 4.16’s bridge
+  between j-relative monads and monoids in `X[j]` whose loose arrows are
+  representable.  `RelativeMonadOracles.representableLooseMonoid` consumes the
+  `RepresentabilityWitness` emitted by the equipment layer’s left restriction
+  builders and reports whether the relative monad’s loose arrow truly arises
+  from restricting the identity along the chosen root.
+- `relativeMonad.skewMonoid.bridge` aggregates Theorem 4.29’s hypotheses:
+  existence and preservation of left extensions along `j`, j-absolute and
+  dense comparison data, and invertibility of the right unit.  The
+  `RelativeMonadOracles.skewMonoidBridge` oracle threads the corresponding
+  analyzers (`analyzeLeftExtensionFromWeightedColimit`,
+  `analyzePointwiseLeftExtensionLiftCorrespondence`,
+  `analyzeLeftExtensionPreservesAbsolute`,
+  `analyzeDensityViaIdentityRestrictions`, and
+  `analyzeFullyFaithfulLeftExtension`) together with a loose-monoid framing
+  report to certify that the relative monad realises a monoid in the left skew
+  monoidal category `X[j]`.
+- `relativeMonad.identityReduction` implements Corollary 4.20’s observation that
+  ordinary monads embed as j-relative monads with identity roots.  The
+  associated oracle `RelativeMonadOracles.identityReduction` checks that the
+  root and carrier coincide with the identity boundary and that the loose arrow
+  is endo on that object, surfacing actionable diagnostics when the reduction
+  fails.
+
+### Relative comonad scaffolding
+
+- `relative/relative-comonads.ts` dualises the relative monad analyzers to the
+  counit/coextension setting.  The law entries
+  `relativeComonad.counit.framing` and `relativeComonad.coextension.framing`
+  back `RelativeComonadOracles.counitFraming` and
+  `RelativeComonadOracles.coextensionFraming`, certifying that the 2-cells reuse
+  the carrier/root boundaries required by the dual of Definition 4.1.
+- `relativeComonad.corepresentableLooseComonoid` captures the dual of
+  Theorem 4.16.  `RelativeComonadOracles.corepresentability` consumes the right
+  restriction witness emitted by the equipment layer and confirms that
+  `C(t,j)` arises from restricting the identity along `j`.
+- `relativeComonad.identityReduction` mirrors Corollary 4.20: the
+  `RelativeComonadOracles.identityReduction` oracle demands that the root and
+  carrier are identities so the structure collapses to an ordinary comonad.
+
+### Relative composition and representation scaffolding
+
+- `relative/relative-composition.ts` introduces analyzers for Corollary 5.34 and
+  Corollary 5.40, verifying that the right leg of one relative adjunction
+  matches the root of the next and that consecutive relative monads share
+  carriers/loose arrows.  The law registry entries
+  `relativeAdjunction.composition.compatibility` and
+  `relativeMonad.composition.compatibility` surface these diagnostics via
+  `RelativeCompositionOracles.adjunctionComposition` and
+  `RelativeCompositionOracles.monadComposition`.
+- `relativeMonad.representation.looseMonoid` registers the executable bridge
+  between relative monads and loose monoids.  The oracle
+  `RelativeCompositionOracles.looseMonoidBridge` converts a loose monoid into a
+  relative monad, combining the loose monoid framing report with the relative
+  monad analyzer to document success or precise failures.
+
+### Relative adjunction scaffolding
+
+- `relative/relative-adjunctions.ts` introduces `RelativeAdjunctionData` and the
+  analyzers `analyzeRelativeAdjunctionFraming` and
+  `analyzeRelativeAdjunctionHomIsomorphism`, tracking Definition 5.1’s domain
+  and codomain requirements for the root, left, and right legs together with the
+  hom-set isomorphism between `C(ℓ-, -)` and `E(j-, r-)`. The associated law
+  entries `relativeAdjunction.framing` and `relativeAdjunction.homIso.framing`
+  surface structured diagnostics via `RelativeAdjunctionOracles`.
+- `relativeAdjunction.unitCounit.presentation` now executes the Lemma 5.5
+  boundary checks. `RelativeAdjunctionOracles.unitCounitPresentation` accepts an
+  explicit unit/counit presentation, verifies that the 2-cells reuse the root,
+  left, and right tight boundaries, and reports a pending diagnostic only when
+  no presentation accompanies the adjunction data.
+- `relativeAdjunction.pointwiseLeftLift` captures Proposition 5.8, which
+  computes the right relative adjoint as a pointwise left lift of \(ℓ\) along
+  \(j\). The oracle `RelativeAdjunctionOracles.pointwiseLeftLift` threads the
+  `analyzePointwiseLeftLift` report into the adjunction framing, flagging
+  mismatched domains/codomains when the lift fails to recover the right leg.
+- `relativeAdjunction.rightExtension` reflects Proposition 5.10’s construction
+  of right relative adjoints via left extensions along a fully faithful root.
+  The oracle aggregates `analyzeLeftExtensionFromWeightedColimit`,
+  `analyzeFullyFaithfulLeftExtension`, and the pointwise lift correspondence to
+  surface any missing hypotheses.
+- `relativeAdjunction.colimitPreservation` enforces Proposition 5.11 by
+  comparing a shared weight preserved by \(j\) and \(ℓ\). The oracle checks that
+  both left extensions reuse the same weight boundaries and that, whenever the
+  root preserves the colimit, the left leg does as well.
+- `relativeAdjunction.leftMorphism` records Definition 5.14. The analyzer
+  ensures both relative adjunctions share the same root, that the comparison
+  tight cell runs between their apices, and that the supplied 2-cell reuses the
+  left legs as its vertical boundaries, making Lemma 5.17’s embedding into the
+  slice category \(\mathcal{X}/E\) executable.
+- `relativeAdjunction.rightMorphism` dualises the previous item for
+  Definition 5.18. The analyzer checks that the comparison tight cell runs
+  between the domains of the right legs and that the framed 2-cell mirrors the
+  coslice embedding from Lemma 5.21.
+- `relativeAdjunction.strictMorphism` packages Definition 5.23. The oracle
+  demands that the left and right morphism data agree on their comparison tight
+  cell and combines both framing reports to witness strict morphisms as common
+  refinements of the left/right notions.
+- `relativeAdjunction.resolution.relativeMonad` keeps Theorem 5.24 visible in
+  the registry; the analyzer will compare the induced relative monad against the
+  adjunction’s hom-isomorphism data once the mate calculus is executable.
+
+### Relative Kleisli and Eilenberg–Moore scaffolding
+
+- `relative/relative-algebras.ts` provides
+  `RelativeKleisliPresentation`/`RelativeEilenbergMoorePresentation` together
+  with `analyzeRelativeKleisliUniversalProperty` and
+  `analyzeRelativeEilenbergMooreUniversalProperty`. These analyzers ensure the
+  opalgebra/algebra actions reuse the designated root/carrier boundaries,
+  matching the framing prerequisites of Theorem 6.39 and Theorem 6.49.
+- `relativeMonad.kleisli.universalOpalgebra` and
+  `relativeMonad.eilenbergMoore.universalAlgebra` catalogue the executable
+  structural invariants exposed by `RelativeAlgebraOracles`. The registry entry
+  `relativeMonad.universal.strengthenedComparisons` keeps the stronger universal
+  property checks visible while their oracles remain pending.
+
 ## Core Algebraic Structures
 
 ### Initial tensor unit induces semicartesian structure
