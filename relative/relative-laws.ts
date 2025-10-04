@@ -85,6 +85,12 @@ export const RelativeAdjunctionLawRegistry = {
     summary:
       "The chosen 2-cells witnessing C(ℓ-, -) ≅ E(j-, r-) must have matching frames and reuse ℓ and r as their vertical boundaries, mirroring Definition 5.1.",
   },
+  precomposition: {
+    name: "Relative adjunction tight precomposition",
+    registryPath: "relativeAdjunction.precomposition.tight",
+    summary:
+      "Proposition 5.29 transports j-relative adjunctions along tight cells u : A' → A by forming (ℓ ∘ u ⊣_{j ∘ u} r); the oracle checks the shared domain required for this precomposition.",
+  },
   unitCounit: {
     name: "Relative adjunction unit/counit presentation",
     registryPath: "relativeAdjunction.unitCounit.presentation",

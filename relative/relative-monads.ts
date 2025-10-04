@@ -23,6 +23,11 @@ import {
   isIdentityVerticalBoundary,
   verticalBoundariesEqual,
 } from "../virtual-equipment";
+import type {
+  RelativeAdjunctionData,
+  RelativeAdjunctionFramingReport,
+} from "./relative-adjunctions";
+import { analyzeRelativeAdjunctionHomIsomorphism } from "./relative-adjunctions";
 
 export interface RelativeMonadData<Obj, Arr, Payload, Evidence> {
   readonly equipment: VirtualEquipment<Obj, Arr, Payload, Evidence>;
@@ -51,6 +56,27 @@ export interface RelativeMonadIdentityReductionReport {
   readonly holds: boolean;
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
+}
+
+export interface RelativeMonadResolutionLooseMonadReport<Obj, Payload> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly induced?: EquipmentProarrow<Obj, Payload>;
+}
+
+export interface RelativeMonadResolutionReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly monadFraming: RelativeMonadFramingReport;
+  readonly homIsomorphism: RelativeAdjunctionFramingReport;
+  readonly looseMonad: RelativeMonadResolutionLooseMonadReport<Obj, Payload>;
+}
+
+export interface RelativeMonadResolutionData<Obj, Arr, Payload, Evidence> {
+  readonly monad: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+  readonly adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
 }
 
 const frameMatchesLooseCell = <Obj, Payload>(
@@ -267,6 +293,98 @@ export const analyzeRelativeMonadIdentityReduction = <Obj, Arr, Payload, Evidenc
     : `Identity-root reduction issues: ${issues.join("; ")}`;
 
   return { holds, issues, details };
+};
+
+export const analyzeRelativeMonadResolution = <Obj, Arr, Payload, Evidence>(
+  data: RelativeMonadResolutionData<Obj, Arr, Payload, Evidence>,
+): RelativeMonadResolutionReport<Obj, Arr, Payload, Evidence> => {
+  const { monad, adjunction } = data;
+  const issues: string[] = [];
+
+  if (monad.equipment !== adjunction.equipment) {
+    issues.push("Relative adjunction and monad must share the same virtual equipment.");
+  }
+
+  const equality = adjunction.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+
+  if (!verticalBoundariesEqual(equality, monad.root, adjunction.root)) {
+    issues.push("Relative adjunction root j must match the monad root.");
+  }
+
+  if (!verticalBoundariesEqual(equality, monad.carrier, adjunction.right)) {
+    issues.push("Relative monad carrier should match the right leg r.");
+  }
+
+  if (!equality(monad.looseCell.from, adjunction.root.from)) {
+    issues.push("Loose arrow E(j,r) should originate at the domain of j.");
+  }
+
+  if (!equality(monad.looseCell.to, adjunction.right.to)) {
+    issues.push("Loose arrow E(j,r) should land at the codomain of r.");
+  }
+
+  const monadFraming = analyzeRelativeMonadFraming(monad);
+  const homIsomorphism = analyzeRelativeAdjunctionHomIsomorphism(adjunction);
+
+  const looseIssues: string[] = [];
+  const forwardTarget = adjunction.homIsomorphism.forward.target;
+
+  if (!equality(forwardTarget.leftBoundary, monad.looseCell.from)) {
+    looseIssues.push("Hom-isomorphism target should start at dom(j) to expose E(j,r).");
+  }
+
+  if (!equality(forwardTarget.rightBoundary, monad.looseCell.to)) {
+    looseIssues.push("Hom-isomorphism target should end at cod(r) to expose E(j,r).");
+  }
+
+  const matchingArrows = forwardTarget.arrows.filter(
+    (arrow) => equality(arrow.from, monad.looseCell.from) && equality(arrow.to, monad.looseCell.to),
+  );
+
+  let induced: EquipmentProarrow<Obj, Payload> | undefined;
+
+  if (matchingArrows.length === 0) {
+    looseIssues.push("Hom-isomorphism target should contain a loose arrow matching E(j,r).");
+  } else {
+    if (matchingArrows.length > 1) {
+      looseIssues.push("Hom-isomorphism target should identify a unique loose arrow matching E(j,r).");
+    }
+    [induced] = matchingArrows;
+    if (induced && induced !== monad.looseCell) {
+      looseIssues.push("Loose monad arrow C(ℓ,r) must coincide with the supplied E(j,r) witness.");
+    }
+  }
+
+  const looseHolds = looseIssues.length === 0;
+  const looseMonad: RelativeMonadResolutionLooseMonadReport<Obj, Payload> = {
+    holds: looseHolds,
+    issues: looseIssues,
+    details: looseHolds
+      ? "Hom-isomorphism target realises the loose arrow E(j,r) as promised by Lemma 5.27 and Corollary 5.28."
+      : `Loose monad comparison issues: ${looseIssues.join("; ")}`,
+    induced,
+  };
+
+  const combinedIssues = [
+    ...issues,
+    ...monadFraming.issues,
+    ...homIsomorphism.issues,
+    ...looseMonad.issues,
+  ];
+
+  const holds =
+    issues.length === 0 && monadFraming.holds && homIsomorphism.holds && looseMonad.holds;
+
+  return {
+    holds,
+    issues: holds ? [] : combinedIssues,
+    details: holds
+      ? "Relative adjunction resolves the monad: root, carrier, and loose arrow agree with Theorem 5.24."
+      : `Relative adjunction resolution issues: ${combinedIssues.join("; ")}`,
+    monadFraming,
+    homIsomorphism,
+    looseMonad,
+  };
 };
 
 export interface RelativeMonadSkewMonoidBridgeInput<Obj, Arr, Payload, Evidence> {

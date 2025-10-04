@@ -99,6 +99,20 @@ export interface RelativeAdjunctionStrictMorphismReport {
   readonly right: RelativeAdjunctionRightMorphismReport;
 }
 
+export interface RelativeAdjunctionPrecompositionInput<Obj, Arr, Payload, Evidence> {
+  readonly adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
+  readonly precomposition: EquipmentVerticalBoundary<Obj, Arr>;
+}
+
+export interface RelativeAdjunctionPrecompositionReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly root?: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly left?: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly right?: EquipmentVerticalBoundary<Obj, Arr>;
+}
+
 const boundariesMatch = <Obj, Arr>(
   equality: (left: Obj, right: Obj) => boolean,
   actual: EquipmentVerticalBoundary<Obj, Arr>,
@@ -746,6 +760,66 @@ export const analyzeRelativeAdjunctionStrictMorphism = <Obj, Arr, Payload, Evide
       : `Relative adjunction strict-morphism issues: ${issues.join("; ")}`,
     left: leftReport,
     right: rightReport,
+  };
+};
+
+const composeBoundary = <Obj, Arr, Payload, Evidence>(
+  equipment: VirtualEquipment<Obj, Arr, Payload, Evidence>,
+  upper: EquipmentVerticalBoundary<Obj, Arr>,
+  lower: EquipmentVerticalBoundary<Obj, Arr>,
+  details: string,
+): EquipmentVerticalBoundary<Obj, Arr> => ({
+  from: lower.from,
+  to: upper.to,
+  tight: equipment.tight.compose(upper.tight, lower.tight),
+  details,
+});
+
+export const analyzeRelativeAdjunctionPrecomposition = <Obj, Arr, Payload, Evidence>(
+  input: RelativeAdjunctionPrecompositionInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionPrecompositionReport<Obj, Arr, Payload, Evidence> => {
+  const { adjunction, precomposition } = input;
+  const { equipment, root, left, right } = adjunction;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  if (!equality(precomposition.to, root.from)) {
+    issues.push("Precomposition tight cell must target the adjunction root domain A.");
+  }
+
+  if (!equality(precomposition.to, left.from)) {
+    issues.push("Precomposition tight cell must also target the left leg domain A.");
+  }
+
+  if (issues.length > 0) {
+    return {
+      holds: false,
+      issues,
+      details: `Relative adjunction precomposition issues: ${issues.join("; ")}`,
+    };
+  }
+
+  const composedRoot = composeBoundary(
+    equipment,
+    root,
+    precomposition,
+    "Precomposed root j ∘ u supplied by Proposition 5.29.",
+  );
+  const composedLeft = composeBoundary(
+    equipment,
+    left,
+    precomposition,
+    "Precomposed left leg ℓ ∘ u supplied by Proposition 5.29.",
+  );
+
+  return {
+    holds: true,
+    issues: [],
+    details:
+      "Tight precomposition transports the relative adjunction along u, aligning with Proposition 5.29.",
+    root: composedRoot,
+    left: composedLeft,
+    right,
   };
 };
 
