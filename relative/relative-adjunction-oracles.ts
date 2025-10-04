@@ -3,6 +3,7 @@ import type {
   RelativeAdjunctionData,
   RelativeAdjunctionLeftLiftInput,
   RelativeAdjunctionLeftMorphismData,
+  RelativeAdjunctionPrecompositionInput,
   RelativeAdjunctionRightExtensionInput,
   RelativeAdjunctionRightMorphismData,
   RelativeAdjunctionStrictMorphismData,
@@ -18,7 +19,10 @@ import {
   analyzeRelativeAdjunctionLeftMorphism,
   analyzeRelativeAdjunctionRightMorphism,
   analyzeRelativeAdjunctionStrictMorphism,
+  analyzeRelativeAdjunctionPrecomposition,
 } from "./relative-adjunctions";
+import type { RelativeMonadData } from "./relative-monads";
+import { analyzeRelativeMonadResolution } from "./relative-monads";
 import {
   RelativeAdjunctionLawRegistry,
   type RelativeAdjunctionLawKey,
@@ -64,6 +68,26 @@ export const RelativeAdjunctionOracles = {
   ): RelativeAdjunctionOracleResult => {
     const descriptor = RelativeAdjunctionLawRegistry.homIsomorphism;
     const report = analyzeRelativeAdjunctionHomIsomorphism(data);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  precomposition: <Obj, Arr, Payload, Evidence>(
+    data: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+    input?: RelativeAdjunctionPrecompositionInput<Obj, Arr, Payload, Evidence>["precomposition"],
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.precomposition;
+    if (!input) {
+      return pendingOracle(
+        "precomposition",
+        `${descriptor.name} oracle requires a tight cell u : A' → A to precompose; none was supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionPrecomposition({ adjunction: data, precomposition: input });
     return {
       holds: report.holds,
       pending: false,
@@ -191,11 +215,26 @@ export const RelativeAdjunctionOracles = {
       issues: report.issues,
     };
   },
-  resolution: (): RelativeAdjunctionOracleResult =>
-    pendingOracle(
-      "resolution",
-      `${RelativeAdjunctionLawRegistry.resolution.name} awaits the mate-calculus implementation promised by Theorem 5.24.`,
-    ),
+  resolution: <Obj, Arr, Payload, Evidence>(
+    data: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+    monad?: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.resolution;
+    if (!monad) {
+      return pendingOracle(
+        "resolution",
+        `${descriptor.name} oracle requires a relative monad to compare against; none was supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeMonadResolution({ monad, adjunction: data });
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
 } as const;
 
 export interface RelativeAdjunctionOracleInputs<Obj, Arr, Payload, Evidence> {
@@ -206,6 +245,8 @@ export interface RelativeAdjunctionOracleInputs<Obj, Arr, Payload, Evidence> {
   readonly leftMorphism?: RelativeAdjunctionLeftMorphismData<Obj, Arr, Payload, Evidence>;
   readonly rightMorphism?: RelativeAdjunctionRightMorphismData<Obj, Arr, Payload, Evidence>;
   readonly strictMorphism?: RelativeAdjunctionStrictMorphismData<Obj, Arr, Payload, Evidence>;
+  readonly resolution?: { readonly monad: RelativeMonadData<Obj, Arr, Payload, Evidence> };
+  readonly precomposition?: RelativeAdjunctionPrecompositionInput<Obj, Arr, Payload, Evidence>["precomposition"];
 }
 
 export const enumerateRelativeAdjunctionOracles = <Obj, Arr, Payload, Evidence>(
@@ -215,11 +256,12 @@ export const enumerateRelativeAdjunctionOracles = <Obj, Arr, Payload, Evidence>(
   const base: RelativeAdjunctionOracleResult[] = [
     RelativeAdjunctionOracles.framing(data),
     RelativeAdjunctionOracles.homIsomorphism(data),
+    RelativeAdjunctionOracles.precomposition(data, inputs?.precomposition),
     RelativeAdjunctionOracles.unitCounitPresentation(data, inputs?.unitCounit),
     RelativeAdjunctionOracles.pointwiseLeftLift(data, inputs?.leftLift),
     RelativeAdjunctionOracles.rightExtension(data, inputs?.rightExtension),
     RelativeAdjunctionOracles.colimitPreservation(data, inputs?.colimitPreservation),
-    RelativeAdjunctionOracles.resolution(),
+    RelativeAdjunctionOracles.resolution(data, inputs?.resolution?.monad),
   ];
 
   if (inputs?.leftMorphism) {

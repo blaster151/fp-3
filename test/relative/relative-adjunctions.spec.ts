@@ -15,6 +15,7 @@ import {
   analyzeRelativeAdjunctionPointwiseLeftLift,
   analyzeRelativeAdjunctionRightExtension,
   analyzeRelativeAdjunctionColimitPreservation,
+  analyzeRelativeAdjunctionPrecomposition,
   describeTrivialRelativeAdjunction,
   describeTrivialRelativeAdjunctionUnitCounit,
   analyzeRelativeAdjunctionLeftMorphism,
@@ -37,6 +38,7 @@ import {
   RelativeAdjunctionOracles,
   type RelativeAdjunctionOracleInputs,
 } from "../../relative/relative-adjunction-oracles";
+import { describeTrivialRelativeMonad } from "../../relative/relative-monads";
 
 const makeTrivialAdjunction = () => {
   const equipment = virtualizeFiniteCategory(TwoObjectCategory);
@@ -435,6 +437,41 @@ describe("Relative adjunction colimit preservation analyzer", () => {
   });
 });
 
+describe("Relative adjunction precomposition analyzer", () => {
+  it("accepts identity precomposition", () => {
+    const { equipment, adjunction } = makeTrivialAdjunction();
+    const identity = identityVerticalBoundary(
+      equipment,
+      "•",
+      "Identity tight cell supplying Proposition 5.29 precomposition.",
+    );
+    const report = analyzeRelativeAdjunctionPrecomposition({
+      adjunction,
+      precomposition: identity,
+    });
+    expect(report.holds).toBe(true);
+    expect(report.root?.from).toBe(identity.from);
+    expect(report.left?.from).toBe(identity.from);
+  });
+
+  it("detects mismatched domains", () => {
+    const { equipment, adjunction } = makeTrivialAdjunction();
+    const mismatch = identityVerticalBoundary(
+      equipment,
+      "○",
+      "Domain-mismatched precomposition to force a failure.",
+    );
+    const report = analyzeRelativeAdjunctionPrecomposition({
+      adjunction,
+      precomposition: mismatch,
+    });
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Precomposition tight cell must target the adjunction root domain A.",
+    );
+  });
+});
+
 describe("Relative adjunction oracles", () => {
   it("summarises framing and hom-isomorphism results", () => {
     const { adjunction } = makeTrivialAdjunction();
@@ -446,11 +483,45 @@ describe("Relative adjunction oracles", () => {
     expect(homIso.holds).toBe(true);
   });
 
+  it("defaults the precomposition oracle to pending when absent", () => {
+    const { adjunction } = makeTrivialAdjunction();
+    const result = RelativeAdjunctionOracles.precomposition(adjunction);
+    expect(result.pending).toBe(true);
+    expect(result.holds).toBe(false);
+  });
+
+  it("confirms identity precomposition when supplied", () => {
+    const { equipment, adjunction } = makeTrivialAdjunction();
+    const precomposition = identityVerticalBoundary(
+      equipment,
+      "•",
+      "Identity tight cell supplied to the precomposition oracle.",
+    );
+    const result = RelativeAdjunctionOracles.precomposition(adjunction, precomposition);
+    expect(result.pending).toBe(false);
+    expect(result.holds).toBe(true);
+  });
+
   it("defaults the unit/counit oracle to pending when absent", () => {
     const { adjunction } = makeTrivialAdjunction();
     const result = RelativeAdjunctionOracles.unitCounitPresentation(adjunction);
     expect(result.pending).toBe(true);
     expect(result.holds).toBe(false);
+  });
+
+  it("defaults the resolution oracle to pending when no monad is supplied", () => {
+    const { adjunction } = makeTrivialAdjunction();
+    const result = RelativeAdjunctionOracles.resolution(adjunction);
+    expect(result.pending).toBe(true);
+    expect(result.holds).toBe(false);
+  });
+
+  it("confirms resolutions when provided with a matching monad", () => {
+    const { equipment, adjunction } = makeTrivialAdjunction();
+    const monad = describeTrivialRelativeMonad(equipment, "•");
+    const result = RelativeAdjunctionOracles.resolution(adjunction, monad);
+    expect(result.pending).toBe(false);
+    expect(result.holds).toBe(true);
   });
 
   describe("relative adjunction morphism analyzers", () => {
@@ -539,6 +610,7 @@ describe("Relative adjunction oracles", () => {
     const leftMorphism = describeIdentityRelativeAdjunctionLeftMorphism(adjunction);
     const rightMorphism = describeIdentityRelativeAdjunctionRightMorphism(adjunction);
     const strictMorphism = describeIdentityRelativeAdjunctionStrictMorphism(adjunction);
+    const monad = describeTrivialRelativeMonad(equipment, "•");
     const withPresentation: RelativeAdjunctionOracleInputs<
       RelativeParams[0],
       RelativeParams[1],
@@ -552,17 +624,25 @@ describe("Relative adjunction oracles", () => {
       leftMorphism,
       rightMorphism,
       strictMorphism,
+      resolution: { monad },
+      precomposition: identityVerticalBoundary(
+        equipment,
+        "•",
+        "Identity tight cell supplied to enumerate the precomposition oracle.",
+      ),
     };
     const results = enumerateRelativeAdjunctionOracles(adjunction, withPresentation);
-    expect(results).toHaveLength(10);
+    expect(results).toHaveLength(11);
     expect(results[2].pending).toBe(false);
     expect(results[2].holds).toBe(true);
     expect(results[3].pending).toBe(false);
     expect(results[4].pending).toBe(false);
     expect(results[5].pending).toBe(false);
-    expect(results[6].pending).toBe(true);
+    expect(results[6].pending).toBe(false);
+    expect(results[6].holds).toBe(true);
     expect(results[7].pending).toBe(false);
     expect(results[8].pending).toBe(false);
     expect(results[9].pending).toBe(false);
+    expect(results[10].pending).toBe(false);
   });
 });

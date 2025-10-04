@@ -10,11 +10,13 @@ import {
   analyzeRelativeMonadFraming,
   analyzeRelativeMonadIdentityReduction,
   analyzeRelativeMonadRepresentability,
+  analyzeRelativeMonadResolution,
   analyzeRelativeMonadSkewMonoidBridge,
   describeTrivialRelativeMonad,
   type RelativeMonadData,
   type RelativeMonadSkewMonoidBridgeInput,
 } from "../../relative/relative-monads";
+import { describeTrivialRelativeAdjunction } from "../../relative/relative-adjunctions";
 import {
   RelativeMonadOracles,
   enumerateRelativeMonadOracles,
@@ -154,6 +156,36 @@ describe("Relative monad identity reduction", () => {
     expect(report.holds).toBe(false);
     expect(report.issues).toContain(
       "Root j and carrier t must coincide to model an ordinary monad.",
+    );
+  });
+});
+
+describe("Relative monad resolution analyzer", () => {
+  it("recognises the trivial resolution", () => {
+    const { equipment, trivial } = makeTrivialData();
+    const adjunction = describeTrivialRelativeAdjunction(equipment, "•");
+    const report = analyzeRelativeMonadResolution({ monad: trivial, adjunction });
+    expect(report.holds).toBe(true);
+    expect(report.looseMonad.holds).toBe(true);
+    expect(report.looseMonad.induced).toBe(trivial.looseCell);
+    expect(report.issues).toHaveLength(0);
+  });
+
+  it("detects mismatched carriers", () => {
+    const { equipment, trivial } = makeTrivialData();
+    const adjunction = describeTrivialRelativeAdjunction(equipment, "•");
+    const mismatched = {
+      ...trivial,
+      carrier: identityVerticalBoundary(
+        equipment,
+        "★",
+        "Mismatched carrier to violate the resolution conditions.",
+      ),
+    } as typeof trivial;
+    const report = analyzeRelativeMonadResolution({ monad: mismatched, adjunction });
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Relative monad carrier should match the right leg r.",
     );
   });
 });
