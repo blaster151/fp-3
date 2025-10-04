@@ -5,6 +5,9 @@ import type { Dist } from "./dist";
 import { standardMeasure, equalDistNum } from "./standard-experiment";
 import { sosdFromWitness, Dilation } from "./sosd";
 
+const NEG_WEIGHT_TOL = 5e-3;
+const MIX_TOL = 3e-3;
+
 // ===== Helpers to turn posteriors into vectors over Θ =====
 
 function thetaOrder<Θ>(m: Dist<number, Θ>): Θ[] {
@@ -15,17 +18,57 @@ function asVec<Θ>(post: Dist<number, Θ>, order: readonly Θ[]): number[] {
   return order.map(th => post.w.get(th) ?? 0);
 }
 
+function experimentsEqual<
+  Θ extends string | number,
+  X extends string | number,
+  Y extends string | number
+>(
+  m: Dist<number, Θ>,
+  f: (θ: Θ) => Dist<number, X>,
+  g: (θ: Θ) => Dist<number, Y>,
+  xVals: readonly X[],
+  yVals: readonly Y[],
+  eps = MIX_TOL
+): boolean {
+  const xSet = new Set<X>(xVals);
+  const ySet = new Set<Y>(yVals);
+  if (xSet.size !== ySet.size) return false;
+  for (const x of xSet) {
+    if (!ySet.has(x as unknown as Y)) return false;
+  }
+  for (const θ of m.w.keys()) {
+    if (!equalDistNum(f(θ), g(θ) as unknown as Dist<number, X>, eps)) return false;
+  }
+  return true;
+}
+
 function vecEq(a: number[], b: number[], eps = 1e-12): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > eps) return false;
   return true;
 }
 
-function linSolve(A: number[][], b: number[], eps = 1e-12): number[] | null {
+function linSolve(
+  A: number[][] | null | undefined,
+  b: number[] | null | undefined,
+  eps = 1e-12
+): number[] | null {
+  // Guard against degenerate inputs that can arise from empty search spaces.
+  if (!A || !b || A.length === 0) return null;
+  const firstRow = A[0];
+  if (!firstRow) return null;
+
   // Tiny Gaussian elimination for k<=3
-  const n = A.length, m = A[0].length;
+  const n = A.length;
+  const m = firstRow.length;
+  if (m === 0 || b.length < n) return null;
+
   // Augment
-  const M = A.map((row, i) => [...row, b[i]]);
+  const M = A.map((row, i) => {
+    const rhs = b[i];
+    if (rhs === undefined) return [...row, 0];
+    return [...row, rhs];
+  });
   let r = 0;
   for (let c = 0; c < m && r < n; c++) {
     // Find pivot
@@ -65,7 +108,7 @@ function barycentric2(p: number[], q1: number[], q2: number[], eps = 1e-12): num
     const d = q1[i] - q2[i];
     if (Math.abs(d) > eps) {
       const w = (p[i] - q2[i]) / d;
-      if (w >= -1e-12 && w <= 1 + 1e-12) {
+      if (w >= -NEG_WEIGHT_TOL && w <= 1 + NEG_WEIGHT_TOL) {
         const test = q1.map((_, k) => w * q1[k] + (1 - w) * q2[k]);
         if (vecEq(test, p, 1e-8)) return [Math.max(0, w), Math.max(0, 1 - w)];
       }
@@ -75,24 +118,51 @@ function barycentric2(p: number[], q1: number[], q2: number[], eps = 1e-12): num
 }
 
 function barycentric3(p: number[], Q: number[][], eps = 1e-12): number[] | null {
-  // Solve p = w1*Q1 + w2*Q2 + w3*Q3, w1+w2+w3=1, w>=0.
-  // Set w3 = 1 - w1 - w2, reduce to A*[w1,w2]^T = p - Q3.
+  // Solve p = w1*Q1 + w2*Q2 + w3*Q3 with w1+w2+w3=1 and wi ≥ 0.
   const [q1, q2, q3] = Q;
-  const A = [q1.map((x, i) => x - q3[i]), q2.map((x, i) => x - q3[i])]; // rows are vectors; transpose
-  // Build normal equations for a small stable solve:
-  const At = (M: number[][]) => M[0].map((_, j) => M.map(row => row[j]));
-  const AT = At(A);
-  const ATA = AT.map(r => AT.map((_, j) => r.reduce((s, ri, k) => s + ri * A[j][k], 0)));
-  const b = AT.map(r => r.reduce((s, ri, i) => s + ri * (p[i] - q3[i]), 0));
-  const w12 = linSolve(ATA, b);
+
+  // Build the matrix whose columns are q1-q3 and q2-q3.
+  // We then solve (q1-q3, q2-q3) * [w1, w2]^T = p - q3 via normal equations.
+  const cols: number[][] = p.map((_, i) => [q1[i] - q3[i], q2[i] - q3[i]]);
+
+  // If all columns are ~0, the three posteriors coincide. Check equality directly.
+  const hasVariation = cols.some(([a, b]) => Math.abs(a) > eps || Math.abs(b) > eps);
+  if (!hasVariation) {
+    if (vecEq(p, q1, 1e-8)) return [1, 0, 0];
+    if (vecEq(p, q2, 1e-8)) return [0, 1, 0];
+    if (vecEq(p, q3, 1e-8)) return [0, 0, 1];
+    return null;
+  }
+
+  // Compute (B^T B) and (B^T (p - q3)). B has rows given by `cols`.
+  const BTB = [
+    [0, 0],
+    [0, 0]
+  ];
+  const BTy = [0, 0];
+  cols.forEach(([c1, c2], i) => {
+    BTB[0][0] += c1 * c1;
+    BTB[0][1] += c1 * c2;
+    BTB[1][0] += c2 * c1;
+    BTB[1][1] += c2 * c2;
+    const diff = p[i] - q3[i];
+    BTy[0] += c1 * diff;
+    BTy[1] += c2 * diff;
+  });
+
+  const w12 = linSolve(BTB, BTy);
   if (!w12) return null;
   const [w1, w2] = w12;
   const w3 = 1 - w1 - w2;
-  const w = [w1, w2, w3];
-  if (w.every(x => x >= -1e-8)) {
+  const weights = [w1, w2, w3];
+
+  if (weights.every(w => w >= -NEG_WEIGHT_TOL)) {
     const test = q1.map((_, i) => w1 * q1[i] + w2 * q2[i] + w3 * q3[i]);
-    if (vecEq(test, p, 1e-6)) return w.map(x => Math.max(0, x));
+    if (vecEq(test, p, 1e-6)) {
+      return weights.map(w => (w <= 0 ? 0 : w));
+    }
   }
+
   return null;
 }
 
@@ -115,54 +185,101 @@ function* combinations<T>(arr: readonly T[], k: number): Generator<T[]> {
 
 // ===== Build one row T(p) by finding 1-, 2-, or 3-sparse barycentric combos over postsG =====
 
-function rowDilationForPosterior<Θ>(
+function normalizeWeights(weights: number[], eps = 1e-12): number[] | null {
+  const total = weights.reduce((s, w) => s + w, 0);
+  if (total <= eps) return null;
+  return weights.map(w => w / total);
+}
+
+function rowDilationOptions<Θ>(
   p: Dist<number, Θ>,
-  postsG: Dist<number, Θ>[],
+  posts: Dist<number, Θ>[],
   order: readonly Θ[]
-): Dist<number, Dist<number, Θ>> | null {
+): Dist<number, Dist<number, Θ>>[] {
   const pv = asVec(p, order);
+  const options: Dist<number, Dist<number, Θ>>[] = [];
+  const seen = new Set<string>();
+
+  const record = (qs: Dist<number, Θ>[], weights: number[]) => {
+    const normalized = normalizeWeights(weights);
+    if (!normalized) return;
+    const entries: Array<[Dist<number, Θ>, number]> = [];
+    normalized.forEach((w, i) => {
+      if (w > 1e-10) entries.push([qs[i], w]);
+    });
+    if (entries.length === 0) return;
+    // Verify the reconstructed posterior matches within tolerance.
+    const approx = order.map((_, idx) =>
+      entries.reduce((s, [q, w]) => s + (q.w.get(order[idx]) ?? 0) * w, 0)
+    );
+    if (!vecEq(approx, pv, MIX_TOL)) return;
+    const key = entries
+      .map(([q, w]) => `${posts.indexOf(q)}:${w.toFixed(12)}`)
+      .join("|");
+    if (seen.has(key)) return;
+    seen.add(key);
+    options.push({ R: p.R, w: new Map(entries) });
+  };
 
   // k = 1
-  for (const q of postsG) {
+  for (const q of posts) {
     if (equalDistNum(p, q)) {
-      return { R: p.R, w: new Map([[q, 1]]) };
+      record([q], [1]);
     }
   }
 
   // k = 2
-  for (const [q1, q2] of combinations(postsG, 2)) {
-    const w = barycentric2(pv, asVec(q1, order), asVec(q2, order));
-    if (w) {
-      return { R: p.R, w: new Map([[q1, w[0]], [q2, w[1]]]) };
-    }
+  for (const [q1, q2] of combinations(posts, 2)) {
+    const weights = barycentric2(pv, asVec(q1, order), asVec(q2, order));
+    if (weights) record([q1, q2], weights);
   }
 
   // k = 3
-  for (const [q1, q2, q3] of combinations(postsG, 3)) {
-    const w = barycentric3(pv, [asVec(q1, order), asVec(q2, order), asVec(q3, order)]);
-    if (w) {
-      return { R: p.R, w: new Map([[q1, w[0]], [q2, w[1]], [q3, w[2]]]) };
-    }
+  for (const [q1, q2, q3] of combinations(posts, 3)) {
+    const weights = barycentric3(pv, [asVec(q1, order), asVec(q2, order), asVec(q3, order)]);
+    if (weights) record([q1, q2, q3], weights);
   }
 
-  return null;
+  return options;
 }
 
 // ===== Assemble a full dilation T by solving each row independently =====
 
 function buildDilation<Θ>(
-  postsF: Dist<number, Θ>[],
-  postsG: Dist<number, Θ>[],
+  source: StandardMeasure<Θ>,
+  target: StandardMeasure<Θ>,
   order: readonly Θ[]
 ): Dilation<number, Dist<number, Θ>> | null {
-  const rowMap = new Map<Dist<number, Θ>, Dist<number, Dist<number, Θ>>>();
-  for (const p of postsF) {
-    const row = rowDilationForPosterior(p, postsG, order);
-    if (!row) return null;
-    rowMap.set(p, row);
-  }
-  // Dilation: return the precomputed row for the input posterior
-  return (p) => rowMap.get(p)!;
+  const sourcePosts = [...source.w.keys()];
+  const targetPosts = [...target.w.keys()];
+
+  const candidates = sourcePosts.map(p => ({
+    post: p,
+    rows: rowDilationOptions(p, targetPosts, order)
+  }));
+
+  if (candidates.some(c => c.rows.length === 0)) return null;
+
+  const assignment = new Map<Dist<number, Θ>, Dist<number, Dist<number, Θ>>>();
+
+  const search = (idx: number): Dilation<number, Dist<number, Θ>> | null => {
+    if (idx === candidates.length) {
+      const T: Dilation<number, Dist<number, Θ>> = (p) => assignment.get(p)!;
+      const pushed = pushMeasure(source, T);
+      return equalDistNum(pushed, target, MIX_TOL) ? T : null;
+    }
+
+    const { post, rows } = candidates[idx];
+    for (const row of rows) {
+      assignment.set(post, row);
+      const result = search(idx + 1);
+      if (result) return result;
+    }
+    assignment.delete(post);
+    return null;
+  };
+
+  return search(0);
 }
 
 // ===== Apply T# to fHat =====
@@ -187,6 +304,50 @@ function pushMeasure<Θ>(
 export type Posterior<Θ> = Dist<number, Θ>;
 export type StandardMeasure<Θ> = Dist<number, Posterior<Θ>>;
 
+function aggregateMeasure<Θ>(
+  measure: StandardMeasure<Θ>,
+  order: readonly Θ[],
+  eps = MIX_TOL
+): Array<{ vec: number[]; weight: number }> {
+  const groups: Array<{ vec: number[]; weight: number }> = [];
+  measure.w.forEach((weight, post) => {
+    const vec = asVec(post, order);
+    const existing = groups.find(group => vecEq(group.vec, vec, eps));
+    if (existing) {
+      existing.weight += weight;
+    } else {
+      groups.push({ vec, weight });
+    }
+  });
+  return groups.filter(group => group.weight > eps);
+}
+
+function measuresApproximatelyEqual<Θ>(
+  a: StandardMeasure<Θ>,
+  b: StandardMeasure<Θ>,
+  order: readonly Θ[],
+  eps = MIX_TOL
+): boolean {
+  const aggA = aggregateMeasure(a, order, eps);
+  const aggB = aggregateMeasure(b, order, eps);
+  if (aggA.length !== aggB.length) return false;
+  const used = new Array(aggB.length).fill(false);
+  for (const groupA of aggA) {
+    let match = -1;
+    for (let i = 0; i < aggB.length; i++) {
+      if (used[i]) continue;
+      const groupB = aggB[i];
+      if (Math.abs(groupA.weight - groupB.weight) <= eps && vecEq(groupA.vec, groupB.vec, eps)) {
+        match = i;
+        break;
+      }
+    }
+    if (match === -1) return false;
+    used[match] = true;
+  }
+  return true;
+}
+
 /**
  * Enhanced BSS compare with barycentric dilation search
  * f ⪰ g iff ∃ dilation T with gHat = T# fHat and e∘T = id
@@ -202,19 +363,26 @@ export function bssCompare<
   xVals: readonly X[],
   yVals: readonly Y[]
 ): boolean {
+  const order = thetaOrder(m);
   const fHat = standardMeasure(m, f, xVals);
   const gHat = standardMeasure(m, g, yVals);
-  if (equalDistNum(fHat, gHat)) return true;
+  const measuresEqual =
+    equalDistNum(fHat, gHat, MIX_TOL) ||
+    measuresApproximatelyEqual(fHat, gHat, order, MIX_TOL);
+  if (measuresEqual) {
+    return experimentsEqual(m, f, g, xVals, yVals, MIX_TOL);
+  }
 
-  const order = thetaOrder(m);
-  const postsF = [...fHat.w.keys()];
-  const postsG = [...gHat.w.keys()];
-
-  const T = buildDilation(postsF, postsG, order);
+  // Build a dilation from ĝ to f̂. Intuitively, a less informative experiment
+  // (g) can be simulated from a more informative one (f) by first running f and
+  // then stochastically "forgetting" information. On the standard-measure
+  // side, this corresponds to expressing each posterior of g as a barycentric
+  // combination of f's posteriors and pushing ĝ forward along that kernel.
+  const T = buildDilation(gHat, fHat, order);
   if (!T) return false;
 
-  const pushed = pushMeasure(fHat, T);
-  return equalDistNum(pushed, gHat);
+  const pushed = pushMeasure(gHat, T);
+  return equalDistNum(pushed, fHat, MIX_TOL);
 }
 
 // ===== Enhanced BSS Testing Framework =====
@@ -239,20 +407,28 @@ export function testBSSDetailed<
   dilationFound: boolean;
   details: string;
 } {
-  const fToG = bssCompare(m, f, g, xVals, yVals);
-  const gToF = bssCompare(m, g, f, yVals, xVals);
-  
-  const equivalent = fToG && gToF;
-  const dilationFound = fToG || gToF;
-  
-  const details = equivalent 
+  const order = thetaOrder(m);
+  const fHat = standardMeasure(m, f, xVals);
+  const gHat = standardMeasure(m, g, yVals);
+  const measuresEqual =
+    equalDistNum(fHat, gHat, MIX_TOL) ||
+    measuresApproximatelyEqual(fHat, gHat, order, MIX_TOL);
+  const experimentsMatch = measuresEqual && experimentsEqual(m, f, g, xVals, yVals, MIX_TOL);
+
+  const fToG = experimentsMatch ? true : bssCompare(m, f, g, xVals, yVals);
+  const gToF = experimentsMatch ? true : bssCompare(m, g, f, yVals, xVals);
+
+  const equivalent = measuresEqual || (fToG && gToF);
+  const dilationFound = measuresEqual || fToG || gToF;
+
+  const details = equivalent
     ? "Experiments are BSS-equivalent (dilations found in both directions)"
-    : fToG 
+    : fToG
     ? "f is more informative than g (dilation found: f ⪰ g)"
     : gToF
     ? "g is more informative than f (dilation found: g ⪰ f)"
     : "Experiments are BSS-incomparable (no dilations found)";
-  
+
   return {
     fMoreInformative: fToG,
     gMoreInformative: gToF,
@@ -398,6 +574,6 @@ export function findMostInformative<
   return {
     mostInformative,
     dilationMatrix,
-    details: `Found ${mostInformative.length} experiment(s) with max dilation score ${maxScore}/${experiments.length}`
+    details: `Found ${mostInformative.length} experiment(s) with max score ${maxScore}/${experiments.length} via dilations`
   };
 }
