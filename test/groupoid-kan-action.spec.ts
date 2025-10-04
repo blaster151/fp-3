@@ -24,9 +24,9 @@ describe('Groupoid Kan with automorphism quotient (FinSet)', () => {
     const H1: FiniteGroupoid<'h', { from: 'h'; to: 'h'; tag: 'id' | 'tau' }> = {
       objects: ['h'],
       id: (_h) => ({ from: 'h', to: 'h', tag: 'id' }),
-      compose: (g, f) => ({ 
-        from: 'h', 
-        to: 'h', 
+      compose: (g, f) => ({
+        from: 'h',
+        to: 'h',
         tag: (f.tag === 'tau') !== (g.tag === 'tau') ? 'tau' : 'id' 
       }),
       dom: (m) => m.from,
@@ -42,10 +42,15 @@ describe('Groupoid Kan with automorphism quotient (FinSet)', () => {
     // G: same structure
     const G1: typeof H1 = H1
 
-    const u: GFunctor<'h', any, 'h', any> = {
-      source: G1 as any, 
-      target: H1 as any,
-      onObj: (_g) => 'h',
+    type Obj = (typeof G1)['objects'][number]
+    type Mor = ReturnType<typeof G1['id']>
+
+    const fixedObj: Obj = G1.objects[0]!
+
+    const u: GFunctor<Obj, Mor, Obj, Mor> = {
+      source: G1,
+      target: H1,
+      onObj: () => fixedObj,
       onMor: (m) => m
     }
 
@@ -53,23 +58,31 @@ describe('Groupoid Kan with automorphism quotient (FinSet)', () => {
     const X: FinSetObj = { elements: ['a', 'b'] }
     const swap: FinSetMor = { from: X, to: X, map: [1, 0] }
 
-    const IfinH = { carrier: ['h'] as const }
+    const IfinH = IndexedFamilies.finiteIndex(H1.objects)
 
     // Test fallback behavior (no coequalizer provided in this call)
-    const LanSimple = lanGroupoidFull(H1 as any, G1 as any, u,
-      { onObj: (_g) => X }, // no onMor
-      IfinH as any,
+    const LanSimple = lanGroupoidFull(
+      FinSet,
+      H1,
+      G1,
+      u,
+      { onObj: () => X }, // no onMor
+      IfinH,
       FinSet // has coequalizer but we don't provide F.onMor
     )
-    
+
     // Should fall back to iso-class version
     expect(LanSimple.at('h').elements.length).toBe(2) // no quotient, just the object
 
     // Test with full quotient (would need more complex implementation)
     // For now, just verify the structure exists
-    const LanFull = lanGroupoidFull(H1 as any, G1 as any, u,
-      { onObj: (_g) => X, onMor: (_phi) => swap },
-      IfinH as any,
+    const LanFull = lanGroupoidFull(
+      FinSet,
+      H1,
+      G1,
+      u,
+      { onObj: () => X, onMor: () => swap },
+      IfinH,
       FinSet
     )
     
