@@ -251,9 +251,17 @@ export const commonEquality = {
   primitive: <A>(a: A, b: A) => a === b,
   
   // Array equality
-  array: <A>(eq: (a: A, b: A) => boolean) => 
-    (as: A[], bs: A[]) => 
-      as.length === bs.length && as.every((a, i) => eq(a, bs[i])),
+  array: <A>(eq: (a: A, b: A) => boolean) => (as: A[], bs: A[]) => {
+    if (as.length !== bs.length) return false
+    for (let i = 0; i < as.length; i++) {
+      const a = as[i]
+      if (a === undefined) return false
+      const b = bs[i]
+      if (b === undefined) return false
+      if (!eq(a, b)) return false
+    }
+    return true
+  },
   
   // Either equality
   either: <A, B>(eqA: (a: A, b: A) => boolean, eqB: (a: B, b: B) => boolean) =>
