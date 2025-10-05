@@ -216,7 +216,15 @@ export type Polynomial = ReadonlyArray<bigint>;
 
 const trimPolynomial = (coeffs: ReadonlyArray<bigint>): bigint[] => {
   let end = coeffs.length - 1;
-  while (end >= 0 && coeffs[end] === 0n) end -= 1;
+  while (end >= 0) {
+    const coeff = coeffs[end];
+    if (coeff === undefined) {
+      end -= 1;
+      continue;
+    }
+    if (coeff !== 0n) break;
+    end -= 1;
+  }
   if (end < 0) return [];
   return coeffs.slice(0, end + 1);
 };
@@ -225,9 +233,11 @@ const addPolynomial = (a: ReadonlyArray<bigint>, b: ReadonlyArray<bigint>): bigi
   const length = Math.max(a.length, b.length);
   const acc = new Array<bigint>(length).fill(0n);
   for (let i = 0; i < length; i += 1) {
-    const ai = i < a.length ? a[i] : 0n;
-    const bi = i < b.length ? b[i] : 0n;
-    acc[i] = ai + bi;
+    const ai = i < a.length ? a[i] : undefined;
+    const bi = i < b.length ? b[i] : undefined;
+    const aiValue = ai ?? 0n;
+    const biValue = bi ?? 0n;
+    acc[i] = aiValue + biValue;
   }
   return trimPolynomial(acc);
 };
@@ -242,8 +252,14 @@ const mulPolynomial = (a: ReadonlyArray<bigint>, b: ReadonlyArray<bigint>): bigi
   if (a.length === 0 || b.length === 0) return [];
   const acc = new Array<bigint>(a.length + b.length - 1).fill(0n);
   for (let i = 0; i < a.length; i += 1) {
+    const ai = a[i];
+    if (ai === undefined) continue;
     for (let j = 0; j < b.length; j += 1) {
-      acc[i + j] += a[i] * b[j];
+      const bj = b[j];
+      if (bj === undefined) continue;
+      const index = i + j;
+      const current = acc[index] ?? 0n;
+      acc[index] = current + ai * bj;
     }
   }
   return trimPolynomial(acc);
@@ -254,7 +270,10 @@ const eqPolynomial = (a: ReadonlyArray<bigint>, b: ReadonlyArray<bigint>): boole
   const tb = trimPolynomial(b);
   if (ta.length !== tb.length) return false;
   for (let i = 0; i < ta.length; i += 1) {
-    if (ta[i] !== tb[i]) return false;
+    const coeffA = ta[i];
+    const coeffB = tb[i];
+    if (coeffA === undefined || coeffB === undefined) return false;
+    if (coeffA !== coeffB) return false;
   }
   return true;
 };
@@ -265,7 +284,9 @@ const constantPolynomial = (value: bigint): bigint[] =>
 const monomial = (degree: number): bigint[] => {
   if (degree < 0) throw new Error("Monomial degree must be nonnegative");
   const coeffs = new Array<bigint>(degree + 1).fill(0n);
-  coeffs[degree] = 1n;
+  if (degree < coeffs.length) {
+    coeffs[degree] = 1n;
+  }
   return coeffs;
 };
 
@@ -282,7 +303,9 @@ const polynomialSamples: ReadonlyArray<Polynomial> = Object.freeze([
 const evaluatePolynomial = (poly: ReadonlyArray<bigint>, point: bigint): bigint => {
   let result = 0n;
   for (let i = poly.length - 1; i >= 0; i -= 1) {
-    result = result * point + poly[i];
+    const coeff = poly[i];
+    if (coeff === undefined) continue;
+    result = result * point + coeff;
   }
   return result;
 };
@@ -301,7 +324,7 @@ const shiftPolynomial = (poly: ReadonlyArray<bigint>): bigint[] => {
   let acc: bigint[] = [];
   for (let degree = 0; degree < poly.length; degree += 1) {
     const coeff = poly[degree];
-    if (coeff === 0n) continue;
+    if (coeff === undefined || coeff === 0n) continue;
     const term = new Array<bigint>(degree + 1).fill(0n);
     for (let i = 0; i <= degree; i += 1) {
       term[i] = coeff * binomial(degree, i);
@@ -317,6 +340,7 @@ const formatPolynomial = (poly: ReadonlyArray<bigint>): string => {
   const pieces: string[] = [];
   for (let i = 0; i < trimmed.length; i += 1) {
     const coeff = trimmed[i];
+    if (coeff === undefined) continue;
     if (coeff === 0n) continue;
     const magnitude = coeff.toString();
     if (i === 0) {
