@@ -1,11 +1,16 @@
 #!/usr/bin/env ts-node
 
 // Mixed Distributive Laws: Monad × Comonad Interactions
+import type {
+  MixedDistK1,
+  MonadK1, ComonadK1,
+  Result, Store, Task, Pair, HK
+} from './allTS'
 import {
-  MixedDistK1, liftMonadToGCoalgK1, liftComonadToTAlgK1,
+  liftMonadToGCoalgK1, liftComonadToTAlgK1,
   MixedDist_Result_Store, MixedDist_Task_Store,
-  MonadK1, ComonadK1, StoreComonad, ResultK1, PairComonad,
-  Result, Store, Task, Pair, Ok, Err, isOk, isErr, HK
+  StoreComonad, ResultK1, PairComonad,
+  Ok, Err, isOk, isErr
 } from './allTS'
 
 console.log('🔄 Mixed Distributive Laws: Monad × Comonad Interactions\n')

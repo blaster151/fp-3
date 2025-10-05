@@ -8,6 +8,7 @@ import type {
   CatId,
   CatNatTrans,
   CoreAdjunction,
+  CoreFunctor,
 } from "../allTS";
 import {
   hcomp as tightHorizontalCompose2,
@@ -17,7 +18,7 @@ import {
   whiskerRight as tightWhiskerRight,
 } from "../allTS";
 import type { FiniteCategory } from "../finite-cat";
-import { TwoObjectCategory } from "../two-object-cat";
+import { TwoObjectCategory, type TwoObject, type TwoArrow } from "../two-object-cat";
 import { makeCoslice, makeSlice } from "../slice-cat";
 
 /**
@@ -89,8 +90,8 @@ export type TightAdjunction<
 export type TightCoreAdjunction<
   CObj,
   DObj,
-  F,
-  U,
+  F extends CoreFunctor<CObj, DObj>,
+  U extends CoreFunctor<DObj, CObj>,
 > = CoreAdjunction<CObj, DObj, F, U>;
 
 /**
@@ -209,12 +210,12 @@ export const demoteFunctor = <
  */
 export const canonicalTightCategories: ReadonlyArray<{
   readonly name: string;
-  readonly category: FiniteCategory<unknown, unknown>;
+  readonly category: FiniteCategory<TwoObject, TwoArrow>;
   readonly module: string;
 }> = [
   {
     name: "TwoObjectCategory",
-    category: TwoObjectCategory,
+    category: TwoObjectCategory as FiniteCategory<TwoObject, TwoArrow>,
     module: "../two-object-cat",
   },
 ];

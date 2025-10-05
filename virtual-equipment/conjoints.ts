@@ -50,7 +50,7 @@ export const conjointViaIdentityRestrictions = <Obj, Arr, Payload, Evidence>(
         available: true,
         proarrow: restriction.restricted,
         cartesian: restriction.cartesian,
-        representability: restriction.representability,
+        ...(restriction.representability !== undefined && { representability: restriction.representability }),
         details: restriction.details,
       };
     }

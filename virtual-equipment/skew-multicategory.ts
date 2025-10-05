@@ -42,7 +42,9 @@ const frameHasSingleArrowMatching = <Obj, Arr, Payload, Evidence>(
     return;
   }
   const [candidate] = frame.arrows;
-  if (!proarrowMatches(equality, arrow, candidate)) {
+  if (!candidate) {
+    issues.push(`${label} unexpectedly has no arrows.`);
+  } else if (!proarrowMatches(equality, arrow, candidate)) {
     issues.push(`${label} must share endpoints with the substituted loose arrow.`);
   }
 };

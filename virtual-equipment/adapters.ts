@@ -27,7 +27,7 @@ export const virtualizeFiniteCategory = <Obj, Arr>(
 ): DegenerateEquipment<Obj, Arr> =>
   virtualizeCategory(category, {
     objects: category.objects,
-    equalsObjects: options.equalsObjects,
+    ...(options.equalsObjects !== undefined && { equalsObjects: options.equalsObjects }),
   });
 
 export type RelCarrier = ReadonlyArray<unknown>;
@@ -68,7 +68,7 @@ export const makeRelEquipment = (
 ): DegenerateEquipment<RelCarrier, RelEquipmentArrow> =>
   virtualizeCategory(RelSimpleCategory, {
     objects: carriers,
-    equalsObjects: options.equalsObjects,
+    ...(options.equalsObjects !== undefined && { equalsObjects: options.equalsObjects }),
   });
 
 type AnySetObj = SetObj<unknown>;
@@ -96,7 +96,7 @@ export const makeSetEquipment = (
 ): DegenerateEquipment<AnySetObj, AnySetHom> =>
   virtualizeCategory(SetSimpleCategory, {
     objects,
-    equalsObjects: options.equalsObjects,
+    ...(options.equalsObjects !== undefined && { equalsObjects: options.equalsObjects }),
   });
 
 export interface SliceEquipmentOptions<Obj, Arr> {

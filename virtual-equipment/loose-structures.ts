@@ -46,7 +46,9 @@ const frameMatchesLooseCell = <Obj, Payload>(
     return;
   }
   const [arrow] = frame.arrows;
-  if (!equality(arrow.from, looseCell.from) || !equality(arrow.to, looseCell.to)) {
+  if (!arrow) {
+    issues.push(`${label} frame unexpectedly has no arrows.`);
+  } else if (!equality(arrow.from, looseCell.from) || !equality(arrow.to, looseCell.to)) {
     issues.push(`${label} arrow endpoints must match the loose cell's object.`);
   }
 };
@@ -74,14 +76,18 @@ const checkMultiplicationFrame = <Obj, Arr, Payload, Evidence>(
     issues.push("Loose monad multiplication must start from a composable pair of the loose arrow.");
   } else {
     const [first, second] = multiplication.source.arrows;
-    if (!equality(first.from, looseCell.from)) {
-      issues.push("The first loose arrow in the multiplication source must start at the loose object's domain.");
-    }
-    if (!equality(first.to, second.from)) {
-      issues.push("Loose monad multiplication source arrows must be composable.");
-    }
-    if (!equality(second.to, looseCell.to)) {
-      issues.push("The second loose arrow in the multiplication source must end at the loose object's codomain.");
+    if (!first || !second) {
+      issues.push("Loose monad multiplication source should have exactly two arrows.");
+    } else {
+      if (!equality(first.from, looseCell.from)) {
+        issues.push("The first loose arrow in the multiplication source must start at the loose object's domain.");
+      }
+      if (!equality(first.to, second.from)) {
+        issues.push("Loose monad multiplication source arrows must be composable.");
+      }
+      if (!equality(second.to, looseCell.to)) {
+        issues.push("The second loose arrow in the multiplication source must end at the loose object's codomain.");
+      }
     }
   }
 

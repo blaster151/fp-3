@@ -52,6 +52,10 @@ const compareFrames = <Obj, Payload>(
   for (let index = 0; index < expected.arrows.length; index += 1) {
     const candidateArrow = candidate.arrows[index];
     const expectedArrow = expected.arrows[index];
+    if (!candidateArrow || !expectedArrow) {
+      issues.push(`${label} arrow ${index} is missing in candidate or expected chain.`);
+      continue;
+    }
     if (!equality(candidateArrow.from, expectedArrow.from)) {
       issues.push(
         `${label} arrow ${index} should start at ${String(expectedArrow.from)} but found ${String(
@@ -100,7 +104,9 @@ const ensureLastArrowMatches = <Obj, Payload>(
     return;
   }
   const lastArrow = frame.arrows[frame.arrows.length - 1];
-  if (!equality(lastArrow.from, expected.from) || !equality(lastArrow.to, expected.to)) {
+  if (!lastArrow) {
+    issues.push(`${label} frame chain is unexpectedly empty.`);
+  } else if (!equality(lastArrow.from, expected.from) || !equality(lastArrow.to, expected.to)) {
     issues.push(
       `${label} terminal arrow should match the apex ${String(expected.from)} → ${String(expected.to)}.`,
     );

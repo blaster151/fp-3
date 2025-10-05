@@ -40,6 +40,10 @@ const framesCoincide = <Obj, Payload>(
   for (let index = 0; index < expected.arrows.length; index += 1) {
     const expectedArrow = expected.arrows[index];
     const candidateArrow = candidate.arrows[index];
+    if (!candidateArrow || !expectedArrow) {
+      issues.push(`${label} arrow ${index} is missing in candidate or expected chain.`);
+      continue;
+    }
     if (!equality(candidateArrow.from, expectedArrow.from)) {
       issues.push(
         `${label} arrow ${index} should start at ${String(expectedArrow.from)} but found ${String(
@@ -126,7 +130,7 @@ export const analyzeLooseAdjunction = <Obj, Arr, Payload, Evidence>(
     holds: issues.length === 0,
     leftIsMap,
     issues,
-    rightRepresentability: representability,
+    ...(representability !== undefined && { rightRepresentability: representability }),
     details:
       issues.length === 0
         ? representability
