@@ -521,8 +521,8 @@ export const analyzeRelativeAdjunctionRightExtension = <Obj, Arr, Payload, Evide
         ? "Left extension along a fully faithful root recovers the right relative adjoint as in Proposition 5.10."
         : `Relative adjunction left-extension issues: ${issues.join("; ")}`,
     extension: extensionAnalysis,
-    fullyFaithful: fullyFaithfulAnalysis,
-    pointwise: pointwiseAnalysis,
+    ...(fullyFaithfulAnalysis !== undefined && { fullyFaithful: fullyFaithfulAnalysis }),
+    ...(pointwiseAnalysis !== undefined && { pointwise: pointwiseAnalysis }),
   };
 };
 

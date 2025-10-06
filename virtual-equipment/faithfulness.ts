@@ -195,6 +195,23 @@ export const analyzeFullyFaithfulTight1Cell = <Obj, Arr, Payload, Evidence>(
     }
   }
 
+  const witness = issues.length === 0 && leftRestriction && rightRestriction
+    ? {
+            left: {
+              orientation: "left" as const,
+              result: leftRestriction,
+              domain: data.domain,
+              codomain: data.codomain,
+            },
+            right: {
+              orientation: "right" as const,
+              result: rightRestriction,
+              domain: data.domain,
+              codomain: data.codomain,
+            },
+          }
+        : undefined;
+  
   return {
     holds: issues.length === 0,
     issues,
@@ -202,23 +219,7 @@ export const analyzeFullyFaithfulTight1Cell = <Obj, Arr, Payload, Evidence>(
       issues.length === 0
         ? "Identity restrictions exhibit the companion and conjoint required for a fully faithful tight 1-cell (Definition 3.27)."
         : `Fully faithful analysis issues: ${issues.join("; ")}`,
-    witness:
-      issues.length === 0 && leftRestriction && rightRestriction
-        ? {
-            left: {
-              orientation: "left",
-              result: leftRestriction,
-              domain: data.domain,
-              codomain: data.codomain,
-            },
-            right: {
-              orientation: "right",
-              result: rightRestriction,
-              domain: data.domain,
-              codomain: data.codomain,
-            },
-          }
-        : undefined,
+    ...(witness !== undefined && { witness }),
   };
 };
 

@@ -27,12 +27,13 @@ const buildResult = (
   report: RelativeComonadFramingReport | RelativeComonadCorepresentabilityReport<unknown, unknown> | RelativeComonadIdentityReductionReport,
 ): RelativeComonadOracleResult => {
   const descriptor = RelativeComonadLawRegistry[law];
+  const issues = "issues" in report ? (report.issues as ReadonlyArray<string>) : undefined;
   return {
     holds: report.holds,
     pending: false,
     registryPath: descriptor.registryPath,
     details: report.details,
-    issues: "issues" in report ? (report.issues as ReadonlyArray<string>) : undefined,
+    ...(issues !== undefined && { issues }),
   };
 };
 
