@@ -55,8 +55,9 @@ This PDI folder contains **TWO DISTINCT SYSTEMS**:
   Definition 4.1 analyzers (`analyzeRelativeMonadFraming`,
   `analyzeRelativeMonadRepresentability`,
   `analyzeRelativeMonadIdentityReduction`, the Theorem 4.29 skew-monoid
-  bridge, composition/representation analyzers, and loose-monoid conversion
-  helpers) together with Definition 5.1 relative-adjunction scaffolding
+  bridge, composition/representation analyzers, loose-monoid conversion
+  helpers, and the Street action scaffolding from Definition 6.9 onwards)
+  together with Definition 5.1 relative-adjunction scaffolding
   (`RelativeAdjunctionData`, framing/hom-isomorphism analyzers, composition
   checks, and oracles), the new Definition 5.14/5.18/5.23 morphism analyzers
   (left/right/strict morphisms and their slice/coslice embeddings), Section 6
@@ -70,7 +71,46 @@ This PDI folder contains **TWO DISTINCT SYSTEMS**:
   Proposition 5.8/5.10/5.11 oracles (pointwise left lifts, left extensions
   along fully faithful roots, and shared colimit preservation) now sit beside
   the left/right/strict morphism checks to keep these operational insights
-  executable alongside the existing framing checks.
+  executable alongside the existing framing checks.  Street action analyzers
+  and `enumerateRelativeAlgebraOracles` surface the Definition 6.9–6.14
+  witnesses alongside canonical (op)algebra diagnostics so downstream tooling
+  can observe the still-pending comparisons.
+
+#### Relative monads at a glance
+
+```typescript
+import {
+  fromMonad,
+  enumerateRelativeMonadOracles,
+  RelativeMonadOracles,
+  RelativeMonadLawRegistry,
+  idFun,
+  composeFun,
+} from './allTS'
+import { TwoObjectCategory } from './two-object-cat'
+
+const identityMonad = {
+  category: TwoObjectCategory,
+  endofunctor: idFun(TwoObjectCategory),
+  unit: {
+    source: idFun(TwoObjectCategory),
+    target: idFun(TwoObjectCategory),
+    component: (obj: '•' | '★') => TwoObjectCategory.id(obj),
+  },
+  mult: {
+    source: composeFun(idFun(TwoObjectCategory), idFun(TwoObjectCategory)),
+    target: idFun(TwoObjectCategory),
+    component: (obj: '•' | '★') => TwoObjectCategory.id(obj),
+  },
+} as const
+
+const relative = fromMonad(identityMonad, { rootObject: '•' })
+const reports = enumerateRelativeMonadOracles(relative)
+
+// Individual law reports stay available through RelativeMonadOracles
+const framing = RelativeMonadOracles.framing(relative)
+console.log(RelativeMonadLawRegistry.unitFraming.name, framing)
+```
 
 ### Tools
 - **`upgrade-analyzer.js`** - Analyze patterns and manage backlog

@@ -1,4 +1,5 @@
 export * from "./relative-laws";
+export * from "./relative-monad";
 export * from "./relative-monads";
 export * from "./relative-oracles";
 export * from "./relative-adjunctions";

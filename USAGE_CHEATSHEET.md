@@ -48,6 +48,50 @@ This document provides a quick reference for finding the right tool for your pro
 | Create emission matrices | `diagFromVec(SemiringProb)(weights)` | Diagonal from vector |
 | Probability computations | Use `SemiringProb` with any matrix op | Standard +, × |
 
+### **Work with Relative Monads**
+| **Task** | **Use This** | **Notes** |
+|----------|--------------|-----------|
+| Embed a classical monad as identity-root | `fromMonad(monad, { rootObject })` | Reuses the monad’s endofunctor as carrier |
+| Inspect structural law coverage | `enumerateRelativeMonadOracles(relative)` | Returns framing/identity reports and pending associativity |
+| Surface Street action scaffolding | `enumerateRelativeAlgebraOracles(relative)` | Emits Definition 6.1/6.9 diagnostics with witness payloads |
+
+```typescript
+import {
+  fromMonad,
+  enumerateRelativeMonadOracles,
+  enumerateRelativeAlgebraOracles,
+  describeTrivialRelativeKleisli,
+  describeTrivialRelativeEilenbergMoore,
+  idFun,
+  composeFun,
+} from './allTS'
+import { TwoObjectCategory } from './two-object-cat'
+
+const identityMonad = {
+  category: TwoObjectCategory,
+  endofunctor: idFun(TwoObjectCategory),
+  unit: {
+    source: idFun(TwoObjectCategory),
+    target: idFun(TwoObjectCategory),
+    component: (obj: '•' | '★') => TwoObjectCategory.id(obj),
+  },
+  mult: {
+    source: composeFun(idFun(TwoObjectCategory), idFun(TwoObjectCategory)),
+    target: idFun(TwoObjectCategory),
+    component: (obj: '•' | '★') => TwoObjectCategory.id(obj),
+  },
+} as const
+
+const relative = fromMonad(identityMonad, { rootObject: '•' })
+const monadReports = enumerateRelativeMonadOracles(relative)
+const kleisli = describeTrivialRelativeKleisli(relative)
+const eilenbergMoore = describeTrivialRelativeEilenbergMoore(relative)
+const algebraReports = enumerateRelativeAlgebraOracles(kleisli, eilenbergMoore)
+
+console.log(monadReports.map((report) => `${report.registryPath}: ${report.holds}`))
+console.log(algebraReports.map((report) => report.registryPath))
+```
+
 ### **Optimize Performance**
 | **Problem** | **Use This** | **Why** |
 |-------------|--------------|---------|
