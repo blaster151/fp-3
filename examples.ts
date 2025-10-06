@@ -12,14 +12,19 @@
  */
 
 import type {
-  // Core types
-  Option,
-  Result,
-  Validation,
-  StateReaderTask,
-  RWST,
-  ReaderTaskOption,
-  CatMonad,
+  Option, Result, Validation, StateReaderTask, RWST, ReaderTaskOption,
+  // Domain types
+  WeightedAutomaton, HMM, Edge,
+  Complex, ChainMap, Triangle,
+  Q,
+  ComplexFunctor,
+  DiscDiagram, ObjId,
+  FinitePoset, PosetDiagram,
+  VectorSpace, LinMap,
+  VectDiagram,
+  SNF,
+  Representation, Coaction,
+  Mat
 } from './allTS'
 
 import {
@@ -63,32 +68,30 @@ import {
   makeTaggedLeftModule, eye, categoryOfEntwinedModules, isOk,
   // Practical utilities
   SemiringMinPlus, SemiringMaxPlus, SemiringBoolOrAnd, SemiringProb,
-  WeightedAutomaton, waRun, waAcceptsBool, HMM, hmmForward, diagFromVec,
-  Edge, graphAdjNat, graphAdjBool, graphAdjWeights, countPathsOfLength, 
-  reachableWithin, shortestPathsUpTo, transitiveClosureBool, compileRegexToWA, compileRegexToWAWithAlphabet,
+  waRun, waAcceptsBool, hmmForward, diagFromVec,
+  graphAdjNat, graphAdjBool, graphAdjWeights, countPathsOfLength, 
+  reachableWithin, shortestPathsUpTo, transitiveClosureBool, compileRegexToWA,
   // Triangulated categories
-  RingReal, Complex, ChainMap, Triangle, complexIsValid, isChainMap, 
+  RingReal, complexIsValid, isChainMap, 
   shift1, cone, triangleFromMap, triangleIsSane,
   // Advanced homological algebra
-  FieldReal, FieldQ, Q, Qof, QtoString, rref, nullspace, solveLinear, composeExact,
+  FieldReal, FieldQ, Qof, QtoString, rref, nullspace, solveLinear, composeExact,
   rrefQPivot, runLesConeProps, randomTwoTermComplex, makeHomologyShiftIso,
   // Discoverability and advanced features
-  FP_CATALOG, checkExactnessForFunctor, ComplexFunctor, idChainMapN,
+  FP_CATALOG, checkExactnessForFunctor, idChainMapN,
   // Diagram toolkit
-  DiscDiagram, ObjId, reindexDisc, coproductComplex, LanDisc, RanDisc, 
+  reindexDisc, coproductComplex, LanDisc, RanDisc, 
   checkBeckChevalleyDiscrete, registerRref,
   // Poset diagrams
-  FinitePoset, PosetDiagram, makePosetDiagram, pushoutInDiagram, pullbackInDiagram,
+  makePosetDiagram, pushoutInDiagram, pullbackInDiagram,
   LanPoset, RanPoset,
   // Vector space bridge
-  VectorSpace, LinMap, VS, idL, composeL, linToChain, complexSpaces,
-  VectDiagram, toVectAtDegree, arrowMatrixAtDegree,
-  // Pretty-printing
-  ppMatrix, ppChainMap, ppVectDiagramAtDegree,
+  VS, idL, composeL, linToChain, complexSpaces,
+  toVectAtDegree, arrowMatrixAtDegree,
   // Smith Normal Form
-  SNF, smithNormalForm,
+  smithNormalForm,
   // Algebra bridges  
-  Representation, Coaction, applyRepAsLin, coactionAsLin, pushCoaction,
+  applyRepAsLin, coactionAsLin, pushCoaction,
   actionToChain, coactionToChain,
   // New namespaces
   VectView, Pretty, IntSNF, DiagramClosure, DiagramLaws, IndexedFamilies, DiscreteCategory,
@@ -100,7 +103,9 @@ import {
   describeTrivialRelativeKleisli, describeTrivialRelativeEilenbergMoore,
   enumerateRelativeAlgebraOracles,
   // Namespaced exports
-  Diagram, Lin, Chain, Exactness, Vect, IntegerLA, Algebra
+  Diagram, Lin, Chain, Exactness, Vect, IntegerLA, Algebra,
+  // Matrix operations
+  matMul
 } from './allTS'
 
 // ====================================================================
@@ -892,10 +897,10 @@ namespace ComoduleExamples {
     // Automaton that counts paths spelling 'ab' on 2-state line
     const init = [1, 0] as const
     const final = [0, 1] as const
-    const deltaCount = {
+    const deltaCount: Readonly<Record<'a'|'b', Mat<number>>> = {
       a: [[0,1],[0,0]],
       b: [[0,0],[0,1]],
-    } as const
+    }
     const WAcount: WeightedAutomaton<number, 'a'|'b'> = { 
       S: SemiringNat, n: 2, init, final, delta: deltaCount 
     }
@@ -1089,7 +1094,8 @@ namespace ComoduleExamples {
     ] as const
     
     for (const feature of sampleFeatures) {
-      console.log(`  ${feature}: ${FP_CATALOG[feature]}`)
+      const description = FP_CATALOG[feature as keyof typeof FP_CATALOG]
+      console.log(`  ${feature}: ${description}`)
     }
     
     console.log('\nGeneric exactness checker demo:')
@@ -1126,16 +1132,16 @@ namespace ComoduleExamples {
     console.log('Created discrete diagram with objects:', Object.keys(DJ))
     
     // Reindexing along a color function
-    const color = (j: ObjId) => ({ a: 'red', b: 'blue', c: 'red' }[j] ?? 'unknown')
-    const reindexed = reindexDisc(color)(DJ)
+    const color = (j: ObjId) => ({ a: 'red', b: 'blue', c: 'red' }[j as 'a'|'b'|'c'] ?? 'unknown')
+    const reindexed = reindexDisc<number>(color)(DJ)
     console.log('Reindexed by color, objects:', Object.keys(reindexed))
     
     // Left Kan extension (fiberwise coproduct)
     const Lan = LanDisc(FieldReal)
     const lanResult = Lan(color)(DJ)
     console.log('Left Kan extension objects:', Object.keys(lanResult))
-    console.log('  red fiber dimension (degree 0):', lanResult.red?.dim[0])
-    console.log('  blue fiber dimension (degree 0):', lanResult.blue?.dim[0])
+    console.log('  red fiber dimension (degree 0):', lanResult['red']?.dim[0])
+    console.log('  blue fiber dimension (degree 0):', lanResult['blue']?.dim[0])
     
     // Coproduct of complexes
     const coprod = coproductComplex(FieldReal)(C1, C2)
@@ -1388,8 +1394,8 @@ namespace ComoduleExamples {
     
     console.log('Left Kan extension computed:')
     console.log('  Objects:', Object.keys(LanResult.X))
-    console.log('  Lan(x) dimension:', LanResult.X.x?.dim[0])
-    console.log('  Lan(y) dimension:', LanResult.X.y?.dim[0])
+    console.log('  Lan(x) dimension:', LanResult.X['x']?.dim[0])
+    console.log('  Lan(y) dimension:', LanResult.X['y']?.dim[0])
     
     const universalArrow = LanResult.arr('x', 'y')
     if (universalArrow) {
@@ -1431,8 +1437,8 @@ namespace ComoduleExamples {
     
     console.log('\nVect view at degree 0:')
     console.log('  Objects:', Object.keys(vectView.V))
-    console.log('  x dimension:', vectView.V.x?.dim)
-    console.log('  y dimension:', vectView.V.y?.dim)
+    console.log('  x dimension:', vectView.V['x']?.dim)
+    console.log('  y dimension:', vectView.V['y']?.dim)
     
     const arrow_xy = vectView.arr('x', 'y')
     if (arrow_xy) {
@@ -1440,7 +1446,7 @@ namespace ComoduleExamples {
     }
     
     // Pretty-print the Vect diagram
-    const prettyView = ppVectDiagramAtDegree(FieldReal)('Example', vectView)
+    const prettyView = Pretty.vectDiagramAtDegree(FieldReal)('Example', vectView)
     console.log('\nPretty-printed view:')
     console.log(prettyView)
     
@@ -1453,7 +1459,7 @@ namespace ComoduleExamples {
     // Create a simple matrix
     const A = [[1, 2, 3], [4, 5, 6]]
     console.log('Matrix A:')
-    console.log(ppMatrix(FieldReal)(A))
+    console.log(Pretty.matrix(FieldReal)(A))
     
     // Create a chain map
     const X: Complex<number> = { S: FieldReal, degrees: [0, 1], dim: {0: 2, 1: 1}, d: {} }
@@ -1465,7 +1471,7 @@ namespace ComoduleExamples {
     }
     
     console.log('\nChain map f:')
-    console.log(ppChainMap(FieldReal)('f', f))
+    console.log(Pretty.chainMap(FieldReal)('f', f))
     
     console.log('✓ Pretty-printing working!')
   }
@@ -1481,22 +1487,23 @@ namespace ComoduleExamples {
     ]
     
     console.log('Original matrix A:')
-    console.log(ppMatrix(FieldReal)(A))
+    console.log(Pretty.matrix(FieldReal)(A))
     
-    const { U, S, V } = smithNormalForm(A)
+    const snf = smithNormalForm(A)
+    const { U, V, D } = snf
     
-    console.log('\nSmith Normal Form: U * A * V = S')
+    console.log('\nSmith Normal Form: U * A * V = D')
     console.log('U (left transform):')
-    console.log(ppMatrix(FieldReal)(U))
-    console.log('\nS (diagonal form):')
-    console.log(ppMatrix(FieldReal)(S))
+    console.log(Pretty.matrix(FieldReal)(U))
+    console.log('\nD (diagonal form):')
+    console.log(Pretty.matrix(FieldReal)(D))
     console.log('\nV (right transform):')
-    console.log(ppMatrix(FieldReal)(V))
+    console.log(Pretty.matrix(FieldReal)(V))
     
-    // Verify: U * A * V = S
+    // Verify: U * A * V = D
     const UAV = matMul(FieldReal)(U as number[][], matMul(FieldReal)(A as number[][], V as number[][]))
     console.log('\nVerification U*A*V:')
-    console.log(ppMatrix(FieldReal)(UAV))
+    console.log(Pretty.matrix(FieldReal)(UAV))
     
     console.log('✓ Smith Normal Form working!')
   }
@@ -1524,14 +1531,14 @@ namespace ComoduleExamples {
     console.log('  y (upper triangular):', matrixRep.mat('y'))
     
     // Convert to linear map
-    const linMapX = applyRepAsLin(FieldReal)(matrixRep, 'x')
+    const linMapX = applyRepAsLin<string, number>(FieldReal)(matrixRep, 'x')
     console.log('\nLinear map for x:')
     console.log('  Domain dimension:', linMapX.dom.dim)
     console.log('  Codomain dimension:', linMapX.cod.dim)
     console.log('  Matrix:', linMapX.M)
     
     // Convert to chain map at degree 0
-    const chainMapX = actionToChain(FieldReal)(0, matrixRep, 'x')
+    const chainMapX = actionToChain<string, number>(FieldReal)(0, matrixRep, 'x')
     console.log('\nChain map for x at degree 0:')
     console.log('  X dimension[0]:', chainMapX.X.dim[0])
     console.log('  Y dimension[0]:', chainMapX.Y.dim[0])
@@ -1570,11 +1577,11 @@ namespace ComoduleExamples {
     console.log('\nUsing Vect.VS to create 3D space:', V3.dim)
     
     const testMatrix = [[1, 2], [3, 4]]
-    console.log('\nUsing Pretty.ppMatrix:')
-    console.log(Pretty.ppMatrix(FieldReal)(testMatrix))
+    console.log('\nUsing Pretty.matrix:')
+    console.log(Pretty.matrix(FieldReal)(testMatrix))
     
-    const snf = IntegerLA.smithNormalForm([[2, 4], [6, 8]])
-    console.log('\nUsing IntegerLA.smithNormalForm diagonal:', snf.S)
+    const snf2 = IntSNF.smithNormalForm([[2, 4], [6, 8]])
+    console.log('\nUsing IntSNF.smithNormalForm diagonal:', snf2.S)
     
     console.log('✓ All namespaces working!')
   }
@@ -1646,7 +1653,7 @@ namespace ComoduleExamples {
     const DD = IndexedFamilies.familyToDiscDiagram(family, indices)
     console.log('\nConverted to DiscDiagram:')
     console.log('  Objects:', Object.keys(DD))
-    console.log('  x dimension:', DD.x?.dim[0])
+    console.log('  x dimension:', DD['x']?.dim[0])
     
     // Convert back to family
     const backToFamily = IndexedFamilies.discDiagramToFamily(DD)
@@ -1874,11 +1881,11 @@ namespace ComoduleExamples {
 
     const equipment = virtualizeFiniteCategory(TwoObjectCategory)
 
-    const companion = pendingCompanion('id_{TwoObjectCategory}')(equipment, identityTight)
+    const companion = pendingCompanion<TwoObject, TwoArrow, unknown, unknown>('id_{TwoObjectCategory}')(equipment as any, identityTight)
     console.log('\nCompanion availability:', companion.available)
     console.log('Companion details:', companion.details)
 
-    const conjoint = pendingConjoint('id_{TwoObjectCategory}')(equipment, identityTight)
+    const conjoint = pendingConjoint<TwoObject, TwoArrow, unknown, unknown>('id_{TwoObjectCategory}')(equipment as any, identityTight)
     console.log('\nConjoint availability:', conjoint.available)
     console.log('Conjoint details:', conjoint.details)
 
@@ -2106,9 +2113,9 @@ namespace ComoduleExamples {
     
     // Kan along indices (example with existing discrete operations)
     console.log('\n4. Kan extensions:')
-    const simpleF = (i: number) => ({ S: FieldReal, degrees: [0], dim: {0: i+1}, d: {} })
-    const DD = IndexedFamilies.familyToDiscDiagram(simpleF, [0, 1, 2])
-    const LanDD = LanDisc(FieldReal)(u)(DD)
+    const simpleF: IndexedFamilies.Family<string, Complex<number>> = (i: string) => ({ S: FieldReal, degrees: [0], dim: {0: Number(i)+1}, d: {} })
+    const DD = IndexedFamilies.familyToDiscDiagram(simpleF, ['0', '1', '2'])
+    const LanDD = LanDisc(FieldReal)((i: string) => String(Number(i) % 2))(DD)
     console.log('  Lan via discrete diagram:')
     console.log('    Lan(0) dimension:', LanDD[0]?.dim[0]) // sum of dims where u(j)=0
     console.log('    Lan(1) dimension:', LanDD[1]?.dim[0]) // sum of dims where u(j)=1

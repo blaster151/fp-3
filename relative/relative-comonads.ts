@@ -67,6 +67,10 @@ const frameMatchesLooseCell = <Obj, Payload>(
     return;
   }
   const [arrow] = frame.arrows;
+  if (!arrow) {
+    issues.push(`${label} arrow is missing after length check.`);
+    return;
+  }
   if (!equality(arrow.from, looseCell.from) || !equality(arrow.to, looseCell.to)) {
     issues.push(`${label} arrow must share the loose cell's endpoints.`);
   }

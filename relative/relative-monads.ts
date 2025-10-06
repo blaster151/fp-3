@@ -512,6 +512,10 @@ const frameMatchesLooseCell = <Obj, Payload>(
     return;
   }
   const [arrow] = frame.arrows;
+  if (!arrow) {
+    issues.push(`${label} arrow is missing after length check.`);
+    return;
+  }
   if (!equality(arrow.from, looseCell.from) || !equality(arrow.to, looseCell.to)) {
     issues.push(`${label} arrow must share the loose cell's endpoints.`);
   }
@@ -1097,7 +1101,7 @@ export const analyzeRelativeMonadResolution = <Obj, Arr, Payload, Evidence>(
     details: looseHolds
       ? "Hom-isomorphism target realises the loose arrow E(j,r) as promised by Lemma 5.27 and Corollary 5.28."
       : `Loose monad comparison issues: ${looseIssues.join("; ")}`,
-    induced,
+    ...(induced !== undefined && { induced }),
   };
 
   const combinedIssues = [
