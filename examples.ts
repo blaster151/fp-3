@@ -13,7 +13,13 @@
 
 import type {
   // Core types
-  Option, Result, Validation, StateReaderTask, RWST, ReaderTaskOption
+  Option,
+  Result,
+  Validation,
+  StateReaderTask,
+  RWST,
+  ReaderTaskOption,
+  CatMonad,
 } from './allTS'
 
 import {
@@ -89,6 +95,10 @@ import {
   EnhancedVect, ArrowFamilies, CategoryLimits,
   // Infrastructure
   makeFinitePoset, prettyPoset, makePosetDiagramCompat, idChainMapCompat,
+  // Relative monad layer
+  idFun, composeFun, fromMonad, enumerateRelativeMonadOracles,
+  describeTrivialRelativeKleisli, describeTrivialRelativeEilenbergMoore,
+  enumerateRelativeAlgebraOracles,
   // Namespaced exports
   Diagram, Lin, Chain, Exactness, Vect, IntegerLA, Algebra
 } from './allTS'
@@ -2117,6 +2127,45 @@ namespace ComoduleExamples {
 }
 
 // ====================================================================
+// 9. RELATIVE MONAD LAYER - Identity-root scaffolding
+// ====================================================================
+
+namespace RelativeMonadExamples {
+  const identityMonad: CatMonad<typeof TwoObjectCategory> = {
+    category: TwoObjectCategory,
+    endofunctor: idFun(TwoObjectCategory),
+    unit: {
+      source: idFun(TwoObjectCategory),
+      target: idFun(TwoObjectCategory),
+      component: (object: TwoObject) => TwoObjectCategory.id(object),
+    },
+    mult: {
+      source: composeFun(idFun(TwoObjectCategory), idFun(TwoObjectCategory)),
+      target: idFun(TwoObjectCategory),
+      component: (object: TwoObject) => TwoObjectCategory.id(object),
+    },
+  }
+
+  export const identityRelativeMonadDemo = () => {
+    const relative = fromMonad(identityMonad, { rootObject: '•' })
+    const monadReports = enumerateRelativeMonadOracles(relative)
+    const kleisli = describeTrivialRelativeKleisli(relative)
+    const eilenbergMoore = describeTrivialRelativeEilenbergMoore(relative)
+    const algebraReports = enumerateRelativeAlgebraOracles(kleisli, eilenbergMoore)
+
+    console.log('\nRelative monad diagnostics (identity root)')
+    for (const report of monadReports) {
+      console.log(`  ${report.registryPath}: holds=${report.holds}, pending=${report.pending}`)
+    }
+
+    console.log('Relative algebra/opalgebra diagnostics')
+    for (const report of algebraReports) {
+      console.log(`  ${report.registryPath}: pending=${report.pending}`)
+    }
+  }
+}
+
+// ====================================================================
 // RUNNER - Uncomment examples to test them
 // ====================================================================
 
@@ -2179,7 +2228,9 @@ async function runExamples() {
   ComoduleExamples.kanDiscreteVectExample()
   ComoduleExamples.universalPropertyExample()
   ComoduleExamples.tinyExamplesDemo()
-  
+
+  RelativeMonadExamples.identityRelativeMonadDemo()
+
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
 
@@ -2201,7 +2252,8 @@ export type {
   JsonStreamingExamples,
   FusedPipelineExamples,
   SafeASTEvolutionExamples,
-  ComoduleExamples
+  ComoduleExamples,
+  RelativeMonadExamples
 }
 
 // Run if this file is executed directly

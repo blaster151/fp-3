@@ -9,6 +9,9 @@ import {
   analyzeRelativeMonadIdentityReduction,
   analyzeRelativeMonadRepresentability,
   analyzeRelativeMonadSkewMonoidBridge,
+  analyzeRelativeMonadRepresentableRecovery,
+  embedRelativeMonadIntoFiber,
+  type RelativeMonadRepresentableRecoveryOptions,
 } from "./relative-monads";
 import {
   RelativeCompositionLawRegistry,
@@ -98,6 +101,35 @@ export const RelativeMonadOracles = {
       issues: report.issues,
     };
   },
+  fiberEmbedding: <Obj, Arr, Payload, Evidence>(
+    data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+    witness: RepresentabilityWitness<Obj, Arr>,
+  ): RelativeMonadOracleResult => {
+    const descriptor = RelativeMonadLawRegistry.fiberEmbedding;
+    const report = embedRelativeMonadIntoFiber(data, witness);
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  representableRecovery: <Obj, Arr, Payload, Evidence>(
+    data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+    witness: RepresentabilityWitness<Obj, Arr>,
+    options: RelativeMonadRepresentableRecoveryOptions<Obj, Arr, Payload, Evidence> = {},
+  ): RelativeMonadOracleResult => {
+    const descriptor = RelativeMonadLawRegistry.representableRecovery;
+    const report = analyzeRelativeMonadRepresentableRecovery(data, witness, options);
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
   skewMonoidBridge: <Obj, Arr, Payload, Evidence>(
     input: RelativeMonadSkewMonoidBridgeInput<Obj, Arr, Payload, Evidence>,
   ): RelativeMonadOracleResult => {
@@ -140,6 +172,21 @@ export const enumerateRelativeMonadOracles = <Obj, Arr, Payload, Evidence>(
       RelativeMonadOracles.representableLooseMonoid(
         data,
         options.representabilityWitness,
+      ),
+    );
+    results.push(
+      RelativeMonadOracles.fiberEmbedding(
+        data,
+        options.representabilityWitness,
+      ),
+    );
+    results.push(
+      RelativeMonadOracles.representableRecovery(
+        data,
+        options.representabilityWitness,
+        options.skewMonoidBridgeInput
+          ? { skewMonoidBridgeInput: options.skewMonoidBridgeInput }
+          : {},
       ),
     );
   }

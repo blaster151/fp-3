@@ -17729,9 +17729,13 @@ export const counitMate = <
   }
 }
 
-/** 
+/**
  * Pushforward monad: transport monad structure along adjunction F ⊣ U
  * Given T on C and F ⊣ U : C ⇄ D, construct T↑ = F ∘ T ∘ U on D
+ *
+ * @deprecated These helpers assume endofunctor-based monads. Prefer routing
+ * relative presentations through `relative/relative-monads.fromMonad` and the
+ * equipment-driven constructors so Street-action witnesses remain visible.
  */
 export const pushforwardMonad = <
   C,
@@ -17783,7 +17787,13 @@ export const colaxAlongLeftAdjoint = <
   return idNat(FT)
 }
 
-/** Eilenberg-Moore algebra transport: T-algebra induces T↑-algebra */
+/**
+ * Eilenberg-Moore algebra transport: T-algebra induces T↑-algebra.
+ *
+ * @deprecated Relative algebra transports should flow through the Street
+ * action analyzers; this helper keeps the legacy endofunctor variant available
+ * for older examples.
+ */
 export const pushforwardAlgebra = <
   C,
   D,
@@ -17828,7 +17838,13 @@ export const reassociate = {
   ): CatNatTrans<CatFunctor<C, D>, CatFunctor<C, D>> => idNat(F)
 }
 
-/** Enhanced pushforward monad with proper μ↑ wiring */
+/**
+ * Enhanced pushforward monad with proper μ↑ wiring.
+ *
+ * @deprecated Maintained for legacy pushforward experiments. New code should
+ * migrate to the relative monad constructors, which expose the same
+ * diagnostics via `relativeMonadFromEquipment`.
+ */
 export const pushforwardMonadEnhanced = <
   C,
   D,
@@ -17839,13 +17855,20 @@ export const pushforwardMonadEnhanced = <
   T: CatMonad<C>
 ): CatMonad<D> => pushforwardMonad(adj, T)
 
-/** Kleisli composition for law checking */
+/** Legacy shape describing a simple Kleisli morphism. */
 interface SimpleKleisliMorph<C> {
   readonly from: ObjOf<C>
   readonly to: ObjOf<C>
   readonly compose: (x: ObjOf<C>) => ObjOf<C>
 }
 
+/**
+ * Kleisli composition for law checking.
+ *
+ * @deprecated Use the relative Kleisli helpers in `relative/relative-monads`
+ * once Street witnesses are available. This version assumes an endofunctor on
+ * the nose.
+ */
 export const kleisliCompose = <C>(
   T: CatMonad<C>,
   f: SimpleKleisliMorph<C>,  // X -> T Y
@@ -17869,7 +17892,12 @@ export const kleisliCompose = <C>(
   }
 }
 
-/** Check unit laws for pushforward monad */
+/**
+ * Check unit laws for pushforward monad.
+ *
+ * @deprecated Superseded by `algebra-oracles.ts` relative law analyzers, which
+ * surface witness data alongside structured diagnostics.
+ */
 export const checkPushforwardUnitLaws = (
   adj: Adjunction<unknown, unknown, CatFunctor<unknown, unknown>, CatFunctor<unknown, unknown>>,
   T: CatMonad<unknown>,
@@ -17904,7 +17932,12 @@ export const checkPushforwardUnitLaws = (
   return results.every(r => r)
 }
 
-/** Check associativity law for pushforward monad */
+/**
+ * Check associativity law for pushforward monad.
+ *
+ * @deprecated Superseded by `checkRelativeMonadLaws`, which threads Street
+ * witness requests through the oracle layer.
+ */
 export const checkPushforwardAssociativity = (
   adj: Adjunction<unknown, unknown, CatFunctor<unknown, unknown>, CatFunctor<unknown, unknown>>,
   T: CatMonad<unknown>,
@@ -17941,7 +17974,12 @@ export const checkPushforwardAssociativity = (
   return results.every(r => r)
 }
 
-/** Complete law checker for pushforward monads */
+/**
+ * Complete law checker for pushforward monads.
+ *
+ * @deprecated Use `checkRelativeMonadLaws` to obtain structural diagnostics and
+ * pending Street-equality information for embedded classical monads.
+ */
 export const checkPushforwardMonadLaws = (
   adj: Adjunction<unknown, unknown, CatFunctor<unknown, unknown>, CatFunctor<unknown, unknown>>,
   T: CatMonad<unknown>,
@@ -17967,7 +18005,12 @@ export const checkPushforwardMonadLaws = (
    Integration with existing infrastructure
    ================================================================ */
 
-/** Compare codensity monad across adjunction */
+/**
+ * Compare codensity monad across adjunction.
+ *
+ * @deprecated Schedule a relative monad comparison via the Street-action
+ * analyzers instead; this helper only observes classical endofunctors.
+ */
 export const compareCodensityAcrossAdjunction = <
   CO,
   DO,
@@ -17989,7 +18032,12 @@ export const compareCodensityAcrossAdjunction = <
   }
 }
 
-/** Matrix pretty-printing for pushed monads in Vect */
+/**
+ * Matrix pretty-printing for pushed monads in Vect.
+ *
+ * @deprecated Prefer reporting via the relative monad construction diagnostics,
+ * which surface the same matrices as witness payloads.
+ */
 export const prettyPrintPushedMonad = (
   pushedMonad: CatMonad<unknown>,
   V: EnhancedVect.VectObj

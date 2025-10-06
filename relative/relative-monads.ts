@@ -2,14 +2,15 @@ import type {
   AbsoluteColimitAnalysis,
   DensityAnalysis,
   Equipment2Cell,
+  EquipmentRestrictionResult,
   EquipmentProarrow,
   EquipmentVerticalBoundary,
   FullyFaithfulLeftExtensionAnalysis,
-  LeftExtensionFromColimitAnalysis,
   LooseMonoidData,
   LooseMonoidShapeReport,
-  PointwiseLeftExtensionLiftAnalysis,
+  ObjectEquality,
   RepresentabilityWitness,
+  TightCellEvidence,
   VirtualEquipment,
 } from "../virtual-equipment";
 // TODO(relative-adjunctions): integrate with `RelativeAdjunctionData` once
@@ -22,20 +23,124 @@ import {
   identityVerticalBoundary,
   isIdentityVerticalBoundary,
   verticalBoundariesEqual,
+  virtualizeCategory,
 } from "../virtual-equipment";
 import type {
   RelativeAdjunctionData,
   RelativeAdjunctionFramingReport,
 } from "./relative-adjunctions";
 import { analyzeRelativeAdjunctionHomIsomorphism } from "./relative-adjunctions";
+import type { RelativeMonad } from "./relative-monad";
+import type { CatMonad } from "../allTS";
+import { MorOf, ObjOf } from "../allTS";
+import { analyzeLooseMonoidShape } from "../virtual-equipment/loose-structures";
+import {
+  analyzeLooseSkewComposition,
+  type LooseSkewCompositionAnalysis,
+  type LooseSkewMultimorphism,
+} from "../virtual-equipment/skew-multicategory";
+import {
+  analyzeRightExtension,
+  analyzeRightLift,
+  type RightExtensionAnalysis,
+  type RightExtensionData,
+  type RightLiftAnalysis,
+  type RightLiftData,
+} from "../virtual-equipment/extensions";
+import {
+  analyzeLeftExtensionFromWeightedColimit,
+  analyzeWeightedCocone,
+  analyzeWeightedColimitRestriction,
+  analyzeWeightedCone,
+  analyzeWeightedLimitRestriction,
+  type LeftExtensionFromColimitAnalysis,
+  type LeftExtensionFromColimitData,
+  type WeightedCoconeAnalysis,
+  type WeightedCoconeData,
+  type WeightedColimitRestrictionAnalysis,
+  type WeightedColimitRestrictionData,
+  type WeightedConeAnalysis,
+  type WeightedConeData,
+  type WeightedLimitRestrictionAnalysis,
+  type WeightedLimitRestrictionData,
+} from "../virtual-equipment/limits";
+import {
+  analyzeDensityViaIdentityRestrictions,
+  type DensityViaIdentityRestrictionsData,
+} from "../virtual-equipment/absoluteness";
+import {
+  analyzeFullyFaithfulTight1Cell,
+  analyzePointwiseLeftExtensionLiftCorrespondence,
+  type FullyFaithfulAnalysis,
+  type FullyFaithfulInput,
+  type PointwiseLeftExtensionLiftAnalysis,
+  type PointwiseLeftExtensionLiftInput,
+} from "../virtual-equipment/faithfulness";
 
-export interface RelativeMonadData<Obj, Arr, Payload, Evidence> {
-  readonly equipment: VirtualEquipment<Obj, Arr, Payload, Evidence>;
-  readonly root: EquipmentVerticalBoundary<Obj, Arr>;
-  readonly carrier: EquipmentVerticalBoundary<Obj, Arr>;
-  readonly looseCell: EquipmentProarrow<Obj, Payload>;
-  readonly extension: Equipment2Cell<Obj, Arr, Payload, Evidence>;
-  readonly unit: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+export type RelativeMonadData<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> = RelativeMonad<Obj, Arr, Payload, Evidence>;
+
+export interface RelativeMonadConstructionResult<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly monad?: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+  readonly framing: RelativeMonadFramingReport;
+  readonly leftRestriction?: EquipmentRestrictionResult<Obj, Arr, Payload, Evidence>;
+  readonly rightRestriction?: EquipmentRestrictionResult<Obj, Arr, Payload, Evidence>;
+  readonly representability?: RepresentabilityWitness<Obj, Arr>;
+  readonly looseMonoid: LooseMonoidData<Obj, Arr, Payload, Evidence>;
+  readonly looseMonoidReport: LooseMonoidShapeReport;
+  readonly skewComposition?: LooseSkewCompositionAnalysis;
+  readonly rightExtension?: RightExtensionAnalysis;
+  readonly rightLift?: RightLiftAnalysis;
+  readonly weightedCone?: WeightedConeAnalysis;
+  readonly weightedCocone?: WeightedCoconeAnalysis;
+  readonly weightedColimitRestriction?: WeightedColimitRestrictionAnalysis;
+  readonly weightedLimitRestriction?: WeightedLimitRestrictionAnalysis;
+  readonly leftExtensionFromColimit?: LeftExtensionFromColimitAnalysis;
+  readonly density?: DensityAnalysis;
+  readonly pointwiseLift?: PointwiseLeftExtensionLiftAnalysis;
+  readonly fullyFaithful?: FullyFaithfulAnalysis<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeMonadEquipmentWitnesses<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly looseMonoid?: LooseMonoidData<Obj, Arr, Payload, Evidence>;
+  readonly skewSubstitutions?: ReadonlyArray<
+    LooseSkewMultimorphism<Obj, Arr, Payload, Evidence>
+  >;
+  readonly rightExtension?: RightExtensionData<Obj, Arr, Payload, Evidence>;
+  readonly rightLift?: RightLiftData<Obj, Arr, Payload, Evidence>;
+  readonly weightedCone?: WeightedConeData<Obj, Arr, Payload, Evidence>;
+  readonly weightedCocone?: WeightedCoconeData<Obj, Arr, Payload, Evidence>;
+  readonly leftExtensionFromColimit?: LeftExtensionFromColimitData<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly density?: DensityViaIdentityRestrictionsData<Obj, Arr>;
+  readonly fullyFaithful?: FullyFaithfulInput<Obj, Arr>;
+  readonly pointwiseLift?: PointwiseLeftExtensionLiftInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
 }
 
 export interface RelativeMonadFramingReport {
@@ -51,6 +156,56 @@ export interface RelativeMonadRepresentabilityReport<Obj, Arr> {
   readonly framing: RelativeMonadFramingReport;
   readonly representability: RepresentabilityWitness<Obj, Arr>;
 }
+
+export interface RelativeMonadFiberMonad<Obj, Arr, Payload, Evidence> {
+  readonly baseObject: Obj;
+  readonly looseArrow: EquipmentProarrow<Obj, Payload>;
+  readonly unit: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly extension: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly root: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly carrier: EquipmentVerticalBoundary<Obj, Arr>;
+}
+
+export interface RelativeMonadFiberEmbeddingReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly representability: RelativeMonadRepresentabilityReport<Obj, Arr>;
+  readonly fiberMonad?: RelativeMonadFiberMonad<Obj, Arr, Payload, Evidence>;
+}
+
+export const embedRelativeMonadIntoFiber = <Obj, Arr, Payload, Evidence>(
+  data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+  witness: RepresentabilityWitness<Obj, Arr>,
+): RelativeMonadFiberEmbeddingReport<Obj, Arr, Payload, Evidence> => {
+  const representability = analyzeRelativeMonadRepresentability(data, witness);
+  const issues = [...representability.issues];
+
+  const holds = representability.holds;
+  const pending = true;
+  const details = holds
+    ? "Relative monad embeds into the Street fiber X[j] via E(j,-); fully faithful comparison witnesses remain pending."
+    : `Relative monad cannot embed into X[j]: ${issues.join("; ")}`;
+
+  return {
+    holds,
+    pending,
+    issues,
+    details,
+    representability,
+    fiberMonad: holds
+      ? {
+          baseObject: data.root.from,
+          looseArrow: data.looseCell,
+          unit: data.unit,
+          extension: data.extension,
+          root: data.root,
+          carrier: data.carrier,
+        }
+      : undefined,
+  };
+};
 
 export interface RelativeMonadIdentityReductionReport {
   readonly holds: boolean;
@@ -79,6 +234,272 @@ export interface RelativeMonadResolutionData<Obj, Arr, Payload, Evidence> {
   readonly adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
 }
 
+export interface RelativeMonadUnitCompatibilityWitness<Obj, Arr, Payload, Evidence> {
+  readonly unitArrow?: EquipmentProarrow<Obj, Payload>;
+  readonly extensionComposite?: EquipmentProarrow<Obj, Payload>;
+  readonly extensionSourceArrows: ReadonlyArray<EquipmentProarrow<Obj, Payload>>;
+}
+
+export interface RelativeMonadExtensionAssociativityWitness<Obj, Arr, Payload, Evidence> {
+  readonly extensionComposite?: EquipmentProarrow<Obj, Payload>;
+  readonly extensionSourceArrows: ReadonlyArray<EquipmentProarrow<Obj, Payload>>;
+}
+
+export interface RelativeMonadRootIdentityWitness<Obj, Arr, Payload, Evidence> {
+  readonly restriction?: EquipmentRestrictionResult<Obj, Arr, Payload, Evidence>;
+  readonly unitSourceArrow?: EquipmentProarrow<Obj, Payload>;
+}
+
+export interface RelativeMonadLawComponentReport<Witness> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: Witness;
+}
+
+export interface RelativeMonadLawAnalysis<Obj, Arr, Payload, Evidence> {
+  readonly framing: RelativeMonadFramingReport;
+  readonly unitCompatibility: RelativeMonadLawComponentReport<
+    RelativeMonadUnitCompatibilityWitness<Obj, Arr, Payload, Evidence>
+  >;
+  readonly extensionAssociativity: RelativeMonadLawComponentReport<
+    RelativeMonadExtensionAssociativityWitness<Obj, Arr, Payload, Evidence>
+  >;
+  readonly rootIdentity: RelativeMonadLawComponentReport<
+    RelativeMonadRootIdentityWitness<Obj, Arr, Payload, Evidence>
+  >;
+  readonly monad: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+}
+
+export const relativeMonadFromEquipment = <Obj, Arr, Payload, Evidence>(
+  scaffold: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+  witnesses: RelativeMonadEquipmentWitnesses<Obj, Arr, Payload, Evidence> = {},
+): RelativeMonadConstructionResult<Obj, Arr, Payload, Evidence> => {
+  const framing = analyzeRelativeMonadFraming(scaffold);
+  const issues = [...framing.issues];
+  const equality = scaffold.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+
+  const looseMonoid: LooseMonoidData<Obj, Arr, Payload, Evidence> =
+    witnesses.looseMonoid ?? {
+      object: scaffold.root.from,
+      looseCell: scaffold.looseCell,
+      multiplication: scaffold.extension,
+      unit: scaffold.unit,
+    };
+  const looseMonoidReport = analyzeLooseMonoidShape(scaffold.equipment, looseMonoid);
+
+  const skewInners =
+    witnesses.skewSubstitutions ??
+    scaffold.extension.source.arrows.map((arrow, index) => {
+      const frame = frameFromProarrow(arrow);
+      const left = identityVerticalBoundary(
+        scaffold.equipment,
+        arrow.from,
+        `Identity left boundary for extension source arrow ${index}.`,
+      );
+      const right = identityVerticalBoundary(
+        scaffold.equipment,
+        arrow.to,
+        `Identity right boundary for extension source arrow ${index}.`,
+      );
+      return {
+        label: `extension.source[${index}]`,
+        cell: {
+          source: frame,
+          target: frame,
+          boundaries: { left, right },
+          evidence: scaffold.equipment.cells.identity(frame, { left, right }),
+        },
+      } as LooseSkewMultimorphism<Obj, Arr, Payload, Evidence>;
+    });
+
+  const skewComposition = analyzeLooseSkewComposition(
+    scaffold.equipment,
+    {
+      cell: scaffold.extension,
+      label: "relative monad extension",
+    },
+    skewInners,
+  );
+
+  const collectReportIssues = (
+    label: string,
+    report: { holds: boolean; details: string; issues: ReadonlyArray<string> } | undefined,
+  ) => {
+    if (!report || report.holds) {
+      return;
+    }
+    issues.push(`${label} failed: ${report.details}`);
+    report.issues.forEach((issue) => issues.push(`${label}: ${issue}`));
+  };
+
+  collectReportIssues("Loose monoid framing", looseMonoidReport);
+  collectReportIssues("Skew multicategory substitution", skewComposition);
+
+  const leftRestriction = scaffold.equipment.restrictions.left(
+    scaffold.root.tight,
+    scaffold.looseCell,
+  );
+
+  let representability: RepresentabilityWitness<Obj, Arr> | undefined;
+
+  if (leftRestriction === undefined) {
+    issues.push(
+      "Left restriction B(j,1) failed: equipment could not restrict the loose arrow along the root.",
+    );
+  } else {
+    const { restricted, representability: witness, details } = leftRestriction;
+    if (
+      !equality(restricted.from, scaffold.looseCell.from) ||
+      !equality(restricted.to, scaffold.looseCell.to)
+    ) {
+      issues.push("Left restriction B(j,1) must return a loose arrow matching E(j,t).");
+    }
+    if (restricted !== scaffold.looseCell) {
+      issues.push(
+        "Left restriction B(j,1) should recover the supplied loose arrow; use the restricted arrow when wiring future analyzers.",
+      );
+    }
+    if (witness === undefined) {
+      issues.push(
+        `Left restriction along j currently lacks representability; loose adjunction analyzers will only certify a map. Details: ${details}`,
+      );
+    } else {
+      representability = witness;
+      if (witness.orientation !== "left") {
+        issues.push("Representability witness must arise from a left restriction B(j,1).");
+      }
+      if (!equality(witness.object, scaffold.root.from)) {
+        issues.push("Representability witness object must match dom(j).");
+      }
+      if (witness.tight !== scaffold.root.tight) {
+        issues.push("Representability witness must reuse the root tight 1-cell.");
+      }
+    }
+  }
+
+  const rightRestriction = scaffold.equipment.restrictions.right(
+    scaffold.looseCell,
+    scaffold.carrier.tight,
+  );
+
+  if (rightRestriction === undefined) {
+    issues.push(
+      "Right restriction B(1,t) failed: equipment could not align the loose arrow with the carrier boundary.",
+    );
+  } else {
+    const { restricted, representability: witness, details } = rightRestriction;
+    if (
+      !equality(restricted.from, scaffold.looseCell.from) ||
+      !equality(restricted.to, scaffold.looseCell.to)
+    ) {
+      issues.push("Right restriction B(1,t) must return a loose arrow matching E(j,t).");
+    }
+    if (restricted !== scaffold.looseCell) {
+      issues.push(
+        "Right restriction B(1,t) should coincide with the supplied loose arrow so future Street actions reuse the same data.",
+      );
+    }
+    if (witness === undefined) {
+      issues.push(
+        `Right restriction along t currently lacks representability; record companion/conjoint witnesses so adjunction scaffolding can proceed. Details: ${details}`,
+      );
+    } else if (witness.orientation !== "right") {
+      issues.push("Right restriction representability must be oriented as B(1,t).");
+    }
+  }
+
+  const rightExtensionReport = witnesses.rightExtension
+    ? analyzeRightExtension(scaffold.equipment, witnesses.rightExtension)
+    : undefined;
+  const rightLiftReport = witnesses.rightLift
+    ? analyzeRightLift(scaffold.equipment, witnesses.rightLift)
+    : undefined;
+  const weightedConeReport = witnesses.weightedCone
+    ? analyzeWeightedCone(scaffold.equipment, witnesses.weightedCone)
+    : undefined;
+  const weightedCoconeReport = witnesses.weightedCocone
+    ? analyzeWeightedCocone(scaffold.equipment, witnesses.weightedCocone)
+    : undefined;
+  const leftExtensionFromColimitReport = witnesses.leftExtensionFromColimit
+    ? analyzeLeftExtensionFromWeightedColimit(
+        scaffold.equipment,
+        witnesses.leftExtensionFromColimit,
+      )
+    : undefined;
+  const densityReport = witnesses.density
+    ? analyzeDensityViaIdentityRestrictions(scaffold.equipment, witnesses.density)
+    : undefined;
+  const fullyFaithfulReport = witnesses.fullyFaithful
+    ? analyzeFullyFaithfulTight1Cell(scaffold.equipment, witnesses.fullyFaithful)
+    : undefined;
+  const pointwiseLiftReport = witnesses.pointwiseLift
+    ? analyzePointwiseLeftExtensionLiftCorrespondence(
+        scaffold.equipment,
+        witnesses.pointwiseLift,
+      )
+    : undefined;
+
+  collectReportIssues("Right extension", rightExtensionReport);
+  collectReportIssues("Right lift", rightLiftReport);
+  collectReportIssues("Weighted cone", weightedConeReport);
+  collectReportIssues("Weighted cocone", weightedCoconeReport);
+  collectReportIssues(
+    "Left extension from weighted colimit",
+    leftExtensionFromColimitReport,
+  );
+  collectReportIssues("Density via identity restrictions", densityReport);
+  collectReportIssues("Fully faithful tight 1-cell", fullyFaithfulReport);
+  collectReportIssues("Pointwise left extension lift", pointwiseLiftReport);
+
+  const weightedColimitRestrictionReport =
+    weightedCoconeReport && leftRestriction
+      ? analyzeWeightedColimitRestriction(scaffold.equipment, {
+          cocone: witnesses.weightedCocone!,
+          restriction: leftRestriction,
+        })
+      : undefined;
+  collectReportIssues("Weighted colimit restriction", weightedColimitRestrictionReport);
+
+  const weightedLimitRestrictionReport =
+    weightedConeReport && rightRestriction
+      ? analyzeWeightedLimitRestriction(scaffold.equipment, {
+          cone: witnesses.weightedCone!,
+          restriction: rightRestriction,
+        })
+      : undefined;
+  collectReportIssues("Weighted limit restriction", weightedLimitRestrictionReport);
+
+  const holds = issues.length === 0;
+
+  return {
+    holds,
+    issues,
+    details: holds
+      ? "Constructed relative monad from equipment: framing and restriction checks succeeded."
+      : `Relative monad construction issues: ${issues.join("; ")}`,
+    ...(holds && { monad: scaffold, representability }),
+    framing,
+    ...(leftRestriction !== undefined && { leftRestriction }),
+    ...(rightRestriction !== undefined && { rightRestriction }),
+    ...(!holds && representability !== undefined && { representability }),
+    looseMonoid,
+    looseMonoidReport,
+    skewComposition,
+    rightExtension: rightExtensionReport,
+    rightLift: rightLiftReport,
+    weightedCone: weightedConeReport,
+    weightedCocone: weightedCoconeReport,
+    weightedColimitRestriction: weightedColimitRestrictionReport,
+    weightedLimitRestriction: weightedLimitRestrictionReport,
+    leftExtensionFromColimit: leftExtensionFromColimitReport,
+    density: densityReport,
+    pointwiseLift: pointwiseLiftReport,
+    fullyFaithful: fullyFaithfulReport,
+  };
+};
+
 const frameMatchesLooseCell = <Obj, Payload>(
   equality: (left: Obj, right: Obj) => boolean,
   frame: { readonly arrows: ReadonlyArray<EquipmentProarrow<Obj, Payload>> },
@@ -95,6 +516,11 @@ const frameMatchesLooseCell = <Obj, Payload>(
     issues.push(`${label} arrow must share the loose cell's endpoints.`);
   }
 };
+
+const singleArrowFromFrame = <Obj, Payload>(
+  frame: { readonly arrows: ReadonlyArray<EquipmentProarrow<Obj, Payload>> },
+): EquipmentProarrow<Obj, Payload> | undefined =>
+  frame.arrows.length === 1 ? frame.arrows[0] : undefined;
 
 const boundariesMatch = <Obj, Arr>(
   equality: (left: Obj, right: Obj) => boolean,
@@ -160,6 +586,171 @@ export const analyzeRelativeMonadFraming = <Obj, Arr, Payload, Evidence>(
   };
 };
 
+const composeExtensionSource = <Obj, Arr, Payload, Evidence>(
+  equipment: VirtualEquipment<Obj, Arr, Payload, Evidence>,
+  frame: { readonly arrows: ReadonlyArray<EquipmentProarrow<Obj, Payload>> },
+  issues: string[],
+) => {
+  if (frame.arrows.length === 0) {
+    issues.push("Extension source must contain at least one loose arrow to compose with the unit action.");
+    return undefined;
+  }
+  const composite = equipment.proarrows.horizontalComposeMany(frame.arrows);
+  if (composite === undefined) {
+    issues.push("Extension source arrows must be horizontally composable inside the equipment.");
+  }
+  return composite;
+};
+
+export const analyzeRelativeMonadUnitCompatibility = <Obj, Arr, Payload, Evidence>(
+  data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+): RelativeMonadLawComponentReport<
+  RelativeMonadUnitCompatibilityWitness<Obj, Arr, Payload, Evidence>
+> => {
+  const { equipment, looseCell, extension, unit, root } = data;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  const unitArrow = singleArrowFromFrame(unit.target);
+  if (!unitArrow) {
+    issues.push("Unit target should provide the loose arrow used for Kleisli identities.");
+  } else {
+    if (!equality(unitArrow.from, looseCell.from)) {
+      issues.push("Unit target arrow should start at dom(j) so extend(unit) composes.");
+    }
+    if (!equality(unitArrow.to, looseCell.to)) {
+      issues.push("Unit target arrow should land at cod(t) for the extension composite.");
+    }
+  }
+
+  const composite = composeExtensionSource(equipment, extension.source, issues);
+  const firstArrow = extension.source.arrows[0];
+  const lastArrow = extension.source.arrows[extension.source.arrows.length - 1];
+
+  if (firstArrow && !equality(firstArrow.from, looseCell.from)) {
+    issues.push("Extension source should begin at dom(j) so the unit comparison is defined.");
+  }
+  if (lastArrow && !equality(lastArrow.to, looseCell.to)) {
+    issues.push("Extension source should end at cod(t) to reuse the loose arrow boundaries.");
+  }
+
+  if (composite && !equality(composite.from, root.from)) {
+    issues.push("Composite of extension source arrows should start at dom(j).");
+  }
+  if (composite && !equality(composite.to, looseCell.to)) {
+    issues.push("Composite of extension source arrows should land at cod(t).");
+  }
+
+  const holds = issues.length === 0;
+  const details = holds
+    ? "Structural prerequisites for extend(unit) hold; Street-level equality remains pending."
+    : `Relative monad unit compatibility issues: ${issues.join("; ")}`;
+
+  return {
+    holds,
+    pending: true,
+    issues,
+    details,
+    witness: {
+      unitArrow,
+      extensionComposite: composite,
+      extensionSourceArrows: [...extension.source.arrows],
+    },
+  };
+};
+
+export const analyzeRelativeMonadExtensionAssociativity = <Obj, Arr, Payload, Evidence>(
+  data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+): RelativeMonadLawComponentReport<
+  RelativeMonadExtensionAssociativityWitness<Obj, Arr, Payload, Evidence>
+> => {
+  const { equipment, extension, looseCell } = data;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  if (extension.source.arrows.length < 2) {
+    issues.push("Extension source should exhibit at least two composable loose arrows to witness associativity.");
+  }
+
+  const composite = composeExtensionSource(equipment, extension.source, issues);
+
+  if (composite && !equality(composite.from, looseCell.from)) {
+    issues.push("Composite of extension source arrows should start at dom(j) for associativity pastings.");
+  }
+  if (composite && !equality(composite.to, looseCell.to)) {
+    issues.push("Composite of extension source arrows should end at cod(t) to compare both pastings.");
+  }
+
+  const holds = issues.length === 0;
+  const details = holds
+    ? "Extension source arrows compose; associativity equality awaits Street pasting witnesses."
+    : `Relative monad associativity prerequisites failed: ${issues.join("; ")}`;
+
+  return {
+    holds,
+    pending: true,
+    issues,
+    details,
+    witness: {
+      extensionComposite: composite,
+      extensionSourceArrows: [...extension.source.arrows],
+    },
+  };
+};
+
+export const analyzeRelativeMonadRootIdentity = <Obj, Arr, Payload, Evidence>(
+  data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+): RelativeMonadLawComponentReport<
+  RelativeMonadRootIdentityWitness<Obj, Arr, Payload, Evidence>
+> => {
+  const { equipment, root, looseCell, unit } = data;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  const restriction = equipment.restrictions.left(root.tight, looseCell);
+  if (restriction === undefined) {
+    issues.push("Left restriction B(j,1) should exist so the unit preserves identities along the root.");
+  }
+
+  const unitSourceArrow = singleArrowFromFrame(unit.source);
+  if (!unitSourceArrow) {
+    issues.push("Unit source should consist of the identity loose arrow on dom(j).");
+  } else {
+    if (!equality(unitSourceArrow.from, root.from)) {
+      issues.push("Unit source arrow should start at dom(j).");
+    }
+    if (!equality(unitSourceArrow.to, root.from)) {
+      issues.push("Unit source arrow should end at dom(j) to represent the identity along the root.");
+    }
+  }
+
+  const holds = issues.length === 0;
+  const details = holds
+    ? "Restriction and unit framing preserve the root identity; comparison with Street calculus remains pending."
+    : `Relative monad root-identity issues: ${issues.join("; ")}`;
+
+  return {
+    holds,
+    pending: true,
+    issues,
+    details,
+    witness: {
+      restriction,
+      unitSourceArrow,
+    },
+  };
+};
+
+export const analyzeRelativeMonadLaws = <Obj, Arr, Payload, Evidence>(
+  data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+): RelativeMonadLawAnalysis<Obj, Arr, Payload, Evidence> => ({
+  monad: data,
+  framing: analyzeRelativeMonadFraming(data),
+  unitCompatibility: analyzeRelativeMonadUnitCompatibility(data),
+  extensionAssociativity: analyzeRelativeMonadExtensionAssociativity(data),
+  rootIdentity: analyzeRelativeMonadRootIdentity(data),
+});
+
 export const describeTrivialRelativeMonad = <Obj, Arr, Payload, Evidence>(
   equipment: VirtualEquipment<Obj, Arr, Payload, Evidence>,
   object: Obj,
@@ -194,6 +785,150 @@ export const describeTrivialRelativeMonad = <Obj, Arr, Payload, Evidence>(
     looseCell,
     extension,
     unit: extension,
+  };
+};
+
+export interface RelativeMonadIdentityRootOptions<C> {
+  readonly rootObject: ObjOf<C>;
+  readonly objects?: ReadonlyArray<ObjOf<C>>;
+  readonly equalsObjects?: ObjectEquality<ObjOf<C>>;
+  readonly details?: {
+    readonly root?: string;
+    readonly carrier?: string;
+  };
+}
+
+export const fromMonad = <C>(
+  monad: CatMonad<C>,
+  options: RelativeMonadIdentityRootOptions<C>,
+): RelativeMonadData<
+  ObjOf<C>,
+  MorOf<C>,
+  CatMonad<C>["endofunctor"],
+  TightCellEvidence<ObjOf<C>, MorOf<C>>
+> => {
+  type Obj = ObjOf<C>;
+  type Arr = MorOf<C>;
+  type Endofunctor = CatMonad<C>["endofunctor"];
+
+  const equality = options.equalsObjects ?? defaultObjectEquality<Obj>;
+  const knownObjects = options.objects ?? [];
+  const rootObject = options.rootObject;
+  const ensuredRoot = knownObjects.some((object) => equality(object, rootObject))
+    ? knownObjects
+    : [rootObject, ...knownObjects];
+  const carrierTarget = monad.endofunctor.onObj(rootObject);
+  const objects = ensuredRoot.some((object) => equality(object, carrierTarget))
+    ? ensuredRoot
+    : [...ensuredRoot, carrierTarget];
+
+  const equipment = virtualizeCategory(monad.category, {
+    objects,
+    ...(options.equalsObjects !== undefined && { equalsObjects: options.equalsObjects }),
+  });
+
+  const root = identityVerticalBoundary(
+    equipment,
+    rootObject,
+    options.details?.root ??
+      "Identity root induced by embedding a classical monad into the relative layer.",
+  );
+
+  const carrier: EquipmentVerticalBoundary<Obj, Arr> = {
+    from: rootObject,
+    to: carrierTarget,
+    tight: monad.endofunctor,
+    details:
+      options.details?.carrier ??
+      "Carrier boundary arises from the monad endofunctor applied to the chosen root object.",
+  };
+
+  const looseCell: EquipmentProarrow<Obj, Endofunctor> = {
+    from: rootObject,
+    to: carrierTarget,
+    payload: monad.endofunctor,
+  };
+
+  const framed = frameFromProarrow(looseCell);
+  const boundaries = { left: root, right: carrier } as const;
+
+  const unit: Equipment2Cell<Obj, Arr, Endofunctor, TightCellEvidence<Obj, Arr>> = {
+    source: framed,
+    target: framed,
+    boundaries,
+    evidence: { kind: "tight", cell: monad.unit },
+  };
+
+  const extension: Equipment2Cell<Obj, Arr, Endofunctor, TightCellEvidence<Obj, Arr>> = {
+    source: framed,
+    target: framed,
+    boundaries,
+    evidence: { kind: "tight", cell: monad.mult },
+  };
+
+  return {
+    equipment,
+    root,
+    carrier,
+    looseCell,
+    extension,
+    unit,
+  };
+};
+
+export interface RelativeMonadIdentityCollapseResult<C> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly monad?: CatMonad<C>;
+}
+
+export const toMonadIfIdentity = <Obj, Arr, Payload, Evidence>(
+  data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+): RelativeMonadIdentityCollapseResult<typeof data.equipment.tight.category> => {
+  const reduction = analyzeRelativeMonadIdentityReduction(data);
+  if (!reduction.holds) {
+    return {
+      holds: false,
+      issues: reduction.issues,
+      details: reduction.details,
+    };
+  }
+
+  const issues: string[] = [];
+  const unitEvidence = data.unit.evidence;
+  if (unitEvidence.kind !== "tight") {
+    issues.push(
+      "Relative monad unit evidence must be a tight 2-cell to recover the classical monad unit.",
+    );
+  }
+  const extensionEvidence = data.extension.evidence;
+  if (extensionEvidence.kind !== "tight") {
+    issues.push(
+      "Relative monad extension evidence must be a tight 2-cell to recover the classical monad multiplication.",
+    );
+  }
+
+  if (issues.length > 0) {
+    return {
+      holds: false,
+      issues,
+      details: `Relative monad cannot collapse to an ordinary monad: ${issues.join("; ")}`,
+    };
+  }
+
+  const monad: CatMonad<typeof data.equipment.tight.category> = {
+    category: data.equipment.tight.category,
+    endofunctor: data.carrier.tight,
+    unit: unitEvidence.cell,
+    mult: extensionEvidence.cell,
+  };
+
+  return {
+    holds: true,
+    issues: [],
+    details: `${reduction.details} Recovered the classical monad data from the identity-root presentation.`,
+    monad,
   };
 };
 
@@ -511,4 +1246,66 @@ export const analyzeRelativeMonadSkewMonoidBridge = <Obj, Arr, Payload, Evidence
     : `Relative monad skew-monoid issues: ${issues.join("; ")}`;
 
   return { holds, issues, details };
+};
+
+export interface RelativeMonadRepresentableRecoveryOptions<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly skewMonoidBridgeInput?: RelativeMonadSkewMonoidBridgeInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+export interface RelativeMonadRepresentableRecoveryReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly embedding: RelativeMonadFiberEmbeddingReport<Obj, Arr, Payload, Evidence>;
+  readonly skewMonoid?: RelativeMonadSkewMonoidBridgeReport;
+}
+
+export const analyzeRelativeMonadRepresentableRecovery = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+  witness: RepresentabilityWitness<Obj, Arr>,
+  options: RelativeMonadRepresentableRecoveryOptions<Obj, Arr, Payload, Evidence> = {},
+): RelativeMonadRepresentableRecoveryReport<Obj, Arr, Payload, Evidence> => {
+  const embedding = embedRelativeMonadIntoFiber(data, witness);
+  const issues = [...embedding.issues];
+
+  let skewMonoid: RelativeMonadSkewMonoidBridgeReport | undefined;
+  if (options.skewMonoidBridgeInput) {
+    skewMonoid = analyzeRelativeMonadSkewMonoidBridge(options.skewMonoidBridgeInput);
+    if (!skewMonoid.holds) {
+      issues.push(`Skew-monoid comparison failed: ${skewMonoid.details}`);
+      issues.push(...skewMonoid.issues);
+    }
+  }
+
+  const holds = embedding.holds && (!skewMonoid || skewMonoid.holds);
+  const pending = true;
+
+  const details = holds
+    ? options.skewMonoidBridgeInput
+      ? "Representable root aligns with Levy and Altenkirch–Chapman–Uustalu presentations; explicit equivalence witnesses remain pending."
+      : "Representable root prerequisites satisfied; provide skew-monoid bridge data to compare with Levy/ACU constructions."
+    : `Representable recovery issues: ${issues.join("; ")}`;
+
+  return { holds, pending, issues, details, embedding, skewMonoid };
 };

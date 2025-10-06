@@ -1,13 +1,30 @@
 import type {
   RelativeAdjunctionColimitPreservationInput,
   RelativeAdjunctionData,
+  RelativeAdjunctionFullyFaithfulPostcompositionInput,
+  RelativeAdjunctionInducedMonadsInput,
   RelativeAdjunctionLeftLiftInput,
   RelativeAdjunctionLeftMorphismData,
   RelativeAdjunctionPrecompositionInput,
+  RelativeAdjunctionPastingInput,
+  RelativeAdjunctionResoluteInput,
+  RelativeAdjunctionResoluteLeftMorphismInput,
   RelativeAdjunctionRightExtensionInput,
   RelativeAdjunctionRightMorphismData,
   RelativeAdjunctionStrictMorphismData,
   RelativeAdjunctionUnitCounitPresentation,
+  RelativeAdjunctionRelativeMonadModuleInput,
+  RelativeAdjunctionRelativeMonadPastingWitness,
+  RelativeAdjunctionRelativeMonadPastingFullyFaithfulInput,
+  RelativeAdjunctionRelativeMonadPastingAdjunctionInput,
+  RelativeAdjunctionRelativeMonadCompositeInput,
+  RelativeAdjunctionRelativeMonadLiteratureWitness,
+  RelativeAdjunctionRelativeMonadLeftOpalgebraInput,
+  RelativeAdjunctionRelativeMonadRightAlgebraInput,
+  RelativeAdjunctionRelativeMonadResolutionFunctorInput,
+  RelativeAdjunctionRelativeMonadOpalgebraTransportInput,
+  RelativeAdjunctionRelativeMonadAlgebraTransportInput,
+  RelativeAdjunctionRelativeMonadTransportEquivalenceInput,
 } from "./relative-adjunctions";
 import {
   analyzeRelativeAdjunctionFraming,
@@ -20,6 +37,24 @@ import {
   analyzeRelativeAdjunctionRightMorphism,
   analyzeRelativeAdjunctionStrictMorphism,
   analyzeRelativeAdjunctionPrecomposition,
+  analyzeRelativeAdjunctionPasting,
+  analyzeRelativeAdjunctionFullyFaithfulPostcomposition,
+  analyzeRelativeAdjunctionInducedMonadsCoincide,
+  analyzeRelativeAdjunctionResolutePair,
+  analyzeRelativeAdjunctionResoluteLeftMorphism,
+  analyzeRelativeAdjunctionOrdinaryLeftAdjointComposition,
+  analyzeRelativeAdjunctionRelativeMonadModule,
+  analyzeRelativeAdjunctionRelativeMonadPasting,
+  analyzeRelativeAdjunctionRelativeMonadPastingFullyFaithful,
+  analyzeRelativeAdjunctionRelativeMonadPastingAdjunction,
+  analyzeRelativeAdjunctionRelativeMonadComposite,
+  analyzeRelativeAdjunctionRelativeMonadLiteratureRecoveries,
+  analyzeRelativeAdjunctionRelativeMonadLeftOpalgebra,
+  analyzeRelativeAdjunctionRelativeMonadRightAlgebra,
+  analyzeRelativeAdjunctionRelativeMonadResolutionFunctor,
+  analyzeRelativeAdjunctionRelativeMonadOpalgebraTransport,
+  analyzeRelativeAdjunctionRelativeMonadAlgebraTransport,
+  analyzeRelativeAdjunctionRelativeMonadTransportEquivalence,
 } from "./relative-adjunctions";
 import type { RelativeMonadData } from "./relative-monads";
 import { analyzeRelativeMonadResolution } from "./relative-monads";
@@ -76,6 +111,44 @@ export const RelativeAdjunctionOracles = {
       issues: report.issues,
     };
   },
+  pasting: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionPastingInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.pasting;
+    if (!input) {
+      return pendingOracle(
+        "pasting",
+        `${descriptor.name} oracle requires nested relative adjunction data and the Proposition 5.30 comparison cell; none was supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionPasting(input);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  fullyFaithfulPostcomposition: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionFullyFaithfulPostcompositionInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.fullyFaithfulPostcomposition;
+    if (!input) {
+      return pendingOracle(
+        "fullyFaithfulPostcomposition",
+        `${descriptor.name} oracle requires base/result adjunctions together with the fully faithful postcomposition tight 1-cell. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionFullyFaithfulPostcomposition(input);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
   precomposition: <Obj, Arr, Payload, Evidence>(
     data: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
     input?: RelativeAdjunctionPrecompositionInput<Obj, Arr, Payload, Evidence>["precomposition"],
@@ -88,6 +161,343 @@ export const RelativeAdjunctionOracles = {
       );
     }
     const report = analyzeRelativeAdjunctionPrecomposition({ adjunction: data, precomposition: input });
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  inducedMonadsCoincide: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionInducedMonadsInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.inducedMonadsCoincide;
+    if (!input) {
+      return pendingOracle(
+        "inducedMonadsCoincide",
+        `${descriptor.name} oracle requires the pair of relative monads obtained from the adjunction to compare their data. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionInducedMonadsCoincide(input);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  resolutePair: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionResoluteInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.resolutePair;
+    if (!input) {
+      return pendingOracle(
+        "resolutePair",
+        `${descriptor.name} oracle requires fully faithful postcomposition and coincident monad data; none was supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionResolutePair(input);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  resoluteLeftMorphism: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionResoluteLeftMorphismInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.resoluteLeftMorphism;
+    if (!input) {
+      return pendingOracle(
+        "resoluteLeftMorphism",
+        `${descriptor.name} oracle requires resolute data together with Proposition 5.29 precomposition and Proposition 5.30 pasting witnesses; none were supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionResoluteLeftMorphism(input);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  ordinaryLeftAdjointComposition: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionResoluteLeftMorphismInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.ordinaryLeftAdjointComposition;
+    if (!input) {
+      return pendingOracle(
+        "ordinaryLeftAdjointComposition",
+        `${descriptor.name} oracle requires resolute left morphism data specialised to the identity root; none was supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionOrdinaryLeftAdjointComposition(input);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadModule: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionRelativeMonadModuleInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.relativeMonadModule;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadModule",
+        `${descriptor.name} oracle requires the Corollary 5.34 left-morphism data together with the induced module action; none was supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadModule(input);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadPasting: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionRelativeMonadPastingWitness<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.relativeMonadPasting;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadPasting",
+        `${descriptor.name} oracle requires a source j-relative monad, a left j'-relative adjunction, and the pasted unit/extension witnesses; none were supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadPasting(input);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadLeftOpalgebra: <Obj, Arr, Payload, Evidence>(
+    data: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+    input?: RelativeAdjunctionRelativeMonadLeftOpalgebraInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.relativeMonadLeftOpalgebra;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadLeftOpalgebra",
+        `${descriptor.name} oracle requires a T-opalgebra presentation on the left leg; none was supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadLeftOpalgebra(data, input);
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadRightAlgebra: <Obj, Arr, Payload, Evidence>(
+    data: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+    input?: RelativeAdjunctionRelativeMonadRightAlgebraInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.relativeMonadRightAlgebra;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadRightAlgebra",
+        `${descriptor.name} oracle requires a T-algebra presentation on the right leg; none was supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadRightAlgebra(data, input);
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadResolutionFunctor: <Obj, Arr, Payload, Evidence>(
+    data: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+    input?: RelativeAdjunctionRelativeMonadResolutionFunctorInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.relativeMonadResolutionFunctor;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadResolutionFunctor",
+        `${descriptor.name} oracle requires canonical (op)algebra functor witnesses into Res(T)_C; none were supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadResolutionFunctor(data, input);
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadAdjunctionOpalgebraTransport: <Obj, Arr, Payload, Evidence>(
+    data: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+    input?: RelativeAdjunctionRelativeMonadOpalgebraTransportInput<
+      Obj,
+      Arr,
+      Payload,
+      Evidence
+    >,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor =
+      RelativeAdjunctionLawRegistry.relativeMonadAdjunctionOpalgebraTransport;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadAdjunctionOpalgebraTransport",
+        `${descriptor.name} oracle requires Proposition 6.27 transport data, including a pasting witness, source opalgebra, transported algebra, and naturality comparisons. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadOpalgebraTransport(
+      data,
+      input,
+    );
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadAdjunctionAlgebraTransport: <Obj, Arr, Payload, Evidence>(
+    data: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+    input?: RelativeAdjunctionRelativeMonadAlgebraTransportInput<
+      Obj,
+      Arr,
+      Payload,
+      Evidence
+    >,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor =
+      RelativeAdjunctionLawRegistry.relativeMonadAdjunctionAlgebraTransport;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadAdjunctionAlgebraTransport",
+        `${descriptor.name} oracle requires the dual Proposition 6.27 transport data from algebras to opalgebras, including naturality witnesses. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadAlgebraTransport(
+      data,
+      input,
+    );
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadAdjunctionTransportEquivalence: <Obj, Arr, Payload, Evidence>(
+    data: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+    input?: RelativeAdjunctionRelativeMonadTransportEquivalenceInput<
+      Obj,
+      Arr,
+      Payload,
+      Evidence
+    >,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor =
+      RelativeAdjunctionLawRegistry.relativeMonadAdjunctionTransportEquivalence;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadAdjunctionTransportEquivalence",
+        `${descriptor.name} oracle requires the Proposition 6.27 transports and Remark 6.28 unit/counit comparisons. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadTransportEquivalence(
+      data,
+      input,
+    );
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadPastingFullyFaithful: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionRelativeMonadPastingFullyFaithfulInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.relativeMonadPastingFullyFaithful;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadPastingFullyFaithful",
+        `${descriptor.name} oracle needs the Proposition 5.37 pasting data together with a fully faithful right adjoint witness; none were supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadPastingFullyFaithful(input);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadPastingAdjunction: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionRelativeMonadPastingAdjunctionInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.relativeMonadPastingAdjunction;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadPastingAdjunction",
+        `${descriptor.name} oracle aggregates two Proposition 5.37 pastings; none were supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadPastingAdjunction(input);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadCompositeThroughRoot: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionRelativeMonadCompositeInput<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.relativeMonadCompositeThroughRoot;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadCompositeThroughRoot",
+        `${descriptor.name} oracle requires both the module action and pasting witnesses described in Corollary 5.40; none were supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadComposite(input);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  relativeMonadLiteratureRecoveries: <Obj, Arr, Payload, Evidence>(
+    input?: RelativeAdjunctionRelativeMonadLiteratureWitness<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.relativeMonadLiteratureRecoveries;
+    if (!input) {
+      return pendingOracle(
+        "relativeMonadLiteratureRecoveries",
+        `${descriptor.name} oracle must compare the Corollary 5.40 output against Hutson and Altenkirch–Chapman–Uustalu witnesses; none were supplied. Summary: ${descriptor.summary}`,
+      );
+    }
+    const report = analyzeRelativeAdjunctionRelativeMonadLiteratureRecoveries(input);
     return {
       holds: report.holds,
       pending: false,
@@ -247,6 +657,89 @@ export interface RelativeAdjunctionOracleInputs<Obj, Arr, Payload, Evidence> {
   readonly strictMorphism?: RelativeAdjunctionStrictMorphismData<Obj, Arr, Payload, Evidence>;
   readonly resolution?: { readonly monad: RelativeMonadData<Obj, Arr, Payload, Evidence> };
   readonly precomposition?: RelativeAdjunctionPrecompositionInput<Obj, Arr, Payload, Evidence>["precomposition"];
+  readonly pasting?: RelativeAdjunctionPastingInput<Obj, Arr, Payload, Evidence>;
+  readonly fullyFaithfulPostcomposition?: RelativeAdjunctionFullyFaithfulPostcompositionInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly inducedMonads?: RelativeAdjunctionInducedMonadsInput<Obj, Arr, Payload, Evidence>;
+  readonly resolutePair?: RelativeAdjunctionResoluteInput<Obj, Arr, Payload, Evidence>;
+  readonly resoluteLeftMorphism?: RelativeAdjunctionResoluteLeftMorphismInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly ordinaryLeftAdjointComposition?: RelativeAdjunctionResoluteLeftMorphismInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly relativeMonadModule?: RelativeAdjunctionRelativeMonadModuleInput<Obj, Arr, Payload, Evidence>;
+  readonly relativeMonadLeftOpalgebra?: RelativeAdjunctionRelativeMonadLeftOpalgebraInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly relativeMonadRightAlgebra?: RelativeAdjunctionRelativeMonadRightAlgebraInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly relativeMonadResolutionFunctor?: RelativeAdjunctionRelativeMonadResolutionFunctorInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly relativeMonadPasting?: RelativeAdjunctionRelativeMonadPastingWitness<Obj, Arr, Payload, Evidence>;
+  readonly relativeMonadAdjunctionOpalgebraTransport?: RelativeAdjunctionRelativeMonadOpalgebraTransportInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly relativeMonadAdjunctionAlgebraTransport?: RelativeAdjunctionRelativeMonadAlgebraTransportInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly relativeMonadAdjunctionTransportEquivalence?: RelativeAdjunctionRelativeMonadTransportEquivalenceInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly relativeMonadPastingFullyFaithful?: RelativeAdjunctionRelativeMonadPastingFullyFaithfulInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly relativeMonadPastingAdjunction?: RelativeAdjunctionRelativeMonadPastingAdjunctionInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly relativeMonadCompositeThroughRoot?: RelativeAdjunctionRelativeMonadCompositeInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly relativeMonadLiteratureRecoveries?: RelativeAdjunctionRelativeMonadLiteratureWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
 }
 
 export const enumerateRelativeAdjunctionOracles = <Obj, Arr, Payload, Evidence>(
@@ -257,11 +750,62 @@ export const enumerateRelativeAdjunctionOracles = <Obj, Arr, Payload, Evidence>(
     RelativeAdjunctionOracles.framing(data),
     RelativeAdjunctionOracles.homIsomorphism(data),
     RelativeAdjunctionOracles.precomposition(data, inputs?.precomposition),
+    RelativeAdjunctionOracles.pasting(inputs?.pasting),
+    RelativeAdjunctionOracles.fullyFaithfulPostcomposition(inputs?.fullyFaithfulPostcomposition),
     RelativeAdjunctionOracles.unitCounitPresentation(data, inputs?.unitCounit),
     RelativeAdjunctionOracles.pointwiseLeftLift(data, inputs?.leftLift),
     RelativeAdjunctionOracles.rightExtension(data, inputs?.rightExtension),
     RelativeAdjunctionOracles.colimitPreservation(data, inputs?.colimitPreservation),
     RelativeAdjunctionOracles.resolution(data, inputs?.resolution?.monad),
+    RelativeAdjunctionOracles.inducedMonadsCoincide(inputs?.inducedMonads),
+    RelativeAdjunctionOracles.resolutePair(
+      inputs?.resolutePair ?? inputs?.resoluteLeftMorphism?.resolute,
+    ),
+    RelativeAdjunctionOracles.resoluteLeftMorphism(inputs?.resoluteLeftMorphism),
+    RelativeAdjunctionOracles.ordinaryLeftAdjointComposition(
+      inputs?.ordinaryLeftAdjointComposition ?? inputs?.resoluteLeftMorphism,
+    ),
+    RelativeAdjunctionOracles.relativeMonadModule(inputs?.relativeMonadModule),
+    RelativeAdjunctionOracles.relativeMonadLeftOpalgebra(
+      data,
+      inputs?.relativeMonadLeftOpalgebra,
+    ),
+    RelativeAdjunctionOracles.relativeMonadRightAlgebra(
+      data,
+      inputs?.relativeMonadRightAlgebra,
+    ),
+    RelativeAdjunctionOracles.relativeMonadResolutionFunctor(
+      data,
+      inputs?.relativeMonadResolutionFunctor,
+    ),
+    RelativeAdjunctionOracles.relativeMonadPasting(inputs?.relativeMonadPasting),
+    RelativeAdjunctionOracles.relativeMonadAdjunctionOpalgebraTransport(
+      data,
+      inputs?.relativeMonadAdjunctionOpalgebraTransport,
+    ),
+    RelativeAdjunctionOracles.relativeMonadAdjunctionAlgebraTransport(
+      data,
+      inputs?.relativeMonadAdjunctionAlgebraTransport,
+    ),
+    RelativeAdjunctionOracles.relativeMonadAdjunctionTransportEquivalence(
+      data,
+      inputs?.relativeMonadAdjunctionTransportEquivalence,
+    ),
+    RelativeAdjunctionOracles.relativeMonadPastingFullyFaithful(
+      inputs?.relativeMonadPastingFullyFaithful ??
+        (inputs?.relativeMonadPasting
+          ? { pasting: inputs.relativeMonadPasting }
+          : undefined),
+    ),
+    RelativeAdjunctionOracles.relativeMonadPastingAdjunction(
+      inputs?.relativeMonadPastingAdjunction,
+    ),
+    RelativeAdjunctionOracles.relativeMonadCompositeThroughRoot(
+      inputs?.relativeMonadCompositeThroughRoot,
+    ),
+    RelativeAdjunctionOracles.relativeMonadLiteratureRecoveries(
+      inputs?.relativeMonadLiteratureRecoveries,
+    ),
   ];
 
   if (inputs?.leftMorphism) {

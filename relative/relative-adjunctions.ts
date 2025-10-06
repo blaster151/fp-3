@@ -17,6 +17,8 @@ import type {
 } from "../virtual-equipment/absoluteness";
 import { analyzePointwiseLeftLift } from "../virtual-equipment/absoluteness";
 import type {
+  FullyFaithfulAnalysis,
+  FullyFaithfulInput,
   FullyFaithfulLeftExtensionAnalysis,
   FullyFaithfulLeftExtensionInput,
   PointwiseLeftExtensionLiftInput,
@@ -24,8 +26,32 @@ import type {
 } from "../virtual-equipment/faithfulness";
 import {
   analyzeFullyFaithfulLeftExtension,
+  analyzeFullyFaithfulTight1Cell,
   analyzePointwiseLeftExtensionLiftCorrespondence,
 } from "../virtual-equipment/faithfulness";
+import type {
+  RelativeMonadData,
+  RelativeMonadFramingReport,
+  RelativeMonadResolutionReport,
+} from "./relative-monads";
+import { analyzeRelativeMonadFraming, analyzeRelativeMonadResolution } from "./relative-monads";
+import type {
+  RelativeAlgebraFramingReport,
+  RelativeAlgebraMorphismPresentation,
+  RelativeAlgebraPresentation,
+  RelativeCanonicalActionReport,
+  RelativeMorphismCompatibilityReport,
+  RelativeOpalgebraFramingReport,
+  RelativeOpalgebraMorphismPresentation,
+  RelativeOpalgebraPresentation,
+} from "./relative-algebras";
+import {
+  analyzeRelativeAlgebraCanonicalAction,
+  analyzeRelativeAlgebraFraming,
+  analyzeRelativeAlgebraMorphismCompatibility,
+  analyzeRelativeOpalgebraFraming,
+  analyzeRelativeOpalgebraMorphismCompatibility,
+} from "./relative-algebras";
 import type { LeftExtensionFromColimitData, LeftExtensionFromColimitAnalysis } from "../virtual-equipment/limits";
 import { analyzeLeftExtensionFromWeightedColimit } from "../virtual-equipment/limits";
 
@@ -111,6 +137,26 @@ export interface RelativeAdjunctionPrecompositionReport<Obj, Arr, Payload, Evide
   readonly root?: EquipmentVerticalBoundary<Obj, Arr>;
   readonly left?: EquipmentVerticalBoundary<Obj, Arr>;
   readonly right?: EquipmentVerticalBoundary<Obj, Arr>;
+}
+
+export interface RelativeAdjunctionPastingInput<Obj, Arr, Payload, Evidence> {
+  readonly outer: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
+  readonly inner: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
+  readonly result: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
+  readonly leftMorphism: RelativeAdjunctionLeftMorphismData<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+export interface RelativeAdjunctionPastingReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly composedLeft?: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly leftMorphism: RelativeAdjunctionLeftMorphismReport;
 }
 
 const boundariesMatch = <Obj, Arr>(
@@ -820,6 +866,1661 @@ export const analyzeRelativeAdjunctionPrecomposition = <Obj, Arr, Payload, Evide
     root: composedRoot,
     left: composedLeft,
     right,
+  };
+};
+
+export const analyzeRelativeAdjunctionPasting = <Obj, Arr, Payload, Evidence>(
+  input: RelativeAdjunctionPastingInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionPastingReport<Obj, Arr, Payload, Evidence> => {
+  const { outer, inner, result, leftMorphism } = input;
+  const issues: string[] = [];
+
+  if (outer.equipment !== inner.equipment) {
+    issues.push("Outer and inner relative adjunctions must inhabit the same virtual equipment to paste.");
+  }
+  if (outer.equipment !== result.equipment) {
+    issues.push("Pasted relative adjunction should reuse the outer equipment instance.");
+  }
+
+  const equipment = outer.equipment;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+
+  const composedLeft = composeBoundary(
+    equipment,
+    inner.left,
+    outer.left,
+    "Composite left leg ℓ₂ ∘ ℓ₁ produced by relative adjunction pasting.",
+  );
+
+  if (!verticalBoundariesEqual(equality, outer.right, inner.root)) {
+    issues.push("Inner relative adjunction should reuse the outer right leg as its root for Proposition 5.30.");
+  }
+
+  if (!equality(outer.left.to, inner.left.from)) {
+    issues.push("Outer left leg codomain must match the inner left leg domain to form the pasted composite.");
+  }
+
+  if (!verticalBoundariesEqual(equality, result.root, outer.root)) {
+    issues.push("Pasted relative adjunction should retain the outer root j when forming the left morphism.");
+  }
+
+  if (!verticalBoundariesEqual(equality, result.left, composedLeft)) {
+    issues.push("Pasted left leg should equal the composite ℓ₂ ∘ ℓ₁ from Proposition 5.30.");
+  }
+
+  if (!verticalBoundariesEqual(equality, result.right, inner.right)) {
+    issues.push("Pasted right leg must coincide with the inner right adjoint r₂.");
+  }
+
+  if (leftMorphism.source !== outer) {
+    issues.push("Induced left morphism should reference the outer adjunction as its source.");
+  }
+
+  if (leftMorphism.target !== result) {
+    issues.push("Induced left morphism should target the pasted relative adjunction.");
+  }
+
+  const leftReport = analyzeRelativeAdjunctionLeftMorphism(leftMorphism);
+  issues.push(...leftReport.issues);
+
+  const holds = issues.length === 0;
+  const details = holds
+    ? "Nested relative adjunctions paste to produce a left morphism as in Proposition 5.30."
+    : `Relative adjunction pasting issues: ${issues.join("; ")}`;
+
+  return {
+    holds,
+    issues,
+    details,
+    composedLeft,
+    leftMorphism: leftReport,
+  };
+};
+
+export interface RelativeAdjunctionFullyFaithfulPostcompositionInput<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly base: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
+  readonly postcompose: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly result: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeAdjunctionFullyFaithfulPostcompositionReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly expectedRoot: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly expectedRight: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly fullyFaithful: FullyFaithfulAnalysis<Obj, Arr, Payload, Evidence>;
+}
+
+export const analyzeRelativeAdjunctionFullyFaithfulPostcomposition = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  input: RelativeAdjunctionFullyFaithfulPostcompositionInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionFullyFaithfulPostcompositionReport<Obj, Arr, Payload, Evidence> => {
+  const { base, postcompose, result } = input;
+  const issues: string[] = [];
+
+  if (base.equipment !== result.equipment) {
+    issues.push("Base and postcomposed adjunctions must share the same virtual equipment instance.");
+  }
+
+  const equipment = base.equipment;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+
+  if (!equality(postcompose.from, base.root.to)) {
+    issues.push("Fully faithful postcomposition must start at the codomain of the base root j.");
+  }
+
+  if (!equality(postcompose.from, base.right.to)) {
+    issues.push("Fully faithful postcomposition must also start at the codomain of the base right leg r.");
+  }
+
+  const fullyFaithful = analyzeFullyFaithfulTight1Cell(equipment, {
+    tight: postcompose.tight,
+    domain: postcompose.from,
+    codomain: postcompose.to,
+  });
+
+  const expectedRoot = composeBoundary(
+    equipment,
+    postcompose,
+    base.root,
+    "Postcomposed root u ∘ j from Example 5.31.",
+  );
+  const expectedRight = composeBoundary(
+    equipment,
+    postcompose,
+    base.right,
+    "Postcomposed right leg u ∘ r from Example 5.31.",
+  );
+
+  if (!verticalBoundariesEqual(equality, result.root, expectedRoot)) {
+    issues.push("Postcomposed relative adjunction root should equal u ∘ j.");
+  }
+
+  if (!verticalBoundariesEqual(equality, result.right, expectedRight)) {
+    issues.push("Postcomposed relative adjunction right leg should equal u ∘ r.");
+  }
+
+  if (!verticalBoundariesEqual(equality, result.left, base.left)) {
+    issues.push("Fully faithful postcomposition should leave the left leg ℓ unchanged.");
+  }
+
+  const holds =
+    issues.length === 0 && fullyFaithful.holds;
+
+  const combinedIssues = holds
+    ? []
+    : [...issues, ...(!fullyFaithful.holds ? fullyFaithful.issues : [])];
+
+  const details = holds
+    ? "Fully faithful tight 1-cell postcomposes the right leg and root, yielding the Example 5.31 relative adjunction."
+    : `Fully faithful postcomposition issues: ${combinedIssues.join("; ")}`;
+
+  return {
+    holds,
+    issues: combinedIssues,
+    details,
+    expectedRoot,
+    expectedRight,
+    fullyFaithful,
+  };
+};
+
+export interface RelativeAdjunctionInducedMonadsInput<Obj, Arr, Payload, Evidence> {
+  readonly left: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+  readonly right: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeAdjunctionInducedMonadsCoincideReport {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+}
+
+export interface RelativeAdjunctionResoluteInput<Obj, Arr, Payload, Evidence> {
+  readonly postcomposition: RelativeAdjunctionFullyFaithfulPostcompositionInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly inducedMonads: RelativeAdjunctionInducedMonadsInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+export interface RelativeAdjunctionResoluteReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly postcomposition: RelativeAdjunctionFullyFaithfulPostcompositionReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly monads: RelativeAdjunctionInducedMonadsCoincideReport;
+}
+
+export interface RelativeAdjunctionResoluteLeftMorphismInput<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly resolute: RelativeAdjunctionResoluteInput<Obj, Arr, Payload, Evidence>;
+  readonly precomposition: RelativeAdjunctionPrecompositionInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly pasting: RelativeAdjunctionPastingInput<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeAdjunctionResoluteLeftMorphismReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly resolute: RelativeAdjunctionResoluteReport<Obj, Arr, Payload, Evidence>;
+  readonly precomposition: RelativeAdjunctionPrecompositionReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly pasting: RelativeAdjunctionPastingReport<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeAdjunctionOrdinaryLeftAdjointCompositionReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly leftMorphism: RelativeAdjunctionResoluteLeftMorphismReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+const framesEqual = <Obj, Payload>(
+  equality: (left: Obj, right: Obj) => boolean,
+  actual: { readonly arrows: ReadonlyArray<EquipmentProarrow<Obj, Payload>>; readonly leftBoundary: Obj; readonly rightBoundary: Obj },
+  expected: { readonly arrows: ReadonlyArray<EquipmentProarrow<Obj, Payload>>; readonly leftBoundary: Obj; readonly rightBoundary: Obj },
+  label: string,
+  issues: string[],
+): void => {
+  if (!equality(actual.leftBoundary, expected.leftBoundary)) {
+    issues.push(`${label} should start at the same boundary object.`);
+  }
+  if (!equality(actual.rightBoundary, expected.rightBoundary)) {
+    issues.push(`${label} should end at the same boundary object.`);
+  }
+  if (actual.arrows.length !== expected.arrows.length) {
+    issues.push(`${label} should list ${expected.arrows.length} loose arrows but found ${actual.arrows.length}.`);
+    return;
+  }
+  for (let index = 0; index < expected.arrows.length; index += 1) {
+    const expectedArrow = expected.arrows[index];
+    const actualArrow = actual.arrows[index];
+    if (!actualArrow || !expectedArrow) {
+      issues.push(`${label} is missing arrow data at index ${index}.`);
+      continue;
+    }
+    if (!equality(actualArrow.from, expectedArrow.from) || !equality(actualArrow.to, expectedArrow.to)) {
+      issues.push(`${label} arrow ${index} should share the endpoints of the comparison arrow.`);
+    }
+  }
+};
+
+const boundariesEqual = <Obj, Arr>(
+  equality: (left: Obj, right: Obj) => boolean,
+  actual: EquipmentVerticalBoundary<Obj, Arr>,
+  expected: EquipmentVerticalBoundary<Obj, Arr>,
+  label: string,
+  issues: string[],
+): void => {
+  if (!verticalBoundariesEqual(equality, actual, expected)) {
+    issues.push(`${label} must coincide for the induced monads to agree.`);
+  }
+};
+
+export const analyzeRelativeAdjunctionInducedMonadsCoincide = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  input: RelativeAdjunctionInducedMonadsInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionInducedMonadsCoincideReport => {
+  const { left, right } = input;
+  const issues: string[] = [];
+
+  if (left.equipment !== right.equipment) {
+    issues.push("Relative monads must share the same virtual equipment to be compared.");
+  }
+
+  const equipment = left.equipment;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+
+  boundariesEqual(equality, left.root, right.root, "Relative monad roots", issues);
+  boundariesEqual(equality, left.carrier, right.carrier, "Relative monad carriers", issues);
+
+  if (left.looseCell !== right.looseCell) {
+    issues.push("Relative monad loose arrow E(j,t) should coincide between the two resolutions.");
+  }
+
+  framesEqual(equality, left.extension.source, right.extension.source, "Extension source frame", issues);
+  framesEqual(equality, left.extension.target, right.extension.target, "Extension target frame", issues);
+  boundariesEqual(equality, left.extension.boundaries.left, right.extension.boundaries.left, "Extension left boundary", issues);
+  boundariesEqual(equality, left.extension.boundaries.right, right.extension.boundaries.right, "Extension right boundary", issues);
+
+  framesEqual(equality, left.unit.source, right.unit.source, "Unit source frame", issues);
+  framesEqual(equality, left.unit.target, right.unit.target, "Unit target frame", issues);
+  boundariesEqual(equality, left.unit.boundaries.left, right.unit.boundaries.left, "Unit left boundary", issues);
+  boundariesEqual(equality, left.unit.boundaries.right, right.unit.boundaries.right, "Unit right boundary", issues);
+
+  const holds = issues.length === 0;
+  return {
+    holds,
+    issues,
+    details: holds
+      ? "Relative monads share root, carrier, loose arrow, and unit/extension data, recovering Corollary 5.32."
+      : `Relative monad comparison issues: ${issues.join("; ")}`,
+  };
+};
+
+export const analyzeRelativeAdjunctionResolutePair = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  input: RelativeAdjunctionResoluteInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionResoluteReport<Obj, Arr, Payload, Evidence> => {
+  const { postcomposition, inducedMonads } = input;
+  const postcompositionReport = analyzeRelativeAdjunctionFullyFaithfulPostcomposition(
+    postcomposition,
+  );
+  const monadReport = analyzeRelativeAdjunctionInducedMonadsCoincide(inducedMonads);
+
+  const issues: string[] = [];
+
+  const base = postcomposition.base;
+  const result = postcomposition.result;
+  const leftMonad = inducedMonads.left;
+  const rightMonad = inducedMonads.right;
+
+  if (leftMonad.equipment !== base.equipment) {
+    issues.push(
+      "Resolute pair expects the j-relative monad to be computed inside the base adjunction's equipment.",
+    );
+  }
+
+  if (rightMonad.equipment !== result.equipment) {
+    issues.push(
+      "Resolute pair expects the j'-relative monad to share the postcomposed adjunction's equipment.",
+    );
+  }
+
+  if (base.equipment !== result.equipment) {
+    issues.push("Resolute pair requires the base and postcomposed adjunctions to share equipment.");
+  }
+
+  const equipment = base.equipment;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+
+  if (!verticalBoundariesEqual(equality, leftMonad.root, base.root)) {
+    issues.push("Base relative monad root should coincide with the base adjunction root j.");
+  }
+
+  if (!verticalBoundariesEqual(equality, rightMonad.root, result.root)) {
+    issues.push("Postcomposed relative monad root should coincide with the result adjunction root j′.");
+  }
+
+  if (!verticalBoundariesEqual(equality, leftMonad.carrier, base.right)) {
+    issues.push("Base relative monad carrier should reuse the base right leg r.");
+  }
+
+  if (!verticalBoundariesEqual(equality, rightMonad.carrier, result.right)) {
+    issues.push("Postcomposed relative monad carrier should reuse the result right leg r′.");
+  }
+
+  const combinedIssues = [
+    ...issues,
+    ...(postcompositionReport.holds ? [] : postcompositionReport.issues),
+    ...(monadReport.holds ? [] : monadReport.issues),
+  ];
+
+  const holds = combinedIssues.length === 0;
+  const details = holds
+    ? "Fully faithful postcomposition and coincident monads certify a resolute pair as in Remark 5.33."
+    : `Resolute pair issues: ${combinedIssues.join("; ")}`;
+
+  return {
+    holds,
+    issues: combinedIssues,
+    details,
+    postcomposition: postcompositionReport,
+    monads: monadReport,
+  };
+};
+
+export const analyzeRelativeAdjunctionResoluteLeftMorphism = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  input: RelativeAdjunctionResoluteLeftMorphismInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionResoluteLeftMorphismReport<Obj, Arr, Payload, Evidence> => {
+  const { resolute, precomposition, pasting } = input;
+
+  const resoluteReport = analyzeRelativeAdjunctionResolutePair(resolute);
+  const precompositionReport = analyzeRelativeAdjunctionPrecomposition(precomposition);
+  const pastingReport = analyzeRelativeAdjunctionPasting(pasting);
+
+  const issues: string[] = [];
+
+  if (resolute.postcomposition.base !== pasting.outer) {
+    issues.push("Resolute left morphism expects the pasted outer adjunction to equal the base adjunction.");
+  }
+
+  if (resolute.postcomposition.result !== pasting.result) {
+    issues.push(
+      "Resolute left morphism expects the pasted result adjunction to equal the fully faithful postcomposition.",
+    );
+  }
+
+  if (precomposition.adjunction !== resolute.postcomposition.base) {
+    issues.push("Resolute left morphism precomposition should operate on the base adjunction.");
+  }
+
+  const combinedIssues = [
+    ...issues,
+    ...(resoluteReport.holds ? [] : resoluteReport.issues),
+    ...(precompositionReport.holds ? [] : precompositionReport.issues),
+    ...(pastingReport.holds ? [] : pastingReport.issues),
+  ];
+
+  const holds = combinedIssues.length === 0;
+  const details = holds
+    ? "Resolute pair data, tight precomposition, and Proposition 5.30 pasting assemble the Corollary 5.34 left morphism."
+    : `Resolute left morphism issues: ${combinedIssues.join("; ")}`;
+
+  return {
+    holds,
+    issues: combinedIssues,
+    details,
+    resolute: resoluteReport,
+    precomposition: precompositionReport,
+    pasting: pastingReport,
+  };
+};
+
+export const analyzeRelativeAdjunctionOrdinaryLeftAdjointComposition = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  input: RelativeAdjunctionResoluteLeftMorphismInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionOrdinaryLeftAdjointCompositionReport<Obj, Arr, Payload, Evidence> => {
+  const leftMorphism = analyzeRelativeAdjunctionResoluteLeftMorphism(input);
+  const holds = leftMorphism.holds;
+  const details = holds
+    ? "Identity-root resolute data composes ordinary left adjoints through Corollary 5.34, matching Example 5.35."
+    : leftMorphism.details;
+  return {
+    holds,
+    issues: leftMorphism.issues,
+    details,
+    leftMorphism,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadModuleWitness<Obj, Arr, Payload, Evidence> {
+  readonly monad: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+  readonly carrier: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly action: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeAdjunctionRelativeMonadModuleInput<Obj, Arr, Payload, Evidence> {
+  readonly leftMorphism: RelativeAdjunctionResoluteLeftMorphismInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly module: RelativeAdjunctionRelativeMonadModuleWitness<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeAdjunctionRelativeMonadModuleReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly leftMorphism: RelativeAdjunctionResoluteLeftMorphismReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly resolution: RelativeMonadResolutionReport<Obj, Arr, Payload, Evidence>;
+}
+
+export const analyzeRelativeAdjunctionRelativeMonadModule = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  input: RelativeAdjunctionRelativeMonadModuleInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionRelativeMonadModuleReport<Obj, Arr, Payload, Evidence> => {
+  const { leftMorphism, module } = input;
+  const moduleIssues: string[] = [];
+
+  const leftMorphismReport = analyzeRelativeAdjunctionResoluteLeftMorphism(leftMorphism);
+  const baseAdjunction = leftMorphism.resolute.postcomposition.base;
+  const equipment = baseAdjunction.equipment;
+
+  if (module.monad.equipment !== equipment) {
+    moduleIssues.push("Module monad should live in the same equipment as the base adjunction.");
+  }
+
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+
+  if (module.monad !== leftMorphism.resolute.inducedMonads.left) {
+    moduleIssues.push("Module monad should coincide with the j-relative monad from the resolute pair.");
+  }
+
+  if (!verticalBoundariesEqual(equality, module.carrier, baseAdjunction.left)) {
+    moduleIssues.push("Module carrier should reuse the left leg of the base relative adjunction.");
+  }
+
+  const transformation = leftMorphism.pasting.leftMorphism.transformation;
+
+  if (!verticalBoundariesEqual(equality, module.action.boundaries.left, transformation.boundaries.left)) {
+    moduleIssues.push("Module action should share the left boundary with the resolute left morphism.");
+  }
+
+  if (!verticalBoundariesEqual(equality, module.action.boundaries.right, transformation.boundaries.right)) {
+    moduleIssues.push("Module action should share the right boundary with the resolute left morphism target.");
+  }
+
+  ensureLeftMorphismFrames(module.action, moduleIssues);
+
+  const resolution = analyzeRelativeMonadResolution({ monad: module.monad, adjunction: baseAdjunction });
+
+  const combinedIssues = [
+    ...moduleIssues,
+    ...(leftMorphismReport.holds ? [] : leftMorphismReport.issues),
+    ...(resolution.holds ? [] : resolution.issues),
+  ];
+
+  const holds = moduleIssues.length === 0 && leftMorphismReport.holds && resolution.holds;
+
+  return {
+    holds,
+    issues: holds ? [] : combinedIssues,
+    details: holds
+      ? "Resolute left morphism action realises the Proposition 5.36 module over the base j-relative monad."
+      : `Relative monad module issues: ${combinedIssues.join("; ")}`,
+    leftMorphism: leftMorphismReport,
+    resolution,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadPastingComparison<Obj, Arr, Payload, Evidence> {
+  readonly unit: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly extension: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeAdjunctionRelativeMonadPastingWitness<Obj, Arr, Payload, Evidence> {
+  readonly source: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+  readonly sourceAdjunction?: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
+  readonly leftAdjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
+  readonly result: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+  readonly comparison: RelativeAdjunctionRelativeMonadPastingComparison<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeAdjunctionRelativeMonadPastingReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly sourceFraming: RelativeMonadFramingReport;
+  readonly resultFraming: RelativeMonadFramingReport;
+  readonly sourceResolution?: RelativeMonadResolutionReport<Obj, Arr, Payload, Evidence>;
+  readonly resultResolution: RelativeMonadResolutionReport<Obj, Arr, Payload, Evidence>;
+}
+
+const ensureNonEmptyFrame = <Obj, Arr, Payload, Evidence>(
+  cell: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  label: string,
+  issues: string[],
+): void => {
+  if (cell.source.arrows.length === 0) {
+    issues.push(`${label} source frame should describe at least one loose arrow.`);
+  }
+  if (cell.target.arrows.length === 0) {
+    issues.push(`${label} target frame should describe at least one loose arrow.`);
+  }
+};
+
+export const analyzeRelativeAdjunctionRelativeMonadPasting = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  witness: RelativeAdjunctionRelativeMonadPastingWitness<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionRelativeMonadPastingReport<Obj, Arr, Payload, Evidence> => {
+  const { source, sourceAdjunction, leftAdjunction, result, comparison } = witness;
+  const issues: string[] = [];
+
+  if (source.equipment !== leftAdjunction.equipment) {
+    issues.push("Source relative monad and left adjunction must share the same equipment.");
+  }
+
+  if (leftAdjunction.equipment !== result.equipment) {
+    issues.push("Pasted relative monad should live in the same equipment as the left adjunction.");
+  }
+
+  const equipment = leftAdjunction.equipment;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+
+  if (!verticalBoundariesEqual(equality, comparison.unit.boundaries.left, result.root)) {
+    issues.push("Pasted unit should reuse the result monad root as its left boundary.");
+  }
+
+  if (!verticalBoundariesEqual(equality, comparison.unit.boundaries.right, source.root)) {
+    issues.push("Pasted unit should compare against the source monad root as its right boundary.");
+  }
+
+  if (!verticalBoundariesEqual(equality, comparison.extension.boundaries.left, result.carrier)) {
+    issues.push("Pasted extension should reuse the result monad carrier as its left boundary.");
+  }
+
+  if (!verticalBoundariesEqual(equality, comparison.extension.boundaries.right, source.carrier)) {
+    issues.push("Pasted extension should compare against the source monad carrier as its right boundary.");
+  }
+
+  ensureNonEmptyFrame(comparison.unit, "Pasted unit", issues);
+  ensureNonEmptyFrame(comparison.extension, "Pasted extension", issues);
+
+  const sourceFraming = analyzeRelativeMonadFraming(source);
+  const resultFraming = analyzeRelativeMonadFraming(result);
+  const resultResolution = analyzeRelativeMonadResolution({ monad: result, adjunction: leftAdjunction });
+  const sourceResolution = sourceAdjunction
+    ? analyzeRelativeMonadResolution({ monad: source, adjunction: sourceAdjunction })
+    : undefined;
+
+  const combinedIssues = [
+    ...issues,
+    ...(sourceFraming.holds ? [] : sourceFraming.issues),
+    ...(resultFraming.holds ? [] : resultFraming.issues),
+    ...(resultResolution.holds ? [] : resultResolution.issues),
+    ...(sourceResolution && !sourceResolution.holds ? sourceResolution.issues : []),
+  ];
+
+  const holds =
+    issues.length === 0 &&
+    sourceFraming.holds &&
+    resultFraming.holds &&
+    resultResolution.holds &&
+    (sourceResolution ? sourceResolution.holds : true);
+
+  return {
+    holds,
+    issues: holds ? [] : combinedIssues,
+    details: holds
+      ? "Left relative adjunction pasting recovers the j'-relative monad and comparison data described in Proposition 5.37."
+      : `Relative monad pasting issues: ${combinedIssues.join("; ")}`,
+    sourceFraming,
+    resultFraming,
+    sourceResolution,
+    resultResolution,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadPastingFullyFaithfulInput<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly pasting: RelativeAdjunctionRelativeMonadPastingWitness<Obj, Arr, Payload, Evidence>;
+  readonly fullyFaithful?: FullyFaithfulInput<Obj, Arr>;
+}
+
+export interface RelativeAdjunctionRelativeMonadPastingFullyFaithfulReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly pasting: RelativeAdjunctionRelativeMonadPastingReport<Obj, Arr, Payload, Evidence>;
+  readonly fullyFaithful?: FullyFaithfulAnalysis<Obj, Arr, Payload, Evidence>;
+}
+
+export const analyzeRelativeAdjunctionRelativeMonadPastingFullyFaithful = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  input: RelativeAdjunctionRelativeMonadPastingFullyFaithfulInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionRelativeMonadPastingFullyFaithfulReport<Obj, Arr, Payload, Evidence> => {
+  const pasting = analyzeRelativeAdjunctionRelativeMonadPasting(input.pasting);
+  const equipment = input.pasting.leftAdjunction.equipment;
+  let fullyFaithful: FullyFaithfulAnalysis<Obj, Arr, Payload, Evidence> | undefined;
+  const issues = pasting.holds ? [] : [...pasting.issues];
+
+  if (input.fullyFaithful) {
+    fullyFaithful = analyzeFullyFaithfulTight1Cell(equipment, input.fullyFaithful);
+    if (!fullyFaithful.holds) {
+      issues.push(...fullyFaithful.issues);
+    }
+  }
+
+  const holds = pasting.holds && (!fullyFaithful || fullyFaithful.holds);
+
+  return {
+    holds,
+    issues: holds ? [] : issues,
+    details: holds
+      ? "Fully faithful right adjoint upgrades Proposition 5.37 to the Example 5.38 functorial comparison."
+      : `Relative monad fully faithful pasting issues: ${issues.join("; ")}`,
+    pasting,
+    fullyFaithful,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadPastingAdjunctionInput<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly first: RelativeAdjunctionRelativeMonadPastingWitness<Obj, Arr, Payload, Evidence>;
+  readonly second: RelativeAdjunctionRelativeMonadPastingWitness<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeAdjunctionRelativeMonadPastingAdjunctionReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly first: RelativeAdjunctionRelativeMonadPastingReport<Obj, Arr, Payload, Evidence>;
+  readonly second: RelativeAdjunctionRelativeMonadPastingReport<Obj, Arr, Payload, Evidence>;
+}
+
+export const analyzeRelativeAdjunctionRelativeMonadPastingAdjunction = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  input: RelativeAdjunctionRelativeMonadPastingAdjunctionInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionRelativeMonadPastingAdjunctionReport<Obj, Arr, Payload, Evidence> => {
+  const first = analyzeRelativeAdjunctionRelativeMonadPasting(input.first);
+  const second = analyzeRelativeAdjunctionRelativeMonadPasting(input.second);
+  const issues: string[] = [];
+
+  const { result } = input.first;
+  const { source } = input.second;
+
+  if (result.equipment !== source.equipment) {
+    issues.push("Composed pastings should share the intermediate relative monad equipment.");
+  } else {
+    const equality = result.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+    if (!verticalBoundariesEqual(equality, result.root, source.root)) {
+      issues.push("Intermediate relative monad roots should coincide when composing Example 5.39 pastings.");
+    }
+    if (!verticalBoundariesEqual(equality, result.carrier, source.carrier)) {
+      issues.push("Intermediate relative monad carriers should coincide when composing Example 5.39 pastings.");
+    }
+  }
+
+  const combinedIssues = [
+    ...issues,
+    ...(first.holds ? [] : first.issues),
+    ...(second.holds ? [] : second.issues),
+  ];
+
+  const holds = issues.length === 0 && first.holds && second.holds;
+
+  return {
+    holds,
+    issues: holds ? [] : combinedIssues,
+    details: holds
+      ? "Sequential Proposition 5.37 pastings recover the Example 5.39 adjunction transport."
+      : `Relative monad adjunction pasting issues: ${combinedIssues.join("; ")}`,
+    first,
+    second,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadCompositeInput<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly module: RelativeAdjunctionRelativeMonadModuleInput<Obj, Arr, Payload, Evidence>;
+  readonly pasting: RelativeAdjunctionRelativeMonadPastingWitness<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeAdjunctionRelativeMonadCompositeReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly module: RelativeAdjunctionRelativeMonadModuleReport<Obj, Arr, Payload, Evidence>;
+  readonly pasting: RelativeAdjunctionRelativeMonadPastingReport<Obj, Arr, Payload, Evidence>;
+}
+
+export const analyzeRelativeAdjunctionRelativeMonadComposite = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  input: RelativeAdjunctionRelativeMonadCompositeInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionRelativeMonadCompositeReport<Obj, Arr, Payload, Evidence> => {
+  const moduleReport = analyzeRelativeAdjunctionRelativeMonadModule(input.module);
+  const pastingReport = analyzeRelativeAdjunctionRelativeMonadPasting(input.pasting);
+  const issues: string[] = [];
+
+  const moduleMonad = input.module.module.monad;
+  const pastingSource = input.pasting.source;
+
+  if (moduleMonad !== pastingSource) {
+    issues.push("Corollary 5.40 expects the pasted data to act on the module's source j-relative monad.");
+  }
+
+  const moduleTargetAdjunction = input.module.leftMorphism.resolute.postcomposition.result;
+  if (moduleTargetAdjunction !== input.pasting.leftAdjunction) {
+    issues.push("Pasted left adjunction should coincide with the resolute target from Proposition 5.36.");
+  }
+
+  const targetMonad = input.module.leftMorphism.resolute.inducedMonads.right;
+  if (targetMonad !== input.pasting.result) {
+    issues.push("Module-induced j' monad should match the pasted relative monad output.");
+  }
+
+  const combinedIssues = [
+    ...issues,
+    ...(moduleReport.holds ? [] : moduleReport.issues),
+    ...(pastingReport.holds ? [] : pastingReport.issues),
+  ];
+
+  const holds = issues.length === 0 && moduleReport.holds && pastingReport.holds;
+
+  return {
+    holds,
+    issues: holds ? [] : combinedIssues,
+    details: holds
+      ? "Module action and pasting coincide, yielding the Corollary 5.40 functor through the root."
+      : `Relative monad composite issues: ${combinedIssues.join("; ")}`,
+    module: moduleReport,
+    pasting: pastingReport,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadLiteratureWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly composite: RelativeAdjunctionRelativeMonadCompositeInput<Obj, Arr, Payload, Evidence>;
+  readonly hutson?: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+  readonly acu?: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeAdjunctionRelativeMonadLiteratureReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly composite: RelativeAdjunctionRelativeMonadCompositeReport<Obj, Arr, Payload, Evidence>;
+}
+
+export const analyzeRelativeAdjunctionRelativeMonadLiteratureRecoveries = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  input: RelativeAdjunctionRelativeMonadLiteratureWitness<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionRelativeMonadLiteratureReport<Obj, Arr, Payload, Evidence> => {
+  const composite = analyzeRelativeAdjunctionRelativeMonadComposite(input.composite);
+  const issues = composite.holds ? [] : [...composite.issues];
+
+  const resultMonad = input.composite.pasting.result;
+  const equality = resultMonad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+
+  if (input.hutson) {
+    if (input.hutson.equipment !== resultMonad.equipment) {
+      issues.push("Hutson recovery should be expressed in the pasted monad's equipment.");
+    } else {
+      if (!verticalBoundariesEqual(equality, input.hutson.root, resultMonad.root)) {
+        issues.push("Hutson recovery should share the pasted monad root when the postcomposition is the identity.");
+      }
+      if (!verticalBoundariesEqual(equality, input.hutson.carrier, resultMonad.carrier)) {
+        issues.push("Hutson recovery should reuse the pasted monad carrier when the postcomposition is the identity.");
+      }
+    }
+  }
+
+  if (input.acu) {
+    if (input.acu.equipment !== resultMonad.equipment) {
+      issues.push("Altenkirch–Chapman–Uustalu recovery should be expressed in the pasted monad's equipment.");
+    } else {
+      if (!verticalBoundariesEqual(equality, input.acu.root, resultMonad.root)) {
+        issues.push("Altenkirch–Chapman–Uustalu recovery should match the pasted root when j = j'.");
+      }
+      if (!verticalBoundariesEqual(equality, input.acu.carrier, resultMonad.carrier)) {
+        issues.push("Altenkirch–Chapman–Uustalu recovery should match the pasted carrier when j = j'.");
+      }
+    }
+  }
+
+  const holds = composite.holds && issues.length === 0;
+
+  return {
+    holds,
+    issues: holds ? [] : issues,
+    details: holds
+      ? "Literature recoveries confirm Corollary 5.40 reproduces Hutson and Altenkirch–Chapman–Uustalu constructions (Example 5.41)."
+      : `Relative monad literature recovery issues: ${issues.join("; ")}`,
+    composite,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadLeftOpalgebraInput<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly presentation: RelativeOpalgebraPresentation<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeAdjunctionRelativeMonadLeftOpalgebraReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly framing: RelativeOpalgebraFramingReport;
+  readonly resolution: RelativeMonadResolutionReport<Obj, Arr, Payload, Evidence>;
+}
+
+export const analyzeRelativeAdjunctionRelativeMonadLeftOpalgebra = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+  input: RelativeAdjunctionRelativeMonadLeftOpalgebraInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionRelativeMonadLeftOpalgebraReport<Obj, Arr, Payload, Evidence> => {
+  const { presentation, details } = input;
+  const equipment = adjunction.equipment;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  if (presentation.monad.equipment !== equipment) {
+    issues.push("Relative adjunction left opalgebra should live in the adjunction's equipment.");
+  }
+
+  if (!verticalBoundariesEqual(equality, presentation.monad.root, adjunction.root)) {
+    issues.push("Relative adjunction left opalgebra must reuse the adjunction root as its monad root.");
+  }
+
+  if (!verticalBoundariesEqual(equality, presentation.opalgebra.carrier, adjunction.left)) {
+    issues.push("Left opalgebra carrier should coincide with the relative adjunction left leg.");
+  }
+
+  const framing = analyzeRelativeOpalgebraFraming(presentation);
+  const resolution = analyzeRelativeMonadResolution({ monad: presentation.monad, adjunction });
+
+  const combinedIssues = [
+    ...issues,
+    ...(framing.holds ? [] : framing.issues),
+    ...(resolution.holds ? [] : resolution.issues),
+  ];
+
+  const pending =
+    combinedIssues.length === 0 &&
+    framing.holds &&
+    resolution.holds;
+
+  return {
+    holds: false,
+    pending,
+    issues: combinedIssues,
+    details:
+      combinedIssues.length === 0
+        ? details ??
+          "Left relative adjoint recorded as a T-opalgebra; Proposition 6.25 Street comparisons remain pending."
+        : `Relative adjunction left opalgebra issues: ${combinedIssues.join("; ")}`,
+    framing,
+    resolution,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadRightAlgebraInput<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly presentation: RelativeAlgebraPresentation<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeAdjunctionRelativeMonadRightAlgebraReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly framing: RelativeAlgebraFramingReport;
+  readonly canonical: RelativeCanonicalActionReport;
+  readonly resolution: RelativeMonadResolutionReport<Obj, Arr, Payload, Evidence>;
+}
+
+export const analyzeRelativeAdjunctionRelativeMonadRightAlgebra = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+  input: RelativeAdjunctionRelativeMonadRightAlgebraInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionRelativeMonadRightAlgebraReport<Obj, Arr, Payload, Evidence> => {
+  const { presentation, details } = input;
+  const equipment = adjunction.equipment;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  if (presentation.monad.equipment !== equipment) {
+    issues.push("Relative adjunction right algebra should live in the adjunction's equipment.");
+  }
+
+  if (!verticalBoundariesEqual(equality, presentation.monad.root, adjunction.root)) {
+    issues.push("Relative adjunction right algebra must reuse the adjunction root as its monad root.");
+  }
+
+  if (!verticalBoundariesEqual(equality, presentation.algebra.carrier, adjunction.right)) {
+    issues.push("Right algebra carrier should coincide with the relative adjunction right leg.");
+  }
+
+  const framing = analyzeRelativeAlgebraFraming(presentation);
+  const canonical = analyzeRelativeAlgebraCanonicalAction(presentation);
+  const resolution = analyzeRelativeMonadResolution({ monad: presentation.monad, adjunction });
+
+  const combinedIssues = [
+    ...issues,
+    ...(framing.holds ? [] : framing.issues),
+    ...(resolution.holds ? [] : resolution.issues),
+    ...(canonical.pending ? [] : canonical.issues),
+  ];
+
+  const pending =
+    combinedIssues.length === 0 &&
+    framing.holds &&
+    resolution.holds &&
+    canonical.pending;
+
+  return {
+    holds: false,
+    pending,
+    issues: combinedIssues,
+    details:
+      combinedIssues.length === 0
+        ? details ??
+          "Right relative adjoint recorded as a T-algebra; Proposition 6.25 Street comparisons remain pending."
+        : `Relative adjunction right algebra issues: ${combinedIssues.join("; ")}`,
+    framing,
+    canonical,
+    resolution,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadResolutionFunctorInput<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly left: RelativeAdjunctionRelativeMonadLeftOpalgebraInput<Obj, Arr, Payload, Evidence>;
+  readonly right: RelativeAdjunctionRelativeMonadRightAlgebraInput<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeAdjunctionRelativeMonadResolutionFunctorReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly left: RelativeAdjunctionRelativeMonadLeftOpalgebraReport<Obj, Arr, Payload, Evidence>;
+  readonly right: RelativeAdjunctionRelativeMonadRightAlgebraReport<Obj, Arr, Payload, Evidence>;
+}
+
+export const analyzeRelativeAdjunctionRelativeMonadResolutionFunctor = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+  input: RelativeAdjunctionRelativeMonadResolutionFunctorInput<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionRelativeMonadResolutionFunctorReport<Obj, Arr, Payload, Evidence> => {
+  const left = analyzeRelativeAdjunctionRelativeMonadLeftOpalgebra(adjunction, input.left);
+  const right = analyzeRelativeAdjunctionRelativeMonadRightAlgebra(adjunction, input.right);
+
+  const combinedIssues = [...left.issues, ...right.issues];
+  const pending =
+    combinedIssues.length === 0 &&
+    left.pending &&
+    right.pending;
+
+  return {
+    holds: false,
+    pending,
+    issues: combinedIssues,
+    details:
+      combinedIssues.length === 0
+        ? input.details ??
+          "Canonical (op)algebra functors into Res(T)_C recorded; Proposition 6.26 comparisons remain pending."
+        : `Relative adjunction resolution functor issues: ${combinedIssues.join("; ")}`,
+    left,
+    right,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadTransportNaturality<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly tNaturality: RelativeOpalgebraMorphismPresentation<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly TNaturality: RelativeAlgebraMorphismPresentation<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly details?: string;
+}
+
+export interface RelativeAdjunctionRelativeMonadOpalgebraTransportInput<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly pasting: RelativeAdjunctionRelativeMonadPastingWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly source: RelativeOpalgebraPresentation<Obj, Arr, Payload, Evidence>;
+  readonly target: RelativeAlgebraPresentation<Obj, Arr, Payload, Evidence>;
+  readonly naturality?: RelativeAdjunctionRelativeMonadTransportNaturality<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly details?: string;
+}
+
+export interface RelativeAdjunctionRelativeMonadOpalgebraTransportReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly pasting: RelativeAdjunctionRelativeMonadPastingReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly sourceFraming: RelativeOpalgebraFramingReport;
+  readonly targetFraming: RelativeAlgebraFramingReport;
+  readonly naturality?: {
+    readonly t: RelativeMorphismCompatibilityReport;
+    readonly T: RelativeMorphismCompatibilityReport;
+  };
+}
+
+export const analyzeRelativeAdjunctionRelativeMonadOpalgebraTransport = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+  input: RelativeAdjunctionRelativeMonadOpalgebraTransportInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >,
+): RelativeAdjunctionRelativeMonadOpalgebraTransportReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence
+> => {
+  const { pasting, source, target, naturality, details } = input;
+  const issues: string[] = [];
+
+  if (pasting.leftAdjunction !== adjunction) {
+    issues.push(
+      "Relative adjunction transport should use the supplied left adjunction in the Proposition 5.37 pasting witness.",
+    );
+  }
+
+  if (source.monad !== pasting.source) {
+    issues.push("Source opalgebra must be expressed for the pasted witness's source relative monad.");
+  }
+
+  if (target.monad !== pasting.result) {
+    issues.push(
+      "Transported algebra must target the relative monad produced by the Proposition 5.37 pasting witness.",
+    );
+  }
+
+  if (source.monad.equipment !== adjunction.equipment) {
+    issues.push("Source opalgebra should live in the adjunction's equipment.");
+  }
+
+  if (target.monad.equipment !== adjunction.equipment) {
+    issues.push("Transported algebra should live in the adjunction's equipment.");
+  }
+
+  if (!naturality) {
+    issues.push("Proposition 6.27 transport requires naturality witnesses in t and T.");
+  }
+
+  const pastingReport = analyzeRelativeAdjunctionRelativeMonadPasting(pasting);
+  const sourceFraming = analyzeRelativeOpalgebraFraming(source);
+  const targetFraming = analyzeRelativeAlgebraFraming(target);
+
+  let tReport: RelativeMorphismCompatibilityReport | undefined;
+  let TReport: RelativeMorphismCompatibilityReport | undefined;
+
+  if (naturality) {
+    tReport = analyzeRelativeOpalgebraMorphismCompatibility(
+      naturality.tNaturality,
+    );
+    TReport = analyzeRelativeAlgebraMorphismCompatibility(
+      naturality.TNaturality,
+    );
+  }
+
+  const combinedIssues = [
+    ...issues,
+    ...(pastingReport.holds ? [] : pastingReport.issues),
+    ...(sourceFraming.holds ? [] : sourceFraming.issues),
+    ...(targetFraming.holds ? [] : targetFraming.issues),
+    ...(tReport?.issues ?? []),
+    ...(TReport?.issues ?? []),
+  ];
+
+  const pending =
+    combinedIssues.length === 0 &&
+    pastingReport.holds &&
+    sourceFraming.holds &&
+    targetFraming.holds &&
+    !!tReport?.pending &&
+    !!TReport?.pending;
+
+  return {
+    holds: false,
+    pending,
+    issues: combinedIssues,
+    details:
+      combinedIssues.length === 0
+        ? details ??
+          naturality?.details ??
+          "T-opalgebra transported across the relative adjunction; Proposition 6.27 comparisons remain pending."
+        : `Relative adjunction opalgebra transport issues: ${combinedIssues.join("; ")}`,
+    pasting: pastingReport,
+    sourceFraming,
+    targetFraming,
+    naturality:
+      tReport && TReport
+        ? {
+            t: tReport,
+            T: TReport,
+          }
+        : undefined,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadAlgebraTransportInput<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly pasting: RelativeAdjunctionRelativeMonadPastingWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly source: RelativeAlgebraPresentation<Obj, Arr, Payload, Evidence>;
+  readonly target: RelativeOpalgebraPresentation<Obj, Arr, Payload, Evidence>;
+  readonly naturality?: RelativeAdjunctionRelativeMonadTransportNaturality<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly details?: string;
+}
+
+export interface RelativeAdjunctionRelativeMonadAlgebraTransportReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly pasting: RelativeAdjunctionRelativeMonadPastingReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly sourceFraming: RelativeAlgebraFramingReport;
+  readonly targetFraming: RelativeOpalgebraFramingReport;
+  readonly naturality?: {
+    readonly t: RelativeMorphismCompatibilityReport;
+    readonly T: RelativeMorphismCompatibilityReport;
+  };
+}
+
+export const analyzeRelativeAdjunctionRelativeMonadAlgebraTransport = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+  input: RelativeAdjunctionRelativeMonadAlgebraTransportInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >,
+): RelativeAdjunctionRelativeMonadAlgebraTransportReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence
+> => {
+  const { pasting, source, target, naturality, details } = input;
+  const issues: string[] = [];
+
+  if (pasting.leftAdjunction !== adjunction) {
+    issues.push(
+      "Relative adjunction algebra transport should reference the supplied adjunction in the pasting witness.",
+    );
+  }
+
+  if (source.monad !== pasting.source) {
+    issues.push("Source algebra must arise from the pasted witness's source relative monad.");
+  }
+
+  if (target.monad !== pasting.result) {
+    issues.push(
+      "Transported opalgebra must live over the relative monad produced by the Proposition 5.37 pasting witness.",
+    );
+  }
+
+  if (source.monad.equipment !== adjunction.equipment) {
+    issues.push("Source algebra should live in the adjunction's equipment.");
+  }
+
+  if (target.monad.equipment !== adjunction.equipment) {
+    issues.push("Transported opalgebra should live in the adjunction's equipment.");
+  }
+
+  if (!naturality) {
+    issues.push("Proposition 6.27 dual transport requires naturality witnesses in t and T.");
+  }
+
+  const pastingReport = analyzeRelativeAdjunctionRelativeMonadPasting(pasting);
+  const sourceFraming = analyzeRelativeAlgebraFraming(source);
+  const targetFraming = analyzeRelativeOpalgebraFraming(target);
+
+  let tReport: RelativeMorphismCompatibilityReport | undefined;
+  let TReport: RelativeMorphismCompatibilityReport | undefined;
+
+  if (naturality) {
+    tReport = analyzeRelativeOpalgebraMorphismCompatibility(
+      naturality.tNaturality,
+    );
+    TReport = analyzeRelativeAlgebraMorphismCompatibility(
+      naturality.TNaturality,
+    );
+  }
+
+  const combinedIssues = [
+    ...issues,
+    ...(pastingReport.holds ? [] : pastingReport.issues),
+    ...(sourceFraming.holds ? [] : sourceFraming.issues),
+    ...(targetFraming.holds ? [] : targetFraming.issues),
+    ...(tReport?.issues ?? []),
+    ...(TReport?.issues ?? []),
+  ];
+
+  const pending =
+    combinedIssues.length === 0 &&
+    pastingReport.holds &&
+    sourceFraming.holds &&
+    targetFraming.holds &&
+    !!tReport?.pending &&
+    !!TReport?.pending;
+
+  return {
+    holds: false,
+    pending,
+    issues: combinedIssues,
+    details:
+      combinedIssues.length === 0
+        ? details ??
+          naturality?.details ??
+          "T-algebra transported across the relative adjunction; Proposition 6.27 dual comparisons remain pending."
+        : `Relative adjunction algebra transport issues: ${combinedIssues.join("; ")}`,
+    pasting: pastingReport,
+    sourceFraming,
+    targetFraming,
+    naturality:
+      tReport && TReport
+        ? {
+            t: tReport,
+            T: TReport,
+          }
+        : undefined,
+  };
+};
+
+export interface RelativeAdjunctionRelativeMonadTransportEquivalenceInput<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly opalgebra: RelativeAdjunctionRelativeMonadOpalgebraTransportInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly algebra: RelativeAdjunctionRelativeMonadAlgebraTransportInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly unitComparison?: RelativeAlgebraMorphismPresentation<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly counitComparison?: RelativeOpalgebraMorphismPresentation<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly details?: string;
+}
+
+export interface RelativeAdjunctionRelativeMonadTransportEquivalenceReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly opalgebra: RelativeAdjunctionRelativeMonadOpalgebraTransportReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly algebra: RelativeAdjunctionRelativeMonadAlgebraTransportReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly unitComparison?: RelativeMorphismCompatibilityReport;
+  readonly counitComparison?: RelativeMorphismCompatibilityReport;
+}
+
+export const analyzeRelativeAdjunctionRelativeMonadTransportEquivalence = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+  input: RelativeAdjunctionRelativeMonadTransportEquivalenceInput<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >,
+): RelativeAdjunctionRelativeMonadTransportEquivalenceReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence
+> => {
+  const { opalgebra, algebra, unitComparison, counitComparison, details } = input;
+
+  const opalgebraReport = analyzeRelativeAdjunctionRelativeMonadOpalgebraTransport(
+    adjunction,
+    opalgebra,
+  );
+  const algebraReport = analyzeRelativeAdjunctionRelativeMonadAlgebraTransport(
+    adjunction,
+    algebra,
+  );
+
+  let unitReport: RelativeMorphismCompatibilityReport | undefined;
+  let counitReport: RelativeMorphismCompatibilityReport | undefined;
+  const issues: string[] = [];
+
+  if (!unitComparison) {
+    issues.push("Transport equivalence should include a unit comparison between transported algebras.");
+  } else {
+    unitReport = analyzeRelativeAlgebraMorphismCompatibility(unitComparison);
+  }
+
+  if (!counitComparison) {
+    issues.push("Transport equivalence should include a counit comparison between transported opalgebras.");
+  } else {
+    counitReport = analyzeRelativeOpalgebraMorphismCompatibility(counitComparison);
+  }
+
+  const combinedIssues = [
+    ...issues,
+    ...opalgebraReport.issues,
+    ...algebraReport.issues,
+    ...(unitReport?.issues ?? []),
+    ...(counitReport?.issues ?? []),
+  ];
+
+  const pending =
+    combinedIssues.length === 0 &&
+    opalgebraReport.pending &&
+    algebraReport.pending &&
+    !!unitReport?.pending &&
+    !!counitReport?.pending;
+
+  return {
+    holds: false,
+    pending,
+    issues: combinedIssues,
+    details:
+      combinedIssues.length === 0
+        ? details ??
+          "Relative adjunction transports recorded as a prospective equivalence; Remark 6.28 witnesses remain pending."
+        : `Relative adjunction transport equivalence issues: ${combinedIssues.join("; ")}`,
+    opalgebra: opalgebraReport,
+    algebra: algebraReport,
+    unitComparison: unitReport,
+    counitComparison: counitReport,
   };
 };
 
