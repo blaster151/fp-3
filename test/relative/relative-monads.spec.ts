@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { TwoObjectCategory, type TwoArrow, type TwoObject } from "../../two-object-cat";
 import { virtualizeFiniteCategory } from "../../virtual-equipment/adapters";
 import {
+  identityProarrow,
   identityVerticalBoundary,
   type LooseMonoidData,
 } from "../../virtual-equipment";
@@ -12,12 +13,32 @@ import {
   analyzeRelativeMonadRepresentability,
   analyzeRelativeMonadResolution,
   analyzeRelativeMonadSkewMonoidBridge,
+  analyzeRelativeEnrichedEilenbergMooreAlgebra,
+  analyzeRelativeEnrichedKleisliInclusion,
+  analyzeRelativeEnrichedMonad,
+  analyzeRelativeEnrichedVCatMonad,
+  analyzeRelativeEnrichedYoneda,
+  analyzeRelativeEnrichedYonedaDistributor,
+  analyzeRelativeSetEnrichedMonad,
   describeTrivialRelativeMonad,
   fromMonad,
   relativeMonadFromEquipment,
   toMonadIfIdentity,
+  describeRelativeEnrichedMonadWitness,
+  describeRelativeEnrichedEilenbergMooreAlgebraWitness,
+  describeRelativeEnrichedKleisliInclusionWitness,
+  describeRelativeEnrichedVCatMonadWitness,
+  describeRelativeEnrichedYonedaWitness,
+  describeRelativeEnrichedYonedaDistributorWitness,
+  describeRelativeSetEnrichedMonadWitness,
   type RelativeMonadData,
   type RelativeMonadSkewMonoidBridgeInput,
+  type RelativeEnrichedEilenbergMooreAlgebraWitness,
+  type RelativeEnrichedKleisliInclusionWitness,
+  type RelativeEnrichedMonadWitness,
+  type RelativeEnrichedVCatMonadWitness,
+  type RelativeEnrichedYonedaWitness,
+  type RelativeSetEnrichedMonadWitness,
 } from "../../relative/relative-monads";
 import { describeTrivialRelativeAdjunction } from "../../relative/relative-adjunctions";
 import {
@@ -230,6 +251,377 @@ describe("relativeMonadFromEquipment", () => {
     expect(report.rightLift?.holds).toBe(true);
     expect(report.density?.holds).toBe(true);
     expect(report.fullyFaithful?.holds).toBe(true);
+  });
+});
+
+describe("Relative enriched monad analyzer", () => {
+  it("accepts the canonical enriched witness", () => {
+    const { trivial } = makeTrivialData();
+    const witness = describeRelativeEnrichedMonadWitness(trivial);
+    const report = analyzeRelativeEnrichedMonad(witness);
+    expect(report.holds).toBe(true);
+    expect(report.issues).toHaveLength(0);
+  });
+
+  it("flags mismatched enriched units", () => {
+    const { trivial } = makeTrivialData();
+    const witness: RelativeEnrichedMonadWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...describeRelativeEnrichedMonadWitness(trivial),
+      unitComparison: trivial.extension,
+    };
+    const report = analyzeRelativeEnrichedMonad(witness);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Enriched unit comparison must reuse the relative monad unit witness.",
+    );
+  });
+});
+
+describe("Relative enriched Yoneda analyzer", () => {
+  it("accepts the default Yoneda witness", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const witness = describeRelativeEnrichedYonedaWitness(enriched);
+    const report = analyzeRelativeEnrichedYoneda(witness);
+    expect(report.holds).toBe(true);
+    expect(report.issues).toHaveLength(0);
+  });
+
+  it("flags mismatched Yoneda compositions", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const baseWitness = describeRelativeEnrichedYonedaWitness(enriched);
+    const broken: RelativeEnrichedYonedaWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...baseWitness,
+      action: {
+        ...baseWitness.action,
+        composition: { ...baseWitness.action.functorAction },
+      },
+    };
+    const report = analyzeRelativeEnrichedYoneda(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Yoneda composition witness must coincide with the recorded functor action.",
+    );
+  });
+});
+
+describe("Relative enriched Eilenberg–Moore algebra analyzer", () => {
+  it("accepts the canonical enriched Eilenberg–Moore witness", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const witness = describeRelativeEnrichedEilenbergMooreAlgebraWitness(enriched);
+    const report = analyzeRelativeEnrichedEilenbergMooreAlgebra(witness);
+    expect(report.holds).toBe(true);
+    expect(report.issues).toHaveLength(0);
+  });
+
+  it("flags mismatched extension operators", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const baseWitness = describeRelativeEnrichedEilenbergMooreAlgebraWitness(enriched);
+    const broken: RelativeEnrichedEilenbergMooreAlgebraWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...baseWitness,
+      extension: enriched.unitComparison,
+      diagrams: {
+        associativity: { ...baseWitness.diagrams.associativity },
+        unit: { ...baseWitness.diagrams.unit },
+      },
+    };
+    const report = analyzeRelativeEnrichedEilenbergMooreAlgebra(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Eilenberg–Moore extension operator must reuse the enriched extension comparison witness.",
+    );
+  });
+
+  it("detects non-commuting multiplication composites", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const baseWitness = describeRelativeEnrichedEilenbergMooreAlgebraWitness(enriched);
+    const broken: RelativeEnrichedEilenbergMooreAlgebraWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...baseWitness,
+      diagrams: {
+        associativity: {
+          ...baseWitness.diagrams.associativity,
+          viaExtension: baseWitness.diagrams.unit.viaUnit,
+        },
+        unit: { ...baseWitness.diagrams.unit },
+      },
+    };
+    const report = analyzeRelativeEnrichedEilenbergMooreAlgebra(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Eilenberg–Moore associativity diagram must commute.",
+    );
+  });
+});
+
+describe("Relative enriched Kleisli inclusion analyzer", () => {
+  it("accepts the canonical inclusion witness", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const witness = describeRelativeEnrichedKleisliInclusionWitness(enriched);
+    const report = analyzeRelativeEnrichedKleisliInclusion(witness);
+    expect(report.holds).toBe(true);
+    expect(report.issues).toHaveLength(0);
+  });
+
+  it("flags identity transformation mismatches", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const baseWitness = describeRelativeEnrichedKleisliInclusionWitness(enriched);
+    const broken: RelativeEnrichedKleisliInclusionWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...baseWitness,
+      opalgebra: {
+        ...baseWitness.opalgebra,
+        identityTransformation: enriched.extensionComparison,
+      },
+    };
+    const report = analyzeRelativeEnrichedKleisliInclusion(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Kleisli inclusion identity-on-objects transformation must reuse the enriched unit comparison witness.",
+    );
+  });
+
+  it("detects composition comparison drift", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const baseWitness = describeRelativeEnrichedKleisliInclusionWitness(enriched);
+    const broken: RelativeEnrichedKleisliInclusionWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...baseWitness,
+      compositionPreservation: {
+        ...baseWitness.compositionPreservation,
+        comparison: enriched.unitComparison,
+      },
+    };
+    const report = analyzeRelativeEnrichedKleisliInclusion(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Kleisli inclusion composition preservation comparison must reuse the recorded reference 2-cell.",
+    );
+  });
+});
+
+describe("Relative enriched Yoneda distributor analyzer", () => {
+  it("accepts the canonical distributor witness", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const yoneda = describeRelativeEnrichedYonedaWitness(enriched);
+    const witness = describeRelativeEnrichedYonedaDistributorWitness(yoneda);
+    const report = analyzeRelativeEnrichedYonedaDistributor(witness);
+    expect(report.holds).toBe(true);
+    expect(report.issues).toHaveLength(0);
+    expect(report.rightLift.holds).toBe(true);
+  });
+
+  it("detects divergent PZ(p,q) composites", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const yoneda = describeRelativeEnrichedYonedaWitness(enriched);
+    const baseWitness = describeRelativeEnrichedYonedaDistributorWitness(yoneda);
+    const broken = {
+      ...baseWitness,
+      redComposite: { ...baseWitness.redComposite },
+    };
+    const report = analyzeRelativeEnrichedYonedaDistributor(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Yoneda distributor red composite must coincide with the supplied PZ(p,q) factorisation.",
+    );
+  });
+
+  it("flags mismatched right lift witnesses", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const yoneda = describeRelativeEnrichedYonedaWitness(enriched);
+    const baseWitness = describeRelativeEnrichedYonedaDistributorWitness(yoneda);
+    const broken = {
+      ...baseWitness,
+      rightLift: {
+        ...baseWitness.rightLift,
+        lift: baseWitness.rightLift.loose,
+      },
+    };
+    const report = analyzeRelativeEnrichedYonedaDistributor(broken);
+    expect(report.holds).toBe(false);
+    expect(report.rightLift.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Yoneda distributor right lift must land in the relative monad loose arrow witnessing Y : Z → PZ.",
+    );
+  });
+});
+
+describe("Relative set-enriched monad analyzer", () => {
+  it("accepts the Example 8.14 correspondences", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const witness = describeRelativeSetEnrichedMonadWitness(enriched);
+    const report = analyzeRelativeSetEnrichedMonad(witness);
+    expect(report.holds).toBe(true);
+    expect(report.correspondences.every((entry) => entry.holds)).toBe(true);
+  });
+
+  it("flags a correspondence that does not reuse the loose arrow", () => {
+    const { equipment, trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const baseWitness = describeRelativeSetEnrichedMonadWitness(enriched);
+    const [firstCorrespondence, ...rest] = baseWitness.correspondences;
+    if (!firstCorrespondence) {
+      throw new Error("Expected at least one set-enriched correspondence witness.");
+    }
+    const brokenCorrespondence = {
+      ...firstCorrespondence,
+      looseArrow: identityProarrow(equipment, trivial.root.from),
+    };
+    const witness: RelativeSetEnrichedMonadWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...baseWitness,
+      correspondences: [brokenCorrespondence, ...rest],
+    };
+    const report = analyzeRelativeSetEnrichedMonad(witness);
+    expect(report.holds).toBe(false);
+    expect(report.correspondences[0]?.holds).toBe(false);
+  });
+
+  it("rejects a fully faithful witness with mismatched domain", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const baseWitness = describeRelativeSetEnrichedMonadWitness(enriched);
+    const witness: RelativeSetEnrichedMonadWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...baseWitness,
+      fullyFaithful: {
+        tight: baseWitness.fullyFaithful.tight,
+        domain: trivial.carrier.from,
+        codomain: baseWitness.fullyFaithful.codomain,
+      },
+    };
+    const report = analyzeRelativeSetEnrichedMonad(witness);
+    expect(report.holds).toBe(false);
+    expect(report.fullyFaithful.holds).toBe(false);
+  });
+});
+
+describe("Relative enriched V-Cat monad analyzer", () => {
+  it("accepts the canonical Theorem 8.12 witness", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const witness = describeRelativeEnrichedVCatMonadWitness(enriched);
+    const report = analyzeRelativeEnrichedVCatMonad(witness);
+    expect(report.holds).toBe(true);
+    expect(report.issues).toHaveLength(0);
+  });
+
+  it("flags mismatched unit triangle evidence", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const baseWitness = describeRelativeEnrichedVCatMonadWitness(enriched);
+    const broken: RelativeEnrichedVCatMonadWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...baseWitness,
+      unitTriangle: {
+        ...baseWitness.unitTriangle,
+        redComposite: enriched.extensionComparison,
+      },
+    };
+    const report = analyzeRelativeEnrichedVCatMonad(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Theorem 8.12 unit triangle red composite must match the recorded comparison evidence.",
+    );
+  });
+
+  it("detects functorial identity mismatches", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const baseWitness = describeRelativeEnrichedVCatMonadWitness(enriched);
+    const broken: RelativeEnrichedVCatMonadWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...baseWitness,
+      functoriality: {
+        ...baseWitness.functoriality,
+        identity: {
+          ...baseWitness.functoriality.identity,
+          redComposite: enriched.extensionComparison,
+        },
+      },
+    };
+    const report = analyzeRelativeEnrichedVCatMonad(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Theorem 8.12 identity preservation red composite must match the recorded comparison evidence.",
+    );
+  });
+
+  it("flags τ naturality discrepancies", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const baseWitness = describeRelativeEnrichedVCatMonadWitness(enriched);
+    const broken: RelativeEnrichedVCatMonadWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...baseWitness,
+      tauNaturality: {
+        ...baseWitness.tauNaturality,
+        greenComposite: enriched.extensionComparison,
+      },
+    };
+    const report = analyzeRelativeEnrichedVCatMonad(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Theorem 8.12 τ V-naturality green composite must match the recorded comparison evidence.",
+    );
   });
 });
 
@@ -453,6 +845,18 @@ describe("Relative monad skew-monoid bridge analyzer", () => {
         (result) =>
           result.registryPath ===
           RelativeMonadLawRegistry.skewMonoidBridge.registryPath,
+      ),
+    ).toBe(true);
+  });
+
+  it("includes the set-enriched oracle in the default enumeration", () => {
+    const { trivial } = makeTrivialData();
+    const results = enumerateRelativeMonadOracles(trivial);
+    expect(
+      results.some(
+        (result) =>
+          result.registryPath ===
+          RelativeMonadLawRegistry.setEnrichedCompatibility.registryPath,
       ),
     ).toBe(true);
   });

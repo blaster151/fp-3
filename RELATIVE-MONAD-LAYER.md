@@ -221,7 +221,62 @@
   - ✅ Added `RelativeKleisliPresentation` and `RelativeEilenbergMoorePresentation`
     along with analyzers `analyzeRelativeKleisliUniversalProperty` and
     `analyzeRelativeEilenbergMooreUniversalProperty`, ensuring the universal
-    property actions reuse the specified root and carrier boundaries.
+    property actions reuse the specified root and carrier boundaries while
+    recording Theorem 6.39’s comparison functor, mediating tight cell, Lemma 6.38
+    partial right adjoint, and graded factorisations. The Lemma 6.38 section
+    analyzer now checks both triangle identities by composing ℓ ∘ σ and σ ∘ ℓ
+    and comparing them against the supplied identities.
+  - ✅ Section 8 enrichment is represented by
+    `analyzeRelativeEnrichedMonad`/`relativeMonad.enriched.compatibility`, which
+    confirm the enriched hom object and tensor comparisons reuse the monad’s
+    unit and extension witnesses.
+  - ✅ Example 8.14’s Set-enriched equivalences are captured by
+    `analyzeRelativeSetEnrichedMonad` and the
+    `relativeMonad.enriched.setCompatibility` oracle, ensuring the recorded
+    fully faithful root and every correspondence reuse the loose arrow, unit,
+    and extension of the underlying relative monad.
+  - ✅ Example 4 of *Monads Need Not Be Endofunctors* is executable via
+    `analyzeIndexedContainerRelativeMonad` and the
+    `relativeMonad.mnne.indexedContainers` oracle, which enumerate finite
+    indexed families, replay the Example 4 unit/extraction data, and verify the
+    relative monad laws for the induced substitution operator.
+  - ✅ Definition 8.16’s enriched T-algebra is now executable via
+    `analyzeRelativeEnrichedEilenbergMooreAlgebra` and the
+    `relativeMonad.enriched.eilenbergMooreAlgebra` oracle, which insist the
+    carrier shares the monad boundaries, the extension operator reuses the
+    enriched extension witness, and the unit/multiplication composites collapse
+    to the recorded enriched unit/extension comparisons.
+  - ✅ Lemma 8.7’s Kleisli inclusion is enforced by
+    `analyzeRelativeEnrichedKleisliInclusion` and the
+    `relativeMonad.enriched.kleisliInclusion` oracle, ensuring the functor is
+    identity-on-objects, reuses the loose arrow/unit/extension witnesses, and
+    records the κ_T opalgebra morphism triangles.
+  - ✅ Example 8.6 and Lemma 8.7 now appear as
+    `analyzeRelativeEnrichedYoneda`,
+    `analyzeRelativeEnrichedYonedaDistributor`, and the
+    `relativeMonad.enriched.yoneda` / `relativeMonad.enriched.yonedaDistributor`
+    oracle entries, checking that the Yoneda embedding reuses the enriched
+    hom/tensor/extension data and that the PZ(p,q) factorisation agrees with both
+    red and green composites while exhibiting the right lift unit for `q ▷ p`.
+  - ✅ Theorem 8.12 is captured by `analyzeRelativeEnrichedVCatMonad` and the
+    `relativeMonad.enriched.vcatSpecification` oracle, which replay the unit and
+    multiplication triangles, enforce functorial identity/composition diagrams,
+    and check τ-naturality while requiring every composite to reuse the
+    enriched unit/extension evidence.
+  - ✅ Corollaries 6.40–6.41 (and Proposition 6.42) are exposed via
+    `analyzeRelativePartialRightAdjointFunctor` and the
+    `relativeMonad.algebra.partialRightAdjointFunctor` oracle, which thread the
+    section diagnostics, invoke the fully faithful comparison checks, and ensure
+    the recorded j-objects are fixed by the partial right adjoint.
+  - ✅ Lemma 6.47 now appears as
+    `analyzeRelativeOpalgebraResolution`/`relativeMonad.opalgebra.resolution`,
+    lifting opalgebras into the Lemma 6.35 resolution and replaying the κ\_t
+    triangle identities alongside the nested resolution report.
+  - ✅ Theorem 6.49’s section \(RAdj\_j(j) \to RMnd\_j\) is tracked by
+    `analyzeRelativePartialLeftAdjointSection` and the
+    `relativeMonad.opalgebra.partialLeftAdjointSection` oracle, confirming the
+    induced monad agrees with the Lemma 6.47 comparison and that the transpose is
+    literally the identity on \(j\)-objects.
   - ✅ Introduced `RelativeAlgebraMorphismPresentation` and
     `RelativeOpalgebraMorphismPresentation` containers alongside boundary
     analyzers that ensure morphisms reuse the source/target carriers before
@@ -377,6 +432,53 @@
     patterns. Extended the Vitest suites with positive and negative
     examples (see `test/relative/*.spec.ts`) so the framing requirements
     stay executable.
+  - ✅ Operationalised Example 1 from *Monads Need Not Be Endofunctors* via
+    `relative/mnne-vector-monads.ts`, including a Boolean semiring witness,
+    Vitest coverage in `test/relative/mnne-vector-monads.spec.ts`, and a
+    runnable example wired into `examples.ts`.
+  - ✅ Added Theorem 3/Example 5 Kleisli diagnostics with
+    `analyzeFiniteVectorKleisliSplitting`, ensuring Boolean matrix identities
+    and associative products align with the recorded extension operator.
+  - ✅ Added Example 2 from *Monads Need Not Be Endofunctors* with
+    `relative/mnne-lambda-monads.ts`, enumerating well-scoped λ-terms for small
+    contexts, replaying the capture-avoiding substitution operator, and
+    verifying the relative monad unit/extension identities and Kleisli
+    associativity. Regression coverage lives in
+    `test/relative/mnne-lambda-monads.spec.ts` with positive/negative cases.
+  - ✅ Surfaced Example 6’s Kleisli substitution view via
+    `analyzeLambdaKleisliSplitting`, reusing the λ-relative monad analyzer to
+    report identity substitutions and sequential composition diagnostics.
+  - ✅ Replayed the Example 1 left Kan extension along FinSet → Set with
+    `analyzeFiniteVectorLeftKanExtension` and
+    `describeBooleanVectorLeftKanExtensionWitness`, checking that the colimit
+    presentations collapse to the ordinary Boolean vector functor for small
+    sets and highlighting when the witness dimension bound is insufficient.
+  - ✅ Bridged Example 1’s arrow semantics with
+    `analyzeFiniteVectorArrowCorrespondence` and
+    `describeBooleanVectorArrowCorrespondenceWitness`, confirming that any
+    supplied `arr`/composition witnesses act on vectors exactly like the
+    relative monad’s unit/extension data.
+  - ✅ Implemented Section 3.2’s `[J,C]` lax monoidal structure via
+    `relative/mnne-lax-monoidal.ts`, supplying a two-object Lan\_j witness,
+    identity/constant endofunctors, and an analyzer that checks the tensor,
+    unitors, associator, and triangle identity. Regression coverage lives in
+    `test/relative/mnne-lax-monoidal.spec.ts`, and `examples.ts` prints the
+    resulting diagnostics alongside the other MNNE demos.
+  - ✅ Added Theorem 3’s lax-monoid checker through
+    `analyzeMnneLaxMonoid`, reusing the Lan\_j tensor/transformations to verify
+    the recorded unit and multiplication witnesses satisfy the left/right unit
+    laws and the associativity composite.
+  - ✅ Introduced `relative/mnne-well-behaved.ts` with
+    `analyzeMnneWellBehavedInclusion`, which witnesses Definition 4.1’s
+    full-faithfulness requirement by enumerating finite hom-sets and confirming
+    that `J` induces bijections on the chosen samples (while density and the
+    Lan-derived comparison remain logged for future automation).
+  - ✅ Implemented Section 4.3’s Lan extension bridge in
+    `relative/mnne-monad-extensions.ts`, packaging the relative monad, the
+    Lan\_J T endofunctor on C, the κ\_T comparison, and the induced Kleisli
+    extension into `analyzeMnneRelativeMonadLanExtension`, with regression
+    coverage in `test/relative/mnne-monad-extensions.spec.ts` and runnable
+    output in `examples.ts`.
 
 ## 5. Update surrounding documentation and exports
 - **Docs**
@@ -417,6 +519,8 @@ This roadmap keeps Step 2 grounded in the existing monad ecosystem while opening
   - ✅ Mirrored the monad constructions in `relative/relative-comonads.ts`, introducing `RelativeComonadData`, framing/corepresentability/identity analyzers, and the trivial identity-root constructor for test fixtures.
 - **Oracle surface and laws**
   - ✅ Extended `relative/relative-laws.ts` with the dual registry paths and implemented `RelativeComonadOracles`/`enumerateRelativeComonadOracles` to publish the framing, corepresentability, and identity-reduction diagnostics.
+- **Enriched diagnostics**
+  - ✅ Added `analyzeRelativeEnrichedComonad` and `analyzeRelativeComonadCoopAlgebra` to replay Proposition 8.22’s enriched cohom object and Theorem 8.24’s coopalgebra diagrams, with identity-case witnesses in `examples.ts` and Vitest coverage in `test/relative/relative-comonads.spec.ts`.
 
 ## 9. Expanded testing and oracle coverage
 - **Test suites**

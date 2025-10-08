@@ -6,14 +6,32 @@ import {
   defaultObjectEquality,
   identityVerticalBoundary,
   verticalBoundariesEqual,
+  verticalComposeCells,
 } from "../virtual-equipment";
+import type {
+  FullyFaithfulAnalysis,
+  FullyFaithfulInput,
+} from "../virtual-equipment/faithfulness";
+import { analyzeFullyFaithfulTight1Cell } from "../virtual-equipment/faithfulness";
 import type {
   LooseMonoidData,
   LooseMonoidShapeReport,
 } from "../virtual-equipment/loose-structures";
 import { analyzeLooseMonoidShape } from "../virtual-equipment/loose-structures";
-import type { RelativeAdjunctionData } from "./relative-adjunctions";
-import type { RelativeMonadData } from "./relative-monads";
+import type {
+  RelativeAdjunctionData,
+  RelativeAdjunctionSectionReport,
+  RelativeAdjunctionSectionWitness,
+} from "./relative-adjunctions";
+import {
+  analyzeRelativeAdjunctionSection,
+  describeRelativeAdjunctionSectionWitness,
+} from "./relative-adjunctions";
+import type {
+  RelativeMonadData,
+  RelativeMonadResolutionReport,
+} from "./relative-monads";
+import { analyzeRelativeMonadResolution } from "./relative-monads";
 
 export interface RelativeOpalgebraData<Obj, Arr, Payload, Evidence> {
   readonly carrier: EquipmentVerticalBoundary<Obj, Arr>;
@@ -625,6 +643,12 @@ export interface RelativeAlgebraResolutionWitness<
   readonly algebra: RelativeAlgebraPresentation<Obj, Arr, Payload, Evidence>;
   readonly resolutionAdjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
   readonly comparisonMonad: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+  readonly mediatingTightCell: RelativeAlgebraMediatingTightCellWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
   readonly details?: string;
 }
 
@@ -639,6 +663,18 @@ export interface RelativeAlgebraResolutionReport<
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly witness: RelativeAlgebraResolutionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly mediatingTightCellReport: RelativeAlgebraMediatingTightCellReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly resolutionReport: RelativeMonadResolutionReport<
     Obj,
     Arr,
     Payload,
@@ -877,6 +913,62 @@ export interface RelativeOpalgebraIdentityRootReport<
   >;
 }
 
+export interface RelativeOpalgebraKappaWitness<Obj, Arr, Payload, Evidence> {
+  readonly kappa: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly leftComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly leftIdentity: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly rightComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly rightIdentity: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeOpalgebraKappaReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativeOpalgebraKappaWitness<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeOpalgebraResolutionWitness<Obj, Arr, Payload, Evidence> {
+  readonly presentation: RelativeOpalgebraPresentation<Obj, Arr, Payload, Evidence>;
+  readonly resolution: RelativeAlgebraResolutionWitness<Obj, Arr, Payload, Evidence>;
+  readonly kappaWitness: RelativeOpalgebraKappaWitness<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeOpalgebraResolutionReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativeOpalgebraResolutionWitness<Obj, Arr, Payload, Evidence>;
+  readonly resolutionReport: RelativeAlgebraResolutionReport<Obj, Arr, Payload, Evidence>;
+  readonly kappaReport: RelativeOpalgebraKappaReport<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativePartialLeftAdjointWitness<Obj, Arr, Payload, Evidence> {
+  readonly opalgebraResolution: RelativeOpalgebraResolutionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly inducedMonad: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+  readonly transposeComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly transposeIdentity: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativePartialLeftAdjointReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativePartialLeftAdjointWitness<Obj, Arr, Payload, Evidence>;
+  readonly resolutionReport: RelativeOpalgebraResolutionReport<Obj, Arr, Payload, Evidence>;
+}
+
 export interface RelativeAlgebraFramingReport {
   readonly holds: boolean;
   readonly issues: ReadonlyArray<string>;
@@ -984,6 +1076,9 @@ export interface RelativeAlgebraGradedExtensionWitness<
   readonly presentation: RelativeAlgebraPresentation<Obj, Arr, Payload, Evidence>;
   readonly grading: ReadonlyArray<EquipmentVerticalBoundary<Obj, Arr>>;
   readonly extension: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly redComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly greenComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly factorisation: Equipment2Cell<Obj, Arr, Payload, Evidence>;
   readonly details?: string;
 }
 
@@ -1013,12 +1108,110 @@ export interface RelativeKleisliPresentation<Obj, Arr, Payload, Evidence> {
 export interface RelativeEilenbergMoorePresentation<Obj, Arr, Payload, Evidence> {
   readonly monad: RelativeMonadData<Obj, Arr, Payload, Evidence>;
   readonly algebra: RelativeAlgebraData<Obj, Arr, Payload, Evidence>;
+  readonly universalWitness?: RelativeEilenbergMooreUniversalWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
 }
 
 export interface RelativeUniversalPropertyReport {
   readonly holds: boolean;
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
+}
+
+export interface RelativeEilenbergMooreUniversalWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly comparisonFunctor: RelativeAlgebraRestrictionFunctorWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly mediatingTightCell: RelativeAlgebraMediatingTightCellWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly section: RelativeAdjunctionSectionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly gradedExtension: RelativeAlgebraGradedExtensionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly details?: string;
+}
+
+export interface RelativeEilenbergMooreUniversalPropertyReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness?: RelativeEilenbergMooreUniversalWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly restrictionReport?: RelativeAlgebraRestrictionFunctorReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly mediatingTightCellReport?: RelativeAlgebraMediatingTightCellReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly sectionReport?: RelativeAdjunctionSectionReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly gradedExtensionReport?: RelativeAlgebraGradedExtensionReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+export interface RelativePartialRightAdjointWitness<Obj, Arr, Payload, Evidence> {
+  readonly presentation: RelativeEilenbergMoorePresentation<Obj, Arr, Payload, Evidence>;
+  readonly section: RelativeAdjunctionSectionWitness<Obj, Arr, Payload, Evidence>;
+  readonly comparison: FullyFaithfulInput<Obj, Arr>;
+  readonly fixedObjects: ReadonlyArray<EquipmentVerticalBoundary<Obj, Arr>>;
+  readonly details?: string;
+}
+
+export interface RelativePartialRightAdjointReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly sectionReport: RelativeAdjunctionSectionReport<Obj, Arr, Payload, Evidence>;
+  readonly fullyFaithfulReport: FullyFaithfulAnalysis<Obj, Arr, Payload, Evidence>;
 }
 
 export interface RelativeMorphismCompatibilityReport {
@@ -1357,6 +1550,8 @@ export const analyzeRelativeAlgebraGradedExtensionMorphisms = <
   witness: RelativeAlgebraGradedExtensionWitness<Obj, Arr, Payload, Evidence>,
 ): RelativeAlgebraGradedExtensionReport<Obj, Arr, Payload, Evidence> => {
   const issues: string[] = [];
+  const equality =
+    presentation.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
 
   if (witness.presentation !== presentation) {
     issues.push(
@@ -1373,6 +1568,69 @@ export const analyzeRelativeAlgebraGradedExtensionMorphisms = <
   if (witness.extension !== presentation.monad.extension) {
     issues.push(
       "Graded extension witness must reuse the relative monad extension 2-cell.",
+    );
+  }
+
+  ensureBoundary(
+    equality,
+    witness.redComposite.boundaries.left,
+    presentation.algebra.action.boundaries.left,
+    "Graded extension red composite left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    witness.redComposite.boundaries.right,
+    presentation.algebra.action.boundaries.right,
+    "Graded extension red composite right boundary",
+    issues,
+  );
+
+  ensureBoundary(
+    equality,
+    witness.greenComposite.boundaries.left,
+    presentation.algebra.action.boundaries.left,
+    "Graded extension green composite left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    witness.greenComposite.boundaries.right,
+    presentation.algebra.action.boundaries.right,
+    "Graded extension green composite right boundary",
+    issues,
+  );
+
+  ensureBoundary(
+    equality,
+    witness.factorisation.boundaries.left,
+    presentation.algebra.action.boundaries.left,
+    "Graded extension factorisation left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    witness.factorisation.boundaries.right,
+    presentation.algebra.action.boundaries.right,
+    "Graded extension factorisation right boundary",
+    issues,
+  );
+
+  if (witness.factorisation !== presentation.algebra.action) {
+    issues.push(
+      "Graded extension factorisation must reuse the recorded algebra action.",
+    );
+  }
+
+  if (witness.redComposite !== witness.factorisation) {
+    issues.push(
+      "Graded extension red composite must coincide with the supplied Alg(T) factorisation.",
+    );
+  }
+
+  if (witness.greenComposite !== witness.factorisation) {
+    issues.push(
+      "Graded extension green composite must coincide with the supplied Alg(T) factorisation.",
     );
   }
 
@@ -2773,8 +3031,215 @@ export const analyzeRelativeOpalgebraIdentityRootEquivalence = <
     issues,
     details: pending
       ? "Identity-root opalgebra equivalence recorded; Corollary 6.24 witnesses pending."
-      : `Identity-root opalgebra equivalence issues: ${issues.join("; ")}`,
+    : `Identity-root opalgebra equivalence issues: ${issues.join("; ")}`,
     witness,
+  };
+};
+
+export const analyzeRelativeOpalgebraKappaInvertibility = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  presentation: RelativeOpalgebraPresentation<Obj, Arr, Payload, Evidence>,
+  resolution: RelativeAlgebraResolutionWitness<Obj, Arr, Payload, Evidence>,
+  witness: RelativeOpalgebraKappaWitness<Obj, Arr, Payload, Evidence>,
+): RelativeOpalgebraKappaReport<Obj, Arr, Payload, Evidence> => {
+  const equality =
+    presentation.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  ensureBoundary(
+    equality,
+    witness.kappa.boundaries.left,
+    presentation.opalgebra.carrier,
+    "κ_t left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    witness.kappa.boundaries.right,
+    resolution.mediatingTightCell.tightCell,
+    "κ_t right boundary",
+    issues,
+  );
+
+  const unitComposite = verticalComposeCells(
+    presentation.monad.equipment,
+    witness.kappa,
+    resolution.mediatingTightCell.unitComparison,
+  );
+  if (!unitComposite) {
+    issues.push(
+      "κ_t left triangle composite could not be formed using the equipment's vertical composition.",
+    );
+  } else if (unitComposite !== witness.leftComposite) {
+    issues.push(
+      "Recorded κ_t left composite must agree with the equipment's vertical composition of κ_t and the unit comparison.",
+    );
+  }
+
+  ensureBoundary(
+    equality,
+    witness.leftComposite.boundaries.left,
+    resolution.mediatingTightCell.unitComparison.boundaries.left,
+    "κ_t left composite left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    witness.leftComposite.boundaries.right,
+    resolution.mediatingTightCell.unitComparison.boundaries.right,
+    "κ_t left composite right boundary",
+    issues,
+  );
+
+  if (witness.leftComposite !== witness.leftIdentity) {
+    issues.push(
+      "κ_t left triangle composite must coincide with the supplied identity witness.",
+    );
+  }
+
+  ensureBoundary(
+    equality,
+    witness.leftIdentity.boundaries.left,
+    witness.leftComposite.boundaries.left,
+    "κ_t left identity left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    witness.leftIdentity.boundaries.right,
+    witness.leftComposite.boundaries.right,
+    "κ_t left identity right boundary",
+    issues,
+  );
+
+  const extensionComposite = verticalComposeCells(
+    presentation.monad.equipment,
+    resolution.mediatingTightCell.extensionComparison,
+    witness.kappa,
+  );
+  if (!extensionComposite) {
+    issues.push(
+      "κ_t right triangle composite could not be formed using the equipment's vertical composition.",
+    );
+  } else if (extensionComposite !== witness.rightComposite) {
+    issues.push(
+      "Recorded κ_t right composite must agree with the equipment's vertical composition of the extension comparison and κ_t.",
+    );
+  }
+
+  ensureBoundary(
+    equality,
+    witness.rightComposite.boundaries.left,
+    resolution.mediatingTightCell.extensionComparison.boundaries.left,
+    "κ_t right composite left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    witness.rightComposite.boundaries.right,
+    resolution.mediatingTightCell.extensionComparison.boundaries.right,
+    "κ_t right composite right boundary",
+    issues,
+  );
+
+  if (witness.rightComposite !== witness.rightIdentity) {
+    issues.push(
+      "κ_t right triangle composite must coincide with the supplied identity witness.",
+    );
+  }
+
+  ensureBoundary(
+    equality,
+    witness.rightIdentity.boundaries.left,
+    witness.rightComposite.boundaries.left,
+    "κ_t right identity left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    witness.rightIdentity.boundaries.right,
+    witness.rightComposite.boundaries.right,
+    "κ_t right identity right boundary",
+    issues,
+  );
+
+  const holds = issues.length === 0;
+  return {
+    holds,
+    pending: false,
+    issues,
+    details: holds
+      ? "κ_t invertibility verified: both triangle composites collapse to the recorded identities."
+      : `κ_t invertibility issues: ${issues.join("; ")}`,
+    witness,
+  };
+};
+
+export const analyzeRelativeOpalgebraResolution = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  witness: RelativeOpalgebraResolutionWitness<Obj, Arr, Payload, Evidence>,
+): RelativeOpalgebraResolutionReport<Obj, Arr, Payload, Evidence> => {
+  const equality =
+    witness.presentation.monad.equipment.equalsObjects ??
+    defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  if (witness.resolution.monad !== witness.presentation.monad) {
+    issues.push(
+      "Opalgebra resolution must reuse the underlying relative monad from the presentation.",
+    );
+  }
+
+  ensureBoundary(
+    equality,
+    witness.resolution.algebra.algebra.carrier,
+    witness.presentation.opalgebra.carrier,
+    "Opalgebra resolution carrier",
+    issues,
+  );
+
+  if (
+    witness.resolution.algebra.algebra.action !==
+    witness.presentation.opalgebra.action
+  ) {
+    issues.push(
+      "Opalgebra resolution algebra action must agree with the recorded opalgebra action.",
+    );
+  }
+
+  const resolutionReport = analyzeRelativeAlgebraResolutionFromAlgebraObject(
+    witness.resolution,
+  );
+  issues.push(...resolutionReport.issues);
+
+  const kappaReport = analyzeRelativeOpalgebraKappaInvertibility(
+    witness.presentation,
+    witness.resolution,
+    witness.kappaWitness,
+  );
+  issues.push(...kappaReport.issues);
+
+  const pending =
+    issues.length === 0 && (resolutionReport.pending || kappaReport.pending);
+
+  return {
+    holds: false,
+    pending,
+    issues,
+    details: pending
+      ? "Relative opalgebra resolution recorded; Lemma 6.47 comparison with Lemma 6.35 remains pending."
+      : `Relative opalgebra resolution issues: ${issues.join("; ")}`,
+    witness,
+    resolutionReport,
+    kappaReport,
   };
 };
 
@@ -2933,6 +3398,31 @@ export const analyzeRelativeAlgebraResolutionFromAlgebraObject = <
     witness.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
   const issues: string[] = [];
 
+  if (witness.algebra.monad !== witness.monad) {
+    issues.push("Resolution witness must reuse the recorded relative monad.");
+  }
+
+  if (witness.resolutionAdjunction.equipment !== witness.monad.equipment) {
+    issues.push("Resolution adjunction must live in the same virtual equipment as the monad.");
+  }
+
+  if (witness.comparisonMonad.equipment !== witness.monad.equipment) {
+    issues.push("Comparison monad must live in the same virtual equipment as the algebra.");
+  }
+
+  if (witness.mediatingTightCell.monad !== witness.monad) {
+    issues.push("Mediating tight cell must reference the same relative monad as the witness.");
+  }
+
+  if (witness.mediatingTightCell.target !== witness.algebra) {
+    issues.push("Mediating tight cell target must coincide with the recorded algebra presentation.");
+  }
+
+  const mediatingTightCellReport = analyzeRelativeAlgebraMediatingTightCell(
+    witness.mediatingTightCell,
+  );
+  issues.push(...mediatingTightCellReport.issues);
+
   if (
     !verticalBoundariesEqual(
       equality,
@@ -2958,6 +3448,18 @@ export const analyzeRelativeAlgebraResolutionFromAlgebraObject = <
   if (
     !verticalBoundariesEqual(
       equality,
+      witness.resolutionAdjunction.left,
+      witness.mediatingTightCell.tightCell,
+    )
+  ) {
+    issues.push(
+      "Resolution adjunction left leg must agree with the mediating tight cell boundary.",
+    );
+  }
+
+  if (
+    !verticalBoundariesEqual(
+      equality,
       witness.comparisonMonad.root,
       witness.monad.root,
     )
@@ -2977,15 +3479,35 @@ export const analyzeRelativeAlgebraResolutionFromAlgebraObject = <
     );
   }
 
+  if (witness.comparisonMonad.looseCell !== witness.monad.looseCell) {
+    issues.push("Comparison monad must reuse the relative monad loose arrow witness.");
+  }
+
+  if (witness.comparisonMonad.unit !== witness.monad.unit) {
+    issues.push("Comparison monad must reuse the relative monad unit witness.");
+  }
+
+  if (witness.comparisonMonad.extension !== witness.monad.extension) {
+    issues.push("Comparison monad must reuse the relative monad extension witness.");
+  }
+
+  const resolutionReport = analyzeRelativeMonadResolution({
+    monad: witness.comparisonMonad,
+    adjunction: witness.resolutionAdjunction,
+  });
+  issues.push(...resolutionReport.issues);
+
   const pending = issues.length === 0;
   return {
     holds: false,
     pending,
     issues,
     details: pending
-      ? "Resolution from algebra object recorded; Lemma 6.35 witnesses pending."
+      ? `Resolution from algebra object recorded; Lemma 6.35 witnesses pending. ${resolutionReport.details}`
       : `Resolution from algebra object issues: ${issues.join("; ")}`,
     witness,
+    mediatingTightCellReport,
+    resolutionReport,
   };
 };
 
@@ -3345,9 +3867,14 @@ export const analyzeRelativeKleisliUniversalProperty = <Obj, Arr, Payload, Evide
   };
 };
 
-export const analyzeRelativeEilenbergMooreUniversalProperty = <Obj, Arr, Payload, Evidence>(
+export const analyzeRelativeEilenbergMooreUniversalProperty = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
   presentation: RelativeEilenbergMoorePresentation<Obj, Arr, Payload, Evidence>,
-): RelativeUniversalPropertyReport => {
+): RelativeEilenbergMooreUniversalPropertyReport<Obj, Arr, Payload, Evidence> => {
   const equality =
     presentation.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
   const issues: string[] = [];
@@ -3367,13 +3894,247 @@ export const analyzeRelativeEilenbergMooreUniversalProperty = <Obj, Arr, Payload
     issues,
   );
 
+  const { universalWitness } = presentation;
+  let restrictionReport:
+    | RelativeAlgebraRestrictionFunctorReport<Obj, Arr, Payload, Evidence>
+    | undefined;
+  let mediatingTightCellReport:
+    | RelativeAlgebraMediatingTightCellReport<Obj, Arr, Payload, Evidence>
+    | undefined;
+  let sectionReport:
+    | RelativeAdjunctionSectionReport<Obj, Arr, Payload, Evidence>
+    | undefined;
+  let gradedExtensionReport:
+    | RelativeAlgebraGradedExtensionReport<Obj, Arr, Payload, Evidence>
+    | undefined;
+
+  if (!universalWitness) {
+    issues.push(
+      "Relative Eilenberg–Moore presentation must supply a universal witness capturing the comparison functor, partial right adjoint, and graded factorisation.",
+    );
+  } else {
+    restrictionReport = analyzeRelativeAlgebraRestrictionFunctor(
+      presentation,
+      universalWitness.comparisonFunctor,
+    );
+    issues.push(...restrictionReport.issues);
+
+    if (universalWitness.mediatingTightCell.monad !== presentation.monad) {
+      issues.push(
+        "Relative Eilenberg–Moore section witness must reference the presentation's relative monad.",
+      );
+    }
+
+    if (universalWitness.mediatingTightCell.target !== presentation) {
+      issues.push(
+        "Relative Eilenberg–Moore section witness must target the recorded algebra presentation.",
+      );
+    }
+
+    mediatingTightCellReport = analyzeRelativeAlgebraMediatingTightCell(
+      universalWitness.mediatingTightCell,
+    );
+    issues.push(...mediatingTightCellReport.issues);
+
+    const sectionAdjunction = universalWitness.section.adjunction;
+    if (sectionAdjunction.equipment !== presentation.monad.equipment) {
+      issues.push(
+        "Relative Eilenberg–Moore right-adjoint section must live in the presentation's equipment.",
+      );
+    }
+
+    if (
+      !verticalBoundariesEqual(
+        equality,
+        sectionAdjunction.left,
+        presentation.monad.root,
+      )
+    ) {
+      issues.push(
+        "Relative Eilenberg–Moore right-adjoint section must reuse the presentation's comparison left leg.",
+      );
+    }
+
+    if (
+      !verticalBoundariesEqual(
+        equality,
+        sectionAdjunction.right,
+        presentation.monad.carrier,
+      )
+    ) {
+      issues.push(
+        "Relative Eilenberg–Moore right-adjoint section must reuse the presentation's comparison right leg.",
+      );
+    }
+
+    sectionReport = analyzeRelativeAdjunctionSection(universalWitness.section);
+    issues.push(...sectionReport.issues);
+
+    gradedExtensionReport = analyzeRelativeAlgebraGradedExtensionMorphisms(
+      presentation,
+      universalWitness.gradedExtension,
+    );
+    issues.push(...gradedExtensionReport.issues);
+  }
+
+  const holds = issues.length === 0;
+  const pending =
+    holds &&
+    ((restrictionReport?.pending ?? false) ||
+      (mediatingTightCellReport?.pending ?? false) ||
+      (sectionReport?.pending ?? false) ||
+      (gradedExtensionReport?.pending ?? false));
+
+  return {
+    holds,
+    pending,
+    issues,
+    details: holds
+      ? "Relative Eilenberg–Moore presentation records the universal property witnesses."
+      : `Relative Eilenberg–Moore presentation issues: ${issues.join("; ")}`,
+    witness: universalWitness,
+    restrictionReport,
+    mediatingTightCellReport,
+    sectionReport,
+    gradedExtensionReport,
+  };
+};
+
+export const analyzeRelativePartialRightAdjointFunctor = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  witness: RelativePartialRightAdjointWitness<Obj, Arr, Payload, Evidence>,
+): RelativePartialRightAdjointReport<Obj, Arr, Payload, Evidence> => {
+  const { presentation, section, comparison, fixedObjects } = witness;
+  const { monad } = presentation;
+  const equipment = monad.equipment;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  if (presentation.universalWitness && presentation.universalWitness.section !== section) {
+    issues.push(
+      "Partial right adjoint witness should reuse the section supplied by the Eilenberg–Moore universal property.",
+    );
+  }
+
+  const sectionReport = analyzeRelativeAdjunctionSection(section);
+  issues.push(...sectionReport.issues);
+
+  const fullyFaithfulReport = analyzeFullyFaithfulTight1Cell(equipment, comparison);
+  issues.push(...fullyFaithfulReport.issues);
+
+  if (!equality(comparison.domain, monad.root.from)) {
+    issues.push("Fully faithful comparison should originate at the relative monad's root object.");
+  }
+  if (!equality(comparison.codomain, monad.carrier.to)) {
+    issues.push("Fully faithful comparison should target the relative monad's carrier object.");
+  }
+
+  fixedObjects.forEach((boundary, index) => {
+    if (!verticalBoundariesEqual(equality, boundary, monad.root)) {
+      issues.push(
+        `Partial right adjoint should fix each j-object; witness ${index} deviates from the relative monad root.`,
+      );
+    }
+  });
+
   const holds = issues.length === 0;
   return {
     holds,
+    pending: false,
     issues,
     details: holds
-      ? "Relative Eilenberg–Moore presentation reuses the algebra carrier and monad carrier boundaries."
-      : `Relative Eilenberg–Moore presentation issues: ${issues.join("; ")}`,
+      ? witness.details ??
+        "Partial right adjoint comparison is fully faithful, reuses the Lemma 6.38 section, and fixes j-objects as in Corollary 6.40."
+      : `Partial right adjoint issues: ${issues.join("; ")}`,
+    sectionReport,
+    fullyFaithfulReport,
+  };
+};
+
+export const analyzeRelativePartialLeftAdjointSection = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  witness: RelativePartialLeftAdjointWitness<Obj, Arr, Payload, Evidence>,
+): RelativePartialLeftAdjointReport<Obj, Arr, Payload, Evidence> => {
+  const resolutionReport = analyzeRelativeOpalgebraResolution(
+    witness.opalgebraResolution,
+  );
+  const equipment = witness.inducedMonad.equipment;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues = [...resolutionReport.issues];
+
+  if (
+    witness.inducedMonad !==
+    witness.opalgebraResolution.resolution.comparisonMonad
+  ) {
+    issues.push(
+      "Partial left adjoint should recover the comparison monad arising from the Lemma 6.47 opalgebra resolution.",
+    );
+  }
+
+  if (
+    witness.inducedMonad.equipment !==
+    witness.opalgebraResolution.presentation.monad.equipment
+  ) {
+    issues.push(
+      "Partial left adjoint induced monad must live in the same equipment as the underlying relative monad.",
+    );
+  }
+
+  ensureBoundary(
+    equality,
+    witness.transposeComposite.boundaries.left,
+    witness.inducedMonad.root,
+    "Partial left adjoint transpose left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    witness.transposeComposite.boundaries.right,
+    witness.opalgebraResolution.presentation.monad.root,
+    "Partial left adjoint transpose right boundary",
+    issues,
+  );
+
+  ensureBoundary(
+    equality,
+    witness.transposeIdentity.boundaries.left,
+    witness.transposeComposite.boundaries.left,
+    "Partial left adjoint identity left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    witness.transposeIdentity.boundaries.right,
+    witness.transposeComposite.boundaries.right,
+    "Partial left adjoint identity right boundary",
+    issues,
+  );
+
+  if (witness.transposeComposite !== witness.transposeIdentity) {
+    issues.push(
+      "Partial left adjoint transpose must match the supplied identity on j-objects from Theorem 6.49.",
+    );
+  }
+
+  const pending = issues.length === 0 && resolutionReport.pending;
+
+  return {
+    holds: false,
+    pending,
+    issues,
+    details: pending
+      ? "Partial left adjoint section recorded; strictness witnesses inherit the pending status of the opalgebra resolution."
+      : `Partial left adjoint issues: ${issues.join("; ")}`,
+    witness,
+    resolutionReport,
   };
 };
 
@@ -3639,6 +4400,9 @@ export const describeRelativeAlgebraGradedExtension = <
   presentation,
   grading: [presentation.monad.root],
   extension: presentation.monad.extension,
+  redComposite: presentation.algebra.action,
+  greenComposite: presentation.algebra.action,
+  factorisation: presentation.algebra.action,
   details:
     "Extension-induced graded morphism reuses the relative monad extension witness.",
 });
@@ -3887,6 +4651,50 @@ export const describeRelativeAlgebraGlobalCategoryWitness = <
   };
 };
 
+export const describeRelativeEilenbergMooreUniversalWitness = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  presentation: RelativeEilenbergMoorePresentation<Obj, Arr, Payload, Evidence>,
+): RelativeEilenbergMooreUniversalWitness<Obj, Arr, Payload, Evidence> => {
+  const algebraPresentation: RelativeAlgebraPresentation<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    monad: presentation.monad,
+    algebra: presentation.algebra,
+  };
+  const comparisonAdjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence> = {
+    equipment: presentation.monad.equipment,
+    root: presentation.monad.root,
+    left: presentation.monad.root,
+    right: presentation.monad.carrier,
+    homIsomorphism: {
+      forward: presentation.monad.unit,
+      backward: presentation.monad.extension,
+      details:
+        "Canonical comparison hom-set witnesses reuse the relative monad unit and extension.",
+    },
+  };
+  return {
+    comparisonFunctor: describeRelativeAlgebraRestrictionFunctorWitness(
+      algebraPresentation,
+    ),
+    mediatingTightCell: describeRelativeAlgebraMediatingTightCellWitness(
+      presentation.monad,
+      algebraPresentation,
+    ),
+    section: describeRelativeAdjunctionSectionWitness(comparisonAdjunction),
+    gradedExtension: describeRelativeAlgebraGradedExtension(algebraPresentation),
+    details:
+      "Relative Eilenberg–Moore universal witness reuses the canonical restriction, mediating tight cell, right-adjoint section, and graded-extension diagnostics.",
+  };
+};
+
 export const describeRelativeAlgebraMediatingTightCellWitness = <
   Obj,
   Arr,
@@ -3917,10 +4725,15 @@ export const describeRelativeAlgebraResolutionWitness = <
   monad: RelativeMonadData<Obj, Arr, Payload, Evidence>,
   algebra?: RelativeAlgebraPresentation<Obj, Arr, Payload, Evidence>,
   adjunction?: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
-): RelativeAlgebraResolutionWitness<Obj, Arr, Payload, Evidence> => ({
-  monad,
-  algebra: algebra ?? describeTrivialRelativeEilenbergMoore(monad),
-  resolutionAdjunction:
+  mediatingTightCell?: RelativeAlgebraMediatingTightCellWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >,
+): RelativeAlgebraResolutionWitness<Obj, Arr, Payload, Evidence> => {
+  const baseAlgebra = algebra ?? describeTrivialRelativeEilenbergMoore(monad);
+  const baseAdjunction =
     adjunction ?? {
       equipment: monad.equipment,
       root: monad.root,
@@ -3930,11 +4743,108 @@ export const describeRelativeAlgebraResolutionWitness = <
         forward: monad.unit,
         backward: monad.extension,
       },
+    };
+  const baseMediating =
+    mediatingTightCell ??
+    describeRelativeAlgebraMediatingTightCellWitness(monad, baseAlgebra);
+
+  return {
+    monad,
+    algebra: baseAlgebra,
+    resolutionAdjunction: baseAdjunction,
+    comparisonMonad: monad,
+    mediatingTightCell: baseMediating,
+    details:
+      "Resolution witness defaults to the trivial adjunction induced by the relative monad.",
+  };
+};
+
+export const describeRelativeOpalgebraKappaWitness = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  presentation: RelativeOpalgebraPresentation<Obj, Arr, Payload, Evidence>,
+  resolution: RelativeAlgebraResolutionWitness<Obj, Arr, Payload, Evidence>,
+): RelativeOpalgebraKappaWitness<Obj, Arr, Payload, Evidence> => {
+  const equipment = presentation.monad.equipment;
+  const kappa = resolution.mediatingTightCell.unitComparison;
+  const leftComposite =
+    verticalComposeCells(
+      equipment,
+      kappa,
+      resolution.mediatingTightCell.unitComparison,
+    ) ?? kappa;
+  const rightComposite =
+    verticalComposeCells(
+      equipment,
+      resolution.mediatingTightCell.extensionComparison,
+      kappa,
+    ) ?? resolution.mediatingTightCell.extensionComparison;
+  return {
+    kappa,
+    leftComposite,
+    leftIdentity: leftComposite,
+    rightComposite,
+    rightIdentity: rightComposite,
+    details:
+      "Canonical κ_t witness reuses the mediating tight cell's unit and extension comparisons.",
+  };
+};
+
+export const describeRelativeOpalgebraResolutionWitness = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  presentation: RelativeOpalgebraPresentation<Obj, Arr, Payload, Evidence>,
+): RelativeOpalgebraResolutionWitness<Obj, Arr, Payload, Evidence> => {
+  const algebraPresentation: RelativeAlgebraPresentation<Obj, Arr, Payload, Evidence> = {
+    monad: presentation.monad,
+    algebra: {
+      carrier: presentation.opalgebra.carrier,
+      action: presentation.opalgebra.action,
+      details:
+        "Algebra presentation recovered from the opalgebra carrier and action as in Lemma 6.47.",
     },
-  comparisonMonad: monad,
-  details:
-    "Resolution witness defaults to the trivial adjunction induced by the relative monad.",
-});
+  };
+  const resolution = describeRelativeAlgebraResolutionWitness(
+    presentation.monad,
+    algebraPresentation,
+  );
+  return {
+    presentation,
+    resolution,
+    kappaWitness: describeRelativeOpalgebraKappaWitness(presentation, resolution),
+    details:
+      "Relative opalgebra resolution witness bridges the opalgebra data to the Lemma 6.35 resolution.",
+  };
+};
+
+export const describeRelativePartialLeftAdjointWitness = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  presentation: RelativeOpalgebraPresentation<Obj, Arr, Payload, Evidence>,
+): RelativePartialLeftAdjointWitness<Obj, Arr, Payload, Evidence> => {
+  const opalgebraResolution = describeRelativeOpalgebraResolutionWitness(
+    presentation,
+  );
+  const inducedMonad = opalgebraResolution.resolution.comparisonMonad;
+  const transpose = opalgebraResolution.kappaWitness.leftIdentity;
+  return {
+    opalgebraResolution,
+    inducedMonad,
+    transposeComposite: transpose,
+    transposeIdentity: transpose,
+    details:
+      "Partial left adjoint witness reuses the κ_t identity to exhibit strictness on j-objects.",
+  };
+};
 
 export const describeRelativeAlgebraTwoDimensionalModuleWitness = <
   Obj,
@@ -3971,15 +4881,21 @@ export const describeTrivialRelativeKleisli = <Obj, Arr, Payload, Evidence>(
 
 export const describeTrivialRelativeEilenbergMoore = <Obj, Arr, Payload, Evidence>(
   monad: RelativeMonadData<Obj, Arr, Payload, Evidence>,
-): RelativeEilenbergMoorePresentation<Obj, Arr, Payload, Evidence> => ({
-  monad,
-  algebra: {
-    carrier: monad.carrier,
-    action: monad.extension,
-    details:
-      "Trivial relative algebra uses the monad extension as its multiplication.",
-  },
-});
+): RelativeEilenbergMoorePresentation<Obj, Arr, Payload, Evidence> => {
+  const base: RelativeEilenbergMoorePresentation<Obj, Arr, Payload, Evidence> = {
+    monad,
+    algebra: {
+      carrier: monad.carrier,
+      action: monad.extension,
+      details:
+        "Trivial relative algebra uses the monad extension as its multiplication.",
+    },
+  };
+  return {
+    ...base,
+    universalWitness: describeRelativeEilenbergMooreUniversalWitness(base),
+  };
+};
 
 export const describeIdentityRelativeAlgebraMorphism = <
   Obj,

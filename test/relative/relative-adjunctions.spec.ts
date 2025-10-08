@@ -35,6 +35,7 @@ import {
   analyzeRelativeAdjunctionRelativeMonadOpalgebraTransport,
   analyzeRelativeAdjunctionRelativeMonadAlgebraTransport,
   analyzeRelativeAdjunctionRelativeMonadTransportEquivalence,
+  analyzeRelativeAdjunctionSection,
   describeTrivialRelativeAdjunction,
   describeTrivialRelativeAdjunctionUnitCounit,
   analyzeRelativeAdjunctionLeftMorphism,
@@ -68,6 +69,7 @@ import {
   type RelativeAdjunctionRelativeMonadOpalgebraTransportInput,
   type RelativeAdjunctionRelativeMonadAlgebraTransportInput,
   type RelativeAdjunctionRelativeMonadTransportEquivalenceInput,
+  describeRelativeAdjunctionSectionWitness,
 } from "../../relative/relative-adjunctions";
 import {
   describeIdentityRelativeAlgebraMorphism,
@@ -86,6 +88,48 @@ const makeTrivialAdjunction = () => {
   const adjunction = describeTrivialRelativeAdjunction(equipment, "•");
   return { equipment, adjunction } as const;
 };
+
+describe("Relative adjunction section analyzer", () => {
+  it("accepts the canonical section witness", () => {
+    const { adjunction } = makeTrivialAdjunction();
+    const witness = describeRelativeAdjunctionSectionWitness(adjunction);
+    const report = analyzeRelativeAdjunctionSection(witness);
+    expect(report.holds).toBe(true);
+    expect(report.pending).toBe(false);
+    expect(report.issues).toHaveLength(0);
+    expect(report.witness).toBe(witness);
+  });
+
+  it("flags a mismatched hom-set inverse", () => {
+    const { adjunction } = makeTrivialAdjunction();
+    const witness = describeRelativeAdjunctionSectionWitness(adjunction);
+    const broken = {
+      ...witness,
+      homBijection: {
+        ...witness.homBijection,
+        forward: adjunction.homIsomorphism.backward,
+      },
+    };
+    const report = analyzeRelativeAdjunctionSection(broken);
+    expect(report.holds).toBe(false);
+    expect(report.pending).toBe(false);
+    expect(report.issues).toContain(
+      "Right-adjoint section must reuse the adjunction's hom-set isomorphism witnesses from Lemma 5.1.",
+    );
+  });
+
+  it("rejects a section whose comparison composite diverges", () => {
+    const { adjunction } = makeTrivialAdjunction();
+    const witness = describeRelativeAdjunctionSectionWitness(adjunction);
+    const broken = {
+      ...witness,
+      comparisonComposite: witness.sectionComposite,
+    };
+    const report = analyzeRelativeAdjunctionSection(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain("Comparison composite left boundary must coincide with the designated tight boundary.");
+  });
+});
 
 const buildTrivialPastingInput = <
   Obj,

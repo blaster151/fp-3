@@ -10,6 +10,10 @@ import {
   analyzeRelativeComonadCorepresentability,
   analyzeRelativeComonadFraming,
   analyzeRelativeComonadIdentityReduction,
+  analyzeRelativeComonadCoopAlgebra,
+  analyzeRelativeEnrichedComonad,
+  describeRelativeComonadCoopAlgebraWitness,
+  describeRelativeEnrichedComonadWitness,
   describeTrivialRelativeComonad,
   type RelativeComonadData,
 } from "../../relative/relative-comonads";
@@ -92,6 +96,56 @@ describe("Relative comonad analyzers", () => {
     const report = analyzeRelativeComonadIdentityReduction(equipment, trivial);
     expect(report.holds).toBe(true);
   });
+
+  it("confirms the canonical enriched structure", () => {
+    const { trivial } = makeTrivialComonad();
+    const witness = describeRelativeEnrichedComonadWitness(trivial);
+    const report = analyzeRelativeEnrichedComonad(witness);
+    expect(report.holds).toBe(true);
+    expect(report.issues).toHaveLength(0);
+  });
+
+  it("detects an enriched counit mismatch", () => {
+    const { trivial } = makeTrivialComonad();
+    const witness = describeRelativeEnrichedComonadWitness(trivial);
+    const broken = {
+      ...witness,
+      counitComparison: trivial.coextension,
+    };
+    const report = analyzeRelativeEnrichedComonad(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Enriched counit comparison must reuse the relative comonad counit witness.",
+    );
+  });
+
+  it("certifies the default coopalgebra witness", () => {
+    const { trivial } = makeTrivialComonad();
+    const enriched = describeRelativeEnrichedComonadWitness(trivial);
+    const witness = describeRelativeComonadCoopAlgebraWitness(enriched);
+    const report = analyzeRelativeComonadCoopAlgebra(witness);
+    expect(report.holds).toBe(true);
+    expect(report.enrichment.holds).toBe(true);
+  });
+
+  it("flags a broken coopalgebra coassociativity diagram", () => {
+    const { trivial } = makeTrivialComonad();
+    const enriched = describeRelativeEnrichedComonadWitness(trivial);
+    const witness = describeRelativeComonadCoopAlgebraWitness(enriched);
+    const broken = {
+      ...witness,
+      diagrams: {
+        ...witness.diagrams,
+        coassociativity: {
+          ...witness.diagrams.coassociativity,
+          viaCoextension: trivial.counit,
+        },
+      },
+    };
+    const report = analyzeRelativeComonadCoopAlgebra(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain("Coop-algebra coassociativity diagram must commute.");
+  });
 });
 
 describe("Relative comonad oracles", () => {
@@ -107,6 +161,23 @@ describe("Relative comonad oracles", () => {
     const witness = obtainRightRepresentabilityWitness();
     const report = analyzeRelativeComonadCorepresentability(trivial, witness);
     const oracle = RelativeComonadOracles.corepresentability(trivial, report);
+    expect(oracle.holds).toBe(true);
+    expect(oracle.pending).toBe(false);
+  });
+
+  it("publish the enriched structure oracle", () => {
+    const { trivial } = makeTrivialComonad();
+    const witness = describeRelativeEnrichedComonadWitness(trivial);
+    const oracle = RelativeComonadOracles.enrichment(witness);
+    expect(oracle.holds).toBe(true);
+    expect(oracle.pending).toBe(false);
+  });
+
+  it("publish the coopalgebra oracle", () => {
+    const { trivial } = makeTrivialComonad();
+    const enriched = describeRelativeEnrichedComonadWitness(trivial);
+    const witness = describeRelativeComonadCoopAlgebraWitness(enriched);
+    const oracle = RelativeComonadOracles.coopAlgebra(witness);
     expect(oracle.holds).toBe(true);
     expect(oracle.pending).toBe(false);
   });
