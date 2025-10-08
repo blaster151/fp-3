@@ -65,6 +65,96 @@ export const RelativeMonadLawRegistry = {
     summary:
       "Under Theorem 4.29’s hypotheses (left extensions along j, preservation, j-absolute and dense roots, invertible right unit), a j-relative monad determines a monoid in the left skew-monoidal category X[j]; this law tracks the aggregated witness stack.",
   },
+  enrichedCompatibility: {
+    name: "Enriched relative monad compatibility",
+    registryPath: "relativeMonad.enriched.compatibility",
+    summary:
+      "Section 8 specialises the relative monad calculus to V-enriched equipments; the analyzer confirms the enriched hom object and tensor comparisons reuse the monad’s unit and extension witnesses.",
+  },
+  setEnrichedCompatibility: {
+    name: "Set-enriched relative monad correspondences",
+    registryPath: "relativeMonad.enriched.setCompatibility",
+    summary:
+      "Example 8.14 catalogues classical Set-enriched presentations; the analyzer insists the fully faithful root and every correspondence reuse the loose arrow, unit, and extension recorded by the relative monad.",
+  },
+  indexedContainerCompatibility: {
+    name: "Indexed container relative monad diagnostics",
+    registryPath: "relativeMonad.mnne.indexedContainers",
+    summary:
+      "Example 4 of *Monads Need Not Be Endofunctors* realises indexed containers as relative monads; the analyzer enumerates finite families, checks the Example 4 unit and substitution data, and verifies the relative monad laws hold for every sample.",
+  },
+  vectorKleisliSplitting: {
+    name: "Finite vector Kleisli splitting diagnostics",
+    registryPath: "relativeMonad.mnne.vectorKleisli",
+    summary:
+      "Example 5 and Theorem 3 confirm the Kleisli category of Vec has matrices as morphisms with multiplication as composition; the analyzer enumerates Boolean matrices, checks identity columns, and verifies associativity against the relative extension operator.",
+  },
+  vectorArrowCorrespondence: {
+    name: "Finite vector arrow correspondence",
+    registryPath: "relativeMonad.mnne.vectorArrowCorrespondence",
+    summary:
+      "Section 2 of *Monads Need Not Be Endofunctors* interprets Boolean matrices as arrows for the Vec relative monad; the analyzer compares an arr/∘ witness against the relative monad’s unit and extension to ensure both viewpoints agree on every finite sample.",
+  },
+  lambdaKleisliSplitting: {
+    name: "Lambda-calculus Kleisli substitution diagnostics",
+    registryPath: "relativeMonad.mnne.lambdaKleisli",
+    summary:
+      "Example 6 describes Kleisli morphisms for Lam as capture-avoiding substitutions; the analyzer reuses the λ-relative monad witness to confirm trivial substitutions act as identities and composition agrees with sequential substitution.",
+  },
+  functorCategoryLaxMonoidal: {
+    name: "[J,C] lax monoidal structure via Lan_j",
+    registryPath: "relativeMonad.mnne.functorCategoryLaxMonoidal",
+    summary:
+      "Section 3.2 of *Monads Need Not Be Endofunctors* endows the functor category [J,C] with a lax monoidal structure using Lan_j; the analyzer verifies the canonical inclusion, unitors, and associator coincide with Lan_j ∘ (-) on sample functors and that the triangle identity holds.",
+  },
+  functorCategoryLaxMonoid: {
+    name: "Lax monoids in [J,C] from relative monads",
+    registryPath: "relativeMonad.mnne.functorCategoryLaxMonoid",
+    summary:
+      "Theorem 3 identifies j-relative monads with lax monoids in [J,C]; the analyzer checks unit and multiplication witnesses against the Lan_j tensor, confirming μ ∘ (η ⊗ id) = λ, μ ∘ (id ⊗ η) = ρ, and the α-mediated associativity law.",
+  },
+  wellBehavedInclusion: {
+    name: "Well-behaved inclusion full faithfulness",
+    registryPath: "relativeMonad.mnne.wellBehavedInclusion",
+    summary:
+      "Definition 4.1 demands the comparison functor j : J → C be fully faithful; the oracle enumerates finite hom-sets to witness that J induces bijections C(JX, JY) ≅ J(X, Y) on sample objects.",
+  },
+  relativeMonadLanExtension: {
+    name: "Lan_J T extends a relative monad to a monad on C",
+    registryPath: "relativeMonad.mnne.lanExtension",
+    summary:
+      "Theorem 7 of *Monads Need Not Be Endofunctors* builds a monad on C from a well-behaved inclusion; the analyzer checks the Lan_J T functor, unit, and multiplication satisfy the monad laws while the comparison κ_T witnesses the Section 4.3 equivalence with the original relative monad.",
+  },
+  enrichedEilenbergMooreAlgebra: {
+    name: "Enriched Eilenberg–Moore T-algebra",
+    registryPath: "relativeMonad.enriched.eilenbergMooreAlgebra",
+    summary:
+      "Definition 8.16 equips a carrier with an extension operator whose unit and multiplication diagrams commute; the oracle checks those composites reuse the enriched unit/extension witnesses and share the expected boundaries.",
+  },
+  enrichedKleisliInclusion: {
+    name: "Enriched Kleisli identity-on-objects inclusion",
+    registryPath: "relativeMonad.enriched.kleisliInclusion",
+    summary:
+      "Lemma 8.7 defines the V-functor k_T : A → Kl(T) with κ_T mediating the opalgebra comparison; the oracle confirms the inclusion reuses the relative monad’s loose arrow, unit, and extension witnesses while certifying the identity-on-objects and opalgebra morphism triangles.",
+  },
+  enrichedYoneda: {
+    name: "Enriched Yoneda embedding diagnostics",
+    registryPath: "relativeMonad.enriched.yoneda",
+    summary:
+      "Example 8.6 realises the Yoneda embedding Y : Z → PZ; the analyzer checks the representable presheaf reuses the enriched hom object, tensor comparison, and extension witnesses.",
+  },
+  enrichedYonedaDistributor: {
+    name: "Enriched Yoneda distributor factorisation",
+    registryPath: "relativeMonad.enriched.yonedaDistributor",
+    summary:
+      "Lemma 8.7 compares the red/green composites through PZ(p,q); the analyzer requires both composites to share boundaries with the Yoneda witness, coincide with the recorded factorisation, and reuse the right lift unit witnessing q ▷ p.",
+  },
+  enrichedVCatSpecification: {
+    name: "Enriched V-Cat relative monad specification",
+    registryPath: "relativeMonad.enriched.vcatSpecification",
+    summary:
+      "Theorem 8.12 packages a j-relative monad in V-Cat via unit/multiplication triangles, functorial identity/composition, and τ-naturality; the analyzer checks every composite reuses the recorded enriched unit and extension 2-cells.",
+  },
   identityReduction: {
     name: "Relative monad identity-root reduction",
     registryPath: "relativeMonad.identityReduction",
@@ -96,6 +186,12 @@ export const RelativeAdjunctionLawRegistry = {
     registryPath: "relativeAdjunction.homIso.framing",
     summary:
       "The chosen 2-cells witnessing C(ℓ-, -) ≅ E(j-, r-) must have matching frames and reuse ℓ and r as their vertical boundaries, mirroring Definition 5.1.",
+  },
+  section: {
+    name: "Right-adjoint sections for relative adjunctions",
+    registryPath: "relativeAdjunction.section.partialRightAdjoint",
+    summary:
+      "Lemma 6.38 equips a relative adjunction with a partial right adjoint that is identity-on-j objects; the oracle checks the recorded section reuses ℓ, matches the hom-set bijection, and aligns its arrow action with ℓ.",
   },
   pasting: {
     name: "Relative adjunction pasting law",
@@ -291,6 +387,18 @@ export const RelativeComonadLawRegistry = {
     summary:
       "When the root j is the identity, the relative comonad data should collapse to an ordinary comonad, dual to Corollary 4.20.",
   },
+  enrichedStructure: {
+    name: "Enriched relative comonad structure",
+    registryPath: "relativeComonad.enriched.structure",
+    summary:
+      "Proposition 8.22 transports the enriched hom, cotensor, and comparison data to the relative comonad; the analyzer confirms the supplied 2-cells reuse the counit/coextension witnesses.",
+  },
+  coopAlgebra: {
+    name: "Relative comonad coopalgebra object",
+    registryPath: "relativeComonad.coopAlgebra",
+    summary:
+      "Theorem 8.24 guarantees a coopalgebra for every enriched relative comonad; the oracle compares the coassociativity and counit diagrams against the recorded enrichment witnesses.",
+  },
 } satisfies Record<string, RelativeComonadLawDescriptor>;
 
 export type RelativeComonadLawKey = keyof typeof RelativeComonadLawRegistry;
@@ -396,6 +504,24 @@ export const RelativeAlgebraLawRegistry = {
     registryPath: "relativeMonad.algebra.restrictionFunctor",
     summary:
       "Remark 6.2 assembles T-Alg_D as a category and sends each algebra to its carrier via a faithful functor U_T^j; the analyzer will demand the functor together with faithfulness/domain witnesses.",
+  },
+  partialRightAdjointFunctor: {
+    name: "Partial right adjoint for Alg(T)",
+    registryPath: "relativeMonad.algebra.partialRightAdjointFunctor",
+    summary:
+      "Corollaries 6.40–6.41 build a fully faithful partial right adjoint RAdj_j(-) to the comparison functor that is identity on the j-objects; the oracle validates the Lemma 6.38 section, the fully faithful comparison, and the fixed-point witnesses promised by Proposition 6.42.",
+  },
+  opalgebraResolution: {
+    name: "Opalgebra-induced Lemma 6.35 resolution",
+    registryPath: "relativeMonad.opalgebra.resolution",
+    summary:
+      "Lemma 6.47 upgrades a relative opalgebra to the Lemma 6.35 resolution by exhibiting κ_t : ℓ ⇒ f_T; the analyzer threads the algebra resolution, checks κ_t's triangle identities, and reports the nested diagnostics alongside the opalgebra data.",
+  },
+  partialLeftAdjointSection: {
+    name: "Partial left adjoint section for RMnd_j",
+    registryPath: "relativeMonad.opalgebra.partialLeftAdjointSection",
+    summary:
+      "Theorem 6.49 records that the Lemma 6.47 resolution yields a section RAdj_j(j) → RMnd_j whose transpose is the identity on j-objects; the oracle reuses the opalgebra-resolution report and verifies the strictness witnesses.",
   },
   algebraIndexedFamily: {
     name: "Indexed family of relative algebra categories",
@@ -569,7 +695,7 @@ export const RelativeAlgebraLawRegistry = {
     name: "Relative Eilenberg–Moore universal algebra",
     registryPath: "relativeMonad.eilenbergMoore.universalAlgebra",
     summary:
-      "The Eilenberg–Moore algebra should reuse the carrier t on the right and its own tight boundary on the left, reflecting the terminal-resolution description of Theorem 6.39.",
+      "Theorem 6.39 equips Alg(T) with a comparison functor, partial right adjoint, and graded extension factorisations; the oracle now records those witnesses alongside the familiar boundary reuse checks.",
   },
   strongerUniversalProperties: {
     name: "Relative universal (co)algebra comparison",

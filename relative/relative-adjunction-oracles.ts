@@ -25,6 +25,7 @@ import type {
   RelativeAdjunctionRelativeMonadOpalgebraTransportInput,
   RelativeAdjunctionRelativeMonadAlgebraTransportInput,
   RelativeAdjunctionRelativeMonadTransportEquivalenceInput,
+  RelativeAdjunctionSectionWitness,
 } from "./relative-adjunctions";
 import {
   analyzeRelativeAdjunctionFraming,
@@ -55,6 +56,8 @@ import {
   analyzeRelativeAdjunctionRelativeMonadOpalgebraTransport,
   analyzeRelativeAdjunctionRelativeMonadAlgebraTransport,
   analyzeRelativeAdjunctionRelativeMonadTransportEquivalence,
+  analyzeRelativeAdjunctionSection,
+  describeRelativeAdjunctionSectionWitness,
 } from "./relative-adjunctions";
 import type { RelativeMonadData } from "./relative-monads";
 import { analyzeRelativeMonadResolution } from "./relative-monads";
@@ -69,6 +72,8 @@ export interface RelativeAdjunctionOracleResult {
   readonly registryPath: string;
   readonly details: string;
   readonly issues?: ReadonlyArray<string>;
+  readonly witness?: unknown;
+  readonly analysis?: unknown;
 }
 
 const pendingOracle = (
@@ -109,6 +114,24 @@ export const RelativeAdjunctionOracles = {
       registryPath: descriptor.registryPath,
       details: report.details,
       issues: report.issues,
+    };
+  },
+  section: <Obj, Arr, Payload, Evidence>(
+    data: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+    witness?: RelativeAdjunctionSectionWitness<Obj, Arr, Payload, Evidence>,
+  ): RelativeAdjunctionOracleResult => {
+    const descriptor = RelativeAdjunctionLawRegistry.section;
+    const effectiveWitness =
+      witness ?? describeRelativeAdjunctionSectionWitness(data);
+    const report = analyzeRelativeAdjunctionSection(effectiveWitness);
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+      witness: report.witness,
+      analysis: report,
     };
   },
   pasting: <Obj, Arr, Payload, Evidence>(
@@ -656,6 +679,7 @@ export interface RelativeAdjunctionOracleInputs<Obj, Arr, Payload, Evidence> {
   readonly rightMorphism?: RelativeAdjunctionRightMorphismData<Obj, Arr, Payload, Evidence>;
   readonly strictMorphism?: RelativeAdjunctionStrictMorphismData<Obj, Arr, Payload, Evidence>;
   readonly resolution?: { readonly monad: RelativeMonadData<Obj, Arr, Payload, Evidence> };
+  readonly section?: RelativeAdjunctionSectionWitness<Obj, Arr, Payload, Evidence>;
   readonly precomposition?: RelativeAdjunctionPrecompositionInput<Obj, Arr, Payload, Evidence>["precomposition"];
   readonly pasting?: RelativeAdjunctionPastingInput<Obj, Arr, Payload, Evidence>;
   readonly fullyFaithfulPostcomposition?: RelativeAdjunctionFullyFaithfulPostcompositionInput<
@@ -749,6 +773,7 @@ export const enumerateRelativeAdjunctionOracles = <Obj, Arr, Payload, Evidence>(
   const base: RelativeAdjunctionOracleResult[] = [
     RelativeAdjunctionOracles.framing(data),
     RelativeAdjunctionOracles.homIsomorphism(data),
+    RelativeAdjunctionOracles.section(data, inputs?.section),
     RelativeAdjunctionOracles.precomposition(data, inputs?.precomposition),
     RelativeAdjunctionOracles.pasting(inputs?.pasting),
     RelativeAdjunctionOracles.fullyFaithfulPostcomposition(inputs?.fullyFaithfulPostcomposition),

@@ -69,6 +69,26 @@ export interface RelativeAdjunctionData<Obj, Arr, Payload, Evidence> {
   readonly homIsomorphism: RelativeAdjunctionHomIsomorphism<Obj, Arr, Payload, Evidence>;
 }
 
+export interface RelativeAdjunctionSectionWitness<Obj, Arr, Payload, Evidence> {
+  readonly adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>;
+  readonly objectSection: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly arrowSection: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly homBijection: RelativeAdjunctionHomIsomorphism<Obj, Arr, Payload, Evidence>;
+  readonly comparisonComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly comparisonIdentity: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly sectionComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly sectionIdentity: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeAdjunctionSectionReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativeAdjunctionSectionWitness<Obj, Arr, Payload, Evidence>;
+}
+
 export interface RelativeAdjunctionFramingReport {
   readonly holds: boolean;
   readonly issues: ReadonlyArray<string>;
@@ -315,6 +335,277 @@ export const analyzeRelativeAdjunctionHomIsomorphism = <Obj, Arr, Payload, Evide
     details: holds
       ? "Hom-set isomorphism witnesses share frames and boundaries consistent with Definition 5.1."
       : `Relative adjunction hom-isomorphism issues: ${issues.join("; ")}`,
+  };
+};
+
+export const analyzeRelativeAdjunctionSection = <Obj, Arr, Payload, Evidence>(
+  witness: RelativeAdjunctionSectionWitness<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionSectionReport<Obj, Arr, Payload, Evidence> => {
+  const {
+    adjunction,
+    objectSection,
+    arrowSection,
+    homBijection,
+    comparisonComposite,
+    comparisonIdentity,
+    sectionComposite,
+    sectionIdentity,
+  } = witness;
+  const { equipment, left, right, homIsomorphism } = adjunction;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  if (!verticalBoundariesEqual(equality, objectSection, left)) {
+    issues.push("Right-adjoint section must reproduce the adjunction's left leg on objects.");
+  }
+
+  boundariesMatch(
+    equality,
+    arrowSection.boundaries.left,
+    left,
+    "Right-adjoint section arrow action left boundary",
+    issues,
+  );
+  boundariesMatch(
+    equality,
+    arrowSection.boundaries.right,
+    objectSection,
+    "Right-adjoint section arrow action right boundary",
+    issues,
+  );
+
+  ensureFrameAlignment(
+    equality,
+    arrowSection.source,
+    left.from,
+    left.to,
+    "Right-adjoint section arrow action source frame",
+    issues,
+  );
+  ensureFrameAlignment(
+    equality,
+    arrowSection.target,
+    left.from,
+    left.to,
+    "Right-adjoint section arrow action target frame",
+    issues,
+  );
+
+  const comparisonIdentityBoundaries = { left, right: left } as const;
+  const sectionIdentityBoundaries = { left: right, right } as const;
+
+  ensureFrameAlignment(
+    equality,
+    comparisonComposite.source,
+    left.from,
+    left.to,
+    "Comparison composite source frame",
+    issues,
+  );
+  ensureFrameAlignment(
+    equality,
+    comparisonComposite.target,
+    left.from,
+    left.to,
+    "Comparison composite target frame",
+    issues,
+  );
+  boundariesMatch(
+    equality,
+    comparisonComposite.boundaries.left,
+    left,
+    "Comparison composite left boundary",
+    issues,
+  );
+  boundariesMatch(
+    equality,
+    comparisonComposite.boundaries.right,
+    objectSection,
+    "Comparison composite right boundary",
+    issues,
+  );
+
+  ensureFrameAlignment(
+    equality,
+    comparisonIdentity.source,
+    left.from,
+    left.to,
+    "Comparison identity source frame",
+    issues,
+  );
+  ensureFrameAlignment(
+    equality,
+    comparisonIdentity.target,
+    left.from,
+    left.to,
+    "Comparison identity target frame",
+    issues,
+  );
+  boundariesMatch(
+    equality,
+    comparisonIdentity.boundaries.left,
+    comparisonIdentityBoundaries.left,
+    "Comparison identity left boundary",
+    issues,
+  );
+  boundariesMatch(
+    equality,
+    comparisonIdentity.boundaries.right,
+    comparisonIdentityBoundaries.right,
+    "Comparison identity right boundary",
+    issues,
+  );
+
+  ensureFrameAlignment(
+    equality,
+    sectionComposite.source,
+    right.from,
+    right.to,
+    "Section composite source frame",
+    issues,
+  );
+  ensureFrameAlignment(
+    equality,
+    sectionComposite.target,
+    right.from,
+    right.to,
+    "Section composite target frame",
+    issues,
+  );
+  boundariesMatch(
+    equality,
+    sectionComposite.boundaries.left,
+    right,
+    "Section composite left boundary",
+    issues,
+  );
+  boundariesMatch(
+    equality,
+    sectionComposite.boundaries.right,
+    right,
+    "Section composite right boundary",
+    issues,
+  );
+
+  ensureFrameAlignment(
+    equality,
+    sectionIdentity.source,
+    right.from,
+    right.to,
+    "Section identity source frame",
+    issues,
+  );
+  ensureFrameAlignment(
+    equality,
+    sectionIdentity.target,
+    right.from,
+    right.to,
+    "Section identity target frame",
+    issues,
+  );
+  boundariesMatch(
+    equality,
+    sectionIdentity.boundaries.left,
+    sectionIdentityBoundaries.left,
+    "Section identity left boundary",
+    issues,
+  );
+  boundariesMatch(
+    equality,
+    sectionIdentity.boundaries.right,
+    sectionIdentityBoundaries.right,
+    "Section identity right boundary",
+    issues,
+  );
+
+  if (homBijection !== homIsomorphism) {
+    issues.push(
+      "Right-adjoint section must reuse the adjunction's hom-set isomorphism witnesses from Lemma 5.1.",
+    );
+  } else {
+    boundariesMatch(
+      equality,
+      homBijection.forward.boundaries.left,
+      left,
+      "Right-adjoint section forward hom boundary",
+      issues,
+    );
+    boundariesMatch(
+      equality,
+      homBijection.forward.boundaries.right,
+      right,
+      "Right-adjoint section forward hom codomain",
+      issues,
+    );
+    boundariesMatch(
+      equality,
+      homBijection.backward.boundaries.left,
+      left,
+      "Right-adjoint section backward hom boundary",
+      issues,
+    );
+    boundariesMatch(
+      equality,
+      homBijection.backward.boundaries.right,
+      right,
+      "Right-adjoint section backward hom codomain",
+      issues,
+    );
+  }
+
+  const comparisonEvidence = equipment.cells.verticalCompose(
+    homIsomorphism.forward,
+    arrowSection,
+  );
+  if (!comparisonEvidence) {
+    issues.push(
+      "Composite ℓ ∘ σ should exist as a vertical composition witnessing Lemma 6.38's retract equation.",
+    );
+  } else {
+    if (comparisonComposite.evidence !== comparisonEvidence) {
+      issues.push(
+        "Recorded ℓ ∘ σ composite must reuse the evidence returned by the equipment's vertical composition.",
+      );
+    }
+    if (comparisonIdentity.evidence !== comparisonEvidence) {
+      issues.push(
+        "Composite ℓ ∘ σ should coincide with the supplied identity 2-cell on Alg(T).",
+      );
+    }
+  }
+
+  const sectionEvidenceCandidate = equipment.cells.verticalCompose(
+    homIsomorphism.backward,
+    arrowSection,
+  );
+  const sectionEvidence =
+    sectionEvidenceCandidate ?? equipment.cells.verticalCompose(arrowSection, homIsomorphism.forward);
+  if (!sectionEvidence) {
+    issues.push(
+      "Composite σ ∘ ℓ should exist as a vertical composition witnessing Lemma 6.38's section equation.",
+    );
+  } else {
+    if (sectionComposite.evidence !== sectionEvidence) {
+      issues.push(
+        "Recorded σ ∘ ℓ composite must reuse the evidence returned by the equipment's vertical composition.",
+      );
+    }
+    if (sectionIdentity.evidence !== sectionEvidence) {
+      issues.push(
+        "Composite σ ∘ ℓ should coincide with the supplied identity 2-cell on the j-objects.",
+      );
+    }
+  }
+
+  const holds = issues.length === 0;
+  return {
+    holds,
+    pending: false,
+    issues,
+    details: holds
+      ? "Right-adjoint section witnesses both triangle identities from Lemma 6.38."
+      : `Right-adjoint section issues: ${issues.join("; ")}`,
+    witness,
   };
 };
 
@@ -2658,5 +2949,54 @@ export const describeTrivialRelativeAdjunction = <Obj, Arr, Payload, Evidence>(
       backward,
       details: "Identity hom-set isomorphism witnesses for the trivial relative adjunction.",
     },
+  };
+};
+
+export const describeRelativeAdjunctionSectionWitness = <Obj, Arr, Payload, Evidence>(
+  adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+): RelativeAdjunctionSectionWitness<Obj, Arr, Payload, Evidence> => {
+  const { equipment, left, right, homIsomorphism } = adjunction;
+  const comparisonBoundaries = { left, right: left } as const;
+  const sectionBoundaries = { left: right, right } as const;
+  const comparisonEvidence = equipment.cells.identity(
+    homIsomorphism.forward.source,
+    comparisonBoundaries,
+  );
+  const sectionEvidence = equipment.cells.identity(
+    homIsomorphism.forward.target,
+    sectionBoundaries,
+  );
+
+  return {
+    adjunction,
+    objectSection: left,
+    arrowSection: homIsomorphism.forward,
+    homBijection: homIsomorphism,
+    comparisonComposite: {
+      source: homIsomorphism.forward.source,
+      target: homIsomorphism.forward.target,
+      boundaries: comparisonBoundaries,
+      evidence: comparisonEvidence,
+    },
+    comparisonIdentity: {
+      source: homIsomorphism.forward.source,
+      target: homIsomorphism.forward.target,
+      boundaries: comparisonBoundaries,
+      evidence: comparisonEvidence,
+    },
+    sectionComposite: {
+      source: homIsomorphism.forward.target,
+      target: homIsomorphism.forward.target,
+      boundaries: sectionBoundaries,
+      evidence: sectionEvidence,
+    },
+    sectionIdentity: {
+      source: homIsomorphism.forward.target,
+      target: homIsomorphism.forward.target,
+      boundaries: sectionBoundaries,
+      evidence: sectionEvidence,
+    },
+    details:
+      "Right-adjoint section witness defaults to the adjunction's left leg and hom-set bijection.",
   };
 };

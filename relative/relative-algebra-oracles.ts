@@ -32,6 +32,9 @@ import type {
   RelativeAlgebraResolutionWitness,
   RelativeAlgebraTwoDimensionalModuleWitness,
   RelativeAlgebraRestrictionFunctorWitness,
+  RelativePartialRightAdjointWitness,
+  RelativeOpalgebraResolutionWitness,
+  RelativePartialLeftAdjointWitness,
 } from "./relative-algebras";
 import {
   analyzeRelativeAlgebraFraming,
@@ -109,6 +112,12 @@ import {
   describeRelativeAlgebraTwoDimensionalModuleWitness,
   analyzeRelativeAlgebraRestrictionFunctor,
   describeRelativeAlgebraRestrictionFunctorWitness,
+  analyzeRelativePartialRightAdjointFunctor,
+  analyzeRelativeOpalgebraResolution,
+  analyzeRelativePartialLeftAdjointSection,
+  describeRelativeOpalgebraResolutionWitness,
+  describeRelativePartialLeftAdjointWitness,
+  type RelativeAlgebraResolutionWitness,
 } from "./relative-algebras";
 import {
   RelativeAlgebraLawRegistry,
@@ -124,6 +133,12 @@ export interface RelativeAlgebraOracleResult {
   readonly issues?: ReadonlyArray<string>;
   readonly witness?: unknown;
   readonly analysis?: unknown;
+  readonly resolutionReport?: unknown;
+  readonly mediatingTightCellReport?: unknown;
+  readonly restrictionReport?: unknown;
+  readonly sectionReport?: unknown;
+  readonly gradedExtensionReport?: unknown;
+  readonly kappaReport?: unknown;
 }
 
 const pendingOracle = (
@@ -821,6 +836,8 @@ export const RelativeAlgebraOracles = {
       details: report.details,
       issues: report.issues,
       witness: report.witness,
+      resolutionReport: report.resolutionReport,
+      mediatingTightCellReport: report.mediatingTightCellReport,
       analysis: report,
     };
   },
@@ -898,6 +915,9 @@ export const RelativeAlgebraOracles = {
       details: report.details,
       issues: report.issues,
       witness: report.witness,
+      resolutionReport: report.resolutionReport,
+      mediatingTightCellReport: report.mediatingTightCellReport,
+      analysis: report,
     };
   },
   algebraCanonicalAction: <Obj, Arr, Payload, Evidence>(
@@ -953,10 +973,69 @@ export const RelativeAlgebraOracles = {
     const report = analyzeRelativeEilenbergMooreUniversalProperty(presentation);
     return {
       holds: report.holds,
-      pending: false,
+      pending: report.pending,
       registryPath: descriptor.registryPath,
       details: report.details,
       issues: report.issues,
+      witness: report.witness,
+      restrictionReport: report.restrictionReport,
+      mediatingTightCellReport: report.mediatingTightCellReport,
+      sectionReport: report.sectionReport,
+      gradedExtensionReport: report.gradedExtensionReport,
+      analysis: report,
+    };
+  },
+  partialRightAdjointFunctor: <Obj, Arr, Payload, Evidence>(
+    witness: RelativePartialRightAdjointWitness<Obj, Arr, Payload, Evidence>,
+  ): RelativeAlgebraOracleResult => {
+    const descriptor = RelativeAlgebraLawRegistry.partialRightAdjointFunctor;
+    const report = analyzeRelativePartialRightAdjointFunctor(witness);
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+      witness,
+      sectionReport: report.sectionReport,
+      analysis: report.fullyFaithfulReport,
+    };
+  },
+  opalgebraResolution: <Obj, Arr, Payload, Evidence>(
+    presentation: RelativeOpalgebraPresentation<Obj, Arr, Payload, Evidence>,
+    witness?: RelativeOpalgebraResolutionWitness<Obj, Arr, Payload, Evidence>,
+  ): RelativeAlgebraOracleResult => {
+    const descriptor = RelativeAlgebraLawRegistry.opalgebraResolution;
+    const effectiveWitness =
+      witness ?? describeRelativeOpalgebraResolutionWitness(presentation);
+    const report = analyzeRelativeOpalgebraResolution(effectiveWitness);
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+      witness: effectiveWitness,
+      resolutionReport: report.resolutionReport,
+      kappaReport: report.kappaReport,
+    };
+  },
+  partialLeftAdjointSection: <Obj, Arr, Payload, Evidence>(
+    presentation: RelativeOpalgebraPresentation<Obj, Arr, Payload, Evidence>,
+    witness?: RelativePartialLeftAdjointWitness<Obj, Arr, Payload, Evidence>,
+  ): RelativeAlgebraOracleResult => {
+    const descriptor = RelativeAlgebraLawRegistry.partialLeftAdjointSection;
+    const effectiveWitness =
+      witness ?? describeRelativePartialLeftAdjointWitness(presentation);
+    const report = analyzeRelativePartialLeftAdjointSection(effectiveWitness);
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+      witness: effectiveWitness,
+      resolutionReport: report.resolutionReport,
     };
   },
   strongerUniversalProperties: () =>
@@ -1149,6 +1228,8 @@ export const enumerateRelativeAlgebraOracles = <Obj, Arr, Payload, Evidence>(
   const resolutionWitness = describeRelativeAlgebraResolutionWitness(
     emPresentation.monad,
     emPresentation,
+    undefined,
+    mediatingTightCellWitness,
   );
   const twoDimensionalModuleWitness =
     describeRelativeAlgebraTwoDimensionalModuleWitness(
@@ -1291,6 +1372,8 @@ export const enumerateRelativeAlgebraOracles = <Obj, Arr, Payload, Evidence>(
       emPresentation.monad,
       resolutionWitness,
     ),
+    RelativeAlgebraOracles.opalgebraResolution(kleisliPresentation),
+    RelativeAlgebraOracles.partialLeftAdjointSection(kleisliPresentation),
     RelativeAlgebraOracles.algebraCanonicalAction(canonicalAlgebraPresentation),
     RelativeAlgebraOracles.algebraIdentityRootEquivalence(
       emPresentation,

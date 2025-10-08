@@ -101,12 +101,63 @@ import {
   // Relative monad layer
   idFun, composeFun, fromMonad, enumerateRelativeMonadOracles,
   describeTrivialRelativeKleisli, describeTrivialRelativeEilenbergMoore,
-  enumerateRelativeAlgebraOracles,
+  describeTrivialRelativeAdjunction, describeRelativeAdjunctionSectionWitness,
+  analyzeRelativeAdjunctionSection,
+  enumerateRelativeAlgebraOracles, RelativeAlgebraOracles,
   // Namespaced exports
   Diagram, Lin, Chain, Exactness, Vect, IntegerLA, Algebra,
   // Matrix operations
   matMul
 } from './allTS'
+import {
+  analyzeRelativeEnrichedEilenbergMooreAlgebra,
+  analyzeRelativeEnrichedVCatMonad,
+  analyzeRelativeEnrichedYonedaDistributor,
+  describeRelativeEnrichedMonadWitness,
+  describeRelativeEnrichedEilenbergMooreAlgebraWitness,
+  describeRelativeEnrichedVCatMonadWitness,
+  describeRelativeEnrichedYonedaDistributorWitness,
+  describeRelativeEnrichedYonedaWitness,
+} from './relative/relative-monads'
+import {
+  analyzeFiniteVectorRelativeMonad,
+  analyzeFiniteVectorLeftKanExtension,
+  analyzeFiniteVectorArrowCorrespondence,
+  describeBooleanVectorLeftKanExtensionWitness,
+  describeBooleanVectorRelativeMonadWitness,
+  describeBooleanVectorArrowCorrespondenceWitness,
+} from './relative/mnne-vector-monads'
+import {
+  analyzeUntypedLambdaRelativeMonad,
+  describeUntypedLambdaRelativeMonadWitness,
+} from './relative/mnne-lambda-monads'
+import {
+  analyzeIndexedContainerRelativeMonad,
+  describeIndexedContainerExample4Witness,
+} from './relative/mnne-indexed-container-monads'
+import {
+  analyzeMnneLaxMonoidalStructure,
+  analyzeMnneLaxMonoid,
+  describeTwoObjectLaxMonoidalWitness,
+  describeTwoObjectLaxMonoidWitness,
+} from './relative/mnne-lax-monoidal'
+import {
+  analyzeMnneWellBehavedInclusion,
+  describeIdentityWellBehavedWitness,
+} from './relative/mnne-well-behaved'
+import {
+  analyzeMnneRelativeMonadLanExtension,
+  describeIdentityLanExtensionWitness,
+} from './relative/mnne-monad-extensions'
+import {
+  analyzeRelativeComonadCoopAlgebra,
+  analyzeRelativeEnrichedComonad,
+  describeRelativeComonadCoopAlgebraWitness,
+  describeRelativeEnrichedComonadWitness,
+  describeTrivialRelativeComonad,
+} from './relative/relative-comonads'
+import { RelativeComonadOracles } from './relative/relative-comonad-oracles'
+import { RelativeMonadOracles } from './relative/relative-oracles'
 
 // ====================================================================
 // 1. BASIC CONCEPTS - Option, Result, Validation
@@ -2159,6 +2210,8 @@ namespace RelativeMonadExamples {
     const kleisli = describeTrivialRelativeKleisli(relative)
     const eilenbergMoore = describeTrivialRelativeEilenbergMoore(relative)
     const algebraReports = enumerateRelativeAlgebraOracles(kleisli, eilenbergMoore)
+    const equipment = virtualizeFiniteCategory(TwoObjectCategory)
+    const trivialComonad = describeTrivialRelativeComonad(equipment, '•')
 
     console.log('\nRelative monad diagnostics (identity root)')
     for (const report of monadReports) {
@@ -2168,6 +2221,400 @@ namespace RelativeMonadExamples {
     console.log('Relative algebra/opalgebra diagnostics')
     for (const report of algebraReports) {
       console.log(`  ${report.registryPath}: pending=${report.pending}`)
+    }
+
+    const enrichedReport = RelativeMonadOracles.enrichedCompatibility(relative)
+    const setEnrichedReport = RelativeMonadOracles.setEnrichedCompatibility(relative)
+    const enrichedEmReport =
+      RelativeMonadOracles.enrichedEilenbergMooreAlgebra(relative)
+    const kleisliInclusionReport =
+      RelativeMonadOracles.enrichedKleisliInclusion(relative)
+    console.log('\nSection 8 enriched relative monad diagnostics')
+    console.log(
+      `  holds=${enrichedReport.holds}, issues=${enrichedReport.issues?.length ?? 0}`
+    )
+
+    console.log('Example 8.14 Set-enriched correspondences')
+    console.log(
+      `  holds=${setEnrichedReport.holds}, issues=${setEnrichedReport.issues?.length ?? 0}`
+    )
+
+    console.log('Definition 8.16 enriched Eilenberg–Moore algebra')
+    console.log(
+      `  holds=${enrichedEmReport.holds}, issues=${
+        enrichedEmReport.issues?.length ?? 0
+      }`
+    )
+
+    console.log('Lemma 8.7 enriched Kleisli inclusion')
+    console.log(
+      `  holds=${kleisliInclusionReport.holds}, issues=${
+        kleisliInclusionReport.issues?.length ?? 0
+      }`
+    )
+
+    const vcatReport = RelativeMonadOracles.enrichedVCatSpecification(relative)
+    console.log('Theorem 8.12 V-Cat diagnostics')
+    console.log(
+      `  holds=${vcatReport.holds}, issues=${vcatReport.issues?.length ?? 0}`
+    )
+
+    const vectorWitness = describeBooleanVectorRelativeMonadWitness([0, 1, 2])
+    const vectorKleisliReport =
+      RelativeMonadOracles.vectorKleisliSplitting(vectorWitness)
+    const vectorArrowReport = RelativeMonadOracles.vectorArrowCorrespondence()
+    console.log('Example 5 Kleisli matrices (Boolean vectors)')
+    console.log(
+      `  holds=${vectorKleisliReport.holds}, issues=${
+        vectorKleisliReport.issues?.length ?? 0
+      }`
+    )
+    console.log('Example 1 arrow correspondence (Boolean vectors)')
+    console.log(
+      `  holds=${vectorArrowReport.holds}, issues=${
+        vectorArrowReport.issues?.length ?? 0
+      }`
+    )
+
+    const lambdaWitness = describeUntypedLambdaRelativeMonadWitness()
+    const lambdaKleisliReport =
+      RelativeMonadOracles.lambdaKleisliSplitting(lambdaWitness)
+    console.log('Example 6 Kleisli substitutions (λ-calculus)')
+    console.log(
+      `  holds=${lambdaKleisliReport.holds}, issues=${
+        lambdaKleisliReport.issues?.length ?? 0
+      }`
+    )
+
+    const laxMonoidalReport = RelativeMonadOracles.functorCategoryLaxMonoidal()
+    console.log('Section 3.2 functor-category lax monoidal oracle')
+    console.log(
+      `  holds=${laxMonoidalReport.holds}, issues=${
+        laxMonoidalReport.issues?.length ?? 0
+      }`
+    )
+
+    const laxMonoidReport = RelativeMonadOracles.functorCategoryLaxMonoid()
+    console.log('Theorem 3 lax monoid oracle')
+    console.log(
+      `  holds=${laxMonoidReport.holds}, issues=${
+        laxMonoidReport.issues?.length ?? 0
+      }`
+    )
+
+    const wellBehavedReport = RelativeMonadOracles.wellBehavedInclusion()
+    console.log('Definition 4.1 well-behaved inclusion oracle')
+    console.log(
+      `  holds=${wellBehavedReport.holds}, issues=${
+        wellBehavedReport.issues?.length ?? 0
+      }`
+    )
+
+    const lanExtensionOracle = RelativeMonadOracles.lanExtension()
+    console.log('Theorem 7 Lan_J T extension oracle')
+    console.log(
+      `  holds=${lanExtensionOracle.holds}, issues=${
+        lanExtensionOracle.issues?.length ?? 0
+      }`
+    )
+
+    const lanWitness = describeIdentityLanExtensionWitness()
+    const lanReport = analyzeMnneRelativeMonadLanExtension(lanWitness)
+    console.log(
+      `  comparison components=${lanReport.comparisonCount}, extension checks=${lanReport.extensionChecks}`
+    )
+
+    console.log('\nRelative comonad diagnostics (identity root)')
+    const comonadFraming = RelativeComonadOracles.counitFraming(trivialComonad)
+    const comonadCoextension = RelativeComonadOracles.coextensionFraming(trivialComonad)
+    const comonadIdentity = RelativeComonadOracles.identityReduction(trivialComonad)
+    console.log(
+      `  counit framing holds=${comonadFraming.holds}, issues=${comonadFraming.issues?.length ?? 0}`
+    )
+    console.log(
+      `  coextension framing holds=${comonadCoextension.holds}, issues=${comonadCoextension.issues?.length ?? 0}`
+    )
+    console.log(
+      `  identity reduction holds=${comonadIdentity.holds}, issues=${comonadIdentity.issues?.length ?? 0}`
+    )
+
+    const enrichedComonadWitness = describeRelativeEnrichedComonadWitness(trivialComonad)
+    const enrichedComonadReport = analyzeRelativeEnrichedComonad(enrichedComonadWitness)
+    const enrichedComonadOracle = RelativeComonadOracles.enrichment(enrichedComonadWitness)
+    console.log('Proposition 8.22 enriched comonad witness')
+    console.log(
+      `  holds=${enrichedComonadReport.holds}, oracle=${enrichedComonadOracle.holds}, issues=${enrichedComonadReport.issues.length}`
+    )
+
+    const coopWitness = describeRelativeComonadCoopAlgebraWitness(enrichedComonadWitness)
+    const coopReport = analyzeRelativeComonadCoopAlgebra(coopWitness)
+    const coopOracle = RelativeComonadOracles.coopAlgebra(coopWitness)
+    console.log('Theorem 8.24 coopalgebra diagnostics')
+    console.log(
+      `  holds=${coopReport.holds}, oracle=${coopOracle.holds}, enrichment=${coopReport.enrichment.holds}, issues=${coopReport.issues.length}`
+    )
+
+    const yonedaReport = RelativeMonadOracles.enrichedYoneda(relative)
+    console.log('Yoneda embedding diagnostics')
+    console.log(
+      `  holds=${yonedaReport.holds}, issues=${yonedaReport.issues?.length ?? 0}`
+    )
+
+    const yonedaDistributorReport =
+      RelativeMonadOracles.enrichedYonedaDistributor(relative)
+    console.log('Yoneda distributor diagnostics')
+    console.log(
+      `  holds=${yonedaDistributorReport.holds}, issues=${
+        yonedaDistributorReport.issues?.length ?? 0
+      }`
+    )
+    const enrichedYonedaWitness = describeRelativeEnrichedMonadWitness(relative)
+    const yonedaWitness = describeRelativeEnrichedYonedaWitness(enrichedYonedaWitness)
+    const distributorWitness =
+      describeRelativeEnrichedYonedaDistributorWitness(yonedaWitness)
+    const distributorAnalysis =
+      analyzeRelativeEnrichedYonedaDistributor(distributorWitness)
+    console.log(
+      `  right lift holds=${distributorAnalysis.rightLift.holds}, issues=${distributorAnalysis.rightLift.issues.length}`
+    )
+
+    const vcatWitness = describeRelativeEnrichedVCatMonadWitness(enrichedYonedaWitness)
+    const vcatAnalysis = analyzeRelativeEnrichedVCatMonad(vcatWitness)
+    console.log(`  enriched V-Cat issues=${vcatAnalysis.issues.length}`)
+
+    const enrichedEmWitness =
+      describeRelativeEnrichedEilenbergMooreAlgebraWitness(enrichedYonedaWitness)
+    const enrichedEmAnalysis =
+      analyzeRelativeEnrichedEilenbergMooreAlgebra(enrichedEmWitness)
+    console.log(`  enriched EM issues=${enrichedEmAnalysis.issues.length}`)
+
+    const emReport =
+      RelativeAlgebraOracles.eilenbergMooreUniversalProperty(eilenbergMoore)
+    console.log('\nRelative Eilenberg–Moore universal property witness')
+    console.log(
+      `  holds=${emReport.holds}, pending=${emReport.pending}, issues=${
+        emReport.issues?.length ?? 0
+      }`
+    )
+    if (emReport.restrictionReport) {
+      console.log(
+        `  restriction pending=${emReport.restrictionReport.pending}, issues=${emReport.restrictionReport.issues.length}`
+      )
+    }
+    if (emReport.mediatingTightCellReport) {
+      console.log(
+        `  mediating tight cell pending=${emReport.mediatingTightCellReport.pending}, issues=${emReport.mediatingTightCellReport.issues.length}`
+      )
+    }
+    if (emReport.sectionReport) {
+      console.log(
+        `  section pending=${emReport.sectionReport.pending}, issues=${emReport.sectionReport.issues.length}`
+      )
+    }
+    if (emReport.gradedExtensionReport) {
+      console.log(
+        `  graded extension pending=${emReport.gradedExtensionReport.pending}, issues=${emReport.gradedExtensionReport.issues.length}`
+      )
+    }
+
+    const partialRightAdjointReport =
+      RelativeAlgebraOracles.partialRightAdjointFunctor({
+        presentation: eilenbergMoore,
+        section: eilenbergMoore.universalWitness!.section,
+        comparison: {
+          tight: relative.root.tight,
+          domain: relative.root.from,
+          codomain: relative.carrier.to,
+        },
+        fixedObjects: [relative.root],
+      })
+    console.log('\nPartial right adjoint functor diagnostics')
+    console.log(
+      `  pending=${partialRightAdjointReport.pending}, issues=${
+        partialRightAdjointReport.issues?.length ?? 0
+      }`
+    )
+    if (partialRightAdjointReport.sectionReport) {
+      console.log(
+        `  section issues=${partialRightAdjointReport.sectionReport.issues.length}`
+      )
+    }
+
+    const opalgebraResolutionReport =
+      RelativeAlgebraOracles.opalgebraResolution(kleisli)
+    console.log('\nLemma 6.47 opalgebra resolution diagnostics')
+    console.log(
+      `  pending=${opalgebraResolutionReport.pending}, issues=${
+        opalgebraResolutionReport.issues?.length ?? 0
+      }`
+    )
+    if (opalgebraResolutionReport.kappaReport) {
+      console.log(
+        `  κ_t pending=${opalgebraResolutionReport.kappaReport.pending}, issues=${opalgebraResolutionReport.kappaReport.issues.length}`
+      )
+    }
+
+    const partialLeftAdjointReport =
+      RelativeAlgebraOracles.partialLeftAdjointSection(kleisli)
+    console.log('\nTheorem 6.49 partial left adjoint diagnostics')
+    console.log(
+      `  pending=${partialLeftAdjointReport.pending}, issues=${
+        partialLeftAdjointReport.issues?.length ?? 0
+      }`
+    )
+    if (partialLeftAdjointReport.resolutionReport) {
+      console.log(
+        `  resolution pending=${partialLeftAdjointReport.resolutionReport.pending}, issues=${partialLeftAdjointReport.resolutionReport.issues.length}`
+      )
+    }
+
+    const adjunction = describeTrivialRelativeAdjunction(
+      relative.equipment,
+      relative.root.from
+    )
+    const sectionWitness = describeRelativeAdjunctionSectionWitness(adjunction)
+    const sectionOracle = analyzeRelativeAdjunctionSection(sectionWitness)
+    console.log('\nLemma 6.38 right-adjoint section witness')
+    console.log(
+      `  pending=${sectionOracle.pending}, issues=${sectionOracle.issues.length}`
+    )
+  }
+
+  export const booleanVectorRelativeMonadDemo = () => {
+    const witness = describeBooleanVectorRelativeMonadWitness([0, 1, 2])
+    const report = analyzeFiniteVectorRelativeMonad(witness)
+    const arrowWitness = describeBooleanVectorArrowCorrespondenceWitness([0, 1, 2])
+    const arrowReport = analyzeFiniteVectorArrowCorrespondence(arrowWitness)
+
+    console.log('\nExample 1: Boolean finite vector relative monad diagnostics')
+    console.log(`  holds=${report.holds}, issues=${report.issues.length}`)
+    for (const summary of report.spaceSummary) {
+      console.log(
+        `  dimension ${summary.dimension}: vectors=${summary.vectorCount}, arrows=${summary.arrowCount}`,
+      )
+    }
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+
+    console.log('\nExample 1: Boolean vector arrow correspondence')
+    console.log(
+      `  holds=${arrowReport.holds}, issues=${arrowReport.issues.length}, comparisons=${arrowReport.actionComparisons}`,
+    )
+    if (!arrowReport.holds) {
+      for (const issue of arrowReport.issues.slice(0, 5)) {
+        console.log(`    mismatch: ${issue}`)
+      }
+    }
+  }
+
+  export const untypedLambdaRelativeMonadDemo = () => {
+    const witness = describeUntypedLambdaRelativeMonadWitness()
+    const report = analyzeUntypedLambdaRelativeMonad(witness)
+
+    console.log('\nExample 2: Untyped λ-calculus relative monad diagnostics')
+    console.log(
+      `  holds=${report.holds}, issues=${report.issues.length}, details=${report.details}`,
+    )
+    for (const context of report.contexts) {
+      console.log(
+        `  context size ${context.size}: depth=${context.maxDepth}, terms=${context.termCount}`,
+      )
+    }
+    for (const substitution of report.substitutions) {
+      console.log(
+        `  substitution ${substitution.source}→${substitution.target}: depth=${substitution.maxDepth}, count=${substitution.substitutionCount}`,
+      )
+    }
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+  }
+
+  export const indexedContainerRelativeMonadDemo = () => {
+    const witness = describeIndexedContainerExample4Witness()
+    const report = analyzeIndexedContainerRelativeMonad(witness)
+
+    console.log('\nExample 4: Indexed container relative monad diagnostics')
+    console.log(
+      `  holds=${report.holds}, issues=${report.issues.length}, details=${report.details}`,
+    )
+    for (const summary of report.summaries) {
+      console.log(
+        `  family ${summary.label}: base=${summary.baseElementCount}, containers=${summary.containerElementCount}, arrows=${summary.arrowCount}`,
+      )
+    }
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+  }
+
+  export const booleanVectorLeftKanExtensionDemo = () => {
+    const witness = describeBooleanVectorLeftKanExtensionWitness([0, 1, 2], 2)
+    const report = analyzeFiniteVectorLeftKanExtension(witness)
+
+    console.log('\nExample 1: Boolean vector left Kan extension diagnostics')
+    console.log(`  holds=${report.holds}, issues=${report.issues.length}`)
+    for (const summary of report.summaries) {
+      console.log(
+        `  target size ${summary.targetSize}: entries=${summary.entryCount}, vectors=${summary.vectorCount}, classes=${summary.equivalenceClasses}`,
+      )
+    }
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+  }
+
+  export const functorCategoryLaxMonoidalDemo = () => {
+    const witness = describeTwoObjectLaxMonoidalWitness()
+    const report = analyzeMnneLaxMonoidalStructure(witness)
+
+    console.log('\nSection 3.2: Functor category lax monoidal diagnostics')
+    console.log(
+      `  holds=${report.holds}, issues=${report.issues.length}, functors=${report.functorCount}, triples=${report.tripleCount}`,
+    )
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+  }
+
+  export const functorCategoryLaxMonoidDemo = () => {
+    const witness = describeTwoObjectLaxMonoidWitness()
+    const report = analyzeMnneLaxMonoid(witness)
+
+    console.log('\nTheorem 3: Lax monoid in [J,C] diagnostics')
+    console.log(
+      `  holds=${report.holds}, issues=${report.issues.length}, details=${report.details}`,
+    )
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+  }
+
+  export const wellBehavedInclusionDemo = () => {
+    const witness = describeIdentityWellBehavedWitness()
+    const report = analyzeMnneWellBehavedInclusion(witness)
+
+    console.log('\nDefinition 4.1: Well-behaved inclusion diagnostics')
+    console.log(
+      `  holds=${report.holds}, issues=${report.issues.length}, pairs=${report.checkedPairs}`,
+    )
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
     }
   }
 }
@@ -2237,6 +2684,13 @@ async function runExamples() {
   ComoduleExamples.tinyExamplesDemo()
 
   RelativeMonadExamples.identityRelativeMonadDemo()
+  RelativeMonadExamples.booleanVectorRelativeMonadDemo()
+  RelativeMonadExamples.untypedLambdaRelativeMonadDemo()
+  RelativeMonadExamples.indexedContainerRelativeMonadDemo()
+  RelativeMonadExamples.booleanVectorLeftKanExtensionDemo()
+  RelativeMonadExamples.functorCategoryLaxMonoidalDemo()
+  RelativeMonadExamples.functorCategoryLaxMonoidDemo()
+  RelativeMonadExamples.wellBehavedInclusionDemo()
 
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }

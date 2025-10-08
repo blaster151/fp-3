@@ -2,6 +2,7 @@ import type {
   AbsoluteColimitAnalysis,
   DensityAnalysis,
   Equipment2Cell,
+  EquipmentFrame,
   EquipmentRestrictionResult,
   EquipmentProarrow,
   EquipmentVerticalBoundary,
@@ -175,6 +176,22 @@ export interface RelativeMonadFiberEmbeddingReport<Obj, Arr, Payload, Evidence> 
   readonly fiberMonad?: RelativeMonadFiberMonad<Obj, Arr, Payload, Evidence>;
 }
 
+export interface RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence> {
+  readonly monad: RelativeMonadData<Obj, Arr, Payload, Evidence>;
+  readonly homObject: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly tensorComparison: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly unitComparison: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly extensionComparison: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeEnrichedMonadReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>;
+}
+
 export const embedRelativeMonadIntoFiber = <Obj, Arr, Payload, Evidence>(
   data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
   witness: RepresentabilityWitness<Obj, Arr>,
@@ -206,6 +223,1306 @@ export const embedRelativeMonadIntoFiber = <Obj, Arr, Payload, Evidence>(
       : undefined,
   };
 };
+
+export const analyzeRelativeEnrichedMonad = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  witness: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>,
+): RelativeEnrichedMonadReport<Obj, Arr, Payload, Evidence> => {
+  const equality =
+    witness.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  if (!equality(witness.homObject.from, witness.monad.root.from)) {
+    issues.push(
+      "Enrichment hom object must originate at the relative monad root object.",
+    );
+  }
+  if (!equality(witness.homObject.to, witness.monad.carrier.to)) {
+    issues.push(
+      "Enrichment hom object must land at the relative monad carrier object.",
+    );
+  }
+
+  if (!verticalBoundariesEqual(equality, witness.tensorComparison.boundaries.left, witness.homObject)) {
+    issues.push(
+      "Tensor comparison left boundary must reuse the recorded enriched hom object.",
+    );
+  }
+  if (!verticalBoundariesEqual(equality, witness.tensorComparison.boundaries.right, witness.monad.carrier)) {
+    issues.push(
+      "Tensor comparison right boundary must reuse the relative monad carrier boundary.",
+    );
+  }
+
+  if (witness.unitComparison !== witness.monad.unit) {
+    issues.push(
+      "Enriched unit comparison must reuse the relative monad unit witness.",
+    );
+  }
+  if (witness.extensionComparison !== witness.monad.extension) {
+    issues.push(
+      "Enriched extension comparison must reuse the relative monad extension witness.",
+    );
+  }
+
+  const holds = issues.length === 0;
+  return {
+    holds,
+    issues,
+    details: holds
+      ? witness.details ??
+        "Relative monad enrichment reuses the unit/extension witnesses promised in Section 8."
+      : `Relative enriched monad issues: ${issues.join("; ")}`,
+    witness,
+  };
+};
+
+export const describeRelativeEnrichedMonadWitness = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  monad: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+): RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence> => ({
+  monad,
+  homObject: monad.carrier,
+  tensorComparison: monad.extension,
+  unitComparison: monad.unit,
+  extensionComparison: monad.extension,
+  details:
+    "Enriched relative monad witness defaults to the carrier, unit, and extension comparisons from Section 8.",
+});
+
+const ensureBoundary = <Obj, Arr>(
+  equality: ObjectEquality<Obj>,
+  actual: EquipmentVerticalBoundary<Obj, Arr>,
+  expected: EquipmentVerticalBoundary<Obj, Arr>,
+  label: string,
+  issues: string[],
+): void => {
+  if (!verticalBoundariesEqual(equality, actual, expected)) {
+    issues.push(`${label} must reuse the expected tight boundary.`);
+  }
+};
+
+export interface RelativeEnrichedYonedaActionWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly functorAction: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly composition: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeEnrichedYonedaRepresentableWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly object: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly presheaf: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly distributor: EquipmentProarrow<Obj, Payload>;
+  readonly evaluation: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeEnrichedYonedaWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly enriched: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>;
+  readonly presheafCategory: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly yoneda: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly representable: RelativeEnrichedYonedaRepresentableWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly action: RelativeEnrichedYonedaActionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly details?: string;
+}
+
+export interface RelativeEnrichedYonedaReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativeEnrichedYonedaWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+export const analyzeRelativeEnrichedYoneda = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  witness: RelativeEnrichedYonedaWitness<Obj, Arr, Payload, Evidence>,
+): RelativeEnrichedYonedaReport<Obj, Arr, Payload, Evidence> => {
+  const { enriched, presheafCategory, yoneda, representable, action } = witness;
+  const equality =
+    enriched.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  ensureBoundary(
+    equality,
+    representable.object,
+    enriched.monad.root,
+    "Yoneda representing object",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    representable.presheaf,
+    presheafCategory,
+    "Yoneda presheaf boundary",
+    issues,
+  );
+
+  if (representable.distributor !== enriched.monad.looseCell) {
+    issues.push(
+      "Yoneda representable distributor must reuse the relative monad's loose arrow.",
+    );
+  }
+  if (!equality(representable.distributor.from, presheafCategory.from)) {
+    issues.push(
+      "Yoneda representable distributor must originate at the presheaf category object.",
+    );
+  }
+  if (!equality(representable.distributor.to, enriched.monad.carrier.to)) {
+    issues.push(
+      "Yoneda representable distributor must land at the relative monad carrier object.",
+    );
+  }
+
+  ensureBoundary(
+    equality,
+    representable.evaluation.boundaries.left,
+    presheafCategory,
+    "Yoneda evaluation left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    representable.evaluation.boundaries.right,
+    enriched.homObject,
+    "Yoneda evaluation right boundary",
+    issues,
+  );
+
+  if (representable.evaluation !== enriched.tensorComparison) {
+    issues.push(
+      "Yoneda evaluation must reuse the enriched tensor comparison witness.",
+    );
+  }
+
+  if (!equality(yoneda.from, enriched.monad.root.from)) {
+    issues.push(
+      "Yoneda embedding must start at the relative monad root object.",
+    );
+  }
+  if (!equality(yoneda.to, presheafCategory.to)) {
+    issues.push(
+      "Yoneda embedding must land in the recorded presheaf category object.",
+    );
+  }
+
+  ensureBoundary(
+    equality,
+    action.functorAction.boundaries.left,
+    enriched.monad.root,
+    "Yoneda action left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    action.functorAction.boundaries.right,
+    presheafCategory,
+    "Yoneda action right boundary",
+    issues,
+  );
+
+  if (action.functorAction !== enriched.extensionComparison) {
+    issues.push(
+      "Yoneda action must reuse the enriched extension comparison witness.",
+    );
+  }
+  if (action.composition !== action.functorAction) {
+    issues.push(
+      "Yoneda composition witness must coincide with the recorded functor action.",
+    );
+  }
+
+  const holds = issues.length === 0;
+  return {
+    holds,
+    issues,
+    details: holds
+      ? witness.details ??
+        "Yoneda embedding witness reuses the enriched hom object, tensor comparison, and extension data from Example 8.6."
+      : `Relative enriched Yoneda issues: ${issues.join("; ")}`,
+    witness,
+  };
+};
+
+export const describeRelativeEnrichedYonedaWitness = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  enriched: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>,
+): RelativeEnrichedYonedaWitness<Obj, Arr, Payload, Evidence> => ({
+  enriched,
+  presheafCategory: enriched.monad.carrier,
+  yoneda: enriched.monad.carrier,
+  representable: {
+    object: enriched.monad.root,
+    presheaf: enriched.monad.carrier,
+    distributor: enriched.monad.looseCell,
+    evaluation: enriched.tensorComparison,
+  },
+  action: {
+    functorAction: enriched.extensionComparison,
+    composition: enriched.extensionComparison,
+  },
+  details:
+    "Yoneda witness defaults to the relative monad carrier/unit/extension data highlighted in Example 8.6.",
+});
+
+export interface RelativeEnrichedYonedaDistributorWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly yoneda: RelativeEnrichedYonedaWitness<Obj, Arr, Payload, Evidence>;
+  readonly redComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly greenComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly factorisation: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly rightLift: RightLiftData<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeEnrichedYonedaDistributorReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativeEnrichedYonedaDistributorWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly rightLift: RightLiftAnalysis;
+}
+
+export interface RelativeEnrichedEilenbergMooreDiagrams<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly associativity: {
+    readonly viaExtension: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+    readonly viaMonad: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  };
+  readonly unit: {
+    readonly viaExtension: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+    readonly viaUnit: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  };
+}
+
+export interface RelativeEnrichedEilenbergMooreAlgebraWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly enriched: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>;
+  readonly carrier: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly extension: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly diagrams: RelativeEnrichedEilenbergMooreDiagrams<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly details?: string;
+}
+
+export interface RelativeEnrichedEilenbergMooreAlgebraReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativeEnrichedEilenbergMooreAlgebraWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+export const analyzeRelativeEnrichedYonedaDistributor = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  witness: RelativeEnrichedYonedaDistributorWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >,
+): RelativeEnrichedYonedaDistributorReport<Obj, Arr, Payload, Evidence> => {
+  const { yoneda, redComposite, greenComposite, factorisation, rightLift } = witness;
+  const equality =
+    yoneda.enriched.monad.equipment.equalsObjects ??
+    defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  ensureBoundary(
+    equality,
+    redComposite.boundaries.left,
+    yoneda.presheafCategory,
+    "Yoneda distributor red composite left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    redComposite.boundaries.right,
+    yoneda.enriched.homObject,
+    "Yoneda distributor red composite right boundary",
+    issues,
+  );
+
+  ensureBoundary(
+    equality,
+    greenComposite.boundaries.left,
+    yoneda.presheafCategory,
+    "Yoneda distributor green composite left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    greenComposite.boundaries.right,
+    yoneda.enriched.homObject,
+    "Yoneda distributor green composite right boundary",
+    issues,
+  );
+
+  ensureBoundary(
+    equality,
+    factorisation.boundaries.left,
+    yoneda.presheafCategory,
+    "Yoneda distributor factorisation left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    factorisation.boundaries.right,
+    yoneda.enriched.homObject,
+    "Yoneda distributor factorisation right boundary",
+    issues,
+  );
+
+  if (rightLift.loose !== yoneda.representable.distributor) {
+    issues.push(
+      "Yoneda distributor right lift must reuse the representable loose arrow p : Z ⇸ X.",
+    );
+  }
+
+  if (rightLift.lift !== yoneda.enriched.monad.looseCell) {
+    issues.push(
+      "Yoneda distributor right lift must land in the relative monad loose arrow witnessing Y : Z → PZ.",
+    );
+  }
+
+  if (redComposite !== factorisation) {
+    issues.push(
+      "Yoneda distributor red composite must coincide with the supplied PZ(p,q) factorisation.",
+    );
+  }
+  if (greenComposite !== factorisation) {
+    issues.push(
+      "Yoneda distributor green composite must coincide with the supplied PZ(p,q) factorisation.",
+    );
+  }
+
+  if (factorisation !== rightLift.unit) {
+    issues.push(
+      "Yoneda distributor factorisation must match the right lift unit witnessing the universal property of q ▷ p.",
+    );
+  }
+
+  const rightLiftReport = analyzeRightLift(
+    yoneda.enriched.monad.equipment,
+    rightLift,
+  );
+
+  if (!rightLiftReport.holds) {
+    issues.push(`Right lift framing failed: ${rightLiftReport.details}`);
+    rightLiftReport.issues.forEach((issue) =>
+      issues.push(`Right lift: ${issue}`),
+    );
+  }
+
+  const holds = issues.length === 0;
+  return {
+    holds,
+    issues: holds ? [] : issues,
+    details: holds
+      ? witness.details ??
+        `Lemma 8.7 distributor witness confirms both composites reuse the Yoneda factorisation through PZ(p,q) and the right lift unit: ${rightLiftReport.details}`
+      : `Relative enriched distributor issues: ${issues.join("; ")}`,
+    witness,
+    rightLift: rightLiftReport,
+  };
+};
+
+export const analyzeRelativeEnrichedEilenbergMooreAlgebra = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  witness: RelativeEnrichedEilenbergMooreAlgebraWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >,
+): RelativeEnrichedEilenbergMooreAlgebraReport<Obj, Arr, Payload, Evidence> => {
+  const { enriched, carrier, extension, diagrams } = witness;
+  const equality =
+    enriched.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  ensureBoundary(
+    equality,
+    carrier,
+    enriched.monad.carrier,
+    "Eilenberg–Moore carrier boundary",
+    issues,
+  );
+
+  ensureBoundary(
+    equality,
+    extension.boundaries.left,
+    enriched.monad.root,
+    "Eilenberg–Moore extension left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    extension.boundaries.right,
+    carrier,
+    "Eilenberg–Moore extension right boundary",
+    issues,
+  );
+
+  if (extension !== enriched.extensionComparison) {
+    issues.push(
+      "Eilenberg–Moore extension operator must reuse the enriched extension comparison witness.",
+    );
+  }
+
+  const { associativity, unit } = diagrams;
+
+  ensureBoundary(
+    equality,
+    associativity.viaExtension.boundaries.left,
+    enriched.monad.root,
+    "Eilenberg–Moore associativity left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    associativity.viaExtension.boundaries.right,
+    carrier,
+    "Eilenberg–Moore associativity right boundary",
+    issues,
+  );
+
+  if (associativity.viaMonad !== enriched.extensionComparison) {
+    issues.push(
+      "Eilenberg–Moore associativity comparison must reuse the enriched extension comparison witness.",
+    );
+  }
+  if (associativity.viaExtension !== associativity.viaMonad) {
+    issues.push(
+      "Eilenberg–Moore associativity diagram must commute.",
+    );
+  }
+
+  ensureBoundary(
+    equality,
+    unit.viaExtension.boundaries.left,
+    enriched.monad.root,
+    "Eilenberg–Moore unit left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    unit.viaExtension.boundaries.right,
+    carrier,
+    "Eilenberg–Moore unit right boundary",
+    issues,
+  );
+
+  if (unit.viaUnit !== enriched.unitComparison) {
+    issues.push(
+      "Eilenberg–Moore unit comparison must reuse the enriched unit witness.",
+    );
+  }
+  if (unit.viaExtension !== unit.viaUnit) {
+    issues.push("Eilenberg–Moore unit diagram must commute.");
+  }
+
+  const holds = issues.length === 0;
+  return {
+    holds,
+    issues,
+    details: holds
+      ? witness.details ??
+        "Enriched Eilenberg–Moore algebra reuses the enriched extension/unit witnesses and the Lemma 8.16 diagrams."
+      : `Relative enriched Eilenberg–Moore issues: ${issues.join("; ")}`,
+    witness,
+  };
+};
+
+export const describeRelativeEnrichedEilenbergMooreAlgebraWitness = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  enriched: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>,
+): RelativeEnrichedEilenbergMooreAlgebraWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence
+> => ({
+  enriched,
+  carrier: enriched.monad.carrier,
+  extension: enriched.extensionComparison,
+  diagrams: {
+    associativity: {
+      viaExtension: enriched.extensionComparison,
+      viaMonad: enriched.extensionComparison,
+    },
+    unit: {
+      viaExtension: enriched.extensionComparison,
+      viaUnit: enriched.unitComparison,
+    },
+  },
+  details:
+    "Enriched Eilenberg–Moore algebra witness defaults to the carrier, extension, and unit comparisons highlighted in Definition 8.16.",
+});
+
+export interface RelativeSetEnrichedMonadCorrespondenceWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly name: string;
+  readonly looseArrow: EquipmentProarrow<Obj, Payload>;
+  readonly unit: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly extension: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeSetEnrichedMonadCorrespondenceReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativeSetEnrichedMonadCorrespondenceWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+export interface RelativeSetEnrichedMonadWitness<Obj, Arr, Payload, Evidence> {
+  readonly enriched: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>;
+  readonly fullyFaithful: FullyFaithfulInput<Obj, Arr>;
+  readonly correspondences: ReadonlyArray<
+    RelativeSetEnrichedMonadCorrespondenceWitness<Obj, Arr, Payload, Evidence>
+  >;
+  readonly objectEquality?: ObjectEquality<Obj>;
+}
+
+export interface RelativeSetEnrichedMonadReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly enriched: RelativeEnrichedMonadReport<Obj, Arr, Payload, Evidence>;
+  readonly fullyFaithful: FullyFaithfulAnalysis<Obj, Arr, Payload, Evidence>;
+  readonly correspondences: ReadonlyArray<
+    RelativeSetEnrichedMonadCorrespondenceReport<Obj, Arr, Payload, Evidence>
+  >;
+}
+
+const analyzeRelativeSetEnrichedCorrespondence = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  monad: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+  witness: RelativeSetEnrichedMonadCorrespondenceWitness<Obj, Arr, Payload, Evidence>,
+): RelativeSetEnrichedMonadCorrespondenceReport<Obj, Arr, Payload, Evidence> => {
+  const issues: string[] = [];
+
+  if (witness.looseArrow !== monad.looseCell) {
+    issues.push(
+      `${witness.name} should reuse the relative monad loose arrow E(j,t) as highlighted in Example 8.14.`,
+    );
+  }
+
+  if (witness.unit !== monad.unit) {
+    issues.push(
+      `${witness.name} should reuse the relative monad unit η : j ⇒ t to match Example 8.14.`,
+    );
+  }
+
+  if (witness.extension !== monad.extension) {
+    issues.push(
+      `${witness.name} should reuse the relative monad extension μ : t▷t ⇒ t recorded in Example 8.14.`,
+    );
+  }
+
+  const holds = issues.length === 0;
+
+  return {
+    holds,
+    issues,
+    details: holds
+      ? `${witness.name} witnesses the Set-enriched presentation reusing the loose arrow, unit, and extension.`
+      : `${witness.name} Set-enriched correspondence issues: ${issues.join("; ")}`,
+    witness,
+  };
+};
+
+export const analyzeRelativeSetEnrichedMonad = <Obj, Arr, Payload, Evidence>(
+  witness: RelativeSetEnrichedMonadWitness<Obj, Arr, Payload, Evidence>,
+): RelativeSetEnrichedMonadReport<Obj, Arr, Payload, Evidence> => {
+  const enriched = analyzeRelativeEnrichedMonad(witness.enriched);
+  const equipment = witness.enriched.monad.equipment;
+  const fullyFaithfulReport = analyzeFullyFaithfulTight1Cell(
+    equipment,
+    witness.fullyFaithful,
+  );
+  const correspondences = witness.correspondences.map((correspondence) =>
+    analyzeRelativeSetEnrichedCorrespondence(witness.enriched.monad, correspondence),
+  );
+
+  const issues: string[] = [];
+
+  if (!enriched.holds) {
+    issues.push(...enriched.issues);
+  }
+
+  if (!fullyFaithfulReport.holds) {
+    issues.push(...fullyFaithfulReport.issues);
+  }
+
+  for (const correspondence of correspondences) {
+    if (!correspondence.holds) {
+      issues.push(...correspondence.issues);
+    }
+  }
+
+  const holds =
+    enriched.holds &&
+    fullyFaithfulReport.holds &&
+    correspondences.every((correspondence) => correspondence.holds);
+
+  return {
+    holds,
+    issues: holds ? [] : issues,
+    details: holds
+      ? `Example 8.14 Set-enriched witness confirms ${correspondences.length} recorded correspondences reuse the relative monad data.`
+      : `Set-enriched relative monad issues: ${issues.join("; ")}`,
+    enriched,
+    fullyFaithful: fullyFaithfulReport,
+    correspondences,
+  };
+};
+
+export interface RelativeSetEnrichedMonadWitnessOptions<Obj, Arr, Payload, Evidence> {
+  readonly correspondences?: ReadonlyArray<
+    RelativeSetEnrichedMonadCorrespondenceWitness<Obj, Arr, Payload, Evidence>
+  >;
+  readonly fullyFaithful?: FullyFaithfulInput<Obj, Arr>;
+}
+
+const example814Correspondence = <Obj, Arr, Payload, Evidence>(
+  monad: RelativeMonadData<Obj, Arr, Payload, Evidence>,
+  name: string,
+  details: string,
+): RelativeSetEnrichedMonadCorrespondenceWitness<Obj, Arr, Payload, Evidence> => ({
+  name,
+  looseArrow: monad.looseCell,
+  unit: monad.unit,
+  extension: monad.extension,
+  details,
+});
+
+export const describeRelativeSetEnrichedMonadWitness = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  enriched: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>,
+  options: RelativeSetEnrichedMonadWitnessOptions<Obj, Arr, Payload, Evidence> = {},
+): RelativeSetEnrichedMonadWitness<Obj, Arr, Payload, Evidence> => ({
+  enriched,
+  fullyFaithful:
+    options.fullyFaithful ?? {
+      tight: enriched.monad.root.tight,
+      domain: enriched.monad.root.from,
+      codomain: enriched.monad.root.to,
+    },
+  correspondences:
+    options.correspondences ?? [
+      example814Correspondence(
+        enriched.monad,
+        "Walters device (Example 8.14.1)",
+        "Devices in the sense of Walters reuse the same loose arrow, unit, and extension when V = Set.",
+      ),
+      example814Correspondence(
+        enriched.monad,
+        "Algebraic operations (Example 8.14.2)",
+        "Street’s algebraic theories provide the same Set-enriched relative monad data.",
+      ),
+      example814Correspondence(
+        enriched.monad,
+        "Span equipment (Example 8.14.4)",
+        "The span double category with fully faithful root shares the loose arrow and 2-cells.",
+      ),
+      example814Correspondence(
+        enriched.monad,
+        "Partial map classifiers (Example 8.14.9)",
+        "Partial map classifiers again give the Set-enriched structure with identical Street data.",
+      ),
+      example814Correspondence(
+        enriched.monad,
+        "j-monads (Example 8.14.11)",
+        "Diers j-monads coincide with the Set-enriched relative monad witnesses.",
+      ),
+      example814Correspondence(
+        enriched.monad,
+        "Presheaf cores (Example 8.14.13)",
+        "Copresheaf-representable monads use the same extension and unit cells.",
+      ),
+    ],
+});
+
+export const describeRelativeEnrichedYonedaDistributorWitness = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  yoneda: RelativeEnrichedYonedaWitness<Obj, Arr, Payload, Evidence>,
+): RelativeEnrichedYonedaDistributorWitness<Obj, Arr, Payload, Evidence> => ({
+  yoneda,
+  redComposite: yoneda.action.functorAction,
+  greenComposite: yoneda.action.functorAction,
+  factorisation: yoneda.action.functorAction,
+  rightLift: {
+    loose: yoneda.representable.distributor,
+    along: yoneda.enriched.monad.root.tight,
+    lift: yoneda.enriched.monad.looseCell,
+    unit: yoneda.action.functorAction,
+  },
+  details:
+    "Yoneda distributor witness defaults to the extension/right-lift comparison reused by both composites in Lemma 8.7.",
+});
+
+const ensureFrameMatches = <Obj, Payload>(
+  equality: ObjectEquality<Obj>,
+  frame: EquipmentFrame<Obj, Payload>,
+  reference: EquipmentFrame<Obj, Payload>,
+  label: string,
+  issues: string[],
+) => {
+  if (!equality(frame.leftBoundary, reference.leftBoundary)) {
+    issues.push(`${label} must reuse the reference left boundary.`);
+  }
+  if (!equality(frame.rightBoundary, reference.rightBoundary)) {
+    issues.push(`${label} must reuse the reference right boundary.`);
+  }
+};
+
+const ensureCellMatchesReference = <Obj, Arr, Payload, Evidence>(
+  equality: ObjectEquality<Obj>,
+  cell: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  reference: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  label: string,
+  issues: string[],
+) => {
+  ensureFrameMatches(equality, cell.source, reference.source, `${label} source frame`, issues);
+  ensureFrameMatches(equality, cell.target, reference.target, `${label} target frame`, issues);
+  ensureBoundary(
+    equality,
+    cell.boundaries.left,
+    reference.boundaries.left,
+    `${label} left boundary`,
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    cell.boundaries.right,
+    reference.boundaries.right,
+    `${label} right boundary`,
+    issues,
+  );
+};
+
+export interface RelativeVCatRelativeMonadTriangleWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly redComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly greenComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly comparison: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeVCatFunctorialityWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly identity: RelativeVCatRelativeMonadTriangleWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly composition: RelativeVCatRelativeMonadTriangleWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+export interface RelativeEnrichedVCatMonadWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly enriched: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>;
+  readonly unitTriangle: RelativeVCatRelativeMonadTriangleWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly multiplication: RelativeVCatRelativeMonadTriangleWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly functoriality: RelativeVCatFunctorialityWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly tauNaturality: RelativeVCatRelativeMonadTriangleWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly details?: string;
+}
+
+export interface RelativeEnrichedVCatMonadReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativeEnrichedVCatMonadWitness<Obj, Arr, Payload, Evidence>;
+}
+
+const analyzeTriangleAgainst = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  equality: ObjectEquality<Obj>,
+  triangle: RelativeVCatRelativeMonadTriangleWitness<Obj, Arr, Payload, Evidence>,
+  reference: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  label: string,
+  issues: string[],
+) => {
+  ensureCellMatchesReference(
+    equality,
+    triangle.redComposite,
+    reference,
+    `${label} red composite`,
+    issues,
+  );
+  ensureCellMatchesReference(
+    equality,
+    triangle.greenComposite,
+    reference,
+    `${label} green composite`,
+    issues,
+  );
+  ensureCellMatchesReference(
+    equality,
+    triangle.comparison,
+    reference,
+    `${label} comparison`,
+    issues,
+  );
+
+  if (triangle.comparison !== reference) {
+    issues.push(`${label} comparison must reuse the recorded reference 2-cell.`);
+  }
+  if (triangle.redComposite.evidence !== triangle.comparison.evidence) {
+    issues.push(`${label} red composite must match the recorded comparison evidence.`);
+  }
+  if (triangle.greenComposite.evidence !== triangle.comparison.evidence) {
+    issues.push(`${label} green composite must match the recorded comparison evidence.`);
+  }
+};
+
+export const analyzeRelativeEnrichedVCatMonad = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  witness: RelativeEnrichedVCatMonadWitness<Obj, Arr, Payload, Evidence>,
+): RelativeEnrichedVCatMonadReport<Obj, Arr, Payload, Evidence> => {
+  const equality =
+    witness.enriched.monad.equipment.equalsObjects ??
+    defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  analyzeTriangleAgainst(
+    equality,
+    witness.unitTriangle,
+    witness.enriched.unitComparison,
+    "Theorem 8.12 unit triangle",
+    issues,
+  );
+  analyzeTriangleAgainst(
+    equality,
+    witness.multiplication,
+    witness.enriched.extensionComparison,
+    "Theorem 8.12 multiplication diagram",
+    issues,
+  );
+
+  analyzeTriangleAgainst(
+    equality,
+    witness.functoriality.identity,
+    witness.enriched.unitComparison,
+    "Theorem 8.12 identity preservation",
+    issues,
+  );
+  analyzeTriangleAgainst(
+    equality,
+    witness.functoriality.composition,
+    witness.enriched.extensionComparison,
+    "Theorem 8.12 composition preservation",
+    issues,
+  );
+  analyzeTriangleAgainst(
+    equality,
+    witness.tauNaturality,
+    witness.enriched.unitComparison,
+    "Theorem 8.12 τ V-naturality",
+    issues,
+  );
+
+  const holds = issues.length === 0;
+  return {
+    holds,
+    issues,
+    details: holds
+      ? witness.details ??
+        "Theorem 8.12 witness confirms the enriched unit/multiplication triangles, functoriality identities/composites, and τ-naturality all reuse the recorded comparisons."
+      : `Relative enriched V-Cat monad issues: ${issues.join("; ")}`,
+    witness,
+  };
+};
+
+export const describeRelativeEnrichedVCatMonadWitness = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  enriched: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>,
+): RelativeEnrichedVCatMonadWitness<Obj, Arr, Payload, Evidence> => ({
+  enriched,
+  unitTriangle: {
+    redComposite: enriched.unitComparison,
+    greenComposite: enriched.unitComparison,
+    comparison: enriched.unitComparison,
+  },
+  multiplication: {
+    redComposite: enriched.extensionComparison,
+    greenComposite: enriched.extensionComparison,
+    comparison: enriched.extensionComparison,
+  },
+  functoriality: {
+    identity: {
+      redComposite: enriched.unitComparison,
+      greenComposite: enriched.unitComparison,
+      comparison: enriched.unitComparison,
+    },
+    composition: {
+      redComposite: enriched.extensionComparison,
+      greenComposite: enriched.extensionComparison,
+      comparison: enriched.extensionComparison,
+    },
+  },
+  tauNaturality: {
+    redComposite: enriched.unitComparison,
+    greenComposite: enriched.unitComparison,
+    comparison: enriched.unitComparison,
+  },
+  details:
+    "Theorem 8.12 witness defaults to reusing the unit and extension 2-cells across the triangles, functoriality, and τ-naturality diagrams recorded with the enriched relative monad.",
+});
+
+export interface RelativeEnrichedKleisliInclusionOpalgebraWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly identityTransformation: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly actionTriangle: RelativeVCatRelativeMonadTriangleWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+export interface RelativeEnrichedKleisliInclusionWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly enriched: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>;
+  readonly kleisliCategory: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly inclusion: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly homDistributor: EquipmentProarrow<Obj, Payload>;
+  readonly identityPreservation: RelativeVCatRelativeMonadTriangleWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly compositionPreservation: RelativeVCatRelativeMonadTriangleWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly opalgebra: RelativeEnrichedKleisliInclusionOpalgebraWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly details?: string;
+}
+
+export interface RelativeEnrichedKleisliInclusionReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativeEnrichedKleisliInclusionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+export const analyzeRelativeEnrichedKleisliInclusion = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  witness: RelativeEnrichedKleisliInclusionWitness<Obj, Arr, Payload, Evidence>,
+): RelativeEnrichedKleisliInclusionReport<Obj, Arr, Payload, Evidence> => {
+  const equality =
+    witness.enriched.monad.equipment.equalsObjects ??
+    defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  ensureBoundary(
+    equality,
+    witness.kleisliCategory,
+    witness.enriched.monad.carrier,
+    "Kleisli inclusion category boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    witness.inclusion,
+    witness.enriched.monad.root,
+    "Kleisli inclusion functor boundary",
+    issues,
+  );
+
+  if (witness.homDistributor !== witness.enriched.monad.looseCell) {
+    issues.push(
+      "Kleisli inclusion hom distributor must reuse the relative monad's loose arrow.",
+    );
+  }
+
+  analyzeTriangleAgainst(
+    equality,
+    witness.identityPreservation,
+    witness.enriched.unitComparison,
+    "Kleisli inclusion identity preservation",
+    issues,
+  );
+  analyzeTriangleAgainst(
+    equality,
+    witness.compositionPreservation,
+    witness.enriched.extensionComparison,
+    "Kleisli inclusion composition preservation",
+    issues,
+  );
+  analyzeTriangleAgainst(
+    equality,
+    witness.opalgebra.actionTriangle,
+    witness.enriched.extensionComparison,
+    "Kleisli inclusion opalgebra comparison",
+    issues,
+  );
+  ensureCellMatchesReference(
+    equality,
+    witness.opalgebra.identityTransformation,
+    witness.enriched.unitComparison,
+    "Kleisli inclusion identity-on-objects transformation",
+    issues,
+  );
+  if (witness.opalgebra.identityTransformation !== witness.enriched.unitComparison) {
+    issues.push(
+      "Kleisli inclusion identity transformation must reuse the enriched unit comparison witness.",
+    );
+  }
+
+  const holds = issues.length === 0;
+  return {
+    holds,
+    issues,
+    details: holds
+      ? witness.details ??
+        "Kleisli inclusion witness confirms the identity-on-objects functor, opalgebra morphism, and hom distributor all reuse the enriched unit and extension data."
+      : `Relative enriched Kleisli inclusion issues: ${issues.join("; ")}`,
+    witness,
+  };
+};
+
+export const describeRelativeEnrichedKleisliInclusionWitness = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+>(
+  enriched: RelativeEnrichedMonadWitness<Obj, Arr, Payload, Evidence>,
+): RelativeEnrichedKleisliInclusionWitness<Obj, Arr, Payload, Evidence> => ({
+  enriched,
+  kleisliCategory: enriched.monad.carrier,
+  inclusion: enriched.monad.root,
+  homDistributor: enriched.monad.looseCell,
+  identityPreservation: {
+    redComposite: enriched.unitComparison,
+    greenComposite: enriched.unitComparison,
+    comparison: enriched.unitComparison,
+  },
+  compositionPreservation: {
+    redComposite: enriched.extensionComparison,
+    greenComposite: enriched.extensionComparison,
+    comparison: enriched.extensionComparison,
+  },
+  opalgebra: {
+    identityTransformation: enriched.unitComparison,
+    actionTriangle: {
+      redComposite: enriched.extensionComparison,
+      greenComposite: enriched.extensionComparison,
+      comparison: enriched.extensionComparison,
+    },
+  },
+  details:
+    "Kleisli inclusion witness defaults to reusing the enriched unit, extension, and loose arrow highlighted in the Lemma 8.7 discussion of the Kleisli identity-on-objects functor.",
+});
 
 export interface RelativeMonadIdentityReductionReport {
   readonly holds: boolean;

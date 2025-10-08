@@ -26,6 +26,7 @@ import {
   analyzeRelativeStreetRepresentableRestriction,
   analyzeRelativeAlgebraStreetActionBridge,
   analyzeRelativeAlgebraStreetActionEquivalence,
+  analyzeRelativeAlgebraResolutionFromAlgebraObject,
   analyzeRelativeStreetRepresentabilityUpgrade,
   analyzeRelativeAlgebraIdentityRootEquivalence,
   analyzeRelativeAlgebraGradedMorphisms,
@@ -33,6 +34,9 @@ import {
   analyzeRelativeOpalgebraStreetActionEquivalence,
   analyzeRelativeAlgebraIndexedFamily,
   analyzeRelativeAlgebraRestrictionFunctor,
+  analyzeRelativePartialRightAdjointFunctor,
+  analyzeRelativeOpalgebraResolution,
+  analyzeRelativePartialLeftAdjointSection,
   describeIdentityRelativeAlgebraMorphism,
   describeIdentityRelativeOpalgebraMorphism,
   describeTrivialRelativeEilenbergMoore,
@@ -57,6 +61,12 @@ import {
   describeRelativeOpalgebraStreetActionEquivalence,
   describeRelativeAlgebraIndexedFamilyWitness,
   describeRelativeAlgebraRestrictionFunctorWitness,
+  describeRelativeAlgebraResolutionWitness,
+  describeRelativeOpalgebraResolutionWitness,
+  describeRelativePartialLeftAdjointWitness,
+  type RelativePartialRightAdjointWitness,
+  type RelativeOpalgebraResolutionWitness,
+  type RelativePartialLeftAdjointWitness,
 } from "../../relative/relative-algebras";
 import { describeTrivialRelativeMonad } from "../../relative/relative-monads";
 import {
@@ -233,6 +243,38 @@ describe("Relative opalgebra morphism analyzer", () => {
     expect(report.holds).toBe(false);
     expect(report.issues).toContain(
       "Relative opalgebra morphism left boundary must reuse the specified tight boundary.",
+    );
+  });
+});
+
+describe("Relative algebra resolution analyzer", () => {
+  it("threads the Section 5 resolution diagnostics", () => {
+    const { monad, em } = makeTrivialPresentations();
+    const witness = describeRelativeAlgebraResolutionWitness(monad, em);
+    const report = analyzeRelativeAlgebraResolutionFromAlgebraObject(witness);
+    expect(report.issues).toHaveLength(0);
+    expect(report.resolutionReport.holds).toBe(true);
+    expect(report.mediatingTightCellReport.issues).toHaveLength(0);
+    expect(report.pending).toBe(true);
+  });
+
+  it("flags comparison monads that alter unit or extension witnesses", () => {
+    const { monad, em } = makeTrivialPresentations();
+    const baseWitness = describeRelativeAlgebraResolutionWitness(monad, em);
+    const report = analyzeRelativeAlgebraResolutionFromAlgebraObject({
+      ...baseWitness,
+      comparisonMonad: {
+        ...baseWitness.comparisonMonad,
+        unit: { ...baseWitness.comparisonMonad.unit },
+        extension: { ...baseWitness.comparisonMonad.extension },
+      },
+    });
+    expect(report.pending).toBe(false);
+    expect(report.issues).toContain(
+      "Comparison monad must reuse the relative monad unit witness.",
+    );
+    expect(report.issues).toContain(
+      "Comparison monad must reuse the relative monad extension witness.",
     );
   });
 });
@@ -851,7 +893,13 @@ describe("Relative Eilenberg–Moore universal property analyzer", () => {
     const { em } = makeTrivialPresentations();
     const report = analyzeRelativeEilenbergMooreUniversalProperty(em);
     expect(report.holds).toBe(true);
+    expect(report.pending).toBe(true);
     expect(report.issues).toHaveLength(0);
+    expect(report.restrictionReport?.issues).toHaveLength(0);
+    expect(report.mediatingTightCellReport?.issues).toHaveLength(0);
+    expect(report.sectionReport?.issues).toHaveLength(0);
+    expect(report.gradedExtensionReport?.issues).toHaveLength(0);
+    expect(report.witness).toBe(em.universalWitness);
   });
 
   it("flags incorrect right boundary", () => {
@@ -873,6 +921,186 @@ describe("Relative Eilenberg–Moore universal property analyzer", () => {
     expect(report.holds).toBe(false);
     expect(report.issues).toContain(
       "Relative algebra action right boundary must reuse the specified tight boundary.",
+    );
+  });
+
+  it("detects a section that targets the wrong algebra", () => {
+    const { em, kleisli } = makeTrivialPresentations();
+    const broken = {
+      ...em,
+      universalWitness: {
+        ...em.universalWitness!,
+        mediatingTightCell: {
+          ...em.universalWitness!.mediatingTightCell,
+          target: kleisli, // wrong presentation
+        },
+      },
+    };
+    const report = analyzeRelativeEilenbergMooreUniversalProperty(broken);
+    expect(report.holds).toBe(false);
+    expect(report.mediatingTightCellReport?.issues).toContain(
+      "Mediating tight cell target must coincide with the recorded algebra presentation.",
+    );
+    expect(report.issues).toContain(
+      "Relative Eilenberg–Moore section witness must target the recorded algebra presentation.",
+    );
+  });
+
+  it("rejects a section that fails to reuse the comparison left leg", () => {
+    const { em } = makeTrivialPresentations();
+    const broken = {
+      ...em,
+      universalWitness: {
+        ...em.universalWitness!,
+        section: {
+          ...em.universalWitness!.section,
+          objectSection: em.universalWitness!.section.adjunction.right,
+        },
+      },
+    };
+    const report = analyzeRelativeEilenbergMooreUniversalProperty(broken);
+    expect(report.holds).toBe(false);
+    expect(report.sectionReport?.issues).toContain(
+      "Right-adjoint section must reproduce the adjunction's left leg on objects.",
+    );
+    expect(report.issues).toContain(
+      "Relative Eilenberg–Moore right-adjoint section must reuse the presentation's comparison left leg.",
+    );
+  });
+
+  it("flags mismatched graded factorisation composites", () => {
+    const { em } = makeTrivialPresentations();
+    const broken = {
+      ...em,
+      universalWitness: {
+        ...em.universalWitness!,
+        gradedExtension: {
+          ...em.universalWitness!.gradedExtension,
+          greenComposite: em.monad.unit,
+        },
+      },
+    };
+    const report = analyzeRelativeEilenbergMooreUniversalProperty(broken);
+    expect(report.holds).toBe(false);
+    expect(report.gradedExtensionReport?.issues).toContain(
+      "Graded extension green composite left boundary must reuse the specified tight boundary.",
+    );
+  });
+});
+
+describe("Partial right adjoint functor analyzer", () => {
+  it("accepts the trivial partial right adjoint", () => {
+    const { em, monad } = makeTrivialPresentations();
+    const witness: RelativePartialRightAdjointWitness<
+      string,
+      string,
+      unknown,
+      unknown
+    > = {
+      presentation: em,
+      section: em.universalWitness!.section,
+      comparison: {
+        tight: monad.root.tight,
+        domain: monad.root.from,
+        codomain: monad.carrier.to,
+      },
+      fixedObjects: [monad.root],
+    };
+    const report = analyzeRelativePartialRightAdjointFunctor(witness);
+    expect(report.holds).toBe(true);
+    expect(report.pending).toBe(false);
+    expect(report.issues).toHaveLength(0);
+    expect(report.sectionReport.issues).toHaveLength(0);
+  });
+
+  it("flags partial right adjoints that move j-objects", () => {
+    const { em, monad } = makeTrivialPresentations();
+    const witness: RelativePartialRightAdjointWitness<
+      string,
+      string,
+      unknown,
+      unknown
+    > = {
+      presentation: em,
+      section: em.universalWitness!.section,
+      comparison: {
+        tight: monad.root.tight,
+        domain: monad.root.from,
+        codomain: monad.carrier.to,
+      },
+      fixedObjects: [monad.carrier],
+    };
+    const report = analyzeRelativePartialRightAdjointFunctor(witness);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Partial right adjoint should fix each j-object; witness 0 deviates from the relative monad root.",
+    );
+  });
+});
+
+describe("Relative opalgebra resolution analyzer", () => {
+  it("threads the canonical Lemma 6.47 witness", () => {
+    const { opalgebraPresentation } = makeTrivialPresentations();
+    const witness = describeRelativeOpalgebraResolutionWitness(
+      opalgebraPresentation,
+    );
+    const report = analyzeRelativeOpalgebraResolution(witness);
+    expect(report.pending).toBe(true);
+    expect(report.issues).toHaveLength(0);
+    expect(report.kappaReport.holds).toBe(true);
+  });
+
+  it("flags κ_t identities that break the triangles", () => {
+    const { opalgebraPresentation } = makeTrivialPresentations();
+    const base = describeRelativeOpalgebraResolutionWitness(opalgebraPresentation);
+    const broken: RelativeOpalgebraResolutionWitness<
+      string,
+      string,
+      unknown,
+      unknown
+    > = {
+      ...base,
+      kappaWitness: {
+        ...base.kappaWitness,
+        rightIdentity: base.kappaWitness.leftIdentity,
+      },
+    };
+    const report = analyzeRelativeOpalgebraResolution(broken);
+    expect(report.kappaReport.issues).toContain(
+      "κ_t right triangle composite must coincide with the supplied identity witness.",
+    );
+  });
+});
+
+describe("Partial left adjoint section analyzer", () => {
+  it("records the canonical section as pending", () => {
+    const { opalgebraPresentation } = makeTrivialPresentations();
+    const witness = describeRelativePartialLeftAdjointWitness(
+      opalgebraPresentation,
+    );
+    const report = analyzeRelativePartialLeftAdjointSection(witness);
+    expect(report.pending).toBe(true);
+    expect(report.issues).toHaveLength(0);
+    expect(report.resolutionReport.pending).toBe(true);
+  });
+
+  it("detects a non-identity transpose", () => {
+    const { opalgebraPresentation } = makeTrivialPresentations();
+    const witness = describeRelativePartialLeftAdjointWitness(
+      opalgebraPresentation,
+    );
+    const broken: RelativePartialLeftAdjointWitness<
+      string,
+      string,
+      unknown,
+      unknown
+    > = {
+      ...witness,
+      transposeIdentity: witness.opalgebraResolution.kappaWitness.rightIdentity,
+    };
+    const report = analyzeRelativePartialLeftAdjointSection(broken);
+    expect(report.issues).toContain(
+      "Partial left adjoint transpose must match the supplied identity on j-objects from Theorem 6.49.",
     );
   });
 });
