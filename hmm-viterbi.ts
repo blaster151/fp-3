@@ -52,7 +52,9 @@ export function viterbiDecode<S, O>(
     const bp: Record<string, S> = {};
     for (const s2 of Sfin.elems) {
       let best = -Infinity;
-      let arg: S = Sfin.elems[0];
+      const firstElem = Sfin.elems[0];
+      if (firstElem === undefined) continue;
+      let arg: S = firstElem;
       for (const [s, ws] of emitNorm) {
         const wTrans = hmm.trans(s).get(s2) ?? -Infinity;
         const val = ws + wTrans;
@@ -70,12 +72,20 @@ export function viterbiDecode<S, O>(
 
   const bestStates = argBestR(TropicalMaxPlus, cur);
   const bestFinal = bestStates[0];
+  if (bestFinal === undefined) {
+    const fallback = Sfin.elems[0];
+    if (fallback === undefined) throw new Error("No states available");
+    return { path: [], bestFinal: fallback, score: -Infinity, last: cur };
+  }
   // reconstruct path
   const path: S[] = [];
-  let s = bestFinal;
-  for (let t = back.length - 1; t >= 0; t--) {
+  let s: S | undefined = bestFinal;
+  for (let t = back.length - 1; t >= 0 && s !== undefined; t--) {
     path.unshift(s);
-    s = back[t][String(s)];
+    const backT = back[t];
+    if (backT) {
+      s = backT[String(s)];
+    }
   }
   return { path, bestFinal, score: cur.get(bestFinal) ?? -Infinity, last: cur };
 }

@@ -72,6 +72,7 @@ export function checkSplitMono<R, X>(
     for (let j = 0; j < nonEmptySamples.length; j++) {
       const px = nonEmptySamples[i];
       const qx = nonEmptySamples[j];
+      if (!px || !qx) continue;
       const pxx = prodPX(R, px, qx);
       const [px1, qx1] = marginals(R, pxx);
       const ok1 = equalDist(R, px, px1);

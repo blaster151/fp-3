@@ -10,8 +10,16 @@ import { CSRig } from "./semiring-utils";
 
 export function approxEqualMatrix(a:number[][], b:number[][], tol=1e-9){
   if(a.length!==b.length) return false;
-  for(let i=0;i<a.length;i++){ const A=a[i],B=b[i]; if(A.length!==B.length) return false;
-    for(let j=0;j<A.length;j++) if(Math.abs(A[j]-B[j])>tol) return false; }
+  for(let i=0;i<a.length;i++){ 
+    const A=a[i],B=b[i]; 
+    if(!A || !B) return false;
+    if(A.length!==B.length) return false;
+    for(let j=0;j<A.length;j++) {
+      const Aj = A[j], Bj = B[j];
+      if(Aj === undefined || Bj === undefined) return false;
+      if(Math.abs(Aj-Bj)>tol) return false;
+    }
+  }
   return true;
 }
 
@@ -19,7 +27,7 @@ export function checkComonoidLaws<X>(Xf: Fin<X>) {
   const XxX = tensorObj(Xf, Xf);
   const Δ = new FinMarkov(Xf, XxX, copy<X>());
   const swapXX = new FinMarkov(XxX, XxX, swap<X,X>());
-  const copyCommut  = approxEqualMatrix(swapXX.then(Δ).matrix(), Δ.matrix());
+  const copyCommut  = approxEqualMatrix(swapXX.then(Δ as any).matrix(), Δ.matrix());
 
   // Counits (using fst/snd via tensor with I)
   const copyCounitR = approxEqualMatrix(

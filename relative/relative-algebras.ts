@@ -2701,8 +2701,8 @@ export const analyzeRelativeAlgebraRestrictionFunctor = <
       ? "Restriction functor recorded; Remark 6.2 faithfulness and functoriality witnesses pending."
       : `Restriction functor issues: ${issues.join("; ")}`,
     actionReport,
-    morphismReport,
-    homomorphismReport,
+    ...(morphismReport && { morphismReport }),
+    ...(homomorphismReport && { homomorphismReport }),
     witness,
   };
 };
@@ -3187,8 +3187,8 @@ export const analyzeRelativeAlgebraStreetActionEquivalence = <
         : `Relative algebra/Street action equivalence issues: ${issues.join("; ")}`),
     bridge,
     recovery,
-    streetComparison,
-    algebraComparison,
+    ...(streetComparison && { streetComparison }),
+    ...(algebraComparison && { algebraComparison }),
   };
 };
 
@@ -3843,7 +3843,6 @@ export const describeRelativeOpalgebraIdentityRootWitness = <
 ): RelativeOpalgebraIdentityRootWitness<Obj, Arr, Payload, Evidence> => ({
   presentation,
   streetAction: streetAction ?? describeRelativeStreetAction(presentation.monad),
-  comparison: undefined,
   details:
     "Identity-root opalgebra witness reuses the canonical Street action comparison.",
 });

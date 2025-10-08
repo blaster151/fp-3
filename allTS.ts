@@ -17143,7 +17143,7 @@ export interface CFunctor<BO, BM, AO, AM> {
 }
 
 /** Categorical functor interface */
-type ObjOf<C> = C extends ArrowFamilies.HasDomCod<infer O, infer _>
+export type ObjOf<C> = C extends ArrowFamilies.HasDomCod<infer O, infer _>
   ? O
   : C extends { id: (a: infer O) => unknown }
     ? O
@@ -17153,7 +17153,7 @@ type ObjOf<C> = C extends ArrowFamilies.HasDomCod<infer O, infer _>
         ? string
         : unknown
 
-type MorOf<C> = C extends ArrowFamilies.HasDomCod<infer _, infer M>
+export type MorOf<C> = C extends ArrowFamilies.HasDomCod<infer _, infer M>
   ? M
   : C extends { compose: (g: infer M, f: infer M) => unknown }
     ? M

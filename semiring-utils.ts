@@ -156,12 +156,12 @@ export function isEntire<R>(R: CSRig<R>, probes = 128): boolean {
   // Here we assume number-like; callers can override probes=0 to skip.
   if (!isNumericRig(R)) return true;
 
-  const sample = (): number => Math.random() * 2 - 1; // crude
+  const sample = (): R => (Math.random() * 2 - 1) as R; // crude
   for (let i = 0; i < probes; i++) {
     const a = sample();
     const b = sample();
-    if (isZero(a) || isZero(b)) continue;
-    if (isZero(R.mul(a, b))) return false;
+    if (isZero(a as any) || isZero(b as any)) continue;
+    if (isZero(R.mul(a, b) as any)) return false;
   }
   return true;
 }
@@ -213,7 +213,7 @@ export function fromBoolSupport<T>(support: Iterable<T>): Map<T, boolean> {
 // Read off the "best" key(s) for a distribution under a semiring
 export function argBestR<R, T>(R: CSRig<R>, d: Map<T, R>): T[] {
   if (isNumericRig(R)) {
-    let best: number | null = null;
+    let best: R | null = null;
     let out: T[] = [];
     for (const [x, w] of d) {
       if (best === null) {
@@ -222,12 +222,12 @@ export function argBestR<R, T>(R: CSRig<R>, d: Map<T, R>): T[] {
         continue;
       }
 
-      if (R.eq(w, best)) {
+      if (R.eq(w as any, best as any)) {
         out.push(x);
         continue;
       }
 
-      if (w > best) {
+      if ((w as any) > (best as any)) {
         best = w;
         out = [x];
       }

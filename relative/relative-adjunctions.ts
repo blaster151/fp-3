@@ -1567,7 +1567,7 @@ export const analyzeRelativeAdjunctionRelativeMonadPasting = <
       : `Relative monad pasting issues: ${combinedIssues.join("; ")}`,
     sourceFraming,
     resultFraming,
-    sourceResolution,
+    ...(sourceResolution && { sourceResolution }),
     resultResolution,
   };
 };
@@ -1624,7 +1624,7 @@ export const analyzeRelativeAdjunctionRelativeMonadPastingFullyFaithful = <
       ? "Fully faithful right adjoint upgrades Proposition 5.37 to the Example 5.38 functorial comparison."
       : `Relative monad fully faithful pasting issues: ${issues.join("; ")}`,
     pasting,
-    fullyFaithful,
+    ...(fullyFaithful && { fullyFaithful }),
   };
 };
 
@@ -2225,13 +2225,12 @@ export const analyzeRelativeAdjunctionRelativeMonadOpalgebraTransport = <
     pasting: pastingReport,
     sourceFraming,
     targetFraming,
-    naturality:
-      tReport && TReport
-        ? {
-            t: tReport,
-            T: TReport,
-          }
-        : undefined,
+    ...(tReport && TReport && {
+      naturality: {
+        t: tReport,
+        T: TReport,
+      }
+    }),
   };
 };
 
@@ -2378,13 +2377,12 @@ export const analyzeRelativeAdjunctionRelativeMonadAlgebraTransport = <
     pasting: pastingReport,
     sourceFraming,
     targetFraming,
-    naturality:
-      tReport && TReport
-        ? {
-            t: tReport,
-            T: TReport,
-          }
-        : undefined,
+    ...(tReport && TReport && {
+      naturality: {
+        t: tReport,
+        T: TReport,
+      }
+    }),
   };
 };
 
@@ -2519,8 +2517,8 @@ export const analyzeRelativeAdjunctionRelativeMonadTransportEquivalence = <
         : `Relative adjunction transport equivalence issues: ${combinedIssues.join("; ")}`,
     opalgebra: opalgebraReport,
     algebra: algebraReport,
-    unitComparison: unitReport,
-    counitComparison: counitReport,
+    ...(unitReport && { unitComparison: unitReport }),
+    ...(counitReport && { counitComparison: counitReport }),
   };
 };
 

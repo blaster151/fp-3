@@ -140,7 +140,7 @@ export function createArgmaxSampler<R, X>(
   compare: (a: R, b: R) => number
 ) {
   return (d: Dist<R, X>): X => {
-    let best: { x: X; weight: R } | null = null;
+    let best: { x: X; weight: R } | undefined;
     
     d.w.forEach((weight, x) => {
       if (!best || compare(weight, best.weight) > 0) {
@@ -210,8 +210,8 @@ export function generateMonoidalTestData<R>(
   let weight1: R;
   let weight2: R;
   if (isNumericRig(R)) {
-    weight1 = 0.3;
-    weight2 = 0.7;
+    weight1 = 0.3 as R;
+    weight2 = 0.7 as R;
   } else {
     weight1 = R.one;
     weight2 = R.one;
@@ -224,15 +224,24 @@ export function generateMonoidalTestData<R>(
   const dx: Dist<R, string> = { R, w: new Map([["x", weight1], ["y", weight2]]) };
   
   // Create appropriate samplers
-  const compare: (a: R, b: R) => number = isNumericRig(R)
-    ? ((a: number, b: number) => a - b)
+  const compare = (isNumericRig(R)
+    ? ((a: any, b: any) => a - b)
     : isBooleanRig(R)
-    ? ((a: boolean, b: boolean) => (a ? 1 : 0) - (b ? 1 : 0))
-    : (a, b) => (R.eq(a, b) ? 0 : 1);
+    ? ((a: any, b: any) => (a ? 1 : 0) - (b ? 1 : 0))
+    : (a: any, b: any) => (R.eq(a as R, b as R) ? 0 : 1)) as (a: R, b: R) => number;
   
   const sampX = createArgmaxSampler(R, compare);
   const sampY = createArgmaxSampler(R, compare);
   const sampPair = createArgmaxSampler(R, compare);
   
-  return { pairs, x, dy, h, dx, sampX, sampY, sampPair };
+  return { 
+    pairs, 
+    x, 
+    dy, 
+    h, 
+    dx, 
+    sampX: sampX as (d: Dist<R, string>) => string, 
+    sampY: sampY as (d: Dist<R, number>) => number, 
+    sampPair: sampPair as (d: Dist<R, [string, number]>) => [string, number] 
+  };
 }

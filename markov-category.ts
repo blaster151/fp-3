@@ -16,20 +16,21 @@
 //  - Category-level interfaces here; probability/monad mechanics in semiring-dist.ts
 // ----------------------------------------------------------------------------------------------
 
-import type { Dist, Samp } from "./dist";
+import type { Dist as Dist2Param, Samp } from "./dist";
 import type { CSRig } from "./semiring-utils";
 
-// ===== Markov Category Façade ==================================================================
+// Single-parameter Dist type for probability distributions (numeric weights)
+export type Dist<T> = Map<T, number>;
 
 // Deterministic morphism A→B
 export type Det<A, B> = (a: A) => B;
 
-// Stochastic morphism A→B
-export type Stoch<R, A, B> = (a: A) => Dist<R, B>;
+// Stochastic morphism A→B (using 2-parameter Dist for semiring generality)
+export type Stoch<R, A, B> = (a: A) => Dist2Param<R, B>;
 
 // Distribution object interface
 export interface DistributionObject<R, X> {
-  delta: (x: X) => Dist<R, X>;
+  delta: (x: X) => Dist2Param<R, X>;
   samp: Samp<R, X>;
 }
 
@@ -53,13 +54,20 @@ export const byRefEq = <T>(): Eq<T> => (a, b) => Object.is(a, b);
 export const defaultShow = <T>(x: T) => String(x);
 
 export function mkFin<T>(elems: ReadonlyArray<T>, eq: Eq<T> = byRefEq<T>(), show?: Show<T>): Fin<T> {
-  return { elems: [...elems], eq, show };
+  return { 
+    elems: [...elems], 
+    eq, 
+    ...(show !== undefined && { show })
+  };
 }
 
 // Utility to find index by equality
 function indexOfEq<T>(fin: Fin<T>, x: T): number {
   const { elems, eq } = fin;
-  for (let i = 0; i < elems.length; i++) if (eq(elems[i], x)) return i;
+  for (let i = 0; i < elems.length; i++) {
+    const elem = elems[i];
+    if (elem !== undefined && eq(elem, x)) return i;
+  }
   return -1;
 }
 
@@ -300,14 +308,14 @@ export function disintegrateFinite<X, Y>(joint: Dist<Pair<X, Y>>, Xf: Fin<X>, Yf
 
 // ===== Representable Markov Structure ==========================================================
 
-export interface DistributionObject<X> {
+export interface NumericDistributionObject<X> {
   PX: Dist<X>;
-  delta: Dirac<X>;
-  samp: Samp<X>;
+  delta: (x: X) => Dist<X>;  // Dirac delta function
+  samp: (d: Dist<X>) => X;   // Sampling function
 }
 
-export interface RepresentableMarkov {
-  distribution<X>(): DistributionObject<X>;
+export interface NumericRepresentableMarkov {
+  distribution<X>(): NumericDistributionObject<X>;
 }
 
 // ===== Category / Monoidal interfaces (adapters) ===============================================
@@ -330,9 +338,13 @@ export const MarkovCategory = {
     if (m.X.elems.length !== m.Y.elems.length) return false;
     const matrix = m.matrix();
     for (let i = 0; i < matrix.length; i++) {
-      for (let j = 0; j < matrix[i].length; j++) {
-        if (i === j && Math.abs(matrix[i][j] - 1) > 1e-9) return false;
-        if (i !== j && Math.abs(matrix[i][j]) > 1e-9) return false;
+      const row = matrix[i];
+      if (!row) return false;
+      for (let j = 0; j < row.length; j++) {
+        const val = row[j];
+        if (val === undefined) return false;
+        if (i === j && Math.abs(val - 1) > 1e-9) return false;
+        if (i !== j && Math.abs(val) > 1e-9) return false;
       }
     }
     return true;
@@ -381,9 +393,14 @@ export function fromMatrix<X, Y>(X: Fin<X>, Y: Fin<Y>, rows: number[][]): FinMar
     const i = indexOfEq(X, x);
     const row = rows[i];
     const m = new Map<Y, number>();
-    for (let j = 0; j < row.length; j++) {
-      const p = row[j];
-      if (p > EPS) m.set(Y.elems[j], p);
+    if (row) {
+      for (let j = 0; j < row.length; j++) {
+        const p = row[j];
+        const yElem = Y.elems[j];
+        if (p !== undefined && p > EPS && yElem !== undefined) {
+          m.set(yElem, p);
+        }
+      }
     }
     return normalize(m);
   };
@@ -479,8 +496,13 @@ export function approxEqualMatrix(a: number[][], b: number[][], tol = 1e-9): boo
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
     const ra = a[i], rb = b[i];
+    if (!ra || !rb) return false;
     if (ra.length !== rb.length) return false;
-    for (let j = 0; j < ra.length; j++) if (Math.abs(ra[j] - rb[j]) > tol) return false;
+    for (let j = 0; j < ra.length; j++) {
+      const raVal = ra[j], rbVal = rb[j];
+      if (raVal === undefined || rbVal === undefined) return false;
+      if (Math.abs(raVal - rbVal) > tol) return false;
+    }
   }
   return true;
 }
@@ -504,32 +526,35 @@ export function checkComonoidLaws<X>(
   const Δ12 = new FinMarkov(
     XxX,
     XxXxX,
-    tensor(copyKernel as Kernel<X, Pair<X, X>>, idK(Xf).k as Kernel<X, X>),
+    tensor(copyKernel as any, idK(Xf).k as any) as any,
   );
   const Δ23 = new FinMarkov(
     XxX,
     XxXxX_alt,
-    tensor(idK(Xf).k as Kernel<X, X>, copyKernel as Kernel<X, Pair<X, X>>),
+    tensor(idK(Xf).k as any, copyKernel as any) as any,
   );
 
   // Coassociativity: (Δ ; (Δ ⊗ id)) == (Δ ; (id ⊗ Δ)) up to reassociation isos (we compare via deterministic rebracketing)
   const reassocLtoR = detK(
     XxXxX,
     XxXxX_alt,
-    ([[x, y], z]): Pair<X, Pair<X, X>> => [x, [y, z] as Pair<X, X>],
+    (p: any): any => {
+      const [[x, y], z] = p as [[X, X], X];
+      return [x, [y, z]] as any;
+    },
   );
   const lhs = Δ.then(
     new FinMarkov(
       XxX,
       XxXxX,
-      tensor(copyKernel as Kernel<X, Pair<X, X>>, deterministic((x: X) => x) as Kernel<X, X>),
+      tensor(copyKernel as any, deterministic((x: X) => x) as any) as any,
     ),
   ).then(reassocLtoR);
   const rhs = Δ.then(
     new FinMarkov(
       XxX,
       XxXxX_alt,
-      tensor(deterministic((x: X) => x) as Kernel<X, X>, copyKernel as Kernel<X, Pair<X, X>>),
+      tensor(deterministic((x: X) => x) as any, copyKernel as any) as any,
     ),
   );
 
@@ -730,7 +755,7 @@ export function makeKleisli(spec: DistLikeMonadSpec) {
     tensor<Z, W>(that: FinKleisli<Z, W>): FinKleisli<[X, Z], [Y, W]> {
       const dom = tensorObj(this.X, that.X);
       const cod = tensorObj(this.Y, that.Y);
-      return new FinKleisli(dom, cod, tensorK(this.k, that.k));
+      return new FinKleisli(dom as any, cod as any, tensorK(this.k, that.k)) as any;
     }
     matrix(): number[][] { return kernelToMatrix(this.X, this.Y, this.k); }
     pretty(digits = 4): string { return prettyMatrix(this.matrix(), digits); }

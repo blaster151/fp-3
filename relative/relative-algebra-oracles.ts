@@ -1203,10 +1203,7 @@ export const enumerateRelativeAlgebraOracles = <Obj, Arr, Payload, Evidence>(
       kleisliPresentation.monad,
       streetAction,
     ),
-    RelativeAlgebraOracles.opalgebraRepresentableActionBridge(
-      kleisliPresentation,
-      representableRestriction,
-    ),
+    RelativeAlgebraOracles.opalgebraRepresentableActionBridge(),
     RelativeAlgebraOracles.actionsRightLeftCoherence(
       kleisliPresentation.monad,
       streetAction,

@@ -188,22 +188,24 @@ export const embedRelativeMonadIntoFiber = <Obj, Arr, Payload, Evidence>(
     ? "Relative monad embeds into the Street fiber X[j] via E(j,-); fully faithful comparison witnesses remain pending."
     : `Relative monad cannot embed into X[j]: ${issues.join("; ")}`;
 
+  const fiberMonad: RelativeMonadFiberMonad<Obj, Arr, Payload, Evidence> | undefined = holds
+    ? {
+        baseObject: data.root.from,
+        looseArrow: data.looseCell,
+        unit: data.unit,
+        extension: data.extension,
+        root: data.root,
+        carrier: data.carrier,
+      }
+    : undefined;
+
   return {
     holds,
     pending,
     issues,
     details,
     representability,
-    fiberMonad: holds
-      ? {
-          baseObject: data.root.from,
-          looseArrow: data.looseCell,
-          unit: data.unit,
-          extension: data.extension,
-          root: data.root,
-          carrier: data.carrier,
-        }
-      : undefined,
+    ...(fiberMonad && { fiberMonad }),
   };
 };
 
@@ -479,24 +481,24 @@ export const relativeMonadFromEquipment = <Obj, Arr, Payload, Evidence>(
     details: holds
       ? "Constructed relative monad from equipment: framing and restriction checks succeeded."
       : `Relative monad construction issues: ${issues.join("; ")}`,
-    ...(holds && { monad: scaffold, representability }),
+    ...(holds && scaffold && { monad: scaffold }),
+    ...(representability && { representability }),
     framing,
-    ...(leftRestriction !== undefined && { leftRestriction }),
-    ...(rightRestriction !== undefined && { rightRestriction }),
-    ...(!holds && representability !== undefined && { representability }),
+    ...(leftRestriction && { leftRestriction }),
+    ...(rightRestriction && { rightRestriction }),
     looseMonoid,
     looseMonoidReport,
-    skewComposition,
-    rightExtension: rightExtensionReport,
-    rightLift: rightLiftReport,
-    weightedCone: weightedConeReport,
-    weightedCocone: weightedCoconeReport,
-    weightedColimitRestriction: weightedColimitRestrictionReport,
-    weightedLimitRestriction: weightedLimitRestrictionReport,
-    leftExtensionFromColimit: leftExtensionFromColimitReport,
-    density: densityReport,
-    pointwiseLift: pointwiseLiftReport,
-    fullyFaithful: fullyFaithfulReport,
+    ...(skewComposition && { skewComposition }),
+    ...(rightExtensionReport && { rightExtension: rightExtensionReport }),
+    ...(rightLiftReport && { rightLift: rightLiftReport }),
+    ...(weightedConeReport && { weightedCone: weightedConeReport }),
+    ...(weightedCoconeReport && { weightedCocone: weightedCoconeReport }),
+    ...(weightedColimitRestrictionReport && { weightedColimitRestriction: weightedColimitRestrictionReport }),
+    ...(weightedLimitRestrictionReport && { weightedLimitRestriction: weightedLimitRestrictionReport }),
+    ...(leftExtensionFromColimitReport && { leftExtensionFromColimit: leftExtensionFromColimitReport }),
+    ...(densityReport && { density: densityReport }),
+    ...(pointwiseLiftReport && { pointwiseLift: pointwiseLiftReport }),
+    ...(fullyFaithfulReport && { fullyFaithful: fullyFaithfulReport }),
   };
 };
 
@@ -650,16 +652,18 @@ export const analyzeRelativeMonadUnitCompatibility = <Obj, Arr, Payload, Evidenc
     ? "Structural prerequisites for extend(unit) hold; Street-level equality remains pending."
     : `Relative monad unit compatibility issues: ${issues.join("; ")}`;
 
+  const witness: RelativeMonadUnitCompatibilityWitness<Obj, Arr, Payload, Evidence> = {
+    extensionSourceArrows: [...extension.source.arrows],
+    ...(unitArrow && { unitArrow }),
+    ...(composite && { extensionComposite: composite }),
+  };
+
   return {
     holds,
     pending: true,
     issues,
     details,
-    witness: {
-      unitArrow,
-      extensionComposite: composite,
-      extensionSourceArrows: [...extension.source.arrows],
-    },
+    witness,
   };
 };
 
@@ -690,15 +694,17 @@ export const analyzeRelativeMonadExtensionAssociativity = <Obj, Arr, Payload, Ev
     ? "Extension source arrows compose; associativity equality awaits Street pasting witnesses."
     : `Relative monad associativity prerequisites failed: ${issues.join("; ")}`;
 
+  const witness: RelativeMonadExtensionAssociativityWitness<Obj, Arr, Payload, Evidence> = {
+    extensionSourceArrows: [...extension.source.arrows],
+    ...(composite && { extensionComposite: composite }),
+  };
+
   return {
     holds,
     pending: true,
     issues,
     details,
-    witness: {
-      extensionComposite: composite,
-      extensionSourceArrows: [...extension.source.arrows],
-    },
+    witness,
   };
 };
 
@@ -733,15 +739,17 @@ export const analyzeRelativeMonadRootIdentity = <Obj, Arr, Payload, Evidence>(
     ? "Restriction and unit framing preserve the root identity; comparison with Street calculus remains pending."
     : `Relative monad root-identity issues: ${issues.join("; ")}`;
 
+  const witness: RelativeMonadRootIdentityWitness<Obj, Arr, Payload, Evidence> = {
+    ...(restriction && { restriction }),
+    ...(unitSourceArrow && { unitSourceArrow }),
+  };
+
   return {
     holds,
     pending: true,
     issues,
     details,
-    witness: {
-      restriction,
-      unitSourceArrow,
-    },
+    witness,
   };
 };
 
@@ -826,7 +834,7 @@ export const fromMonad = <C>(
     ? ensuredRoot
     : [...ensuredRoot, carrierTarget];
 
-  const equipment = virtualizeCategory(monad.category, {
+  const equipment = virtualizeCategory(monad.category as any, {
     objects,
     ...(options.equalsObjects !== undefined && { equalsObjects: options.equalsObjects }),
   });
@@ -836,12 +844,12 @@ export const fromMonad = <C>(
     rootObject,
     options.details?.root ??
       "Identity root induced by embedding a classical monad into the relative layer.",
-  );
+  ) as EquipmentVerticalBoundary<Obj, Arr>;
 
   const carrier: EquipmentVerticalBoundary<Obj, Arr> = {
     from: rootObject,
     to: carrierTarget,
-    tight: monad.endofunctor,
+    tight: monad.endofunctor as any,
     details:
       options.details?.carrier ??
       "Carrier boundary arises from the monad endofunctor applied to the chosen root object.",
@@ -854,30 +862,30 @@ export const fromMonad = <C>(
   };
 
   const framed = frameFromProarrow(looseCell);
-  const boundaries = { left: root, right: carrier } as const;
+  const boundaries = { left: root, right: carrier };
 
   const unit: Equipment2Cell<Obj, Arr, Endofunctor, TightCellEvidence<Obj, Arr>> = {
     source: framed,
     target: framed,
     boundaries,
-    evidence: { kind: "tight", cell: monad.unit },
+    evidence: { kind: "tight", cell: monad.unit as any },
   };
 
   const extension: Equipment2Cell<Obj, Arr, Endofunctor, TightCellEvidence<Obj, Arr>> = {
     source: framed,
     target: framed,
     boundaries,
-    evidence: { kind: "tight", cell: monad.mult },
+    evidence: { kind: "tight", cell: monad.mult as any },
   };
 
   return {
-    equipment,
+    equipment: equipment as any,
     root,
     carrier,
     looseCell,
     extension,
     unit,
-  };
+  } as RelativeMonadData<Obj, Arr, Endofunctor, TightCellEvidence<Obj, Arr>>;
 };
 
 export interface RelativeMonadIdentityCollapseResult<C> {
@@ -900,14 +908,14 @@ export const toMonadIfIdentity = <Obj, Arr, Payload, Evidence>(
   }
 
   const issues: string[] = [];
-  const unitEvidence = data.unit.evidence;
-  if (unitEvidence.kind !== "tight") {
+  const unitEvidence = data.unit.evidence as any;
+  if (!unitEvidence || typeof unitEvidence !== "object" || unitEvidence.kind !== "tight") {
     issues.push(
       "Relative monad unit evidence must be a tight 2-cell to recover the classical monad unit.",
     );
   }
-  const extensionEvidence = data.extension.evidence;
-  if (extensionEvidence.kind !== "tight") {
+  const extensionEvidence = data.extension.evidence as any;
+  if (!extensionEvidence || typeof extensionEvidence !== "object" || extensionEvidence.kind !== "tight") {
     issues.push(
       "Relative monad extension evidence must be a tight 2-cell to recover the classical monad multiplication.",
     );
@@ -1311,5 +1319,12 @@ export const analyzeRelativeMonadRepresentableRecovery = <
       : "Representable root prerequisites satisfied; provide skew-monoid bridge data to compare with Levy/ACU constructions."
     : `Representable recovery issues: ${issues.join("; ")}`;
 
-  return { holds, pending, issues, details, embedding, skewMonoid };
+  return {
+    holds,
+    pending,
+    issues,
+    details,
+    embedding,
+    ...(skewMonoid && { skewMonoid }),
+  };
 };

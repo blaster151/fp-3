@@ -66,7 +66,7 @@ export type Samp<R, X> = (d: Dist<R, X>) => X;
 // For tests on finite supports, argmax-by-weight samp is fine:
 export const argmaxSamp = <R, X>(cmp: (a: R, b: R) => number) =>
   (d: Dist<R, X>): X => {
-    let best: { x: X; p: R } | null = null;
+    let best: { x: X; p: R } | undefined;
     d.w.forEach((p, x) => {
       if (!best || cmp(p, best.p) > 0) best = { x, p };
     });
@@ -79,7 +79,7 @@ export const argmaxSamp = <R, X>(cmp: (a: R, b: R) => number) =>
 // strength σ: X ⊗ PY → P(X ⊗ Y)
 export const strength = <R, X, Y>(R: CSRig<R>) =>
   (x: X, dy: Dist<R, Y>): Dist<R, [X, Y]> =>
-    bind(dy, (y) => dirac(R)([x, y] as [X, Y]));
+    bind(dy, (y) => dirac(R)([x, y] as [X, Y])) as Dist<R, [X, Y]>;
 
 // ===== Legacy Compatibility =====
 
