@@ -1,15 +1,16 @@
 export type Matrix = ReadonlyArray<ReadonlyArray<number>>;
 
 function assertRectangular(matrix: ReadonlyArray<ReadonlyArray<number>>): void {
-  if (matrix.length === 0) {
+  const [firstRow, ...rest] = matrix;
+  if (firstRow === undefined) {
     return;
   }
-  const width = matrix[0].length;
-  for (let i = 1; i < matrix.length; i += 1) {
-    if (matrix[i].length !== width) {
-      throw new Error('Mat: matrix rows must have equal length');
+  const width = firstRow.length;
+  rest.forEach((row, index) => {
+    if (row.length !== width) {
+      throw new Error(`Mat: matrix rows must have equal length (row ${index + 2})`);
     }
-  }
+  });
 }
 
 export function idMat(n: number): number[][] {
@@ -25,27 +26,44 @@ export function composeMat(a: Matrix, b: Matrix): number[][] {
   assertRectangular(a);
   assertRectangular(b);
   const m = a.length;
-  const n = m === 0 ? 0 : a[0].length;
+  const firstA = a[0];
+  const n = firstA === undefined ? 0 : firstA.length;
   const n2 = b.length;
-  const p = n2 === 0 ? 0 : b[0].length;
+  const firstB = b[0];
+  const p = firstB === undefined ? 0 : firstB.length;
   if (n !== n2) {
     throw new Error('Mat: dimension mismatch for multiplication');
   }
-  if (p === 0) {
-    return Array.from({ length: m }, () => Array.from({ length: 0 }, () => 0));
-  }
-  for (let row = 0; row < n2; row += 1) {
-    if (b[row].length !== p) {
+  const result = Array.from({ length: m }, () => Array.from({ length: p }, () => 0));
+  for (let i = 0; i < m; i += 1) {
+    const rowA = a[i];
+    const resultRow = result[i];
+    if (rowA === undefined || resultRow === undefined) {
+      continue;
+    }
+    if (rowA.length !== n) {
       throw new Error('Mat: matrix rows must have equal length');
     }
-  }
-  const result = Array.from({ length: m }, () => Array(p).fill(0));
-  for (let i = 0; i < m; i += 1) {
     for (let k = 0; k < n; k += 1) {
-      const aik = a[i]?.[k] ?? 0;
-      if (aik === 0) continue;
+      const aik = rowA[k];
+      if (aik === undefined || aik === 0) continue;
+      const rowB = b[k];
+      if (rowB === undefined) {
+        throw new Error('Mat: dimension mismatch for multiplication');
+      }
+      if (rowB.length !== p) {
+        throw new Error('Mat: matrix rows must have equal length');
+      }
       for (let j = 0; j < p; j += 1) {
-        result[i][j] += aik * (b[k]?.[j] ?? 0);
+        const bkj = rowB[j];
+        if (bkj === undefined) {
+          throw new Error('Mat: matrix rows must have equal length');
+        }
+        const current = resultRow[j];
+        if (current === undefined) {
+          throw new Error('Mat: unexpected column access during multiplication');
+        }
+        resultRow[j] = current + aik * bkj;
       }
     }
   }
@@ -74,7 +92,11 @@ export const MatCat = {
       }
       return entries;
     }
-    if (entries[0]?.length !== n) {
+    const firstRow = entries[0];
+    if (firstRow === undefined) {
+      throw new Error('Mat: row count must match domain dimension');
+    }
+    if (firstRow.length !== n) {
       throw new Error('Mat: column count must match codomain dimension');
     }
     return entries;

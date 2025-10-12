@@ -1,11 +1,43 @@
 // dominance.ts — convex-order dominance checker
-import { Fin } from "./markov-category";
-import { Experiment, blackwellMeasure, BlackwellMeasure } from "./experiments";
-import { isGarblingOfFinite } from "./garbling";
+import type { Fin } from "./markov-category";
+import type { Experiment, BlackwellMeasure } from "./experiments";
+import { generateAllFunctions } from "./garbling";
 
 // Primary (exact in finite case) via the theorem's equivalence:
 // ĝ_m second-order dominates f̂_m  iff  ∃ C with G = C ∘ F.
 // We use the garbling witness as the test.
+const pushforward = <X, Y>(
+  kernel: Map<X, number>,
+  map: (x: X) => Y,
+): Map<Y, number> => {
+  const result = new Map<Y, number>();
+  kernel.forEach((weight, x) => {
+    const image = map(x);
+    const current = result.get(image) ?? 0;
+    result.set(image, current + weight);
+  });
+  return result;
+};
+
+const measuresClose = <Y>(
+  left: Map<Y, number>,
+  right: Map<Y, number>,
+  tolEq: number,
+  tolRow: number,
+): boolean => {
+  const support = new Set<Y>([...left.keys(), ...right.keys()]);
+  let leftTotal = 0;
+  let rightTotal = 0;
+  for (const key of support) {
+    const l = left.get(key) ?? 0;
+    const r = right.get(key) ?? 0;
+    leftTotal += l;
+    rightTotal += r;
+    if (Math.abs(l - r) > tolEq) return false;
+  }
+  return Math.abs(leftTotal - rightTotal) <= tolRow;
+};
+
 export function dominatesInConvexOrder_viaGarbling<Theta, X, Y>(
   ThetaFin: Fin<Theta>,
   XFin: Fin<X>,
@@ -15,8 +47,25 @@ export function dominatesInConvexOrder_viaGarbling<Theta, X, Y>(
   G: Experiment<Theta,Y>,
   opts?: { tolEq?: number; tolRow?: number }
 ): { ok: boolean; reason: "garbling-equivalence"; } {
-  const { ok } = isGarblingOfFinite(ThetaFin, XFin, YFin, F, G, { tolEq: opts?.tolEq ?? 1e-9, tolRow: opts?.tolRow ?? 1e-9 });
-  return { ok, reason: "garbling-equivalence" };
+  void prior;
+  const { tolEq = 1e-9, tolRow = 1e-9 } = opts ?? {};
+  const candidates = generateAllFunctions(XFin.elems, YFin.elems);
+
+  for (const candidate of candidates) {
+    let matches = true;
+    for (const theta of ThetaFin.elems) {
+      const pushed = pushforward(F(theta), candidate);
+      if (!measuresClose(pushed, G(theta), tolEq, tolRow)) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return { ok: true, reason: "garbling-equivalence" };
+    }
+  }
+
+  return { ok: false, reason: "garbling-equivalence" };
 }
 
 // Optional: approximate convex-grid test (sufficient but not necessary).
@@ -39,7 +88,11 @@ export function dominatesInConvexOrder_grid<Theta, X>(
     let s = 0;
     for (const { post, weight } of mu) {
       let dot = 0;
-      for (let i=0;i<dim;i++) dot += (post.get(thetas[i]) ?? 0) * v[i];
+      thetas.forEach((theta, index) => {
+        const direction = v[index];
+        if (direction === undefined) return;
+        dot += (post.get(theta) ?? 0) * direction;
+      });
       s += weight * dot * dot;
     }
     return s;

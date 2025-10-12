@@ -90,6 +90,15 @@ export function recoverGarblingFromJoint<X, Y>(
   yVals: readonly Y[],
   hTheta: Array<Dist<number, [X, Y]>>
 ): ((x: X) => Y) | null {
+  if (yVals.length === 0) {
+    return null;
+  }
+
+  const fallback = yVals[0];
+  if (fallback === undefined) {
+    return null;
+  }
+  const fallbackValue: Y = fallback;
   // Aggregate counts for p(y|x) from the batch of θ-instances (only for numeric Prob in tests).
   const table = new Map<X, Map<Y, number>>();
   for (const d of hTheta) {
@@ -102,12 +111,13 @@ export function recoverGarblingFromJoint<X, Y>(
   
   const c = (x: X) => {
     const row = table.get(x);
-    if (!row) return yVals[0];
-    let bestY = yVals[0], best = -Infinity;
+    if (!row) return fallbackValue;
+    let bestY: Y = fallbackValue;
+    let best = -Infinity;
     for (const y of yVals) {
       const v = row.get(y) ?? 0;
-      if (v > best) { 
-        best = v; 
+      if (v > best) {
+        best = v;
         bestY = y; 
       }
     }
@@ -157,7 +167,19 @@ export function generateAllFunctions<X, Y>(
   domain: readonly X[],
   codomain: readonly Y[]
 ): Array<(x: X) => Y> {
-  if (domain.length === 0) return [() => codomain[0]];
+  if (codomain.length === 0) {
+    throw new Error("codomain must contain at least one value");
+  }
+
+  const fallback = codomain[0];
+  if (fallback === undefined) {
+    throw new Error("codomain must contain at least one defined value");
+  }
+  const fallbackValue: Y = fallback;
+
+  if (domain.length === 0) {
+    return [() => fallbackValue];
+  }
   
   const functions: Array<(x: X) => Y> = [];
   
@@ -166,15 +188,23 @@ export function generateAllFunctions<X, Y>(
     if (index >= domain.length) {
       // Complete mapping - create function
       const mapping = new Map(currentMapping);
-      functions.push((x: X) => mapping.get(x) ?? codomain[0]);
+      functions.push((x: X) => {
+        const result = mapping.get(x);
+        return result === undefined ? fallbackValue : result;
+      });
       return;
     }
-    
+
     // Try each possible value for domain[index]
+    const key = domain[index];
+    if (key === undefined) {
+      throw new Error("domain must contain defined values");
+    }
+
     for (const y of codomain) {
-      currentMapping.set(domain[index], y);
+      currentMapping.set(key, y);
       generateMappings(index + 1, currentMapping);
-      currentMapping.delete(domain[index]);
+      currentMapping.delete(key);
     }
   };
   

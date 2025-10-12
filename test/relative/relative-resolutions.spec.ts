@@ -15,6 +15,7 @@ import {
   analyzeRelativeMonadFraming,
   describeTrivialRelativeMonad,
 } from "../../relative/relative-monads";
+import type { RelativeMonadData } from "../../relative/relative-monads";
 import {
   categoryOfResolutions,
   checkRelativeAdjunctionPrecomposition,
@@ -23,36 +24,45 @@ import {
   type ResolutionCategory,
   type ResolutionData,
   type ResolutionMorphism,
+  type ResolutionMorphismMetadata,
 } from "../../relative/resolutions";
 
 const makeTrivialResolution = () => {
   const equipment = virtualizeFiniteCategory(TwoObjectCategory);
   const relativeMonad = describeTrivialRelativeMonad(equipment, "•");
+  type MonadShape = typeof relativeMonad;
+  type MonadObj = MonadShape extends RelativeMonadData<infer Obj, infer Arr, infer Payload, infer Evidence>
+    ? Obj
+    : never;
+  type MonadArr = MonadShape extends RelativeMonadData<infer Obj, infer Arr, infer Payload, infer Evidence>
+    ? Arr
+    : never;
+  type MonadPayload = MonadShape extends RelativeMonadData<infer Obj, infer Arr, infer Payload, infer Evidence>
+    ? Payload
+    : never;
+  type MonadEvidence = MonadShape extends RelativeMonadData<
+    infer Obj,
+    infer Arr,
+    infer Payload,
+    infer Evidence
+  >
+    ? Evidence
+    : never;
   const apexLoose = identityProarrow(equipment, "•");
   const apexFrame = frameFromProarrow(apexLoose);
   const monadFrame = frameFromProarrow(relativeMonad.looseCell);
-  const forwardBoundaries: EquipmentCellBoundaries<typeof relativeMonad.root.from, typeof relativeMonad.root.tight> = {
+  const forwardBoundaries: EquipmentCellBoundaries<MonadObj, MonadArr> = {
     left: relativeMonad.root,
     right: relativeMonad.carrier,
   };
-  const forward: Equipment2Cell<
-    typeof relativeMonad.root.from,
-    typeof relativeMonad.root.tight,
-    typeof apexLoose.payload,
-    typeof relativeMonad.extension.evidence
-  > = {
+  const forward: Equipment2Cell<MonadObj, MonadArr, MonadPayload, MonadEvidence> = {
     source: apexFrame,
     target: monadFrame,
     boundaries: forwardBoundaries,
     evidence: equipment.cells.identity(apexFrame, forwardBoundaries),
   };
 
-  const resolution: ResolutionData<
-    typeof relativeMonad.root.from,
-    typeof relativeMonad.root.tight,
-    typeof apexLoose.payload,
-    typeof relativeMonad.extension.evidence
-  > = {
+  const resolution: ResolutionData<MonadObj, MonadArr, MonadPayload, MonadEvidence> = {
     equipment,
     relativeMonad,
     inclusion: relativeMonad.root,
@@ -107,6 +117,39 @@ const makeTrivialResolution = () => {
   return { equipment, relativeMonad, resolution, forward };
 };
 
+type TrivialResolutionShape = ReturnType<typeof makeTrivialResolution>;
+type TrivialRelativeMonad = TrivialResolutionShape["relativeMonad"];
+type TrivialInvariants = TrivialRelativeMonad extends RelativeMonadData<
+  infer Obj,
+  infer Arr,
+  infer Payload,
+  infer Evidence
+>
+  ? { Obj: Obj; Arr: Arr; Payload: Payload; Evidence: Evidence }
+  : never;
+type TrivialResolutionObj = TrivialInvariants["Obj"];
+type TrivialResolutionArr = TrivialInvariants["Arr"];
+type TrivialResolutionPayload = TrivialInvariants["Payload"];
+type TrivialResolutionEvidence = TrivialInvariants["Evidence"];
+type TrivialResolutionObject = ResolutionData<
+  TrivialResolutionObj,
+  TrivialResolutionArr,
+  TrivialResolutionPayload,
+  TrivialResolutionEvidence
+>;
+type TrivialResolutionHom = ResolutionMorphism<
+  TrivialResolutionObj,
+  TrivialResolutionArr,
+  TrivialResolutionPayload,
+  TrivialResolutionEvidence
+>;
+type TrivialResolutionHomMetadata = ResolutionMorphismMetadata<
+  TrivialResolutionObj,
+  TrivialResolutionArr,
+  TrivialResolutionPayload,
+  TrivialResolutionEvidence
+>;
+
 describe("Resolution oracle", () => {
   it("accepts the identity resolution of the trivial relative monad", () => {
     const { resolution, relativeMonad } = makeTrivialResolution();
@@ -121,19 +164,14 @@ describe("Resolution oracle", () => {
   it("flags mismatched apex data", () => {
     const { resolution, equipment } = makeTrivialResolution();
     const wrongApex: EquipmentProarrow<
-      typeof resolution.apexLoose.from,
-      typeof resolution.apexLoose.payload
+      TrivialResolutionObj,
+      TrivialResolutionPayload
     > =
       identityProarrow(equipment, "★");
     const broken = {
       ...resolution,
       apexLoose: wrongApex,
-    } satisfies ResolutionData<
-      typeof resolution.inclusion.from,
-      typeof resolution.inclusion.tight,
-      typeof wrongApex.payload,
-      typeof resolution.comparison.forward.evidence
-    >;
+    } satisfies TrivialResolutionObject;
     const report = checkResolutionOfRelativeMonad(broken);
     expect(report.holds).toBe(false);
     expect(report.issues).toContain(
@@ -145,30 +183,28 @@ describe("Resolution oracle", () => {
 describe("Resolution category scaffolding", () => {
   it("builds a singleton category whose identity laws hold", () => {
     const { resolution, forward } = makeTrivialResolution();
-    const identityMorphism: ResolutionMorphism<
-      typeof resolution.inclusion.from,
-      typeof resolution.inclusion.tight,
-      typeof resolution.apexLoose.payload,
-      typeof forward.evidence
-    > = {
+    const identityMetadata: TrivialResolutionHomMetadata | undefined =
+      resolution.metadata === undefined ? undefined : { ...resolution.metadata };
+
+    const identityMorphism: TrivialResolutionHom = {
       source: resolution,
       target: resolution,
       tight: resolution.inclusion,
       loose: resolution.apexLoose,
       comparison: resolution.comparison,
-      metadata: resolution.metadata,
+      ...(identityMetadata !== undefined && { metadata: identityMetadata }),
     };
 
     const category: ResolutionCategory<
-      typeof resolution.inclusion.from,
-      typeof resolution.inclusion.tight,
-      typeof resolution.apexLoose.payload,
-      typeof forward.evidence
+      TrivialResolutionObj,
+      TrivialResolutionArr,
+      TrivialResolutionPayload,
+      TrivialResolutionEvidence
     > = categoryOfResolutions({
       objects: [resolution],
       morphisms: [identityMorphism],
-      identity: () => identityMorphism,
-      compose: () => identityMorphism,
+      identity: (_object: TrivialResolutionObject) => identityMorphism,
+      compose: (_g: TrivialResolutionHom, _f: TrivialResolutionHom) => identityMorphism,
       equalMor: (left, right) => left === right,
     });
 

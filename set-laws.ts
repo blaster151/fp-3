@@ -1,4 +1,4 @@
-import { AnySet } from "./set-cat";
+import type { AnySet } from "./set-cat";
 
 const EMPTY = new Set<never>();
 

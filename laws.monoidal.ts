@@ -14,18 +14,24 @@
  *   • Lax monoidal unit, associativity, and naturality laws over representative
  *     arbitraries (synchronous for pure data types, asynchronous for effectful ones).
  */
-import fc from 'fast-check'
-
 // ---------- small helpers (pure) ----------
 const id = <A>(a: A) => a
-const compose = <A,B,C>(g: (b:B)=>C, f:(a:A)=>B) => (a:A) => g(f(a))
+const compose = <A, B, C>(g: (b: B) => C, f: (a: A) => B) => (a: A) => g(f(a))
 
 const lFrom = <A>(a: A): readonly [void, A] => [undefined, a] as const
 const rFrom = <A>(a: A): readonly [A, void] => [a, undefined] as const
 const assocFrom = <A,B,C>(x: readonly [[A,B], C]): readonly [A, readonly [B, C]] =>
   [x[0][0], [x[0][1], x[1]] as const] as const
-const bimap = <A,B,C,D>(f:(a:A)=>C, g:(b:B)=>D) =>
-  ([a,b]: readonly [A,B]): readonly [C,D] => [f(a), g(b)] as const
+type UnknownFn = (value: unknown) => unknown
+
+const bimap = (f: UnknownFn, g: UnknownFn) =>
+  ([a, b]: readonly [unknown, unknown]): readonly [unknown, unknown] => [f(a), g(b)] as const
+
+const assocUnknown: UnknownFn = value =>
+  assocFrom(value as readonly [[unknown, unknown], unknown])
+
+const pairTransforms = (f: UnknownFn, g: UnknownFn): UnknownFn =>
+  value => bimap(f, g)(value as readonly [unknown, unknown])
 
 // ---------- deep-ish equality for small structures ----------
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
@@ -38,10 +44,11 @@ const eqReader = <A>(ra: (r:number)=>A, rb: (r:number)=>A) =>
 const eqReaderTask = async <A>(ra: (r:number)=>Promise<A>, rb: (r:number)=>Promise<A>) =>
   (await Promise.all(sampleRs.map(async r => eq(await ra(r), await rb(r))))).every(Boolean)
 
-const eqReaderTaskUnknown = (
-  ra: (r:number)=>Promise<unknown>,
-  rb: (r:number)=>Promise<unknown>
-) => eqReaderTask(ra, rb)
+const eqReaderTaskUnknown = (ra: unknown, rb: unknown) =>
+  eqReaderTask(
+    ra as (r: number) => Promise<unknown>,
+    rb as (r: number) => Promise<unknown>,
+  )
 
 const eqRTE = async <E, A>(ra: RTE<number, E, A>, rb: RTE<number, E, A>) => {
   for (const r of sampleRs) {
@@ -53,28 +60,27 @@ const eqRTE = async <E, A>(ra: RTE<number, E, A>, rb: RTE<number, E, A>) => {
   return true
 }
 
-// ---------- Arbitraries for your datatypes ----------
-// Option
-const arbOption = <A>(arbA: fc.Arbitrary<A>) =>
-  fc.oneof(fc.constant({ _tag:'None' as const }), arbA.map(a => ({ _tag:'Some' as const, value:a })))
+const eqReaderUnknown = (ra: unknown, rb: unknown): boolean =>
+  eqReader(ra as (r: number) => unknown, rb as (r: number) => unknown)
 
-// Result
-const arbResult = <E, A>(arbE: fc.Arbitrary<E>, arbA: fc.Arbitrary<A>) =>
-  fc.oneof(arbE.map(e => ({ _tag:'Err' as const, error:e })), arbA.map(a => ({ _tag:'Ok' as const, value:a })))
+const eqRTEUnknown = (ra: unknown, rb: unknown) =>
+  eqRTE(ra as RTE<number, string, unknown>, rb as RTE<number, string, unknown>)
 
-// Reader<R, A> ~ (r:R)=>A
-const arbReader = <R, A>(arbA: fc.Arbitrary<A>) =>
-  fc.func<[R], A>(arbA) as unknown as fc.Arbitrary<(r:R)=>A>
+const liftTransforms = <A>(fns: ReadonlyArray<(value: A) => unknown>): ReadonlyArray<UnknownFn> =>
+  fns.map<UnknownFn>(fn => (value: unknown) => fn(value as A))
 
-// ReaderTask<R,A> ~ (r:R)=>Promise<A>
-const arbReaderTask = <R, A>(arbA: fc.Arbitrary<A>) =>
-  arbReader<R, A>(arbA).map(f => async (r:R) => f(r))
+const numberTransforms = liftTransforms<number>([
+  value => value,
+  value => value + 1,
+  value => ({ value }),
+])
 
-// RTE<R,E,A> ~ (r:R)=>Promise<Result<E,A>>
-const arbRTE = <R, E, A>(arbE: fc.Arbitrary<E>, arbA: fc.Arbitrary<A>) =>
-  arbReaderTask<R, { _tag:'Err'; error:E } | { _tag:'Ok'; value:A }>(
-    arbResult(arbE, arbA)
-  )
+const stringTransforms = liftTransforms<string>([
+  value => value,
+  value => value.length,
+  value => value.toUpperCase(),
+])
+
 
 // ---------- Instances under test (use the ones from your lib) ----------
 // Option
@@ -187,98 +193,287 @@ const MonoidalRTE = <R,E>() => ({
   map: RTE.map
 })
 
+const optionNumberSamples: ReadonlyArray<Option<number>> = [None, Some(0), Some(2)]
+const optionStringSamples: ReadonlyArray<Option<string>> = [None, Some('hi'), Some('bye')]
+const optionBooleanSamples: ReadonlyArray<Option<boolean>> = [None, Some(true), Some(false)]
+
+const resultNumberSamples: ReadonlyArray<Result<string, number>> = [Err('err'), Ok(0), Ok(3)]
+const resultStringSamples: ReadonlyArray<Result<string, string>> = [Err('err'), Ok('hi'), Ok('bye')]
+const resultBooleanSamples: ReadonlyArray<Result<string, boolean>> = [Err('err'), Ok(true), Ok(false)]
+
+const readerNumberSamples: ReadonlyArray<Reader<number, number>> = [
+  r => r,
+  r => r + 1,
+  () => 5,
+]
+
+const readerStringSamples: ReadonlyArray<Reader<number, string>> = [
+  r => `r:${r}`,
+  () => 'constant',
+  r => `${r * 2}`,
+]
+
+const readerBooleanSamples: ReadonlyArray<Reader<number, boolean>> = [
+  r => r % 2 === 0,
+  () => true,
+  r => r > 10,
+]
+
+const readerTaskNumberSamples: ReadonlyArray<ReaderTask<number, number>> = [
+  async r => r,
+  async r => r + 1,
+  async () => 7,
+]
+
+const readerTaskStringSamples: ReadonlyArray<ReaderTask<number, string>> = [
+  async r => `r:${r}`,
+  async () => 'task',
+  async r => `${r * 3}`,
+]
+
+const readerTaskBooleanSamples: ReadonlyArray<ReaderTask<number, boolean>> = [
+  async r => r % 2 === 0,
+  async () => true,
+  async r => r > 5,
+]
+
+const rteNumberSamples: ReadonlyArray<RTE<number, string, number>> = [
+  async r => (r % 2 === 0 ? Ok(r) : Err('odd')),
+  async r => Ok(r + 1),
+  async () => Err('fail'),
+]
+
+const rteStringSamples: ReadonlyArray<RTE<number, string, string>> = [
+  async r => (r % 2 === 0 ? Ok(`r${r}`) : Err('odd')),
+  async () => Ok('value'),
+  async () => Err('fail'),
+]
+
+const rteBooleanSamples: ReadonlyArray<RTE<number, string, boolean>> = [
+  async r => (r % 2 === 0 ? Ok(true) : Err('odd')),
+  async () => Ok(false),
+  async () => Err('fail'),
+]
+
 // ---------- Generic law runners ----------
+const assertLaw = (condition: boolean, label: string): void => {
+  if (!condition) {
+    throw new Error(label)
+  }
+}
+
 const testFunctorLaws = (
-  F:{ map:<A,B>(f:(a:A)=>B)=>(fa:unknown)=>unknown },
-  arbFA: fc.Arbitrary<unknown>,
-  eqF:(x:unknown,y:unknown)=>boolean
-) =>
-  fc.assert(fc.property(arbFA, fc.func(fc.anything()), fa => eqF(F.map(id)(fa), fa))) &&
-  fc.assert(fc.property(arbFA, fc.func(fc.anything()), fc.func(fc.anything()),
-    (fa, f: (a:unknown)=>unknown, g: (a:unknown)=>unknown) =>
-      eqF(F.map(compose(g,f))(fa), F.map(g)(F.map(f)(fa)))
-  ))
+  mapFn: (f: UnknownFn) => (fa: unknown) => unknown,
+  values: ReadonlyArray<unknown>,
+  eqF: (x: unknown, y: unknown) => boolean,
+  transforms: ReadonlyArray<UnknownFn>,
+  label: string,
+): void => {
+  for (const fa of values) {
+    assertLaw(eqF(mapFn(id)(fa), fa), `${label}: functor identity`)
+  }
+
+  for (const fa of values) {
+    for (const f of transforms) {
+      for (const g of transforms) {
+        const composed = mapFn(compose(g, f))(fa)
+        const sequential = mapFn(g)(mapFn(f)(fa))
+        assertLaw(eqF(composed, sequential), `${label}: functor composition`)
+      }
+    }
+  }
+}
 
 const testMonoidalLawsSync = (
-  M:{ unit:unknown; tensor:(fa:unknown,fb:unknown)=>unknown; map:<A,B>(f:(a:A)=>B)=>(fa:unknown)=>unknown },
-  arbFA: fc.Arbitrary<unknown>, arbFB: fc.Arbitrary<unknown>, arbFC: fc.Arbitrary<unknown>,
-  eqF: (x:unknown,y:unknown)=>boolean) => {
-  // Left/Right unit
-  fc.assert(fc.property(arbFA, fa => eqF(M.map(lFrom)(fa), M.tensor(M.unit, fa))))
-  fc.assert(fc.property(arbFA, fa => eqF(M.map(rFrom)(fa), M.tensor(fa, M.unit))))
-  // Associativity
-  fc.assert(fc.property(arbFA, arbFB, arbFC, (fa, fb, fc_) => {
-    const left  = M.map(assocFrom)(M.tensor(M.tensor(fa, fb), fc_))
-    const right = M.tensor(fa, M.tensor(fb, fc_))
-    return eqF(left, right)
-  }))
-  // Naturality
-  fc.assert(fc.property(
-    arbFA, arbFB, fc.func(fc.anything()), fc.func(fc.anything()),
-    (fa, fb, f: (a:unknown)=>unknown, g: (a:unknown)=>unknown) => {
-      const left  = M.tensor(M.map(f)(fa), M.map(g)(fb))
-      const right = M.map(bimap(f,g))(M.tensor(fa, fb))
-      return eqF(left, right)
-    }))
+  M: { unit: unknown; tensor: (fa: unknown, fb: unknown) => unknown; map: (f: UnknownFn) => (fa: unknown) => unknown },
+  faValues: ReadonlyArray<unknown>,
+  fbValues: ReadonlyArray<unknown>,
+  fcValues: ReadonlyArray<unknown>,
+  eqF: (x: unknown, y: unknown) => boolean,
+  leftTransforms: ReadonlyArray<UnknownFn>,
+  rightTransforms: ReadonlyArray<UnknownFn>,
+  label: string,
+): void => {
+  for (const fa of faValues) {
+    assertLaw(eqF(M.map(lFrom)(fa), M.tensor(M.unit, fa)), `${label}: left unit`)
+    assertLaw(eqF(M.map(rFrom)(fa), M.tensor(fa, M.unit)), `${label}: right unit`)
+  }
+
+  for (const fa of faValues) {
+    for (const fb of fbValues) {
+      for (const fcValue of fcValues) {
+        const left = M.map(assocUnknown)(M.tensor(M.tensor(fa, fb), fcValue))
+        const right = M.tensor(fa, M.tensor(fb, fcValue))
+        assertLaw(eqF(left, right), `${label}: associativity`)
+      }
+    }
+  }
+
+  for (const fa of faValues) {
+    for (const fb of fbValues) {
+      for (const f of leftTransforms) {
+        for (const g of rightTransforms) {
+          const left = M.tensor(M.map(f)(fa), M.map(g)(fb))
+          const right = M.map(pairTransforms(f, g))(M.tensor(fa, fb))
+          assertLaw(eqF(left, right), `${label}: naturality`)
+        }
+      }
+    }
+  }
 }
 
 // Async version (ReaderTask / RTE)
 const testMonoidalLawsAsync = async (
-  M:{ unit:unknown; tensor:(fa:unknown,fb:unknown)=>unknown; map:<A,B>(f:(a:A)=>B)=>(fa:unknown)=>unknown },
-  arbFA: fc.Arbitrary<unknown>, arbFB: fc.Arbitrary<unknown>, arbFC: fc.Arbitrary<unknown>,
-  eqAF: (x:unknown,y:unknown)=>Promise<boolean>
-) => {
-  await fc.assert(
-    fc.asyncProperty(arbFA, async (fa) => await eqAF(M.map(lFrom)(fa), M.tensor(M.unit, fa)))
-  )
-  await fc.assert(
-    fc.asyncProperty(arbFA, async (fa) => await eqAF(M.map(rFrom)(fa), M.tensor(fa, M.unit)))
-  )
-  await fc.assert(
-    fc.asyncProperty(arbFA, arbFB, arbFC, async (fa, fb, fc_) => {
-      const left  = M.map(assocFrom)(M.tensor(M.tensor(fa, fb), fc_))
-      const right = M.tensor(fa, M.tensor(fb, fc_))
-      return await eqAF(left, right)
-    })
-  )
-  await fc.assert(
-    fc.asyncProperty(arbFA, arbFB, fc.func(fc.anything()), fc.func(fc.anything()),
-      async (fa, fb, f: (a:unknown)=>unknown, g: (a:unknown)=>unknown) => {
-        const left  = M.tensor(M.map(f)(fa), M.map(g)(fb))
-        const right = M.map(bimap(f,g))(M.tensor(fa, fb))
-        return await eqAF(left, right)
-      })
-  )
+  M: { unit: unknown; tensor: (fa: unknown, fb: unknown) => unknown; map: (f: UnknownFn) => (fa: unknown) => unknown },
+  faValues: ReadonlyArray<unknown>,
+  fbValues: ReadonlyArray<unknown>,
+  fcValues: ReadonlyArray<unknown>,
+  eqAF: (x: unknown, y: unknown) => Promise<boolean>,
+  leftTransforms: ReadonlyArray<UnknownFn>,
+  rightTransforms: ReadonlyArray<UnknownFn>,
+  label: string,
+): Promise<void> => {
+  for (const fa of faValues) {
+    assertLaw(await eqAF(M.map(lFrom)(fa), M.tensor(M.unit, fa)), `${label}: left unit`)
+    assertLaw(await eqAF(M.map(rFrom)(fa), M.tensor(fa, M.unit)), `${label}: right unit`)
+  }
+
+  for (const fa of faValues) {
+    for (const fb of fbValues) {
+      for (const fcValue of fcValues) {
+        const left = M.map(assocUnknown)(M.tensor(M.tensor(fa, fb), fcValue))
+        const right = M.tensor(fa, M.tensor(fb, fcValue))
+        assertLaw(await eqAF(left, right), `${label}: associativity`)
+      }
+    }
+  }
+
+  for (const fa of faValues) {
+    for (const fb of fbValues) {
+      for (const f of leftTransforms) {
+        for (const g of rightTransforms) {
+          const left = M.tensor(M.map(f)(fa), M.map(g)(fb))
+          const right = M.map(pairTransforms(f, g))(M.tensor(fa, fb))
+          assertLaw(await eqAF(left, right), `${label}: naturality`)
+        }
+      }
+    }
+  }
 }
 
 // ---------- Run the suites ----------
 const runTests = async () => {
+  const resultSuite = MonoidalResult<string>()
+  const readerSuite = MonoidalReader<number>()
+  const readerTaskSuite = MonoidalReaderTask<number>()
+  const rteSuite = MonoidalRTE<number, string>()
+
+  const optionMap = (f: UnknownFn) => (fa: unknown) =>
+    MonoidalOption.map((value: unknown) => f(value))(fa as Option<unknown>) as unknown
+  const optionHarness = {
+    unit: MonoidalOption.unit as unknown,
+    tensor: (fa: unknown, fb: unknown) =>
+      MonoidalOption.tensor(fa as Option<unknown>, fb as Option<unknown>) as unknown,
+    map: optionMap,
+  }
+
+  const resultMap = (f: UnknownFn) => (fa: unknown) =>
+    resultSuite.map((value: unknown) => f(value))(fa as Result<string, unknown>) as unknown
+  const resultHarness = {
+    unit: resultSuite.unit as unknown,
+    tensor: (fa: unknown, fb: unknown) =>
+      resultSuite.tensor(fa as Result<string, unknown>, fb as Result<string, unknown>) as unknown,
+    map: resultMap,
+  }
+
+  const readerMap = (f: UnknownFn) => (fa: unknown) =>
+    readerSuite.map((value: unknown) => f(value))(fa as Reader<number, unknown>) as unknown
+  const readerHarness = {
+    unit: readerSuite.unit as unknown,
+    tensor: (fa: unknown, fb: unknown) =>
+      readerSuite.tensor(fa as Reader<number, unknown>, fb as Reader<number, unknown>) as unknown,
+    map: readerMap,
+  }
+
+  const readerTaskMap = (f: UnknownFn) => (fa: unknown) =>
+    readerTaskSuite.map((value: unknown) => f(value))(fa as ReaderTask<number, unknown>) as unknown
+  const readerTaskHarness = {
+    unit: readerTaskSuite.unit as unknown,
+    tensor: (fa: unknown, fb: unknown) =>
+      readerTaskSuite.tensor(fa as ReaderTask<number, unknown>, fb as ReaderTask<number, unknown>) as unknown,
+    map: readerTaskMap,
+  }
+
+  const rteMap = (f: UnknownFn) => (fa: unknown) =>
+    rteSuite.map((value: unknown) => f(value))(fa as RTE<number, string, unknown>) as unknown
+  const rteHarness = {
+    unit: rteSuite.unit as unknown,
+    tensor: (fa: unknown, fb: unknown) =>
+      rteSuite.tensor(fa as RTE<number, string, unknown>, fb as RTE<number, string, unknown>) as unknown,
+    map: rteMap,
+  }
+
   // Option<number>
-  testFunctorLaws(MonoidalOption, arbOption(fc.integer()), eq)
-  testMonoidalLawsSync(MonoidalOption, arbOption(fc.integer()), arbOption(fc.string()), arbOption(fc.boolean()), eq)
+  testFunctorLaws(optionMap, optionNumberSamples, eq, numberTransforms, 'Option')
+  testMonoidalLawsSync(
+    optionHarness,
+    optionNumberSamples,
+    optionStringSamples,
+    optionBooleanSamples,
+    eq,
+    numberTransforms,
+    stringTransforms,
+    'Option',
+  )
+
   // Result<string, _>
-  testFunctorLaws(MonoidalResult<string>(), arbResult(fc.string(), fc.integer()), eq)
-  testMonoidalLawsSync(MonoidalResult<string>(), arbResult(fc.string(), fc.integer()), arbResult(fc.string(), fc.integer()), arbResult(fc.string(), fc.integer()), eq)
+  testFunctorLaws(resultMap, resultNumberSamples, eq, numberTransforms, 'Result<string,_>')
+  testMonoidalLawsSync(
+    resultHarness,
+    resultNumberSamples,
+    resultNumberSamples,
+    resultNumberSamples,
+    eq,
+    numberTransforms,
+    numberTransforms,
+    'Result<string,_>',
+  )
+
   // Reader<number, _>
-  testFunctorLaws(MonoidalReader<number>(), arbReader<number, number>(fc.integer()), (x,y)=>eqReader(x,y))
-  testMonoidalLawsSync(MonoidalReader<number>(), arbReader<number, number>(fc.integer()), arbReader<number, string>(fc.string()), arbReader<number, boolean>(fc.boolean()), (x,y)=>eqReader(x,y))
+  testFunctorLaws(readerMap, readerNumberSamples, eqReaderUnknown, numberTransforms, 'Reader<number,_>')
+  testMonoidalLawsSync(
+    readerHarness,
+    readerNumberSamples,
+    readerStringSamples,
+    readerBooleanSamples,
+    eqReaderUnknown,
+    numberTransforms,
+    stringTransforms,
+    'Reader<number,_>',
+  )
 
   // ReaderTask<number, _>
   await testMonoidalLawsAsync(
-    MonoidalReaderTask<number>(),
-    arbReaderTask<number, number>(fc.integer()),
-    arbReaderTask<number, string>(fc.string()),
-    arbReaderTask<number, boolean>(fc.boolean()),
-    eqReaderTaskUnknown
+    readerTaskHarness,
+    readerTaskNumberSamples,
+    readerTaskStringSamples,
+    readerTaskBooleanSamples,
+    eqReaderTaskUnknown,
+    numberTransforms,
+    stringTransforms,
+    'ReaderTask<number,_>',
   )
 
   // RTE<number, string, _>
   await testMonoidalLawsAsync(
-    MonoidalRTE<number,string>(),
-    arbRTE<number, string, number>(fc.string(), fc.integer()),
-    arbRTE<number, string, string>(fc.string(), fc.string()),
-    arbRTE<number, string, boolean>(fc.string(), fc.boolean()),
-    (f, g) => eqRTE(f, g)
+    rteHarness,
+    rteNumberSamples,
+    rteStringSamples,
+    rteBooleanSamples,
+    (f, g) => eqRTEUnknown(f, g),
+    numberTransforms,
+    stringTransforms,
+    'ReaderTaskEither<number,string,_>',
   )
 
   console.log('✓ Monoidal functor laws passed for Option, Result<string,_>, Reader, ReaderTask, ReaderTaskEither')

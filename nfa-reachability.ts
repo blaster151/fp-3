@@ -2,7 +2,7 @@
 // Production nondeterminism helpers over the Bool semiring.
 // Depends on: markov-category.ts, semiring-dist.ts, semiring-utils.ts
 
-import { Fin, Kernel, Dist } from "./markov-category";
+import type { Fin, Kernel, Dist } from "./markov-category";
 import { BoolRig } from "./semiring-dist";
 import { fromBoolSupport } from "./semiring-utils";
 

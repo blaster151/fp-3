@@ -1,11 +1,11 @@
 // markov-zero-one.ts — Kolmogorov and Hewitt–Savage zero–one oracles
 // Packages finite marginal witnesses, permutation invariance, and determinism diagnostics.
 
-import { FinMarkov, pair, tensorObj } from "./markov-category";
+import { FinMarkov, pair, tensorObj, type Kernel, type Fin } from "./markov-category";
 import { Prob } from "./semiring-utils";
 import { fromLegacy } from "./dist";
 import { isDeterministic, isDeterministicKernel } from "./markov-laws";
-import { buildMarkovComonoidWitness } from "./markov-comonoid-structure";
+import { buildMarkovComonoidWitness, type MarkovComonoidWitness } from "./markov-comonoid-structure";
 import {
   buildMarkovConditionalWitness,
   checkConditionalIndependence,
@@ -70,19 +70,35 @@ export function buildKolmogorovZeroOneWitness<A, XJ, T>(
   };
 }
 
+const forgetComonoidWitness = <X>(witness: MarkovComonoidWitness<X>): MarkovComonoidWitness<unknown> =>
+  witness as unknown as MarkovComonoidWitness<unknown>;
+
+const forgetCodomain = <X, Y>(arrow: FinMarkov<X, Y>): FinMarkov<X, unknown> =>
+  arrow as unknown as FinMarkov<X, unknown>;
+
+const forgetStatistic = <A, XJ, T>(
+  witness: KolmogorovZeroOneWitness<A, XJ, T>,
+): KolmogorovZeroOneWitness<A, XJ, unknown> => ({
+  prior: witness.prior,
+  stat: forgetCodomain(witness.stat),
+  finiteMarginals: witness.finiteMarginals,
+  ...(witness.label === undefined ? {} : { label: witness.label }),
+});
+
 function combineStateProjections<XJ>(
   projections: ReadonlyArray<FinMarkov<XJ, unknown>>,
 ): FinMarkov<XJ, unknown> {
-  if (projections.length === 0) {
+  const [first, ...rest] = projections;
+  if (!first) {
     throw new Error("Kolmogorov zero–one witness requires at least one finite marginal.");
   }
-  let kernel = projections[0].k;
-  let codomain = projections[0].Y;
-  for (let i = 1; i < projections.length; i++) {
-    kernel = pair(kernel, projections[i].k);
-    codomain = tensorObj(codomain, projections[i].Y);
+  let kernel = first.k as Kernel<XJ, unknown>;
+  let codomain = first.Y as unknown as Fin<unknown>;
+  for (const projection of rest) {
+    kernel = pair(kernel, projection.k) as Kernel<XJ, unknown>;
+    codomain = tensorObj(codomain, projection.Y as unknown as Fin<unknown>) as Fin<unknown>;
   }
-  return new FinMarkov(projections[0].X, codomain, kernel);
+  return new FinMarkov<XJ, unknown>(first.X, codomain, kernel);
 }
 
 function marginalIndependenceChecks<A, XJ, T>(
@@ -101,7 +117,6 @@ function marginalIndependenceChecks<A, XJ, T>(
   );
 
   return witness.finiteMarginals.map((entry) => {
-    const marginal = witness.prior.then(entry.piF);
     const marginalWitness = buildMarkovComonoidWitness(entry.piF.Y, {
       label: `${witness.label ?? "Kolmogorov"} ${entry.F}`,
     });
@@ -111,9 +126,18 @@ function marginalIndependenceChecks<A, XJ, T>(
       pair(entry.piF.k, witness.stat.k),
     );
     const joint = witness.prior.then(stateJoint);
-    const conditional = buildMarkovConditionalWitness(domain, [marginalWitness, tWitness], joint, {
-      label: `${witness.label ?? "Kolmogorov"} (${entry.F}, T)`,
-    });
+    const outputs: ReadonlyArray<MarkovComonoidWitness<unknown>> = [
+      forgetComonoidWitness(marginalWitness),
+      forgetComonoidWitness(tWitness),
+    ];
+    const conditional = buildMarkovConditionalWitness(
+      domain,
+      outputs,
+      forgetCodomain(joint),
+      {
+        label: `${witness.label ?? "Kolmogorov"} (${entry.F}, T)`,
+      },
+    );
     const report = checkConditionalIndependence(conditional);
     return { F: entry.F, report };
   });
@@ -131,13 +155,15 @@ function checkGlobalIndependence<A, XJ>(
     domainLabel !== undefined ? { label: domainLabel } : undefined,
   );
   const outputs = witness.finiteMarginals.map((entry) =>
-    buildMarkovComonoidWitness(entry.piF.Y, {
-      label: `${witness.label ?? "Kolmogorov"} ${entry.F}`,
-    }),
+    forgetComonoidWitness(
+      buildMarkovComonoidWitness(entry.piF.Y, {
+        label: `${witness.label ?? "Kolmogorov"} ${entry.F}`,
+      }),
+    ),
   );
   const stateCombined = combineStateProjections(witness.finiteMarginals.map((entry) => entry.piF));
   const combined = witness.prior.then(stateCombined);
-  const conditional = buildMarkovConditionalWitness(domain, outputs, combined, {
+  const conditional = buildMarkovConditionalWitness(domain, outputs, forgetCodomain(combined), {
     label: witness.label ? `${witness.label} finite marginals` : "Kolmogorov finite marginals",
   });
   return checkConditionalIndependence(conditional);
@@ -150,7 +176,7 @@ export function checkKolmogorovZeroOne<A, XJ, T>(
   const tolerance = options.tolerance ?? DEFAULT_TOLERANCE;
   const composite = witness.prior.then(witness.stat);
 
-  const globalIndependence = checkGlobalIndependence(witness);
+  const globalIndependence = checkGlobalIndependence(forgetStatistic(witness));
   const marginalReports = marginalIndependenceChecks(witness, composite);
   const ciFamilyVerified =
     (globalIndependence?.holds ?? true) && marginalReports.every((entry) => entry.report.holds);
@@ -188,7 +214,7 @@ export function checkKolmogorovZeroOne<A, XJ, T>(
     ciFamilyVerified,
     failures,
     tolerance,
-    globalIndependence,
+    ...(globalIndependence === undefined ? {} : { globalIndependence }),
     marginalChecks: marginalReports,
     details,
   };
@@ -224,7 +250,7 @@ export function checkHewittSavageZeroOne<A, XJ, T>(
     witness.prior,
     witness.stat,
     witness.permutations,
-    { tolerance: options.tolerance },
+    options.tolerance === undefined ? undefined : { tolerance: options.tolerance },
   );
   const permutationFailures = permutationReport.failures;
   const permutationInvariant = permutationReport.holds;
@@ -246,7 +272,7 @@ export function checkHewittSavageZeroOne<A, XJ, T>(
     failures: augmentedFailures,
     permutationInvariant,
     permutationFailures,
-    permutationReport,
+    ...(permutationReport === undefined ? {} : { permutationReport }),
     details,
   };
 }

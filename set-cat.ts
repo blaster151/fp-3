@@ -1,5 +1,16 @@
 export type SetObj<A> = Set<A>;
 
+/**
+ * Generic readonly view of a set.
+ *
+ * Historically various modules imported `AnySet` when working with
+ * categorified set operations.  Re-introducing it as a `ReadonlySet`
+ * preserves that API surface while ensuring callers don't rely on
+ * mutation, which keeps future Markov/category adapters honest about
+ * variance.
+ */
+export type AnySet<A> = ReadonlySet<A>;
+
 export interface SetHom<A, B> {
   readonly dom: SetObj<A>;
   readonly cod: SetObj<B>;

@@ -180,7 +180,8 @@ const restrictCountabilityWitness = <J>(
     },
   }),
   sample: witness.sample.filter((value) => subset.has(value)),
-  reason: witness.reason,
+  ...(witness.reason === undefined ? {} : { reason: witness.reason }),
+  ...(witness.size === undefined ? {} : { size: witness.size }),
 });
 
 const restrictMeasurabilityWitness = <J>(
@@ -191,7 +192,7 @@ const restrictMeasurabilityWitness = <J>(
   return {
     kind: witness.kind,
     coordinates: witness.coordinates.filter((coordinate) => subset.has(coordinate.index)),
-    reason: witness.reason,
+    ...(witness.reason === undefined ? {} : { reason: witness.reason }),
   };
 };
 
@@ -202,8 +203,8 @@ const restrictPositivityWitness = <J>(
   if (!witness.indices) return witness;
   return {
     kind: "positive",
-    reason: witness.reason,
     indices: witness.indices.filter((index) => subset.has(index)),
+    ...(witness.reason === undefined ? {} : { reason: witness.reason }),
   };
 };
 
@@ -252,27 +253,31 @@ export const restrictProjectiveFamily = <R, J, X, Carrier>(
       ensureSubset(finite);
       return family.project(carrier, finite);
     },
-    extend:
-      family.extend === undefined
-        ? undefined
-        : (finite, section) => {
+    ...(family.extend === undefined
+      ? {}
+      : {
+          extend: (finite: FiniteSubset<J>, section: CylinderSection<J, X>) => {
             ensureSubset(finite);
-            return family.extend?.(finite, section);
+            const extend = family.extend!;
+            return extend(finite, section);
           },
-    update:
-      family.update === undefined
-        ? undefined
-        : (carrier, section) => {
+        }),
+    ...(family.update === undefined
+      ? {}
+      : {
+          update: (carrier: Carrier, section: CylinderSection<J, X>) => {
             const filtered = new Map<J, X>();
             section.forEach((value, index) => {
               if (allowed.has(index)) filtered.set(index, value);
             });
-            return family.update?.(carrier, filtered as CylinderSection<J, X>);
+            const update = family.update!;
+            return update(carrier, filtered as CylinderSection<J, X>);
           },
-    kolmogorov: family.kolmogorov,
-    countability,
-    measurability,
-    positivity,
+        }),
+    ...(family.kolmogorov === undefined ? {} : { kolmogorov: family.kolmogorov }),
+    ...(countability === undefined ? {} : { countability }),
+    ...(measurability === undefined ? {} : { measurability }),
+    ...(positivity === undefined ? {} : { positivity }),
   };
 };
 
@@ -299,9 +304,12 @@ const isSubset = <J>(finite: FiniteSubset<J>, larger: FiniteSubset<J>): boolean 
   return true;
 };
 
-const isMapValue = (value: unknown): value is Map<unknown, unknown> => value instanceof Map;
+const isMapValue = (value: unknown): value is ReadonlyMap<unknown, unknown> => value instanceof Map;
 
-const mapsEqual = (a: Map<unknown, unknown>, b: Map<unknown, unknown>): boolean => {
+const mapsEqual = (
+  a: ReadonlyMap<unknown, unknown>,
+  b: ReadonlyMap<unknown, unknown>
+): boolean => {
   if (a.size !== b.size) return false;
   for (const [key, value] of a) {
     if (!b.has(key)) return false;
@@ -385,7 +393,7 @@ const pushforwardCylinder = <R, J, X>(
   dist: Dist<R, CylinderSection<J, X>>,
   subset: FiniteSubset<J>
 ): Dist<R, CylinderSection<J, X>> => {
-  type Entry = { section: Map<J, X>; weight: R };
+  type Entry = { section: CylinderSection<J, X>; weight: R };
   const entries: Entry[] = [];
   dist.w.forEach((weight, section) => {
     const restricted = restrictCylinder(section, subset);
@@ -396,8 +404,11 @@ const pushforwardCylinder = <R, J, X>(
       entries.push({ section: restricted, weight });
     }
   });
-  const out: Dist<R, CylinderSection<J, X>> = { R: dist.R, w: new Map() };
-  for (const entry of entries) out.w.set(entry.section as CylinderSection<J, X>, entry.weight);
+  const out: Dist<R, CylinderSection<J, X>> = {
+    R: dist.R,
+    w: new Map<CylinderSection<J, X>, R>(),
+  };
+  for (const entry of entries) out.w.set(entry.section, entry.weight);
   return out;
 };
 
@@ -407,11 +418,11 @@ const patchSection = <J, X>(section: ProjectiveLimitSection<J, X>, patch: Cylind
 };
 
 const expectDeterministicValue = <R, X>(dist: Dist<R, X>, reason: string): X => {
-  const entries = Array.from(dist.w.entries());
+  const entries = Array.from(dist.w.entries()) as Array<[X, R]>;
   if (entries.length !== 1) {
     throw new Error(`${reason}: distribution is not deterministic`);
   }
-  const [[value, weight]] = entries as Array<[X, R]>;
+  const [value, weight] = entries[0]!;
   if (!dist.R.eq(weight, dist.R.one)) {
     throw new Error(`${reason}: deterministic distribution must have unit weight`);
   }
@@ -422,7 +433,7 @@ export function createInfObj<R, J, X, Carrier = ProjectiveLimitSection<J, X>>(
   family: ProjectiveFamily<R, J, X, Carrier>
 ): InfObj<R, J, X, Carrier> {
   const { semiring: Rsemiring } = family;
-  const delta = dirac(Rsemiring);
+  const delta: <Y>(value: Y) => Dist<R, Y> = dirac(Rsemiring);
 
   const projectKernel = (finite: FiniteSubset<J>): KernelR<R, Carrier, CylinderSection<J, X>> =>
     (carrier) => delta(family.project(carrier, finite));
@@ -472,14 +483,14 @@ export function createInfObj<R, J, X, Carrier = ProjectiveLimitSection<J, X>>(
     projectArray,
     liftKernel,
     deterministicProjection,
-    positivity: family.positivity,
-    deterministicWitness,
+    ...(family.positivity === undefined ? {} : { positivity: family.positivity }),
+    ...(deterministicWitness === undefined ? {} : { deterministicWitness }),
   };
   return self;
 }
 
 export const asDeterministicKernel = <R, A, B>(R: CSRig<R>, base: (input: A) => B): KernelR<R, A, B> => {
-  const delta = dirac(R);
+  const delta: <X>(value: X) => Dist<R, X> = dirac(R);
   return (input: A) => delta(base(input));
 };
 
@@ -487,7 +498,7 @@ const COUNTABILITY_SAMPLE_LIMIT = 1024;
 
 const inferCountabilityWitness = <J>(index: Iterable<J>): CountabilityWitness<J> => {
   const iterator = index[Symbol.iterator]();
-  const selfIterable = iterator === index;
+  const selfIterable = Object.is(iterator, index);
   const samples: J[] = [];
   const seen = new Set<unknown>();
   for (let i = 0; i < COUNTABILITY_SAMPLE_LIMIT; i += 1) {
@@ -533,7 +544,7 @@ const validateCountabilityWitness = <J>(witness: CountabilityWitness<J>): Counta
   }
 
   const iterator = enumeration[Symbol.iterator]();
-  if (iterator === enumeration) {
+  if (Object.is(iterator, enumeration)) {
     throw new Error(
       "Countability witness must return a replayable iterable from enumerate(); wrap generators in an array or similar container"
     );
@@ -606,7 +617,7 @@ export function independentIndexedProduct<R, J, X>(
   const { measurability, positivity } = options;
 
   const marginal = (finite: FiniteSubset<J>): Dist<R, CylinderSection<J, X>> => {
-    type Entry = { section: Map<J, X>; weight: R };
+    type Entry = { section: CylinderSection<J, X>; weight: R };
     let acc: Entry[] = [{ section: new Map<J, X>(), weight: R.one }];
 
     for (const j of finite) {
@@ -618,20 +629,21 @@ export function independentIndexedProduct<R, J, X>(
           if (isZero(weight)) return;
           const section = new Map(entry.section);
           section.set(j, value);
-          const existing = next.find((candidate) => mapsEqual(candidate.section, section));
+          const concrete = section as CylinderSection<J, X>;
+          const existing = next.find((candidate) => mapsEqual(candidate.section, concrete));
           if (existing) {
             existing.weight = R.add(existing.weight, weight);
           } else {
-            next.push({ section, weight });
+            next.push({ section: concrete, weight });
           }
         });
       }
       acc = next;
     }
 
-    const dist: Dist<R, CylinderSection<J, X>> = { R, w: new Map() };
+    const dist: Dist<R, CylinderSection<J, X>> = { R, w: new Map<CylinderSection<J, X>, R>() };
     for (const entry of acc) {
-      dist.w.set(entry.section as CylinderSection<J, X>, entry.weight);
+      dist.w.set(entry.section, entry.weight);
     }
     return dist;
   };
@@ -686,8 +698,8 @@ export function independentIndexedProduct<R, J, X>(
     extend,
     kolmogorov: witness,
     countability,
-    measurability,
-    positivity,
+    ...(measurability === undefined ? {} : { measurability }),
+    ...(positivity === undefined ? {} : { positivity }),
   };
 }
 
@@ -844,7 +856,10 @@ export function tensorKolmogorovProducts<R, JL, XL, CL, JR, XR, CR>(
       });
     });
 
-    const dist: Dist<R, CylinderSection<TensorIndex<JL, JR>, XL | XR>> = { R, w: new Map() };
+    const dist: Dist<R, CylinderSection<TensorIndex<JL, JR>, XL | XR>> = {
+      R,
+      w: new Map<CylinderSection<TensorIndex<JL, JR>, XL | XR>, R>(),
+    };
     if (entries.length === 0) {
       dist.w.set(new Map(), R.one);
       return dist;
@@ -909,18 +924,24 @@ export function tensorKolmogorovProducts<R, JL, XL, CL, JR, XR, CR>(
 
   const kolmogorov =
     left.family.kolmogorov && right.family.kolmogorov
-      ? {
-          explanation: [left.family.kolmogorov.explanation, right.family.kolmogorov.explanation]
+      ? (() => {
+          const explanation = [left.family.kolmogorov.explanation, right.family.kolmogorov.explanation]
             .filter(Boolean)
-            .join("; ") || undefined,
-          check: (finite: FiniteSubset<TensorIndex<JL, JR>>, larger: FiniteSubset<TensorIndex<JL, JR>>) => {
-            const { leftSubset: leftFinite, rightSubset: rightFinite } = splitSubset(finite);
-            const { leftSubset: leftLarger, rightSubset: rightLarger } = splitSubset(larger);
-            const leftOk = left.family.kolmogorov!.check(leftFinite, leftLarger);
-            const rightOk = right.family.kolmogorov!.check(rightFinite, rightLarger);
-            return leftOk && rightOk;
-          },
-        }
+            .join("; ") || undefined;
+          return {
+            ...(explanation === undefined ? {} : { explanation }),
+            check: (
+              finite: FiniteSubset<TensorIndex<JL, JR>>,
+              larger: FiniteSubset<TensorIndex<JL, JR>>
+            ) => {
+              const { leftSubset: leftFinite, rightSubset: rightFinite } = splitSubset(finite);
+              const { leftSubset: leftLarger, rightSubset: rightLarger } = splitSubset(larger);
+              const leftOk = left.family.kolmogorov!.check(leftFinite, leftLarger);
+              const rightOk = right.family.kolmogorov!.check(rightFinite, rightLarger);
+              return leftOk && rightOk;
+            },
+          };
+        })()
       : undefined;
 
   const combineCountability = () => {
@@ -955,12 +976,13 @@ export function tensorKolmogorovProducts<R, JL, XL, CL, JR, XR, CR>(
       leftWitness?.size !== undefined && rightWitness?.size !== undefined
         ? (leftWitness.size ?? 0) + (rightWitness.size ?? 0)
         : leftWitness?.size ?? rightWitness?.size;
+    const reason = reasonParts.length > 0 ? reasonParts.join("; ") : undefined;
     return {
       kind,
       enumerate,
       sample,
-      reason: reasonParts.length > 0 ? reasonParts.join("; ") : undefined,
-      size,
+      ...(reason === undefined ? {} : { reason }),
+      ...(size === undefined ? {} : { size }),
     } as CountabilityWitness<TensorIndex<JL, JR>>;
   };
 
@@ -970,20 +992,30 @@ export function tensorKolmogorovProducts<R, JL, XL, CL, JR, XR, CR>(
     if (!leftWitness && !rightWitness) return undefined;
     const coordinates: Array<CoordinateMeasurability<TensorIndex<JL, JR>>> = [];
     leftWitness?.coordinates?.forEach((coordinate) => {
-      coordinates.push({
+      const entry: CoordinateMeasurability<TensorIndex<JL, JR>> = {
         index: toLeft(coordinate.index),
-        sigmaAlgebra: coordinate.sigmaAlgebra,
-        witness: coordinate.witness,
-        standardBorel: coordinate.standardBorel,
-      });
+        ...(coordinate.sigmaAlgebra === undefined
+          ? {}
+          : { sigmaAlgebra: coordinate.sigmaAlgebra }),
+        ...(coordinate.witness === undefined ? {} : { witness: coordinate.witness }),
+        ...(coordinate.standardBorel === undefined
+          ? {}
+          : { standardBorel: coordinate.standardBorel }),
+      };
+      coordinates.push(entry);
     });
     rightWitness?.coordinates?.forEach((coordinate) => {
-      coordinates.push({
+      const entry: CoordinateMeasurability<TensorIndex<JL, JR>> = {
         index: toRight(coordinate.index),
-        sigmaAlgebra: coordinate.sigmaAlgebra,
-        witness: coordinate.witness,
-        standardBorel: coordinate.standardBorel,
-      });
+        ...(coordinate.sigmaAlgebra === undefined
+          ? {}
+          : { sigmaAlgebra: coordinate.sigmaAlgebra }),
+        ...(coordinate.witness === undefined ? {} : { witness: coordinate.witness }),
+        ...(coordinate.standardBorel === undefined
+          ? {}
+          : { standardBorel: coordinate.standardBorel }),
+      };
+      coordinates.push(entry);
     });
     const kind: MeasurabilityKind = (() => {
       if (leftWitness?.kind === "standardBorel" && rightWitness?.kind === "standardBorel") return "standardBorel";
@@ -993,10 +1025,11 @@ export function tensorKolmogorovProducts<R, JL, XL, CL, JR, XR, CR>(
     const reasonParts: string[] = [];
     if (leftWitness?.reason) reasonParts.push(`left: ${leftWitness.reason}`);
     if (rightWitness?.reason) reasonParts.push(`right: ${rightWitness.reason}`);
+    const reason = reasonParts.length > 0 ? reasonParts.join("; ") : undefined;
     return {
       kind,
-      coordinates: coordinates.length > 0 ? coordinates : undefined,
-      reason: reasonParts.length > 0 ? reasonParts.join("; ") : undefined,
+      ...(coordinates.length > 0 ? { coordinates } : {}),
+      ...(reason === undefined ? {} : { reason }),
     } as MeasurabilityWitness<TensorIndex<JL, JR>>;
   };
 
@@ -1015,13 +1048,18 @@ export function tensorKolmogorovProducts<R, JL, XL, CL, JR, XR, CR>(
           };
           leftPositivity.indices?.forEach((index) => add(toLeft(index)));
           rightPositivity.indices?.forEach((index) => add(toRight(index)));
+          const reason =
+            [leftPositivity.reason, rightPositivity.reason].filter(Boolean).join("; ") || undefined;
           return {
             kind: "positive" as const,
             indices: indices.length > 0 ? indices : undefined,
-            reason: [leftPositivity.reason, rightPositivity.reason].filter(Boolean).join("; ") || undefined,
+            ...(reason === undefined ? {} : { reason }),
           } as PositivityWitness<TensorIndex<JL, JR>>;
         })()
       : undefined;
+
+  const countabilityWitness = combineCountability();
+  const measurabilityWitness = combineMeasurability();
 
   const family: ProjectiveFamily<R, TensorIndex<JL, JR>, XL | XR, TensorCarrier<CL, CR>> = {
     semiring: R,
@@ -1032,12 +1070,12 @@ export function tensorKolmogorovProducts<R, JL, XL, CL, JR, XR, CR>(
         : (right.family.coordinate((index as RightIndex<JR>).inner) as Dist<R, XL | XR>)),
     marginal,
     project,
-    extend,
-    update,
-    kolmogorov,
-    countability: combineCountability(),
-    measurability: combineMeasurability(),
-    positivity,
+    ...(extend === undefined ? {} : { extend }),
+    ...(update === undefined ? {} : { update }),
+    ...(kolmogorov === undefined ? {} : { kolmogorov }),
+    ...(countabilityWitness === undefined ? {} : { countability: countabilityWitness }),
+    ...(measurabilityWitness === undefined ? {} : { measurability: measurabilityWitness }),
+    ...(positivity === undefined ? {} : { positivity }),
   };
 
   const infObj = createInfObj(family);
@@ -1083,14 +1121,20 @@ export function checkKolmogorovConsistency<R, J, X, Carrier>(
     if (!equalDist(R, small, restricted)) failures.push(test);
   }
 
+  const countable = isCountableIndex(family);
+  const countabilityWitness = family.countability;
+  const measurable = hasMeasurabilityWitness(family);
+  const measurabilityWitness = family.measurability;
+  const standardBorel = isStandardBorelFamily(family);
+
   return {
     ok: failures.length === 0,
     failures,
-    countable: isCountableIndex(family),
-    witness: family.countability,
-    measurable: hasMeasurabilityWitness(family),
-    measurability: family.measurability,
-    standardBorel: isStandardBorelFamily(family),
+    countable,
+    ...(countabilityWitness === undefined ? {} : { witness: countabilityWitness }),
+    measurable,
+    ...(measurabilityWitness === undefined ? {} : { measurability: measurabilityWitness }),
+    standardBorel,
   };
 }
 

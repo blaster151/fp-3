@@ -8,7 +8,7 @@
 //   3. Implement an oracle report that certifies conditional independence and optional permutation invariants with diagnostic failures.
 
 import type { Fin, Kernel } from "./markov-category";
-import { FinMarkov, tensorObj, pair, deterministic, approxEqualMatrix } from "./markov-category";
+import { FinMarkov, pair, deterministic, approxEqualMatrix } from "./markov-category";
 import type { MarkovComonoidWitness } from "./markov-comonoid-structure";
 
 export interface MarkovConditionalWitnessOptions {
@@ -65,7 +65,7 @@ function flattenProduct(value: unknown, arity: number): unknown[] {
   if (!Array.isArray(value) || value.length !== 2) {
     throw new Error("Expected a left-associated tensor Pair during flattening.");
   }
-  const [prefix, last] = value as readonly [unknown, unknown];
+  const [prefix, last] = value;
   const head = flattenProduct(prefix, arity - 1);
   head.push(last);
   return head;
@@ -148,6 +148,9 @@ export function buildMarkovConditionalWitness<A>(
   }
   projections.forEach((projection, index) => {
     const witness = outputs[index];
+    if (!witness) {
+      throw new Error(`Projection ${index} is missing a corresponding output witness.`);
+    }
     if (projection.X !== arrow.Y) {
       throw new Error(`Projection ${index} does not consume the conditional kernel codomain.`);
     }
@@ -177,15 +180,16 @@ export function factorizeConditional<A>(witness: MarkovConditionalWitness<A>): F
   if (components.length === 0) {
     throw new Error("Cannot factorize a conditional witness without components.");
   }
-  let kernel: Kernel<A, unknown> = components[0].k;
-  let codomain: Fin<unknown> = components[0].Y;
-  for (let i = 1; i < components.length; i++) {
-    kernel = pair(kernel, components[i].k);
-    codomain = tensorObj(codomain, components[i].Y);
+  const [first, ...rest] = components as [FinMarkov<A, unknown>, ...FinMarkov<A, unknown>[]];
+  let kernel: Kernel<A, unknown> = first.k;
+  let codomainCardinality = first.Y.elems.length;
+  for (const component of rest) {
+    kernel = pair(kernel, component.k);
+    codomainCardinality *= component.Y.elems.length;
   }
-  if (codomain.elems.length !== witness.arrow.Y.elems.length) {
+  if (codomainCardinality !== witness.arrow.Y.elems.length) {
     throw new Error(
-      `Factorized codomain cardinality ${codomain.elems.length} differs from kernel codomain ${witness.arrow.Y.elems.length}.`,
+      `Factorized codomain cardinality ${codomainCardinality} differs from kernel codomain ${witness.arrow.Y.elems.length}.`,
     );
   }
   return new FinMarkov(witness.domain.object, witness.arrow.Y, kernel);
@@ -199,7 +203,13 @@ function permutationKernel(
   validatePermutation(permutation, arity);
   const action = deterministic((value: unknown) => {
     const flat = flattenProduct(value, arity);
-    const permuted = permutation.map((idx) => flat[idx]);
+    const permuted = permutation.map((idx) => {
+      const entry = flat[idx];
+      if (entry === undefined) {
+        throw new Error(`Permutation index ${idx} is outside the flattened tensor shape.`);
+      }
+      return entry;
+    });
     return rebuildProduct(permuted);
   });
   return new FinMarkov(codomain, codomain, action);

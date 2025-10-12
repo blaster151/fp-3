@@ -33,7 +33,11 @@ export function bssCompare<
   // 1. If g is constant (uninformative), f should dominate
   const gIsConstant = [...gHat.w.keys()].every(post => {
     const values = [...post.w.values()];
-    return values.every(v => Math.abs(v - values[0]) < 1e-10);
+    if (values.length === 0) return true;
+    const first = values[0];
+    if (first === undefined) return true;
+    const rest = values.slice(1);
+    return rest.every(v => Math.abs(v - first) < 1e-10);
   });
   
   if (gIsConstant) return true;

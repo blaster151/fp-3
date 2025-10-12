@@ -49,7 +49,11 @@ const enumerateAssignments = (subset: FiniteSubset<Index>): Assignment[] => {
       return;
     }
     const key = keys[offset];
-    for (const value of baseValues[key]) {
+    if (key === undefined) {
+      return;
+    }
+    const values = baseValues[key];
+    for (const value of values) {
       current.set(key, value);
       explore(offset + 1, current);
       current.delete(key);
@@ -247,6 +251,10 @@ describe("Semicartesian infinite tensor products", () => {
     const result = checkSemicartesianUniversalProperty(productWitness, [ambiguousCone], [["A"], ["B"]]);
     expect(result.holds).toBe(false);
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0].reason).toContain("violates uniqueness");
+    const failure = result.failures[0];
+    if (!failure) {
+      throw new Error("Expected at least one failure witness");
+    }
+    expect(failure.reason).toContain("violates uniqueness");
   });
 });

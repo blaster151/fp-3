@@ -38,12 +38,12 @@ export function buildZeroOneSynthesisWitness<A, XJ, T>(
     input.prior,
     input.statistic,
     input.finiteMarginals,
-    { label: input.label },
+    input.label === undefined ? undefined : { label: input.label },
   );
   return {
     kolmogorov,
-    symmetries: input.symmetries,
-    label: input.label,
+    ...(input.symmetries === undefined ? {} : { symmetries: input.symmetries }),
+    ...(input.label === undefined ? {} : { label: input.label }),
   };
 }
 
@@ -68,7 +68,7 @@ export function checkZeroOneSynthesis<A, XJ, T>(
   return {
     holds,
     kolmogorov,
-    symmetryReport,
+    ...(symmetryReport === undefined ? {} : { symmetryReport }),
   };
 }
 

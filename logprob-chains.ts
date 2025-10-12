@@ -2,7 +2,7 @@
 // Helpers for composing Markov kernels in log-space (numerically stable).
 // Depends on: markov-category.ts, semiring-dist.ts, semiring-utils.ts
 
-import { Fin, Kernel, Dist } from "./markov-category";
+import type { Fin, Kernel, Dist } from "./markov-category";
 import { LogProb, normalizeR } from "./semiring-dist";
 import { fromLogits } from "./semiring-utils";
 
