@@ -499,6 +499,19 @@ This document catalogs the algebraic laws that our functional programming constr
 - `relativeAdjunction.resolution.relativeMonad` keeps Theorem 5.24 visible in
   the registry; the analyzer will compare the induced relative monad against the
   adjunction’s hom-isomorphism data once the mate calculus is executable.
+- `relativeResolution.definition.5.25` certifies that a resolution records the
+  inclusion \(j\), apex loose morphism, and comparison isomorphisms that
+  reconstruct the underlying \(j\)-relative monad while caching the witnesses
+  for Propositions 5.29–5.30, Remark 5.33, Example 5.31, Corollary 5.32, and
+  Proposition 5.37.
+- `relativeResolution.category.identities` checks that morphisms of resolutions
+  admit identity arrows satisfying the left/right unit axioms so the category
+  \(\mathrm{Res}(T)\) remains well defined.
+- `relativeResolution.precomposition.suite` aggregates the executable data for
+  Proposition 5.29 precomposition, Proposition 5.30 pasting, Remark 5.33 and
+  Corollary 5.34’s resolute-composition guarantees, Example 5.31/Corollary 5.32
+  fully faithful postcomposition, and Proposition 5.37 transport along left
+  relative adjoints.
 - `relativeAdjunction.pasting.leftMorphism` runs
   `analyzeRelativeAdjunctionPasting`, checking that a nested pair of relative
   adjunctions shares equipment, that the outer right leg matches the inner root,

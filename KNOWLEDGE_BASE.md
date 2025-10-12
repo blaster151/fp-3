@@ -2,6 +2,16 @@
 
 This file captures "hey, this thing X is helpful if you ever need to Y" patterns discovered during development.
 
+## Relative Monad Resolutions (Arkor–McDermott §5)
+
+- **Proposition 5.29 (Tight precomposition):** Precomposing a relative adjunction along a tight cell yields another relative adjunction; the resulting comparison 2-cells compose functorially and share the original inclusion \(j\).
+- **Proposition 5.30 (Pasting law):** A pasted outer triangle is a relative adjunction exactly when the inner triangle is, so stored witnesses should compare both compositions against the same inclusion.
+- **Remark 5.33 (Resolute composition):** When the precomposition leg admits a right adjoint, relative adjunctions compose without additional search; keep explicit certificates so composite resolutions are discoverable.
+- **Example 5.31 (Fully faithful postcomposition):** Postcomposing along a fully faithful right leg exposes an induced \((\ell'!, r')\) adjunction whose unit collapses to the identity detected by Corollary 5.32.
+- **Corollary 5.32 (Identity criterion):** If the induced adjunction’s unit is an identity, the transported loose monad agrees with the original one; cache this check beside fully faithful metadata.
+- **Corollary 5.34 (Left-morphism functoriality):** Resolute composites induce a functor on left morphisms, so morphism metadata should record the transported left leg together with the right adjoint witnesses.
+- **Proposition 5.37 (Left adjoint transport):** A left relative adjoint transports an \(\ell'\)-relative monad to a \(j\)-relative monad and produces the canonical monad morphism \((\ell'!, r')\); store both the transported monad and morphism evidence.
+
 ## Canonical JSON Containers
 
 **What**: `CanonicalJsonMap<V>` and `CanonicalJsonSet` - Map/Set implementations that key by canonical JSON view.

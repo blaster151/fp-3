@@ -9,6 +9,8 @@ export * from "./relative-algebra-oracles";
 export * from "./relative-comonads";
 export * from "./relative-comonad-oracles";
 export * from "./relative-composition";
+export * from "./resolutions";
+export * from "./resolution-oracles";
 export * from "./mnne-vector-monads";
 export * from "./mnne-lambda-monads";
 export * from "./mnne-indexed-container-monads";
