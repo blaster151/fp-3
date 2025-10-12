@@ -10,7 +10,9 @@
   "scripts": {
     "build": "tsc && tsc --project tsconfig.run-examples.json",
     "typecheck": "tsc --project tsconfig.typecheck.json",
+    "typecheck:prod": "tsc --project tsconfig.prod.json --noEmit",
     "examples": "node dist/run-examples-simple.js",
+    "examples:runnable": "ts-node --project tsconfig.runnable-plan.json run-runnable-examples.ts",
     "test": "vitest",
     "test:laws": "vitest test/laws",
     "test:ci": "npm run check:stubs && vitest run test/laws --reporter=verbose",
@@ -21,7 +23,7 @@
     "test:new": "vitest test/sum-product.spec.ts test/two-cat.registry-and-laws.spec.ts test/two-cat.traversable-laws.spec.ts test/comonad.pair.coalgebra.spec.ts test/comonad.store.spec.ts test/cokleisli.laws.spec.ts test/simplicial.comonad.pair.spec.ts test/homology.pair.spec.ts test/homology.store.spec.ts test/glue.records.spec.ts test/mixed-distributive-laws.spec.ts --run",
     "coverage": "node test/laws/coverage-matrix.js",
     "coverage:ci": "node test/laws/coverage-matrix.js && npm run test:ci",
-    "precommit": "node scripts/derived-law-lint.mjs && npm run typecheck && npm run test:new",
+    "precommit": "node scripts/derived-law-lint.mjs && npm run typecheck:prod && npm run test:new",
     "audit:any": "node scripts/audit-any-usage.mjs",
     "fix:any": "node scripts/any-fix-suggestions.mjs", 
     "demo:any": "node scripts/demo-any-fixes.mjs",

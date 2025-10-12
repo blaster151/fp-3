@@ -107,7 +107,7 @@ describe('Traversable laws', () => {
     
     // Register base traversables
     const OptionF: EndofunctorK1<'Option'> = { map: mapO }
-    const ResultF = ResultK1<string>()
+    const ResultF = ResultK1<string>() as EndofunctorK1<['Either', 'string']>
     R.register(OptionF, TraversableOptionK1)
     R.register(ResultF, TraversableEitherK1<string>())
     
@@ -126,12 +126,12 @@ describe('Traversable laws', () => {
     expect(TCompM).toBeDefined()
     
     // Test that they work with Promise distribution
-    const sumVal = inL<'Option', ['Result', 'string'], number>(Some(Promise.resolve(42)))
+    const sumVal = inL<'Option', ['Either', 'string'], Promise<number>>(Some(Promise.resolve(42)))
     const sumSeq = distributePromiseK1(TSumM!)
     const sumResult = await sumSeq.app(sumVal)
-    expect(eq(sumResult, inL<'Option', ['Result', 'string'], number>(Some(42)))).toBe(true)
-    
-    const prodVal = prod<'Option', ['Result', 'string'], number>(Some(Promise.resolve(10)), Ok(Promise.resolve(20)))
+    expect(eq(sumResult, inL<'Option', ['Either', 'string'], number>(Some(42)))).toBe(true)
+
+    const prodVal = prod<'Option', ['Either', 'string'], Promise<number>>(Some(Promise.resolve(10)), Ok(Promise.resolve(20)))
     const prodSeq = distributePromiseK1(TProdM!)
     const prodResult = await prodSeq.app(prodVal)
     expect(eq(prodResult.left, Some(10))).toBe(true)

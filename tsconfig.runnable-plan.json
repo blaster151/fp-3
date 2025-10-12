@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "./dist",
+    "rootDir": "./",
+    "verbatimModuleSyntax": false
+  },
+  "include": [
+    "run-runnable-examples.ts",
+    "examples/runnable/**/*.ts"
+  ]
+}

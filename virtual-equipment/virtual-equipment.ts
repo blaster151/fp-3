@@ -270,7 +270,7 @@ const makeVerticalBoundary = <Obj, Arr>(
   to: Obj,
   tight: Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>,
   details?: string,
-): EquipmentVerticalBoundary<Obj, Arr> => ({ from, to, tight, details });
+): EquipmentVerticalBoundary<Obj, Arr> => (details !== undefined ? { from, to, tight, details } : { from, to, tight });
 
 const makeBoundaries = <Obj, Arr>(
   left: EquipmentVerticalBoundary<Obj, Arr>,
@@ -350,11 +350,18 @@ export const frameFromSequence = <Obj, Payload>(
 ): EquipmentFrame<Obj, Payload> =>
   arrows.length === 0
     ? { arrows, leftBoundary: fallbackLeft, rightBoundary: fallbackRight }
-    : {
-        arrows,
-        leftBoundary: arrows[0].from,
-        rightBoundary: arrows[arrows.length - 1].to,
-      };
+    : (() => {
+        const firstArrow = arrows[0];
+        const lastArrow = arrows[arrows.length - 1];
+        if (!firstArrow || !lastArrow) {
+          return { arrows, leftBoundary: fallbackLeft, rightBoundary: fallbackRight };
+        }
+        return {
+          arrows,
+          leftBoundary: firstArrow.from,
+          rightBoundary: lastArrow.to,
+        };
+      })();
 
 const composeFramePayloads = <Obj, Arr>(
   tight: EquipmentTightLayer<Obj, Arr>,
@@ -368,9 +375,15 @@ const composeFramePayloads = <Obj, Arr>(
   if (arrows.length === 0) {
     return tight.identity;
   }
-  let accumulator = arrows[0].payload;
+  const firstArrow = arrows[0];
+  if (!firstArrow) {
+    return tight.identity;
+  }
+  let accumulator = firstArrow.payload;
   for (let index = 1; index < arrows.length; index += 1) {
-    accumulator = tight.compose(arrows[index].payload, accumulator);
+    const arrow = arrows[index];
+    if (!arrow) continue;
+    accumulator = tight.compose(arrow.payload, accumulator);
   }
   return accumulator;
 };
@@ -400,7 +413,7 @@ export const horizontalComposeManyProarrows = <Obj, Arr, Payload, Evidence>(
   }
   if (chain.length === 1) {
     const [single] = chain;
-    return { ...single };
+    return single ? { from: single.from, to: single.to, payload: single.payload } : undefined;
   }
   const composed = equipment.proarrows.horizontalComposeMany(chain);
   if (composed) {
@@ -411,9 +424,13 @@ export const horizontalComposeManyProarrows = <Obj, Arr, Payload, Evidence>(
     if (!accumulator) {
       return undefined;
     }
+    const nextArrow = chain[index];
+    if (!nextArrow) {
+      return undefined;
+    }
     accumulator = horizontalComposeProarrows(
       equipment,
-      chain[index],
+      nextArrow,
       accumulator,
     );
   }
@@ -670,11 +687,17 @@ export const virtualiseTightCategory = <Obj, Arr>(
       }
       if (chain.length === 1) {
         const [single] = chain;
-        return { ...single };
+        return single ? { from: single.from, to: single.to, payload: single.payload } : undefined;
       }
       let accumulator = chain[0];
+      if (!accumulator) {
+        return undefined;
+      }
       for (let index = 1; index < chain.length; index += 1) {
         const next = chain[index];
+        if (!next || !accumulator) {
+          return undefined;
+        }
         if (!equalsObjects(accumulator.to, next.from)) {
           return undefined;
         }
@@ -770,7 +793,7 @@ export const virtualiseTightCategory = <Obj, Arr>(
               "Left restriction reuses the supplied tight 1-cell as the cartesian boundary witness.",
           },
         ),
-        representability,
+        ...(representability !== undefined && { representability }),
         details:
           "Successfully computed the left restriction by precomposing the proarrow payload with the supplied tight 1-cell.",
       };
@@ -847,7 +870,7 @@ export const virtualiseTightCategory = <Obj, Arr>(
               "Right restriction reuses the supplied tight 1-cell as the cartesian boundary witness.",
           },
         ),
-        representability,
+        ...(representability !== undefined && { representability }),
         details:
           "Successfully computed the right restriction by postcomposing the proarrow payload with the supplied tight 1-cell.",
       };

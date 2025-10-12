@@ -12,8 +12,19 @@
  */
 
 import type {
-  // Core types
-  Option, Result, Validation, StateReaderTask, RWST, ReaderTaskOption
+  Option, Result, Validation, StateReaderTask, RWST, ReaderTaskOption,
+  // Domain types
+  WeightedAutomaton, HMM, Edge,
+  Complex, ChainMap, Triangle,
+  Q,
+  ComplexFunctor,
+  DiscDiagram, ObjId,
+  FinitePoset, PosetDiagram,
+  VectorSpace, LinMap,
+  VectDiagram,
+  SNF,
+  Representation, Coaction,
+  Mat
 } from './allTS'
 
 import {
@@ -57,41 +68,96 @@ import {
   makeTaggedLeftModule, eye, categoryOfEntwinedModules, isOk,
   // Practical utilities
   SemiringMinPlus, SemiringMaxPlus, SemiringBoolOrAnd, SemiringProb,
-  WeightedAutomaton, waRun, waAcceptsBool, HMM, hmmForward, diagFromVec,
-  Edge, graphAdjNat, graphAdjBool, graphAdjWeights, countPathsOfLength, 
-  reachableWithin, shortestPathsUpTo, transitiveClosureBool, compileRegexToWA, compileRegexToWAWithAlphabet,
+  waRun, waAcceptsBool, hmmForward, diagFromVec,
+  graphAdjNat, graphAdjBool, graphAdjWeights, countPathsOfLength, 
+  reachableWithin, shortestPathsUpTo, transitiveClosureBool, compileRegexToWA,
   // Triangulated categories
-  RingReal, Complex, ChainMap, Triangle, complexIsValid, isChainMap, 
+  RingReal, complexIsValid, isChainMap, 
   shift1, cone, triangleFromMap, triangleIsSane,
   // Advanced homological algebra
-  FieldReal, FieldQ, Q, Qof, QtoString, rref, nullspace, solveLinear, composeExact,
+  FieldReal, FieldQ, Qof, QtoString, rref, nullspace, solveLinear, composeExact,
   rrefQPivot, runLesConeProps, randomTwoTermComplex, makeHomologyShiftIso,
   // Discoverability and advanced features
-  FP_CATALOG, checkExactnessForFunctor, ComplexFunctor, idChainMapN,
+  FP_CATALOG, checkExactnessForFunctor, idChainMapN,
   // Diagram toolkit
-  DiscDiagram, ObjId, reindexDisc, coproductComplex, LanDisc, RanDisc, 
+  reindexDisc, coproductComplex, LanDisc, RanDisc, 
   checkBeckChevalleyDiscrete, registerRref,
   // Poset diagrams
-  FinitePoset, PosetDiagram, makePosetDiagram, pushoutInDiagram, pullbackInDiagram,
+  makePosetDiagram, pushoutInDiagram, pullbackInDiagram,
   LanPoset, RanPoset,
   // Vector space bridge
-  VectorSpace, LinMap, VS, idL, composeL, linToChain, complexSpaces,
-  VectDiagram, toVectAtDegree, arrowMatrixAtDegree,
-  // Pretty-printing
-  ppMatrix, ppChainMap, ppVectDiagramAtDegree,
+  VS, idL, composeL, linToChain, complexSpaces,
+  toVectAtDegree, arrowMatrixAtDegree,
   // Smith Normal Form
-  SNF, smithNormalForm,
+  smithNormalForm,
   // Algebra bridges  
-  Representation, Coaction, applyRepAsLin, coactionAsLin, pushCoaction,
+  applyRepAsLin, coactionAsLin, pushCoaction,
   actionToChain, coactionToChain,
   // New namespaces
   VectView, Pretty, IntSNF, DiagramClosure, DiagramLaws, IndexedFamilies, DiscreteCategory,
   EnhancedVect, ArrowFamilies, CategoryLimits,
   // Infrastructure
   makeFinitePoset, prettyPoset, makePosetDiagramCompat, idChainMapCompat,
+  // Relative monad layer
+  idFun, composeFun, fromMonad, enumerateRelativeMonadOracles,
+  describeTrivialRelativeKleisli, describeTrivialRelativeEilenbergMoore,
+  describeTrivialRelativeAdjunction, describeRelativeAdjunctionSectionWitness,
+  analyzeRelativeAdjunctionSection,
+  enumerateRelativeAlgebraOracles, RelativeAlgebraOracles,
   // Namespaced exports
-  Diagram, Lin, Chain, Exactness, Vect, IntegerLA, Algebra
+  Diagram, Lin, Chain, Exactness, Vect, IntegerLA, Algebra,
+  // Matrix operations
+  matMul
 } from './allTS'
+import {
+  analyzeRelativeEnrichedEilenbergMooreAlgebra,
+  analyzeRelativeEnrichedVCatMonad,
+  analyzeRelativeEnrichedYonedaDistributor,
+  describeRelativeEnrichedMonadWitness,
+  describeRelativeEnrichedEilenbergMooreAlgebraWitness,
+  describeRelativeEnrichedVCatMonadWitness,
+  describeRelativeEnrichedYonedaDistributorWitness,
+  describeRelativeEnrichedYonedaWitness,
+} from './relative/relative-monads'
+import {
+  analyzeFiniteVectorRelativeMonad,
+  analyzeFiniteVectorLeftKanExtension,
+  analyzeFiniteVectorArrowCorrespondence,
+  describeBooleanVectorLeftKanExtensionWitness,
+  describeBooleanVectorRelativeMonadWitness,
+  describeBooleanVectorArrowCorrespondenceWitness,
+} from './relative/mnne-vector-monads'
+import {
+  analyzeUntypedLambdaRelativeMonad,
+  describeUntypedLambdaRelativeMonadWitness,
+} from './relative/mnne-lambda-monads'
+import {
+  analyzeIndexedContainerRelativeMonad,
+  describeIndexedContainerExample4Witness,
+} from './relative/mnne-indexed-container-monads'
+import {
+  analyzeMnneLaxMonoidalStructure,
+  analyzeMnneLaxMonoid,
+  describeTwoObjectLaxMonoidalWitness,
+  describeTwoObjectLaxMonoidWitness,
+} from './relative/mnne-lax-monoidal'
+import {
+  analyzeMnneWellBehavedInclusion,
+  describeIdentityWellBehavedWitness,
+} from './relative/mnne-well-behaved'
+import {
+  analyzeMnneRelativeMonadLanExtension,
+  describeIdentityLanExtensionWitness,
+} from './relative/mnne-monad-extensions'
+import {
+  analyzeRelativeComonadCoopAlgebra,
+  analyzeRelativeEnrichedComonad,
+  describeRelativeComonadCoopAlgebraWitness,
+  describeRelativeEnrichedComonadWitness,
+  describeTrivialRelativeComonad,
+} from './relative/relative-comonads'
+import { RelativeComonadOracles } from './relative/relative-comonad-oracles'
+import { RelativeMonadOracles } from './relative/relative-oracles'
 
 // ====================================================================
 // 1. BASIC CONCEPTS - Option, Result, Validation
@@ -882,10 +948,10 @@ namespace ComoduleExamples {
     // Automaton that counts paths spelling 'ab' on 2-state line
     const init = [1, 0] as const
     const final = [0, 1] as const
-    const deltaCount = {
+    const deltaCount: Readonly<Record<'a'|'b', Mat<number>>> = {
       a: [[0,1],[0,0]],
       b: [[0,0],[0,1]],
-    } as const
+    }
     const WAcount: WeightedAutomaton<number, 'a'|'b'> = { 
       S: SemiringNat, n: 2, init, final, delta: deltaCount 
     }
@@ -1079,7 +1145,8 @@ namespace ComoduleExamples {
     ] as const
     
     for (const feature of sampleFeatures) {
-      console.log(`  ${feature}: ${FP_CATALOG[feature]}`)
+      const description = FP_CATALOG[feature as keyof typeof FP_CATALOG]
+      console.log(`  ${feature}: ${description}`)
     }
     
     console.log('\nGeneric exactness checker demo:')
@@ -1116,16 +1183,16 @@ namespace ComoduleExamples {
     console.log('Created discrete diagram with objects:', Object.keys(DJ))
     
     // Reindexing along a color function
-    const color = (j: ObjId) => ({ a: 'red', b: 'blue', c: 'red' }[j] ?? 'unknown')
-    const reindexed = reindexDisc(color)(DJ)
+    const color = (j: ObjId) => ({ a: 'red', b: 'blue', c: 'red' }[j as 'a'|'b'|'c'] ?? 'unknown')
+    const reindexed = reindexDisc<number>(color)(DJ)
     console.log('Reindexed by color, objects:', Object.keys(reindexed))
     
     // Left Kan extension (fiberwise coproduct)
     const Lan = LanDisc(FieldReal)
     const lanResult = Lan(color)(DJ)
     console.log('Left Kan extension objects:', Object.keys(lanResult))
-    console.log('  red fiber dimension (degree 0):', lanResult.red?.dim[0])
-    console.log('  blue fiber dimension (degree 0):', lanResult.blue?.dim[0])
+    console.log('  red fiber dimension (degree 0):', lanResult['red']?.dim[0])
+    console.log('  blue fiber dimension (degree 0):', lanResult['blue']?.dim[0])
     
     // Coproduct of complexes
     const coprod = coproductComplex(FieldReal)(C1, C2)
@@ -1378,8 +1445,8 @@ namespace ComoduleExamples {
     
     console.log('Left Kan extension computed:')
     console.log('  Objects:', Object.keys(LanResult.X))
-    console.log('  Lan(x) dimension:', LanResult.X.x?.dim[0])
-    console.log('  Lan(y) dimension:', LanResult.X.y?.dim[0])
+    console.log('  Lan(x) dimension:', LanResult.X['x']?.dim[0])
+    console.log('  Lan(y) dimension:', LanResult.X['y']?.dim[0])
     
     const universalArrow = LanResult.arr('x', 'y')
     if (universalArrow) {
@@ -1421,8 +1488,8 @@ namespace ComoduleExamples {
     
     console.log('\nVect view at degree 0:')
     console.log('  Objects:', Object.keys(vectView.V))
-    console.log('  x dimension:', vectView.V.x?.dim)
-    console.log('  y dimension:', vectView.V.y?.dim)
+    console.log('  x dimension:', vectView.V['x']?.dim)
+    console.log('  y dimension:', vectView.V['y']?.dim)
     
     const arrow_xy = vectView.arr('x', 'y')
     if (arrow_xy) {
@@ -1430,7 +1497,7 @@ namespace ComoduleExamples {
     }
     
     // Pretty-print the Vect diagram
-    const prettyView = ppVectDiagramAtDegree(FieldReal)('Example', vectView)
+    const prettyView = Pretty.vectDiagramAtDegree(FieldReal)('Example', vectView)
     console.log('\nPretty-printed view:')
     console.log(prettyView)
     
@@ -1443,7 +1510,7 @@ namespace ComoduleExamples {
     // Create a simple matrix
     const A = [[1, 2, 3], [4, 5, 6]]
     console.log('Matrix A:')
-    console.log(ppMatrix(FieldReal)(A))
+    console.log(Pretty.matrix(FieldReal)(A))
     
     // Create a chain map
     const X: Complex<number> = { S: FieldReal, degrees: [0, 1], dim: {0: 2, 1: 1}, d: {} }
@@ -1455,7 +1522,7 @@ namespace ComoduleExamples {
     }
     
     console.log('\nChain map f:')
-    console.log(ppChainMap(FieldReal)('f', f))
+    console.log(Pretty.chainMap(FieldReal)('f', f))
     
     console.log('✓ Pretty-printing working!')
   }
@@ -1471,22 +1538,23 @@ namespace ComoduleExamples {
     ]
     
     console.log('Original matrix A:')
-    console.log(ppMatrix(FieldReal)(A))
+    console.log(Pretty.matrix(FieldReal)(A))
     
-    const { U, S, V } = smithNormalForm(A)
+    const snf = smithNormalForm(A)
+    const { U, V, D } = snf
     
-    console.log('\nSmith Normal Form: U * A * V = S')
+    console.log('\nSmith Normal Form: U * A * V = D')
     console.log('U (left transform):')
-    console.log(ppMatrix(FieldReal)(U))
-    console.log('\nS (diagonal form):')
-    console.log(ppMatrix(FieldReal)(S))
+    console.log(Pretty.matrix(FieldReal)(U))
+    console.log('\nD (diagonal form):')
+    console.log(Pretty.matrix(FieldReal)(D))
     console.log('\nV (right transform):')
-    console.log(ppMatrix(FieldReal)(V))
+    console.log(Pretty.matrix(FieldReal)(V))
     
-    // Verify: U * A * V = S
+    // Verify: U * A * V = D
     const UAV = matMul(FieldReal)(U as number[][], matMul(FieldReal)(A as number[][], V as number[][]))
     console.log('\nVerification U*A*V:')
-    console.log(ppMatrix(FieldReal)(UAV))
+    console.log(Pretty.matrix(FieldReal)(UAV))
     
     console.log('✓ Smith Normal Form working!')
   }
@@ -1514,14 +1582,14 @@ namespace ComoduleExamples {
     console.log('  y (upper triangular):', matrixRep.mat('y'))
     
     // Convert to linear map
-    const linMapX = applyRepAsLin(FieldReal)(matrixRep, 'x')
+    const linMapX = applyRepAsLin<string, number>(FieldReal)(matrixRep, 'x')
     console.log('\nLinear map for x:')
     console.log('  Domain dimension:', linMapX.dom.dim)
     console.log('  Codomain dimension:', linMapX.cod.dim)
     console.log('  Matrix:', linMapX.M)
     
     // Convert to chain map at degree 0
-    const chainMapX = actionToChain(FieldReal)(0, matrixRep, 'x')
+    const chainMapX = actionToChain<string, number>(FieldReal)(0, matrixRep, 'x')
     console.log('\nChain map for x at degree 0:')
     console.log('  X dimension[0]:', chainMapX.X.dim[0])
     console.log('  Y dimension[0]:', chainMapX.Y.dim[0])
@@ -1560,11 +1628,11 @@ namespace ComoduleExamples {
     console.log('\nUsing Vect.VS to create 3D space:', V3.dim)
     
     const testMatrix = [[1, 2], [3, 4]]
-    console.log('\nUsing Pretty.ppMatrix:')
-    console.log(Pretty.ppMatrix(FieldReal)(testMatrix))
+    console.log('\nUsing Pretty.matrix:')
+    console.log(Pretty.matrix(FieldReal)(testMatrix))
     
-    const snf = IntegerLA.smithNormalForm([[2, 4], [6, 8]])
-    console.log('\nUsing IntegerLA.smithNormalForm diagonal:', snf.S)
+    const snf2 = IntSNF.smithNormalForm([[2, 4], [6, 8]])
+    console.log('\nUsing IntSNF.smithNormalForm diagonal:', snf2.S)
     
     console.log('✓ All namespaces working!')
   }
@@ -1636,7 +1704,7 @@ namespace ComoduleExamples {
     const DD = IndexedFamilies.familyToDiscDiagram(family, indices)
     console.log('\nConverted to DiscDiagram:')
     console.log('  Objects:', Object.keys(DD))
-    console.log('  x dimension:', DD.x?.dim[0])
+    console.log('  x dimension:', DD['x']?.dim[0])
     
     // Convert back to family
     const backToFamily = IndexedFamilies.discDiagramToFamily(DD)
@@ -1864,11 +1932,11 @@ namespace ComoduleExamples {
 
     const equipment = virtualizeFiniteCategory(TwoObjectCategory)
 
-    const companion = pendingCompanion('id_{TwoObjectCategory}')(equipment, identityTight)
+    const companion = pendingCompanion<TwoObject, TwoArrow, unknown, unknown>('id_{TwoObjectCategory}')(equipment as any, identityTight)
     console.log('\nCompanion availability:', companion.available)
     console.log('Companion details:', companion.details)
 
-    const conjoint = pendingConjoint('id_{TwoObjectCategory}')(equipment, identityTight)
+    const conjoint = pendingConjoint<TwoObject, TwoArrow, unknown, unknown>('id_{TwoObjectCategory}')(equipment as any, identityTight)
     console.log('\nConjoint availability:', conjoint.available)
     console.log('Conjoint details:', conjoint.details)
 
@@ -2096,9 +2164,9 @@ namespace ComoduleExamples {
     
     // Kan along indices (example with existing discrete operations)
     console.log('\n4. Kan extensions:')
-    const simpleF = (i: number) => ({ S: FieldReal, degrees: [0], dim: {0: i+1}, d: {} })
-    const DD = IndexedFamilies.familyToDiscDiagram(simpleF, [0, 1, 2])
-    const LanDD = LanDisc(FieldReal)(u)(DD)
+    const simpleF: IndexedFamilies.Family<string, Complex<number>> = (i: string) => ({ S: FieldReal, degrees: [0], dim: {0: Number(i)+1}, d: {} })
+    const DD = IndexedFamilies.familyToDiscDiagram(simpleF, ['0', '1', '2'])
+    const LanDD = LanDisc(FieldReal)((i: string) => String(Number(i) % 2))(DD)
     console.log('  Lan via discrete diagram:')
     console.log('    Lan(0) dimension:', LanDD[0]?.dim[0]) // sum of dims where u(j)=0
     console.log('    Lan(1) dimension:', LanDD[1]?.dim[0]) // sum of dims where u(j)=1
@@ -2113,6 +2181,441 @@ namespace ComoduleExamples {
     console.log('  Projection 0 shape:', projections(0).from.dim, '→', projections(0).to.dim)
     
     console.log('\n✓ All tiny examples working!')
+  }
+}
+
+// ====================================================================
+// 9. RELATIVE MONAD LAYER - Identity-root scaffolding
+// ====================================================================
+
+namespace RelativeMonadExamples {
+  const identityMonad: CatMonad<typeof TwoObjectCategory> = {
+    category: TwoObjectCategory,
+    endofunctor: idFun(TwoObjectCategory),
+    unit: {
+      source: idFun(TwoObjectCategory),
+      target: idFun(TwoObjectCategory),
+      component: (object: TwoObject) => TwoObjectCategory.id(object),
+    },
+    mult: {
+      source: composeFun(idFun(TwoObjectCategory), idFun(TwoObjectCategory)),
+      target: idFun(TwoObjectCategory),
+      component: (object: TwoObject) => TwoObjectCategory.id(object),
+    },
+  }
+
+  export const identityRelativeMonadDemo = () => {
+    const relative = fromMonad(identityMonad, { rootObject: '•' })
+    const monadReports = enumerateRelativeMonadOracles(relative)
+    const kleisli = describeTrivialRelativeKleisli(relative)
+    const eilenbergMoore = describeTrivialRelativeEilenbergMoore(relative)
+    const algebraReports = enumerateRelativeAlgebraOracles(kleisli, eilenbergMoore)
+    const equipment = virtualizeFiniteCategory(TwoObjectCategory)
+    const trivialComonad = describeTrivialRelativeComonad(equipment, '•')
+
+    console.log('\nRelative monad diagnostics (identity root)')
+    for (const report of monadReports) {
+      console.log(`  ${report.registryPath}: holds=${report.holds}, pending=${report.pending}`)
+    }
+
+    console.log('Relative algebra/opalgebra diagnostics')
+    for (const report of algebraReports) {
+      console.log(`  ${report.registryPath}: pending=${report.pending}`)
+    }
+
+    const enrichedReport = RelativeMonadOracles.enrichedCompatibility(relative)
+    const setEnrichedReport = RelativeMonadOracles.setEnrichedCompatibility(relative)
+    const enrichedEmReport =
+      RelativeMonadOracles.enrichedEilenbergMooreAlgebra(relative)
+    const kleisliInclusionReport =
+      RelativeMonadOracles.enrichedKleisliInclusion(relative)
+    console.log('\nSection 8 enriched relative monad diagnostics')
+    console.log(
+      `  holds=${enrichedReport.holds}, issues=${enrichedReport.issues?.length ?? 0}`
+    )
+
+    console.log('Example 8.14 Set-enriched correspondences')
+    console.log(
+      `  holds=${setEnrichedReport.holds}, issues=${setEnrichedReport.issues?.length ?? 0}`
+    )
+
+    console.log('Definition 8.16 enriched Eilenberg–Moore algebra')
+    console.log(
+      `  holds=${enrichedEmReport.holds}, issues=${
+        enrichedEmReport.issues?.length ?? 0
+      }`
+    )
+
+    console.log('Lemma 8.7 enriched Kleisli inclusion')
+    console.log(
+      `  holds=${kleisliInclusionReport.holds}, issues=${
+        kleisliInclusionReport.issues?.length ?? 0
+      }`
+    )
+
+    const vcatReport = RelativeMonadOracles.enrichedVCatSpecification(relative)
+    console.log('Theorem 8.12 V-Cat diagnostics')
+    console.log(
+      `  holds=${vcatReport.holds}, issues=${vcatReport.issues?.length ?? 0}`
+    )
+
+    const vectorWitness = describeBooleanVectorRelativeMonadWitness([0, 1, 2])
+    const vectorKleisliReport =
+      RelativeMonadOracles.vectorKleisliSplitting(vectorWitness)
+    const vectorArrowReport = RelativeMonadOracles.vectorArrowCorrespondence()
+    console.log('Example 5 Kleisli matrices (Boolean vectors)')
+    console.log(
+      `  holds=${vectorKleisliReport.holds}, issues=${
+        vectorKleisliReport.issues?.length ?? 0
+      }`
+    )
+    console.log('Example 1 arrow correspondence (Boolean vectors)')
+    console.log(
+      `  holds=${vectorArrowReport.holds}, issues=${
+        vectorArrowReport.issues?.length ?? 0
+      }`
+    )
+
+    const lambdaWitness = describeUntypedLambdaRelativeMonadWitness()
+    const lambdaKleisliReport =
+      RelativeMonadOracles.lambdaKleisliSplitting(lambdaWitness)
+    console.log('Example 6 Kleisli substitutions (λ-calculus)')
+    console.log(
+      `  holds=${lambdaKleisliReport.holds}, issues=${
+        lambdaKleisliReport.issues?.length ?? 0
+      }`
+    )
+
+    const laxMonoidalReport = RelativeMonadOracles.functorCategoryLaxMonoidal()
+    console.log('Section 3.2 functor-category lax monoidal oracle')
+    console.log(
+      `  holds=${laxMonoidalReport.holds}, issues=${
+        laxMonoidalReport.issues?.length ?? 0
+      }`
+    )
+
+    const laxMonoidReport = RelativeMonadOracles.functorCategoryLaxMonoid()
+    console.log('Theorem 3 lax monoid oracle')
+    console.log(
+      `  holds=${laxMonoidReport.holds}, issues=${
+        laxMonoidReport.issues?.length ?? 0
+      }`
+    )
+
+    const wellBehavedReport = RelativeMonadOracles.wellBehavedInclusion()
+    console.log('Definition 4.1 well-behaved inclusion oracle')
+    console.log(
+      `  holds=${wellBehavedReport.holds}, issues=${
+        wellBehavedReport.issues?.length ?? 0
+      }`
+    )
+
+    const lanExtensionOracle = RelativeMonadOracles.lanExtension()
+    console.log('Theorem 7 Lan_J T extension oracle')
+    console.log(
+      `  holds=${lanExtensionOracle.holds}, issues=${
+        lanExtensionOracle.issues?.length ?? 0
+      }`
+    )
+
+    const lanWitness = describeIdentityLanExtensionWitness()
+    const lanReport = analyzeMnneRelativeMonadLanExtension(lanWitness)
+    console.log(
+      `  comparison components=${lanReport.comparisonCount}, extension checks=${lanReport.extensionChecks}`
+    )
+
+    console.log('\nRelative comonad diagnostics (identity root)')
+    const comonadFraming = RelativeComonadOracles.counitFraming(trivialComonad)
+    const comonadCoextension = RelativeComonadOracles.coextensionFraming(trivialComonad)
+    const comonadIdentity = RelativeComonadOracles.identityReduction(trivialComonad)
+    console.log(
+      `  counit framing holds=${comonadFraming.holds}, issues=${comonadFraming.issues?.length ?? 0}`
+    )
+    console.log(
+      `  coextension framing holds=${comonadCoextension.holds}, issues=${comonadCoextension.issues?.length ?? 0}`
+    )
+    console.log(
+      `  identity reduction holds=${comonadIdentity.holds}, issues=${comonadIdentity.issues?.length ?? 0}`
+    )
+
+    const enrichedComonadWitness = describeRelativeEnrichedComonadWitness(trivialComonad)
+    const enrichedComonadReport = analyzeRelativeEnrichedComonad(enrichedComonadWitness)
+    const enrichedComonadOracle = RelativeComonadOracles.enrichment(enrichedComonadWitness)
+    console.log('Proposition 8.22 enriched comonad witness')
+    console.log(
+      `  holds=${enrichedComonadReport.holds}, oracle=${enrichedComonadOracle.holds}, issues=${enrichedComonadReport.issues.length}`
+    )
+
+    const coopWitness = describeRelativeComonadCoopAlgebraWitness(enrichedComonadWitness)
+    const coopReport = analyzeRelativeComonadCoopAlgebra(coopWitness)
+    const coopOracle = RelativeComonadOracles.coopAlgebra(coopWitness)
+    console.log('Theorem 8.24 coopalgebra diagnostics')
+    console.log(
+      `  holds=${coopReport.holds}, oracle=${coopOracle.holds}, enrichment=${coopReport.enrichment.holds}, issues=${coopReport.issues.length}`
+    )
+
+    const yonedaReport = RelativeMonadOracles.enrichedYoneda(relative)
+    console.log('Yoneda embedding diagnostics')
+    console.log(
+      `  holds=${yonedaReport.holds}, issues=${yonedaReport.issues?.length ?? 0}`
+    )
+
+    const yonedaDistributorReport =
+      RelativeMonadOracles.enrichedYonedaDistributor(relative)
+    console.log('Yoneda distributor diagnostics')
+    console.log(
+      `  holds=${yonedaDistributorReport.holds}, issues=${
+        yonedaDistributorReport.issues?.length ?? 0
+      }`
+    )
+    const enrichedYonedaWitness = describeRelativeEnrichedMonadWitness(relative)
+    const yonedaWitness = describeRelativeEnrichedYonedaWitness(enrichedYonedaWitness)
+    const distributorWitness =
+      describeRelativeEnrichedYonedaDistributorWitness(yonedaWitness)
+    const distributorAnalysis =
+      analyzeRelativeEnrichedYonedaDistributor(distributorWitness)
+    console.log(
+      `  right lift holds=${distributorAnalysis.rightLift.holds}, issues=${distributorAnalysis.rightLift.issues.length}`
+    )
+
+    const vcatWitness = describeRelativeEnrichedVCatMonadWitness(enrichedYonedaWitness)
+    const vcatAnalysis = analyzeRelativeEnrichedVCatMonad(vcatWitness)
+    console.log(`  enriched V-Cat issues=${vcatAnalysis.issues.length}`)
+
+    const enrichedEmWitness =
+      describeRelativeEnrichedEilenbergMooreAlgebraWitness(enrichedYonedaWitness)
+    const enrichedEmAnalysis =
+      analyzeRelativeEnrichedEilenbergMooreAlgebra(enrichedEmWitness)
+    console.log(`  enriched EM issues=${enrichedEmAnalysis.issues.length}`)
+
+    const emReport =
+      RelativeAlgebraOracles.eilenbergMooreUniversalProperty(eilenbergMoore)
+    console.log('\nRelative Eilenberg–Moore universal property witness')
+    console.log(
+      `  holds=${emReport.holds}, pending=${emReport.pending}, issues=${
+        emReport.issues?.length ?? 0
+      }`
+    )
+    if (emReport.restrictionReport) {
+      console.log(
+        `  restriction pending=${emReport.restrictionReport.pending}, issues=${emReport.restrictionReport.issues.length}`
+      )
+    }
+    if (emReport.mediatingTightCellReport) {
+      console.log(
+        `  mediating tight cell pending=${emReport.mediatingTightCellReport.pending}, issues=${emReport.mediatingTightCellReport.issues.length}`
+      )
+    }
+    if (emReport.sectionReport) {
+      console.log(
+        `  section pending=${emReport.sectionReport.pending}, issues=${emReport.sectionReport.issues.length}`
+      )
+    }
+    if (emReport.gradedExtensionReport) {
+      console.log(
+        `  graded extension pending=${emReport.gradedExtensionReport.pending}, issues=${emReport.gradedExtensionReport.issues.length}`
+      )
+    }
+
+    const partialRightAdjointReport =
+      RelativeAlgebraOracles.partialRightAdjointFunctor({
+        presentation: eilenbergMoore,
+        section: eilenbergMoore.universalWitness!.section,
+        comparison: {
+          tight: relative.root.tight,
+          domain: relative.root.from,
+          codomain: relative.carrier.to,
+        },
+        fixedObjects: [relative.root],
+      })
+    console.log('\nPartial right adjoint functor diagnostics')
+    console.log(
+      `  pending=${partialRightAdjointReport.pending}, issues=${
+        partialRightAdjointReport.issues?.length ?? 0
+      }`
+    )
+    if (partialRightAdjointReport.sectionReport) {
+      console.log(
+        `  section issues=${partialRightAdjointReport.sectionReport.issues.length}`
+      )
+    }
+
+    const opalgebraResolutionReport =
+      RelativeAlgebraOracles.opalgebraResolution(kleisli)
+    console.log('\nLemma 6.47 opalgebra resolution diagnostics')
+    console.log(
+      `  pending=${opalgebraResolutionReport.pending}, issues=${
+        opalgebraResolutionReport.issues?.length ?? 0
+      }`
+    )
+    if (opalgebraResolutionReport.kappaReport) {
+      console.log(
+        `  κ_t pending=${opalgebraResolutionReport.kappaReport.pending}, issues=${opalgebraResolutionReport.kappaReport.issues.length}`
+      )
+    }
+
+    const partialLeftAdjointReport =
+      RelativeAlgebraOracles.partialLeftAdjointSection(kleisli)
+    console.log('\nTheorem 6.49 partial left adjoint diagnostics')
+    console.log(
+      `  pending=${partialLeftAdjointReport.pending}, issues=${
+        partialLeftAdjointReport.issues?.length ?? 0
+      }`
+    )
+    if (partialLeftAdjointReport.resolutionReport) {
+      console.log(
+        `  resolution pending=${partialLeftAdjointReport.resolutionReport.pending}, issues=${partialLeftAdjointReport.resolutionReport.issues.length}`
+      )
+    }
+
+    const adjunction = describeTrivialRelativeAdjunction(
+      relative.equipment,
+      relative.root.from
+    )
+    const sectionWitness = describeRelativeAdjunctionSectionWitness(adjunction)
+    const sectionOracle = analyzeRelativeAdjunctionSection(sectionWitness)
+    console.log('\nLemma 6.38 right-adjoint section witness')
+    console.log(
+      `  pending=${sectionOracle.pending}, issues=${sectionOracle.issues.length}`
+    )
+  }
+
+  export const booleanVectorRelativeMonadDemo = () => {
+    const witness = describeBooleanVectorRelativeMonadWitness([0, 1, 2])
+    const report = analyzeFiniteVectorRelativeMonad(witness)
+    const arrowWitness = describeBooleanVectorArrowCorrespondenceWitness([0, 1, 2])
+    const arrowReport = analyzeFiniteVectorArrowCorrespondence(arrowWitness)
+
+    console.log('\nExample 1: Boolean finite vector relative monad diagnostics')
+    console.log(`  holds=${report.holds}, issues=${report.issues.length}`)
+    for (const summary of report.spaceSummary) {
+      console.log(
+        `  dimension ${summary.dimension}: vectors=${summary.vectorCount}, arrows=${summary.arrowCount}`,
+      )
+    }
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+
+    console.log('\nExample 1: Boolean vector arrow correspondence')
+    console.log(
+      `  holds=${arrowReport.holds}, issues=${arrowReport.issues.length}, comparisons=${arrowReport.actionComparisons}`,
+    )
+    if (!arrowReport.holds) {
+      for (const issue of arrowReport.issues.slice(0, 5)) {
+        console.log(`    mismatch: ${issue}`)
+      }
+    }
+  }
+
+  export const untypedLambdaRelativeMonadDemo = () => {
+    const witness = describeUntypedLambdaRelativeMonadWitness()
+    const report = analyzeUntypedLambdaRelativeMonad(witness)
+
+    console.log('\nExample 2: Untyped λ-calculus relative monad diagnostics')
+    console.log(
+      `  holds=${report.holds}, issues=${report.issues.length}, details=${report.details}`,
+    )
+    for (const context of report.contexts) {
+      console.log(
+        `  context size ${context.size}: depth=${context.maxDepth}, terms=${context.termCount}`,
+      )
+    }
+    for (const substitution of report.substitutions) {
+      console.log(
+        `  substitution ${substitution.source}→${substitution.target}: depth=${substitution.maxDepth}, count=${substitution.substitutionCount}`,
+      )
+    }
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+  }
+
+  export const indexedContainerRelativeMonadDemo = () => {
+    const witness = describeIndexedContainerExample4Witness()
+    const report = analyzeIndexedContainerRelativeMonad(witness)
+
+    console.log('\nExample 4: Indexed container relative monad diagnostics')
+    console.log(
+      `  holds=${report.holds}, issues=${report.issues.length}, details=${report.details}`,
+    )
+    for (const summary of report.summaries) {
+      console.log(
+        `  family ${summary.label}: base=${summary.baseElementCount}, containers=${summary.containerElementCount}, arrows=${summary.arrowCount}`,
+      )
+    }
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+  }
+
+  export const booleanVectorLeftKanExtensionDemo = () => {
+    const witness = describeBooleanVectorLeftKanExtensionWitness([0, 1, 2], 2)
+    const report = analyzeFiniteVectorLeftKanExtension(witness)
+
+    console.log('\nExample 1: Boolean vector left Kan extension diagnostics')
+    console.log(`  holds=${report.holds}, issues=${report.issues.length}`)
+    for (const summary of report.summaries) {
+      console.log(
+        `  target size ${summary.targetSize}: entries=${summary.entryCount}, vectors=${summary.vectorCount}, classes=${summary.equivalenceClasses}`,
+      )
+    }
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+  }
+
+  export const functorCategoryLaxMonoidalDemo = () => {
+    const witness = describeTwoObjectLaxMonoidalWitness()
+    const report = analyzeMnneLaxMonoidalStructure(witness)
+
+    console.log('\nSection 3.2: Functor category lax monoidal diagnostics')
+    console.log(
+      `  holds=${report.holds}, issues=${report.issues.length}, functors=${report.functorCount}, triples=${report.tripleCount}`,
+    )
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+  }
+
+  export const functorCategoryLaxMonoidDemo = () => {
+    const witness = describeTwoObjectLaxMonoidWitness()
+    const report = analyzeMnneLaxMonoid(witness)
+
+    console.log('\nTheorem 3: Lax monoid in [J,C] diagnostics')
+    console.log(
+      `  holds=${report.holds}, issues=${report.issues.length}, details=${report.details}`,
+    )
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
+  }
+
+  export const wellBehavedInclusionDemo = () => {
+    const witness = describeIdentityWellBehavedWitness()
+    const report = analyzeMnneWellBehavedInclusion(witness)
+
+    console.log('\nDefinition 4.1: Well-behaved inclusion diagnostics')
+    console.log(
+      `  holds=${report.holds}, issues=${report.issues.length}, pairs=${report.checkedPairs}`,
+    )
+    if (!report.holds) {
+      for (const issue of report.issues.slice(0, 5)) {
+        console.log(`    issue: ${issue}`)
+      }
+    }
   }
 }
 
@@ -2179,7 +2682,16 @@ async function runExamples() {
   ComoduleExamples.kanDiscreteVectExample()
   ComoduleExamples.universalPropertyExample()
   ComoduleExamples.tinyExamplesDemo()
-  
+
+  RelativeMonadExamples.identityRelativeMonadDemo()
+  RelativeMonadExamples.booleanVectorRelativeMonadDemo()
+  RelativeMonadExamples.untypedLambdaRelativeMonadDemo()
+  RelativeMonadExamples.indexedContainerRelativeMonadDemo()
+  RelativeMonadExamples.booleanVectorLeftKanExtensionDemo()
+  RelativeMonadExamples.functorCategoryLaxMonoidalDemo()
+  RelativeMonadExamples.functorCategoryLaxMonoidDemo()
+  RelativeMonadExamples.wellBehavedInclusionDemo()
+
   console.log('Examples ready to run! Uncomment the ones you want to test.')
 }
 
@@ -2201,7 +2713,8 @@ export type {
   JsonStreamingExamples,
   FusedPipelineExamples,
   SafeASTEvolutionExamples,
-  ComoduleExamples
+  ComoduleExamples,
+  RelativeMonadExamples
 }
 
 // Run if this file is executed directly

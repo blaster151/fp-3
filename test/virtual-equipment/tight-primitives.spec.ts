@@ -37,11 +37,13 @@ import {
 import { TwoObjectCategory, nonIdentity } from "../../two-object-cat";
 import type { TwoArrow, TwoObject } from "../../two-object-cat";
 
+type CanonicalEntry = (typeof canonicalTightCategories)[number];
+
 describe("virtual equipment tight primitive catalogue", () => {
   test("functors can be promoted and demoted without losing data", () => {
     const identityFunctor: Functor<TwoObject, TwoArrow, TwoObject, TwoArrow> = {
-      F0: (obj) => obj,
-      F1: (arrow) => arrow,
+      F0: (obj: TwoObject) => obj,
+      F1: (arrow: TwoArrow) => arrow,
     };
 
     const { functor: catFunctor, report } = promoteFunctor(
@@ -67,7 +69,11 @@ describe("virtual equipment tight primitive catalogue", () => {
   });
 
   test("catalogued categories expose explicit endpoints", () => {
-    expect(canonicalTightCategories.some((entry) => entry.name === "TwoObjectCategory")).toBe(true);
+    expect(
+      canonicalTightCategories.some(
+        (entry: CanonicalEntry) => entry.name === "TwoObjectCategory",
+      ),
+    ).toBe(true);
     for (const entry of canonicalTightCategories) {
       expect(finiteCategoryHasExplicitEndpoints(entry.category)).toBe(true);
     }
@@ -97,8 +103,8 @@ describe("virtual equipment tight primitive catalogue", () => {
       TwoObjectCategory,
       TwoObjectCategory,
       {
-        F0: (obj) => obj,
-        F1: (arrow) => arrow,
+        F0: (obj: TwoObject) => obj,
+        F1: (arrow: TwoArrow) => arrow,
       },
       samples,
     );
@@ -128,12 +134,12 @@ describe("virtual equipment tight primitive catalogue", () => {
     const tightLayer = defaultTightLayer(
       TwoObjectCategory,
       idFunctor,
-      (g, f) => composeFun(g, f),
+      (g: TwoArrow, f: TwoArrow) => composeFun(g, f),
     );
     const equipment = virtualiseTightCategory(
       tightLayer,
       TwoObjectCategory.objects,
-      (left, right) => left === right,
+      (left: TwoObject, right: TwoObject) => left === right,
     );
 
     const idDot = identityProarrow(equipment, "•");
@@ -324,8 +330,8 @@ describe("virtual equipment tight primitive catalogue", () => {
       TwoObjectCategory,
       TwoObjectCategory,
       {
-        F0: (object) => object,
-        F1: (arrow) => arrow,
+        F0: (object: TwoObject) => object,
+        F1: (arrow: TwoArrow) => arrow,
       },
       samples,
     );
@@ -333,13 +339,13 @@ describe("virtual equipment tight primitive catalogue", () => {
     const tightLayer = defaultTightLayer(
       TwoObjectCategory,
       idFunctor,
-      (g, f) => composeFun(g, f),
+      (g: TwoArrow, f: TwoArrow) => composeFun(g, f),
     );
 
     const equipment = virtualiseTightCategory(
       tightLayer,
       TwoObjectCategory.objects,
-      (left, right) => left === right,
+      (left: TwoObject, right: TwoObject) => left === right,
     );
 
     const looseCell = identityProarrow(equipment, "•");
@@ -395,7 +401,11 @@ describe("virtual equipment tight primitive catalogue", () => {
     });
 
     expect(failingAnalysis.holds).toBe(false);
-    expect(failingAnalysis.issues.some((issue) => issue.includes("Unit right boundary"))).toBe(true);
+    expect(
+      failingAnalysis.issues.some((issue: string) =>
+        issue.includes("Unit right boundary"),
+      ),
+    ).toBe(true);
   });
 
   test("representable right loose adjoint certifies the left loose map", () => {
@@ -410,8 +420,8 @@ describe("virtual equipment tight primitive catalogue", () => {
       TwoObjectCategory,
       TwoObjectCategory,
       {
-        F0: (object) => object,
-        F1: (arrow) => arrow,
+        F0: (object: TwoObject) => object,
+        F1: (arrow: TwoArrow) => arrow,
       },
       samples,
     );
@@ -419,13 +429,13 @@ describe("virtual equipment tight primitive catalogue", () => {
     const tightLayer = defaultTightLayer(
       TwoObjectCategory,
       idFunctor,
-      (g, f) => composeFun(g, f),
+      (g: TwoArrow, f: TwoArrow) => composeFun(g, f),
     );
 
     const equipment = virtualiseTightCategory(
       tightLayer,
       TwoObjectCategory.objects,
-      (left, right) => left === right,
+      (left: TwoObject, right: TwoObject) => left === right,
     );
 
     const left = identityProarrow(equipment, "•");
@@ -494,8 +504,8 @@ describe("virtual equipment tight primitive catalogue", () => {
       TwoObjectCategory,
       TwoObjectCategory,
       {
-        F0: (object) => object,
-        F1: (arrow) => arrow,
+        F0: (object: TwoObject) => object,
+        F1: (arrow: TwoArrow) => arrow,
       },
       samples,
     );
@@ -503,13 +513,13 @@ describe("virtual equipment tight primitive catalogue", () => {
     const tightLayer = defaultTightLayer(
       TwoObjectCategory,
       idFunctor,
-      (g, f) => composeFun(g, f),
+      (g: TwoArrow, f: TwoArrow) => composeFun(g, f),
     );
 
     const equipment = virtualiseTightCategory(
       tightLayer,
       TwoObjectCategory.objects,
-      (left, right) => left === right,
+      (left: TwoObject, right: TwoObject) => left === right,
     );
 
     const loose = identityProarrow(equipment, "•");

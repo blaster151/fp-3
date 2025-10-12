@@ -1,4 +1,19 @@
 /* eslint-disable @typescript-eslint/no-floating-promises */
+
+/*
+ * Property suites executed in this file:
+ *
+ * - Functor and lax monoidal functor coherence for Option.
+ * - Functor and lax monoidal functor coherence for short-circuiting Result<E,_>.
+ * - Functor and lax monoidal functor coherence for Reader<R,_>.
+ * - Lax monoidal coherence for ReaderTask<R,_> (async applicative reader).
+ * - Lax monoidal coherence for ReaderTaskEither<R, E, _>.
+ *
+ * Each suite checks:
+ *   • Functor identity and composition where the structure exposes `.map`.
+ *   • Lax monoidal unit, associativity, and naturality laws over representative
+ *     arbitraries (synchronous for pure data types, asynchronous for effectful ones).
+ */
 import fc from 'fast-check'
 
 // ---------- small helpers (pure) ----------

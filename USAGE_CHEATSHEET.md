@@ -48,6 +48,216 @@ This document provides a quick reference for finding the right tool for your pro
 | Create emission matrices | `diagFromVec(SemiringProb)(weights)` | Diagonal from vector |
 | Probability computations | Use `SemiringProb` with any matrix op | Standard +, × |
 
+### **Work with Relative Monads**
+| **Task** | **Use This** | **Notes** |
+|----------|--------------|-----------|
+| Embed a classical monad as identity-root | `fromMonad(monad, { rootObject })` | Reuses the monad’s endofunctor as carrier |
+| Inspect structural law coverage | `enumerateRelativeMonadOracles(relative)` | Returns framing/identity reports and pending associativity |
+| Surface Street action scaffolding | `enumerateRelativeAlgebraOracles(relative)` | Emits Definition 6.1/6.9 diagnostics with witness payloads |
+| Check Example 5 Kleisli matrices | `RelativeMonadOracles.vectorKleisliSplitting(witness)` | Confirms Boolean matrix identities & associativity |
+| Compare Example 1 arrows with the relative monad | `RelativeMonadOracles.vectorArrowCorrespondence()` | Ensures `arr`/composition agree with the canonical Boolean action |
+| Check Example 6 Kleisli substitutions | `RelativeMonadOracles.lambdaKleisliSplitting(witness)` | Reuses λ-witness to verify identity/composition |
+
+```typescript
+import {
+  fromMonad,
+  enumerateRelativeMonadOracles,
+  enumerateRelativeAlgebraOracles,
+  RelativeAlgebraOracles,
+  describeTrivialRelativeKleisli,
+  describeTrivialRelativeEilenbergMoore,
+  idFun,
+  composeFun,
+} from './allTS'
+import { TwoObjectCategory } from './two-object-cat'
+import { describeBooleanVectorRelativeMonadWitness } from './relative/mnne-vector-monads'
+import { describeUntypedLambdaRelativeMonadWitness } from './relative/mnne-lambda-monads'
+
+const identityMonad = {
+  category: TwoObjectCategory,
+  endofunctor: idFun(TwoObjectCategory),
+  unit: {
+    source: idFun(TwoObjectCategory),
+    target: idFun(TwoObjectCategory),
+    component: (obj: '•' | '★') => TwoObjectCategory.id(obj),
+  },
+  mult: {
+    source: composeFun(idFun(TwoObjectCategory), idFun(TwoObjectCategory)),
+    target: idFun(TwoObjectCategory),
+    component: (obj: '•' | '★') => TwoObjectCategory.id(obj),
+  },
+} as const
+
+const relative = fromMonad(identityMonad, { rootObject: '•' })
+const monadReports = enumerateRelativeMonadOracles(relative)
+const kleisli = describeTrivialRelativeKleisli(relative)
+const eilenbergMoore = describeTrivialRelativeEilenbergMoore(relative)
+const algebraReports = enumerateRelativeAlgebraOracles(kleisli, eilenbergMoore)
+const emReport = RelativeAlgebraOracles.eilenbergMooreUniversalProperty(eilenbergMoore)
+const partialRightAdjoint = RelativeAlgebraOracles.partialRightAdjointFunctor({
+  presentation: eilenbergMoore,
+  section: eilenbergMoore.universalWitness!.section,
+  comparison: {
+    tight: relative.root.tight,
+    domain: relative.root.from,
+    codomain: relative.carrier.to,
+  },
+  fixedObjects: [relative.root],
+})
+const enrichedReport = RelativeMonadOracles.enrichedCompatibility(relative)
+const setEnrichedReport = RelativeMonadOracles.setEnrichedCompatibility(relative)
+const enrichedEmReport = RelativeMonadOracles.enrichedEilenbergMooreAlgebra(relative)
+const kleisliInclusion = RelativeMonadOracles.enrichedKleisliInclusion(relative)
+const yonedaReport = RelativeMonadOracles.enrichedYoneda(relative)
+const yonedaDistributor = RelativeMonadOracles.enrichedYonedaDistributor(relative)
+const vcatReport = RelativeMonadOracles.enrichedVCatSpecification(relative)
+const opalgebraResolution = RelativeAlgebraOracles.opalgebraResolution(kleisli)
+const partialLeftAdjoint = RelativeAlgebraOracles.partialLeftAdjointSection(kleisli)
+const vectorWitness = describeBooleanVectorRelativeMonadWitness([0, 1, 2])
+const lambdaWitness = describeUntypedLambdaRelativeMonadWitness()
+const vectorKleisli = RelativeMonadOracles.vectorKleisliSplitting(vectorWitness)
+const vectorArrow = RelativeMonadOracles.vectorArrowCorrespondence()
+const lambdaKleisli = RelativeMonadOracles.lambdaKleisliSplitting(lambdaWitness)
+
+console.log(monadReports.map((report) => `${report.registryPath}: ${report.holds}`))
+console.log(algebraReports.map((report) => report.registryPath))
+console.log(emReport.mediatingTightCellReport?.issues)
+console.log(emReport.sectionReport?.issues)
+console.log(partialRightAdjoint.sectionReport?.issues)
+console.log(enrichedReport.issues)
+console.log(setEnrichedReport.issues)
+console.log(enrichedEmReport.issues)
+console.log(kleisliInclusion.issues)
+console.log(vectorKleisli.issues)
+console.log(vectorArrow.issues)
+console.log(lambdaKleisli.issues)
+console.log(yonedaReport.issues)
+console.log(yonedaDistributor.issues)
+console.log(vcatReport.issues)
+console.log(opalgebraResolution.resolutionReport?.issues)
+console.log(partialLeftAdjoint.resolutionReport?.issues)
+```
+
+The enriched Yoneda distributor analyzer also exposes the `rightLift` report
+returned by `analyzeRelativeEnrichedYonedaDistributor`, letting you confirm that
+the Lemma 8.7 right lift `q ▷ p` reuses the representable loose arrow and the
+relative monad’s loose cell.
+
+`RelativeMonadOracles.enrichedKleisliInclusion` replays Lemma 8.7’s
+identity-on-objects functor k_T : A → Kl(T) by checking the inclusion shares
+the loose arrow, unit, and extension witnesses and reporting the κ_T opalgebra
+comparison triangles.
+
+`RelativeMonadOracles.setEnrichedCompatibility` specialises Example 8.14 to
+Set-enriched roots, replaying the Lemma 6.38 fully faithful section and
+ensuring each recorded correspondence shares the loose arrow, unit, and
+extension with the underlying relative monad.
+
+`RelativeMonadOracles.enrichedVCatSpecification` mirrors Theorem 8.12 by
+replaying the enriched unit and multiplication triangles, enforcing the
+functorial identity/composition diagrams, and confirming the τ witnesses all
+agree with the recorded comparisons.
+
+To mirror Example 1 from *Monads Need Not Be Endofunctors*, build the Boolean
+vector-space witness with `describeBooleanVectorRelativeMonadWitness()` and feed
+it to `analyzeFiniteVectorRelativeMonad`. The helper enumerates every basis map
+between the listed finite dimensions, validates the unit/extension laws, and is
+hooked into `examples.ts` as `RelativeMonadExamples.booleanVectorRelativeMonadDemo()`
+for quick inspection.
+
+To replay Example 2’s λ-calculus relative monad, call
+`describeUntypedLambdaRelativeMonadWitness()` and analyse it with
+`analyzeUntypedLambdaRelativeMonad`. The analyzer synthesises all well-scoped
+terms up to the configured depth for each finite context, replays the
+capture-avoiding substitution operator, and checks the unit, associativity, and
+identity-on-context requirements. `RelativeMonadExamples.untypedLambdaRelativeMonadDemo()`
+prints the resulting report in `examples.ts`.
+
+To emulate Example 4’s indexed container construction, use
+`describeIndexedContainerExample4Witness()` with
+`analyzeIndexedContainerRelativeMonad`. The helper enumerates the finite
+families over the Nat/Stream indices, applies the Example 4 unit/extraction
+data, and verifies the relative monad laws via the induced substitution
+operator. `RelativeMonadExamples.indexedContainerRelativeMonadDemo()` prints the
+summary alongside the other MNNE diagnostics in `examples.ts`.
+
+To witness the associated left Kan extension along the inclusion FinSet → Set,
+call `describeBooleanVectorLeftKanExtensionWitness(targetSizes, dimensionLimit)`
+and pass it to `analyzeFiniteVectorLeftKanExtension`. The analyzer assembles the
+finite cocone presentations, quotients by the generated relations, and verifies
+the resulting classes exhaust the Boolean vector functor on each requested
+target set. If the chosen `dimensionLimit` is too small, the report highlights
+which vectors are missing so you can raise the bound.
+
+To exercise Section 3.2’s lax monoidal structure on `[J,C]`, use
+`describeTwoObjectLaxMonoidalWitness()` with
+`analyzeMnneLaxMonoidalStructure`. The helper records a two-object Lan\_j
+witness, identity/constant endofunctors, and compares the recorded tensor,
+unitors, and associator against composing Lan\_j. It also confirms the triangle
+identity for the supplied triples. `RelativeMonadExamples.functorCategoryLaxMonoidalDemo()`
+logs the resulting report in `examples.ts`, and
+`RelativeMonadOracles.functorCategoryLaxMonoidal()` surfaces the same
+diagnostics through the oracle registry.
+
+To certify Theorem 3’s lax monoid inside `[J,C]`, combine
+`describeTwoObjectLaxMonoidWitness()` with `analyzeMnneLaxMonoid`. The helper
+reuses the Lan\_j tensor from the lax-monoidal witness and checks that the
+recorded unit/multiplication witnesses satisfy the left/right unit laws and the
+associativity composite. `RelativeMonadOracles.functorCategoryLaxMonoid()`
+exposes the same report when you prefer the registry surface.
+
+To check the Definition 4.1 well-behaved hypothesis, call
+`describeIdentityWellBehavedWitness()` with
+`analyzeMnneWellBehavedInclusion`. The analyzer enumerates the finite hom-sets
+for the provided sample and confirms the inclusion functor is fully faithful by
+establishing bijections `C(JX, JY) ≅ J(X, Y)`. Density and Lan-based comparison
+data are logged in `FUTURE_ENHANCEMENTS.md` for follow-up once the necessary
+Kan-extension synthesiser lands. `RelativeMonadOracles.wellBehavedInclusion()`
+publishes the same check through the oracle registry.
+
+To certify Section 4.3’s Lan\_J T extension, call
+`describeIdentityLanExtensionWitness()` with
+`analyzeMnneRelativeMonadLanExtension`. The analyzer checks the Lan-derived
+endofunctor preserves identities/composition, verifies the monad unit and
+multiplication laws on C, compares κ\_T against the original relative monad, and
+confirms the Lan-based Kleisli extension matches the recorded relative
+extension. `RelativeMonadOracles.lanExtension()` publishes the aggregated
+oracle report.
+
+### **Work with Relative Comonads**
+| **Task** | **Use This** | **Notes** |
+|----------|--------------|-----------|
+| Construct the identity-root comonad | `describeTrivialRelativeComonad(equipment, object)` | Uses the identity tight 1-cell for root and carrier |
+| Inspect enriched Proposition 8.22 data | `RelativeComonadOracles.enrichment(witness)` | Witness from `describeRelativeEnrichedComonadWitness(comonad)` |
+| Verify Theorem 8.24 coopalgebra | `RelativeComonadOracles.coopAlgebra(witness)` | Witness from `describeRelativeComonadCoopAlgebraWitness(enriched)` |
+
+```typescript
+import { virtualizeFiniteCategory } from './virtual-equipment'
+import { TwoObjectCategory } from './two-object-cat'
+import {
+  describeTrivialRelativeComonad,
+  describeRelativeEnrichedComonadWitness,
+  describeRelativeComonadCoopAlgebraWitness,
+  analyzeRelativeEnrichedComonad,
+  analyzeRelativeComonadCoopAlgebra,
+} from './relative/relative-comonads'
+import { RelativeComonadOracles } from './relative/relative-comonad-oracles'
+
+const equipment = virtualizeFiniteCategory(TwoObjectCategory)
+const comonad = describeTrivialRelativeComonad(equipment, '•')
+const enrichedWitness = describeRelativeEnrichedComonadWitness(comonad)
+const coopWitness = describeRelativeComonadCoopAlgebraWitness(enrichedWitness)
+
+console.log(RelativeComonadOracles.counitFraming(comonad))
+console.log(analyzeRelativeEnrichedComonad(enrichedWitness).issues)
+console.log(analyzeRelativeComonadCoopAlgebra(coopWitness).issues)
+```
+
+`RelativeComonadOracles.enrichment` compares the enriched cohom object and
+cotensor comparison against the comonad’s counit and coextension witnesses, while
+`RelativeComonadOracles.coopAlgebra` ensures the supplied coassociativity and
+counit diagrams commute and reuse the enriched comparisons.
+
 ### **Optimize Performance**
 | **Problem** | **Use This** | **Why** |
 |-------------|--------------|---------|

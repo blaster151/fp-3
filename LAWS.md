@@ -7,6 +7,10 @@ This document catalogs the algebraic laws that our functional programming constr
 
 > **Doc tags:** `Registry Path`, `Witness Builder`, and `Check` highlight how LAWS.md entries map into `markov-oracles.ts` and adapter code. The stub generator reads those fields to verify that documented oracles have concrete scaffolds.
 
+## Registry linkage at a glance
+
+`LAWS.md` serves as the contributor-facing index for every registered law, while the runtime looks to the TypeScript catalogues for executable descriptors. Each Markdown entry mirrors a `registryPath` defined in files such as `relative/relative-laws.ts`. Oracle enumerators (for example `RelativeMonadOracles`, `RelativeAlgebraOracles`, and `RelativeCompositionOracles`) load those descriptors when producing diagnostics so the emitted results reuse the same paths that appear in this document. In short, the Markdown keeps humans oriented, and the registry modules provide the programmatic entry points that law-checking tooling evaluates.
+
 > **Notation:** We use “source/target” (aka domain/codomain) and write composition as \(g \circ f = \texttt{compose(g, f)}\); identity morphisms appear as \(\mathrm{id}_A\) in prose and `id(A)` in code.
 
 ## Category-theoretic scaffolding
@@ -110,12 +114,107 @@ This document catalogs the algebraic laws that our functional programming constr
   the associativity pasting diagram.  Use `RelativeMonadOracles` to obtain the
   executable framing report (with issues enumerated) and a placeholder pending
   result for associativity until tight 2-cell comparisons land.
+- `relativeMonad.enriched.compatibility` keeps Section 8’s enriched structure
+  visible by checking that the recorded hom object and tensor comparison reuse
+  the relative monad’s unit and extension witnesses.
+- `relativeMonad.enriched.setCompatibility` specialises Example 8.14 to
+  Set-enriched roots by requiring the fully faithful section and every listed
+  correspondence to reuse the loose arrow, unit, and extension evidence.
+- `relative/mnne-vector-monads.ts` replays Example 1 of *Monads Need Not Be
+  Endofunctors* by enumerating Boolean finite vector spaces.  Use
+  `describeBooleanVectorRelativeMonadWitness` and
+  `analyzeFiniteVectorRelativeMonad` to inspect the unit/extension laws and the
+  induced Kleisli composites.
+- `RelativeMonadOracles.vectorKleisliSplitting` tightens Theorem 3/Example 5 by
+  composing every Boolean matrix, confirming the Kleisli identities and
+  associativity align with the recorded extension operator.
+- `RelativeMonadOracles.vectorArrowCorrespondence` replays the Example 1 arrow
+  semantics by comparing an `arr`/composition witness with the canonical
+  relative monad extension, ensuring Boolean matrices act on vectors exactly as
+  the relative monad prescribes on every enumerated dimension pair.
+- `relative/mnne-lambda-monads.ts` mirrors Example 2’s λ-calculus relative
+  monad, enumerating well-scoped terms across finite contexts, replaying the
+  capture-avoiding substitution operator, and verifying the unit, identity, and
+  associativity requirements via `analyzeUntypedLambdaRelativeMonad`.
+- `RelativeMonadOracles.lambdaKleisliSplitting` records Example 6’s Kleisli
+  category of Lam, reusing the λ-witness to ensure trivial substitutions act as
+  identities and composition matches sequential substitution.
+- `relative/mnne-indexed-container-monads.ts` operationalises Example 4’s
+  indexed container presentation.  `describeIndexedContainerExample4Witness`
+  enumerates finite Nat/Stream families while
+  `analyzeIndexedContainerRelativeMonad` replays the Example 4
+  unit/extraction data and checks the relative monad laws via the induced
+  substitution operator.
+- The same module also exposes `analyzeFiniteVectorLeftKanExtension` and
+  `describeBooleanVectorLeftKanExtensionWitness`, which reconstruct the Example 1
+  left Kan extension along FinSet → Set.  They enumerate the cocone data,
+  quotient by the generated relations, and confirm the resulting classes match
+  the Boolean vector functor on each target set, warning when the chosen
+  dimension bound omits necessary generators.
+- `relative/mnne-lax-monoidal.ts` packages Section 3.2’s lax monoidal structure
+  on `[J,C]` by combining the Lan\_j witness with concrete endofunctors on the
+  two-object category.  `analyzeMnneLaxMonoidalStructure` checks that the
+  canonical inclusion, tensor, unitors, and associator agree with composing
+  Lan\_j and that the triangle identity holds for the supplied triples.
+- `analyzeMnneLaxMonoid` verifies the Theorem 3 lax-monoid structure derived
+  from a relative monad by checking the recorded unit and multiplication
+  transformations satisfy the left/right unit laws and the associativity
+  composite using the Lan\_j tensor.
+- `RelativeMonadOracles.functorCategoryLaxMonoidal` exposes the same diagnostics
+  in the oracle registry, defaulting to the two-object witness so the Example 3
+  computations appear alongside the other MNNE oracles.
+- `relativeMonad.mnne.functorCategoryLaxMonoid` publishes the lax-monoid
+  analyzer through the oracle registry so Example 3’s relative monad ↔ lax
+  monoid bridge appears in demos and scripts by default.
+- `relativeMonad.mnne.wellBehavedInclusion` witnesses Definition 4.1’s
+  full-faithfulness requirement for j : J → C by enumerating finite hom-sets
+  and checking that J induces bijections `C(JX, JY) ≅ J(X, Y)` on the supplied
+  samples.
+- `relativeMonad.mnne.lanExtension` packages Section 4.3’s theorem that a
+  well-behaved inclusion extends a relative monad to an ordinary monad on C.
+  The oracle checks that Lan\_J T preserves identities/composition, that the
+  recorded unit/multiplication satisfy the monad laws, that κ\_T is an
+  isomorphism with the supplied inverse, and that the Lan-derived Kleisli
+  extension agrees with the relative extension operator on every enumerated
+  arrow.
+- `relativeMonad.enriched.eilenbergMooreAlgebra` realises Definition 8.16’s
+  enriched T-algebra by checking that the carrier shares the monad boundaries,
+  the extension operator reuses the enriched extension witness, and the unit
+  and multiplication composites coincide with the recorded enriched
+  comparisons.
+- `relativeMonad.enriched.kleisliInclusion` exposes Lemma 8.7’s
+  identity-on-objects inclusion into Kl(T), requiring the functor to reuse the
+  loose arrow, unit, and extension witnesses and to supply the κ_T opalgebra
+  comparison triangles recorded in the lemma.
+- `relativeMonad.enriched.yoneda` packages Example 8.6’s Yoneda embedding,
+  demanding that the representable presheaf reuse the enriched hom object,
+  tensor comparison, and extension witnesses recorded with the monad.
+- `relativeMonad.enriched.yonedaDistributor` captures Lemma 8.7’s comparison of
+  the red/green composites through PZ(p,q), insisting that both composites share
+  boundaries with the Yoneda witness, coincide with the supplied factorisation,
+  and agree with the recorded right lift witnessing the universal property of
+  `q ▷ p`.
+- `relativeMonad.enriched.vcatSpecification` records Theorem 8.12’s enriched
+  specification of a j-relative monad. The oracle demands that the unit and
+  multiplication triangles reuse the enriched unit/extension witnesses, that the
+  functorial identity/composition diagrams share those comparisons, and that the
+  τ witnesses agree with the recorded naturality data.
 - `relativeMonad.representableLooseMonoid` captures Theorem 4.16’s bridge
   between j-relative monads and monoids in `X[j]` whose loose arrows are
   representable.  `RelativeMonadOracles.representableLooseMonoid` consumes the
   `RepresentabilityWitness` emitted by the equipment layer’s left restriction
   builders and reports whether the relative monad’s loose arrow truly arises
   from restricting the identity along the chosen root.
+- `relativeMonad.fiberEmbedding` records Theorem 4.22’s fully faithful functor
+  `E(j,-) : \mathrm{RMnd}(j) → \mathrm{Mnd}_{X[j]}(A)`.  The
+  `RelativeMonadOracles.fiberEmbedding` check packages the induced fiber
+  monad—reusing the loose arrow, unit, and extension data—while marking the
+  outstanding Street-calculus comparisons as pending.
+- `relativeMonad.representableRecovery` tracks Remark 4.24’s observation that a
+  representable root recovers Levy’s representable relative monads and the
+  Altenkirch–Chapman–Uustalu skew monoids.  The oracle combines the fiber
+  embedding with any supplied skew-monoid bridge data, surfacing pending status
+  when the literature comparisons still await witnesses.
 - `relativeMonad.skewMonoid.bridge` aggregates Theorem 4.29’s hypotheses:
   existence and preservation of left extensions along `j`, j-absolute and
   dense comparison data, and invertibility of the right unit.  The
@@ -133,6 +232,185 @@ This document catalogs the algebraic laws that our functional programming constr
   root and carrier coincide with the identity boundary and that the loose arrow
   is endo on that object, surfacing actionable diagnostics when the reduction
   fails.
+- `enumerateRelativeMonadOracles` collects the default framing, identity,
+  extension, and associativity reports into a single array so documentation and
+  tooling can present the whole Definition 4.1 diagnostic surface alongside the
+  pending associativity witness.
+- `AlgebraOracles.relative.checkRelativeMonadLaws` aggregates these reports with
+  the new unit-compatibility, associativity, and root-identity analyzers.  The
+  helper returns `{holds, pending, details, analysis}` so law-checking tools can
+  consume a single structural invariant while still seeing which Street-style
+  witnesses remain to be implemented.  Each component exposes its witness data
+  (the unit arrow, composed Street pastings, and restriction outputs) so
+  downstream debuggers can inspect the exact morphisms responsible for a
+  failure.
+
+### Relative algebra scaffolding
+
+- Definitions 6.1 and 6.4 introduce relative algebras and opalgebras.  The registry
+  entries `relativeMonad.algebra.framing` and
+  `relativeMonad.opalgebra.framing` now point at executable analyzers
+  (`RelativeAlgebraOracles.algebraFraming` and
+  `RelativeAlgebraOracles.opalgebraFraming`) that verify the supplied action
+  2-cells reuse the j-root and carrier boundaries before any universal property
+  checks fire.  These framing reports lead off
+  `enumerateRelativeAlgebraOracles`, giving downstream tooling immediate
+  confirmation that Definition 6.1/6.4 data is wired in before hitting the still
+  pending Street-style witnesses.  Companion entries
+  `relativeMonad.algebra.morphismCompatibility` and
+  `relativeMonad.opalgebra.morphismCompatibility` now surface structural
+  analyzers that ensure morphism boundaries reuse the source/target carriers.
+  When those checks pass the oracles emit pending diagnostics noting that the
+  Street composites `E(j,α)` and `E(t,α)` remain to be compared; any boundary
+  mismatch produces an immediate non-pending failure so contributors can repair
+  the supplied data before wiring in the remaining witnesses.
+- Definition 6.4’s string diagrams split into the carrier triangle and extension
+  rectangle.  The new registry entries `relativeMonad.opalgebra.carrierTriangle`
+  and `relativeMonad.opalgebra.extensionRectangle` ensure the oracle layer
+  captures the shared codomain boundary, the opalgebra carrier, and the monad
+  unit/extension witnesses even while the Street equalities remain pending.
+  `RelativeAlgebraOracles.opalgebraCarrierTriangle` and
+  `RelativeAlgebraOracles.opalgebraExtensionRectangle` surface these structured
+  reports so downstream tooling can display the same triangle/rectangle
+  diagnostics used in the paper once the comparison pastings are executable.
+- Definition 6.29 introduces graded \(T\)-algebra morphisms.
+  `relativeMonad.algebra.gradedMorphisms` keeps the \((p_1,\ldots,p_n)\)
+  grading data and the displayed comparison pastings visible so future
+  analyzers gather the Street-style witnesses before certifying multi-input
+  morphisms.
+- Remark 6.30 rewrites the graded morphism definition as a single composite
+  pasting.  The registry path `relativeMonad.algebra.gradedMorphismsAlternate`
+  makes this alternative presentation executable by demanding the pasted
+  2-cell and the comparison witnesses that recover the Definition 6.29
+  equality.
+- Example 6.31 constructs graded morphisms from the extension operator.
+  `relativeMonad.algebra.gradedExtensionMorphisms` ensures that the canonical
+  extension witnesses are recorded and verified against the graded comparison
+  diagrams before the Street analyzers run.
+- Remark 6.32 organises the fibrewise categories \(T\text{-Alg}_D\) into an
+  indexed family.  The entry `relativeMonad.algebra.indexedFamily` tracks the
+  restriction functors, coherence witnesses, and carrier reuse so oracle
+  consumers can inspect the indexed structure directly.
+- Definition 6.33 packages the fibrewise categories into the global category
+  \(\mathrm{Alg}(T)\).  `relativeMonad.algebra.globalCategory` documents the
+  object/morphism assignments together with the composition and identity
+  witnesses required to run the future analyzer.
+- Definition 6.34 introduces the mediating tight cell
+  \(f_T : A \to \mathrm{Alg}(T)\) associated to an algebra object.
+  `relativeMonad.algebra.mediatingTightCell` keeps the comparison data visible
+  so the oracle layer can confirm that \(f_T\) reuses the monad’s unit and
+  extension witnesses.
+- Lemma 6.35 promotes an algebra object to a resolution.  The path
+  `relativeMonad.algebra.resolutionFromAlgebraObject` ensures analyzers collect
+  the boundary alignment and comparison data needed to match the Section 5
+  resolution diagnostics.
+- Remark 6.2 assembles \(T\)-algebras with fixed domain into a category via a
+  faithful restriction functor.  The analyzer behind
+  `relativeMonad.algebra.restrictionFunctor` now checks that the Street-action
+  image reuses the recorded carriers and boundary data while reporting pending
+  functoriality/faithfulness witnesses, keeping the comparison visible to
+  downstream tooling.
+- Example 6.3 highlights the canonical algebra obtained from a relative monad’s
+  carrier.  The analyzer behind `relativeMonad.algebra.canonicalAction` now
+  checks that the supplied algebra reuses the monad’s tight leg and extension
+  2-cell while flagging Proposition 6.12’s Street comparisons as pending, so
+  structural regressions surface immediately even before the comparison data
+  lands.
+- Corollary 6.17 ensures that 1_g-relative algebras reduce to ordinary
+  algebras on \(E\).  The `relativeMonad.algebra.identityRootEquivalence`
+  analyzer now checks that the relative algebra reuses the identity boundary and
+  multiplication witnesses promised by Corollary 4.20, surfacing pending Street
+  comparisons while confirming the structural collapse.
+- Corollary 6.24 makes the analogous statement for opalgebras.  The new registry
+  entry `relativeMonad.opalgebra.identityRootEquivalence` keeps this comparison
+  visible so the future analyzer can demand the Street action witnesses and
+  reuse the Corollary 4.20 diagnostics while collapsing to ordinary actions on
+  \(A\).
+- Definition 6.18 reframes \(T\)-opalgebras as right actions in Street’s
+  skew-multicategory.  `relativeMonad.opalgebra.rightActionPresentation`
+  now ships an analyzer that checks the Street action witness reuses the
+  recorded opalgebra action, root, and carrier boundaries while marking the
+  string-diagram comparisons as pending.
+- Proposition 6.19 shows that the ambient skew multicategory acts on itself
+  and that any monoid determines an \(M\)-action.  The
+  `relativeMonad.opalgebra.rightActionFromMonoid` analyzer verifies that the
+  recorded Street action is framed by the relative monad’s root/carrier and
+  that its action 2-cell coincides with the monad extension, surfacing pending
+  diagnostics for the remaining Street comparisons.
+- Example 6.6 dualises the canonical construction for opalgebras.  The
+  `relativeMonad.opalgebra.canonicalAction` analyzer now verifies that the
+  recorded opalgebra reuses the monad’s tight leg and unit 2-cell, reporting a
+  pending diagnostic until the Proposition 6.19 witnesses arrive so contributors
+  can spot boundary mismatches early.
+- Lemma 6.7 identifies \(j\)-relative opalgebras with extraordinary
+  transformations of the associated loose monad.  The
+  `relativeMonad.opalgebra.extraordinaryTransformations` analyzer now records
+  the loose monoid witnesses and verifies that they reuse the relative monad’s
+  root, carrier, and loose arrow, returning a pending diagnostic until the
+  Section 1.4 comparison is executable.
+- Section 6.2 reframes relative (op)algebras as Street-style actions and spells
+  out concrete witnesses for Definitions 6.9–6.14.  The analyzers behind
+  `relativeMonad.actions.rightLeftCoherence`,
+  `relativeMonad.actions.streetActionData`,
+  `relativeMonad.actions.streetActionHomomorphism`,
+  `relativeMonad.actions.homomorphismCategory`,
+  `relativeMonad.actions.canonicalSelfAction`,
+  `relativeMonad.actions.looseAdjunctionAction`,
+  `relativeMonad.actions.looseAdjunctionRightAction`, and
+  `relativeMonad.actions.representableRestriction` now run today: each records
+  the supplied Street witnesses, checks they reuse the expected root/carrier
+  boundaries, and returns a pending diagnostic for the unresolved Street
+  equalities so contributors see structural issues immediately.
+  The remaining registry paths continue to track future analyzers:
+  - `relativeMonad.actions.representableStreetSubmulticategory` captures
+    Definition 6.21’s passage to \(\mathsf{X}[j, B]_\iota\) and its
+    representable sub-multicategory, keeping the tight cell and representability
+    diagnostics visible.
+  - `relativeMonad.actions.representableStreetActionDiagrams` records the
+    Definition 6.21 string-diagram equalities that identify Street actions with
+    the Definition 6.4 opalgebra pastings, ensuring future analyzers request the
+    displayed \(\rho\), \(\lambda\), and \(\mu\) composites.
+  - `relativeMonad.actions.representableStreetActionHomomorphism` mirrors the
+    Definition 6.21 action homomorphism equation, demanding witnesses that both
+    composites of \(\mathsf{B}(1, \alpha)\) agree inside the representable
+    sub-multicategory.
+  - `relativeMonad.actions.relativeAlgebraBridge` now records the Street action
+    extracted from Definition 6.1 \(T\)-algebra data, checking that the carrier
+    and multiplication 2-cell reuse the algebra witnesses while flagging the
+    remaining Street equalities as pending.
+  - `relativeMonad.actions.algebraActionIsomorphism` packages Theorem 6.15’s
+    comparison, bundling the algebra-to-action bridge, the action-to-algebra
+    recovery, and the identity witnesses on both sides so downstream tooling can
+    inspect the pending equivalence data.
+  - `relativeMonad.actions.representabilityUpgrade` threads Remark 6.16’s
+    representability witnesses through the Street action analyzer, verifying
+    that the upgrade reuses the recorded action and keeping the representable
+    restriction diagnostics visible while the comparison equalities remain
+    pending.
+  - `relativeMonad.actions.representabilityGeneralisation` extends this outlook
+    to Remark 6.23’s Street action multicategories \(\mathsf{X}[j, B]\),
+    signalling that future analyzers must gather the loose-extension witnesses
+    establishing representability and compare them with the Theorem 4.29
+    diagnostics already in the registry.
+  - `relativeMonad.actions.representableActionIsomorphism` runs Theorem 6.22’s
+    natural isomorphism \(\mathrm{Act}(\mathsf{X}[j,B]_\iota^{B}, T) \cong
+    T\text{-Opalg}_B\) through `analyzeRelativeOpalgebraStreetActionEquivalence`,
+    recording the Street/opalgebra bridge, recovery homomorphism, and structural
+    comparison while leaving the inverse functor witnesses pending.
+- `relativeMonad.opalgebra.representableActionBridge` extends the Street bridge
+  to the representable setting, ensuring the analyzer requests the Definition 6.4
+  opalgebra data, the representability witnesses, and the resulting action in
+  \(\mathsf{X}[j,B]_\iota^{B}\).
+- Remark 6.5 compares Definition 6.4 opalgebras with modules of Ahrens,
+  Maillard’s Kleisli algebras, and Lobbia’s relative right modules.  The entry
+  `relativeMonad.opalgebra.literatureRecoveries` records this cross-check so the
+  future analyzer can demand witnesses that translate between the relative
+  opalgebra data and each cited presentation.
+- Remark 6.8 points toward a two-dimensional opmulticategory treatment of
+  relative monads.  The placeholder `relativeMonad.actions.twoDimensionalModules`
+  keeps the prospective module analyzers on the radar by documenting the need to
+  compare the one-dimensional actions with Altenkirch–Chapman–Uustalu style
+  modules.
 
 ### Relative comonad scaffolding
 
@@ -149,6 +427,12 @@ This document catalogs the algebraic laws that our functional programming constr
 - `relativeComonad.identityReduction` mirrors Corollary 4.20: the
   `RelativeComonadOracles.identityReduction` oracle demands that the root and
   carrier are identities so the structure collapses to an ordinary comonad.
+- `relativeComonad.enriched.structure` packages Proposition 8.22, asking
+  `RelativeComonadOracles.enrichment` to compare the enriched cohom object and
+  cotensor comparison against the recorded counit/coextension witnesses.
+- `relativeComonad.coopAlgebra` documents Theorem 8.24 by invoking
+  `RelativeComonadOracles.coopAlgebra`, which checks that the coopalgebra
+  coassociativity/counit diagrams commute and reuse the enriched comparisons.
 
 ### Relative composition and representation scaffolding
 
@@ -175,6 +459,11 @@ This document catalogs the algebraic laws that our functional programming constr
   hom-set isomorphism between `C(ℓ-, -)` and `E(j-, r-)`. The associated law
   entries `relativeAdjunction.framing` and `relativeAdjunction.homIso.framing`
   surface structured diagnostics via `RelativeAdjunctionOracles`.
+- `relativeAdjunction.section.partialRightAdjoint` realises Lemma 6.38’s
+  partial right adjoint. The analyzer now certifies that the recorded section
+  shares the left leg’s object boundaries, reuses the adjunction’s hom-set
+  bijection, and that both composites ℓ ∘ σ and σ ∘ ℓ collapse to the supplied
+  identity 2-cells, making the triangle identities executable.
 - `relativeAdjunction.unitCounit.presentation` now executes the Lemma 5.5
   boundary checks. `RelativeAdjunctionOracles.unitCounitPresentation` accepts an
   explicit unit/counit presentation, verifies that the 2-cells reuse the root,
@@ -223,15 +512,100 @@ This document catalogs the algebraic laws that our functional programming constr
   Corollary 5.34’s resolute-composition guarantees, Example 5.31/Corollary 5.32
   fully faithful postcomposition, and Proposition 5.37 transport along left
   relative adjoints.
+- `relativeAdjunction.pasting.leftMorphism` runs
+  `analyzeRelativeAdjunctionPasting`, checking that a nested pair of relative
+  adjunctions shares equipment, that the outer right leg matches the inner root,
+  that the pasted left leg equals the composite of the two left legs, and that
+  the induced left morphism report is free of issues, making Proposition 5.30
+  executable.
+- `relativeAdjunction.postcomposition.fullyFaithful` runs
+  `analyzeRelativeAdjunctionFullyFaithfulPostcomposition`, confirming that a
+  fully faithful tight 1-cell `u` postcomposes the root and right leg while
+  leaving the left leg fixed. The oracle records the composites `u ∘ j` and
+  `u ∘ r` together with the fully faithful analysis returned by the equipment
+  layer.
+- `relativeAdjunction.inducedMonads.coincide` compares the paired relative
+  monads promised by Corollary 5.32, checking that their roots, carriers, loose
+  arrows, and unit/extension frames agree verbatim.
+- `relativeAdjunction.resolute` now runs
+  `analyzeRelativeAdjunctionResolutePair`, combining the fully faithful
+  postcomposition report with the induced-monad coincidence analysis while
+  checking that the monad data reuse the original and postcomposed right legs.
+- `relativeAdjunction.resolute.leftMorphism` aggregates
+  `analyzeRelativeAdjunctionResoluteLeftMorphism`, threading the resolute pair,
+  the Proposition 5.29 precomposition report, and the Proposition 5.30 pasting
+  witness so the induced left morphism is only marked complete when all three
+  diagnostics align.
+- `relativeAdjunction.resolute.identityRoot` wraps the Corollary 5.34 analyzer
+  via `analyzeRelativeAdjunctionOrdinaryLeftAdjointComposition`, bubbling up
+  the same issues array while tagging the identity-root specialisation required
+  by Example 5.35.
+- `relativeAdjunction.relativeMonad.module` is backed by
+  `analyzeRelativeAdjunctionRelativeMonadModule`, threading the Corollary 5.34
+  resolute left morphism through the relative monad resolution diagnostics to
+  certify the Proposition 5.36 module action.
+- `relativeAdjunction.relativeMonad.pasting` now delegates to
+  `analyzeRelativeAdjunctionRelativeMonadPasting`, which consumes the pasted
+  unit and extension witnesses from Proposition 5.37 and checks that the
+  resulting \(j'\)-relative monad and comparison morphism reuse the supplied
+  adjunction boundaries.
+- `relativeAdjunction.relativeMonad.pastingFullyFaithful` wraps
+  `analyzeRelativeAdjunctionRelativeMonadPastingFullyFaithful`, layering the
+  fully faithful right adjoint witness over the pasting diagnostics to expose
+  the Example 5.38 functor on relative monads.
+- `relativeAdjunction.relativeMonad.pastingAdjunction` collects the two
+  Proposition 5.37 reports via
+  `analyzeRelativeAdjunctionRelativeMonadPastingAdjunction`, confirming the
+  shared intermediate monad required by Example 5.39.
+- `relativeAdjunction.relativeMonad.compositeThroughRoot` relies on
+  `analyzeRelativeAdjunctionRelativeMonadComposite`, combining the module
+  assignment with the pasting witnesses so Corollary 5.40’s comparison against
+  the pasted \(j'\)-relative monad is executable.
+- `relativeAdjunction.relativeMonad.literatureRecoveries` invokes
+  `analyzeRelativeAdjunctionRelativeMonadLiteratureRecoveries`, which now
+  accepts Hutson and Altenkirch–Chapman–Uustalu witnesses to demonstrate the
+  Example 5.41 recoveries.
+
+The Section 6.4 entries `relativeAdjunction.relativeMonad.leftOpalgebra`,
+  `relativeAdjunction.relativeMonad.rightAlgebra`, and
+  `relativeAdjunction.relativeMonad.resolutionFunctor` execute via
+  `analyzeRelativeAdjunctionRelativeMonadLeftOpalgebra`,
+  `analyzeRelativeAdjunctionRelativeMonadRightAlgebra`, and
+  `analyzeRelativeAdjunctionRelativeMonadResolutionFunctor`, checking that the
+  recorded (op)algebra actions reuse the adjunction boundaries and the induced
+  relative monad from Proposition 5.24 while marking the Street comparisons as
+  pending.  Proposition 6.27’s transports now run through
+  `analyzeRelativeAdjunctionRelativeMonadOpalgebraTransport` and
+  `analyzeRelativeAdjunctionRelativeMonadAlgebraTransport`, which validate the
+  pasting witness, confirm source/target framing, and record the supplied
+  naturality diagnostics.  Remark 6.28’s strengthened statement is captured by
+  `analyzeRelativeAdjunctionRelativeMonadTransportEquivalence`, aggregating the
+  dual transports with unit/counit comparisons so the remaining equivalence
+  witnesses stay visible to oracle consumers.
 
 ### Relative Kleisli and Eilenberg–Moore scaffolding
 
 - `relative/relative-algebras.ts` provides
   `RelativeKleisliPresentation`/`RelativeEilenbergMoorePresentation` together
-  with `analyzeRelativeKleisliUniversalProperty` and
+  with `analyzeRelativeKleisliUniversalProperty` and the enriched
   `analyzeRelativeEilenbergMooreUniversalProperty`. These analyzers ensure the
-  opalgebra/algebra actions reuse the designated root/carrier boundaries,
-  matching the framing prerequisites of Theorem 6.39 and Theorem 6.49.
+  opalgebra/algebra actions reuse the designated root/carrier boundaries while
+  recording the comparison functor, partial right adjoint, and graded
+  factorisations predicted by Theorem 6.39 and Theorem 6.49.
+- `relativeMonad.algebra.partialRightAdjointFunctor` packages the witnesses
+  from Corollaries 6.40–6.41 and Proposition 6.42. The oracle
+  `RelativeAlgebraOracles.partialRightAdjointFunctor` threads the Lemma 6.38
+  section report, invokes the fully faithful diagnostics for the comparison
+  tight cell, and confirms that the supplied j-objects remain fixed under the
+  partial right adjoint.
+- `relativeMonad.opalgebra.resolution` wires Lemma 6.47 into code: the oracle
+  lifts a relative opalgebra into the Lemma 6.35 resolution, reuses the carrier
+  and action witnesses, and reports the κ\_t triangle identities alongside the
+  nested relative-monad diagnostics.
+- `relativeMonad.opalgebra.partialLeftAdjointSection` exposes Theorem 6.49’s
+  section \(RAdj\_j(j) \to RMnd\_j\).  The analyzer reuses the opalgebra
+  resolution, checks that the induced monad matches the Lemma 6.47 comparison,
+  and confirms the recorded transpose is the identity on \(j\)-objects.
 - `relativeMonad.kleisli.universalOpalgebra` and
   `relativeMonad.eilenbergMoore.universalAlgebra` catalogue the executable
   structural invariants exposed by `RelativeAlgebraOracles`. The registry entry

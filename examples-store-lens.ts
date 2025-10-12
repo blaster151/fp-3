@@ -70,6 +70,9 @@ const timeSeriesStore = storeFromArray(data, 0)
 // Apply moving average to the series field of each time series
 const smoothedStore = StoreComonad<number>().extend((ctx: Store<number, TimeSeries>) => {
   const ts = ctx.peek(ctx.pos)
+  if (ts === undefined) {
+    throw new Error('Expected time series at current store position')
+  }
   
   // Create a Store over the series data
   const seriesStore = storeFromArray(ts.series, 0)
@@ -107,10 +110,15 @@ console.log('Focused on series field - first series:', focusedStore.peek(0))
 // Apply moving average through the lens (preserving the rest of the structure)
 const lensSmoothedStore: Store<number, TimeSeries> = extendThroughLens(seriesLens)(
   (ctx: Store<number, ReadonlyArray<number>>) => {
+    const focusedSeries = ctx.peek(ctx.pos)
+    if (focusedSeries === undefined) {
+      throw new Error('Expected focused series at current store position')
+    }
+
     // Create a Store over the array and apply moving average
-    const arrayStore = storeFromArray(ctx.peek(ctx.pos), 0)
+    const arrayStore = storeFromArray(focusedSeries, 0)
     const smoothed = movingAvg3(arrayStore)
-    return collectStore(ctx.peek(ctx.pos).length)(smoothed)
+    return collectStore(focusedSeries.length)(smoothed)
   }
 )(timeSeriesStore)
 
@@ -139,8 +147,11 @@ const seriesValueLens = (index: number): Lens<TimeSeries, number> => ({
 
 // Apply moving average to each position independently (just for demonstration)
 let helperSmoothedStore = timeSeriesStore
-for (let i = 0; i < data[0].series.length; i++) {
-  helperSmoothedStore = movingAvgOnField(seriesValueLens(i))(helperSmoothedStore)
+const firstSeries = data[0]?.series
+if (firstSeries !== undefined) {
+  for (let i = 0; i < firstSeries.length; i++) {
+    helperSmoothedStore = movingAvgOnField(seriesValueLens(i))(helperSmoothedStore)
+  }
 }
 
 const helperSmoothedData = collectStore(data.length)(helperSmoothedStore)
@@ -158,11 +169,14 @@ console.log('\n=== Comparison: Manual vs Store+Lens ===')
 
 // Manual approach (rebuilding structures)
 const manualSmoothed = data.map(ts => {
-  const smoothed = ts.series.map((_, i, arr) => {
-    const prev = arr[i - 1] ?? arr[i]
-    const curr = arr[i]
-    const next = arr[i + 1] ?? arr[i]
-    return (prev + curr + next) / 3
+  const smoothed = ts.series.map((value, i, arr) => {
+    const prevCandidate = i > 0 ? arr[i - 1] : undefined
+    const prev = prevCandidate === undefined ? value : prevCandidate
+
+    const nextCandidate = i + 1 < arr.length ? arr[i + 1] : undefined
+    const next = nextCandidate === undefined ? value : nextCandidate
+
+    return (prev + value + next) / 3
   })
   return { ...ts, series: smoothed }
 })

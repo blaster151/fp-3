@@ -119,7 +119,7 @@ export function generateProbeDists<R, A>(
   
   // Add point masses (Dirac distributions)
   for (const a of domain) {
-    probes.push(delta(R)(a));
+    probes.push(delta(R)(a) as Dist<R, A>);
   }
   
   // Add uniform distribution (if domain has multiple elements)
@@ -137,14 +137,20 @@ export function generateProbeDists<R, A>(
     const w1 = new Map<A, R>();
     const w2 = new Map<A, R>();
 
-    w1.set(domain[0], 0.7);
-    w1.set(domain[1], 0.3);
+    const d0 = domain[0], d1 = domain[1];
+    if (d0 !== undefined && d1 !== undefined) {
+      w1.set(d0, 0.7 as R);
+      w1.set(d1, 0.3 as R);
+    }
     probes.push({ R, w: w1 });
 
     if (domain.length >= 3) {
-      w2.set(domain[0], 0.2);
-      w2.set(domain[1], 0.3);
-      w2.set(domain[2], 0.5);
+      const d0 = domain[0], d1 = domain[1], d2 = domain[2];
+      if (d0 !== undefined && d1 !== undefined && d2 !== undefined) {
+        w2.set(d0, 0.2 as R);
+        w2.set(d1, 0.3 as R);
+        w2.set(d2, 0.5 as R);
+      }
       probes.push({ R, w: w2 });
     }
   }
@@ -170,7 +176,7 @@ export function checkThunkabilityRobust<R, A, B>(
   if (result.thunkable) {
     return {
       thunkable: true,
-      base: result.base,
+      ...(result.base && { base: result.base }),
       details: `Thunkable: passed ${probes.length} probe distributions`
     };
   } else {
@@ -217,7 +223,7 @@ export function makeDeterministic<R, A, B>(
   R: CSRig<R>,
   base: (a: A) => B
 ): (a: A) => Dist<R, B> {
-  return (a: A) => delta(R)(base(a));
+  return (a: A) => delta(R)(base(a)) as Dist<R, B>;
 }
 
 /**

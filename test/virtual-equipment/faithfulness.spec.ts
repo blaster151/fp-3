@@ -196,11 +196,7 @@ describe("virtual equipment faithfulness analyzers", () => {
     });
 
     expect(analysis.holds).toBe(false);
-    expect(analysis.issues).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("Left lift unit left boundary"),
-      ]),
-    );
+    expect(analysis.issues.some(issue => issue.includes("Left lift unit left boundary"))).toBe(true);
   });
 
   test("fully faithful left extension accepts identity inverse", () => {
@@ -300,10 +296,6 @@ describe("virtual equipment faithfulness analyzers", () => {
     });
 
     expect(analysis.holds).toBe(false);
-    expect(analysis.issues).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("Inverse 2-cell should share"),
-      ]),
-    );
+    expect(analysis.issues.some(issue => issue.includes("Inverse 2-cell should share"))).toBe(true);
   });
 });

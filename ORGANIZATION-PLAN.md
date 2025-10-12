@@ -7,6 +7,18 @@ Split the monolithic `allTS.ts` (420KB+) into manageable, cohesive modules while
 - ✅ Test compatibility
 - ✅ Example compatibility
 
+## 🔄 System-wide TODOs (post-relative monad rollout)
+
+- **Street-calculus witnesses.** Thread the Definition 6.9–6.29 Street
+  action comparison data into the analyzers in
+  `relative/relative-algebras.ts` so the currently pending diagnostics
+  become executable equalities once the diagrammatic witnesses are
+  available.
+- **Adjunction-derived constructors.** Replace the TODO stubs in
+  `relative/relative-monads.ts` with concrete builders that derive
+  relative monads and comparison data from relative adjunctions,
+  completing the mates-style comparisons promised near Theorem 5.24.
+
 ## 📦 Module Structure
 
 
@@ -29,7 +41,12 @@ Split the monolithic `allTS.ts` (420KB+) into manageable, cohesive modules while
   relative adjoints from pointwise left lifts, left extensions along fully
   faithful roots, and shared colimit preservation data, while the new Theorem
   5.24 resolution registry entry and the remaining strengthened universal
-  properties promised by Theorem 6.49 stay visible as follow-up work.
+  properties promised by Theorem 6.49 stay visible as follow-up work.  Street
+  action analyzers, canonical (op)algebra constructors, and
+  `enumerateRelativeMonadOracles`/`enumerateRelativeAlgebraOracles` now live
+  alongside the helpers so documentation, tests, and downstream packages can
+  discover the pending Definition 6.9–6.29 witnesses directly from the
+  barrel export.
 
 
 ### CORE (`src/core`)

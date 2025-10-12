@@ -293,7 +293,7 @@ export function checkAllMarkovLaws<R>(
   const faithfulness = testData?.distributions ? 
     checkSplitMono(R, testData.distributions) : true;
   const pullbackSquare = testData?.domain && testData?.functions ? 
-    checkPullbackSquare(R, testData.domain, testData.functions[0], testData.functions[1]) : true;
+    checkPullbackSquare(R, testData.domain, testData.functions[0] as any, testData.functions[1] as any) : true;
   
   // Collect results
   const foundational = {

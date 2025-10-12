@@ -82,7 +82,7 @@ export function checkPullbackSquare<R, A, X, Y>(
     const [mx_dir, my_dir] = marginals<R, X, Y>(R, dir);
 
     // Sanity: its marginals must be δ∘f and δ∘g
-    if (!equalDist(R, mx_dir, delta(R)<X>(xa)) || !equalDist(R, my_dir, delta(R)<Y>(ya))) {
+    if (!equalDist(R, mx_dir, delta(R)(xa)) || !equalDist(R, my_dir, delta(R)(ya))) {
       return false;
     }
 
@@ -94,8 +94,8 @@ export function checkPullbackSquare<R, A, X, Y>(
       const h = build(a);
       const [mx, my] = marginals<R, X, Y>(R, h);
 
-      const mxMatches = equalDist(R, mx, delta(R)<X>(xa));
-      const myMatches = equalDist(R, my, delta(R)<Y>(ya));
+      const mxMatches = equalDist(R, mx, delta(R)(xa));
+      const myMatches = equalDist(R, my, delta(R)(ya));
 
       // If a candidate achieves the same δ-marginals but differs from Dirac pair, the pullback fails.
       if (mxMatches && myMatches && !equalDist(R, h, dir)) {
@@ -140,7 +140,7 @@ export function generateCheatingCandidates<R, A, X, Y>(
         // Attempt to create a "half" weight (this is semiring-dependent)
         let half: R;
         if (isNumericRig(R)) {
-          half = 0.5;
+          half = 0.5 as R;
         } else if (isBooleanRig(R)) {
           half = R.one; // Bool: can't really split
         } else {

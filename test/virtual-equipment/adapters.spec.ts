@@ -1,5 +1,5 @@
-import type { Functor } from "../../functor";
 import { describe, expect, test } from "vitest";
+import type { Functor } from "../../functor";
 import {
   RelTightCategory,
   horizontalComposeProarrows,
@@ -16,6 +16,7 @@ import {
 import { TwoObjectCategory, nonIdentity } from "../../two-object-cat";
 import type { TwoArrow, TwoObject } from "../../two-object-cat";
 import { OrdObj } from "../../finord";
+import type { Ord } from "../../finord";
 import { SetCat } from "../../set-cat";
 
 const constantStarFunctor: Functor<TwoObject, TwoArrow, TwoObject, TwoArrow> = {
@@ -29,8 +30,8 @@ describe("virtual equipment adapters", () => {
       TwoObjectCategory,
       TwoObjectCategory,
       {
-        F0: (obj) => obj,
-        F1: (arrow) => arrow,
+        F0: (obj: TwoObject) => obj,
+        F1: (arrow: TwoArrow) => arrow,
       },
       {
         objects: TwoObjectCategory.objects,
@@ -97,8 +98,9 @@ describe("virtual equipment adapters", () => {
     const cod = SetCat.obj(["L", "R"] as const);
     const img = SetCat.obj(["L", "R"] as const);
 
-    const f = SetCat.hom(dom, cod, (value) => (value === ord2 ? "L" : "R"));
-    const g = SetCat.hom(cod, img, (value) => value);
+    type LR = "L" | "R";
+    const f = SetCat.hom(dom, cod, (value: Ord) => (value === ord2 ? "L" : "R"));
+    const g = SetCat.hom(cod, img, (value: LR) => value);
 
     const equipment = makeSetEquipment([dom, cod, img]);
     expect(equipment.objects).toEqual([dom, cod, img]);

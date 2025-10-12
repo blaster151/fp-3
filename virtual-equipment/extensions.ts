@@ -41,6 +41,10 @@ const framesCoincide = <Obj, Payload>(
   for (let index = 0; index < expected.arrows.length; index += 1) {
     const expectedArrow = expected.arrows[index];
     const candidateArrow = candidate.arrows[index];
+    if (!candidateArrow || !expectedArrow) {
+      issues.push(`${label} arrow ${index} is missing in candidate or expected chain.`);
+      continue;
+    }
     if (!equality(candidateArrow.from, expectedArrow.from)) {
       issues.push(
         `${label} arrow ${index} should start at ${String(expectedArrow.from)} but found ${String(
@@ -124,17 +128,21 @@ export const analyzeRightExtension = <Obj, Arr, Payload, Evidence>(
     issues.push("Right extension counit target should contain at least the extension arrow.");
   } else {
     const lastArrow = data.counit.target.arrows[data.counit.target.arrows.length - 1];
-    if (!equality(lastArrow.from, data.extension.from)) {
-      issues.push(
-        `Right extension composite should reach ${String(data.extension.from)} before the extension arrow but found ${String(
-          lastArrow.from,
-        )}.`,
-      );
-    }
-    if (!equality(lastArrow.to, data.extension.to)) {
-      issues.push(
-        `Right extension arrow should land at ${String(data.extension.to)} but found ${String(lastArrow.to)}.`,
-      );
+    if (!lastArrow) {
+      issues.push(`Right extension counit target chain is unexpectedly empty.`);
+    } else {
+      if (!equality(lastArrow.from, data.extension.from)) {
+        issues.push(
+          `Right extension composite should reach ${String(data.extension.from)} before the extension arrow but found ${String(
+            lastArrow.from,
+          )}.`,
+        );
+      }
+      if (!equality(lastArrow.to, data.extension.to)) {
+        issues.push(
+          `Right extension arrow should land at ${String(data.extension.to)} but found ${String(lastArrow.to)}.`,
+        );
+      }
     }
   }
 
@@ -213,17 +221,21 @@ export const analyzeRightLift = <Obj, Arr, Payload, Evidence>(
     issues.push("Right lift unit source should contain the lift arrow.");
   } else {
     const lastArrow = data.unit.source.arrows[data.unit.source.arrows.length - 1];
-    if (!equality(lastArrow.from, data.lift.from)) {
-      issues.push(
-        `Right lift composite should enter ${String(data.lift.from)} before the lift arrow but found ${String(
-          lastArrow.from,
-        )}.`,
-      );
-    }
-    if (!equality(lastArrow.to, data.lift.to)) {
-      issues.push(
-        `Right lift arrow should land at ${String(data.lift.to)} but found ${String(lastArrow.to)}.`,
-      );
+    if (!lastArrow) {
+      issues.push(`Right lift unit source chain is unexpectedly empty.`);
+    } else {
+      if (!equality(lastArrow.from, data.lift.from)) {
+        issues.push(
+          `Right lift composite should enter ${String(data.lift.from)} before the lift arrow but found ${String(
+            lastArrow.from,
+          )}.`,
+        );
+      }
+      if (!equality(lastArrow.to, data.lift.to)) {
+        issues.push(
+          `Right lift arrow should land at ${String(data.lift.to)} but found ${String(lastArrow.to)}.`,
+        );
+      }
     }
   }
 
@@ -304,6 +316,10 @@ export const analyzeRightExtensionLiftCompatibility = <
       for (let index = 0; index < extComposite.length; index += 1) {
         const extArrow = extComposite[index];
         const liftArrow = liftComposite[index];
+        if (!extArrow || !liftArrow) {
+          issues.push(`Extension or lift composite arrow at position ${index} is unexpectedly missing.`);
+          break;
+        }
         if (!equality(extArrow.from, liftArrow.from) || !equality(extArrow.to, liftArrow.to)) {
           issues.push(
             `Composite arrow ${index} differs between the right extension and right lift framing; expected identical endpoints per Lemma 3.4.`,

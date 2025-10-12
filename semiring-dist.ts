@@ -39,7 +39,9 @@ export const dirac = delta;
 // Note: Using CSRig from semiring-utils.ts for the main interface
 
 import type { CSRig } from "./semiring-utils";
-import { Prob, LogProb, MaxPlus } from "./semiring-utils";
+import { Prob, LogProb, MaxPlus, BoolRig, RPlus, TropicalMaxPlus } from "./semiring-utils";
+
+export { LogProb, BoolRig, RPlus, TropicalMaxPlus };
 
 // Legacy interface for backward compatibility
 export interface NumSemiring {
@@ -167,7 +169,9 @@ export function normalizeR<T>(R: NumSemiring | CSRig<number>, d: Dist<T>): Dist<
     for (const v of d.values()) mx = Math.max(mx, v);
     if (mx === -Infinity) {
       if (d.size === 0) return d;
-      const [[firstKey]] = d.entries();
+      const firstEntry = Array.from(d.entries())[0];
+      if (!firstEntry) return d;
+      const [firstKey] = firstEntry;
       const out = new Map<T, number>();
       out.set(firstKey, 0);
       for (const [k] of d) if (!Object.is(k, firstKey)) out.set(k, -Infinity);
@@ -182,7 +186,9 @@ export function normalizeR<T>(R: NumSemiring | CSRig<number>, d: Dist<T>): Dist<
     for (const v of d.values()) m = Math.max(m, v);
     if (m === -Infinity) {
       if (d.size === 0) return d;
-      const [[firstKey]] = d.entries();
+      const firstEntry = Array.from(d.entries())[0];
+      if (!firstEntry) return d;
+      const [firstKey] = firstEntry;
       const out = new Map<T, number>();
       out.set(firstKey, 0);
       for (const [k] of d) if (!Object.is(k, firstKey)) out.set(k, -Infinity);
@@ -192,7 +198,9 @@ export function normalizeR<T>(R: NumSemiring | CSRig<number>, d: Dist<T>): Dist<
     for (const v of d.values()) lse += Math.exp(v - m);
     if (lse === 0) {
       if (d.size === 0) return d;
-      const [[firstKey]] = d.entries();
+      const firstEntry = Array.from(d.entries())[0];
+      if (!firstEntry) return d;
+      const [firstKey] = firstEntry;
       const out = new Map<T, number>();
       out.set(firstKey, 0);
       for (const [k] of d) if (!Object.is(k, firstKey)) out.set(k, -Infinity);

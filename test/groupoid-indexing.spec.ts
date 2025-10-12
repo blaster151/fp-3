@@ -52,24 +52,31 @@ describe('Lan/Ran via isomorphism classes (Vect)', () => {
   test('Collapses isomorphic G-objects that map to the same H-iso-class', () => {
     // H: single object h with only identity (discrete-1 groupoid)
     const H = DiscreteCategory.DiscreteAsGroupoid(['h'] as const)
-    const IfinH = { carrier: ['h'] as const }
+    const HIndex = IndexedFamilies.finiteIndex(H.objects)
 
     // G: two objects a,b isomorphic
-    const G = twoObjIsoGroupoid('a', 'b')
+    const G = twoObjIsoGroupoid<'a' | 'b'>('a', 'b')
+
+    type GObj = (typeof G)['objects'][number]
+    type GMor = ReturnType<typeof G['id']>
+    type HObj = (typeof H)['objects'][number]
+    type HMor = ReturnType<typeof H['id']>
+
+    const targetObj: HObj = H.objects[0]!
 
     // u: both a,b ↦ h
-    const u: GFunctor<'a' | 'b', any, 'h', any> = {
-      source: G as any,
-      target: H as any,
-      onObj: (_g) => 'h',
-      onMor: (_m) => ({ tag: 'Id', obj: 'h' } as any)
+    const u: GFunctor<GObj, GMor, HObj, HMor> = {
+      source: G,
+      target: H,
+      onObj: () => targetObj,
+      onMor: () => H.id(targetObj)
     }
 
     // Fobj: map both to same Vect dim (iso-invariant scenario)
-    const Fobj: IndexedFamilies.Family<'a' | 'b', EnhancedVect.VectObj> = (g) => ({ dim: 2 })
+    const Fobj: IndexedFamilies.Family<GObj, EnhancedVect.VectObj> = () => ({ dim: 2 })
 
-    const Lan = lanGroupoidViaClasses(H as any, G as any, u, Fobj, IfinH as any, EnhancedVect.VectHasFiniteCoproducts)
-    const Ran = ranGroupoidViaClasses(H as any, G as any, u, Fobj, IfinH as any, EnhancedVect.VectHasFiniteProducts)
+    const Lan = lanGroupoidViaClasses(H, G, u, Fobj, HIndex, EnhancedVect.VectHasFiniteCoproducts)
+    const Ran = ranGroupoidViaClasses(H, G, u, Fobj, HIndex, EnhancedVect.VectHasFiniteProducts)
 
     // Since a~b in G and both map to class of h, Lan/Ran use a single representative ⇒ dim 2
     expect(Lan.at('h').dim).toBe(2)
@@ -79,22 +86,29 @@ describe('Lan/Ran via isomorphism classes (Vect)', () => {
   test('Keeps distinct non-isomorphic G-objects in the fiber', () => {
     // H: discrete with objects h0,h1; u(g)=h0 for both g
     const H = DiscreteCategory.DiscreteAsGroupoid(['h0', 'h1'] as const)
-    const IfinH = { carrier: ['h0', 'h1'] as const }
+    const HIndex = IndexedFamilies.finiteIndex(H.objects)
 
     // G: discrete (no iso between a and b)
     const Gdisc = DiscreteCategory.DiscreteAsGroupoid(['a', 'b'] as const)
 
-    const u: GFunctor<'a' | 'b', any, 'h0' | 'h1', any> = {
-      source: Gdisc as any,
-      target: H as any,
-      onObj: (_g) => 'h0',
-      onMor: (m) => m as any
+    type GObj = (typeof Gdisc)['objects'][number]
+    type GMor = ReturnType<typeof Gdisc['id']>
+    type HObj = (typeof H)['objects'][number]
+    type HMor = ReturnType<typeof H['id']>
+
+    const targetObj: HObj = H.objects[0]!
+
+    const u: GFunctor<GObj, GMor, HObj, HMor> = {
+      source: Gdisc,
+      target: H,
+      onObj: () => targetObj,
+      onMor: () => H.id(targetObj)
     }
 
-    const Fobj: IndexedFamilies.Family<'a' | 'b', EnhancedVect.VectObj> = (g) => ({ dim: g === 'a' ? 2 : 3 })
+    const Fobj: IndexedFamilies.Family<GObj, EnhancedVect.VectObj> = (g) => ({ dim: g === 'a' ? 2 : 3 })
 
-    const Lan = lanGroupoidViaClasses(H as any, Gdisc as any, u, Fobj, IfinH as any, EnhancedVect.VectHasFiniteCoproducts)
-    const Ran = ranGroupoidViaClasses(H as any, Gdisc as any, u, Fobj, IfinH as any, EnhancedVect.VectHasFiniteProducts)
+    const Lan = lanGroupoidViaClasses(H, Gdisc, u, Fobj, HIndex, EnhancedVect.VectHasFiniteCoproducts)
+    const Ran = ranGroupoidViaClasses(H, Gdisc, u, Fobj, HIndex, EnhancedVect.VectHasFiniteProducts)
 
     // No iso collapsing: Lan('h0') is direct sum of dims 2 and 3; Ran('h0') same total dim in Vect
     expect(Lan.at('h0').dim).toBe(5)
@@ -107,22 +121,29 @@ describe('Lan/Ran via isomorphism classes (Vect)', () => {
 
   test('Groupoid Kan respects isomorphism structure', () => {
     // Create a groupoid with non-trivial isomorphisms
-    const G = twoObjIsoGroupoid('x', 'y')
-    const H = DiscreteCategory.DiscreteAsGroupoid(['target'])
-    
+    const G = twoObjIsoGroupoid<'x' | 'y'>('x', 'y')
+    const H = DiscreteCategory.DiscreteAsGroupoid(['target'] as const)
+
+    type GObj = (typeof G)['objects'][number]
+    type GMor = ReturnType<typeof G['id']>
+    type HObj = (typeof H)['objects'][number]
+    type HMor = ReturnType<typeof H['id']>
+
+    const targetObj: HObj = H.objects[0]!
+
     // All objects map to the same target
-    const u: GFunctor<'x' | 'y', any, 'target', any> = {
-      source: G as any,
-      target: H as any,
-      onObj: (_g) => 'target',
-      onMor: (_m) => ({ tag: 'Id', obj: 'target' } as any)
+    const u: GFunctor<GObj, GMor, HObj, HMor> = {
+      source: G,
+      target: H,
+      onObj: () => targetObj,
+      onMor: () => H.id(targetObj)
     }
-    
+
     // Different dimensions but isomorphic objects
-    const Fobj: IndexedFamilies.Family<'x' | 'y', EnhancedVect.VectObj> = (g) => ({ dim: g === 'x' ? 3 : 3 })
-    
-    const IfinH = { carrier: ['target'] as const }
-    const Lan = lanGroupoidViaClasses(H as any, G as any, u, Fobj, IfinH as any, EnhancedVect.VectHasFiniteCoproducts)
+    const Fobj: IndexedFamilies.Family<GObj, EnhancedVect.VectObj> = (g) => ({ dim: g === 'x' ? 3 : 3 })
+
+    const HIndex = IndexedFamilies.finiteIndex(H.objects)
+    const Lan = lanGroupoidViaClasses(H, G, u, Fobj, HIndex, EnhancedVect.VectHasFiniteCoproducts)
     
     // Should collapse to single representative since x ≅ y
     expect(Lan.at('target').dim).toBe(3) // only one representative, not 6
