@@ -50,7 +50,7 @@ const buildResult = (
     pending: false,
     registryPath: descriptor.registryPath,
     details: details || descriptor.summary,
-    issues,
+    ...(issues !== undefined ? { issues } : {}),
   };
 };
 
