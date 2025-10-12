@@ -124,6 +124,10 @@ const frameMatches = <Obj, Payload>(
   for (let index = 0; index < frame.arrows.length; index += 1) {
     const actual = frame.arrows[index];
     const anticipated = expected.arrows[index];
+    if (actual === undefined || anticipated === undefined) {
+      issues.push(`${label} arrow ${index} must match the anticipated frame shape.`);
+      continue;
+    }
     if (!equality(actual.from, anticipated.from) || !equality(actual.to, anticipated.to)) {
       issues.push(`${label} arrow ${index} must reuse the anticipated endpoints.`);
     }
@@ -500,7 +504,7 @@ export const categoryOfResolutions = <Obj, Arr, Payload, Evidence>(
     id: getIdentity,
     compose,
     isId,
-    equalMor,
+    ...(equalMor !== undefined ? { equalMor } : {}),
     metadata,
   };
 };
