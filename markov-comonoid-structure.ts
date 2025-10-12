@@ -67,7 +67,12 @@ export function buildMarkovComonoidWitness<X>(
     throw new Error("Discard morphism domain does not match the provided object.");
   }
 
-  return { object, copy, discard, label: options.label };
+  return {
+    object,
+    copy,
+    discard,
+    ...(options.label !== undefined ? { label: options.label } : {}),
+  };
 }
 
 export function checkMarkovComonoid<X>(witness: MarkovComonoidWitness<X>): MarkovComonoidReport<X> {

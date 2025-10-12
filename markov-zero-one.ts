@@ -62,7 +62,12 @@ export function buildKolmogorovZeroOneWitness<A, XJ, T>(
       throw new Error(`Finite marginal ${index} does not consume X_J.`);
     }
   });
-  return { prior: p, stat: s, finiteMarginals, label: options.label };
+  return {
+    prior: p,
+    stat: s,
+    finiteMarginals,
+    ...(options.label !== undefined ? { label: options.label } : {}),
+  };
 }
 
 function combineStateProjections<XJ>(
@@ -84,12 +89,16 @@ function marginalIndependenceChecks<A, XJ, T>(
   witness: KolmogorovZeroOneWitness<A, XJ, T>,
   composite: FinMarkov<A, T>,
 ): Array<{ F: string; report: MarkovConditionalReport<A> }> {
-  const domain = buildMarkovComonoidWitness(witness.prior.X, {
-    label: witness.label ? `${witness.label} domain` : undefined,
-  });
-  const tWitness = buildMarkovComonoidWitness(witness.stat.Y, {
-    label: witness.label ? `${witness.label} T` : undefined,
-  });
+  const domainLabel = witness.label ? `${witness.label} domain` : undefined;
+  const tLabel = witness.label ? `${witness.label} T` : undefined;
+  const domain = buildMarkovComonoidWitness(
+    witness.prior.X,
+    domainLabel !== undefined ? { label: domainLabel } : undefined,
+  );
+  const tWitness = buildMarkovComonoidWitness(
+    witness.stat.Y,
+    tLabel !== undefined ? { label: tLabel } : undefined,
+  );
 
   return witness.finiteMarginals.map((entry) => {
     const marginal = witness.prior.then(entry.piF);
@@ -116,11 +125,15 @@ function checkGlobalIndependence<A, XJ>(
   if (witness.finiteMarginals.length === 0) {
     return undefined;
   }
-  const domain = buildMarkovComonoidWitness(witness.prior.X, {
-    label: witness.label ? `${witness.label} domain` : undefined,
-  });
+  const domainLabel = witness.label ? `${witness.label} domain` : undefined;
+  const domain = buildMarkovComonoidWitness(
+    witness.prior.X,
+    domainLabel !== undefined ? { label: domainLabel } : undefined,
+  );
   const outputs = witness.finiteMarginals.map((entry) =>
-    buildMarkovComonoidWitness(entry.piF.Y, { label: `${witness.label ?? "Kolmogorov"} ${entry.F}` }),
+    buildMarkovComonoidWitness(entry.piF.Y, {
+      label: `${witness.label ?? "Kolmogorov"} ${entry.F}`,
+    }),
   );
   const stateCombined = combineStateProjections(witness.finiteMarginals.map((entry) => entry.piF));
   const combined = witness.prior.then(stateCombined);

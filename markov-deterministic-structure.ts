@@ -162,7 +162,13 @@ export function buildMarkovDeterministicWitness<X, Y>(
   if (arrow.Y !== codomain.object) {
     throw new Error("Deterministic witness codomain does not match the provided comonoid witness.");
   }
-  return { domain, codomain, arrow, label: options.label, base: options.base };
+  return {
+    domain,
+    codomain,
+    arrow,
+    ...(options.label !== undefined ? { label: options.label } : {}),
+    ...(options.base !== undefined ? { base: options.base } : {}),
+  };
 }
 
 export function buildMarkovPositivityWitness<B, C>(
@@ -170,8 +176,12 @@ export function buildMarkovPositivityWitness<B, C>(
   right: MarkovComonoidWitness<C>,
   options: MarkovPositivityWitnessOptions<B, C> = {},
 ): MarkovPositivityWitness<B, C> {
-  const tensor = options.tensor ??
-    buildMarkovComonoidWitness(tensorObj(left.object, right.object), { label: options.label });
+  const tensor =
+    options.tensor ??
+    buildMarkovComonoidWitness(
+      tensorObj(left.object, right.object),
+      options.label !== undefined ? { label: options.label } : undefined,
+    );
 
   const defaultProjectLeft = new FinMarkov(tensor.object, left.object, fst<B, C>());
   const defaultProjectRight = new FinMarkov(tensor.object, right.object, snd<B, C>());
@@ -189,7 +199,14 @@ export function buildMarkovPositivityWitness<B, C>(
     throw new Error("Right projection does not land in the right witness object.");
   }
 
-  return { left, right, tensor, projectLeft, projectRight, label: options.label };
+  return {
+    left,
+    right,
+    tensor,
+    projectLeft,
+    projectRight,
+    ...(options.label !== undefined ? { label: options.label } : {}),
+  };
 }
 
 export function checkDeterministicComonoid<X, Y>(
@@ -513,9 +530,16 @@ export function buildSetMultDeterminismWitness<X, Y>(
     domain: setMultObjFromFin(domain, options.label ? `${options.label} domain` : undefined),
     codomain: setMultObjFromFin(codomain, options.label ? `${options.label} codomain` : undefined),
     morphism,
-    label: options.label,
+    ...(options.label !== undefined ? { label: options.label } : {}),
   };
-  return { domain, codomain, morphism, setWitness, arrow: options.arrow, label: options.label };
+  return {
+    domain,
+    codomain,
+    morphism,
+    setWitness,
+    ...(options.arrow !== undefined ? { arrow: options.arrow } : {}),
+    ...(options.label !== undefined ? { label: options.label } : {}),
+  };
 }
 
 export function checkSetMultDeterminism<X, Y>(

@@ -161,7 +161,7 @@ export function buildMarkovConditionalWitness<A>(
     outputs,
     arrow,
     projections,
-    label: options.label,
+    ...(options.label !== undefined ? { label: options.label } : {}),
     arity: outputs.length,
   };
 }

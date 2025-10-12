@@ -23,19 +23,38 @@ export const createSetMultObj = <T>(options: {
   readonly show?: Show<T>;
   readonly label?: string;
   readonly samples?: ReadonlyArray<T>;
-} = {}): SetMultObj<T> => ({
-  eq: options.eq ?? byRefEq<T>(),
-  show: options.show ?? defaultShow,
-  label: options.label,
-  samples: options.samples,
-});
+} = {}): SetMultObj<T> => {
+  const metadata =
+    options.label === undefined && options.samples === undefined
+      ? undefined
+      : {
+          ...(options.label !== undefined ? { label: options.label } : {}),
+          ...(options.samples !== undefined ? { samples: options.samples } : {}),
+        };
 
-export const setMultObjFromFin = <T>(fin: Fin<T>, label?: string): SetMultObj<T> => ({
-  eq: fin.eq,
-  show: fin.show ?? defaultShow,
-  label,
-  samples: fin.elems,
-});
+  return {
+    eq: options.eq ?? byRefEq<T>(),
+    show: options.show ?? defaultShow,
+    ...(metadata ?? {}),
+  };
+};
+
+export const setMultObjFromFin = <T>(fin: Fin<T>, label?: string): SetMultObj<T> => {
+  const { elems } = fin as { elems?: ReadonlyArray<T> };
+  const metadata =
+    label === undefined && elems === undefined
+      ? undefined
+      : {
+          ...(label !== undefined ? { label } : {}),
+          ...(elems !== undefined ? { samples: elems } : {}),
+        };
+
+  return createSetMultObj({
+    eq: fin.eq,
+    show: fin.show ?? defaultShow,
+    ...(metadata ?? {}),
+  });
+};
 
 export type SetMulti<A, B> = (a: A) => ReadonlySet<B>;
 
@@ -115,7 +134,9 @@ export const tensorSetMultObj = <A, B>(
 ): SetMultObj<Pair<A, B>> => ({
   eq: pairEq(left.eq, right.eq),
   show: pairShow(left.show, right.show),
-  label: left.label && right.label ? `${left.label} ⊗ ${right.label}` : undefined,
+  ...(left.label !== undefined && right.label !== undefined
+    ? { label: `${left.label} ⊗ ${right.label}` }
+    : {}),
 });
 
 const cartesianProduct = <A, B>(
@@ -341,7 +362,7 @@ export const createSetMultProductObj = <J, X>(
       entries.sort();
       return `{${entries.join(", ")}}`;
     },
-    label: options.label,
+    ...(options.label !== undefined ? { label: options.label } : {}),
   });
 
 export const createSetMultSectionObj = <J, X>(
@@ -352,7 +373,7 @@ export const createSetMultSectionObj = <J, X>(
   createSetMultObj({
     eq: eqTuple(family, subset),
     show: showTuple(family, subset),
-    label: options.label,
+    ...(options.label !== undefined ? { label: options.label } : {}),
   });
 
 export const createSetMultInfObj = <J, X>(
