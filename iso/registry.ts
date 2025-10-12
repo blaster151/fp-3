@@ -114,8 +114,15 @@ export class IsoRegistry<Obj, Arr> {
   }
 }
 
-const describe = (arrow: { id?: string } | null | undefined): string => {
-  if (!arrow) return "<missing>"
-  if (typeof arrow === "object" && typeof arrow.id === "string") return arrow.id
+type MaybeIdentified = { readonly id?: unknown }
+
+const describe = (arrow: unknown): string => {
+  if (arrow == null) return "<missing>"
+
+  if (typeof arrow === "object") {
+    const candidate = arrow as MaybeIdentified
+    if (typeof candidate.id === "string") return candidate.id
+  }
+
   return String(arrow)
 }

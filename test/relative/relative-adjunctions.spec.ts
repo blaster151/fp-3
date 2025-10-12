@@ -89,6 +89,17 @@ const makeTrivialAdjunction = () => {
   return { equipment, adjunction } as const;
 };
 
+const expectIssuesToContainMessages = (
+  issues: readonly string[] | undefined,
+  snippets: readonly string[],
+) => {
+  expect(issues).toBeDefined();
+  const presentIssues = issues ?? [];
+  for (const snippet of snippets) {
+    expect(presentIssues.some((issue) => issue.includes(snippet))).toBe(true);
+  }
+};
+
 describe("Relative adjunction section analyzer", () => {
   it("accepts the canonical section witness", () => {
     const { adjunction } = makeTrivialAdjunction();
@@ -1019,11 +1030,9 @@ describe("Relative adjunction oracles", () => {
         RelativeParams[3]
       >);
       expect(report.holds).toBe(false);
-      expect(report.issues).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining("Comparison tight cell must start"),
-        ]),
-      );
+      expectIssuesToContainMessages(report.issues, [
+        "Comparison tight cell must start",
+      ]);
     });
 
     it("validates the identity right morphism", () => {
@@ -1052,11 +1061,9 @@ describe("Relative adjunction oracles", () => {
         RelativeParams[3]
       >);
       expect(report.holds).toBe(false);
-      expect(report.issues).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining("Comparison tight cell must start"),
-        ]),
-      );
+      expectIssuesToContainMessages(report.issues, [
+        "Comparison tight cell must start",
+      ]);
     });
 
     it("packages identity strict morphisms as simultaneous left/right data", () => {
@@ -1125,11 +1132,9 @@ describe("Relative adjunction oracles", () => {
       };
       const report = analyzeRelativeAdjunctionFullyFaithfulPostcomposition(input);
       expect(report.holds).toBe(false);
-      expect(report.issues).toEqual(
-        expect.arrayContaining([
-          "Postcomposed relative adjunction root should equal u ∘ j.",
-        ]),
-      );
+      expectIssuesToContainMessages(report.issues, [
+        "Postcomposed relative adjunction root should equal u ∘ j.",
+      ]);
     });
   });
 
@@ -1215,11 +1220,9 @@ describe("Relative adjunction oracles", () => {
     };
     const report = analyzeRelativeAdjunctionInducedMonadsCoincide(input);
     expect(report.holds).toBe(false);
-    expect(report.issues).toEqual(
-      expect.arrayContaining([
-        "Relative monad carriers must coincide for the induced monads to agree.",
-      ]),
-    );
+    expectIssuesToContainMessages(report.issues, [
+      "Relative monad carriers must coincide for the induced monads to agree.",
+    ]);
   });
 
   it("analyzes resolute pairs with identity witnesses", () => {

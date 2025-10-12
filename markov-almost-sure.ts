@@ -18,15 +18,20 @@ function pushUnique<T>(list: T[], value: T, eq: Eq<T>): void {
   }
 }
 
+export interface SupportRecord<A, X> {
+  readonly value: X;
+  readonly totalMass: number;
+  readonly contributions: ReadonlyArray<SupportContribution<A>>;
+}
+
 interface SupportContribution<A> {
   readonly input: A;
   readonly weight: number;
 }
 
-export interface SupportRecord<A, X> {
-  readonly value: X;
-  readonly totalMass: number;
-  readonly contributions: ReadonlyArray<SupportContribution<A>>;
+interface SupportContributionDraft<A> {
+  input: A;
+  weight: number;
 }
 
 export interface DistributionDifference<Y> {
@@ -89,15 +94,19 @@ export function buildMarkovAlmostSureWitness<A, X, Y>(
   };
 }
 
-function findSupportRecord<A, X>(records: Array<{ value: X; totalMass: number; contributions: SupportContribution<A>[] }>, value: X, eq: Eq<X>) {
+function findSupportRecord<A, X>(
+  records: Array<{ value: X; totalMass: number; contributions: SupportContributionDraft<A>[] }>,
+  value: X,
+  eq: Eq<X>,
+) {
   for (const record of records) {
     if (eq(record.value, value)) return record;
   }
   return undefined;
 }
 
-function collectSupport<A, X>(prior: FinMarkov<A, X>, tolerance: number): SupportRecord<A, X>[] {
-  const records: Array<{ value: X; totalMass: number; contributions: SupportContribution<A>[] }> = [];
+function collectSupport<A, X>(prior: FinMarkov<A, X>, tolerance: number): ReadonlyArray<SupportRecord<A, X>> {
+  const records: Array<{ value: X; totalMass: number; contributions: SupportContributionDraft<A>[] }> = [];
   const { X: domain, Y: codomain } = prior;
   for (const a of domain.elems) {
     const dist = prior.k(a);
@@ -120,7 +129,10 @@ function collectSupport<A, X>(prior: FinMarkov<A, X>, tolerance: number): Suppor
   return records.map((record) => ({
     value: record.value,
     totalMass: record.totalMass,
-    contributions: record.contributions,
+    contributions: record.contributions.map<SupportContribution<A>>((entry) => ({
+      input: entry.input,
+      weight: entry.weight,
+    })),
   }));
 }
 
@@ -182,7 +194,7 @@ export function checkAlmostSureEquality<A, X, Y>(
     failures,
     leftComposite,
     rightComposite,
-    composite,
+    ...(composite !== undefined ? { composite } : {}),
     equalComposite,
     details,
   };

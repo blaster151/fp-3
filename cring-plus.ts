@@ -33,8 +33,8 @@ export interface CRingPlusHom<A, B> {
   readonly label?: string;
 }
 
-export type CRingPlusObj = CRingPlusObject<unknown>;
-export type CRingPlusMor = CRingPlusHom<unknown, unknown>;
+export type CRingPlusObj = CRingPlusObject<any>;
+export type CRingPlusMor = CRingPlusHom<any, any>;
 
 type HomCheck = { description: string };
 
@@ -121,12 +121,20 @@ export const canonicalInitialHom = <A>(
   label: `ι_${target.name}`,
 });
 
+const requireRingEq = <A>(object: CRingPlusObject<A>): ((left: A, right: A) => boolean) => {
+  const { eq } = object.ring;
+  if (!eq) {
+    throw new Error(`CRingPlus object ${object.name} requires a ring equality`);
+  }
+  return eq;
+};
+
 export const equalHom = <A, B>(
   f: CRingPlusHom<A, B>,
   g: CRingPlusHom<A, B>
 ): boolean => {
   if (f.source !== g.source || f.target !== g.target) return false;
-  const eq = f.target.ring.eq;
+  const eq = requireRingEq(f.target);
   for (const sample of f.source.sample) {
     const fx = f.map(sample);
     const gx = g.map(sample);
@@ -141,17 +149,18 @@ export const checkAdditiveUnitHom = <A, B>(
   const { source, target } = hom;
   const failures: HomCheck[] = [];
 
-  const zeroPreserved = target.ring.eq(hom.map(source.ring.zero), target.ring.zero);
+  const eq = requireRingEq(target);
+  const zeroPreserved = eq(hom.map(source.ring.zero), target.ring.zero);
   if (!zeroPreserved) failures.push({ description: "Does not send 0 to 0" });
 
-  const onePreserved = target.ring.eq(hom.map(source.ring.one), target.ring.one);
+  const onePreserved = eq(hom.map(source.ring.one), target.ring.one);
   if (!onePreserved) failures.push({ description: "Does not send 1 to 1" });
 
   for (const x of source.sample) {
     for (const y of source.sample) {
       const lhs = hom.map(source.ring.add(x, y));
       const rhs = target.ring.add(hom.map(x), hom.map(y));
-      if (!target.ring.eq(lhs, rhs)) {
+      if (!eq(lhs, rhs)) {
         failures.push({ description: `Addition mismatch on (${source.format?.(x) ?? x}, ${source.format?.(y) ?? y})` });
         break;
       }
@@ -161,7 +170,7 @@ export const checkAdditiveUnitHom = <A, B>(
   for (const x of source.sample) {
     const lhs = hom.map(source.ring.neg(x));
     const rhs = target.ring.neg(hom.map(x));
-    if (!target.ring.eq(lhs, rhs)) {
+    if (!eq(lhs, rhs)) {
       failures.push({ description: `Negation mismatch on ${source.format?.(x) ?? x}` });
     }
   }
@@ -366,6 +375,14 @@ export const PolynomialRing: Ring<Polynomial> = {
   sub: subPolynomial,
 };
 
+const polynomialRingEq = (() => {
+  const eq = PolynomialRing.eq;
+  if (!eq) {
+    throw new Error("PolynomialRing must expose equality to compare morphism outputs");
+  }
+  return eq;
+})();
+
 export const PolynomialObject: CRingPlusObject<Polynomial> = {
   ring: PolynomialRing,
   sample: polynomialSamples,
@@ -433,12 +450,12 @@ export const checkCRingPlusCausalityCounterexample = (
   const equalObservation = equalHom(observedCanonical, observedIdentity);
   const equalFuture = equalHom(futureAfterCanonical, futureAfterIdentity);
 
-  let witness: CRingPlusCausalityAnalysis["witness"];
+  let witness: CRingPlusCausalityAnalysis["witness"] = undefined;
   if (!equalFuture) {
     for (const input of object.sample) {
       const lhs = futureAfterCanonical.map(input);
       const rhs = futureAfterIdentity.map(input);
-      if (!PolynomialRing.eq(lhs, rhs)) {
+      if (!polynomialRingEq(lhs, rhs)) {
         witness = { input, before: lhs, after: rhs };
         break;
       }
@@ -461,9 +478,9 @@ export const checkCRingPlusCausalityCounterexample = (
     holds,
     equalAfterObservation: equalObservation,
     equalBeforeObservation: equalFuture,
-    witness,
     homChecks,
     details,
+    ...(witness && { witness }),
   };
 };
 

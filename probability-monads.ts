@@ -1,9 +1,13 @@
 // probability-monads.ts
 import {
-  Dist, dirac, normalize, prune,
-  Fin, Pair, I, tensorObj,
-  Kernel, kernelToMatrix, prettyMatrix,
+  dirac,
+  normalize,
+  prune,
+  tensorObj,
+  kernelToMatrix,
+  prettyMatrix,
 } from "./markov-category";
+import type { Dist, Fin, Pair, I, Kernel } from "./markov-category";
 
 // Dist-like monad spec
 export interface DistLikeMonadSpec {

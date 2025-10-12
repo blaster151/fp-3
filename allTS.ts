@@ -12081,7 +12081,15 @@ export const makeTraversableResultK1 =
 // Development Utilities (Dev-Only)
 // =======================
 
-const __DEV__ = process.env['NODE_ENV'] !== "production"
+type MaybeProcess = { readonly env?: Record<string, string | undefined> }
+
+const resolveNodeEnv = (): string | undefined => {
+  const processLike = (globalThis as { readonly process?: MaybeProcess }).process
+  const nodeEnv = processLike?.env?.["NODE_ENV"]
+  return typeof nodeEnv === "string" ? nodeEnv : undefined
+}
+
+const __DEV__ = resolveNodeEnv() !== "production"
 
 export const assertMonoidalFnCoherence = (): void => {
   if (!__DEV__) return

@@ -4,7 +4,7 @@
 // the unit and multiplication. When a monoid carries a finite `elements`
 // witness we can verify preservation exhaustively; otherwise we trust callers.
 
-import { Monoid } from "./monoid-cat";
+import type { Monoid } from "./monoid-cat";
 
 export interface MonoidHom<M, N> {
   readonly dom: Monoid<M>;

@@ -1,12 +1,26 @@
 // markov-laws.ts
+import type { Fin, Pair, I, Kernel } from "./markov-category";
 import {
-  Fin, Pair, I, Kernel, FinMarkov,
-  tensorObj, tensor, swap, copy, discard, fst, snd,
-  kernelToMatrix, prettyMatrix, mass, idK, copyK, discardK,
-  deterministic, IFin
+  FinMarkov,
+  tensorObj,
+  tensor,
+  swap,
+  copy,
+  discard,
+  fst,
+  snd,
+  kernelToMatrix,
+  prettyMatrix,
+  mass,
+  idK,
+  copyK,
+  discardK,
+  deterministic,
+  IFin
 } from "./markov-category";
-import { Dist } from "./dist";
-import { CSRig } from "./semiring-utils";
+import type { Dist } from "./dist";
+import { Prob } from "./semiring-utils";
+import type { CSRig } from "./semiring-utils";
 
 export function approxEqualMatrix(a:number[][], b:number[][], tol=1e-9){
   if(a.length!==b.length) return false;
@@ -164,7 +178,6 @@ export function isDeterministicLegacy<A, X>(
   sampleAs: readonly A[]
 ): { det: boolean; base?: (a: A) => X } {
   // Convert to use the new recognizer with Prob semiring
-  const { Prob } = require("./semiring-utils");
   const newF = (a: A): Dist<number, X> => ({
     R: Prob,
     w: f(a)

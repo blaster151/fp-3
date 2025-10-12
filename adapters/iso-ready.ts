@@ -17,8 +17,8 @@ export type IsoReadyFinSetCategory = FinSetCategory & {
 export const makeIsoReadyFinSet = (
   universe: Record<FinSetName, readonly string[]>,
 ): IsoReadyFinSetCategory => {
-  const base = FinSetCat(universe) as IsoReadyFinSetCategory
-  base.candidatesToInvert = (arrow) => {
+  const base = FinSetCat(universe)
+  const candidatesToInvert: CandidateProvider<FuncArr> = (arrow) => {
     if (!base.isInjective(arrow) || !base.isSurjective(arrow)) return []
 
     const domain = base.carrier(arrow.dom)
@@ -48,7 +48,8 @@ export const makeIsoReadyFinSet = (
 
     return [candidate]
   }
-  return base
+
+  return { ...base, candidatesToInvert } satisfies IsoReadyFinSetCategory
 }
 
 export type IsoReadyFinPosCategory = FinPosCategory & {
@@ -58,8 +59,8 @@ export type IsoReadyFinPosCategory = FinPosCategory & {
 export const makeIsoReadyFinPos = (
   objects: readonly FinPosObj[],
 ): IsoReadyFinPosCategory => {
-  const base = FinPosCat(objects) as IsoReadyFinPosCategory
-  base.candidatesToInvert = (arrow) => {
+  const base = FinPosCat(objects)
+  const candidatesToInvert: CandidateProvider<MonoMap> = (arrow) => {
     const dom = base.lookup(arrow.dom)
     const cod = base.lookup(arrow.cod)
 
@@ -93,7 +94,8 @@ export const makeIsoReadyFinPos = (
 
     return [candidate]
   }
-  return base
+
+  return { ...base, candidatesToInvert } satisfies IsoReadyFinPosCategory
 }
 
 export type IsoReadyFinGrpCategory = FinGrpCategory & {
@@ -103,8 +105,8 @@ export type IsoReadyFinGrpCategory = FinGrpCategory & {
 export const makeIsoReadyFinGrp = (
   objects: readonly FinGrpObj[],
 ): IsoReadyFinGrpCategory => {
-  const base = FinGrpCat(objects) as IsoReadyFinGrpCategory
-  base.candidatesToInvert = (arrow) => {
+  const base = FinGrpCat(objects)
+  const candidatesToInvert: CandidateProvider<Hom> = (arrow) => {
     const dom = base.lookup(arrow.dom)
     const cod = base.lookup(arrow.cod)
 
@@ -138,7 +140,8 @@ export const makeIsoReadyFinGrp = (
 
     return [candidate]
   }
-  return base
+
+  return { ...base, candidatesToInvert } satisfies IsoReadyFinGrpCategory
 }
 
 export { FinPos, FinGrp }

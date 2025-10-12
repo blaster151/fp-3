@@ -1,5 +1,6 @@
-import { DynHom, DynSys } from './dynsys';
-import { MSet, MSetCat, MSetHom, Monoid } from './mset';
+import type { DynHom, DynSys } from './dynsys';
+import { MSetCat } from './mset';
+import type { MSet, MSetHom, Monoid } from './mset';
 
 export type M2 = number;
 

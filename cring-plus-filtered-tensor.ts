@@ -53,6 +53,14 @@ const describeValue = <J, A>(family: TensorFamily<J, A>, index: J, value: A): st
   return component.object.format?.(value) ?? String(value);
 };
 
+const requireRingEq = <A>(object: CRingPlusObject<A>): ((left: A, right: A) => boolean) => {
+  const { eq } = object.ring;
+  if (!eq) {
+    throw new Error(`Tensor families require ring equality on ${object.name}`);
+  }
+  return eq;
+};
+
 const normalizeEntries = <J, A>(
   family: TensorFamily<J, A>,
   entries: ReadonlyArray<{ index: J; value: A }>,
@@ -62,12 +70,13 @@ const normalizeEntries = <J, A>(
   for (const entry of entries) {
     const key = keyOf(family, entry.index);
     const { object } = getComponent(family, entry.index);
+    const eq = requireRingEq(object);
     const current = combined.get(key);
     const nextValue = current
       ? object.ring.mul(current.value, entry.value)
       : entry.value;
 
-    if (object.ring.eq(nextValue, object.ring.one)) {
+    if (eq(nextValue, object.ring.one)) {
       combined.delete(key);
     } else {
       combined.set(key, { index: entry.index, value: nextValue });
@@ -177,11 +186,12 @@ const multiplyEntries = <J, A>(
   for (const entry of right) {
     const existing = combined.get(entry.key);
     const { object } = getComponent(family, entry.index);
+    const eq = requireRingEq(object);
     const nextValue = existing
       ? object.ring.mul(existing.value, entry.value)
       : entry.value;
 
-    if (object.ring.eq(nextValue, object.ring.one)) {
+    if (eq(nextValue, object.ring.one)) {
       combined.delete(entry.key);
     } else {
       combined.set(entry.key, { index: entry.index, value: nextValue });
@@ -257,17 +267,18 @@ const equalTensors = <J, A>(
   right: TensorElement<J, A>,
 ): boolean => {
   if (left.terms.length !== right.terms.length) return false;
-  for (let i = 0; i < left.terms.length; i++) {
-    const a = left.terms[i];
-    const b = right.terms[i];
+  for (const [index, a] of left.terms.entries()) {
+    const b = right.terms[index];
+    if (!b) return false;
     if (a.coefficient !== b.coefficient) return false;
     if (a.entries.length !== b.entries.length) return false;
-    for (let j = 0; j < a.entries.length; j++) {
-      const ae = a.entries[j];
-      const be = b.entries[j];
+    for (const [entryIndex, ae] of a.entries.entries()) {
+      const be = b.entries[entryIndex];
+      if (!be) return false;
       if (ae.key !== be.key) return false;
       const { object } = getComponent(family, ae.index);
-      if (!object.ring.eq(ae.value, be.value)) return false;
+      const eq = requireRingEq(object);
+      if (!eq(ae.value, be.value)) return false;
     }
   }
   return true;
