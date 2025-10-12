@@ -13,6 +13,7 @@
     "typecheck:prod": "tsc --project tsconfig.prod.json --noEmit",
     "examples": "node dist/run-examples-simple.js",
     "examples:runnable": "ts-node --project tsconfig.runnable-plan.json run-runnable-examples.ts",
+    "examples:runnable:coverage": "node scripts/run-runnable-coverage.mjs",
     "test": "vitest",
     "test:laws": "vitest test/laws",
     "test:ci": "npm run check:stubs && vitest run test/laws --reporter=verbose",
