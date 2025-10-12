@@ -14,6 +14,23 @@
 
 This PDI folder contains **TWO DISTINCT SYSTEMS**:
 
+## Running runnable examples and tests
+
+- `npm run examples:runnable` executes every runnable example in ascending
+  identifier order so the lower numbered catalogue entries run first. You can
+  pass any subset of example identifiers (for example,
+  `npm run examples:runnable -- 005 006`) or `--list` to inspect the catalogue
+  without running anything.
+- `npm run examples:runnable:coverage` gathers V8 coverage data while executing
+  the runnable examples. The command writes a JSON summary to
+  `coverage/runnable-examples/summary.json` and prints a human-readable
+  breakdown to the console.
+- `npm run test` runs the Vitest suite, while `npm run test:coverage` generates a
+  coverage report using the existing `scripts/run-vitest-coverage.mjs` helper.
+
+Both coverage commands place their artifacts inside the `coverage/` directory so
+you can inspect the combined reports or archive them for later analysis.
+
 ### **System 1: Pattern Discovery & Integration (PDI)**
 - **Purpose**: "Remember these handy shortcuts exist now"
 - **Value**: Discover existing patterns, integrate them into new code
