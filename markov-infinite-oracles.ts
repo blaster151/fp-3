@@ -2,6 +2,7 @@ import type { Dist } from "./dist";
 import { bind, map } from "./dist";
 import type { CSRig } from "./semiring-utils";
 import { FinMarkov, tensorObj, pair, IFin } from "./markov-category";
+import type { Fin } from "./markov-category";
 import type {
   CountabilityWitness,
   InfObj,
@@ -122,9 +123,9 @@ export function checkTailEventInvariance<R, J, X, Carrier>(
     ok: counterexamples.length === 0,
     counterexamples,
     countable: isCountableIndex(family),
-    witness: family.countability,
+    ...(family.countability && { witness: family.countability }),
     measurable: hasMeasurabilityWitness(family),
-    measurability: family.measurability,
+    ...(family.measurability && { measurability: family.measurability }),
     standardBorel: isStandardBorelFamily(family),
   };
 }
@@ -143,9 +144,16 @@ export function runKolmogorovConsistency<R, J, X, Carrier>(
   family: ProjectiveFamily<R, J, X, Carrier>,
   tests: ReadonlyArray<{ finite: FiniteSubset<J>; larger: FiniteSubset<J> }>
 ): KolmogorovConsistencyResult<J> {
-  const { ok, failures, countable, witness, measurable, measurability, standardBorel } =
-    checkKolmogorovConsistency(family, tests);
-  return { ok, failures, countable, witness, measurable, measurability, standardBorel };
+  const summary = checkKolmogorovConsistency(family, tests);
+  return {
+    ok: summary.ok,
+    failures: summary.failures,
+    countable: summary.countable,
+    ...(summary.witness && { witness: summary.witness }),
+    measurable: summary.measurable,
+    ...(summary.measurability && { measurability: summary.measurability }),
+    standardBorel: summary.standardBorel,
+  };
 }
 
 export interface ZeroOneWitness<R, J> {
@@ -278,9 +286,9 @@ export function checkTailSigmaIndependence<R, J, X, Carrier>(
     tailProbability,
     subsets: subsetReports,
     countable: isCountableIndex(obj.family),
-    witness: obj.family.countability,
+    ...(obj.family.countability && { witness: obj.family.countability }),
     measurable: hasMeasurabilityWitness(obj.family),
-    measurability: obj.family.measurability,
+    ...(obj.family.measurability && { measurability: obj.family.measurability }),
     standardBorel: isStandardBorelFamily(obj.family),
   };
 }
@@ -306,9 +314,9 @@ export function kolmogorovZeroOneWitness<R, J, X, Carrier>(
     probability: probTrue,
     support: pushed,
     countable: isCountableIndex(obj.family),
-    witness: obj.family.countability,
+    ...(obj.family.countability && { witness: obj.family.countability }),
     measurable: hasMeasurabilityWitness(obj.family),
-    measurability: obj.family.measurability,
+    ...(obj.family.measurability && { measurability: obj.family.measurability }),
     standardBorel: isStandardBorelFamily(obj.family),
   };
 }
@@ -370,13 +378,14 @@ export function checkKolmogorovZeroOneLaw<R, A, J, X, Carrier, XDet = unknown, T
   if (witness.mediator && components.length > 0) {
     const inferredSubset = components.map((component) => component.index) as FiniteSubset<J>;
     const subset = options.universalSubset ?? (inferredSubset.length > 0 ? inferredSubset : subsets[0] ?? ([] as FiniteSubset<J>));
-    universal = checkDeterministicProductUniversalProperty(witness.product, witness.mediator, subset, {
+    const universalOptions: DeterministicProductUniversalPropertyOptions<R, A, J, X, Carrier> = {
       domain: witness.domain,
       components,
       samples: options.samples ?? witness.domain.object.elems,
-      partitions: options.partitions,
-      label: options.candidateLabel,
-    });
+      ...(options.partitions && { partitions: options.partitions }),
+      ...(options.candidateLabel && { label: options.candidateLabel }),
+    };
+    universal = checkDeterministicProductUniversalProperty(witness.product, witness.mediator, subset, universalOptions);
   }
 
   const ok =
@@ -391,14 +400,14 @@ export function checkKolmogorovZeroOneLaw<R, A, J, X, Carrier, XDet = unknown, T
     ok,
     zeroOne,
     tail,
-    independence,
-    tailConditional,
-    determinism,
-    universal,
+    ...(independence && { independence }),
+    ...(tailConditional && { tailConditional }),
+    ...(determinism && { determinism }),
+    ...(universal && { universal }),
     countable: tail.countable,
-    witness: tail.witness,
+    ...(tail.witness && { witness: tail.witness }),
     measurable: tail.measurable,
-    measurability: tail.measurability,
+    ...(tail.measurability && { measurability: tail.measurability }),
     standardBorel: tail.standardBorel,
   };
 }
@@ -506,9 +515,9 @@ export function checkCopyDiscardCompatibility<R, J, X, Carrier>(
     ok: failures.length === 0,
     failures,
     countable: isCountableIndex(obj.family),
-    witness: obj.family.countability,
+    ...(obj.family.countability && { witness: obj.family.countability }),
     measurable: hasMeasurabilityWitness(obj.family),
-    measurability: obj.family.measurability,
+    ...(obj.family.measurability && { measurability: obj.family.measurability }),
     standardBorel: isStandardBorelFamily(obj.family),
   };
 }
@@ -586,14 +595,14 @@ const ensureDeterministicBase = <A, X>(
         value = outcome;
       }
     });
-    if (value === undefined) {
-      const entries = Array.from(dist.keys());
-      if (entries.length === 1) {
-        return entries[0];
-      }
-      throw new Error(`Deterministic base extraction for ${label} produced no support.`);
+    if (value !== undefined) {
+      return value;
     }
-    return value;
+    const entries = Array.from(dist.keys());
+    if (entries.length === 1) {
+      return entries[0]!;
+    }
+    throw new Error(`Deterministic base extraction for ${label} produced no support.`);
   };
 };
 
@@ -626,10 +635,11 @@ export function checkDeterministicProductUniversalProperty<R, A, J, X, Carrier>(
 
     const pairObject = tensorObj(component.witness.object, terminalComonoidWitness.object);
     const tensorWitness = buildMarkovPositivityWitness(component.witness, terminalComonoidWitness, {
-      tensor: buildMarkovComonoidWitness(pairObject, {
-        label: component.label ? `${component.label} ⊗ I` : undefined,
-      }),
-      label: component.label ? `${component.label} × terminal` : undefined,
+      tensor: buildMarkovComonoidWitness(
+        pairObject,
+        component.label ? { label: `${component.label} ⊗ I` } : {},
+      ),
+      ...(component.label && { label: `${component.label} × terminal` }),
     });
     const pairedArrow = new FinMarkov(
       domain.object,
@@ -640,12 +650,13 @@ export function checkDeterministicProductUniversalProperty<R, A, J, X, Carrier>(
       label: component.label ?? `component ${String(component.index)}`,
     });
     const deterministicMarginal = determinismReport.left.deterministic;
-    componentReports.push({
+    const reportEntry: DeterministicComponentDeterminismReport<A, J, X> = {
       index: component.index,
-      label: component.label,
       report: determinismReport,
       ok: deterministicMarginal,
-    });
+      ...(component.label && { label: component.label }),
+    };
+    componentReports.push(reportEntry);
 
     if (componentBases.has(component.index)) {
       duplicateFailures.push({
@@ -737,7 +748,7 @@ export function checkDeterministicProductUniversalProperty<R, A, J, X, Carrier>(
     uniqueness = {
       ok: uniquenessMismatches.length === 0,
       mismatches: uniquenessMismatches,
-      label: alternate.label,
+      ...(alternate.label && { label: alternate.label }),
     };
   }
 
@@ -843,17 +854,17 @@ export function checkDeterministicProductUniversalProperty<R, A, J, X, Carrier>(
     factorization,
     mediatorAgreement,
     mismatches,
-    uniqueness,
-    partitions: partitionReports,
+    ...(uniqueness && { uniqueness }),
+    ...(partitions && { partitions: partitionReports }),
     countable,
-    witness: family.countability,
+    ...(family.countability && { witness: family.countability }),
     measurable,
-    measurability: family.measurability,
+    ...(family.measurability && { measurability: family.measurability }),
     standardBorel,
     positive,
-    positivity,
+    ...(positivity && { positivity }),
     details,
-    candidateLabel: candidate.label,
+    ...(candidate.label && { candidateLabel: candidate.label }),
   };
 }
 
@@ -944,9 +955,9 @@ export function checkKolmogorovProduct<R, J, X, Carrier>(
     determinismFailures: failures,
     copyDiscard,
     countable: copyDiscard.countable,
-    witness: copyDiscard.witness,
+    ...(copyDiscard.witness && { witness: copyDiscard.witness }),
     measurable: copyDiscard.measurable,
-    measurability: copyDiscard.measurability,
+    ...(copyDiscard.measurability && { measurability: copyDiscard.measurability }),
     standardBorel: copyDiscard.standardBorel,
   };
 }
@@ -994,15 +1005,19 @@ export function checkKolmogorovExtensionUniversalProperty<R, J, X, Carrier>(
   }, [] as J[]);
 
   const extension = kolmogorovExtensionMeasure(obj.family, subsets);
+  const countable = isCountableIndex(obj.family);
+  const measurable = hasMeasurabilityWitness(obj.family);
+  const standardBorel = isStandardBorelFamily(obj.family);
+
   if (!extension.ok) {
     return {
       ok: false,
       reason: extension.reason,
-      countable: isCountableIndex(obj.family),
-      witness: obj.family.countability,
-      measurable: hasMeasurabilityWitness(obj.family),
-      measurability: obj.family.measurability,
-      standardBorel: isStandardBorelFamily(obj.family),
+      countable,
+      ...(obj.family.countability && { witness: obj.family.countability }),
+      measurable,
+      ...(obj.family.measurability && { measurability: obj.family.measurability }),
+      standardBorel,
     };
   }
 
@@ -1010,16 +1025,33 @@ export function checkKolmogorovExtensionUniversalProperty<R, J, X, Carrier>(
   const reductions = subsets.map((subset) => checkFiniteProductReduction(obj, measure, subset));
   const ok = reductions.every((result) => result.ok);
 
+  if (!ok) {
+    const failures = reductions.filter((result) => !result.ok).length;
+    const reason =
+      failures === 0
+        ? "Kolmogorov extension reductions were inconclusive."
+        : `${failures} reduction check${failures === 1 ? "" : "s"} failed to match the marginal.`;
+    return {
+      ok: false,
+      reason,
+      countable,
+      ...(obj.family.countability && { witness: obj.family.countability }),
+      measurable,
+      ...(obj.family.measurability && { measurability: obj.family.measurability }),
+      standardBorel,
+    };
+  }
+
   return {
-    ok,
+    ok: true,
     baseSubset: extension.baseSubset,
     measure,
     reductions,
-    countable: isCountableIndex(obj.family),
-    witness: obj.family.countability,
-    measurable: hasMeasurabilityWitness(obj.family),
-    measurability: obj.family.measurability,
-    standardBorel: isStandardBorelFamily(obj.family),
+    countable,
+    ...(obj.family.countability && { witness: obj.family.countability }),
+    measurable,
+    ...(obj.family.measurability && { measurability: obj.family.measurability }),
+    standardBorel,
   };
 }
 
@@ -1071,9 +1103,9 @@ export function hewittSavageZeroOneWitness<R, J, X, Carrier>(
     support,
     counterexamples,
     countable: isCountableIndex(obj.family),
-    witness: obj.family.countability,
+    ...(obj.family.countability && { witness: obj.family.countability }),
     measurable: hasMeasurabilityWitness(obj.family),
-    measurability: obj.family.measurability,
+    ...(obj.family.measurability && { measurability: obj.family.measurability }),
     standardBorel: isStandardBorelFamily(obj.family),
   };
 }
@@ -1186,6 +1218,6 @@ export function analyzeFinStochInfiniteTensor<J>(
     emptyFactors,
     multiValuedFactors: multiValuedSamples,
     multiValuedCount,
-    countability: options.countability,
+    ...(options.countability && { countability: options.countability }),
   };
 }
