@@ -43,7 +43,11 @@ export function buildDeterminismLemmaWitness<A, X, T>(
   if (p.Y !== s.X) {
     throw new Error("Determinism lemma witness requires compatible codomain/domain.");
   }
-  return { prior: p, stat: s, label: options.label };
+  return {
+    prior: p,
+    stat: s,
+    ...(options.label !== undefined ? { label: options.label } : {}),
+  };
 }
 
 function buildJoint<A, X, T>(prior: FinMarkov<A, X>, stat: FinMarkov<X, T>): FinMarkov<A, Pair<X, T>> {
@@ -59,9 +63,21 @@ export function checkDeterminismLemma<A, X, T>(
   const tolerance = options.tolerance ?? DEFAULT_TOLERANCE;
   const composite = witness.prior.then(witness.stat);
 
-  const domain = buildMarkovComonoidWitness(witness.prior.X, { label: witness.label ? `${witness.label} domain` : undefined });
-  const xWitness = buildMarkovComonoidWitness(witness.prior.Y, { label: witness.label ? `${witness.label} X` : undefined });
-  const tWitness = buildMarkovComonoidWitness(witness.stat.Y, { label: witness.label ? `${witness.label} T` : undefined });
+  const domainLabel = witness.label ? `${witness.label} domain` : undefined;
+  const xLabel = witness.label ? `${witness.label} X` : undefined;
+  const tLabel = witness.label ? `${witness.label} T` : undefined;
+  const domain = buildMarkovComonoidWitness(
+    witness.prior.X,
+    domainLabel !== undefined ? { label: domainLabel } : undefined,
+  );
+  const xWitness = buildMarkovComonoidWitness(
+    witness.prior.Y,
+    xLabel !== undefined ? { label: xLabel } : undefined,
+  );
+  const tWitness = buildMarkovComonoidWitness(
+    witness.stat.Y,
+    tLabel !== undefined ? { label: tLabel } : undefined,
+  );
 
   const joint = buildJoint(witness.prior, witness.stat);
   const conditional = buildMarkovConditionalWitness(domain, [xWitness, tWitness], joint, {

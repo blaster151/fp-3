@@ -98,9 +98,12 @@ export function buildBorelKolmogorovWitness<Ω, Coord, XJ, T = 0 | 1>(
   };
   const stat = detK(productSpace, tailSpace, canonicalTail);
 
-  return buildKolmogorovZeroOneWitness(prior, stat, finiteMarginals, {
-    label: options.label,
-  });
+  return buildKolmogorovZeroOneWitness(
+    prior,
+    stat,
+    finiteMarginals,
+    options.label !== undefined ? { label: options.label } : undefined,
+  );
 }
 
 export function checkBorelKolmogorovZeroOne<XJ, T = 0 | 1>(
@@ -138,9 +141,13 @@ export function buildBorelHewittSavageWitness<Ω, Coord, XJ, T = 0 | 1>(
     ),
   }));
 
-  return buildHewittSavageWitness(prior, stat, finiteMarginals, finiteSymmetries, {
-    label: options.label,
-  });
+  return buildHewittSavageWitness(
+    prior,
+    stat,
+    finiteMarginals,
+    finiteSymmetries,
+    options.label !== undefined ? { label: options.label } : undefined,
+  );
 }
 
 export function checkBorelHewittSavageZeroOne<XJ, T = 0 | 1>(

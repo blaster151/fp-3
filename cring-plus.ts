@@ -96,7 +96,9 @@ export const composeHom = <A, B, C>(
     source: f.source,
     target: g.target,
     map: (value) => g.map(f.map(value)),
-    label: g.label && f.label ? `${g.label} ∘ ${f.label}` : undefined,
+    ...(g.label !== undefined && f.label !== undefined
+      ? { label: `${g.label} ∘ ${f.label}` }
+      : {}),
   };
 };
 

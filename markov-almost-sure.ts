@@ -81,7 +81,12 @@ export function buildMarkovAlmostSureWitness<A, X, Y>(
   if (left.Y !== right.Y) {
     throw new Error("Almost-sure witness requires left/right codomains to agree.");
   }
-  return { prior, left, right, label: options.label };
+  return {
+    prior,
+    left,
+    right,
+    ...(options.label !== undefined ? { label: options.label } : {}),
+  };
 }
 
 function findSupportRecord<A, X>(records: Array<{ value: X; totalMass: number; contributions: SupportContribution<A>[] }>, value: X, eq: Eq<X>) {
