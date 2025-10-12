@@ -9,6 +9,8 @@ declare const process: {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
 
+  console.log("=== Runnable Examples Runner ===");
+
   if (argv.includes("--list")) {
     console.log(describeCatalogue());
     return;
