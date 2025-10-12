@@ -8,3 +8,5 @@ export * from "./relative-algebra-oracles";
 export * from "./relative-comonads";
 export * from "./relative-comonad-oracles";
 export * from "./relative-composition";
+export * from "./resolutions";
+export * from "./resolution-oracles";

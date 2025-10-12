@@ -28,6 +28,12 @@ export interface RelativeCompositionLawDescriptor {
   readonly summary: string;
 }
 
+export interface RelativeResolutionLawDescriptor {
+  readonly name: string;
+  readonly registryPath: string;
+  readonly summary: string;
+}
+
 export const RelativeMonadLawRegistry = {
   unitFraming: {
     name: "Relative monad unit framing",
@@ -197,6 +203,32 @@ export type RelativeCompositionLawKey = keyof typeof RelativeCompositionLawRegis
 
 export const listRelativeCompositionLaws = (): ReadonlyArray<RelativeCompositionLawDescriptor> =>
   Object.values(RelativeCompositionLawRegistry);
+
+export const RelativeResolutionLawRegistry = {
+  resolutionWitness: {
+    name: "Resolution realises Definition 5.25",
+    registryPath: "relativeResolution.definition.5.25",
+    summary:
+      "Checks that a resolution packages the inclusion j, apex loose morphism, and comparison isomorphisms that recover the underlying j-relative monad, recording Proposition 5.29–5.30, Remark 5.33, Example 5.31, Corollary 5.32, and Proposition 5.37 metadata.",
+  },
+  categoryIdentities: {
+    name: "Resolution category identity laws",
+    registryPath: "relativeResolution.category.identities",
+    summary:
+      "Validates that morphisms of resolutions admit identity arrows satisfying the left/right unit axioms so Res(T) behaves as a category.",
+  },
+  precompositionSuite: {
+    name: "Resolution precomposition and transport suite",
+    registryPath: "relativeResolution.precomposition.suite",
+    summary:
+      "Aggregates the executable witnesses for Proposition 5.29 precomposition, Proposition 5.30 pasting, Remark 5.33/Corollary 5.34 resolute composition, Example 5.31/Corollary 5.32 fully faithful postcomposition, and Proposition 5.37 left-adjoint transport.",
+  },
+} satisfies Record<string, RelativeResolutionLawDescriptor>;
+
+export type RelativeResolutionLawKey = keyof typeof RelativeResolutionLawRegistry;
+
+export const listRelativeResolutionLaws = (): ReadonlyArray<RelativeResolutionLawDescriptor> =>
+  Object.values(RelativeResolutionLawRegistry);
 
 export const RelativeAlgebraLawRegistry = {
   kleisliUniversalProperty: {
