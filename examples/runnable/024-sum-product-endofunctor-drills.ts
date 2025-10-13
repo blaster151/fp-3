@@ -84,8 +84,8 @@ export const sumProductEndofunctorDrills: RunnableExample = {
     "Mapping, case analysis, and strength calculations for Option ⊕ Result and Option ⊗ Result endofunctors to solidify binary constructor intuition before natural transformations.",
   async run() {
     const sumLeftValue: OptionResultSum<number> = sumLeft(Option.some(42));
-    const sumRightValue: OptionResultSum<number> = sumRight(Result.ok<string, number>(24));
-    const sumErrorValue: OptionResultSum<number> = sumRight(Result.err<string, number>("network unavailable"));
+    const sumRightValue: OptionResultSum<number> = sumRight(Result.ok(24));
+    const sumErrorValue: OptionResultSum<number> = sumRight(Result.err("network unavailable"));
 
     const mappedLeft = mapSumNumbers(sumLeftValue, (n) => n * 2);
     const mappedRight = mapSumNumbers(sumRightValue, (n) => n + 10);
@@ -101,11 +101,11 @@ export const sumProductEndofunctorDrills: RunnableExample = {
       `Case analysis (error): ${analyseSum(sumErrorValue)}`,
     ];
 
-    const productValue: OptionResultProduct<number> = makeProduct(Option.some(10), Result.ok<string, number>(20));
-    const productWithNone: OptionResultProduct<number> = makeProduct(Option.none<number>(), Result.ok<string, number>(30));
+    const productValue: OptionResultProduct<number> = makeProduct(Option.some(10), Result.ok(20));
+    const productWithNone: OptionResultProduct<number> = makeProduct(Option.none<number>(), Result.ok(30));
     const productWithError: OptionResultProduct<number> = makeProduct(
       Option.some(5),
-      Result.err<string, number>("calculation overflow"),
+      Result.err("calculation overflow"),
     );
 
     const mappedProduct = mapProductNumbers(productValue, (n) => n * 3);
@@ -124,10 +124,10 @@ export const sumProductEndofunctorDrills: RunnableExample = {
       Option.some<EnvPayload>(["services", 100] as const),
     );
     const sumEnvRight: SumValue<Option<EnvPayload>, Result<string, EnvPayload>> = sumRight(
-      Result.ok<string, EnvPayload>(["analytics", 200] as const),
+      Result.ok<EnvPayload>(["analytics", 200] as const),
     );
     const sumEnvError: SumValue<Option<EnvPayload>, Result<string, EnvPayload>> = sumRight(
-      Result.err<string, EnvPayload>("missing context"),
+      Result.err("missing context"),
     );
 
     const [envLeft, strengthenedLeft] = pushSumEnvironment(sumEnvLeft, "fallback");
@@ -136,11 +136,11 @@ export const sumProductEndofunctorDrills: RunnableExample = {
 
     const productEnvValue: ProductValue<Option<EnvPayload>, Result<string, EnvPayload>> = makeProduct(
       Option.some<EnvPayload>(["shared", 50] as const),
-      Result.ok<string, EnvPayload>(["shared", 75] as const),
+      Result.ok<EnvPayload>(["shared", 75] as const),
     );
     const productEnvError: ProductValue<Option<EnvPayload>, Result<string, EnvPayload>> = makeProduct(
       Option.none<EnvPayload>(),
-      Result.err<string, EnvPayload>("untracked"),
+      Result.err("untracked"),
     );
 
     const [productEnv, strengthenedProduct] = pushProductEnvironment(productEnvValue, "fallback");

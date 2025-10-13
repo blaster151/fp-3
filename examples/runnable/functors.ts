@@ -96,7 +96,7 @@ export function pushResultEnvironment<E, Err, A>(
 ): readonly [E, Result<Err, A>] {
   if (value.kind === "ok") {
     const [env, payload] = value.value;
-    return [env, Result.ok<Err, A>(payload)];
+    return [env, Result.ok(payload)];
   }
   return [fallbackEnv, value];
 }

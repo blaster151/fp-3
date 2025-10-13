@@ -62,8 +62,8 @@ export const twoFunctorAndOplaxStrengthDemonstrations: RunnableExample = {
 
     const optionStrength = attachEnvironmentToOption("context", Option.some("payload"));
     const noneStrength = attachEnvironmentToOption("context", Option.none<string>());
-    const resultStrength = attachEnvironmentToResult("context", Result.ok<string, number>(42));
-    const resultFailure = attachEnvironmentToResult("context", Result.err<string, number>("error"));
+    const resultStrength = attachEnvironmentToResult("context", Result.ok(42));
+    const resultFailure = attachEnvironmentToResult("context", Result.err("error"));
     const dropped = dropEnvironment(["ctx", 99] as const);
 
     const formatOption = <T>(option: Option<T>): string =>

@@ -48,8 +48,8 @@ function liftMonadToCoalgebra<E, Position, Value>(
   return (result) => {
     const lifted =
       result.kind === "ok"
-        ? Result.ok<E, Store<Position, Value>>(gamma(result.value))
-        : Result.err<E, Store<Position, Value>>(result.error);
+        ? Result.ok<Store<Position, Value>>(gamma(result.value))
+        : Result.err(result.error);
     return distributeResultStore(lifted, fallback).store;
   };
 }
@@ -182,8 +182,8 @@ export const mixedDistributiveLawsForMonadComonadPairs: RunnableExample = {
 
     const liftedGamma = liftMonadToCoalgebra(gamma, fallbackGamma);
 
-    const liftedSuccess = liftedGamma(Result.ok<string, number>(12));
-    const liftedFailure = liftedGamma(Result.err<string, number>("boom"));
+    const liftedSuccess = liftedGamma(Result.ok(12));
+    const liftedFailure = liftedGamma(Result.err("boom"));
 
     const collapse = (store: Store<number, Result<string, number>>): string => {
       const aggregate = aggregateStoreResults(store);

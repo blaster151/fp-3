@@ -24,7 +24,7 @@ function makeOptionToResult<E>(error: () => E): OptionToResult<E> {
   return {
     name: "Option→Result",
     transform<A>(value: Option<A>): Result<E, A> {
-      return value.kind === "some" ? Result.ok<E, A>(value.value) : Result.err<E, A>(error());
+      return value.kind === "some" ? Result.ok(value.value) : Result.err(error());
     },
   };
 }
@@ -143,11 +143,11 @@ function writerChain<W, A, B>(writer: Writer<W, A>, mapper: (value: A) => Writer
 }
 
 function writerTOf<W, E, A>(value: A): WriterResult<W, E, A> {
-  return Result.ok<E, Writer<W, A>>({ value, log: [] });
+  return Result.ok<Writer<W, A>>({ value, log: [] });
 }
 
 function writerTTell<W, E>(message: W): WriterResult<W, E, void> {
-  return Result.ok<E, Writer<W, void>>({ value: undefined, log: [message] });
+  return Result.ok<Writer<W, void>>({ value: undefined, log: [message] });
 }
 
 function writerTChain<W, E, A, B>(
@@ -161,7 +161,7 @@ function writerTChain<W, E, A, B>(
   if (next.kind === "err") {
     return next;
   }
-  return Result.ok<E, Writer<W, B>>({
+  return Result.ok<Writer<W, B>>({
     value: next.value.value,
     log: [...writer.value.log, ...next.value.log],
   });
@@ -199,8 +199,8 @@ export const naturalTransformationsAndKleisliWriterArrayStructures: RunnableExam
     ];
 
     const resultNaturality = [
-      checkResultOptionNaturality(Result.ok<string, number>(9), (n) => n - 2, resultToOption),
-      checkResultOptionNaturality(Result.err<string, number>("failure"), (n) => n + 5, resultToOption),
+      checkResultOptionNaturality(Result.ok(9), (n) => n - 2, resultToOption),
+      checkResultOptionNaturality(Result.err("failure"), (n) => n + 5, resultToOption),
     ];
 
     const naturalityLogs = [
@@ -252,13 +252,13 @@ export const naturalTransformationsAndKleisliWriterArrayStructures: RunnableExam
     const parseReading = (input: string): WriterResult<string, string, number> => {
       const trimmed = input.trim();
       if (trimmed.length === 0) {
-        return Result.err<string, Writer<string, number>>("empty reading");
+        return Result.err("empty reading");
       }
       const value = Number(trimmed);
       if (!Number.isFinite(value)) {
-        return Result.err<string, Writer<string, number>>(`invalid reading '${trimmed}'`);
+        return Result.err(`invalid reading '${trimmed}'`);
       }
-      return Result.ok<string, Writer<string, number>>({ value, log: [`Parsed '${trimmed}'`] });
+      return Result.ok<Writer<string, number>>({ value, log: [`Parsed '${trimmed}'`] });
     };
 
     const writerTPipeline = writerTChain(

@@ -112,9 +112,9 @@ function interpret(instruction: Instruction, stack: Stack, environment: Environm
     case "div":
       return mapPop2(stack, (left, right) => {
         if (right === 0) {
-          return Result.err<string, number>("Division by zero detected by the VM.");
+          return Result.err("Division by zero detected by the VM.");
         }
-        return Result.ok<string, number>(left / right);
+        return Result.ok(left / right);
       });
     default: {
       const _exhaustive: never = instruction;
@@ -143,7 +143,7 @@ function mapPop2(
   const right = stack[stack.length - 1]!;
   const prefix = stack.slice(0, stack.length - 2);
   const mapped = mapper(left, right);
-  const result = typeof mapped === "number" ? Result.ok<string, number>(mapped) : mapped;
+  const result = typeof mapped === "number" ? Result.ok(mapped) : mapped;
   return Result.map(result, (value) => [...prefix, value]);
 }
 

@@ -62,10 +62,10 @@ const optionNoneLabel = Option.none<string>();
 const optionNumberSamples = [optionSomeNumber, optionNoneNumber] as const;
 const optionLabelSamples = [optionSomeLabel, optionNoneLabel] as const;
 
-const resultOkNumber = Result.ok<string, number>(7);
-const resultErrNumber = Result.err<string, number>("failure");
-const resultOkLabel = Result.ok<string, string>("value");
-const resultErrLabel = Result.err<string, string>("missing");
+const resultOkNumber = Result.ok(7);
+const resultErrNumber = Result.err("failure");
+const resultOkLabel = Result.ok("value");
+const resultErrLabel = Result.err("missing");
 const resultNumberSamples = [resultOkNumber, resultErrNumber] as const;
 const resultLabelSamples = [resultOkLabel, resultErrLabel] as const;
 
@@ -220,7 +220,7 @@ function resultLawChecks(): Promise<readonly string[]> {
       check: () =>
         equalResult(
           monoidal.tensor(resultErrNumber, resultOkLabel),
-          Result.err<string, readonly [number, string]>("failure"),
+          Result.err("failure"),
         ),
     },
   ];

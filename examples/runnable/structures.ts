@@ -14,10 +14,10 @@ export type Result<E, A> =
   | { readonly kind: "err"; readonly error: E };
 
 export const Result = {
-  ok<E, A>(value: A): Result<E, A> {
+  ok<A>(value: A): Result<never, A> {
     return { kind: "ok", value };
   },
-  err<E, A>(error: E): Result<E, A> {
+  err<E>(error: E): Result<E, never> {
     return { kind: "err", error };
   },
   map<E, A, B>(result: Result<E, A>, mapper: (value: A) => B): Result<E, B> {
