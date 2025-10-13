@@ -1,6 +1,6 @@
 # Runnable Example Rebuild Plan
 
-This directory tracks the concrete rebuild of the seventy-four runnable suites
+This directory tracks the concrete rebuild of the seventy-six runnable suites
 captured in `../runnable-examples-outline.md`. The goals are:
 
 - **Visibility** – keep the simple-to-advanced progression obvious to new
