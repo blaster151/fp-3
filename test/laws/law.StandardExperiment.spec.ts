@@ -75,11 +75,11 @@ describe("Standard experiment / standard measure", () => {
       const post2 = posterior(m, f, "obs2");
       
       // Should be deterministic posteriors
-      expect(post1.w.get("state1")).toBeCloseTo(1.0);
+      expect(post1.w.get("state1") ?? 0).toBeCloseTo(1.0);
       expect(post1.w.get("state2") ?? 0).toBeCloseTo(0.0);
-      
+
       expect(post2.w.get("state1") ?? 0).toBeCloseTo(0.0);
-      expect(post2.w.get("state2")).toBeCloseTo(1.0);
+      expect(post2.w.get("state2") ?? 0).toBeCloseTo(1.0);
     });
 
     it("handles uniform priors", () => {

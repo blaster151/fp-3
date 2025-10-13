@@ -311,11 +311,13 @@ describe('Complete Pushforward Monad Implementation', () => {
     const listMonad = listMonadFinSet()
     
     // Simple algebra: sum operation on lists of numbers
+    const carrier: FinSetObj = { elements: [1, 2, 3] }
     const sumAlgebra = {
-      carrier: { elements: [1, 2, 3] },
-      action: (lists: unknown) => {
-        // This would sum all numbers in all lists
-        return lists
+      carrier,
+      action: (lists: FinSetObj): FinSetObj => {
+        // Placeholder: in real code we would fold the lists into the carrier
+        void lists
+        return carrier
       }
     }
     

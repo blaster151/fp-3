@@ -5,7 +5,7 @@ import {
   buildTopVietorisHewittSavageWitness,
   checkTopVietorisHewittSavage,
 } from "../../top-vietoris-examples";
-import { IFin, idK, mkFin, detK, type Fin } from "../../markov-category";
+import { IFin, idK, mkFin, detK, type Fin, type FinMarkov } from "../../markov-category";
 
 const label = "Top/Vietoris Kolmogorov (stub)";
 
@@ -18,8 +18,11 @@ describe("Top/Vietoris adapters", () => {
     const stat = detK(XJ, bit, () => 0 as 0 | 1);
 
     const finiteMarginals = [
-      { F: "identity", piF: idK(XJ) },
-    ] as const;
+      { F: "identity", piF: idK(XJ) as FinMarkov<string, unknown> },
+    ] as const satisfies ReadonlyArray<{
+      readonly F: string;
+      readonly piF: FinMarkov<string, unknown>;
+    }>;
 
     const witness = buildTopVietorisKolmogorovWitness(prior, stat, finiteMarginals, label);
     const report = checkTopVietorisKolmogorov(witness, { tolerance: 1e-9 });

@@ -13,12 +13,12 @@ import {
   FinSet,
   EnhancedVect
 } from '../allTS'
-import type { CatMonad, Adjunction, FinSetObj } from '../allTS'
+import type { CatMonad, Adjunction, FinSetObj, ObjOf } from '../allTS'
 
-type SimpleKleisliMorph = {
-  readonly from: unknown
-  readonly to: unknown
-  readonly compose: (x: unknown) => unknown
+type SimpleKleisliMorph<C> = {
+  readonly from: ObjOf<C>
+  readonly to: ObjOf<C>
+  readonly compose: (x: ObjOf<C>) => ObjOf<C>
 }
 
 describe('Pushforward Monad Law Checking', () => {
@@ -55,17 +55,22 @@ describe('Pushforward Monad Law Checking', () => {
     const listMonad = listMonadFinSet()
     
     // Mock Kleisli arrows
-    const f: SimpleKleisliMorph = {
+    const f: SimpleKleisliMorph<typeof FinSet> = {
       from: { elements: ['x'] },
       to: { elements: [['y']] },
-      compose: (x: unknown) => [x] as unknown // x -> [x]
+      compose: (input) => ({
+        elements: input.elements.map((value) => [value])
+      })
     }
 
-    const g: SimpleKleisliMorph = {
+    const g: SimpleKleisliMorph<typeof FinSet> = {
       from: { elements: [['y']] },
       to: { elements: [['z', 'w']] },
-      compose: (list: unknown) =>
-        Array.isArray(list) ? [...list, 'z'] : [list] // [y] -> [y,z]
+      compose: (input) => ({
+        elements: input.elements.map((value) =>
+          Array.isArray(value) ? [...value, 'z'] : [value, 'z']
+        )
+      })
     }
     
     const composed = kleisliCompose(listMonad, f, g)
