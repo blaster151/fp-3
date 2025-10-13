@@ -1,8 +1,6 @@
 import { describe, test, expect } from 'vitest'
 import {
   // groupoid core
-  FiniteGroupoid,
-  GFunctor,
   DiscreteCategory,
   hasIso,
   isoClasses,
@@ -15,6 +13,7 @@ import {
   // Vect
   EnhancedVect
 } from '../allTS'
+import type { GFunctor } from '../allTS'
 
 describe('Groupoid basics', () => {
   test('isoClasses & hasIso on a 2-object iso groupoid', () => {

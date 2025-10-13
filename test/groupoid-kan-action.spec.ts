@@ -1,8 +1,6 @@
 import { describe, test, expect } from 'vitest'
 import {
   // Groupoids
-  FiniteGroupoid,
-  GFunctor,
   twoObjIsoGroupoid,
   DiscreteCategory,
   // FinSet
@@ -17,6 +15,7 @@ import {
   // Family types
   IndexedFamilies
 } from '../allTS'
+import type { FiniteGroupoid, GFunctor } from '../allTS'
 
 describe('Groupoid Kan with automorphism quotient (FinSet)', () => {
   test('Lan quotients coinvariants; Ran picks invariants under Z2 action', () => {
@@ -100,8 +99,16 @@ describe('Groupoid Kan with automorphism quotient (FinSet)', () => {
     expect(inv.map).toEqual([1, 0]) // y->b, x->a (indices)
     
     // Verify round-trip
-    const comp = FinSet.compose(inv, bij)
-    expect(FinSet.isId(comp)).toBe(true)
+    const compose = FinSet.compose
+    if (!compose) {
+      throw new Error('FinSet.compose must be defined for FinSet tests')
+    }
+    const comp = compose(inv, bij)
+    const isId = FinSet.isId
+    if (!isId) {
+      throw new Error('FinSet.isId must be defined for FinSet tests')
+    }
+    expect(isId(comp)).toBe(true)
   })
 
   test('FinSet (co)equalizer works correctly', () => {

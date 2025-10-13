@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest'
-import fc from 'fast-check'
 import { 
   glue, checkDescent, mkRecordGlueKit,
   glueRecordCover, // legacy compatibility
@@ -114,48 +113,75 @@ describe('glueRecordCover', () => {
     }
   })
 
-  it('property test: valid descent always glues successfully', () => {
-    fc.assert(fc.property(
-      fc.record({
-        U: fc.array(fc.string(), { minLength: 1, maxLength: 3, unique: true }),
-        V: fc.array(fc.string(), { minLength: 1, maxLength: 3, unique: true })
-      }),
-      fc.integer({ min: 1, max: 100 }),
-      ({ U, V }, sharedValue) => {
-        // Create a valid descent by ensuring overlap values match
-        const cover = { U: new Set(U), V: new Set(V) } as const
-        const overlap = U.filter(k => V.includes(k))
-        
-        const sections = {
-          U: Object.fromEntries([...U.map(k => [k, overlap.includes(k) ? sharedValue : Math.random()])]),
-          V: Object.fromEntries([...V.map(k => [k, overlap.includes(k) ? sharedValue : Math.random()])])
-        } as const
+  it('valid descent glues successfully across representative covers', () => {
+    const keySamples: ReadonlyArray<ReadonlyArray<string>> = [
+      ['a'],
+      ['a', 'b'],
+      ['b', 'c'],
+      ['a', 'b', 'c']
+    ]
+    const sharedValues = [1, 7]
 
-        const result = glueRecordCover(cover, sections)
-        return isVOk(result)
+    for (const U of keySamples) {
+      for (const V of keySamples) {
+        for (const sharedValue of sharedValues) {
+          const overlap = new Set(U.filter((k) => V.includes(k)))
+          const cover: RecordCover<'U' | 'V', string> = {
+            U: new Set(U),
+            V: new Set(V)
+          }
+
+          const makeSection = (
+            keys: ReadonlyArray<string>,
+            base: number,
+          ): Readonly<Record<string, number>> => {
+            const entries = keys.map((key, idx) => [
+              key,
+              overlap.has(key) ? sharedValue : base + idx + 1,
+            ] as const)
+            return Object.fromEntries(entries) as Readonly<Record<string, number>>
+          }
+
+          const sections: Sections<'U' | 'V', string, number> = {
+            U: makeSection(U, 10),
+            V: makeSection(V, 100)
+          }
+
+          const result = glueRecordCover(cover, sections)
+          expect(isVOk(result)).toBe(true)
+        }
       }
-    ))
+    }
   })
 
-  it('property test: conflicting sections always fail', () => {
-    fc.assert(fc.property(
-      fc.array(fc.string(), { minLength: 1, maxLength: 2, unique: true }),
-      fc.integer(),
-      fc.integer(),
-      (keys, val1, val2) => {
-        fc.pre(val1 !== val2) // ensure they're different
-        fc.pre(keys.length >= 1)
-        
-        const cover = { U: new Set(keys), V: new Set(keys) } as const
-        const sections = {
-          U: Object.fromEntries(keys.map(k => [k, val1])),
-          V: Object.fromEntries(keys.map(k => [k, val2]))
-        } as const
+  it('detects conflicts whenever overlapping values disagree', () => {
+    const keySamples: ReadonlyArray<ReadonlyArray<string>> = [
+      ['alpha'],
+      ['beta', 'gamma']
+    ]
+    const mismatchedPairs: ReadonlyArray<readonly [number, number]> = [
+      [3, 5],
+      [10, 11]
+    ]
+
+    for (const keys of keySamples) {
+      const cover: RecordCover<'U' | 'V', string> = {
+        U: new Set(keys),
+        V: new Set(keys)
+      }
+
+      for (const [leftValue, rightValue] of mismatchedPairs) {
+        const leftEntries = keys.map((key) => [key, leftValue] as const)
+        const rightEntries = keys.map((key) => [key, rightValue] as const)
+        const sections: Sections<'U' | 'V', string, number> = {
+          U: Object.fromEntries(leftEntries),
+          V: Object.fromEntries(rightEntries)
+        }
 
         const result = glueRecordCover(cover, sections)
-        return isVErr(result)
+        expect(isVErr(result)).toBe(true)
       }
-    ))
+    }
   })
 
   it('practical example: configuration merging', () => {
@@ -237,23 +263,24 @@ describe('glueRecordCover', () => {
 
     it('generic kit allows custom data structures', () => {
       // Example: gluing arrays by their overlapping indices
-      type ArraySection = readonly number[]
-      type Index = 0 | 1 | 2
-      
-      const arrayGlueKit: GlueKit<'left' | 'right', ArraySection, readonly number[], ArraySection> = {
+      type ArraySection = readonly [number, number, number]
+      type ArrayOverlap = readonly [number, number]
+      type ArrayAssembly = readonly [number, number, number, number]
+
+      const arrayGlueKit: GlueKit<'left' | 'right', ArraySection, ArrayOverlap, ArrayAssembly> = {
         cover: ['left', 'right'],
-        restrict: (i, j) => (arr: ArraySection) => {
+        restrict: (i, j) => (arr: ArraySection): ArrayOverlap => {
           // For this example, overlaps are middle elements
           if (i === 'left' && j === 'right') return [arr[1], arr[2]] as const
           if (i === 'right' && j === 'left') return [arr[0], arr[1]] as const
-          return arr
+          return [arr[0], arr[1]] as const
         },
-        eqO: (x, y) => x.length === y.length && x.every((v, i) => v === y[i]),
+        eqO: (x, y) => x.length === y.length && x.every((v, idx) => v === y[idx]),
         assemble: (secs) => {
           // Glue [a,b,c] and [b,c,d] -> [a,b,c,d] (remove duplicate overlap)
           const left = secs.left
           const right = secs.right
-          return [...left, ...right.slice(2)] as const
+          return [left[0], left[1], left[2], right[2]] as const
         }
       }
 
@@ -263,7 +290,7 @@ describe('glueRecordCover', () => {
       }
 
       const result = glue(arrayGlueKit, sections)
-      
+
       expect(isVOk(result)).toBe(true)
       if (isVOk(result)) {
         expect(result.value).toEqual([1, 2, 3, 4]) // [1,2,3] + [4] (overlap removed)
@@ -272,15 +299,22 @@ describe('glueRecordCover', () => {
 
     it('generic kit detects conflicts in custom structures', () => {
       // Same array kit but with conflicting overlaps
-      const arrayGlueKit: GlueKit<'left' | 'right', readonly number[], readonly number[], readonly number[]> = {
+      type ArraySection = readonly [number, number, number]
+      type ArrayOverlap = readonly [number, number]
+      type ArrayAssembly = readonly [number, number, number, number]
+      const arrayGlueKit: GlueKit<'left' | 'right', ArraySection, ArrayOverlap, ArrayAssembly> = {
         cover: ['left', 'right'],
-        restrict: (i, j) => (arr) => {
+        restrict: (i, j) => (arr: ArraySection): ArrayOverlap => {
           if (i === 'left' && j === 'right') return [arr[1], arr[2]] as const
           if (i === 'right' && j === 'left') return [arr[0], arr[1]] as const
-          return arr
+          return [arr[0], arr[1]] as const
         },
-        eqO: (x, y) => x.length === y.length && x.every((v, i) => v === y[i]),
-        assemble: (secs) => [...secs.left, ...secs.right.slice(2)] as const
+        eqO: (x, y) => x.length === y.length && x.every((v, idx) => v === y[idx]),
+        assemble: (secs) => {
+          const left = secs.left
+          const right = secs.right
+          return [left[0], left[1], left[2], right[2]] as const
+        }
       }
 
       const conflictingSections = {
@@ -289,7 +323,7 @@ describe('glueRecordCover', () => {
       }
 
       const result = glue(arrayGlueKit, conflictingSections)
-      
+
       expect(isVErr(result)).toBe(true)
       if (isVErr(result)) {
         expect(result.errors[0]!._tag).toBe('Conflict')

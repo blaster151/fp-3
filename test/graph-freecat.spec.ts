@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { FreeCategory, arrows } from '../freecat';
 import { makeGraph } from '../graph';
-import { SmallCategory, underlyingGraph } from '../cat-to-graph';
+import { underlyingGraph } from '../cat-to-graph';
+import type { SmallCategory } from '../cat-to-graph';
 
 describe('Free category on a directed graph', () => {
   it('treats edges as composable paths', () => {
@@ -16,8 +17,18 @@ describe('Free category on a directed graph', () => {
     expect(idA.src).toBe('A');
     expect(idA.dst).toBe('A');
 
-    const [f] = arrows(graph).filter((p) => p.edgeIds[0] === 'f');
-    const [g] = arrows(graph).filter((p) => p.edgeIds[0] === 'g');
+    const maybeF = arrows(graph).find((p) => p.edgeIds[0] === 'f');
+    expect(maybeF).toBeDefined();
+    if (!maybeF) {
+      throw new Error('Expected to find arrow f in the generated paths');
+    }
+    const maybeG = arrows(graph).find((p) => p.edgeIds[0] === 'g');
+    expect(maybeG).toBeDefined();
+    if (!maybeG) {
+      throw new Error('Expected to find arrow g in the generated paths');
+    }
+    const f = maybeF;
+    const g = maybeG;
     const gof = free.compose(g, f);
     expect(gof.src).toBe('A');
     expect(gof.dst).toBe('C');
