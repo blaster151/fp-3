@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync } from "fs";
 import { MarkovOracles } from "../../markov-oracles";
 
 const laws = readFileSync(new URL("../../LAWS.md", import.meta.url), "utf-8");

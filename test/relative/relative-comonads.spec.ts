@@ -72,7 +72,7 @@ describe("Relative comonad analyzers", () => {
           ...trivial.counit.boundaries,
           right: identityVerticalBoundary(
             equipment,
-            "○",
+            "★",
             "Incorrect right boundary for testing",
           ),
         },

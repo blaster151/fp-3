@@ -96,6 +96,11 @@ export type Result<E, A> = Err<E> | Ok<A>
 export const Err = <E>(error: E): Result<E, never> => ({ _tag: 'Err', error })
 export const Ok = <A>(value: A): Result<never, A> => ({ _tag: 'Ok', value })
 
+export const Result = {
+  Err,
+  Ok,
+}
+
 export const isErr = <E, A>(ra: Result<E, A>): ra is Err<E> => ra._tag === 'Err'
 export const isOk = <E, A>(ra: Result<E, A>): ra is Ok<A> => ra._tag === 'Ok'
 
@@ -199,7 +204,8 @@ export type ValidationTag<E> = { readonly tag: 'Validation'; readonly error: E }
 
 export type FunctorValue<F, A> =
   F extends 'Option' ? Option<A> :
-  F extends 'Result' ? Result<unknown, A> :
+  F extends 'Result' ? Result<any, A> :
+  F extends 'Either' ? Result<any, A> :
   F extends 'Promise' ? Promise<A> :
   F extends 'Task' ? Task<A> :
   F extends 'Array' ? ReadonlyArray<A> :
@@ -371,30 +377,54 @@ export const composeK_ResultE =
 // A minimal "functor-like" shape (unary endofunctor on TS types)
 // We reuse FunctorValue where a string tag is available (Option, Result, ...)
 // and specialize known composite constructors to their precise payload types.
-type ComposeVal<F, G, A> = EndofunctorValue<F, EndofunctorValue<G, A>>
-export type ProdVal<F, G, A> = {
+
+type NormalizeEndofunctor<F> =
+  | F
+  | (F extends EndofunctorK1<infer Tag> ? NormalizeEndofunctor<Tag> : never)
+  | (F extends ['Sum', infer FL, infer FR] ? ['Sum', NormalizeEndofunctor<FL>, NormalizeEndofunctor<FR>] : never)
+  | (F extends ['Prod', infer FL, infer FR] ? ['Prod', NormalizeEndofunctor<FL>, NormalizeEndofunctor<FR>] : never)
+  | (F extends ['Comp', infer FL, infer FR] ? ['Comp', NormalizeEndofunctor<FL>, NormalizeEndofunctor<FR>] : never)
+
+type ComposeValInternal<F, G, A> = EndofunctorValue<F, EndofunctorValue<G, A>>
+type ProdValInternal<F, G, A> = {
   readonly left: EndofunctorValue<F, A>
   readonly right: EndofunctorValue<G, A>
 }
-export type SumVal<F, G, A> =
+type SumValInternal<F, G, A> =
   | { readonly _sum: 'L'; readonly left: EndofunctorValue<F, A> }
   | { readonly _sum: 'R'; readonly right: EndofunctorValue<G, A> }
 
-type EndofunctorValue<F, A> =
-  F extends ['Sum', infer FL, infer FR] ? SumVal<FL, FR, A> :
-  F extends ['Prod', infer FL, infer FR] ? ProdVal<FL, FR, A> :
-  F extends ['Comp', infer FL, infer FR] ? ComposeVal<FL, FR, A> :
-  F extends ['Env', infer E] ? Env<E, A> :
-  F extends ['Pair', infer C] ? readonly [C, A] :
-  F extends ['Store', infer S] ? Store<S, A> :
-  F extends ['Either', infer L] ? Result<L, A> :
-  F extends ['Const', infer C] ? C :
-  F extends string ? FunctorValue<F, A> :
-  unknown
+export type ProdVal<F, G, A> = ProdValInternal<NormalizeEndofunctor<F>, NormalizeEndofunctor<G>, A>
+export type SumVal<F, G, A> = SumValInternal<NormalizeEndofunctor<F>, NormalizeEndofunctor<G>, A>
+
+type CanonicalEndofunctor<F> = Exclude<NormalizeEndofunctor<F>, EndofunctorK1<any>>
+
+export type EndofunctorValue<F, A> =
+  CanonicalEndofunctor<F> extends infer NF
+    ? NF extends any
+      ? NF extends EndofunctorK1<infer Tag> ? EndofunctorValue<Tag, A> :
+        NF extends ['Sum', infer FL, infer FR] ? SumValInternal<FL, FR, A> :
+        NF extends ['Prod', infer FL, infer FR] ? ProdValInternal<FL, FR, A> :
+        NF extends ['Comp', infer FL, infer FR] ? ComposeValInternal<FL, FR, A> :
+        NF extends ['Env', infer E] ? Env<E, A> :
+        NF extends ['Pair', infer C] ? readonly [C, A] :
+        NF extends ['Store', infer S] ? Store<S, A> :
+        NF extends ['Either', infer L] ? Result<L, A> :
+        NF extends ['Const', infer C] ? C :
+        NF extends string ? FunctorValue<NF, A> :
+        unknown
+      : never
+    : never
 
 export type EndofunctorK1<F> = {
   readonly map: <A, B>(f: (a: A) => B) => (fa: EndofunctorValue<F, A>) => EndofunctorValue<F, B>
 }
+
+const viewCompose = <F, G, A>(value: EndofunctorValue<['Comp', F, G], A>): EndofunctorValue<F, EndofunctorValue<G, A>> =>
+  value as EndofunctorValue<F, EndofunctorValue<G, A>>
+
+const packCompose = <F, G, A>(value: EndofunctorValue<F, EndofunctorValue<G, A>>): EndofunctorValue<['Comp', F, G], A> =>
+  value as EndofunctorValue<['Comp', F, G], A>
 
 // A natural transformation F ⇒ G: components α_A : F<A> → G<A>
 export type NatK1<F, G> = {
@@ -419,16 +449,22 @@ export const leftWhisker =
   <F>(F: EndofunctorK1<F>) =>
   <H, K>(beta: NatK1<H, K>): NatK1<['Comp', F, H], ['Comp', F, K]> => ({
     app: <A>(fha: EndofunctorValue<['Comp', F, H], A>) =>
-      F.map<EndofunctorValue<H, A>, EndofunctorValue<K, A>>((ha) => beta.app<A>(ha))(fha)
-  })
+      packCompose<F, K, A>(
+        F.map<EndofunctorValue<H, A>, EndofunctorValue<K, A>>((ha) => beta.app<A>(ha))(
+          viewCompose<F, H, A>(fha)
+        )
+      )
+  }) as NatK1<['Comp', F, H], ['Comp', F, K]>
 
 // Right whisker:  α ∘ H : F∘H ⇒ G∘H   with (α ∘ H)_A = α_{H A}
 export const rightWhisker =
   <F, G>(alpha: NatK1<F, G>) =>
   <H>(): NatK1<['Comp', F, H], ['Comp', G, H]> => ({
     app: <A>(fha: EndofunctorValue<['Comp', F, H], A>) =>
-      alpha.app<EndofunctorValue<H, A>>(fha)
-  })
+      packCompose<G, H, A>(
+        alpha.app<EndofunctorValue<H, A>>(viewCompose<F, H, A>(fha))
+      )
+  }) as NatK1<['Comp', F, H], ['Comp', G, H]>
 
 // Horizontal composition (component form):
 //   (α ⋆ β)_A : F<H<A>> → G<K<A>>
@@ -437,10 +473,14 @@ export const hcompNatK1_component =
   <F, G>(F: EndofunctorK1<F>) =>
   <H, K>(alpha: NatK1<F, G>, beta: NatK1<H, K>): NatK1<['Comp', F, H], ['Comp', G, K]> => ({
     app: <A>(fha: EndofunctorValue<['Comp', F, H], A>) =>
-      alpha.app<EndofunctorValue<K, A>>(
-        F.map<EndofunctorValue<H, A>, EndofunctorValue<K, A>>((ha) => beta.app<A>(ha))(fha)
+      packCompose<G, K, A>(
+        alpha.app<EndofunctorValue<K, A>>(
+          F.map<EndofunctorValue<H, A>, EndofunctorValue<K, A>>((ha) => beta.app<A>(ha))(
+            viewCompose<F, H, A>(fha)
+          )
+        )
       )
-  })
+  }) as NatK1<['Comp', F, H], ['Comp', G, K]>
 
 /**
  * Laws (informal):
@@ -463,8 +503,12 @@ export const composeEndoK1 =
   <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>): EndofunctorK1<['Comp', F, G]> => ({
     map: <A, B>(f: (a: A) => B) =>
       (fga: EndofunctorValue<['Comp', F, G], A>) =>
-        F.map<EndofunctorValue<G, A>, EndofunctorValue<G, B>>(G.map(f))(fga)
-  })
+        packCompose<F, G, B>(
+          F.map<EndofunctorValue<G, A>, EndofunctorValue<G, B>>(G.map(f))(
+            viewCompose<F, G, A>(fga)
+          )
+        )
+  }) as EndofunctorK1<['Comp', F, G]>
 
 // ================= 2-Functor Interfaces =================
 // Strict 2-functor between our one-object 2-cats (Type → Type)
@@ -540,8 +584,8 @@ export const PostcomposeReader2 = <R>() => {
 
   const on2 = <F, G>(α: NatK1<F, G>): NatK1<['Comp', 'Reader', F], ['Comp', 'Reader', G]> => ({
     app: <A>(rfa: EndofunctorValue<['Comp', 'Reader', F], A>) =>
-      (r: R) => α.app<A>((rfa as Reader<R, EndofunctorValue<F, A>>)(r))
-  })
+      (r: R) => α.app<A>((viewCompose<'Reader', F, A>(rfa) as Reader<R, EndofunctorValue<F, A>>)(r))
+  }) as NatK1<['Comp', 'Reader', F], ['Comp', 'Reader', G]>
 
   // η : Id ⇒ Reader ∘ Id   (aka "unit")
   const eta = (): NatK1<'IdK1', ['Comp', 'Reader', 'IdK1']> => ({
@@ -559,7 +603,10 @@ export const PostcomposeReader2 = <R>() => {
         const f_rg = (rf_rg as Reader<R, EndofunctorValue<F, Reader<R, EndofunctorValue<G, A>>>>)(r)
         return FImpl.map((rg: Reader<R, EndofunctorValue<G, A>>) => rg(r))(f_rg)
       }
-  })
+  }) as NatK1<
+    ['Comp', ['Comp', 'Reader', F], ['Comp', 'Reader', G]],
+    ['Comp', 'Reader', ['Comp', F, G]]
+  >
 
   const result: LaxTwoFunctorK1<typeof on1> = { on1, on2, eta, mu }
   return result
@@ -577,7 +624,10 @@ export const muPostReader =
       (r: R) => F.map((rg: Reader<R, EndofunctorValue<G, A>>) => rg(r))(
         (rf_rg as Reader<R, EndofunctorValue<F, Reader<R, EndofunctorValue<G, A>>>>)(r)
       )
-  })
+  }) as NatK1<
+    ['Comp', ['Comp', 'Reader', F], ['Comp', 'Reader', G]],
+    ['Comp', 'Reader', ['Comp', F, G]]
+  >
 
 // ================= Concrete Oplax 2-Functor: PrecomposeEnv<E> =================
 // Use the Env comonad Env E A≅[E,A]
@@ -604,8 +654,8 @@ export const PrecomposeEnv2 =
 
   const on2 = <F, G>(α: NatK1<F, G>): NatK1<['Comp', F, ['Env', E]], ['Comp', G, ['Env', E]]> => ({
     app: <A>(fea: EndofunctorValue<['Comp', F, ['Env', E]], A>) =>
-      α.app<Env<E, A>>(fea)
-  })
+      α.app<Env<E, A>>(viewCompose<F, ['Env', E], A>(fea))
+  }) as NatK1<['Comp', F, ['Env', E]], ['Comp', G, ['Env', E]]>
 
   // η^op : on1(Id) = Env<E,_> ⇒ Id  (counit)
   const etaOp = (): NatK1<TwoFunctorImage<typeof on1, 'IdK1'>, 'IdK1'> => ({
@@ -650,9 +700,9 @@ export const strengthEnvOption = <E>(): StrengthEnv<'Option', E> => ({
 
 // Result<E2,_>: st<Result>(Result<[E,A]>) -> [E, Result<A>]
 //   If Err, we must still supply an E; we thread a "defaultE" you choose.
-export const strengthEnvResult = <E, E2>(defaultE: E): StrengthEnv<'Result', E> => ({
-  st: <A>(rea: EndofunctorValue<'Result', Env<E, A>>) => {
-    const res = rea as { _tag: 'Ok'; value: readonly [E, A] } | { _tag: 'Err'; error: E2 }
+export const strengthEnvResult = <E, E2>(defaultE: E): StrengthEnv<['Either', E2], E> => ({
+  st: <A>(rea: EndofunctorValue<['Either', E2], Env<E, A>>) => {
+    const res = rea as Result<E2, Env<E, A>>
     return (res && res._tag === 'Ok')
       ? [res.value[0], { _tag: 'Ok', value: res.value[1] }] as const
       : [defaultE, res]
@@ -928,12 +978,12 @@ export const strengthEnvFromConst = <E, C>(defaultE: E): StrengthEnv<['Const', C
 export const strengthEnvCompose = <E>() =>
   <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>, sF: StrengthEnv<F, E>, sG: StrengthEnv<G, E>): StrengthEnv<['Comp', F, G], E> => ({
     st: <A>(fg_ea: EndofunctorValue<['Comp', F, G], Env<E, A>>) => {
-      const fgaAsF = fg_ea as ComposeVal<F, G, Env<E, A>>
+      const fgaAsF = viewCompose<F, G, Env<E, A>>(fg_ea)
       const pushedThroughG = F.map((g_ea: EndofunctorValue<G, Env<E, A>>) => sG.st<A>(g_ea))(fgaAsF)
       const [e, mapped] = sF.st<EndofunctorValue<G, A>>(pushedThroughG)
       return [e, mapped] as const
     }
-  })
+  }) as StrengthEnv<['Comp', F, G], E>
 
 // ==================== Comonad K1 ====================
 export interface ComonadK1<F> extends EndofunctorK1<F> {
@@ -1565,6 +1615,8 @@ export type Store<S, A> = {
   readonly peek: (s: S) => A
 }
 
+export const Store = Symbol.for('Store')
+
 // Endofunctor instance for Store<S,_>
 export const StoreEndo =
   <S>(): EndofunctorK1<['Store', S]> => ({
@@ -1595,6 +1647,8 @@ export const StoreComonad =
         }),
     }
   }
+
+export const StoreC = StoreComonad
 
 // Handy helpers
 export const seek =
@@ -4248,6 +4302,75 @@ export type Expr = Fix1<'ExprF'>
 
 export const { cata: cataExpr, ana: anaExpr, hylo: hyloExpr } = makeRecursionK1(ExprFK)
 
+const clampNatural = (n: number): number => {
+  if (!Number.isFinite(n)) return 0
+  const m = Math.floor(n)
+  return m < 0 ? 0 : m
+};
+
+export const paraExpr =
+  <B>(alg: (fb: ExprF<readonly [Expr, B]>) => B) => {
+    const go = (expr: Expr): B => {
+      const decorated = mapExprF((child: Expr) => [child, go(child)] as const)(expr.un)
+      return alg(decorated)
+    }
+    return go
+  };
+
+export const apoExpr =
+  (step: (expr: Expr) => Result<ReadonlyArray<Expr>, readonly [Expr, Expr]>) =>
+  (seed: Expr): ReadonlyArray<Expr> => {
+    const out: Expr[] = []
+    let current: Expr | undefined = seed
+    while (current !== undefined) {
+      const r = step(current)
+      if (isErr(r)) {
+        out.push(...r.error)
+        break
+      }
+      const [built, next] = r.value
+      out.push(built)
+      if (Object.is(next, current)) {
+        break
+      }
+      current = next
+    }
+    return out
+  };
+
+type SumExprSeed =
+  | { readonly tag: 'Sum'; readonly n: number }
+  | { readonly tag: 'Emit'; readonly value: number }
+
+export const coalgExpr_sum1toN = (seed: SumExprSeed): ExprF<SumExprSeed> => {
+  if (seed.tag === 'Emit') {
+    return { _tag: 'Lit', value: seed.value }
+  }
+  const n = clampNatural(seed.n)
+  if (n <= 1) {
+    return { _tag: 'Lit', value: n }
+  }
+  return {
+    _tag: 'Add',
+    left: { tag: 'Sum', n: n - 1 },
+    right: { tag: 'Emit', value: n },
+  }
+};
+
+type PowMulSeed = { readonly tag: 'PowMul'; readonly depth: number; readonly leaf: number }
+
+export const coalgExpr_powMul = (seed: PowMulSeed): ExprF<PowMulSeed> => {
+  if (seed.depth <= 0) {
+    return { _tag: 'Lit', value: seed.leaf }
+  }
+  const nextDepth = clampNatural(seed.depth - 1)
+  return {
+    _tag: 'Mul',
+    left: { tag: 'PowMul', depth: nextDepth, leaf: seed.leaf },
+    right: { tag: 'PowMul', depth: nextDepth, leaf: seed.leaf },
+  }
+};
+
 // Smart constructors
 export const lit  = (n: number): Expr => ({ un: { _tag: 'Lit', value: n } })
 export const add  = (l: Expr, r: Expr): Expr => ({ un: { _tag: 'Add', left: l, right: r } })
@@ -4340,6 +4463,7 @@ export const Alg_Expr_eval: ExprAlg<number> = (f) => {
     default: return _exhaustive(f)
   }
 }
+export const Alg_Expr_evalF = Alg_Expr_eval
 export const evalExprReusable = cataExpr(Alg_Expr_eval)
 
 export const Alg_Expr_pretty: ExprAlg<string> = (f) => {
@@ -4358,6 +4482,7 @@ export const Alg_Expr_pretty: ExprAlg<string> = (f) => {
     default: return _exhaustive(f)
   }
 }
+export const Alg_Expr_prettyF = Alg_Expr_pretty
 export const showExprReusable = cataExpr(Alg_Expr_pretty)
 
 // Collect all leaves
@@ -4414,9 +4539,11 @@ export const Alg_Expr_depth = (f: ExprF<number>): number => {
 }
 
 // Product algebra for combining two algebras in one traversal
-export const productExprAlg2 =
-  <B, C>(algB: (f: ExprF<B>) => B, algC: (f: ExprF<C>) => C) =>
-  (f: ExprF<readonly [B, C]>): readonly [B, C] => {
+export function productExprAlg2<B, C>(
+  algB: (f: ExprF<B>) => B,
+  algC: (f: ExprF<C>) => C,
+): (f: ExprF<readonly [B, C]>) => readonly [B, C] {
+  return (f: ExprF<readonly [B, C]>): readonly [B, C] => {
     switch (f._tag) {
       case 'Lit': return [algB({ _tag:'Lit', value:f.value }), algC({ _tag:'Lit', value:f.value })]
       case 'Var': return [algB({ _tag:'Var', name:f.name }),  algC({ _tag:'Var', name:f.name })]
@@ -4454,9 +4581,54 @@ export const productExprAlg2 =
       default: return _exhaustive(f)
     }
   }
+}
 
 // size & depth in one pass (fused)
 export const sizeAndDepthExpr = cataExpr(productExprAlg2(Alg_Expr_size, Alg_Expr_depth))
+
+const sumSeed = (n: number): SumExprSeed => ({ tag: 'Sum', n: clampNatural(n) });
+
+export const evalSum1toN_FUSED = (n: number): number =>
+  hyloExpr(coalgExpr_sum1toN, Alg_Expr_evalF)(sumSeed(n))
+
+export const showSum1toN_FUSED = (n: number): string =>
+  hyloExpr(coalgExpr_sum1toN, Alg_Expr_prettyF)(sumSeed(n))
+
+export const buildAndFoldSum_FUSED = (n: number): Expr => {
+  const tree = anaExpr(coalgExpr_sum1toN)(sumSeed(n));
+  const foldSum = paraExpr((fb: ExprF<readonly [Expr, Expr]>) => {
+    switch (fb._tag) {
+      case 'Lit':
+        return lit(fb.value)
+      case 'Add': {
+        const [, leftExpr] = fb.left
+        const [, rightExpr] = fb.right
+        if (leftExpr.un._tag === 'Lit' && rightExpr.un._tag === 'Lit') {
+          return lit(leftExpr.un.value + rightExpr.un.value)
+        }
+        return add(leftExpr, rightExpr)
+      }
+      default:
+        return _absurd(fb as never)
+    }
+  });
+  return foldSum(tree)
+}
+
+const powSeed = (depth: number, leaf: number): PowMulSeed => ({
+  tag: 'PowMul',
+  depth: clampNatural(depth),
+  leaf,
+});
+
+export const evalPowMul_FUSED = (depth: number, leaf: number): number =>
+  hyloExpr(coalgExpr_powMul, Alg_Expr_evalF)(powSeed(depth, leaf))
+
+export const showPowMul_FUSED = (depth: number, leaf: number): string =>
+  hyloExpr(coalgExpr_powMul, Alg_Expr_prettyF)(powSeed(depth, leaf))
+
+export const showAndEvalPowMul_FUSED = (depth: number, leaf: number): readonly [string, number] =>
+  hyloExpr(coalgExpr_powMul, productExprAlg2(Alg_Expr_prettyF, Alg_Expr_evalF))(powSeed(depth, leaf))
 
 // ====================================================================
 // Migration fold: convert binary chains to N-ary for better associativity
@@ -6875,6 +7047,8 @@ export type Lens<S, A> = {
   readonly set: (a: A) => (s: S) => S
 }
 
+export const Lens = Symbol.for('Lens')
+
 /**
  * Build a Lens from a `get` and a "binary" `set`.
  * We curry the setter to the common `A -> S -> S` shape for easy composition.
@@ -7912,6 +8086,11 @@ export function VErr<E>(...es: ReadonlyArray<E>): Validation<E, never> {
 export const VOk = <A>(a: A): Validation<never, A> => ({ _tag: 'VOk', value: a })
 export const isVErr = <E, A>(v: Validation<E, A>): v is VErr<E> => v._tag === 'VErr'
 export const isVOk  = <E, A>(v: Validation<E, A>): v is VOk<A>  => v._tag === 'VOk'
+
+export const Validation = {
+  VErr,
+  VOk,
+}
 
 export const mapV =
   <E, A, B>(f: (a: A) => B) =>
@@ -10517,14 +10696,18 @@ export interface MonadK2C<F extends HK.Id2, L> extends ApplicativeK2C<F, L> {
 // Note: Using the earlier EndofunctorK1 definition from line 330
 
 // Helpers to "fix" the left param of K2 constructors => a K1 endofunctor
-export const ResultK1 = <E>() => ({
-  map:  <A, B>(f: (a: A) => B) => (ra: Result<E, A>): Result<E, B> => mapR<E, A, B>(f)(ra),
-  ap:   <A, B>(rf: Result<E, (a: A) => B>) => (ra: Result<E, A>): Result<E, B> =>
-        isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : (ra as Err<E>)),
-  of:   <A>(a: A): Result<E, A> => Ok(a),
-  chain:<A, B>(f: (a: A) => Result<E, B>) => (ra: Result<E, A>): Result<E, B> =>
-        isOk(ra) ? f(ra.value) : (ra as Err<E>),
-})
+export const ResultK1 = <E>() => {
+  const endo = {
+    map:  <A, B>(f: (a: A) => B) => (ra: Result<E, A>): Result<E, B> => mapR<E, A, B>(f)(ra),
+    ap:   <A, B>(rf: Result<E, (a: A) => B>) => (ra: Result<E, A>): Result<E, B> =>
+          isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : (ra as Err<E>)),
+    of:   <A>(a: A): Result<E, A> => Ok(a),
+    chain:<A, B>(f: (a: A) => Result<E, B>) => (ra: Result<E, A>): Result<E, B> =>
+          isOk(ra) ? f(ra.value) : (ra as Err<E>),
+  }
+
+  return endo as typeof endo & EndofunctorK1<['Either', E]>
+}
 
 export const ValidationK1 = <E>() => ({
   map:  <A, B>(f: (a: A) => B) => (va: Validation<E, A>): Validation<E, B> => mapV<E, A, B>(f)(va),
@@ -11577,7 +11760,7 @@ export const ConstT= <S extends string>(C: unknown): EndoTerm<S> => ({ tag: 'Con
 export type EndoDict<Sym extends string> = Record<Sym, EndofunctorK1<unknown>>
 export type StrengthDict<Sym extends string, E> = Record<Sym, StrengthEnv<unknown, E>>
 export type NatDict<SymFrom extends string, SymTo extends string> =
-  (name: SymFrom) => { to: SymTo; nat: NatK1<unknown, unknown> }
+  (name: SymFrom) => { to: SymTo; nat: NatK1<any, any> }
 
 // evaluate term to EndofunctorK1
 export const evalEndo =
@@ -12654,6 +12837,9 @@ export type GlueErr<I extends PropertyKey, Oij> =
   | { _tag: 'Incomplete'; i: I; details: ReadonlyArray<string> }
   | { _tag: 'Conflict';  i: I; j: I; left: Oij; right: Oij }
 
+export const GlueKit = Symbol.for('GlueKit')
+export const GlueErr = Symbol.for('GlueErr')
+
 export const checkDescent =
   <I extends PropertyKey, Xi, Oij, A>(
     kit: GlueKit<I, Xi, Oij, A>,
@@ -12698,6 +12884,9 @@ export type RecordCover<I extends PropertyKey, K extends PropertyKey> =
   Readonly<Record<I, ReadonlySet<K>>>
 export type Sections<I extends PropertyKey, K extends PropertyKey, A> =
   Readonly<Record<I, Readonly<Partial<Record<K, A>>>>> 
+
+export const RecordCover = Symbol.for('RecordCover')
+export const Sections = Symbol.for('Sections')
 
 const intersect = <T>(a: ReadonlySet<T>, b: ReadonlySet<T>): ReadonlyArray<T> => {
   const out: T[] = []; for (const x of a) if (b.has(x)) out.push(x); return out
@@ -17142,6 +17331,8 @@ export interface FiniteCategory<O, M> extends Category<O, M>, ArrowFamilies.HasD
   hom: (a: O, b: O) => ReadonlyArray<M>
 }
 
+export const FiniteCategory = Symbol.for('FiniteCategory')
+
 /** Functor for codensity constructions */
 export interface CFunctor<BO, BM, AO, AM> {
   source: FiniteCategory<BO, BM>
@@ -17149,6 +17340,8 @@ export interface CFunctor<BO, BM, AO, AM> {
   onObj: (b: BO) => AO
   onMor: (m: BM) => AM
 }
+
+export const CFunctor = Symbol.for('CFunctor')
 
 /** Categorical functor interface */
 export type ObjOf<C> = C extends ArrowFamilies.HasDomCod<infer O, infer _>
@@ -17204,6 +17397,8 @@ export interface CatMonad<C> {
   unit: CatNatTrans<CatId<C>, CatFunctor<C, C>>
   mult: CatNatTrans<CatCompose<CatFunctor<C, C>, CatFunctor<C, C>>, CatFunctor<C, C>>
 }
+
+export const CatMonad = Symbol.for('CatMonad')
 
 /** Adjunction with explicit unit/counit */
 export interface Adjunction<C, D, F extends CatFunctor<C, D>, U extends CatFunctor<D, C>> {
@@ -18650,11 +18845,15 @@ export interface FinSetObj {
   elements: ReadonlyArray<FinSetElem>
 }
 
+export const FinSetObj = Symbol.for('FinSetObj')
+
 export interface FinSetMor {
   from: FinSetObj
   to: FinSetObj
   map: ReadonlyArray<number> // total function by index: [0..|from|-1] -> [0..|to|-1]
 }
+
+export const FinSetMor = Symbol.for('FinSetMor')
 
 const isReadonlyArray = (value: unknown): value is ReadonlyArray<unknown> =>
   Array.isArray(value)

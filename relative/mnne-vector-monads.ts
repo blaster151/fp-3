@@ -933,12 +933,15 @@ class UnionFind {
     this.parent = Array.from({ length: size }, (_, index) => index);
   }
 
-  find(index: number): number {
-    const parent = this.parent[index];
-    if (parent === index) {
-      return index;
-    }
-    const root = this.find(parent);
+    find(index: number): number {
+      const parent = this.parent[index];
+      if (parent === undefined) {
+        throw new Error(`UnionFind lookup outside of parent range: ${index}`);
+      }
+      if (parent === index) {
+        return index;
+      }
+      const root = this.find(parent);
     this.parent[index] = root;
     return root;
   }

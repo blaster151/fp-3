@@ -1,4 +1,4 @@
-import { RunnableExample, RunnableOutcome } from "./types";
+import type { RunnableExample, RunnableOutcome } from "./types";
 import { Option, Result, Validation } from "./structures";
 
 /**

@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 import { canonicalKey } from "./json-canonical";
 
 type Signal = "visits" | "orders";

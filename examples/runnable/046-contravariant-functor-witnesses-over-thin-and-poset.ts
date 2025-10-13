@@ -1,6 +1,6 @@
 import { Contra, isContravariant } from "../../contravariant";
 import type { SimpleCat } from "../../simple-cat";
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 type BoolNatObj = "B" | "N";
 type BoolNatMorph = {

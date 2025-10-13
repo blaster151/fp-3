@@ -1,6 +1,6 @@
 import type { FiniteCategory } from "../../finite-cat";
 import type { PushoutCalc, PushoutData } from "../../pushout";
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 declare function require(id: string): any;
 

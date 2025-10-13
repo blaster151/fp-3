@@ -4,13 +4,13 @@
 import type {
   MixedDistK1,
   MonadK1, ComonadK1,
-  Result, Store, Task, Pair, HK
+  Result, Store, Task, HK
 } from './allTS'
 import {
   liftMonadToGCoalgK1, liftComonadToTAlgK1,
   MixedDist_Result_Store, MixedDist_Task_Store,
-  StoreComonad, ResultK1, PairComonad,
-  Ok, Err, isOk, isErr
+  StoreComonad, ResultK1,
+  Ok, Err, isOk
 } from './allTS'
 
 console.log('🔄 Mixed Distributive Laws: Monad × Comonad Interactions\n')
@@ -22,12 +22,17 @@ console.log('🔄 Mixed Distributive Laws: Monad × Comonad Interactions\n')
 console.log('=== Result × Store: Error-aware contextual computation ===')
 
 type UserProfile = { name: string; age: number; email: string }
-type ValidationError = 'INVALID_EMAIL' | 'UNDERAGE' | 'MISSING_NAME'
+type ValidationError =
+  | 'INVALID_EMAIL'
+  | 'UNDERAGE'
+  | 'MISSING_NAME'
+  | 'COMPUTATION_FAILED'
 
 declare module './allTS' {
   namespace HK {
     interface Registry1<A> {
       Result: Result<ValidationError, A>
+      Store: Store<number, A>
     }
   }
 }
@@ -57,8 +62,8 @@ const validationStore: Store<keyof UserProfile, (profile: UserProfile) => FieldV
 }
 
 // Use mixed distributive law to handle potential validation failures
-const defaultProfile: UserProfile = { name: '', age: 0, email: '' }
-const dist = MixedDist_Result_Store<UserProfile, ValidationError>(defaultProfile)
+const defaultField: keyof UserProfile = 'email'
+const dist = MixedDist_Result_Store<keyof UserProfile, ValidationError>(defaultField)
 
 // Simulate a computation that might fail to produce the validation store
 const getValidationStore = (hasPermission: boolean): Result<ValidationError, typeof validationStore> =>
@@ -66,19 +71,34 @@ const getValidationStore = (hasPermission: boolean): Result<ValidationError, typ
 
 const distributedValidation = dist.dist(getValidationStore(true))
 
+const runValidation = (
+  store: Store<keyof UserProfile, Result<ValidationError, (profile: UserProfile) => FieldValidation>>,
+  profile: UserProfile,
+  field: keyof UserProfile
+): FieldValidation => {
+  const validator = store.peek(field)
+  if (isOk(validator)) {
+    return validator.value(profile)
+  }
+  return Err(validator.error)
+}
+
 // Test validation on different profiles
 const goodProfile: UserProfile = { name: 'Alice', age: 25, email: 'alice@example.com' }
 const badProfile: UserProfile = { name: '', age: 16, email: 'invalid-email' }
 
-console.log('Good profile validation:')
-console.log('  Email validation:', distributedValidation.peek(goodProfile)('email', goodProfile))
-console.log('  Age validation:', distributedValidation.peek(goodProfile)('age', goodProfile))
-console.log('  Name validation:', distributedValidation.peek(goodProfile)('name', goodProfile))
+const validationFields: ReadonlyArray<keyof UserProfile> = ['email', 'age', 'name']
 
-console.log('\nBad profile validation:')
-console.log('  Email validation:', distributedValidation.peek(badProfile)('email', badProfile))
-console.log('  Age validation:', distributedValidation.peek(badProfile)('age', badProfile))
-console.log('  Name validation:', distributedValidation.peek(badProfile)('name', badProfile))
+const logValidationSummary = (label: string, profile: UserProfile) => {
+  console.log(`\n${label} profile validation:`)
+  for (const field of validationFields) {
+    const result = runValidation(distributedValidation, profile, field)
+    console.log(`  ${field} validation:`, result)
+  }
+}
+
+logValidationSummary('Good', goodProfile)
+logValidationSummary('Bad', badProfile)
 
 // =============================================================================
 // Example 2: Task × Store - Async contextual computation
@@ -117,7 +137,7 @@ const createApiStore = async (defaultConfig: APIConfig): Promise<ApiStore> => {
   }
 }
 
-const taskDist = MixedDist_Task_Store<APIConfig>()
+const taskDist = MixedDist_Task_Store<APIEndpoint>()
 
 // The Task that produces our Store
 const apiStoreTask: Task<ApiStore> =
@@ -130,16 +150,21 @@ const distributedApiStore = taskDist.dist(apiStoreTask)
 const prodConfig: APIConfig = { baseUrl: 'https://prod-api.com', apiKey: 'prod-key', timeout: 200 }
 const devConfig: APIConfig = { baseUrl: 'https://dev-api.com', apiKey: 'dev-key', timeout: 50 }
 
+const callDistributedEndpoint = async (endpoint: APIEndpoint, config: APIConfig) => {
+  const service = await distributedApiStore.peek(endpoint)()
+  return service(config)
+}
+
 console.log('  📡 Making distributed API calls...')
 
 Promise.all([
-  distributedApiStore.peek('users')(prodConfig),
-  distributedApiStore.peek('posts')(devConfig),
-  distributedApiStore.peek('comments')(prodConfig)
+  callDistributedEndpoint('users', prodConfig),
+  callDistributedEndpoint('posts', devConfig),
+  callDistributedEndpoint('comments', prodConfig)
 ]).then(results => {
   console.log('  ✅ API Results:')
   results.forEach((result, i) => {
-    const endpoints = ['users', 'posts', 'comments']
+    const endpoints: ReadonlyArray<APIEndpoint> = ['users', 'posts', 'comments']
     console.log(`    ${endpoints[i]}: ${JSON.stringify(result, null, 2)}`)
   })
 })
@@ -150,35 +175,38 @@ Promise.all([
 
 console.log('\n=== Lifting: Monad to G-Coalgebra ===')
 
-const ResultM: MonadK1<'Result'> = ResultK1<ValidationError>()
-const StoreC = StoreComonad<string>()
-const liftDist = MixedDist_Result_Store<string, string>('default')
+const ResultMonad = ResultK1<ValidationError>()
+const ResultM = ResultMonad as unknown as MonadK1<'Result'>
+const StoreComonadBase = StoreComonad<number>()
+const StoreC = StoreComonadBase as unknown as ComonadK1<'Store'>
+const rawLiftDist = MixedDist_Result_Store<number, ValidationError>(0)
+const liftDist = rawLiftDist as unknown as MixedDistK1<'Result', 'Store'>
 
-// γ : A -> Store<string, A> (create a constant store)
-const makeConstantStore = <A>(a: A): Store<string, A> => ({
-  pos: 'center',
-  peek: (_key: string) => a
+// γ : A -> Store<number, A> (create a constant store)
+const makeConstantStore = <A>(a: A): Store<number, A> => ({
+  pos: 0,
+  peek: (_key: number) => a
 })
 
 // Lift the Result monad to work with Store coalgebras
 const liftedGamma = liftMonadToGCoalgK1(ResultM, StoreC, liftDist)(makeConstantStore)
 
 // Test with successful and failed Results
-const successResult: Result<string, number> = Ok(42)
-const failResult: Result<string, number> = Err('computation failed')
+const successResult: Result<ValidationError, number> = Ok(42)
+const failResult: Result<ValidationError, number> = Err('COMPUTATION_FAILED')
 
 const liftedSuccess = liftedGamma(successResult)
 const liftedFail = liftedGamma(failResult)
 
 console.log('Lifted successful Result:')
 console.log('  Position:', liftedSuccess.pos)
-console.log('  Peek at "left":', liftedSuccess.peek('left'))
-console.log('  Peek at "right":', liftedSuccess.peek('right'))
+console.log('  Peek at 0:', liftedSuccess.peek(0))
+console.log('  Peek at 1:', liftedSuccess.peek(1))
 
 console.log('\nLifted failed Result:')
 console.log('  Position:', liftedFail.pos)
-console.log('  Peek at "left":', liftedFail.peek('left'))
-console.log('  Peek at "right":', liftedFail.peek('right'))
+console.log('  Peek at 0:', liftedFail.peek(0))
+console.log('  Peek at 1:', liftedFail.peek(1))
 
 // =============================================================================
 // Example 4: Lifting operations - Comonad to Algebra
@@ -186,29 +214,37 @@ console.log('  Peek at "right":', liftedFail.peek('right'))
 
 console.log('\n=== Lifting: Comonad to T-Algebra ===')
 
-// α : Result<string, A> -> A (extract value or provide default)
-const extractOrDefault = <A>(defaultValue: A) => (ra: Result<string, A>): A =>
+// α : Result<ValidationError, A> -> A (extract value or provide default)
+const extractOrDefault = <A>(defaultValue: A) => (ra: Result<ValidationError, A>): A =>
   isOk(ra) ? ra.value : defaultValue
 
 // Lift the Store comonad to work with Result algebras
-const liftedAlpha = liftComonadToTAlgK1(ResultM, StoreC, liftDist)(extractOrDefault('fallback'))
+const liftedAlpha = liftComonadToTAlgK1(ResultM, StoreC, liftDist)(
+  extractOrDefault('fallback-value')
+)
 
-// Create a Store containing Results
-const resultStore: Store<string, Result<string, string>> = {
-  pos: 'main',
-  peek: (key: string) => key.startsWith('good') ? Ok(`value-${key}`) : Err(`error-${key}`)
+// Create Stores that may or may not be available
+const primaryStore: Store<number, string> = {
+  pos: 0,
+  peek: (index: number) => `value-${index}`
 }
 
-// Wrap in a Result
-const wrappedStore: Result<string, Store<string, Result<string, string>>> = Ok(resultStore)
+const availableStore: Result<ValidationError, Store<number, string>> = Ok(primaryStore)
+const missingStore: Result<ValidationError, Store<number, string>> = Err('COMPUTATION_FAILED')
 
-// Apply the lifted algebra
-const result = liftedAlpha(wrappedStore)
+// Apply the lifted algebra to both scenarios
+const result = liftedAlpha(availableStore)
+const fallback = liftedAlpha(missingStore)
 
 console.log('Lifted comonad algebra result:')
 console.log('  Position:', result.pos)
-console.log('  Peek at "good-key":', result.peek('good-key'))
-console.log('  Peek at "bad-key":', result.peek('bad-key'))
+console.log('  Peek at 0:', result.peek(0))
+console.log('  Peek at 1:', result.peek(1))
+
+console.log('\nLifted fallback result:')
+console.log('  Position:', fallback.pos)
+console.log('  Peek at 0:', fallback.peek(0))
+console.log('  Peek at 1:', fallback.peek(1))
 
 // =============================================================================
 // Example 5: Real-world application - Configuration management with fallbacks
@@ -252,18 +288,26 @@ const loadConfigFrom = (source: ConfigSource): Task<Result<ConfigError, Config>>
   })
 }
 
-// Create a Store that knows how to load from different sources
-const configLoaderStore: Store<ConfigSource, Task<Result<ConfigError, Config>>> = {
-  pos: 'env',
-  peek: loadConfigFrom
-}
-
 // Use mixed distributive law to handle the Task<Result<Store>> -> Store<Task<Result>>
 const taskResultDist = MixedDist_Task_Store<ConfigSource>()
 
 // Simulate a task that produces our config loader (might fail)
-const getConfigLoader: Task<Store<ConfigSource, Task<Result<ConfigError, Config>>>> = 
-  () => Promise.resolve(configLoaderStore)
+const getConfigLoader: Task<Store<ConfigSource, Result<ConfigError, Config>>> = async () => {
+  const envResult = await loadConfigFrom('env')()
+  const fileResult = await loadConfigFrom('file')()
+  const defaultResult = await loadConfigFrom('default')()
+
+  const bySource: Record<ConfigSource, Result<ConfigError, Config>> = {
+    env: envResult,
+    file: fileResult,
+    default: defaultResult,
+  }
+
+  return {
+    pos: 'env',
+    peek: (source: ConfigSource) => bySource[source]
+  }
+}
 
 // Distribute the computation
 const distributedConfigLoader = taskResultDist.dist(getConfigLoader)
@@ -275,11 +319,11 @@ Promise.all([
   distributedConfigLoader.peek('env')(),
   distributedConfigLoader.peek('file')(),
   distributedConfigLoader.peek('default')()
-]).then(results => {
+]).then((results: ReadonlyArray<Result<ConfigError, Config>>) => {
   console.log('  📋 Configuration loading results:')
-  
+
   results.forEach((result, i) => {
-    const sources = ['env', 'file', 'default']
+    const sources: ReadonlyArray<ConfigSource> = ['env', 'file', 'default']
     console.log(`    ${sources[i]}:`, isOk(result) ? '✅ Success' : `❌ ${result.error}`)
     if (isOk(result)) {
       console.log(`      Database: ${result.value.database.host}:${result.value.database.port}`)

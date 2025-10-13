@@ -33,7 +33,7 @@ import type {
 import { analyzeRelativeAdjunctionHomIsomorphism } from "./relative-adjunctions";
 import type { RelativeMonad } from "./relative-monad";
 import type { CatMonad } from "../allTS";
-import { MorOf, ObjOf } from "../allTS";
+import { type MorOf, type ObjOf } from "../allTS";
 import { analyzeLooseMonoidShape } from "../virtual-equipment/loose-structures";
 import {
   analyzeLooseSkewComposition,

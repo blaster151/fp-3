@@ -13,6 +13,9 @@ import {
   frameFromProarrow,
   promoteFunctor,
   virtualizeFiniteCategory,
+  type Tight,
+  type TightCategory,
+  type TightCellEvidence,
 } from "../../virtual-equipment";
 import {
   TwoObjectCategory,
@@ -20,16 +23,22 @@ import {
   type TwoObject,
   type TwoArrow,
 } from "../../two-object-cat";
-import { CatMonad, composeFun, idFun } from "../../allTS";
+import type { CatMonad } from "../../allTS";
+import { composeFun, idFun } from "../../allTS";
 
 type RelativeObjects = TwoObject;
 type RelativeArrows = TwoArrow;
 
+type TightPayload = Tight<
+  TightCategory<RelativeObjects, RelativeArrows>,
+  TightCategory<RelativeObjects, RelativeArrows>
+>;
+type RelativeEvidence = TightCellEvidence<RelativeObjects, RelativeArrows>;
 type RelativeMonad = RelativeMonadData<
   RelativeObjects,
   RelativeArrows,
-  CatMonad<typeof TwoObjectCategory>["endofunctor"],
-  unknown
+  TightPayload,
+  RelativeEvidence
 >;
 
 const makeIdentityCatMonad = (): CatMonad<typeof TwoObjectCategory> => {

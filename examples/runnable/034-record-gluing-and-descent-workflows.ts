@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 type RecordCover<I extends PropertyKey, K extends PropertyKey> = Readonly<Record<I, ReadonlySet<K>>>;
 type Sections<I extends PropertyKey, K extends PropertyKey, A> = Readonly<Record<I, Readonly<Partial<Record<K, A>>>>>;

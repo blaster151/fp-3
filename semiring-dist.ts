@@ -1,8 +1,10 @@
 // semiring-dist.ts — DR monad (generalized distributions over a numeric semiring R)
 // Keep probability/monad mechanics here; category-level interfaces in markov-category.ts
 
-import { Fin, Pair, I, tensorObj, Kernel } from "./markov-category";
-import { DistLikeMonadSpec, makeKleisli } from "./probability-monads";
+import { tensorObj } from "./markov-category";
+import type { Fin, I, Kernel, Pair } from "./markov-category";
+import { makeKleisli } from "./probability-monads";
+import type { DistLikeMonadSpec } from "./probability-monads";
 
 // ===== Core Dist Type =====
 export type Dist<X> = Map<X, number>; // stays numeric for now; parametrize by R later
@@ -101,7 +103,15 @@ export function DRMonad(R: NumSemiring | CSRig<number>): DistLikeMonadSpec {
     return out;
   }
 
-  return { of, map, bind, product, isAffine1: true };
+  const spec: DistLikeMonadSpec = {
+    of,
+    map,
+    bind,
+    product,
+    isAffine1: true,
+  };
+
+  return spec;
 }
 
 // Note: Semiring instances moved to semiring-utils.ts for centralization

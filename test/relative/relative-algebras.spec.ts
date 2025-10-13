@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { TwoObjectCategory } from "../../two-object-cat";
+import {
+  TwoObjectCategory,
+  type TwoObject,
+  type TwoArrow,
+} from "../../two-object-cat";
 import { virtualizeFiniteCategory } from "../../virtual-equipment/adapters";
+import {
+  type Tight,
+  type TightCategory,
+  type TightCellEvidence,
+} from "../../virtual-equipment";
 import {
   analyzeRelativeAlgebraFraming,
   analyzeRelativeAlgebraMorphismCompatibility,
@@ -67,12 +76,45 @@ import {
   type RelativePartialRightAdjointWitness,
   type RelativeOpalgebraResolutionWitness,
   type RelativePartialLeftAdjointWitness,
+  type RelativeEilenbergMoorePresentation,
 } from "../../relative/relative-algebras";
 import { describeTrivialRelativeMonad } from "../../relative/relative-monads";
 import {
   enumerateRelativeAlgebraOracles,
   RelativeAlgebraOracles,
 } from "../../relative/relative-algebra-oracles";
+
+type RelativeObjects = TwoObject;
+type RelativeArrows = TwoArrow;
+type TightPayload = Tight<
+  TightCategory<RelativeObjects, RelativeArrows>,
+  TightCategory<RelativeObjects, RelativeArrows>
+>;
+type RelativeEvidence = TightCellEvidence<RelativeObjects, RelativeArrows>;
+type RelativePartialRightAdjoint = RelativePartialRightAdjointWitness<
+  RelativeObjects,
+  RelativeArrows,
+  TightPayload,
+  RelativeEvidence
+>;
+type RelativeOpalgebraResolution = RelativeOpalgebraResolutionWitness<
+  RelativeObjects,
+  RelativeArrows,
+  TightPayload,
+  RelativeEvidence
+>;
+type RelativePartialLeftAdjoint = RelativePartialLeftAdjointWitness<
+  RelativeObjects,
+  RelativeArrows,
+  TightPayload,
+  RelativeEvidence
+>;
+type RelativeEilenbergMoore = RelativeEilenbergMoorePresentation<
+  RelativeObjects,
+  RelativeArrows,
+  TightPayload,
+  RelativeEvidence
+>;
 
 const makeTrivialPresentations = () => {
   const equipment = virtualizeFiniteCategory(TwoObjectCategory);
@@ -935,7 +977,7 @@ describe("Relative Eilenberg–Moore universal property analyzer", () => {
           target: kleisli, // wrong presentation
         },
       },
-    };
+    } as unknown as RelativeEilenbergMoore;
     const report = analyzeRelativeEilenbergMooreUniversalProperty(broken);
     expect(report.holds).toBe(false);
     expect(report.mediatingTightCellReport?.issues).toContain(
@@ -991,12 +1033,7 @@ describe("Relative Eilenberg–Moore universal property analyzer", () => {
 describe("Partial right adjoint functor analyzer", () => {
   it("accepts the trivial partial right adjoint", () => {
     const { em, monad } = makeTrivialPresentations();
-    const witness: RelativePartialRightAdjointWitness<
-      string,
-      string,
-      unknown,
-      unknown
-    > = {
+    const witness: RelativePartialRightAdjoint = {
       presentation: em,
       section: em.universalWitness!.section,
       comparison: {
@@ -1015,12 +1052,7 @@ describe("Partial right adjoint functor analyzer", () => {
 
   it("flags partial right adjoints that move j-objects", () => {
     const { em, monad } = makeTrivialPresentations();
-    const witness: RelativePartialRightAdjointWitness<
-      string,
-      string,
-      unknown,
-      unknown
-    > = {
+    const witness: RelativePartialRightAdjoint = {
       presentation: em,
       section: em.universalWitness!.section,
       comparison: {
@@ -1053,12 +1085,7 @@ describe("Relative opalgebra resolution analyzer", () => {
   it("flags κ_t identities that break the triangles", () => {
     const { opalgebraPresentation } = makeTrivialPresentations();
     const base = describeRelativeOpalgebraResolutionWitness(opalgebraPresentation);
-    const broken: RelativeOpalgebraResolutionWitness<
-      string,
-      string,
-      unknown,
-      unknown
-    > = {
+    const broken: RelativeOpalgebraResolution = {
       ...base,
       kappaWitness: {
         ...base.kappaWitness,
@@ -1089,12 +1116,7 @@ describe("Partial left adjoint section analyzer", () => {
     const witness = describeRelativePartialLeftAdjointWitness(
       opalgebraPresentation,
     );
-    const broken: RelativePartialLeftAdjointWitness<
-      string,
-      string,
-      unknown,
-      unknown
-    > = {
+    const broken: RelativePartialLeftAdjoint = {
       ...witness,
       transposeIdentity: witness.opalgebraResolution.kappaWitness.rightIdentity,
     };

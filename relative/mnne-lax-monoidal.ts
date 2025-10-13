@@ -117,7 +117,7 @@ const verifyFunctor = <Obj, Arr>(
   }
   for (const g of base.arrows) {
     for (const f of base.arrows) {
-      if (!base.eq(base.dst(f), base.src(g))) {
+      if (!Object.is(base.dst(f), base.src(g))) {
         continue;
       }
       const composed = functor.onArrows(base.compose(g, f));

@@ -1,6 +1,6 @@
 import type { Monoid } from "../../monoid-cat";
 import type { MonoidHom } from "../../mon-cat";
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 declare function require(id: string): any;
 

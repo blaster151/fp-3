@@ -5,13 +5,13 @@ import {
   buildTopVietorisHewittSavageWitness,
   checkTopVietorisHewittSavage,
 } from "../../top-vietoris-examples";
-import { IFin, idK, mkFin, detK } from "../../markov-category";
+import { IFin, idK, mkFin, detK, type Fin } from "../../markov-category";
 
 const label = "Top/Vietoris Kolmogorov (stub)";
 
 describe("Top/Vietoris adapters", () => {
   it("forwards Kolmogorov witnesses to the abstract zero–one oracle", () => {
-    const XJ = mkFin(["•"] as const, (a, b) => a === b);
+    const XJ: Fin<string> = mkFin(["•"], (a, b) => a === b);
     const bit = mkFin([0, 1] as const, (a, b) => a === b);
 
     const prior = detK(IFin, XJ, () => "•");

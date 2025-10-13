@@ -1,6 +1,6 @@
 import type { DiGraph } from "../../graph";
 import type { Path } from "../../freecat";
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 declare function require(id: string): any;
 

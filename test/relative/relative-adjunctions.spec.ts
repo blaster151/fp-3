@@ -880,7 +880,7 @@ describe("Relative adjunction precomposition analyzer", () => {
     const { equipment, adjunction } = makeTrivialAdjunction();
     const mismatch = identityVerticalBoundary(
       equipment,
-      "○",
+      "★",
       "Domain-mismatched precomposition to force a failure.",
     );
     const report = analyzeRelativeAdjunctionPrecomposition({

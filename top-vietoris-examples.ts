@@ -21,10 +21,10 @@ export type ClosedSubset = unknown; // representing HY points if needed
 export type Cont<X, Y> = (x: X) => Y;
 
 // (Kolmogorov) — valid in Kl(H)
-export function buildTopVietorisKolmogorovWitness<A, XJ, XF, T = 0 | 1>(
+export function buildTopVietorisKolmogorovWitness<A, XJ, T = 0 | 1>(
   p: FinMarkov<A, XJ>,
   s: FinMarkov<XJ, T>,
-  finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ, XF>>,
+  finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ, unknown>>,
   label = "Top/Vietoris Kolmogorov",
 ) {
   return MarkovOracles.zeroOne.kolmogorov.witness(p, s, finiteMarginals, { label });

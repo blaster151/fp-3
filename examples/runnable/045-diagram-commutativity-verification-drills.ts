@@ -9,7 +9,7 @@ import {
   isIdentity,
   paste,
 } from "../../diagram";
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 const formatResults = (label: string, values: ReadonlyArray<unknown>): string =>
   `${label} → ${JSON.stringify(values)}`;

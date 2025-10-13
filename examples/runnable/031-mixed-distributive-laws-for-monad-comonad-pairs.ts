@@ -1,6 +1,6 @@
 import { Result } from "./structures";
 import { Task } from "./effects";
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 import {
   Store,
   collectStore,

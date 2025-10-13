@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 import { Option, Result, Validation } from "./structures";
 import { Reader, ReaderTask, ReaderTaskResult } from "./effects";
 import {

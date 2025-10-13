@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 import { Result } from "./structures";
 import { Reader, ReaderTask, ReaderTaskResult, Task } from "./effects";
 import { arr, compose, denote, fanout, first, parallel, second } from "./arrow-ir";

@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 /**
  * Stage 010 demonstrates how catamorphisms over an expression functor allow us

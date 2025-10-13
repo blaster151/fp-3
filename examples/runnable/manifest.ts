@@ -1,4 +1,4 @@
-import { RunnableExample, RunnableRegistry } from "./types";
+import type { RunnableExample, RunnableRegistry } from "./types";
 import { registry as generatedRegistry } from "./catalogue";
 
 const registry: RunnableRegistry = [...generatedRegistry];

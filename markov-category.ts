@@ -685,7 +685,10 @@ export function isZeroMass<T>(d: Dist<T>, tol = 1e-12): boolean { return mass(d)
 // ===============================================================================================
 
 // Monad operations over Map<T, number> viewed as probability distributions
-export const DistMonad = {
+export const DistMonad: DistLikeMonadSpec & {
+  join<A>(dda: Dist<Dist<A>>): Dist<A>;
+  isAffine1: true;
+} = {
   // η / unit
   of<T>(x: T): Dist<T> { return dirac(x); },
 
@@ -718,7 +721,7 @@ export const DistMonad = {
   },
 
   // Affineness witness: T(1) ≅ 1 (singleton distribution is unique)
-  isAffine1: true as const,
+  isAffine1: true,
 };
 
 // ===============================================================================================
@@ -734,25 +737,58 @@ export interface DistLikeMonadSpec {
   isAffine1: boolean; // whether T(1) is a singleton
 }
 
-export function makeKleisli(spec: DistLikeMonadSpec) {
-  type Kleisli<X, Y> = (x: X) => Dist<Y>;
+export type KleisliMap<X, Y> = (x: X) => Dist<Y>;
+
+export interface FinKleisliInstance<X, Y> {
+  readonly X: Fin<X>;
+  readonly Y: Fin<Y>;
+  readonly k: KleisliMap<X, Y>;
+  then<Z>(that: FinKleisliInstance<Y, Z>): FinKleisliInstance<X, Z>;
+  tensor<Z, W>(that: FinKleisliInstance<Z, W>): FinKleisliInstance<Pair<X, Z>, Pair<Y, W>>;
+  matrix(): number[][];
+  pretty(digits?: number): string;
+}
+
+export interface KleisliOperations {
+  composeK<X, Y, Z>(f: KleisliMap<X, Y>, g: KleisliMap<Y, Z>): KleisliMap<X, Z>;
+  tensorK<X1, Y1, X2, Y2>(
+    f: KleisliMap<X1, Y1>,
+    g: KleisliMap<X2, Y2>
+  ): KleisliMap<Pair<X1, X2>, Pair<Y1, Y2>>;
+  detKleisli<X, Y>(Xf: Fin<X>, Yf: Fin<Y>, f: (x: X) => Y): KleisliMap<X, Y>;
+  copyK<X>(): KleisliMap<X, Pair<X, X>>;
+  discardK<X>(): KleisliMap<X, I>;
+  swapK<X, Y>(): KleisliMap<Pair<X, Y>, Pair<Y, X>>;
+  FinKleisli: {
+    new <X, Y>(X: Fin<X>, Y: Fin<Y>, k: KleisliMap<X, Y>): FinKleisliInstance<X, Y>;
+  };
+  isMarkovCategory: boolean;
+}
+
+export function makeKleisli(spec: DistLikeMonadSpec): KleisliOperations {
+  type Kleisli<X, Y> = KleisliMap<X, Y>;
 
   const composeK = <X, Y, Z>(f: Kleisli<X, Y>, g: Kleisli<Y, Z>): Kleisli<X, Z> => x => spec.bind(f(x), g);
 
-  const tensorK = <X1, Y1, X2, Y2>(f: Kleisli<X1, Y1>, g: Kleisli<X2, Y2>): Kleisli<[X1, X2], [Y1, Y2]> =>
-    ([x1, x2]) => spec.product(f(x1), g(x2));
+  const tensorK = <X1, Y1, X2, Y2>(
+    f: Kleisli<X1, Y1>,
+    g: Kleisli<X2, Y2>
+  ): Kleisli<Pair<X1, X2>, Pair<Y1, Y2>> =>
+    ([x1, x2]: Pair<X1, X2>) => spec.product(f(x1), g(x2));
 
-  const detKleisli = <X, Y>(Xf: Fin<X>, Yf: Fin<Y>, f: (x: X) => Y): Kleisli<X, Y> => x => spec.of(f(x));
+  const detKleisli = <X, Y>(_Xf: Fin<X>, _Yf: Fin<Y>, f: (x: X) => Y): Kleisli<X, Y> => x => spec.of(f(x));
 
-  const copyK = <X>(): Kleisli<X, [X, X]> => x => spec.of([x, x]);
+  const copyK = <X>(): Kleisli<X, Pair<X, X>> => x => spec.of([x, x] as const);
   const discardK = <X>(): Kleisli<X, I> => _x => spec.of({});
 
-  const swapK = <X, Y>(): Kleisli<[X, Y], [Y, X]> => ([x, y]) => spec.of([y, x]);
+  const swapK = <X, Y>(): Kleisli<Pair<X, Y>, Pair<Y, X>> => ([x, y]: Pair<X, Y>) => spec.of([y, x] as const);
 
-  class FinKleisli<X, Y> {
+  class FinKleisli<X, Y> implements FinKleisliInstance<X, Y> {
     constructor(public X: Fin<X>, public Y: Fin<Y>, public k: Kleisli<X, Y>) {}
-    then<Z>(that: FinKleisli<Y, Z>): FinKleisli<X, Z> { return new FinKleisli(this.X, that.Y, composeK(this.k, that.k)); }
-    tensor<Z, W>(that: FinKleisli<Z, W>): FinKleisli<[X, Z], [Y, W]> {
+    then<Z>(that: FinKleisliInstance<Y, Z>): FinKleisli<X, Z> {
+      return new FinKleisli(this.X, that.Y, composeK(this.k, that.k));
+    }
+    tensor<Z, W>(that: FinKleisliInstance<Z, W>): FinKleisli<Pair<X, Z>, Pair<Y, W>> {
       const dom = tensorObj(this.X, that.X);
       const cod = tensorObj(this.Y, that.Y);
       return new FinKleisli(dom as any, cod as any, tensorK(this.k, that.k)) as any;
@@ -761,13 +797,23 @@ export function makeKleisli(spec: DistLikeMonadSpec) {
     pretty(digits = 4): string { return prettyMatrix(this.matrix(), digits); }
   }
 
-  return {
+  const operations: KleisliOperations = {
     // core
-    composeK, tensorK, detKleisli, copyK, discardK, swapK, FinKleisli,
+    composeK,
+    tensorK,
+    detKleisli,
+    copyK,
+    discardK,
+    swapK,
+    FinKleisli,
     // feature flag for Markov-ness
     isMarkovCategory: spec.isAffine1,
-  } as const;
+  };
+
+  return operations;
 }
+
+export type KleisliFactory = KleisliOperations;
 
 // ===============================================================================================
 // (C) Concrete monads you can swap in
@@ -819,9 +865,9 @@ export const WeightedMonad: DistLikeMonadSpec = {
 };
 
 // Convenience factories
-export const KleisliProb = makeKleisli(ProbMonad);
-export const KleisliSubProb = makeKleisli(SubProbMonad);
-export const KleisliWeighted = makeKleisli(WeightedMonad);
+export const KleisliProb: KleisliFactory = makeKleisli(ProbMonad);
+export const KleisliSubProb: KleisliFactory = makeKleisli(SubProbMonad);
+export const KleisliWeighted: KleisliFactory = makeKleisli(WeightedMonad);
 
 // ===============================================================================================
 // (D) Law checks and diagnostics tailored to the monad hypotheses

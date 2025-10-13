@@ -8,7 +8,7 @@ import type { DeterminismLemmaWitness } from "./markov-deterministic-structure";
 
 export type KernelR<R, A, B> = (a: A) => Dist<R, B>;
 export type FiniteSubset<J> = ReadonlyArray<J>;
-export type CylinderSection<J, X> = ReadonlyMap<J, X>;
+export type CylinderSection<J, X> = Map<J, X> & ReadonlyMap<J, X>;
 export type ProjectiveLimitSection<J, X> = (index: J) => X;
 export type Terminal = {};
 
@@ -86,12 +86,16 @@ export interface ProjectiveFamily<R, J, X, Carrier = ProjectiveLimitSection<J, X
   readonly coordinate: (index: J) => Dist<R, X>;
   readonly marginal: (finite: FiniteSubset<J>) => Dist<R, CylinderSection<J, X>>;
   readonly project: (carrier: Carrier, finite: FiniteSubset<J>) => CylinderSection<J, X>;
-  readonly extend?: (finite: FiniteSubset<J>, section: CylinderSection<J, X>) => Carrier;
-  readonly update?: (carrier: Carrier, section: CylinderSection<J, X>) => Carrier;
-  readonly kolmogorov?: KolmogorovWitness<J>;
-  readonly countability?: CountabilityWitness<J>;
-  readonly measurability?: MeasurabilityWitness<J>;
-  readonly positivity?: PositivityWitness<J>;
+  readonly extend?:
+    | ((finite: FiniteSubset<J>, section: CylinderSection<J, X>) => Carrier)
+    | undefined;
+  readonly update?:
+    | ((carrier: Carrier, section: CylinderSection<J, X>) => Carrier)
+    | undefined;
+  readonly kolmogorov?: KolmogorovWitness<J> | undefined;
+  readonly countability?: CountabilityWitness<J> | undefined;
+  readonly measurability?: MeasurabilityWitness<J> | undefined;
+  readonly positivity?: PositivityWitness<J> | undefined;
 }
 
 export const enumerateDoubleIndex = <K, J>(
@@ -294,8 +298,10 @@ export interface InfObj<R, J, X, Carrier = ProjectiveLimitSection<J, X>> {
   readonly projectArray: (finite: FiniteSubset<J>) => KernelR<R, Carrier, ReadonlyArray<X>>;
   readonly liftKernel: <Y>(finite: FiniteSubset<J>, kernel: KernelR<R, CylinderSection<J, X>, Y>) => KernelR<R, Carrier, Y>;
   readonly deterministicProjection: (index: J) => (carrier: Carrier) => X;
-  readonly positivity?: PositivityWitness<J>;
-  readonly deterministicWitness?: () => DeterministicKolmogorovProductWitness<R, J, X, Carrier>;
+  readonly positivity?: PositivityWitness<J> | undefined;
+  readonly deterministicWitness?:
+    | (() => DeterministicKolmogorovProductWitness<R, J, X, Carrier>)
+    | undefined;
 }
 
 const isSubset = <J>(finite: FiniteSubset<J>, larger: FiniteSubset<J>): boolean => {
@@ -608,7 +614,7 @@ export function independentIndexedProduct<R, J, X>(
   index: Iterable<J>,
   coordinate: (idx: J) => Dist<R, X>,
   options: IndependentIndexedProductOptions<J> = {}
-): ProjectiveFamily<R, J, X> {
+): ProjectiveFamily<R, J, X> & { countability: CountabilityWitness<J>; kolmogorov: KolmogorovWitness<J> } {
   const isZero = defaultIsZero(R);
   const countability =
     options.countability !== undefined

@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 import { Option, Result } from "./structures";
 import {
   SumValue,

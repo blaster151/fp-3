@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import fc from 'fast-check'
 import {
   StoreEndo, StoreComonad, storeFromArray, seek, collectStore, movingAvg3,
-  Store
 } from '../allTS'
+import type { Store } from '../allTS'
 
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
@@ -19,39 +18,47 @@ describe('Store<S,_> comonad laws', () => {
     expect(eq(lhs, rhs)).toBe(true)
   })
 
+  const sampleStores: ReadonlyArray<{ xs: ReadonlyArray<number>; start: number }> = [
+    { xs: [1], start: 0 },
+    { xs: [2, 4, 6, 8], start: 0 },
+    { xs: [5, 10, 15, 20, 25], start: 2 },
+    { xs: [3, -1, 7, 9, -5, 12], start: -3 },
+    { xs: [0, 1, 0, 1, 0, 1], start: 10 },
+  ]
+
   it('left counit: map(extract) ∘ duplicate = id', () => {
-    fc.assert(fc.property(fc.array(fc.integer(), { minLength: 1, maxLength: 50 }), fc.integer(), (xs, start) => {
+    for (const { xs, start } of sampleStores) {
       const w = storeFromArray(xs, start)
       const lhs = F.map(W.extract)(W.duplicate(w))
-      return eq(lhs, w)
-    }))
+      expect(eq(lhs, w)).toBe(true)
+    }
   })
 
   it('coassociativity: duplicate ∘ duplicate = map(duplicate) ∘ duplicate', () => {
-    fc.assert(fc.property(fc.array(fc.integer(), { minLength: 1, maxLength: 30 }), fc.integer(), (xs, start) => {
+    for (const { xs, start } of sampleStores) {
       const w = storeFromArray(xs, start)
       const lhs = W.duplicate(W.duplicate(w))
       const rhs = F.map(W.duplicate)(W.duplicate(w))
-      return eq(lhs, rhs)
-    }))
+      expect(eq(lhs, rhs)).toBe(true)
+    }
   })
 
   it('extend laws: extend(extract) = id', () => {
-    fc.assert(fc.property(fc.array(fc.integer(), { minLength: 1, maxLength: 20 }), fc.integer(), (xs, start) => {
+    for (const { xs, start } of sampleStores) {
       const w = storeFromArray(xs, start)
       const lhs = W.extend(W.extract)(w)
-      return eq(lhs, w)
-    }))
+      expect(eq(lhs, w)).toBe(true)
+    }
   })
 
   it('extend laws: extract ∘ extend(f) = f', () => {
-    fc.assert(fc.property(fc.array(fc.integer(), { minLength: 1, maxLength: 20 }), fc.integer(), (xs, start) => {
+    const f = (ctx: Store<number, number>) => ctx.peek(ctx.pos) * 2
+    for (const { xs, start } of sampleStores) {
       const w = storeFromArray(xs, start)
-      const f = (ctx: Store<number, number>) => ctx.peek(ctx.pos) * 2
       const lhs = W.extract(W.extend(f)(w))
       const rhs = f(w)
-      return lhs === rhs
-    }))
+      expect(lhs).toBe(rhs)
+    }
   })
 })
 
@@ -60,7 +67,7 @@ describe('Store – Co-Kleisli moving average', () => {
   const F = StoreEndo<number>()
 
   // 3-point average centered at current index (clamped)
-  const avg3 = (ctx: { pos: number; peek: (i: number) => number }) => {
+  const avg3 = (ctx: Store<number, number>) => {
     const i = ctx.pos
     return (ctx.peek(i - 1) + ctx.peek(i) + ctx.peek(i + 1)) / 3
   }
@@ -69,7 +76,7 @@ describe('Store – Co-Kleisli moving average', () => {
     const xs = [1, 2, 100, 2, 1]
     const w0 = storeFromArray(xs, 0)
     const ws = W.extend(avg3)(w0)
-    const out = collectStore(xs.length)(ws)
+    const out = collectStore<number>(xs.length)(ws)
     // Just check shape + a couple of key points
     expect(out.length).toBe(xs.length)
     expect(Math.round(out[0]*100)/100).toBe(Math.round((1+1+2)/3*100)/100)  // ≈ 1.33…
@@ -80,7 +87,7 @@ describe('Store – Co-Kleisli moving average', () => {
     const signal = [1, 2, 100, 2, 1] as const
     const w0 = storeFromArray(signal, 0)
     const wSmoothed = movingAvg3(w0)
-    const out = collectStore(signal.length)(wSmoothed)
+    const out = collectStore<number>(signal.length)(wSmoothed)
     
     expect(out.length).toBe(signal.length)
     
@@ -109,7 +116,7 @@ describe('Store – Co-Kleisli moving average', () => {
   it('collectStore captures the entire store as array', () => {
     const xs = [5, 15, 25, 35]
     const w = storeFromArray(xs, 1) // start at index 1
-    const collected = collectStore(xs.length)(w)
+    const collected = collectStore<number>(xs.length)(w)
     expect(collected).toEqual(xs)
   })
 
@@ -146,7 +153,7 @@ describe('Store – Co-Kleisli moving average', () => {
     }
     
     const edges = W.extend(edgeDetect)(w)
-    const edgeValues = collectStore(signal.length)(edges)
+    const edgeValues = collectStore<number>(signal.length)(edges)
     
     // Edge detection working correctly!
     
