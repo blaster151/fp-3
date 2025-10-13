@@ -12,7 +12,7 @@ describe('Store comonad simplicial chain complex', () => {
     // Store enumeration is exponentially expensive, so test minimal case
     const S = [0] as const
     const A = ['•'] as const
-    const { d } = toChainComplexStore(S as any[], A as any[], 1)
+    const { d } = toChainComplexStore([...S], [...A], 1)
     
     // Check ∂_0 ∘ ∂_1 = 0
     if (d[0] && d[1]) {
@@ -24,7 +24,7 @@ describe('Store comonad simplicial chain complex', () => {
   it('Store complex has expected dimensions', () => {
     const S = [0, 1] as const
     const A = ['•'] as const
-    const { dims, d } = toChainComplexStore(S as any[], A as any[], 2)
+    const { dims, d } = toChainComplexStore([...S], [...A], 2)
 
     console.log('Store complex dimensions:', dims)
     console.log('Store boundary matrices:', d.map((matrix, i) => `∂_${i}: ${matrix.length}×${matrix[0]?.length || 0}`))
@@ -57,7 +57,7 @@ describe('Store comonad simplicial chain complex', () => {
     // Simple case for testing
     const S = [0] as const  // single state
     const A = ['a'] as const // single point
-    const { dims, d } = toChainComplexStore(S as any[], A as any[], 1)
+    const { dims, d } = toChainComplexStore([...S], [...A], 1)
     
     const H0 = homologyZ_fromBoundaries(dims, d, 0)
     const H1 = homologyZ_fromBoundaries(dims, d, 1)
@@ -99,7 +99,7 @@ describe('Store comonad simplicial chain complex', () => {
   it('boundary composition ∂_{n-1} ∘ ∂_n = 0 for Store', () => {
     const S = [0] as const
     const A = ['•'] as const
-    const { d } = toChainComplexStore(S as any[], A as any[], 2)
+    const { d } = toChainComplexStore([...S], [...A], 2)
 
     // Check ∂_0 ∘ ∂_1 = 0
     if (d[0] && d[1]) {
@@ -120,8 +120,8 @@ describe('Store comonad simplicial chain complex', () => {
     const A = ['•'] as const
     const N = 1
 
-    const storeComplex = toChainComplexStore(E as any[], A as any[], N)
-    const pairComplex = toChainComplexPair(E as any[], A as any[], N)
+    const storeComplex = toChainComplexStore([...E], [...A], N)
+    const pairComplex = toChainComplexPair([...E], [...A], N)
 
     console.log('Store complex dims:', storeComplex.dims)
     console.log('Pair complex dims:', pairComplex.dims)
