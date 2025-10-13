@@ -410,7 +410,7 @@ export const createSetMultInfObj = <J, X>(
     project,
     object,
     sectionObj,
-    countability: family.countability,
+    ...(family.countability !== undefined ? { countability: family.countability } : {}),
   };
 };
 

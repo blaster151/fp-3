@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 import { Result } from "./structures";
 import {
   ReaderArrow,

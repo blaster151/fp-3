@@ -5,7 +5,7 @@ import { FinMarkov, pair, tensorObj, idK, type Pair } from "./markov-category";
 import { Prob } from "./semiring-utils";
 import { fromLegacy } from "./dist";
 import { isDeterministic, isDeterministicKernel } from "./markov-laws";
-import { buildMarkovComonoidWitness } from "./markov-comonoid-structure";
+import { buildMarkovComonoidWitness, type MarkovComonoidWitness } from "./markov-comonoid-structure";
 import {
   buildMarkovConditionalWitness,
   checkConditionalIndependence,
@@ -80,9 +80,14 @@ export function checkDeterminismLemma<A, X, T>(
   );
 
   const joint = buildJoint(witness.prior, witness.stat);
-  const conditional = buildMarkovConditionalWitness(domain, [xWitness, tWitness], joint, {
-    label: witness.label ? `${witness.label} joint` : "determinism lemma joint",
-  });
+  const conditional = buildMarkovConditionalWitness(
+    domain,
+    [xWitness, tWitness] as ReadonlyArray<MarkovComonoidWitness<any>>,
+    joint as unknown as FinMarkov<A, unknown>,
+    {
+      label: witness.label ? `${witness.label} joint` : "determinism lemma joint",
+    },
+  );
   const independence = checkConditionalIndependence(conditional);
   const ciVerified = independence.holds;
 

@@ -2,7 +2,7 @@
 // Finite, Prob-specific implementation for Bayesian decision theory
 
 import type { Dist } from "./dist";
-import { dirac as delta } from "./dist";
+import { Prob } from "./semiring-utils";
 
 // ===== Equality for distributions over finite Θ =====
 
@@ -41,31 +41,17 @@ export function posterior<
   
   if (z === 0) {
     // No support — return an arbitrary Dirac to keep type total (or throw)
-    const first = [...m.w.keys()][0];
-    return { 
-      R: { 
-        zero: 0, 
-        one: 1, 
-        add: (a, b) => a + b, 
-        mul: (a, b) => a * b, 
-        eq: (a, b) => Math.abs(a - b) <= 1e-12 
-      }, 
-      w: new Map([[first, 1]]) 
-    };
+    const firstEntry = m.w.entries().next();
+    if (firstEntry.done) {
+      return { R: Prob, w: new Map<Θ, number>() };
+    }
+    const [first] = firstEntry.value;
+    return { R: Prob, w: new Map([[first, Prob.one]]) };
   }
-  
+
   // Normalize
   w.forEach((v, θ) => w.set(θ, v / z));
-  return { 
-    R: { 
-      zero: 0, 
-      one: 1, 
-      add: (a, b) => a + b, 
-      mul: (a, b) => a * b, 
-      eq: (a, b) => Math.abs(a - b) <= 1e-12 
-    }, 
-    w 
-  };
+  return { R: Prob, w };
 }
 
 // ===== Standard Experiment Types =====
@@ -85,12 +71,12 @@ export function standardMeasure<
   xVals: readonly X[]
 ): StandardMeasure<Θ> {
   // P(x) = Σ_θ m(θ) f(x|θ), weight mass on each posterior(x)
-  const R = { 
-    zero: 0, 
-    one: 1, 
-    add: (a: number, b: number) => a + b, 
-    mul: (a: number, b: number) => a * b, 
-    eq: (a: number, b: number) => Math.abs(a - b) <= 1e-12 
+  const R = {
+    zero: Prob.zero,
+    one: Prob.one,
+    add: Prob.add,
+    mul: Prob.mul,
+    eq: Prob.eq,
   };
   
   const w = new Map<Posterior<Θ>, number>();
@@ -206,7 +192,11 @@ export function optimalAction<Θ extends string | number, A>(
   actions: readonly A[],
   utility: (action: A, theta: Θ) => number
 ): { action: A; expectedUtility: number } {
-  let bestAction = actions[0];
+  const firstAction = actions[0];
+  if (firstAction === undefined) {
+    throw new Error("optimalAction requires at least one action");
+  }
+  let bestAction: A = firstAction;
   let bestUtility = -Infinity;
 
   for (const action of actions) {

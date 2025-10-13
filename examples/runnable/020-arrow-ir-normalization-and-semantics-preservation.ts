@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 import { ArrowPlan, arr, compose, describeNode, denote, fanout, first, idArrow, parallel, second } from "./arrow-ir";
 
 /**

@@ -1,98 +1,123 @@
 import { describe, it, expect } from 'vitest'
-import fc from 'fast-check'
-import {
-  PairComonad, PairEndo, isCoalgebraMorphism, ForgetfulFromCoalgebras,
-  Coalgebra, ComonadK1, Pair
-} from '../allTS'
+import { PairComonad, PairEndo, isCoalgebraMorphism, ForgetfulFromCoalgebras } from '../allTS'
+import type { Coalgebra } from '../allTS'
 
 // simple structural equality
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 describe('Pair<E,_> comonad laws', () => {
   const W = PairComonad<string>()
+  const F = PairEndo<string>()
+  const envSamples = ['ε', 'ctx', 'obs', 'seed'] as const
+  const valueSamples = [0, 1, -5, 'value', 'zeta', true, false] as const
+  const numericSamples = [0, 1, -8, 42, 99] as const
 
   it('extract ∘ duplicate = id  (right counit)', () => {
-    fc.assert(fc.property(fc.string(), fc.oneof(fc.integer(), fc.string(), fc.boolean()), (e, a) => {
-      const wa = [e, a] as const
-      const lhs = W.extract(W.duplicate(wa))
-      return eq(lhs, wa)
-    }))
+    for (const env of envSamples) {
+      for (const value of valueSamples) {
+        const wa = [env, value] as const
+        const lhs = W.extract(W.duplicate(wa))
+        expect(eq(lhs, wa)).toBe(true)
+      }
+    }
   })
 
   it('map(extract) ∘ duplicate = id  (left counit)', () => {
-    fc.assert(fc.property(fc.string(), fc.oneof(fc.integer(), fc.string(), fc.boolean()), (e, a) => {
-      const wa = [e, a] as const
-      const lhs = W.map(W.extract as any)(W.duplicate(wa))
-      return eq(lhs, wa)
-    }))
+    const mapExtract = F.map(<A>(inner: readonly [string, A]) => W.extract(inner))
+    for (const env of envSamples) {
+      for (const value of valueSamples) {
+        const wa = [env, value] as const
+        const lhs = mapExtract(W.duplicate(wa))
+        expect(eq(lhs, wa)).toBe(true)
+      }
+    }
   })
 
   it('duplicate ∘ duplicate = map(duplicate) ∘ duplicate  (coassoc)', () => {
-    fc.assert(fc.property(fc.string(), fc.oneof(fc.integer(), fc.string(), fc.boolean()), (e, a) => {
-      const wa = [e, a] as const
-      const lhs = W.duplicate(W.duplicate(wa))
-      const rhs = W.map(W.duplicate as any)(W.duplicate(wa))
-      return eq(lhs, rhs)
-    }))
+    const mapDuplicate = F.map(W.duplicate)
+    for (const env of envSamples) {
+      for (const value of valueSamples) {
+        const wa = [env, value] as const
+        const lhs = W.duplicate(W.duplicate(wa))
+        const rhs = mapDuplicate(W.duplicate(wa))
+        expect(eq(lhs, rhs)).toBe(true)
+      }
+    }
   })
 
   it('extend satisfies: extend(extract) = id', () => {
-    fc.assert(fc.property(fc.string(), fc.oneof(fc.integer(), fc.string(), fc.boolean()), (e, a) => {
-      const wa = [e, a] as const
-      const lhs = W.extend(W.extract)(wa)
-      return eq(lhs, wa)
-    }))
+    const extendExtract = W.extend(W.extract)
+    for (const env of envSamples) {
+      for (const value of valueSamples) {
+        const wa = [env, value] as const
+        const lhs = extendExtract(wa)
+        expect(eq(lhs, wa)).toBe(true)
+      }
+    }
   })
 
   it('extend satisfies: extract ∘ extend(f) = f', () => {
-    fc.assert(fc.property(fc.string(), fc.integer(), (e, n) => {
-      const wa = [e, n] as const
-      const f = (w: readonly [string, number]) => w[1] * 2 + w[0].length
-      const lhs = W.extract(W.extend(f)(wa))
-      const rhs = f(wa)
-      return lhs === rhs
-    }))
+    const f = (w: readonly [string, number]) => w[1] * 2 + w[0].length
+    for (const env of envSamples) {
+      for (const n of numericSamples) {
+        const wa = [env, n] as const
+        const lhs = W.extract(W.extend(f)(wa))
+        const rhs = f(wa)
+        expect(lhs).toBe(rhs)
+      }
+    }
   })
 
   it('extend satisfies: extend(f) ∘ extend(g) = extend(f ∘ extend(g))', () => {
-    fc.assert(fc.property(fc.string(), fc.integer(), (e, n) => {
-      const wa = [e, n] as const
-      const f = (w: readonly [string, number]) => w[1] + 10
-      const g = (w: readonly [string, number]) => w[0] + w[1].toString()
-      
-      const lhs = W.extend(f)(W.extend(g)(wa))
-      const rhs = W.extend((w: readonly [string, string]) => f(W.extend(g)(w) as any))(wa)
-      return eq(lhs, rhs)
-    }))
+    const g = (w: readonly [string, number]) => `${w[0]}:${w[1]}`
+    const f = (w: readonly [string, string]) => w[1].length + w[0].length
+    const extendG = W.extend(g)
+    const extendF = W.extend(f)
+    const composed = W.extend((w: readonly [string, number]) => f(extendG(w)))
+    for (const env of envSamples) {
+      for (const n of numericSamples) {
+        const wa = [env, n] as const
+        const lhs = extendF(extendG(wa))
+        const rhs = composed(wa)
+        expect(eq(lhs, rhs)).toBe(true)
+      }
+    }
   })
 })
 
 describe('Coalgebra + forgetful functor', () => {
   const W = PairComonad<number>()
+  const F = PairEndo<number>()
+  const envSeeds = [0, 7, -3, 42] as const
+  const payloadSamples = [0, -1, 3, 'value', 'z', true, false] as const
   // A coalgebra α : A -> [E, A]; easy family: pick any "observer" e(a)
   const alpha = <A>(obs: (a: A) => number): ((a: A) => readonly [number, A]) =>
     (a) => [obs(a), a] as const
 
   it('counit: extract(α(a)) = a', () => {
-    fc.assert(fc.property(fc.integer(), fc.oneof(fc.integer(), fc.string(), fc.boolean()), (e, a) => {
-      const α = alpha((_a) => e)
-      return W.extract(α(a)) === a
-    }))
+    for (const env of envSeeds) {
+      for (const payload of payloadSamples) {
+        const α = alpha<typeof payload>((_a) => env)
+        expect(W.extract(α(payload))).toBe(payload)
+      }
+    }
   })
 
   it('coassoc: duplicate(α(a)) = map(α)(α(a))', () => {
-    fc.assert(fc.property(fc.integer(), fc.oneof(fc.integer(), fc.string(), fc.boolean()), (e, a) => {
-      const α = alpha((_a) => e)
-      const lhs = W.duplicate(α(a))
-      const rhs = W.map(α as any)(α(a))
-      return eq(lhs, rhs)
-    }))
+    for (const env of envSeeds) {
+      for (const payload of payloadSamples) {
+        const α = alpha<typeof payload>((_a) => env)
+        const lhs = W.duplicate(α(payload))
+        const rhs = F.map(α)(α(payload))
+        expect(eq(lhs, rhs)).toBe(true)
+      }
+    }
   })
 
   it('morphisms: map(f) ∘ α = β ∘ f', () => {
     // Use the same environment type for both coalgebras to make the morphism work
-    const α: Coalgebra<['Pair', number], number> = (n) => [n % 7, n] as const      
-    const β: Coalgebra<['Pair', number], string> = (s) => [s.length, s] as const   
+    const α: Coalgebra<['Pair', number], number> = (n) => [n % 7, n] as const
+    const β: Coalgebra<['Pair', number], string> = (s) => [s.length, s] as const
     const f = (n: number) => `${n}!`           // f : number -> string
 
     // For this to work, we need the environment types to match

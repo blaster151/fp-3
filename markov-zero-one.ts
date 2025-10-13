@@ -70,8 +70,8 @@ export function buildKolmogorovZeroOneWitness<A, XJ, T>(
   };
 }
 
-const forgetComonoidWitness = <X>(witness: MarkovComonoidWitness<X>): MarkovComonoidWitness<unknown> =>
-  witness as unknown as MarkovComonoidWitness<unknown>;
+const forgetComonoidWitness = <X>(witness: MarkovComonoidWitness<X>): MarkovComonoidWitness<any> =>
+  witness as unknown as MarkovComonoidWitness<any>;
 
 const forgetCodomain = <X, Y>(arrow: FinMarkov<X, Y>): FinMarkov<X, unknown> =>
   arrow as unknown as FinMarkov<X, unknown>;
@@ -126,7 +126,7 @@ function marginalIndependenceChecks<A, XJ, T>(
       pair(entry.piF.k, witness.stat.k),
     );
     const joint = witness.prior.then(stateJoint);
-    const outputs: ReadonlyArray<MarkovComonoidWitness<unknown>> = [
+    const outputs: ReadonlyArray<MarkovComonoidWitness<any>> = [
       forgetComonoidWitness(marginalWitness),
       forgetComonoidWitness(tWitness),
     ];

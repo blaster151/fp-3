@@ -5,7 +5,7 @@ import type {
   SliceArrow,
   SliceObject,
 } from "../../slice-cat";
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 declare function require(id: string): any;
 

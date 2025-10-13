@@ -82,12 +82,12 @@ export function checkInitialUnitSemicartesian<O, M>(
 
   for (const sample of samples) {
     const actual = data.witness.isCanonical(sample.target, sample.candidate);
-    sampleResults.push({
-      label: sample.label,
-      target: sample.target,
-      expected: sample.shouldHold,
-      actual,
-    });
+      sampleResults.push({
+        ...(sample.label !== undefined ? { label: sample.label } : {}),
+        target: sample.target,
+        expected: sample.shouldHold,
+        actual,
+      });
     if (actual !== sample.shouldHold) {
       const description = sample.label ?? data.witness.describe?.(sample.target) ?? "sample";
       const expectation = sample.shouldHold ? "canonical" : "non-canonical";

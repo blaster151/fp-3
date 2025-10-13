@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DynCat, DynSys, isDynHom } from '../dynsys';
+import { DynCat, isDynHom } from '../dynsys';
+import type { DynSys } from '../dynsys';
 import { checkAction, isMSetHom } from '../mset';
 import { dynHomToM2, dynToM2, M2SetCat, m2HomToDyn, m2ToDyn } from '../m2-set';
 
@@ -22,7 +23,11 @@ describe('M2-Set and Set^circle correspondence', () => {
   });
 
   it('equivariant morphisms coincide with commuting maps', () => {
-    const j = DynCat.hom(cycle, letters, (x) => ['a', 'b', 'c'][x]);
+    const j = DynCat.hom(
+      cycle,
+      letters,
+      (x) => (x === 0 ? 'a' : x === 1 ? 'b' : 'c')
+    );
     expect(isDynHom(j)).toBe(true);
 
     const jM2 = dynHomToM2(j);

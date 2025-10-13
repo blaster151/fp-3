@@ -231,7 +231,12 @@ export function checkSetMultInfiniteProduct<J, X>(
     ? `All ${tests.length} projections matched the Set-theoretic product.`
     : `${failures.length} projection${failures.length === 1 ? "" : "s"} failed.`;
 
-  return { holds, details, failures, countability: product.countability };
+  return {
+    holds,
+    details,
+    failures,
+    ...(product.countability !== undefined ? { countability: product.countability } : {}),
+  };
 }
 
 export interface SetMultDeterminismSummary<A, B> {

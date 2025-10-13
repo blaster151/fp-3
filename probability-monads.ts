@@ -7,7 +7,16 @@ import {
   kernelToMatrix,
   prettyMatrix,
 } from "./markov-category";
-import type { Dist, Fin, Pair, I, Kernel } from "./markov-category";
+import type {
+  Dist,
+  Fin,
+  Pair,
+  I,
+  Kernel,
+  KleisliMap,
+  FinKleisliInstance,
+  KleisliOperations,
+} from "./markov-category";
 
 // Dist-like monad spec
 export interface DistLikeMonadSpec {
@@ -39,20 +48,23 @@ export const DistMonad: DistLikeMonadSpec = {
   isAffine1: true,
 };
 
-export function makeKleisli(spec: DistLikeMonadSpec) {
-  type Kleisli<X,Y> = (x:X)=>Dist<Y>;
+export function makeKleisli(spec: DistLikeMonadSpec): KleisliOperations {
+  type Kleisli<X,Y> = KleisliMap<X,Y>;
   const composeK = <X,Y,Z>(f:Kleisli<X,Y>, g:Kleisli<Y,Z>): Kleisli<X,Z> => x => spec.bind(f(x), g);
-  const tensorK  = <X1,Y1,X2,Y2>(f:Kleisli<X1,Y1>, g:Kleisli<X2,Y2>): Kleisli<[X1,X2],[Y1,Y2]> =>
-    ([x1,x2]) => spec.product(f(x1), g(x2));
-  const detKleisli = <X,Y>(f:(x:X)=>Y): Kleisli<X,Y> => x => spec.of(f(x));
-  const copyK   = <X>():  Kleisli<X,[X,X]> => (x:X) => spec.of([x,x] as const);
+  const tensorK  = <X1,Y1,X2,Y2>(
+    f:Kleisli<X1,Y1>,
+    g:Kleisli<X2,Y2>
+  ): Kleisli<Pair<X1,X2>,Pair<Y1,Y2>> =>
+    ([x1,x2]: Pair<X1,X2>) => spec.product(f(x1), g(x2));
+  const detKleisli = <X,Y>(_Xf: Fin<X>, _Yf: Fin<Y>, f:(x:X)=>Y): Kleisli<X,Y> => x => spec.of(f(x));
+  const copyK   = <X>():  Kleisli<X,Pair<X,X>> => (x:X) => spec.of([x,x] as const);
   const discardK= <X>():  Kleisli<X,I>     => (_:X) => spec.of({} as I);
-  const swapK   = <X,Y>():Kleisli<[X,Y],[Y,X]> => ([x,y]) => spec.of([y,x] as const);
+  const swapK   = <X,Y>():Kleisli<Pair<X,Y>,Pair<Y,X>> => ([x,y]: Pair<X,Y>) => spec.of([y,x] as const);
 
-  class FinKleisli<X,Y> {
+  class FinKleisli<X,Y> implements FinKleisliInstance<X,Y> {
     constructor(public X: Fin<X>, public Y: Fin<Y>, public k: Kleisli<X,Y>) {}
-    then<Z>(that: FinKleisli<Y,Z>)      { return new FinKleisli(this.X, that.Y, composeK(this.k, that.k)); }
-    tensor<Z,W>(that: FinKleisli<Z,W>)  {
+    then<Z>(that: FinKleisliInstance<Y,Z>)      { return new FinKleisli(this.X, that.Y, composeK(this.k, that.k)); }
+    tensor<Z,W>(that: FinKleisliInstance<Z,W>)  {
       const dom = tensorObj(this.X, that.X), cod = tensorObj(this.Y, that.Y);
       return new FinKleisli(dom as any, cod, tensorK(this.k, that.k));
     }
@@ -60,8 +72,21 @@ export function makeKleisli(spec: DistLikeMonadSpec) {
     pretty(digits=4)      { return prettyMatrix(this.matrix(), digits); }
   }
 
-  return { composeK, tensorK, detKleisli, copyK, discardK, swapK, FinKleisli, isMarkovCategory: spec.isAffine1 } as const;
+  const operations: KleisliOperations = {
+    composeK,
+    tensorK,
+    detKleisli,
+    copyK,
+    discardK,
+    swapK,
+    FinKleisli,
+    isMarkovCategory: spec.isAffine1,
+  };
+
+  return operations;
 }
+
+export type KleisliFactory = KleisliOperations;
 
 // Subprobability & weighted flavors (non-affine)
 export const SubProbMonad: DistLikeMonadSpec = {
@@ -80,6 +105,6 @@ export const WeightedMonad: DistLikeMonadSpec = {
   isAffine1:false,
 };
 
-export const KleisliProb     = makeKleisli(DistMonad);
-export const KleisliSubProb  = makeKleisli(SubProbMonad);
-export const KleisliWeighted = makeKleisli(WeightedMonad);
+export const KleisliProb: KleisliFactory     = makeKleisli(DistMonad);
+export const KleisliSubProb: KleisliFactory  = makeKleisli(SubProbMonad);
+export const KleisliWeighted: KleisliFactory = makeKleisli(WeightedMonad);

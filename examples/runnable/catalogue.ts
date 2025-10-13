@@ -1,4 +1,4 @@
-import { RunnableRegistry } from "./types";
+import type { RunnableRegistry } from "./types";
 import { optionResultBasics } from "./001-option-result-basics";
 import { resultDoNotation } from "./002-result-do-notation";
 import { effectCompositionPatterns } from "./003-effect-composition";

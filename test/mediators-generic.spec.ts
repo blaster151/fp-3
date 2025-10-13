@@ -11,7 +11,7 @@ const randMat = (r: number, c: number) =>
 describe('mediateProduct / isProductForCone (Vect)', () => {
   test('build canonical mediator and verify triangles', () => {
     const X: EnhancedVect.VectObj = { dim: 3 }
-    const [V1, V2] = [{ dim: 2 }, { dim: 1 }] as const as EnhancedVect.VectObj[]
+    const [V1, V2]: readonly [EnhancedVect.VectObj, EnhancedVect.VectObj] = [{ dim: 2 }, { dim: 1 }]
     const { I, Ifin } = IndexedFamilies.familyFromArray([0, 1]) // indices 0,1
     const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (i) => (i === 0 ? V1 : V2)
 
@@ -79,7 +79,7 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
 
 describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
   test('build canonical cotuple and verify triangles', () => {
-    const [V1, V2] = [{ dim: 2 }, { dim: 1 }] as const as EnhancedVect.VectObj[]
+    const [V1, V2]: readonly [EnhancedVect.VectObj, EnhancedVect.VectObj] = [{ dim: 2 }, { dim: 1 }]
     const Y: EnhancedVect.VectObj = { dim: 3 }
     const { I, Ifin } = IndexedFamilies.familyFromArray([0, 1])
     const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (i) => (i === 0 ? V1 : V2)

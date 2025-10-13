@@ -86,7 +86,7 @@ const verifyFunctorBetween = <DomObj, DomArr, CodObj, CodArr>(
   }
   for (const g of domain.arrows) {
     for (const f of domain.arrows) {
-      if (!domain.eq(domain.dst(f), domain.src(g))) {
+        if (!Object.is(domain.dst(f), domain.src(g))) {
         continue;
       }
       const composed = functor.onArrows(domain.compose(g, f));

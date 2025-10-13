@@ -29,7 +29,6 @@ import type {
   RelativeAlgebraIndexedFamilyWitness,
   RelativeAlgebraGlobalCategoryWitness,
   RelativeAlgebraMediatingTightCellWitness,
-  RelativeAlgebraResolutionWitness,
   RelativeAlgebraTwoDimensionalModuleWitness,
   RelativeAlgebraRestrictionFunctorWitness,
   RelativePartialRightAdjointWitness,
@@ -829,17 +828,15 @@ export const RelativeAlgebraOracles = {
       presentation,
       effectiveWitness,
     );
-    return {
-      holds: report.holds,
-      pending: report.pending,
-      registryPath: descriptor.registryPath,
-      details: report.details,
-      issues: report.issues,
-      witness: report.witness,
-      resolutionReport: report.resolutionReport,
-      mediatingTightCellReport: report.mediatingTightCellReport,
-      analysis: report,
-    };
+      return {
+        holds: report.holds,
+        pending: report.pending,
+        registryPath: descriptor.registryPath,
+        details: report.details,
+        issues: report.issues,
+        witness: report.witness,
+        analysis: report,
+      };
   },
   algebraIndexedFamily: <Obj, Arr, Payload, Evidence>(
     monad: RelativeMonadData<Obj, Arr, Payload, Evidence>,

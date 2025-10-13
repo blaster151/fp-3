@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 type InitialObjectWitness<O, M> = {
   readonly object: O;

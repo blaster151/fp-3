@@ -1,5 +1,5 @@
 import { Result } from "./structures";
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 /**
  * Stage 021 rebuilds the tagless-final (higher-kinded) expression builders that

@@ -1,5 +1,5 @@
 // markov-graded.ts
-import { Kernel, Dist, dirac, prune } from "./markov-category";
+import { dirac, prune, type Dist, type Kernel } from "./markov-category";
 
 export interface Monoid<G> {
   empty: G;

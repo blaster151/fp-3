@@ -3985,19 +3985,19 @@ export const analyzeRelativeEilenbergMooreUniversalProperty = <
       (sectionReport?.pending ?? false) ||
       (gradedExtensionReport?.pending ?? false));
 
-  return {
-    holds,
-    pending,
-    issues,
-    details: holds
-      ? "Relative Eilenberg–Moore presentation records the universal property witnesses."
-      : `Relative Eilenberg–Moore presentation issues: ${issues.join("; ")}`,
-    witness: universalWitness,
-    restrictionReport,
-    mediatingTightCellReport,
-    sectionReport,
-    gradedExtensionReport,
-  };
+    return {
+      holds,
+      pending,
+      issues,
+      details: holds
+        ? "Relative Eilenberg–Moore presentation records the universal property witnesses."
+        : `Relative Eilenberg–Moore presentation issues: ${issues.join("; ")}`,
+      ...(universalWitness ? { witness: universalWitness } : {}),
+      ...(restrictionReport ? { restrictionReport } : {}),
+      ...(mediatingTightCellReport ? { mediatingTightCellReport } : {}),
+      ...(sectionReport ? { sectionReport } : {}),
+      ...(gradedExtensionReport ? { gradedExtensionReport } : {}),
+    };
 };
 
 export const analyzeRelativePartialRightAdjointFunctor = <

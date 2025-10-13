@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { TwoObjectCategory } from "../../two-object-cat";
+import {
+  TwoObjectCategory,
+  type TwoObject,
+  type TwoArrow,
+} from "../../two-object-cat";
 import { virtualizeFiniteCategory } from "../../virtual-equipment/adapters";
 import {
   identityVerticalBoundary,
   identityProarrow,
   frameFromProarrow,
+  type Tight,
+  type TightCategory,
+  type TightCellEvidence,
 } from "../../virtual-equipment";
 import {
   describeTrivialRelativeAdjunction,
@@ -25,6 +32,26 @@ import {
   relativeMonadFromLooseMonoid,
   relativeMonadToLooseMonoid,
 } from "../../relative/relative-composition";
+
+type RelativeObjects = TwoObject;
+type RelativeArrows = TwoArrow;
+type TightPayload = Tight<
+  TightCategory<RelativeObjects, RelativeArrows>,
+  TightCategory<RelativeObjects, RelativeArrows>
+>;
+type RelativeEvidence = TightCellEvidence<RelativeObjects, RelativeArrows>;
+type RelativeAdjunction = RelativeAdjunctionData<
+  RelativeObjects,
+  RelativeArrows,
+  TightPayload,
+  RelativeEvidence
+>;
+type RelativeMonad = RelativeMonadData<
+  RelativeObjects,
+  RelativeArrows,
+  TightPayload,
+  RelativeEvidence
+>;
 
 const makeTrivialAdjunction = () => {
   const equipment = virtualizeFiniteCategory(TwoObjectCategory);
@@ -51,11 +78,11 @@ describe("Relative adjunction composition analyzer", () => {
 
   it("detects mismatched roots", () => {
     const { equipment, adjunction } = makeTrivialAdjunction();
-    const altered: RelativeAdjunctionData<string, string, unknown, unknown> = {
+    const altered: RelativeAdjunction = {
       ...adjunction,
       root: identityVerticalBoundary(
         equipment,
-        "○",
+        "★",
         "Mismatched root for composition failure test",
       ),
     };
@@ -79,11 +106,11 @@ describe("Relative monad composition analyzer", () => {
 
   it("rejects incompatible carriers", () => {
     const { equipment, left, right } = makeTrivialMonads();
-    const altered: RelativeMonadData<string, string, unknown, unknown> = {
+    const altered: RelativeMonad = {
       ...right,
       root: identityVerticalBoundary(
         equipment,
-        "○",
+        "★",
         "Mismatched root for composition failure test",
       ),
     };
@@ -112,7 +139,7 @@ describe("Relative monad ↔ loose monoid bridge", () => {
       multiplication: {
         ...loose.multiplication,
         target: frameFromProarrow(
-          identityProarrow(equipment, "○"),
+          identityProarrow(equipment, "★"),
         ),
       },
     };

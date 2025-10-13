@@ -48,13 +48,13 @@ export interface SubsetRestriction<J> {
 const subsetKey = <J>(subset: FiniteSubset<J>): string =>
   subset.map((item) => `${item}`).join(",");
 
-const describeSubset = <J>(
-  diagram: SemicartesianTensorDiagram<J, unknown, unknown>,
+const describeSubset = <J, Obj, Mor>(
+  diagram: SemicartesianTensorDiagram<J, Obj, Mor>,
   subset: FiniteSubset<J>,
 ): string => diagram.describeSubset?.(subset) ?? (subset.length ? subsetKey(subset) : "∅");
 
-const describeMorphism = <J, Mor>(
-  diagram: SemicartesianTensorDiagram<J, unknown, Mor>,
+const describeMorphism = <J, Obj, Mor>(
+  diagram: SemicartesianTensorDiagram<J, Obj, Mor>,
   morphism: Mor,
 ): string => diagram.describeMorphism?.(morphism) ?? "morphism";
 
@@ -146,35 +146,43 @@ export function checkSemicartesianUniversalProperty<J, Obj, Mor>(
   const mediators: Array<SemicartesianMediatorSummary<J, Mor>> = [];
 
   for (const cone of cones) {
-    let factorization: SemicartesianFactorization<Mor>;
-    try {
-      factorization = product.factor(cone);
-    } catch (error) {
-      failures.push({
-        coneLabel: cone.label,
-        reason: `Factorization threw: ${(error as Error).message}`,
-      });
-      continue;
-    }
-
-    const coneLabel = cone.label;
-    mediators.push({ coneLabel, mediator: factorization.mediator, details: factorization.details, subsets });
-
-    for (const subset of subsets) {
-      const expected = cone.leg(subset);
-      const projected = diagram.compose(factorization.mediator, product.projection(subset));
-      if (!diagram.equal(projected, expected)) {
-        failures.push({
-          coneLabel,
-          subset,
-          reason: `Mediator failed to reproduce leg on ${describeSubset(diagram, subset)}.`,
-          witness: projected,
-        });
+      let factorization: SemicartesianFactorization<Mor>;
+      try {
+        factorization = product.factor(cone);
+      } catch (error) {
+        const failure: SemicartesianUniversalFailure<J, Mor> = {
+          ...(cone.label !== undefined ? { coneLabel: cone.label } : {}),
+          reason: `Factorization threw: ${(error as Error).message}`,
+        };
+        failures.push(failure);
+        continue;
       }
-    }
 
-    if (cone.mediatorCandidates) {
-      for (const candidate of cone.mediatorCandidates) {
+      const coneLabel = cone.label;
+      const mediatorSummary: SemicartesianMediatorSummary<J, Mor> = {
+        mediator: factorization.mediator,
+        subsets,
+        ...(coneLabel !== undefined ? { coneLabel } : {}),
+        ...(factorization.details !== undefined ? { details: factorization.details } : {}),
+      };
+      mediators.push(mediatorSummary);
+
+      for (const subset of subsets) {
+        const expected = cone.leg(subset);
+        const projected = diagram.compose(factorization.mediator, product.projection(subset));
+        if (!diagram.equal(projected, expected)) {
+          const failure: SemicartesianUniversalFailure<J, Mor> = {
+            ...(coneLabel !== undefined ? { coneLabel } : {}),
+            subset,
+            reason: `Mediator failed to reproduce leg on ${describeSubset(diagram, subset)}.`,
+            witness: projected,
+          };
+          failures.push(failure);
+        }
+      }
+
+      if (cone.mediatorCandidates) {
+        for (const candidate of cone.mediatorCandidates) {
         let satisfies = true;
         for (const subset of subsets) {
           const candidateProjection = diagram.compose(candidate.morphism, product.projection(subset));
@@ -182,16 +190,19 @@ export function checkSemicartesianUniversalProperty<J, Obj, Mor>(
             satisfies = false;
             break;
           }
-        }
-        if (satisfies && !diagram.equal(candidate.morphism, factorization.mediator)) {
-          failures.push({
-            coneLabel,
-            reason: `Candidate mediator ${candidate.label ?? describeMorphism(diagram, candidate.morphism)} violates uniqueness.`,
-            witness: candidate.morphism,
-          });
+          }
+          if (satisfies && !diagram.equal(candidate.morphism, factorization.mediator)) {
+            const failure: SemicartesianUniversalFailure<J, Mor> = {
+              ...(coneLabel !== undefined ? { coneLabel } : {}),
+              reason: `Candidate mediator ${
+                candidate.label ?? describeMorphism(diagram, candidate.morphism)
+              } violates uniqueness.`,
+              witness: candidate.morphism,
+            };
+            failures.push(failure);
+          }
         }
       }
-    }
   }
 
   const holds = failures.length === 0;

@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 type Ring<A> = {
   readonly add: (x: A, y: A) => A;

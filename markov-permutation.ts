@@ -12,8 +12,8 @@ export type FiniteSymmetryKind = "permutation" | "injection";
 
 export interface FiniteSymmetry<XJ> {
   readonly name: string;
-  readonly sigmaHat: FinMarkov<XJ, XJ>;
-  readonly kind?: FiniteSymmetryKind;
+  readonly sigmaHat: FinMarkov<XJ, XJ> | FinMarkov<any, any>;
+  readonly kind?: FiniteSymmetryKind | undefined;
 }
 
 export type FinitePermutation<XJ> = FiniteSymmetry<XJ>;
@@ -51,13 +51,14 @@ export function checkFinitePermutationInvariance<A, XJ, T>(
   }> = [];
 
   for (const permutation of perms) {
-    if (permutation.sigmaHat.X !== p.Y || permutation.sigmaHat.Y !== p.Y) {
+    const sigmaHat = permutation.sigmaHat as FinMarkov<XJ, XJ>;
+    if (sigmaHat.X !== p.Y || sigmaHat.Y !== p.Y) {
       throw new Error(
         `Permutation ${permutation.name} must act on the Kolmogorov object X_J.`,
       );
     }
 
-    const permutedPrior = p.then(permutation.sigmaHat);
+    const permutedPrior = p.then(sigmaHat);
     const priorInvariant = approxEqualMatrix(p.matrix(), permutedPrior.matrix(), tolerance);
     if (!priorInvariant) {
       failures.push(`${permutation.name}: prior p broke invariance under σ̂.`);
@@ -66,7 +67,7 @@ export function checkFinitePermutationInvariance<A, XJ, T>(
     const statWitness = buildMarkovAlmostSureWitness(
       p,
       s,
-      permutation.sigmaHat.then(s),
+      sigmaHat.then(s),
       { label: `${permutation.name}: s∘σ̂` },
     );
     const statReport = checkAlmostSureEquality(statWitness, { tolerance });

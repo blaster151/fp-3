@@ -256,7 +256,11 @@ export function testSOSDRelationships<R, A>(
         const p = distributions[i];
         const q = distributions[j];
         const t = dilations[k];
-        
+
+        if (p === undefined || q === undefined || t === undefined) {
+          continue;
+        }
+
         // Test both directions
         for (const direction of ["qFromP", "pFromQ"] as const) {
           const result = testSOSDDetailed(R, p, q, e, t, sampleAs, direction);

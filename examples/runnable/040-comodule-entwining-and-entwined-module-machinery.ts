@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 type AlgebraElement = "1" | "x";
 type CoalgebraElement = "c0" | "c1";

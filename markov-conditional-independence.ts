@@ -18,7 +18,7 @@ export interface MarkovConditionalWitnessOptions {
 
 export interface MarkovConditionalWitness<A> {
   readonly domain: MarkovComonoidWitness<A>;
-  readonly outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>;
+  readonly outputs: ReadonlyArray<MarkovComonoidWitness<any>>;
   readonly arrow: FinMarkov<A, unknown>;
   readonly projections: ReadonlyArray<FinMarkov<unknown, unknown>>;
   readonly label?: string;
@@ -55,7 +55,7 @@ export interface MarkovConditionalReport<A> {
   readonly details: string;
 }
 
-function productCardinality(outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>): number {
+function productCardinality(outputs: ReadonlyArray<MarkovComonoidWitness<any>>): number {
   return outputs.reduce((acc, witness) => acc * witness.object.elems.length, 1);
 }
 
@@ -115,7 +115,7 @@ function buildProjection(
 
 function inferDefaultProjections(
   codomain: Fin<unknown>,
-  outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>,
+  outputs: ReadonlyArray<MarkovComonoidWitness<any>>,
 ): ReadonlyArray<FinMarkov<unknown, unknown>> {
   if (outputs.length === 0) {
     throw new Error("Cannot infer projections without at least one output object.");
@@ -130,19 +130,20 @@ function inferDefaultProjections(
   return outputs.map((output, index) => buildProjection(codomain, output.object, arity, index));
 }
 
-export function buildMarkovConditionalWitness<A>(
+export function buildMarkovConditionalWitness<A, B>(
   domain: MarkovComonoidWitness<A>,
-  outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>,
-  arrow: FinMarkov<A, unknown>,
+  outputs: ReadonlyArray<MarkovComonoidWitness<any>>,
+  arrow: FinMarkov<A, B>,
   options: MarkovConditionalWitnessOptions = {},
 ): MarkovConditionalWitness<A> {
-  if (arrow.X !== domain.object) {
+  const typedArrow = arrow as unknown as FinMarkov<A, unknown>;
+  if (typedArrow.X !== domain.object) {
     throw new Error("Conditional witness domain mismatch between comonoid and arrow.");
   }
   if (outputs.length === 0) {
     throw new Error("Conditional independence requires at least one output object.");
   }
-  const projections = options.projections ?? inferDefaultProjections(arrow.Y, outputs);
+  const projections = options.projections ?? inferDefaultProjections(typedArrow.Y, outputs);
   if (projections.length !== outputs.length) {
     throw new Error("Number of projections must match number of outputs.");
   }
@@ -151,7 +152,7 @@ export function buildMarkovConditionalWitness<A>(
     if (!witness) {
       throw new Error(`Projection ${index} is missing a corresponding output witness.`);
     }
-    if (projection.X !== arrow.Y) {
+    if (projection.X !== typedArrow.Y) {
       throw new Error(`Projection ${index} does not consume the conditional kernel codomain.`);
     }
     if (projection.Y !== witness.object) {
@@ -162,7 +163,7 @@ export function buildMarkovConditionalWitness<A>(
   return {
     domain,
     outputs,
-    arrow,
+    arrow: typedArrow,
     projections,
     ...(options.label !== undefined ? { label: options.label } : {}),
     arity: outputs.length,

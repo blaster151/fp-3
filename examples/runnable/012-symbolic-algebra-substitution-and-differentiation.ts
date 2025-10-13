@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 /**
  * Stage 012 rebuilds the symbolic-algebra helpers used by the original

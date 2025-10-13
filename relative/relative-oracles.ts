@@ -226,8 +226,8 @@ export const RelativeMonadOracles = {
     };
   },
   vectorArrowCorrespondence: <R>(
-    witness: FiniteVectorArrowCorrespondenceWitness<R> =
-      describeBooleanVectorArrowCorrespondenceWitness() as FiniteVectorArrowCorrespondenceWitness<R>,
+      witness: FiniteVectorArrowCorrespondenceWitness<R> =
+        describeBooleanVectorArrowCorrespondenceWitness() as unknown as FiniteVectorArrowCorrespondenceWitness<R>,
   ): RelativeMonadOracleResult => {
     const descriptor = RelativeMonadLawRegistry.vectorArrowCorrespondence;
     const report = analyzeFiniteVectorArrowCorrespondence(witness);

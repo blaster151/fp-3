@@ -3,7 +3,7 @@
 // Objects are preorders (P, ≤). A morphism between preorders is a monotone map
 // preserving the underlying preorder relation.
 
-import { Preorder } from "./preorder-cat";
+import { type Preorder } from "./preorder-cat";
 
 export interface PreordHom<A, B> {
   readonly dom: Preorder<A>;

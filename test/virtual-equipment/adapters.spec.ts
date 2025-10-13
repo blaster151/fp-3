@@ -64,9 +64,15 @@ describe("virtual equipment adapters", () => {
       },
     ).functor;
 
+    const constStarProarrow = {
+      from: "•" as TwoObject,
+      to: "★" as TwoObject,
+      payload: constStar,
+    };
+
     const composed = horizontalComposeProarrows(
       equipment,
-      { from: "•", to: "★", payload: constStar },
+      constStarProarrow,
       idDot,
     );
 

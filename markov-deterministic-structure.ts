@@ -94,7 +94,8 @@ export interface TensorMarginalDeterminismReport<A, B, C> {
 function indexOfEq<T>(fin: Fin<T>, value: T): number {
   const { elems, eq } = fin;
   for (let i = 0; i < elems.length; i++) {
-    if (eq(elems[i], value)) return i;
+    const candidate = elems[i];
+    if (candidate !== undefined && eq(candidate, value)) return i;
   }
   return -1;
 }
@@ -121,6 +122,9 @@ function extractDeterministicBase<X, Y>(
   const { elems } = domain;
   for (let i = 0; i < elems.length; i++) {
     const x = elems[i];
+    if (x === undefined) {
+      throw new Error("Deterministic witnesses require total finite domains.");
+    }
     const dist = kernel(x);
     let support: Y | undefined;
     let total = 0;
@@ -134,10 +138,11 @@ function extractDeterministicBase<X, Y>(
         }
       }
     }
-    if (support === undefined || Math.abs(total - 1) > tol) {
+    const value = support;
+    if (value === undefined || Math.abs(total - 1) > tol) {
       return { deterministic: false, counterexample: { input: x, distribution: dist } };
     }
-    outputs[i] = support;
+    outputs[i] = value;
   }
 
   const base = (x: X): Y => {
@@ -145,27 +150,32 @@ function extractDeterministicBase<X, Y>(
     if (idx < 0 || idx >= outputs.length) {
       throw new Error("Input is outside the deterministic witness domain.");
     }
-    return outputs[idx];
+    const output = outputs[idx];
+    if (output === undefined) {
+      throw new Error("Deterministic witness outputs must be total.");
+    }
+    return output;
   };
   return { deterministic: true, base };
 }
 
-export function buildMarkovDeterministicWitness<X, Y>(
+export function buildMarkovDeterministicWitness<X, Y, Y0 extends Y>(
   domain: MarkovComonoidWitness<X>,
-  codomain: MarkovComonoidWitness<Y>,
+  codomain: MarkovComonoidWitness<Y0>,
   arrow: FinMarkov<X, Y>,
-  options: MarkovDeterministicWitnessOptions<X, Y> = {},
-): MarkovDeterministicWitness<X, Y> {
-  if (arrow.X !== domain.object) {
+  options: MarkovDeterministicWitnessOptions<X, Y0> = {},
+): MarkovDeterministicWitness<X, Y0> {
+  const typedArrow = arrow as unknown as FinMarkov<X, Y0>;
+  if (typedArrow.X !== domain.object) {
     throw new Error("Deterministic witness domain does not match the provided comonoid witness.");
   }
-  if (arrow.Y !== codomain.object) {
+  if (typedArrow.Y !== codomain.object) {
     throw new Error("Deterministic witness codomain does not match the provided comonoid witness.");
   }
   return {
     domain,
     codomain,
-    arrow,
+    arrow: typedArrow,
     ...(options.label !== undefined ? { label: options.label } : {}),
     ...(options.base !== undefined ? { base: options.base } : {}),
   };
@@ -228,11 +238,18 @@ export function checkDeterministicComonoid<X, Y>(
 
   if (!deterministic) {
     const counterexample = (detResult as { counterexample?: DeterminismCounterexample<X, Y> }).counterexample;
-    failures.push({
-      law: "determinism",
-      message: `Kernel ${descriptor} is not deterministic: found a non-Dirac output.`,
-      counterexample,
-    });
+    failures.push(
+      counterexample !== undefined
+        ? {
+            law: "determinism",
+            message: `Kernel ${descriptor} is not deterministic: found a non-Dirac output.`,
+            counterexample,
+          }
+        : {
+            law: "determinism",
+            message: `Kernel ${descriptor} is not deterministic: found a non-Dirac output.`,
+          },
+    );
   }
   if (!hom.preservesCopy) {
     failures.push({ law: "copy", message: `Copy law failed for ${descriptor}.` });
@@ -255,9 +272,9 @@ export function checkDeterministicComonoid<X, Y>(
     comonoidHom,
     equivalent,
     witness,
-    base,
     details,
     failures,
+    ...(base !== undefined ? { base } : {}),
   };
 }
 
@@ -385,6 +402,12 @@ export function checkDeterminismLemma<A, X, T>(
 
   const xWitness = conditional.outputs[xIndex];
   const tWitness = conditional.outputs[tIndex];
+  if (xWitness === undefined) {
+    throw new Error("Conditional witness is missing the X marginal at the requested index.");
+  }
+  if (tWitness === undefined) {
+    throw new Error("Conditional witness is missing the T marginal at the requested index.");
+  }
 
   if (p.Y !== xWitness.object) {
     throw new Error("Kernel p must land in the X output of the conditional witness.");
@@ -413,7 +436,7 @@ export function checkDeterminismLemma<A, X, T>(
     conditional.domain,
     deterministic.codomain,
     compositeArrow,
-    { label: compositeLabel },
+    compositeLabel === undefined ? {} : { label: compositeLabel },
   );
   const compositeReport = checkDeterministicComonoid(compositeWitness);
 
@@ -576,9 +599,9 @@ export function checkSetMultDeterminism<X, Y>(
     deterministic,
     matchesKernel,
     witness,
-    base: deterministic.deterministic ? deterministic.base : undefined,
     mismatches,
     details,
+    ...(deterministic.deterministic ? { base: deterministic.base } : {}),
   };
 }
 

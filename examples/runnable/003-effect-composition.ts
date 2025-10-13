@@ -1,4 +1,4 @@
-import { RunnableExample } from "./types";
+import type { RunnableExample } from "./types";
 
 /**
  * Stage 003 focuses on how basic State, Reader, and Task programs compose.  We

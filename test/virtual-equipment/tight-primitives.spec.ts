@@ -4,7 +4,12 @@ import type { Functor } from "../../functor";
 import type {
   Equipment2Cell,
   EquipmentProarrow,
+  EquipmentTightLayer,
+  Tight,
+  TightCategory,
   TightCellEvidence,
+  VirtualEquipment,
+  FunctorCheckSamples,
 } from "../../virtual-equipment";
 import {
   analyzeLooseMonoidShape,
@@ -38,6 +43,57 @@ import { TwoObjectCategory, nonIdentity } from "../../two-object-cat";
 import type { TwoArrow, TwoObject } from "../../two-object-cat";
 
 type CanonicalEntry = (typeof canonicalTightCategories)[number];
+
+type TwoObjects = TwoObject;
+type TwoArrows = TwoArrow;
+type TwoCategory = TightCategory<TwoObjects, TwoArrows>;
+type TightPayload = Tight<TwoCategory, TwoCategory>;
+type TightEvidence = TightCellEvidence<TwoObjects, TwoArrows>;
+type TwoEquipment = VirtualEquipment<TwoObjects, TwoArrows, TightPayload, TightEvidence>;
+type TwoProarrow = EquipmentProarrow<TwoObjects, TightPayload>;
+type TwoTightLayer = EquipmentTightLayer<TwoObjects, TwoArrows>;
+
+const equalsTwoObject = (left: TwoObject, right: TwoObject): boolean => left === right;
+
+const composeTight: TwoTightLayer["compose"] = (g, f) => composeFun(g, f);
+
+const defaultSamples: FunctorCheckSamples<TwoObjects, TwoArrows> = {
+  objects: TwoObjectCategory.objects,
+  composablePairs: [
+    { f: TwoObjectCategory.id("•"), g: TwoObjectCategory.id("•") },
+    { f: nonIdentity, g: TwoObjectCategory.id("★") },
+  ],
+};
+
+const promoteIdentityFunctor = (
+  samples: FunctorCheckSamples<TwoObjects, TwoArrows> = defaultSamples,
+): TightPayload =>
+  promoteFunctor(
+    TwoObjectCategory,
+    TwoObjectCategory,
+    {
+      F0: (object: TwoObject) => object,
+      F1: (arrow: TwoArrow) => arrow,
+    },
+    samples,
+  ).functor;
+
+const buildTwoObjectEquipment = (
+  samples: FunctorCheckSamples<TwoObjects, TwoArrows> = defaultSamples,
+): { equipment: TwoEquipment; tightLayer: TwoTightLayer } => {
+  const identityFunctor = promoteIdentityFunctor(samples);
+  const tightLayer = defaultTightLayer(
+    TwoObjectCategory,
+    identityFunctor,
+    composeTight,
+  );
+  const equipment = virtualiseTightCategory(
+    tightLayer,
+    TwoObjectCategory.objects,
+    equalsTwoObject,
+  );
+  return { equipment, tightLayer } as const;
+};
 
 describe("virtual equipment tight primitive catalogue", () => {
   test("functors can be promoted and demoted without losing data", () => {
@@ -91,60 +147,33 @@ describe("virtual equipment tight primitive catalogue", () => {
   });
 
   test("virtualised categories expose proarrow and 2-cell calculus", () => {
-    const samples = {
-      objects: TwoObjectCategory.objects,
-      composablePairs: [
-        { f: TwoObjectCategory.id("•"), g: TwoObjectCategory.id("•") },
-        { f: nonIdentity, g: TwoObjectCategory.id("•") },
-      ],
-    } as const;
-
-    const { functor: idFunctor } = promoteFunctor(
-      TwoObjectCategory,
-      TwoObjectCategory,
-      {
-        F0: (obj: TwoObject) => obj,
-        F1: (arrow: TwoArrow) => arrow,
-      },
-      samples,
-    );
+    const { equipment, tightLayer } = buildTwoObjectEquipment();
 
     const constantStar: Functor<TwoObject, TwoArrow, TwoObject, TwoArrow> = {
-      F0: () => "★",
+      F0: () => "★" as const,
       F1: () => TwoObjectCategory.id("★"),
     };
-    const { functor: constStarFunctor } = promoteFunctor(
+    const constStarFunctor: TightPayload = promoteFunctor(
       TwoObjectCategory,
       TwoObjectCategory,
       constantStar,
-      samples,
-    );
+      defaultSamples,
+    ).functor;
 
     const constantDot: Functor<TwoObject, TwoArrow, TwoObject, TwoArrow> = {
-      F0: () => "•",
+      F0: () => "•" as const,
       F1: () => TwoObjectCategory.id("•"),
     };
-    const { functor: constDotFunctor } = promoteFunctor(
+    const constDotFunctor: TightPayload = promoteFunctor(
       TwoObjectCategory,
       TwoObjectCategory,
       constantDot,
-      samples,
-    );
-
-    const tightLayer = defaultTightLayer(
-      TwoObjectCategory,
-      idFunctor,
-      (g: TwoArrow, f: TwoArrow) => composeFun(g, f),
-    );
-    const equipment = virtualiseTightCategory(
-      tightLayer,
-      TwoObjectCategory.objects,
-      (left: TwoObject, right: TwoObject) => left === right,
-    );
+      defaultSamples,
+    ).functor;
 
     const idDot = identityProarrow(equipment, "•");
     const idStar = identityProarrow(equipment, "★");
-    const constStarPro: EquipmentProarrow<TwoObject, typeof constStarFunctor> = {
+    const constStarPro: TwoProarrow = {
       from: "•",
       to: "★",
       payload: constStarFunctor,
@@ -181,37 +210,47 @@ describe("virtual equipment tight primitive catalogue", () => {
       tightLayer.identity,
       idDot,
     );
-    expect(identityRestriction).toBeDefined();
-    expect(identityRestriction?.cartesian.cartesian).toBe(true);
-    expect(identityRestriction?.cartesian.boundary.direction).toBe("left");
-    expect(identityRestriction?.cartesian.boundary.vertical.from).toBe("•");
-    expect(identityRestriction?.cartesian.boundary.vertical.to).toBe("•");
-    expect(identityRestriction?.cartesian.boundary.details).toContain("restriction");
-    expect(identityRestriction?.cartesian.evidence.kind).toBe("cartesian");
-    expect(identityRestriction?.cartesian.evidence.boundary.from).toBe("•");
-    expect(identityRestriction?.representability?.orientation).toBe("left");
-    expect(identityRestriction?.representability?.object).toBe("•");
+    if (!identityRestriction) {
+      throw new Error("Expected left restriction to exist for the identity tight cell.");
+    }
+    const { cartesian: identityCartesian, representability: identityRepresentability } = identityRestriction;
+    expect(identityCartesian.cartesian).toBe(true);
+    expect(identityCartesian.boundary.direction).toBe("left");
+    expect(identityCartesian.boundary.vertical.from).toBe("•");
+    expect(identityCartesian.boundary.vertical.to).toBe("•");
+    expect(identityCartesian.boundary.details).toContain("restriction");
+    const identityEvidence = identityCartesian.evidence;
+    expect(identityEvidence.kind).toBe("cartesian");
+    if (identityEvidence.kind === "cartesian") {
+      expect(identityEvidence.boundary.from).toBe("•");
+    }
+    expect(identityRepresentability?.orientation).toBe("left");
+    expect(identityRepresentability?.object).toBe("•");
 
     const leftRestrictionConstStar = equipment.restrictions.left(
       constStarFunctor,
       idStar,
     );
-    expect(leftRestrictionConstStar).toBeDefined();
-    expect(leftRestrictionConstStar?.restricted.from).toBe("•");
-    expect(leftRestrictionConstStar?.restricted.to).toBe("★");
-    expect(
-      leftRestrictionConstStar?.cartesian.boundary.vertical.details,
-    ).toContain("tight 1-cell");
-    expect(leftRestrictionConstStar?.representability?.orientation).toBe("left");
+    if (!leftRestrictionConstStar) {
+      throw new Error("Expected left restriction for the constant-star functor to exist.");
+    }
+    expect(leftRestrictionConstStar.restricted.from).toBe("•");
+    expect(leftRestrictionConstStar.restricted.to).toBe("★");
+    expect(leftRestrictionConstStar.cartesian.boundary.vertical.details).toContain(
+      "tight 1-cell",
+    );
+    expect(leftRestrictionConstStar.representability?.orientation).toBe("left");
 
     const leftRestrictionConstDot = equipment.restrictions.left(
       constDotFunctor,
       idDot,
     );
-    expect(leftRestrictionConstDot).toBeDefined();
-    expect(leftRestrictionConstDot?.restricted.from).toBe("•");
-    expect(leftRestrictionConstDot?.restricted.to).toBe("•");
-    expect(leftRestrictionConstDot?.representability?.orientation).toBe("left");
+    if (!leftRestrictionConstDot) {
+      throw new Error("Expected left restriction for the constant-dot functor to exist.");
+    }
+    expect(leftRestrictionConstDot.restricted.from).toBe("•");
+    expect(leftRestrictionConstDot.restricted.to).toBe("•");
+    expect(leftRestrictionConstDot.representability?.orientation).toBe("left");
 
     const failedRestriction = equipment.restrictions.left(
       constStarFunctor,
@@ -223,21 +262,28 @@ describe("virtual equipment tight primitive catalogue", () => {
       idStar,
       tightLayer.identity,
     );
-    expect(identityConjointRestriction).toBeDefined();
-    expect(identityConjointRestriction?.cartesian.boundary.direction).toBe("right");
-    expect(identityConjointRestriction?.cartesian.boundary.vertical.from).toBe("★");
-    expect(identityConjointRestriction?.cartesian.evidence.kind).toBe("cartesian");
-    expect(identityConjointRestriction?.cartesian.evidence.boundary.from).toBe("★");
-    expect(identityConjointRestriction?.representability?.orientation).toBe("right");
+    if (!identityConjointRestriction) {
+      throw new Error("Expected right restriction to exist for the identity tight cell.");
+    }
+    expect(identityConjointRestriction.cartesian.boundary.direction).toBe("right");
+    expect(identityConjointRestriction.cartesian.boundary.vertical.from).toBe("★");
+    const identityConjointEvidence = identityConjointRestriction.cartesian.evidence;
+    expect(identityConjointEvidence.kind).toBe("cartesian");
+    if (identityConjointEvidence.kind === "cartesian") {
+      expect(identityConjointEvidence.boundary.from).toBe("★");
+    }
+    expect(identityConjointRestriction.representability?.orientation).toBe("right");
 
     const rightRestrictionConstStar = equipment.restrictions.right(
       idDot,
       constStarFunctor,
     );
-    expect(rightRestrictionConstStar).toBeDefined();
-    expect(rightRestrictionConstStar?.restricted.to).toBe("★");
-    expect(rightRestrictionConstStar?.cartesian.boundary.vertical.to).toBe("★");
-    expect(rightRestrictionConstStar?.representability?.orientation).toBe("right");
+    if (!rightRestrictionConstStar) {
+      throw new Error("Expected right restriction for the constant-star functor to exist.");
+    }
+    expect(rightRestrictionConstStar.restricted.to).toBe("★");
+    expect(rightRestrictionConstStar.cartesian.boundary.vertical.to).toBe("★");
+    expect(rightRestrictionConstStar.representability?.orientation).toBe("right");
 
     const companionAttempt = companionViaIdentityRestrictions(
       equipment,
@@ -308,10 +354,17 @@ describe("virtual equipment tight primitive catalogue", () => {
     const whiskerGuard = whiskerLeftCell(equipment, idStar, constStarCell);
     expect(whiskerGuard).toBeUndefined();
 
-    const identityJuxtaposition = juxtaposeIdentityProarrows(equipment, ["•", "★"]);
+    const identityJuxtaposition = juxtaposeIdentityProarrows(
+      equipment,
+      ["•", "★"] as const,
+    );
     expect(identityJuxtaposition).toHaveLength(2);
-    expect(identityJuxtaposition[0].from).toBe("•");
-    expect(identityJuxtaposition[1].to).toBe("★");
+    const [firstIdentity, secondIdentity] = identityJuxtaposition;
+    if (!firstIdentity || !secondIdentity) {
+      throw new Error("Expected identity proarrows for both objects.");
+    }
+    expect(firstIdentity.from).toBe("•");
+    expect(secondIdentity.to).toBe("★");
 
     const frame = frameFromSequence(identityJuxtaposition, "•", "★");
     expect(frame.leftBoundary).toBe("•");
@@ -319,37 +372,17 @@ describe("virtual equipment tight primitive catalogue", () => {
   });
 
   test("loose monoid analyzer enforces Definition 2.16 framing", () => {
-    const samples = {
+    const samples: FunctorCheckSamples<TwoObjects, TwoArrows> = {
       objects: TwoObjectCategory.objects,
       composablePairs: [
         { f: TwoObjectCategory.id("•"), g: TwoObjectCategory.id("•") },
       ],
-    } as const;
+    };
 
-    const { functor: idFunctor } = promoteFunctor(
-      TwoObjectCategory,
-      TwoObjectCategory,
-      {
-        F0: (object: TwoObject) => object,
-        F1: (arrow: TwoArrow) => arrow,
-      },
-      samples,
-    );
-
-    const tightLayer = defaultTightLayer(
-      TwoObjectCategory,
-      idFunctor,
-      (g: TwoArrow, f: TwoArrow) => composeFun(g, f),
-    );
-
-    const equipment = virtualiseTightCategory(
-      tightLayer,
-      TwoObjectCategory.objects,
-      (left: TwoObject, right: TwoObject) => left === right,
-    );
+    const { equipment } = buildTwoObjectEquipment(samples);
 
     const looseCell = identityProarrow(equipment, "•");
-    const identityBoundary: TightCellEvidence<TwoObject, TwoArrow> = {
+    const identityBoundary: TightEvidence = {
       kind: "tight",
       cell: equipment.tight.identity2(equipment.tight.identity),
     };
@@ -362,7 +395,7 @@ describe("virtual equipment tight primitive catalogue", () => {
         right: identityVerticalBoundary(equipment, "•"),
       },
       evidence: identityBoundary,
-    } satisfies Equipment2Cell<TwoObject, TwoArrow, typeof looseCell.payload, TightCellEvidence<TwoObject, TwoArrow>>;
+    } satisfies Equipment2Cell<TwoObjects, TwoArrows, TightPayload, TightEvidence>;
 
     const unitSource = identityProarrow(equipment, "•");
     const unit = {
@@ -373,10 +406,17 @@ describe("virtual equipment tight primitive catalogue", () => {
         right: identityVerticalBoundary(equipment, "•"),
       },
       evidence: identityBoundary,
-    } satisfies Equipment2Cell<TwoObject, TwoArrow, typeof looseCell.payload, TightCellEvidence<TwoObject, TwoArrow>>;
+    } satisfies Equipment2Cell<TwoObjects, TwoArrows, TightPayload, TightEvidence>;
 
-    const analysis = analyzeLooseMonoidShape(equipment, {
-      object: "•",
+    const rootObject: TwoObject = "•";
+
+    const analysis = analyzeLooseMonoidShape<
+      TwoObjects,
+      TwoArrows,
+      TightPayload,
+      TightEvidence
+    >(equipment, {
+      object: rootObject,
       looseCell,
       multiplication,
       unit,
@@ -393,8 +433,13 @@ describe("virtual equipment tight primitive catalogue", () => {
       },
     };
 
-    const failingAnalysis = analyzeLooseMonoidShape(equipment, {
-      object: "•",
+    const failingAnalysis = analyzeLooseMonoidShape<
+      TwoObjects,
+      TwoArrows,
+      TightPayload,
+      TightEvidence
+    >(equipment, {
+      object: rootObject,
       looseCell,
       multiplication,
       unit: failingUnit,
@@ -409,38 +454,18 @@ describe("virtual equipment tight primitive catalogue", () => {
   });
 
   test("representable right loose adjoint certifies the left loose map", () => {
-    const samples = {
+    const samples: FunctorCheckSamples<TwoObjects, TwoArrows> = {
       objects: TwoObjectCategory.objects,
       composablePairs: [
         { f: TwoObjectCategory.id("•"), g: TwoObjectCategory.id("•") },
       ],
-    } as const;
+    };
 
-    const { functor: idFunctor } = promoteFunctor(
-      TwoObjectCategory,
-      TwoObjectCategory,
-      {
-        F0: (object: TwoObject) => object,
-        F1: (arrow: TwoArrow) => arrow,
-      },
-      samples,
-    );
-
-    const tightLayer = defaultTightLayer(
-      TwoObjectCategory,
-      idFunctor,
-      (g: TwoArrow, f: TwoArrow) => composeFun(g, f),
-    );
-
-    const equipment = virtualiseTightCategory(
-      tightLayer,
-      TwoObjectCategory.objects,
-      (left: TwoObject, right: TwoObject) => left === right,
-    );
+    const { equipment, tightLayer } = buildTwoObjectEquipment(samples);
 
     const left = identityProarrow(equipment, "•");
     const right = identityProarrow(equipment, "•");
-    const identityBoundary: TightCellEvidence<TwoObject, TwoArrow> = {
+    const identityBoundary: TightEvidence = {
       kind: "tight",
       cell: equipment.tight.identity2(equipment.tight.identity),
     };
@@ -450,14 +475,14 @@ describe("virtual equipment tight primitive catalogue", () => {
       right: identityVerticalBoundary(equipment, "•"),
     } as const;
 
-    const unit: Equipment2Cell<TwoObject, TwoArrow, typeof left.payload, TightCellEvidence<TwoObject, TwoArrow>> = {
+    const unit: Equipment2Cell<TwoObjects, TwoArrows, TightPayload, TightEvidence> = {
       source: frameFromProarrow(identityProarrow(equipment, "•")),
       target: frameFromSequence([right, left], "•", "•"),
       boundaries: unitBoundaries,
       evidence: identityBoundary,
     };
 
-    const counit: Equipment2Cell<TwoObject, TwoArrow, typeof left.payload, TightCellEvidence<TwoObject, TwoArrow>> = {
+    const counit: Equipment2Cell<TwoObjects, TwoArrows, TightPayload, TightEvidence> = {
       source: frameFromSequence([left, right], "•", "•"),
       target: frameFromProarrow(identityProarrow(equipment, "•")),
       boundaries: unitBoundaries,
@@ -468,14 +493,21 @@ describe("virtual equipment tight primitive catalogue", () => {
       identityProarrow(equipment, "•"),
       tightLayer.identity,
     );
+    if (!rightRestriction) {
+      throw new Error("Expected right restriction to exist for the identity tight cell.");
+    }
 
-    const analysis = analyzeLooseAdjunction(equipment, {
+    const analysisInput = {
       left,
       right,
       unit,
       counit,
-      rightRepresentability: rightRestriction?.representability,
-    });
+      ...(rightRestriction.representability
+        ? { rightRepresentability: rightRestriction.representability }
+        : {}),
+    } as const;
+
+    const analysis = analyzeLooseAdjunction(equipment, analysisInput);
 
     expect(analysis.holds).toBe(true);
     expect(analysis.leftIsMap).toBe(true);
@@ -493,38 +525,18 @@ describe("virtual equipment tight primitive catalogue", () => {
   });
 
   test("right extension and right lift analyzers validate identity cases", () => {
-    const samples = {
+    const samples: FunctorCheckSamples<TwoObjects, TwoArrows> = {
       objects: TwoObjectCategory.objects,
       composablePairs: [
         { f: TwoObjectCategory.id("•"), g: TwoObjectCategory.id("•") },
       ],
-    } as const;
+    };
 
-    const { functor: idFunctor } = promoteFunctor(
-      TwoObjectCategory,
-      TwoObjectCategory,
-      {
-        F0: (object: TwoObject) => object,
-        F1: (arrow: TwoArrow) => arrow,
-      },
-      samples,
-    );
-
-    const tightLayer = defaultTightLayer(
-      TwoObjectCategory,
-      idFunctor,
-      (g: TwoArrow, f: TwoArrow) => composeFun(g, f),
-    );
-
-    const equipment = virtualiseTightCategory(
-      tightLayer,
-      TwoObjectCategory.objects,
-      (left: TwoObject, right: TwoObject) => left === right,
-    );
+    const { equipment, tightLayer } = buildTwoObjectEquipment(samples);
 
     const loose = identityProarrow(equipment, "•");
     const tightIdentity = tightLayer.identity;
-    const identityBoundary: TightCellEvidence<TwoObject, TwoArrow> = {
+    const identityBoundary: TightEvidence = {
       kind: "tight",
       cell: equipment.tight.identity2(equipment.tight.identity),
     };
@@ -541,24 +553,14 @@ describe("virtual equipment tight primitive catalogue", () => {
       target: compositeFrame,
       boundaries: identityBoundaries,
       evidence: identityBoundary,
-    } satisfies Equipment2Cell<
-      TwoObject,
-      TwoArrow,
-      typeof loose.payload,
-      TightCellEvidence<TwoObject, TwoArrow>
-    >;
+    } satisfies Equipment2Cell<TwoObjects, TwoArrows, TightPayload, TightEvidence>;
 
     const unit = {
       source: compositeFrame,
       target: frameFromProarrow(loose),
       boundaries: identityBoundaries,
       evidence: identityBoundary,
-    } satisfies Equipment2Cell<
-      TwoObject,
-      TwoArrow,
-      typeof loose.payload,
-      TightCellEvidence<TwoObject, TwoArrow>
-    >;
+    } satisfies Equipment2Cell<TwoObjects, TwoArrows, TightPayload, TightEvidence>;
 
     const extensionData = {
       loose,

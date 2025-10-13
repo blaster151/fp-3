@@ -6,7 +6,7 @@ import {
   sequenceArrayValidation, sequenceArrayResult, sequenceStructValidation, sequenceStructResult,
   partitionSet, partitionSetWith, productTR, zipWithTR, sequenceState, traverseSRT,
   filterMapArray, collectArray, filterMapMapValues, collectMapValues, filterMapMapEntries, collectMapEntries, filterMapSet, collectSet,
-  PartialFn, pf,
+  pf,
   sumRange_FUSED, prettyRange_FUSED, statsFullBinary_FUSED, prettyAndSize_FUSED,
   lit, add, mul, neg, abs, addN, mulN, vvar, lett, divE, evalExpr, showExpr, normalizeExprToNary,
   evalExprNum2, evalExprR, evalExprRR, showExprMinParens2,
@@ -19,31 +19,31 @@ import {
   // Canonicalization and EJSON
   canonicalizeJson, canonicalizeJsonP, toEJsonCanonical, toEJsonCanonicalWithPolicy, fromEJson, CanonicalJsonMap, CanonicalJsonSet,
   // Product algebra
-  productJsonAlg2, cataJson, JsonF,
+  productJsonAlg2, cataJson,
   // Category Theory constructs
-  NatK1, idNatK1, composeNatK1, optionToResult, resultToOption, taskToReaderTask, readerToReaderTask,
+  composeNatK1, optionToResult, resultToOption, taskToReaderTask, readerToReaderTask,
   Kleisli, K_Option, K_Result, K_Task, K_Reader, K_ReaderTask,
   Writer, WriterT, StringMonoid, ArrayMonoid,
   ArrayM, traverseArrayA, sequenceArrayA,
   // Monad Transformers
-  MonadWriterT, WriterInReader, WriterInReaderTask,
+  WriterInReader, WriterInReaderTask,
   EitherT, TaskEither, ReaderEither, ReaderTaskEither, RTE, TE, RE,
   // Advanced Compositions
-  LogArray, MW_R, MW_RT, DoRTE, DoRTEBuilder,
-  WriterReaderTaskEither, WRTE,
+  LogArray, MW_R, MW_RT, DoRTE,
+  WRTE,
   // Module-level shims
   apFirstRTE, apSecondRTE, zipWithRTE, zipRTE,
   // Endofunctor helpers
-  EndofunctorK1, ResultK1, ValidationK1, ReaderK1, ReaderTaskK1,
+  ResultK1, ValidationK1, ReaderK1, ReaderTaskK1,
   // Sum and Product functors
-  SumVal, SumEndo, inL, inR, strengthEnvFromSum, matchSum,
-  ProdVal, ProdEndo, prod, strengthEnvFromProd,
+  SumEndo, inL, inR, strengthEnvFromSum, matchSum,
+  ProdEndo, prod, strengthEnvFromProd,
   // Monoidal Category Structure
-  Iso, Hom, CatFn, MonoidalFn, MonoidalKleisliRTE,
+  CatFn, MonoidalFn, MonoidalKleisliRTE,
   // Development Utilities
   assertMonoidalFnCoherence, assertMonoidalKleisliRTECoherence,
   // Monoidal Functor Structure
-  MonoidalFunctorK1, FunctorValue, monoidalFromApplicative, zipWithFromMonoidal, zipFromMonoidal,
+  monoidalFromApplicative, zipWithFromMonoidal, zipFromMonoidal,
   // Monoidal Functor Instances
   MonoidalOption, zipOption, zipWithOption,
   MonoidalResult, zipResult, zipWithResult,
@@ -52,17 +52,17 @@ import {
   MonoidalRTE, zipRTE_Monoidal, zipWithRTE_Monoidal,
   MonoidalValidation, zipValidation,
   // 2-Category of Endofunctors
-  EndofunctorK1, NatK1, idNatK1, vcompNatK1, leftWhisker, rightWhisker, hcompNatK1_component,
+  vcompNatK1, leftWhisker, rightWhisker, hcompNatK1_component,
   // 2-Functors
-  IdK1, composeEndoK1, TwoFunctorK1, LaxTwoFunctorK1, OplaxTwoFunctorK1, PostcomposeReader2, muPostReader,
+  IdK1, composeEndoK1, PostcomposeReader2, muPostReader,
   // Oplax 2-Functors
-  EnvEndo, StrengthEnv, PrecomposeEnv2, strengthEnvOption, strengthEnvResult, strengthEnvReader,
+  EnvEndo, PrecomposeEnv2, strengthEnvOption, strengthEnvResult, strengthEnvReader,
   // Comonads
-  ComonadK1, duplicateK1, Store, StoreC, Env, EnvC, Traced, TracedC, Monoid, coKleisli,
+  duplicateK1, StoreC, EnvC, TracedC, coKleisli,
   // Advanced Comonads
-  Cofree, CofreeK1, StoreLens, DoCo,
+  CofreeK1, StoreLens, DoCo,
   // Advanced Comonad Features
-  toCofreeExpr, ExprAnn, annotateExprSizeDepth, ZipperExpr, DoCoBind,
+  toCofreeExpr, annotateExprSizeDepth, ZipperExpr, DoCoBind,
   mapGroupValues, mapEachGroup, filterEachGroup, mergeGroupValues, dedupeEachGroup, flattenGroups,
   collapseToMap, mapMultiValues, mapEachMulti, filterEachMulti, mergeMulti,
   // New group operations
@@ -83,21 +83,19 @@ import {
   sortValuesInGroups, sortValuesInGroupsByNumberAsc, sortValuesInGroupsByNumberDesc,
   sortValuesInGroupsMM, sortValuesInGroupsByNumberAscMM, sortValuesInGroupsByNumberDescMM,
   sortPairsByValueThenCanonical, sortPairsByValueNumberAscThenCanonical, sortPairsByValueNumberDescThenCanonical,
-  // JSON types
-  Json,
   // Canonical utilities
   canonicalKey, equalsCanonical, compareCanonical, hashCanonical, hashConsJson,
   // Canonical multimap and groupBy
   CanonicalJsonMultiMap, groupByCanonical, groupPairsByCanonical, multiMapByCanonical, multiMapPairsByCanonical,
   // Json zipper
-  JsonZipper, fromJsonZ, toJsonZ, downArr, downSet, downObjKey, up, left, right, replaceFocus, modifyFocus,
-  JsonPathStep, focusAtPath, optionalAtPath, modifyAtPath,
+  fromJsonZ, toJsonZ, downArr, downSet, downObjKey, up, left, right, replaceFocus, modifyFocus,
+  focusAtPath, optionalAtPath, modifyAtPath,
   // Kleisli arrows
   makeKleisliArrowReader, makeKleisliArrowTask, makeKleisliArrowReaderTask, makeKleisliArrowRTR,
   // Canonical Arrow core (old implementation - keeping for compatibility)
   // CategoryFn, ProfunctorFn, StrongFn, ArrowFn,
   // New Arrow IR system
-  Arrow, IR, arr, comp, first, leftArrow, par, fanout, zero, alt, loop, denot, normalize,
+  Arrow, arr, comp, first, leftArrow, par, fanout, zero, alt, loop, denot, normalize,
   // Json constructors
   jObj, jStr, jNum, jArr, jUndef, jDec, jBinary, jRegex, jSet,
   // Catamorphism
@@ -108,7 +106,38 @@ import {
   // Result utilities
   isOk
 } from './allTS'
-import type { Result } from './allTS'
+import type {
+  Result,
+  PartialFn,
+  JsonF,
+  NatK1,
+  MonadWriterT,
+  DoRTEBuilder,
+  WriterReaderTaskEither,
+  EndofunctorK1,
+  TwoFunctorK1,
+  LaxTwoFunctorK1,
+  OplaxTwoFunctorK1,
+  SumVal,
+  ProdVal,
+  Iso,
+  Hom,
+  MonoidalFunctorK1,
+  FunctorValue,
+  StrengthEnv,
+  ComonadK1,
+  Store,
+  Env,
+  Traced,
+  Monoid,
+  Cofree,
+  ExprAnn,
+  Json,
+  JsonZipper,
+  JsonPathStep,
+  IR,
+  FunctorK1,
+} from './allTS'
 import {
   mkFin,
   detK,
@@ -164,20 +193,22 @@ async function runExamples() {
   
   console.log('\n=== READER APPLICATIVE EVALUATORS ===')
   
-  // Reader applicative eval demo
-  type ExprEnv = Readonly<Record<string, number>>
-  const prog = lett("x", lit(10),
-    addN([ vvar("x"), powE(lit(2), lit(3)), neg(lit(4)) ]) // x + 2^3 + (-4)
-  )
-  
-  const n1 = runReader(evalExprR_app(prog), {})            // 10 + 8 - 4 = 14
-  const n2 = runReader(evalExprR_app(prog), { x: 1 })      // still 14 (let shadows)
-  console.log('Reader applicative eval:', n1, '=', n2)
-  
-  // Reader<Result> eval demo (div-by-zero)
-  const bad = divE(lit(1), add(vvar("d"), neg(vvar("d")))) // 1 / (d + (-d)) = 1/0
-  const r1 = runReader(evalExprRR_app(bad), { d: 3 })      // Err("div by zero")
-  console.log('Reader<Result> eval (div by zero):', r1)
+  {
+    // Reader applicative eval demo
+    type ExprEnv = Readonly<Record<string, number>>
+    const prog = lett("x", lit(10),
+      addN([ vvar("x"), powE(lit(2), lit(3)), neg(lit(4)) ]) // x + 2^3 + (-4)
+    )
+
+    const n1 = runReader(evalExprR_app(prog), {})            // 10 + 8 - 4 = 14
+    const n2 = runReader(evalExprR_app(prog), { x: 1 })      // still 14 (let shadows)
+    console.log('Reader applicative eval:', n1, '=', n2)
+
+    // Reader<Result> eval demo (div-by-zero)
+    const bad = divE(lit(1), add(vvar("d"), neg(vvar("d")))) // 1 / (d + (-d)) = 1/0
+    const r1 = runReader(evalExprRR_app(bad), { d: 3 })      // Err("div by zero")
+    console.log('Reader<Result> eval (div by zero):', r1)
+  }
   
   console.log('\n=== STACK MACHINE ===')
   
@@ -189,39 +220,41 @@ async function runExamples() {
   
   console.log('\n=== NEW ALGEBRAS - SWAPPING MEANINGS ===')
   
-  // Expr algebras: size, depth, and combined
-  const complexExpr1 = addN([lit(1), neg(add(lit(2), lit(3))), mul(lit(4), lit(5))])
-  const exprSize = cataExpr(Alg_Expr_size)(complexExpr1)
-  const exprDepth = cataExpr(Alg_Expr_depth)(complexExpr1)
-  const [size, depth] = sizeAndDepthExpr(complexExpr1)
-  
-  console.log('Complex expression:', showExpr(complexExpr1))
-  console.log('Expr size:', exprSize)
-  console.log('Expr depth:', exprDepth)
-  console.log('Size & depth (combined):', [size, depth])
-  
-  // Json algebras: size, strings, depth
-  const sampleJson = jObj([
-    ['name', jStr('Alice')],
-    ['age', jNum(30)],
-    ['hobbies', jArr([jStr('reading'), jStr('coding')])]
-  ])
-  
-  const jsonSize = sizeJsonNew(sampleJson)
-  const jsonStrings = strsJson(sampleJson)
-  const jsonDepth = depthJson(sampleJson)
-  
-  console.log('Sample JSON size:', jsonSize)
-  console.log('Sample JSON strings:', jsonStrings)
-  console.log('Sample JSON depth:', jsonDepth)
-  
-  // Combined Json algebras (single traversal)
-  const jsonSizeAndDepth = sizeAndDepthJson(sampleJson)
-  const jsonStrsAndSize = strsAndSizeJson(sampleJson)
-  
-  console.log('JSON size & depth (combined):', jsonSizeAndDepth)
-  console.log('JSON strings & size (combined):', jsonStrsAndSize)
-  
+  {
+    // Expr algebras: size, depth, and combined
+    const complexExpr1 = addN([lit(1), neg(add(lit(2), lit(3))), mul(lit(4), lit(5))])
+    const exprSize = cataExpr(Alg_Expr_size)(complexExpr1)
+    const exprDepth = cataExpr(Alg_Expr_depth)(complexExpr1)
+    const [size, depth] = sizeAndDepthExpr(complexExpr1)
+
+    console.log('Complex expression:', showExpr(complexExpr1))
+    console.log('Expr size:', exprSize)
+    console.log('Expr depth:', exprDepth)
+    console.log('Size & depth (combined):', [size, depth])
+
+    // Json algebras: size, strings, depth
+    const sampleJson = jObj([
+      ['name', jStr('Alice')],
+      ['age', jNum(30)],
+      ['hobbies', jArr([jStr('reading'), jStr('coding')])]
+    ])
+
+    const jsonSize = sizeJsonNew(sampleJson)
+    const jsonStrings = strsJson(sampleJson)
+    const jsonDepth = depthJson(sampleJson)
+
+    console.log('Sample JSON size:', jsonSize)
+    console.log('Sample JSON strings:', jsonStrings)
+    console.log('Sample JSON depth:', jsonDepth)
+
+    // Combined Json algebras (single traversal)
+    const jsonSizeAndDepth = sizeAndDepthJson(sampleJson)
+    const jsonStrsAndSize = strsAndSizeJson(sampleJson)
+
+    console.log('JSON size & depth (combined):', jsonSizeAndDepth)
+    console.log('JSON strings & size (combined):', jsonStrsAndSize)
+  }
+
   // Extended Json variants demonstration
   const extendedJson = jObj([
     ['user', jUndef()],
