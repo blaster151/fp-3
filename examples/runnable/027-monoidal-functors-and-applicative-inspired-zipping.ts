@@ -1,6 +1,6 @@
 import type { RunnableExample } from "./types";
 import { Option, Result, Validation } from "./structures";
-import { Reader, ReaderTask, ReaderTaskResult } from "./effects";
+import type { Reader, ReaderTask, ReaderTaskResult } from "./effects";
 
 export type MonoidalOption = {
   readonly unit: Option<void>;

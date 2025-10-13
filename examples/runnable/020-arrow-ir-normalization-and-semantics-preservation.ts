@@ -1,5 +1,6 @@
 import type { RunnableExample } from "./types";
-import { ArrowPlan, arr, compose, describeNode, denote, fanout, first, idArrow, parallel, second } from "./arrow-ir";
+import type { ArrowPlan } from "./arrow-ir";
+import { arr, compose, describeNode, denote, fanout, first, idArrow, parallel, second } from "./arrow-ir";
 
 /**
  * Stage 020 rebuilds the Arrow IR normalisation story.  The module flattens

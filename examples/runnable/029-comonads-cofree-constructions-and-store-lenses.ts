@@ -1,13 +1,6 @@
 import type { RunnableExample } from "./types";
-import {
-  Store,
-  Lens,
-  collectStore,
-  focusStore,
-  makeLens,
-  storeExtend,
-  storeExtract,
-} from "./store";
+import type { Lens, Store } from "./store";
+import { collectStore, focusStore, makeLens, storeExtend, storeExtract } from "./store";
 
 type Env<Environment, Value> = readonly [Environment, Value];
 

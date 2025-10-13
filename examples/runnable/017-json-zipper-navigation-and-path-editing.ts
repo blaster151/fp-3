@@ -1,5 +1,5 @@
 import type { RunnableExample } from "./types";
-import { JsonValue } from "./json-canonical";
+import type { JsonValue } from "./json-canonical";
 
 type ObjectEntry = readonly [string, JsonValue];
 

@@ -1,6 +1,6 @@
 import type { RunnableExample } from "./types";
 import { Result } from "./structures";
-import { Reader, ReaderTask, ReaderTaskResult, Task } from "./effects";
+import type { Reader, ReaderTask, ReaderTaskResult, Task } from "./effects";
 import { arr, compose, denote, fanout, first, parallel, second } from "./arrow-ir";
 
 /**
@@ -173,10 +173,14 @@ export const arrowIrCoreAndArrowApplyExtensions: RunnableExample = {
     const readerTaskResultFactory = makeKleisliArrowReaderTaskResult<{}, string>();
     const parseNumber: ReaderTaskResultArr<{}, string, string, number> = (text) => async () => {
       const parsed = Number(text);
-      return Number.isNaN(parsed) ? Result.err("NaN") : Result.ok(parsed);
+      return Number.isNaN(parsed)
+        ? { kind: "err", error: "NaN" }
+        : Result.ok(parsed);
     };
     const reciprocal: ReaderTaskResultArr<{}, string, number, number> = (value) => async () =>
-      value === 0 ? Result.err("division by zero") : Result.ok(1 / value);
+      value === 0
+        ? { kind: "err", error: "division by zero" }
+        : Result.ok(1 / value);
 
     const parsedSix = await readerTaskResultFactory.applyTo(parseNumber)("6")({});
     const parsedNaN = await readerTaskResultFactory.applyTo(parseNumber)("not-a-number")({});

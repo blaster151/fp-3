@@ -1,6 +1,6 @@
 import type { RunnableExample } from "./types";
 import { Option, Result } from "./structures";
-import { Reader } from "./effects";
+import type { Reader } from "./effects";
 
 function composeIdentityWithOption<A, B>(option: Option<A>, mapper: (value: A) => B): Option<B> {
   if (option.kind === "none") {

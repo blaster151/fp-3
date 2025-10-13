@@ -1,7 +1,7 @@
 import type { RunnableExample } from "./types";
 import { Option, Result } from "./structures";
 import { mapOption, formatOption, formatResult } from "./functors";
-import { Task, ReaderTask } from "./effects";
+import type { Task, ReaderTask } from "./effects";
 
 /**
  * Stage 025 documents the natural-transformation and Kleisli/Writer/Array drills
@@ -24,7 +24,9 @@ function makeOptionToResult<E>(error: () => E): OptionToResult<E> {
   return {
     name: "Option→Result",
     transform<A>(value: Option<A>): Result<E, A> {
-      return value.kind === "some" ? Result.ok(value.value) : Result.err(error());
+      return value.kind === "some"
+        ? Result.ok(value.value)
+        : { kind: "err", error: error() };
     },
   };
 }
@@ -200,7 +202,7 @@ export const naturalTransformationsAndKleisliWriterArrayStructures: RunnableExam
 
     const resultNaturality = [
       checkResultOptionNaturality(Result.ok(9), (n) => n - 2, resultToOption),
-      checkResultOptionNaturality(Result.err("failure"), (n) => n + 5, resultToOption),
+      checkResultOptionNaturality({ kind: "err", error: "failure" }, (n) => n + 5, resultToOption),
     ];
 
     const naturalityLogs = [
@@ -252,11 +254,11 @@ export const naturalTransformationsAndKleisliWriterArrayStructures: RunnableExam
     const parseReading = (input: string): WriterResult<string, string, number> => {
       const trimmed = input.trim();
       if (trimmed.length === 0) {
-        return Result.err("empty reading");
+        return { kind: "err", error: "empty reading" };
       }
       const value = Number(trimmed);
       if (!Number.isFinite(value)) {
-        return Result.err(`invalid reading '${trimmed}'`);
+        return { kind: "err", error: `invalid reading '${trimmed}'` };
       }
       return Result.ok<Writer<string, number>>({ value, log: [`Parsed '${trimmed}'`] });
     };

@@ -119,7 +119,7 @@ type Statement = {
 const parseAccount: ReaderTaskResultArrow<LedgerEnvironment, string, string, string> = (raw) => async () => {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
-    return Result.err("Account identifier cannot be blank.");
+    return { kind: "err", error: "Account identifier cannot be blank." };
   }
   return Result.ok(trimmed);
 };
@@ -129,7 +129,7 @@ const fetchLedgerRecord: ReaderTaskResultArrow<LedgerEnvironment, string, string
   async (environment) => {
     const record = environment.ledger[account];
     if (!record) {
-      return Result.err(`No ledger entry found for ${account}.`);
+      return { kind: "err", error: `No ledger entry found for ${account}.` };
     }
     return Result.ok({ account, balance: record.balance, currency: record.currency });
   };
@@ -142,7 +142,7 @@ const convertToUsd: ReaderTaskResultArrow<LedgerEnvironment, string, Statement, 
     }
     const rate = environment.fxRates[statement.currency];
     if (rate === undefined) {
-      return Result.err(`Missing FX rate for ${statement.currency}.`);
+      return { kind: "err", error: `Missing FX rate for ${statement.currency}.` };
     }
     const balance = statement.balance * rate;
     return Result.ok({ account: statement.account, balance, currency: "USD" });

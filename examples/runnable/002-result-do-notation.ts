@@ -39,7 +39,7 @@ function synchronousGreeting(username: string): Result<string, string> {
   return resultDo<string, string>(function* resultProgram() {
     const trimmed = (yield Result.ok(username.trim())) as string;
     if (trimmed === "") {
-      return Result.err("Username must not be blank.");
+      return { kind: "err", error: "Username must not be blank." };
     }
 
     const user = (yield findUser(trimmed)) as UserRecord;
@@ -61,7 +61,7 @@ async function asynchronousGreeting(username: string): Promise<Result<string, st
   return taskResultDo<string, string>(async function* asyncProgram() {
     const trimmed = (yield Result.ok(username.trim())) as string;
     if (trimmed === "") {
-      return Result.err("Username must not be blank.");
+      return { kind: "err", error: "Username must not be blank." };
     }
 
     const user = (yield delayResult(findUser(trimmed), 10)) as UserRecord;
