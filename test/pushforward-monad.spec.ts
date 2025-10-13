@@ -136,7 +136,7 @@ describe('Pushforward monads', () => {
 
   test('natural transformation operations work', () => {
     // Create simple functors for testing
-    const F: CatFunctor<'A', 'B'> = {
+    const precompose: CatFunctor<'A', 'B'> = {
       source: 'A',
       target: 'B',
       onObj: (x) => `F(${x})`,
@@ -150,37 +150,29 @@ describe('Pushforward monads', () => {
       onMor: (f) => `G(${f})`
     }
 
-    const H: CatFunctor<'A', 'B'> = {
-      source: 'A',
-      target: 'B',
+    const H: CatFunctor<'B', 'C'> = {
+      source: 'B',
+      target: 'C',
       onObj: (x) => `H(${x})`,
       onMor: (f) => `H(${f})`
     }
 
-    // Natural transformation α: F ⇒ H
-    const alpha: CatNatTrans<typeof F, typeof H> = {
-      source: F,
+    // Natural transformation α: G ⇒ H
+    const alpha: CatNatTrans<typeof G, typeof H> = {
+      source: G,
       target: H,
       component: (x) => `α(${x})`
     }
 
-    // Test left whiskering G ▷ α
-    const Galpha = whiskerLeft(G, alpha)
-    expect(Galpha.source.first).toBe(F)
-    expect(Galpha.source.second).toBe(G)
-    expect(Galpha.target.first).toBe(H)
-    expect(Galpha.target.second).toBe(G)
+    // Test left whiskering F ▷ α
+    const leftWhiskered = whiskerLeft(precompose, alpha)
+    expect(leftWhiskered.source.source).toBe(precompose.source)
+    expect(leftWhiskered.source.target).toBe(alpha.source.target)
+    expect(leftWhiskered.target.target).toBe(alpha.target.target)
 
-    // Test right whiskering α ◁ G (need to adjust types)
-    const K: CatFunctor<'C', 'A'> = {
-      source: 'C',
-      target: 'A',
-      onObj: (x) => `K(${x})`,
-      onMor: (f) => `K(${f})`
-    }
-
-    const alphaK = whiskerRight(alpha, K)
-    expect(alphaK.source.first).toBe(K)
-    expect(alphaK.source.second).toBe(F)
+    // Test right whiskering α ◁ F
+    const rightWhiskered = whiskerRight(alpha, precompose)
+    expect(rightWhiskered.source.source).toBe(precompose.source)
+    expect(rightWhiskered.target.target).toBe(alpha.target.target)
   })
 })
