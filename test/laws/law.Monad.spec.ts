@@ -10,34 +10,55 @@
  * Note: Validation is excluded (Applicative-only due to error accumulation).
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it } from 'vitest'
 import * as fc from 'fast-check'
-import { 
-  Reader, ReaderTask, ReaderTaskResult, Task, Result, 
-  Ok, Err, isOk, isErr 
+import {
+  Reader, ReaderTask, ReaderTaskResult, ReaderTaskResultK, Task, Result,
+  Ok, Err, isOk, isErr
 } from '../../allTS'
 import { testMonadLaws, commonGenerators, commonEquality } from './law-helpers'
+import type { MonadConfig } from './law-helpers'
 
 describe("LAW: Monad laws", () => {
   // Common generators
   const genInt = commonGenerators.integer
   const genString = commonGenerators.string
-  const genFn = () => commonGenerators.fn(genInt)
+  const genFn = () => commonGenerators.fn<number, number>(genInt)
+
+  const mapArbitrary = <Input, Output>(
+    arbitrary: fc.Arbitrary<Input>,
+    mapper: (value: Input) => Output
+  ): fc.Arbitrary<Output> => {
+    const mapFn = arbitrary.map as any
+    if (typeof mapFn !== 'function') {
+      throw new Error('fast-check arbitrary missing map implementation')
+    }
+    return mapFn.call(arbitrary, mapper) as fc.Arbitrary<Output>
+  }
 
   describe("Result monad", () => {
-    const config = {
+    const intArb = genInt()
+    const strArb = genString()
+
+    const genOk: fc.Arbitrary<Result<string, number>> =
+      mapArbitrary(intArb, (value) => Ok(value) as Result<string, number>)
+
+    const genErr: fc.Arbitrary<Result<string, number>> =
+      mapArbitrary(strArb, (error: string) => Err<string>(error) as Result<string, number>)
+
+    const genResult = (): fc.Arbitrary<Result<string, number>> =>
+      fc.oneof(genOk, genErr)
+
+    const genResultFn = (): fc.Arbitrary<(a: number) => Result<string, number>> =>
+      fc.func(genResult()) as fc.Arbitrary<(a: number) => Result<string, number>>
+
+    const config: MonadConfig<Result<string, number>, number> = {
       name: "Result",
       genA: genInt,
-      genFA: () => fc.oneof(
-        genInt().map(Ok),
-        genString().map(Err)
-      ),
-      genK: () => fc.func(fc.constant(fc.oneof(
-        genInt().map(Ok),
-        genString().map(Err)
-      ))),
+      genFA: () => genResult(),
+      genK: () => genResultFn(),
       pure: Ok,
-      chain: <A, B>(k: (a: A) => Result<string, B>) => 
+      chain: <A, B>(k: (a: A) => Result<string, B>) =>
         (fa: Result<string, A>): Result<string, B> => {
           if (isErr(fa)) return fa
           return k(fa.value)
@@ -49,30 +70,36 @@ describe("LAW: Monad laws", () => {
       }
     }
 
-    const laws = testMonadLaws(config)
+    const { leftIdentity, rightIdentity, associativity } = testMonadLaws(config)
 
     it("Left Identity: return(a) >>= f = f(a)", () => {
-      laws.leftIdentity()
+      leftIdentity()
     })
 
     it("Right Identity: m >>= return = m", () => {
-      laws.rightIdentity()
+      rightIdentity()
     })
 
     it("Associativity: (m >>= f) >>= g = m >>= (λx.f(x) >>= g)", () => {
-      laws.associativity()
+      associativity()
     })
   })
 
   describe("Reader monad", () => {
-    const config = {
+    const genReader = (): fc.Arbitrary<Reader<number, number>> =>
+      fc.func(genInt()) as fc.Arbitrary<Reader<number, number>>
+
+    const genReaderK = (): fc.Arbitrary<(a: number) => Reader<number, number>> =>
+      fc.func(genReader()) as fc.Arbitrary<(a: number) => Reader<number, number>>
+
+    const config: MonadConfig<Reader<number, number>, number> = {
       name: "Reader",
       genA: genInt,
-      genFA: () => fc.func(fc.constant(genInt())),
-      genK: () => fc.func(fc.constant(fc.func(fc.constant(genInt())))),
+      genFA: () => genReader(),
+      genK: () => genReaderK(),
       pure: <A>(a: A): Reader<number, A> => Reader.of(a),
-      chain: <A, B>(k: (a: A) => Reader<number, B>) => 
-        (fa: Reader<number, A>): Reader<number, B> => 
+      chain: <A, B>(k: (a: A) => Reader<number, B>) =>
+        (fa: Reader<number, A>): Reader<number, B> =>
           Reader.chain(k)(fa),
       eq: (a: Reader<number, any>, b: Reader<number, any>) => {
         // Test with a few random environments
@@ -84,62 +111,77 @@ describe("LAW: Monad laws", () => {
       }
     }
 
-    const laws = testMonadLaws(config)
+    const { leftIdentity, rightIdentity, associativity } = testMonadLaws(config)
 
     it("Left Identity: return(a) >>= f = f(a)", () => {
-      laws.leftIdentity()
+      leftIdentity()
     })
 
     it("Right Identity: m >>= return = m", () => {
-      laws.rightIdentity()
+      rightIdentity()
     })
 
     it("Associativity: (m >>= f) >>= g = m >>= (λx.f(x) >>= g)", () => {
-      laws.associativity()
+      associativity()
     })
   })
 
   describe("Task monad", () => {
-    const config = {
+    const genTask = (): fc.Arbitrary<Task<number>> =>
+      mapArbitrary(genInt(), (value) => Task.of(value))
+
+    const genTaskK = (): fc.Arbitrary<(a: number) => Task<number>> =>
+      fc.func(genTask()) as fc.Arbitrary<(a: number) => Task<number>>
+
+    const config: MonadConfig<Task<number>, number> = {
       name: "Task",
       genA: genInt,
-      genFA: () => fc.func(fc.constant(fc.constant(genInt()))),
-      genK: () => fc.func(fc.constant(fc.func(fc.constant(fc.constant(genInt()))))),
+      genFA: () => genTask(),
+      genK: () => genTaskK(),
       pure: <A>(a: A): Task<A> => Task.of(a),
-      chain: <A, B>(k: (a: A) => Task<B>) => 
-        (fa: Task<A>): Task<B> => 
+      chain: <A, B>(k: (a: A) => Task<B>) =>
+        (fa: Task<A>): Task<B> =>
           Task.chain(k)(fa),
       eq: async (a: Task<any>, b: Task<any>) => {
         const resultA = await a()
         const resultB = await b()
         return resultA === resultB
-      }
+      },
+      isAsync: true
     }
 
-    const laws = testMonadLaws(config)
+    const { leftIdentity, rightIdentity, associativity } = testMonadLaws(config)
 
     it("Left Identity: return(a) >>= f = f(a)", async () => {
-      await laws.leftIdentity()
+      await leftIdentity()
     })
 
     it("Right Identity: m >>= return = m", async () => {
-      await laws.rightIdentity()
+      await rightIdentity()
     })
 
     it("Associativity: (m >>= f) >>= g = m >>= (λx.f(x) >>= g)", async () => {
-      await laws.associativity()
+      await associativity()
     })
   })
 
   describe("ReaderTask monad", () => {
-    const config = {
+    const genReaderTask = (): fc.Arbitrary<ReaderTask<number, number>> => {
+      const readerArb = fc.func(genInt()) as fc.Arbitrary<Reader<number, number>>
+      return mapArbitrary(readerArb, (reader: Reader<number, number>) => async (env: number) => reader(env))
+    }
+
+    const genReaderTaskK = (): fc.Arbitrary<(a: number) => ReaderTask<number, number>> =>
+      fc.func(genReaderTask()) as fc.Arbitrary<(a: number) => ReaderTask<number, number>>
+
+    const config: MonadConfig<ReaderTask<number, number>, number> = {
       name: "ReaderTask",
       genA: genInt,
-      genFA: () => fc.func(fc.constant(fc.constant(genInt()))),
-      genK: () => fc.func(fc.constant(fc.func(fc.constant(fc.constant(genInt()))))),
+      genFA: () => genReaderTask(),
+      genK: () => genReaderTaskK(),
       pure: <A>(a: A): ReaderTask<number, A> => ReaderTask.of(a),
-      chain: <A, B>(k: (a: A) => ReaderTask<number, B>) => 
-        (fa: ReaderTask<number, A>): ReaderTask<number, B> => 
+      chain: <A, B>(k: (a: A) => ReaderTask<number, B>) =>
+        (fa: ReaderTask<number, A>): ReaderTask<number, B> =>
           ReaderTask.chain(k)(fa),
       eq: async (a: ReaderTask<number, any>, b: ReaderTask<number, any>) => {
         // Test with a few random environments
@@ -150,40 +192,58 @@ describe("LAW: Monad laws", () => {
           if (resultA !== resultB) return false
         }
         return true
-      }
+      },
+      isAsync: true
     }
 
-    const laws = testMonadLaws(config)
+    const { leftIdentity, rightIdentity, associativity } = testMonadLaws(config)
 
     it("Left Identity: return(a) >>= f = f(a)", async () => {
-      await laws.leftIdentity()
+      await leftIdentity()
     })
 
     it("Right Identity: m >>= return = m", async () => {
-      await laws.rightIdentity()
+      await rightIdentity()
     })
 
     it("Associativity: (m >>= f) >>= g = m >>= (λx.f(x) >>= g)", async () => {
-      await laws.associativity()
+      await associativity()
     })
   })
 
   describe("ReaderTaskResult monad", () => {
-    const config = {
+    const genResult = () =>
+      fc.oneof<Result<string, number>>(
+        mapArbitrary(genInt(), (value) => Ok(value) as Result<string, number>),
+        mapArbitrary(genString(), (error) => Err<string>(error) as Result<string, number>)
+      )
+
+      const genReaderTaskResult = (): fc.Arbitrary<ReaderTaskResult<number, string, number>> => {
+        const readerResultArb = fc.func(genResult()) as fc.Arbitrary<(env: number) => Result<string, number>>
+        return mapArbitrary(
+          readerResultArb,
+          (reader: (env: number) => Result<string, number>) => async (env: number) => reader(env)
+        )
+      }
+
+    const genReaderTaskResultK = (): fc.Arbitrary<(a: number) => ReaderTaskResult<number, string, number>> =>
+      fc.func(genReaderTaskResult()) as fc.Arbitrary<(a: number) => ReaderTaskResult<number, string, number>>
+
+    const readerTaskResultMonad = ReaderTaskResultK<number, string>()
+
+    const config: MonadConfig<ReaderTaskResult<number, string, number>, number> = {
       name: "ReaderTaskResult",
       genA: genInt,
-      genFA: () => fc.func(fc.constant(fc.constant(fc.oneof(
-        genInt().map(Ok),
-        genString().map(Err)
-      )))),
-      genK: () => fc.func(fc.constant(fc.func(fc.constant(fc.constant(fc.oneof(
-        genInt().map(Ok),
-        genString().map(Err)
-      )))))),
-      pure: <A>(a: A): ReaderTaskResult<number, string, A> => ReaderTaskResult.of(a),
-      chain: <A, B>(k: (a: A) => ReaderTaskResult<number, string, B>) => 
-        (fa: ReaderTaskResult<number, string, A>): ReaderTaskResult<number, string, B> => 
-          ReaderTaskResult.chain(k)(fa),
+      genFA: () => genReaderTaskResult(),
+      genK: () => genReaderTaskResultK(),
+      pure: <A>(a: A): ReaderTaskResult<number, string, A> => readerTaskResultMonad.of(a),
+      chain: <A, B>(k: (a: A) => ReaderTaskResult<number, string, B>) =>
+        (fa: ReaderTaskResult<number, string, A>): ReaderTaskResult<number, string, B> =>
+          async (env: number) => {
+            const current = await fa(env)
+            if (isErr(current)) return current
+            return k(current.value)(env)
+          },
       eq: async (a: ReaderTaskResult<number, string, any>, b: ReaderTaskResult<number, string, any>) => {
         // Test with a few random environments
         for (let i = 0; i < 3; i++) {
@@ -199,21 +259,22 @@ describe("LAW: Monad laws", () => {
           }
         }
         return true
-      }
+      },
+      isAsync: true
     }
 
-    const laws = testMonadLaws(config)
+    const { leftIdentity, rightIdentity, associativity } = testMonadLaws(config)
 
     it("Left Identity: return(a) >>= f = f(a)", async () => {
-      await laws.leftIdentity()
+      await leftIdentity()
     })
 
     it("Right Identity: m >>= return = m", async () => {
-      await laws.rightIdentity()
+      await rightIdentity()
     })
 
     it("Associativity: (m >>= f) >>= g = m >>= (λx.f(x) >>= g)", async () => {
-      await laws.associativity()
+      await associativity()
     })
   })
 })

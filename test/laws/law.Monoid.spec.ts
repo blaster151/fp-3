@@ -19,16 +19,22 @@ describe("LAW: Monoid laws", () => {
   // Common generators
   const genInt = commonGenerators.integer
   const genString = commonGenerators.string
-  const genFn = () => commonGenerators.fn(genInt)
+  const genFn = () => commonGenerators.fn<number, number>(genInt)
 
-  describe("MonoidArray", () => {
-    const config = {
-      name: "MonoidArray",
-      genA: () => commonGenerators.array(genInt),
-      empty: MonoidArray.empty,
-      concat: MonoidArray.concat,
-      eq: commonEquality.array(commonEquality.primitive)
-    }
+    describe("MonoidArray", () => {
+      const monoidArray = MonoidArray<number>()
+      const eqReadonlyArray = (a: ReadonlyArray<number>, b: ReadonlyArray<number>) =>
+        commonEquality.array(commonEquality.primitive)(Array.from(a), Array.from(b))
+
+      const arrayArb = commonGenerators.array(genInt) as fc.Arbitrary<ReadonlyArray<number>>
+
+      const config = {
+        name: "MonoidArray",
+        genA: () => arrayArb,
+        empty: monoidArray.empty,
+        concat: monoidArray.concat,
+        eq: eqReadonlyArray
+      }
 
     const laws = testMonoidLaws(config)
 
@@ -46,11 +52,13 @@ describe("LAW: Monoid laws", () => {
   })
 
   describe("MonoidEndo", () => {
+    const monoidEndo = MonoidEndo<number>()
+
     const config = {
       name: "MonoidEndo",
       genA: genInt,
-      empty: MonoidEndo.empty,
-      concat: MonoidEndo.concat,
+      empty: monoidEndo.empty,
+      concat: monoidEndo.concat,
       eq: (a: (x: number) => number, b: (x: number) => number) => {
         // Test with a few random inputs
         for (let i = 0; i < 10; i++) {
@@ -149,17 +157,18 @@ describe("LAW: Monoid laws", () => {
   })
 
   describe("Non-commutative monoid (Endo)", () => {
+    const monoidEndo = MonoidEndo<number>()
+
     it("Endo monoid is non-commutative", () => {
       fc.assert(
-        fc.property(genFn(), genFn(), genInt(), (f, g, x) => {
-          const left = MonoidEndo.concat(f, g)(x)
-          const right = MonoidEndo.concat(g, f)(x)
-          
+        fc.property(fc.tuple(genFn(), genFn(), genInt()), ([f, g, x]) => {
+          const left = monoidEndo.concat(f, g)(x)
+          const right = monoidEndo.concat(g, f)(x)
+
           // Most of the time, f ∘ g ≠ g ∘ f
           // This test ensures we're not accidentally assuming commutativity
           return true // We just want to ensure the test runs
-        }),
-        { numRuns: 100 }
+        })
       )
     })
   })
