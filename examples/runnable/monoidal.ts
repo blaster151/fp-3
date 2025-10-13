@@ -54,7 +54,7 @@ export const optionMonoidal: MonoidalOption = {
 
 export function resultMonoidal<E>(): MonoidalResult<E> {
   return {
-    unit: Result.ok<E, void>(undefined),
+    unit: Result.ok(undefined),
     tensor<A, B>(left: Result<E, A>, right: Result<E, B>): Result<E, readonly [A, B]> {
       if (left.kind === "err") {
         return left;
@@ -97,7 +97,7 @@ export function readerTaskMonoidal<R>(): MonoidalReaderTask<R> {
 
 export function readerTaskResultMonoidal<R, E>(): MonoidalReaderTaskResult<R, E> {
   return {
-    unit: async () => Result.ok<E, void>(undefined),
+    unit: async () => Result.ok(undefined),
     tensor<A, B>(
       left: ReaderTaskResult<R, E, A>,
       right: ReaderTaskResult<R, E, B>,

@@ -52,7 +52,7 @@ function sequenceResults<E, A>(values: ReadonlyArray<Result<E, A>>): Result<E, R
       }
       return Result.ok([...acc.value, value.value]);
     },
-    Result.ok<E, ReadonlyArray<A>>([]),
+    Result.ok<ReadonlyArray<A>>([]),
   );
 }
 

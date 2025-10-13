@@ -59,9 +59,9 @@ export const monoidalFunctorsAndApplicativeInspiredZipping: RunnableExample = {
     })();
 
     const resultSection = (() => {
-      const okCount = Result.ok<string, number>(12);
-      const okLabel = Result.ok<string, string>("records");
-      const errValue = Result.err<string, string>("unreachable service");
+      const okCount = Result.ok(12);
+      const okLabel = Result.ok("records");
+      const errValue = Result.err("unreachable service");
 
       const zipped = stringResultMonoidal.tensor(okCount, okLabel);
       const zippedError = stringResultMonoidal.tensor(okCount, errValue);

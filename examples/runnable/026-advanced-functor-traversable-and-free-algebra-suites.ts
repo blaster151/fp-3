@@ -131,7 +131,7 @@ function mapTermValue(term: FunctorTerm, value: unknown, mapper: (n: number) => 
 }
 
 function optionToResult<A>(option: Option<A>, onNone: () => string): Result<string, A> {
-  return option.kind === "some" ? Result.ok<string, A>(option.value) : Result.err<string, A>(onNone());
+  return option.kind === "some" ? Result.ok(option.value) : Result.err(onNone());
 }
 
 async function promisePostcomposeArray<A, B>(
@@ -155,7 +155,7 @@ export const advancedFunctorTraversableAndFreeAlgebraSuites: RunnableExample = {
   async run() {
     const sumLeftValue: OptionSum<number> = sumLeft(Option.some(100));
     const sumRightValue: OptionSum<number> = sumRight(
-      makeProduct(Result.ok<string, number>(50), Option.some(25)),
+      makeProduct(Result.ok(50), Option.some(25)),
     );
 
     const identityLeft = identitySumNat(sumLeftValue);
@@ -163,7 +163,7 @@ export const advancedFunctorTraversableAndFreeAlgebraSuites: RunnableExample = {
     const identityRight = identitySumNat(sumRightValue);
 
     const productValue: ResultOptionProduct<number> = makeProduct(
-      Result.ok<string, number>(40),
+      Result.ok(40),
       Option.some(60),
     );
     const productIdentity = productIdentityNat(productValue);
@@ -198,7 +198,7 @@ export const advancedFunctorTraversableAndFreeAlgebraSuites: RunnableExample = {
 
     const complexLeft = sumLeft<Option<number>, ResultOptionProduct<number>>(Option.some(32));
     const complexRight = sumRight<Option<number>, ResultOptionProduct<number>>(
-      makeProduct(Result.ok<string, number>(12), Option.some(8)),
+      makeProduct(Result.ok(12), Option.some(8)),
     );
 
     const mappedComplexLeft = mapTermValue(complexTerm, complexLeft, (n) => n * 2) as OptionSum<number>;

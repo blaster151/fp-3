@@ -1,7 +1,7 @@
 // Chapter 6 diagram utilities: representational paths, composites, commutativity, and pasting.
 
 export type Arrow<A, B> = (a: A) => B;
-export type Path<A, B> = ReadonlyArray<Arrow<unknown, unknown>>;
+export type Path<A, B> = ReadonlyArray<Arrow<any, any>>;
 
 export function composePath<A, B>(path: Path<A, B>): Arrow<A, B> {
   return (x: A) => {
