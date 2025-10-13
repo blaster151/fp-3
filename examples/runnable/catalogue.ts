@@ -25,10 +25,12 @@ import { policyThreadingWithImprovedProductAlgebras } from "./023-policy-threadi
 import { sumProductEndofunctorDrills } from "./024-sum-product-endofunctor-drills";
 import { naturalTransformationsAndKleisliWriterArrayStructures } from "./025-natural-transformations-and-kleisli-writer-array-structures";
 import { advancedFunctorTraversableAndFreeAlgebraSuites } from "./026-advanced-functor-traversable-and-free-algebra-suites";
+import { freeEndofunctorAlgebraStrengths } from "./026b-free-endofunctor-algebra-strengths";
 import { monoidalFunctorsAndApplicativeInspiredZipping } from "./027-monoidal-functors-and-applicative-inspired-zipping";
 import { monoidalFunctorLawHarness } from "./028-monoidal-functor-law-harness";
 import { comonadsCofreeConstructionsAndStoreLenses } from "./029-comonads-cofree-constructions-and-store-lenses";
 import { storeLensTimeSeriesSmoothingWalkthrough } from "./030-store-lens-time-series-smoothing-walkthrough";
+import { storeLensFocusedSmoothing } from "./030b-store-lens-focused-smoothing";
 import { mixedDistributiveLawsForMonadComonadPairs } from "./031-mixed-distributive-laws-for-monad-comonad-pairs";
 import { twoFunctorAndOplaxStrengthDemonstrations } from "./032-2-functor-and-oplax-strength-demonstrations";
 import { stage033RelativeMonadDiagnostics } from "./033-relative-monad-diagnostics";
@@ -101,10 +103,12 @@ export const registry: RunnableRegistry = [
   sumProductEndofunctorDrills,
   naturalTransformationsAndKleisliWriterArrayStructures,
   advancedFunctorTraversableAndFreeAlgebraSuites,
+  freeEndofunctorAlgebraStrengths,
   monoidalFunctorsAndApplicativeInspiredZipping,
   monoidalFunctorLawHarness,
   comonadsCofreeConstructionsAndStoreLenses,
   storeLensTimeSeriesSmoothingWalkthrough,
+  storeLensFocusedSmoothing,
   mixedDistributiveLawsForMonadComonadPairs,
   twoFunctorAndOplaxStrengthDemonstrations,
   stage033RelativeMonadDiagnostics,
