@@ -1,8 +1,7 @@
 import type { RunnableExample } from "./types";
 import { Option, Result } from "./structures";
+import type { ProductValue, SumValue } from "./functors";
 import {
-  SumValue,
-  ProductValue,
   sumLeft,
   sumRight,
   makeProduct,
@@ -14,7 +13,7 @@ import {
   formatSum,
   formatProduct,
 } from "./functors";
-import { Task } from "./effects";
+import type { Task } from "./effects";
 
 /**
  * Stage 026 rebuilds the advanced functor catalogue: natural transformations on
@@ -131,7 +130,9 @@ function mapTermValue(term: FunctorTerm, value: unknown, mapper: (n: number) => 
 }
 
 function optionToResult<A>(option: Option<A>, onNone: () => string): Result<string, A> {
-  return option.kind === "some" ? Result.ok(option.value) : Result.err(onNone());
+  return option.kind === "some"
+    ? Result.ok(option.value)
+    : { kind: "err", error: onNone() };
 }
 
 async function promisePostcomposeArray<A, B>(

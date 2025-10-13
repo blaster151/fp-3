@@ -1,5 +1,5 @@
 import type { RunnableExample } from "./types";
-import { JsonValue } from "./json-canonical";
+import type { JsonValue } from "./json-canonical";
 
 /**
  * Stage 022 rebuilds the JSONF constructors that power the extended JSON

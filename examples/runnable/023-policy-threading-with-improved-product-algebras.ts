@@ -1,11 +1,6 @@
-import {
-  CanonicalPolicy,
-  CanonicalizationResult,
-  JsonValue,
-  canonicalizeJsonWithPolicy,
-  hashCanonical,
-} from "./json-canonical";
 import type { RunnableExample } from "./types";
+import type { CanonicalPolicy, CanonicalizationResult, JsonValue } from "./json-canonical";
+import { canonicalizeJsonWithPolicy, hashCanonical } from "./json-canonical";
 
 /**
  * Stage 023 threads canonicalization policies through a set of analytics while

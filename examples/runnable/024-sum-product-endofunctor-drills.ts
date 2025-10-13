@@ -1,8 +1,7 @@
 import type { RunnableExample } from "./types";
 import { Option, Result } from "./structures";
+import type { ProductValue, SumValue } from "./functors";
 import {
-  SumValue,
-  ProductValue,
   sumLeft,
   sumRight,
   matchSum,

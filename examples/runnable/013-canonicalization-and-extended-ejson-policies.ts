@@ -1,9 +1,11 @@
 import type { RunnableExample } from "./types";
-import {
+import type {
   CanonicalPolicy,
   CanonicalizationResult,
   CollisionReport,
   JsonValue,
+} from "./json-canonical";
+import {
   canonicalKey,
   canonicalizeJson,
   canonicalizeJsonWithPolicy,

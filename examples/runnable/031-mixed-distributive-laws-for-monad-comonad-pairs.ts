@@ -1,12 +1,8 @@
 import { Result } from "./structures";
-import { Task } from "./effects";
+import type { Task } from "./effects";
 import type { RunnableExample } from "./types";
-import {
-  Store,
-  collectStore,
-  sequenceStoreResult,
-  storeFromArray,
-} from "./store";
+import type { Store } from "./store";
+import { collectStore, sequenceStoreResult, storeFromArray } from "./store";
 
 function distributeResultStore<E, Position, Value>(
   input: Result<E, Store<Position, Value>>,

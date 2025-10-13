@@ -350,7 +350,7 @@ function resultLawChecks(): Promise<readonly string[]> {
 function readerLawChecks(): readonly string[] {
   const monoidal = readerMonoidal<number>();
 
-  const checks: LawCheck[] = [
+  const checks: ReadonlyArray<{ description: string; check: () => boolean }> = [
     {
       description: "Reader left unit",
       check: () =>
@@ -474,8 +474,11 @@ function readerTaskResultLawChecks(): Promise<readonly string[]> {
             const flattenRight = monoidal.map(rightAssoc, ([a, [b, c]]) => [a, b, c] as const);
             const leftValue = await flattenLeft(env);
             const rightValue = await flattenRight(env);
-            if (leftValue.kind === "err" || rightValue.kind === "err") {
-              return leftValue.kind === rightValue.kind && leftValue.error === rightValue.error;
+            if (leftValue.kind === "err") {
+              return rightValue.kind === "err" && leftValue.error === rightValue.error;
+            }
+            if (rightValue.kind === "err") {
+              return false;
             }
             return JSON.stringify(leftValue.value) === JSON.stringify(rightValue.value);
           }),

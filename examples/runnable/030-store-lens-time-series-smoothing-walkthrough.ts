@@ -1,7 +1,6 @@
 import type { RunnableExample } from "./types";
+import type { Lens, Store } from "./store";
 import {
-  Lens,
-  Store,
   collectStore,
   collectStoreFromPositions,
   extendStoreWithLens,
