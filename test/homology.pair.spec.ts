@@ -14,7 +14,7 @@ describe('Pair comonad simplicial chain complex', () => {
       // keep tiny to avoid combinatorial blowup
       fc.array(fc.string(), { minLength: 1, maxLength: 2, unique: true }),
       fc.array(fc.string(), { minLength: 1, maxLength: 2, unique: true }),
-      (E, A) => {
+      (E: readonly string[], A: readonly string[]) => {
         const { d } = buildBoundariesForPair(E, A, 3)
         for (let n = 1; n < d.length; n++) {
           const comp = composeMatrices(d[n - 1], d[n])
