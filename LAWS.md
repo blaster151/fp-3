@@ -840,20 +840,29 @@ so failures can be traced to sub-lemmas.
 
 ### Top/Vietoris (Kl(H))
 
-- **Kolmogorov products:** Supported via the standard infinite product topology.
-  These guarantee the categorical requirements for Kolmogorov zero–one laws.
-  Stub + witness adapters live in `top-vietoris-examples.ts`.
+- **Kolmogorov products:** Implemented with the discrete helpers
+  `makeDiscreteTopSpace` and `makeKolmogorovProductSpace`, which encode
+  finite Kolmogorov products together with their cylinder closed sets and
+  marginal projections. These feed the Kolmogorov zero–one oracles via the
+  factory pair `makeProductPrior`/`makeDeterministicStatistic` in
+  `top-vietoris-examples.ts`, and are re-exported through
+  `MarkovOracles.top.vietoris.adapters()` for centralized discovery.
 
 - **Constant-function law:** Continuous maps into a Hausdorff space that are
-  independent of all finite subsets of the input are necessarily constant. This mirrors the
-  tail-triviality intuition for topological hyperspaces.
+  independent of all finite subsets of the input are necessarily constant.
+  This mirrors the tail-triviality intuition for topological hyperspaces.
 
-- **Hewitt–Savage zero–one law:** **Not supported.**
-  Kl(H) is not causal. As per guidelines, HS oracles are implemented as explicit throwing
-  stubs, so limitations are visible at runtime.
+- **Hewitt–Savage zero–one law:** **Not supported.** Kl(H) is not causal.
+  As per guidelines, HS oracles remain explicit throwing stubs so the
+  limitation is visible at runtime.
 
-- **Open problem:** Finding an interesting causal Markov category with all Kolmogorov
-  products remains open.
+- **Examples/tests:** Runnable example 071 exercises the Kolmogorov witness
+  adapter, confirms the oracle registry exposes the helpers, and documents
+  the Hewitt–Savage limitation. Law tests live in
+  `test/laws/top-vietoris.spec.ts` and `test/laws/markov-oracles.top.spec.ts`.
+
+- **Open problem:** Finding an interesting causal Markov category with all
+  Kolmogorov products remains open.
 
 **Registry Path:** `top.vietoris`
 

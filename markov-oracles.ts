@@ -3,6 +3,11 @@
 
 import type { CSRig } from "./semiring-utils";
 import type { Dist } from "./dist";
+import type {
+  ClosedSubset as TopVietorisClosedSubset,
+  TopSpace as TopVietorisTopSpace,
+} from "./top-vietoris-examples";
+import type { Eq, Fin, FinMarkov } from "./markov-category";
 
 // Import all oracle functions
 import { isEntire } from "./semiring-utils";
@@ -82,6 +87,31 @@ import {
   checkBorelHewittSavageZeroOne,
 } from "./borelstoch-examples";
 import { SetOracles } from "./oracles/set-oracles";
+
+export interface TopVietorisAdapters {
+  readonly makeClosedSubset: <Point>(
+    label: string,
+    members: ReadonlyArray<Point>,
+    eq: Eq<Point>,
+  ) => TopVietorisClosedSubset;
+  readonly makeDiscreteTopSpace: <Point>(
+    label: string,
+    points: Fin<Point>,
+  ) => TopVietorisTopSpace;
+  readonly makeKolmogorovProductSpace: (...args: any[]) => unknown;
+  readonly makeProductPrior: (...args: any[]) => FinMarkov<any, any>;
+  readonly makeDeterministicStatistic: (...args: any[]) => FinMarkov<any, any>;
+}
+
+let topVietorisAdapters: TopVietorisAdapters | undefined;
+
+export function registerTopVietorisAdapters(adapters: TopVietorisAdapters): void {
+  topVietorisAdapters = adapters;
+}
+
+export function getTopVietorisAdapters(): TopVietorisAdapters | undefined {
+  return topVietorisAdapters;
+}
 
 // ===== Domain-Specific Oracle Registry =====
 
@@ -217,7 +247,8 @@ export const MarkovOracles = {
   top: {
     vietoris: {
       status:
-        "Kolmogorov witnesses supported in principle; Hewitt–Savage unavailable because Kl(H) is not causal.",
+        "Kolmogorov witness adapters available via makeProductPrior/makeDeterministicStatistic; Hewitt–Savage unavailable because Kl(H) is not causal.",
+      adapters: () => topVietorisAdapters,
     },
   },
   

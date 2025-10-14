@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MarkovOracles } from "../../markov-oracles";
+import "../../top-vietoris-examples";
 
 describe("MarkovOracles.top.vietoris registry", () => {
   it("exposes a visible status string", () => {
@@ -10,5 +11,12 @@ describe("MarkovOracles.top.vietoris registry", () => {
     expect("hewittSavage" in (MarkovOracles.top?.vietoris ?? {})).toBe(false);
     expect("witness" in (MarkovOracles.top?.vietoris ?? {})).toBe(false);
     expect("check" in (MarkovOracles.top?.vietoris ?? {})).toBe(false);
+  });
+
+  it("exposes the adapter factory registration hook", () => {
+    const adapters = MarkovOracles.top?.vietoris?.adapters?.();
+    expect(adapters).toBeDefined();
+    expect(typeof adapters?.makeProductPrior).toBe("function");
+    expect(typeof adapters?.makeDeterministicStatistic).toBe("function");
   });
 });
