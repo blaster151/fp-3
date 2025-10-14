@@ -11,6 +11,7 @@ import type {
   LooseMonoidShapeReport,
   ObjectEquality,
   RepresentabilityWitness,
+  TightCategory,
   TightCellEvidence,
   VirtualEquipment,
 } from "../virtual-equipment";
@@ -30,7 +31,6 @@ import type {
 import { analyzeRelativeAdjunctionHomIsomorphism } from "./relative-adjunctions";
 import type { RelativeMonad } from "./relative-monad";
 import type { CatMonad } from "../allTS";
-import { type MorOf, type ObjOf } from "../allTS";
 import { analyzeLooseMonoidShape } from "../virtual-equipment/loose-structures";
 import {
   analyzeLooseSkewComposition,
@@ -1842,20 +1842,37 @@ export const relativeMonadFromAdjunction = <Obj, Arr, Payload, Evidence>(
   const extractionIssues: string[] = [];
   const targetFrame = adjunction.homIsomorphism.forward.target;
 
-  let looseCell = overrides.looseCell;
-  if (!looseCell) {
+  let looseCell: EquipmentProarrow<Obj, Payload>;
+  if (overrides.looseCell) {
+    looseCell = overrides.looseCell;
+  } else {
     const matchingArrows = targetFrame.arrows.filter(
       (arrow) => equality(arrow.from, root.from) && equality(arrow.to, right.to),
     );
     if (matchingArrows.length === 1) {
-      [looseCell] = matchingArrows;
+      const [uniqueMatch] = matchingArrows;
+      if (uniqueMatch) {
+        looseCell = uniqueMatch;
+      } else {
+        looseCell = identityProarrow(equipment, root.from);
+      }
     } else if (matchingArrows.length > 1) {
-      [looseCell] = matchingArrows;
+      const [firstMatch] = matchingArrows;
+      if (firstMatch) {
+        looseCell = firstMatch;
+      } else {
+        looseCell = identityProarrow(equipment, root.from);
+      }
       extractionIssues.push(
         "Hom-isomorphism target contains multiple arrows matching dom(j) and cod(r); defaulted to the first.",
       );
     } else if (targetFrame.arrows.length > 0) {
-      [looseCell] = targetFrame.arrows;
+      const [firstArrow] = targetFrame.arrows;
+      if (firstArrow) {
+        looseCell = firstArrow;
+      } else {
+        looseCell = identityProarrow(equipment, root.from);
+      }
       extractionIssues.push(
         "Hom-isomorphism target lacks an arrow with dom(j) and cod(r); defaulted to its first arrow.",
       );
@@ -2233,28 +2250,26 @@ export const describeTrivialRelativeMonad = <Obj, Arr, Payload, Evidence>(
   };
 };
 
-export interface RelativeMonadIdentityRootOptions<C> {
-  readonly rootObject: ObjOf<C>;
-  readonly objects?: ReadonlyArray<ObjOf<C>>;
-  readonly equalsObjects?: ObjectEquality<ObjOf<C>>;
+export interface RelativeMonadIdentityRootOptions<Obj> {
+  readonly rootObject: Obj;
+  readonly objects?: ReadonlyArray<Obj>;
+  readonly equalsObjects?: ObjectEquality<Obj>;
   readonly details?: {
     readonly root?: string;
     readonly carrier?: string;
   };
 }
 
-export const fromMonad = <C>(
-  monad: CatMonad<C>,
-  options: RelativeMonadIdentityRootOptions<C>,
+export const fromMonad = <Obj, Arr>(
+  monad: CatMonad<TightCategory<Obj, Arr>>,
+  options: RelativeMonadIdentityRootOptions<Obj>,
 ): RelativeMonadData<
-  ObjOf<C>,
-  MorOf<C>,
-  CatMonad<C>["endofunctor"],
-  TightCellEvidence<ObjOf<C>, MorOf<C>>
+  Obj,
+  Arr,
+  CatMonad<TightCategory<Obj, Arr>>["endofunctor"],
+  TightCellEvidence<Obj, Arr>
 > => {
-  type Obj = ObjOf<C>;
-  type Arr = MorOf<C>;
-  type Endofunctor = CatMonad<C>["endofunctor"];
+  type Endofunctor = CatMonad<TightCategory<Obj, Arr>>["endofunctor"];
 
   const equality = options.equalsObjects ?? defaultObjectEquality<Obj>;
   const knownObjects = options.objects ?? [];
@@ -2267,22 +2282,23 @@ export const fromMonad = <C>(
     ? ensuredRoot
     : [...ensuredRoot, carrierTarget];
 
-  const equipment = virtualizeCategory(monad.category as any, {
-    objects,
-    ...(options.equalsObjects !== undefined && { equalsObjects: options.equalsObjects }),
-  });
+  const equipment: VirtualEquipment<Obj, Arr, Endofunctor, TightCellEvidence<Obj, Arr>> =
+    virtualizeCategory(monad.category, {
+      objects,
+      ...(options.equalsObjects !== undefined && { equalsObjects: options.equalsObjects }),
+    });
 
   const root = identityVerticalBoundary(
     equipment,
     rootObject,
     options.details?.root ??
       "Identity root induced by embedding a classical monad into the relative layer.",
-  ) as EquipmentVerticalBoundary<Obj, Arr>;
+  );
 
   const carrier: EquipmentVerticalBoundary<Obj, Arr> = {
     from: rootObject,
     to: carrierTarget,
-    tight: monad.endofunctor as any,
+    tight: monad.endofunctor,
     details:
       options.details?.carrier ??
       "Carrier boundary arises from the monad endofunctor applied to the chosen root object.",
@@ -2301,24 +2317,24 @@ export const fromMonad = <C>(
     source: framed,
     target: framed,
     boundaries,
-    evidence: { kind: "tight", cell: monad.unit as any },
+    evidence: { kind: "tight", cell: monad.unit },
   };
 
   const extension: Equipment2Cell<Obj, Arr, Endofunctor, TightCellEvidence<Obj, Arr>> = {
     source: framed,
     target: framed,
     boundaries,
-    evidence: { kind: "tight", cell: monad.mult as any },
+    evidence: { kind: "tight", cell: monad.mult },
   };
 
   return {
-    equipment: equipment as any,
+    equipment,
     root,
     carrier,
     looseCell,
     extension,
     unit,
-  } as RelativeMonadData<Obj, Arr, Endofunctor, TightCellEvidence<Obj, Arr>>;
+  };
 };
 
 export interface RelativeMonadIdentityCollapseResult<C> {
@@ -2327,6 +2343,18 @@ export interface RelativeMonadIdentityCollapseResult<C> {
   readonly details: string;
   readonly monad?: CatMonad<C>;
 }
+
+type TightCellWitness<Obj, Arr> = Extract<
+  TightCellEvidence<Obj, Arr>,
+  { readonly kind: "tight" }
+>;
+
+const isTightCellEvidence = <Obj, Arr>(
+  evidence: unknown,
+): evidence is TightCellWitness<Obj, Arr> =>
+  typeof evidence === "object" &&
+  evidence !== null &&
+  (evidence as { readonly kind?: unknown }).kind === "tight";
 
 export const toMonadIfIdentity = <Obj, Arr, Payload, Evidence>(
   data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
@@ -2341,20 +2369,24 @@ export const toMonadIfIdentity = <Obj, Arr, Payload, Evidence>(
   }
 
   const issues: string[] = [];
-  const unitEvidence = data.unit.evidence as any;
-  if (!unitEvidence || typeof unitEvidence !== "object" || unitEvidence.kind !== "tight") {
+  const unitEvidence = isTightCellEvidence<Obj, Arr>(data.unit.evidence)
+    ? data.unit.evidence
+    : undefined;
+  if (!unitEvidence) {
     issues.push(
       "Relative monad unit evidence must be a tight 2-cell to recover the classical monad unit.",
     );
   }
-  const extensionEvidence = data.extension.evidence as any;
-  if (!extensionEvidence || typeof extensionEvidence !== "object" || extensionEvidence.kind !== "tight") {
+  const extensionEvidence = isTightCellEvidence<Obj, Arr>(data.extension.evidence)
+    ? data.extension.evidence
+    : undefined;
+  if (!extensionEvidence) {
     issues.push(
       "Relative monad extension evidence must be a tight 2-cell to recover the classical monad multiplication.",
     );
   }
 
-  if (issues.length > 0) {
+  if (issues.length > 0 || unitEvidence === undefined || extensionEvidence === undefined) {
     return {
       holds: false,
       issues,
