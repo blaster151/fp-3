@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from "vitest";
 import { Prob, directSum, BoolRig, MaxPlus, GhostRig, isEntire } from "../../semiring-utils";
+import type { CSRig } from "../../semiring-utils";
 import type { Dist } from "../../dist";
 import { 
   checkPullbackSquare, 
@@ -77,23 +78,21 @@ describe("Pullback square (3.8) — ordinary probabilities", () => {
 });
 
 describe("Multiple Semirings", () => {
-  const testSemirings = [
-    { name: "Prob", R: Prob },
-    { name: "MaxPlus", R: MaxPlus },
-    { name: "BoolRig", R: BoolRig },
-    { name: "GhostRig", R: GhostRig }
-  ];
-
-  testSemirings.forEach(({ name, R }) => {
+  const runSemiringCase = <R>(name: string, R: CSRig<R>) => {
     it(`${name}: pullback square holds`, () => {
       const A = ["a", "b", "c"];
       const f = (a: string) => a.toUpperCase();
       const g = (a: string) => a.length.toString();
-      
+
       const result = checkPullbackSquare(R, A, f, g);
       expect(result).toBe(true);
     });
-  });
+  };
+
+  runSemiringCase("Prob", Prob);
+  runSemiringCase("MaxPlus", MaxPlus);
+  runSemiringCase("BoolRig", BoolRig);
+  runSemiringCase("GhostRig", GhostRig);
 });
 
 describe("Robust Testing with Cheating Attempts", () => {

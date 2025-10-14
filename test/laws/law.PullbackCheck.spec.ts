@@ -10,7 +10,8 @@
 
 import { describe, it, expect } from "vitest";
 import { Prob, MaxPlus, directSum, BoolRig, GhostRig, isEntire } from "../../semiring-utils";
-import { Dist } from "../../dist";
+import type { CSRig } from "../../semiring-utils";
+import type { Dist } from "../../dist";
 import { 
   checkSplitMono, marginals, prodPX, checkDeltaMonic, equalDist,
   checkFaithfulness, checkDeltaMonicityVaried, checkPullbackSquare
@@ -18,6 +19,13 @@ import {
 
 // Helper function to create distributions
 const d = <R>(R: CSRig<R>, w: [string, R][]): Dist<R, string> => ({ R, w: new Map(w) });
+
+const requireDefined = <T>(value: T | undefined, label: string): T => {
+  if (value === undefined) {
+    throw new Error(`Expected ${label} to be defined`);
+  }
+  return value;
+};
 
 describe("Pullback/faithfulness (3.4) — Δ∘∇ = id", () => {
   
@@ -135,10 +143,16 @@ describe("Pullback/faithfulness (3.4) — Δ∘∇ = id", () => {
       ];
       
       const results = checkDeltaMonicityVaried(Prob, A, testCases);
-      
-      expect(results[0].passed).toBe(true);  // identical functions
-      expect(results[1].passed).toBe(true);  // different functions correctly detected
-      expect(results[2].passed).toBe(true);  // domain-specific difference detected
+
+      expect(results).toHaveLength(testCases.length);
+
+      const identical = requireDefined(results[0], "identical functions result");
+      const different = requireDefined(results[1], "different functions result");
+      const equivalent = requireDefined(results[2], "equivalent functions result");
+
+      expect(identical.passed).toBe(true);  // identical functions
+      expect(different.passed).toBe(true);  // different functions correctly detected
+      expect(equivalent.passed).toBe(true);  // domain-specific difference detected
     });
   });
 
@@ -157,26 +171,24 @@ describe("Pullback/faithfulness (3.4) — Δ∘∇ = id", () => {
       expect(result.deltaMonic).toBe(true);
     });
 
-    it("works across different semirings", () => {
-      const semirings = [
-        { name: "Prob", R: Prob },
-        { name: "MaxPlus", R: MaxPlus },
-        { name: "BoolRig", R: BoolRig },
-        { name: "GhostRig", R: GhostRig }
-      ];
-      
-      semirings.forEach(({ name, R }) => {
+    const runFaithfulnessSuite = <R>(name: string, R: CSRig<R>) => {
+      it(`${name}: works across different semirings`, () => {
         const samples = [
           { R, w: new Map([["x", R.one], ["y", R.zero]]) },
           { R, w: new Map([["x", R.zero], ["y", R.one]]) }
         ];
-        const domain = ["x", "y"];
-        
+        const domain = ["x", "y"] as const;
+
         const result = checkFaithfulness(R, samples, domain);
         expect(result.splitMono).toBe(true);
         expect(result.deltaMonic).toBe(true);
       });
-    });
+    };
+
+    runFaithfulnessSuite("Prob", Prob);
+    runFaithfulnessSuite("MaxPlus", MaxPlus);
+    runFaithfulnessSuite("BoolRig", BoolRig);
+    runFaithfulnessSuite("GhostRig", GhostRig);
   });
 
   describe("Pullback Square Foundation", () => {
@@ -254,17 +266,19 @@ describe("Pullback/faithfulness (3.4) — Δ∘∇ = id", () => {
     });
 
     it("Entire semirings should pass faithfulness", () => {
-      const entireSemirings = [Prob, MaxPlus, BoolRig, GhostRig];
-      
-      entireSemirings.forEach(R => {
+      const assertFaithfulness = <R>(R: CSRig<R>) => {
         expect(isEntire(R)).toBe(true);
-        
-        // Simple faithfulness test
+
         const samples = [{ R, w: new Map([["test", R.one]]) }];
         const result = checkFaithfulness(R, samples, ["test"]);
         expect(result.splitMono).toBe(true);
         expect(result.deltaMonic).toBe(true);
-      });
+      };
+
+      assertFaithfulness(Prob);
+      assertFaithfulness(MaxPlus);
+      assertFaithfulness(BoolRig);
+      assertFaithfulness(GhostRig);
     });
 
     it("Non-entire semirings are flagged correctly", () => {

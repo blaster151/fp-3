@@ -36,6 +36,9 @@ describe("LAW: Monad laws", () => {
     return mapFn.call(arbitrary, mapper) as fc.Arbitrary<Output>
   }
 
+  const narrowPure = <F, A>(pure: (value: A) => F): MonadConfig<F, A>['pure'] =>
+    ((value) => pure(value as unknown as A))
+
   describe("Result monad", () => {
     const intArb = genInt()
     const strArb = genString()
@@ -57,7 +60,7 @@ describe("LAW: Monad laws", () => {
       genA: genInt,
       genFA: () => genResult(),
       genK: () => genResultFn(),
-      pure: Ok,
+      pure: narrowPure((value: number) => Ok(value) as Result<string, number>),
       chain: <A, B>(k: (a: A) => Result<string, B>) =>
         (fa: Result<string, A>): Result<string, B> => {
           if (isErr(fa)) return fa
@@ -97,7 +100,7 @@ describe("LAW: Monad laws", () => {
       genA: genInt,
       genFA: () => genReader(),
       genK: () => genReaderK(),
-      pure: <A>(a: A): Reader<number, A> => Reader.of(a),
+      pure: narrowPure((value: number) => Reader.of(value)),
       chain: <A, B>(k: (a: A) => Reader<number, B>) =>
         (fa: Reader<number, A>): Reader<number, B> =>
           Reader.chain(k)(fa),
@@ -138,7 +141,7 @@ describe("LAW: Monad laws", () => {
       genA: genInt,
       genFA: () => genTask(),
       genK: () => genTaskK(),
-      pure: <A>(a: A): Task<A> => Task.of(a),
+      pure: narrowPure((value: number) => Task.of(value)),
       chain: <A, B>(k: (a: A) => Task<B>) =>
         (fa: Task<A>): Task<B> =>
           Task.chain(k)(fa),
@@ -146,8 +149,7 @@ describe("LAW: Monad laws", () => {
         const resultA = await a()
         const resultB = await b()
         return resultA === resultB
-      },
-      isAsync: true
+      }
     }
 
     const { leftIdentity, rightIdentity, associativity } = testMonadLaws(config)
@@ -179,7 +181,7 @@ describe("LAW: Monad laws", () => {
       genA: genInt,
       genFA: () => genReaderTask(),
       genK: () => genReaderTaskK(),
-      pure: <A>(a: A): ReaderTask<number, A> => ReaderTask.of(a),
+      pure: narrowPure((value: number) => ReaderTask.of(value)),
       chain: <A, B>(k: (a: A) => ReaderTask<number, B>) =>
         (fa: ReaderTask<number, A>): ReaderTask<number, B> =>
           ReaderTask.chain(k)(fa),
@@ -192,8 +194,7 @@ describe("LAW: Monad laws", () => {
           if (resultA !== resultB) return false
         }
         return true
-      },
-      isAsync: true
+      }
     }
 
     const { leftIdentity, rightIdentity, associativity } = testMonadLaws(config)
@@ -236,7 +237,7 @@ describe("LAW: Monad laws", () => {
       genA: genInt,
       genFA: () => genReaderTaskResult(),
       genK: () => genReaderTaskResultK(),
-      pure: <A>(a: A): ReaderTaskResult<number, string, A> => readerTaskResultMonad.of(a),
+      pure: narrowPure((value: number) => readerTaskResultMonad.of(value)),
       chain: <A, B>(k: (a: A) => ReaderTaskResult<number, string, B>) =>
         (fa: ReaderTaskResult<number, string, A>): ReaderTaskResult<number, string, B> =>
           async (env: number) => {
@@ -259,8 +260,7 @@ describe("LAW: Monad laws", () => {
           }
         }
         return true
-      },
-      isAsync: true
+      }
     }
 
     const { leftIdentity, rightIdentity, associativity } = testMonadLaws(config)

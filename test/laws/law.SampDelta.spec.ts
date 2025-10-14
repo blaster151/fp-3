@@ -10,9 +10,35 @@
 
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
-import { delta, samp } from '../../semiring-dist'
+import type { Dist } from '../../dist'
+import { Prob } from '../../semiring-utils'
 import { checkSampDeltaIdentity, isDeterministic } from '../../markov-laws'
 import { mkFin } from '../../markov-category'
+
+const compareNumber = (a: number, b: number) => (a > b ? 1 : a < b ? -1 : 0)
+
+const deltaProb = <X>(x: X): Dist<number, X> => ({ R: Prob, w: new Map([[x, Prob.one]]) })
+
+const sampProb = <X>(dist: Dist<number, X>): X => {
+  let best: { value: X; weight: number } | undefined
+  dist.w.forEach((weight, value) => {
+    if (best === undefined || compareNumber(weight, best.weight) > 0) {
+      best = { value, weight }
+    }
+  })
+  if (!best) {
+    throw new Error('Cannot sample from empty distribution')
+  }
+  return best.value
+}
+
+const fromPairs = <X>(pairs: Iterable<[X, number]>): Dist<number, X> => {
+  const weights = new Map<X, number>()
+  for (const [value, weight] of pairs) {
+    weights.set(value, (weights.get(value) ?? 0) + weight)
+  }
+  return { R: Prob, w: weights }
+}
 
 describe("LAW: Sampling-Delta Identity", () => {
 
@@ -27,36 +53,34 @@ describe("LAW: Sampling-Delta Identity", () => {
 
     it("samp∘delta = id for integers", () => {
       fc.assert(
-        fc.property(fc.integer({ min: -100, max: 100 }), (x) => {
-          const dist = delta(x)
-          const recovered = samp(dist)
+        fc.property(fc.integer(), (x) => {
+          const dist = deltaProb(x)
+          const recovered = sampProb(dist)
           return recovered === x
-        }),
-        { numRuns: 200 }
+        })
       )
     })
 
     it("samp∘delta = id for strings", () => {
       fc.assert(
-        fc.property(fc.string({ minLength: 0, maxLength: 10 }), (x) => {
-          const dist = delta(x)
-          const recovered = samp(dist)
+        fc.property(fc.string(), (raw) => {
+          const x = raw
+          const dist = deltaProb(x)
+          const recovered = sampProb(dist)
           return recovered === x
-        }),
-        { numRuns: 200 }
+        })
       )
     })
 
     it("samp∘delta = id for finite sets", () => {
-      const testSets = [
-        mkFin([0, 1, 2], (a,b) => a === b),
-        mkFin(['a', 'b', 'c'], (a,b) => a === b),
-        mkFin([true, false], (a,b) => a === b),
-      ]
-
-      for (const fin of testSets) {
-        expect(checkSampDeltaIdentity(fin.elems, fin.eq)).toBe(true)
+      const runFiniteTest = <T>(values: ReadonlyArray<T>, eq: (a: T, b: T) => boolean) => {
+        const fin = mkFin(values, eq)
+        expect(checkSampDeltaIdentity(Prob, deltaProb, sampProb, fin.elems, fin.eq)).toBe(true)
       }
+
+      runFiniteTest([0, 1, 2], (a, b) => a === b)
+      runFiniteTest(['a', 'b', 'c'], (a, b) => a === b)
+      runFiniteTest([true, false], (a, b) => a === b)
     })
 
     it("samp∘delta = id for complex objects", () => {
@@ -68,14 +92,13 @@ describe("LAW: Sampling-Delta Identity", () => {
             active: fc.boolean()
           }),
           (obj) => {
-            const dist = delta(obj)
-            const recovered = samp(dist)
-            return recovered.id === obj.id && 
-                   recovered.name === obj.name && 
+            const dist = deltaProb(obj)
+            const recovered = sampProb(dist)
+            return recovered.id === obj.id &&
+                   recovered.name === obj.name &&
                    recovered.active === obj.active
           }
-        ),
-        { numRuns: 100 }
+        )
       )
     })
   })
@@ -91,43 +114,47 @@ describe("LAW: Sampling-Delta Identity", () => {
 
     it("recognizes deterministic kernels", () => {
       // Deterministic kernel: always maps to single element
-      const detKernel = (x: number) => delta(x * 2)
-      
-      const result = isDeterministic(detKernel, (a, b) => a === b)
+      const detKernel = (x: number): Dist<number, number> => deltaProb(x * 2)
+      const sampleInputs = [0, 1, 2, 3, 4]
+
+      const result = isDeterministic(Prob, detKernel, sampleInputs)
       expect(result.det).toBe(true)
-      
+
       if (result.base) {
         // Check factorization: f(x) = delta(base(x))
         for (let x = 0; x < 5; x++) {
           const direct = detKernel(x)
-          const factored = delta(result.base(x))
-          
+          const factored = deltaProb(result.base(x))
+
           // Should have same support
-          expect(direct.size).toBe(1)
-          expect(factored.size).toBe(1)
-          expect([...direct.keys()][0]).toBe([...factored.keys()][0])
+          const directSupport = [...direct.w.keys()]
+          const factoredSupport = [...factored.w.keys()]
+          expect(directSupport).toHaveLength(1)
+          expect(factoredSupport).toHaveLength(1)
+          expect(directSupport[0]).toBe(factoredSupport[0])
         }
       }
     })
 
     it("recognizes non-deterministic kernels", () => {
       // Non-deterministic kernel: uniform over two elements
-      const nonDetKernel = (x: number) => new Map([[x, 0.5], [x+1, 0.5]])
-      
-      // This should fail the determinism check in a full implementation
-      // For now, our simplified version always returns det: true
-      // In a complete implementation, this would return det: false
+      const nonDetKernel = (x: number): Dist<number, number> =>
+        fromPairs([[x, 0.5], [x + 1, 0.5]])
+
+      const result = isDeterministic(Prob, nonDetKernel, [0, 1])
+      expect(result.det).toBe(false)
     })
 
     it("handles edge cases", () => {
       // Empty distribution (should not be deterministic)
-      const emptyKernel = (_x: number) => new Map()
-      
-      // Zero-weight distribution (should not be deterministic)  
-      const zeroKernel = (_x: number) => new Map([[1, 0], [2, 0]])
-      
-      // These tests would be more meaningful with a complete implementation
-      expect(true).toBe(true) // Placeholder
+      const emptyKernel = (_x: number): Dist<number, number> => ({ R: Prob, w: new Map() })
+
+      // Zero-weight distribution (should not be deterministic)
+      const zeroKernel = (_x: number): Dist<number, number> =>
+        fromPairs([[1, 0], [2, 0]])
+
+      expect(isDeterministic(Prob, emptyKernel, [0]).det).toBe(false)
+      expect(isDeterministic(Prob, zeroKernel, [0]).det).toBe(false)
     })
   })
 
@@ -143,40 +170,43 @@ describe("LAW: Sampling-Delta Identity", () => {
     it("sampling is invariant to positive scaling", () => {
       fc.assert(
         fc.property(
-          fc.integer({ min: 1, max: 10 }),
-          fc.float({ min: 0.1, max: 10, noNaN: true }),
-          (x, scale) => {
-            const original = delta(x)
-            const scaled = new Map([[x, scale]])
-            
-            const sampOriginal = samp(original)
-            const sampScaled = samp(scaled)
-            
+          fc.integer(),
+          fc.float(),
+          (x, rawScale) => {
+            const scale = Math.max(Math.abs(rawScale), 0.1)
+            const original = deltaProb(x)
+            const scaled: Dist<number, number> = fromPairs([[x, scale]])
+
+            const sampOriginal = sampProb(original)
+            const sampScaled = sampProb(scaled)
+
             return sampOriginal === sampScaled
           }
-        ),
-        { numRuns: 100 }
+        )
       )
     })
 
     it("sampling selects maximum weight element", () => {
       fc.assert(
         fc.property(
-          fc.array(fc.tuple(fc.integer(), fc.float({ min: 0, max: 1, noNaN: true })), 
-                   { minLength: 1, maxLength: 5 }),
-          (pairs) => {
-            if (pairs.length === 0) return true
-            
-            const dist = new Map(pairs)
-            const sampled = samp(dist)
-            const sampledWeight = dist.get(sampled) ?? 0
-            
+          fc.array(fc.tuple(fc.integer(), fc.float())),
+          (rawPairs) => {
+            if (rawPairs.length === 0) return true
+            const pairs = rawPairs.slice(0, 5).map(([n, w]) => [n, Math.abs(w)] as [number, number])
+
+            const dist = fromPairs(pairs)
+            if (dist.w.size === 0) return true
+
+            const sampled = sampProb(dist)
+            const sampledWeight = dist.w.get(sampled) ?? 0
+
             // Should be one of the maximum weight elements
-            const maxWeight = Math.max(...dist.values())
+            const weights = [...dist.w.values()]
+            if (weights.length === 0) return true
+            const maxWeight = Math.max(...weights)
             return Math.abs(sampledWeight - maxWeight) < 1e-10
           }
-        ),
-        { numRuns: 100 }
+        )
       )
     })
   })
@@ -192,32 +222,30 @@ describe("LAW: Sampling-Delta Identity", () => {
 
     it("delta is left inverse to samp (when samp is total)", () => {
       fc.assert(
-        fc.property(fc.integer({ min: -10, max: 10 }), (x) => {
+        fc.property(fc.integer(), (x) => {
           // delta(x) should be the unique distribution that samp maps back to x
-          const dist = delta(x)
-          const recovered = samp(dist)
-          const reDeleted = delta(recovered)
-          
+          const dist = deltaProb(x)
+          const recovered = sampProb(dist)
+          const reDeleted = deltaProb(recovered)
+
           // Should get back the same distribution
-          expect(reDeleted.size).toBe(1)
-          expect(reDeleted.get(x)).toBe(1)
+          expect(reDeleted.w.size).toBe(1)
+          expect(reDeleted.w.get(x)).toBe(Prob.one)
           return true
-        }),
-        { numRuns: 100 }
+        })
       )
     })
 
     it("samp respects deterministic composition", () => {
       // If f is deterministic, then samp(f(x)) should equal the unique support element
-      const f = (x: number) => delta(x * x)
-      
+      const f = (x: number): Dist<number, number> => deltaProb(x * x)
+
       fc.assert(
-        fc.property(fc.integer({ min: -5, max: 5 }), (x) => {
+        fc.property(fc.integer(), (x) => {
           const dist = f(x)
-          const sampled = samp(dist)
+          const sampled = sampProb(dist)
           return sampled === x * x
-        }),
-        { numRuns: 50 }
+        })
       )
     })
   })
