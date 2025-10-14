@@ -181,7 +181,9 @@ This document catalogs the algebraic laws that our functional programming constr
   enriched T-algebra by checking that the carrier shares the monad boundaries,
   the extension operator reuses the enriched extension witness, and the unit
   and multiplication composites coincide with the recorded enriched
-  comparisons.
+  comparisons. Until horizontal/vertical 2-cell composition lands in the
+  virtual equipment, the oracle only confirms this boundary reuse and reports
+  pending status.
 - `relativeMonad.enriched.kleisliInclusion` exposes Lemma 8.7’s
   identity-on-objects inclusion into Kl(T), requiring the functor to reuse the
   loose arrow, unit, and extension witnesses and to supply the κ_T opalgebra
