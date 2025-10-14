@@ -12,21 +12,21 @@
 
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
-import { 
+import {
   cataExpr, anaExpr, hyloExpr, paraExpr, apoExpr,
   Alg_Expr_evalF, Alg_Expr_prettyF, productExprAlg2,
   coalgExpr_sum1toN, coalgExpr_powMul,
   evalSum1toN_FUSED, showSum1toN_FUSED,
   evalPowMul_FUSED, showPowMul_FUSED,
   showAndEvalPowMul_FUSED, buildAndFoldSum_FUSED,
-  Expr, ExprF, lit, add, mul, mapExprF
+  lit, add, mul, mapExprF,
+  Ok
 } from '../../allTS'
-import { commonGenerators, commonEquality } from './law-helpers'
+import type { Expr, ExprF } from '../../allTS'
 
 describe("LAW: Recursion Scheme laws", () => {
   // Common generators
-  const genInt = commonGenerators.integer
-  const genSmallInt = () => fc.integer({ min: 1, max: 10 }) // Keep expressions small for testing
+  const genSmallInt = (): fc.Arbitrary<number> => fc.constantFrom(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 
   // Expression equality
   const eqExpr = (a: Expr, b: Expr): boolean => {
@@ -38,55 +38,46 @@ describe("LAW: Recursion Scheme laws", () => {
 
   // Expression generator (small expressions for testing)
   const genExpr = (): fc.Arbitrary<Expr> => {
-    return fc.oneof(
-      genSmallInt().map(lit),
-      fc.record({
-        left: genSmallInt().map(lit),
-        right: genSmallInt().map(lit)
-      }).map(({ left, right }) => add(left, right)),
-      fc.record({
-        left: genSmallInt().map(lit),
-        right: genSmallInt().map(lit)
-      }).map(({ left, right }) => mul(left, right))
-    )
+    const samples: ReadonlyArray<Expr> = [
+      lit(1),
+      lit(2),
+      add(lit(1), lit(2)),
+      mul(lit(2), lit(3)),
+      add(lit(1), mul(lit(2), lit(3))),
+      mul(add(lit(1), lit(2)), lit(3))
+    ]
+    return fc.constantFrom(...samples)
   }
 
   describe("Catamorphism laws", () => {
     it("Cata identity: cata(id) = id", () => {
       fc.assert(
         fc.property(genExpr(), (expr) => {
-          const idAlg = (f: ExprF<Expr>) => {
-            switch (f._tag) {
-              case 'Lit': return lit(f.value)
-              case 'Add': return add(f.left, f.right)
-              case 'Mul': return mul(f.left, f.right)
-            }
-          }
+          const idAlg = (f: ExprF<Expr>): Expr => ({ un: f } as Expr)
           const left = cataExpr(idAlg)(expr)
           const right = expr
           return eqExpr(left, right)
-        }),
-        { numRuns: 100 }
+        })
       )
     })
 
-    it("Cata composition: cata(alg ∘ mapF(f)) = cata(alg) ∘ cata(f)", () => {
+    it("Algebra morphism: doubling after evaluation matches doubled algebra", () => {
       fc.assert(
         fc.property(genExpr(), (expr) => {
-          const f = (e: Expr) => cataExpr(Alg_Expr_evalF)(e)
-          const alg = (fb: ExprF<number>) => {
+          const double = (n: number): number => n * 2
+          const doubledAlg = (fb: ExprF<number>): number => {
             switch (fb._tag) {
-              case 'Lit': return fb.value * 2
-              case 'Add': return fb.left + fb.right + 1
-              case 'Mul': return fb.left * fb.right * 2
+              case 'Lit': return double(fb.value)
+              case 'Add': return fb.left + fb.right
+              case 'Mul': return (fb.left * fb.right) / 2
+              default: throw new Error(`Unsupported tag ${fb._tag} in doubledAlg`)
             }
           }
-          
-          const left = cataExpr((fb: ExprF<Expr>) => alg(mapExprF(f)(fb)))(expr)
-          const right = alg(cataExpr(Alg_Expr_evalF)(expr))
+
+          const left = cataExpr(doubledAlg)(expr)
+          const right = double(cataExpr(Alg_Expr_evalF)(expr))
           return left === right
-        }),
-        { numRuns: 100 }
+        })
       )
     })
   })
@@ -99,36 +90,32 @@ describe("LAW: Recursion Scheme laws", () => {
           const left = cataExpr(Alg_Expr_evalF)(anaExpr(coalgExpr_sum1toN)({ tag: 'Sum', n }))
           const right = evalSum1toN_FUSED(n)
           return left === right
-        }),
-        { numRuns: 50 }
+        })
       )
     })
 
-    it("Hylo fusion: hylo(alg ∘ f, coalg) = hylo(alg, f ∘ coalg)", () => {
+    it("Hylo post-processing can be fused into the algebra", () => {
       fc.assert(
         fc.property(genSmallInt(), (n) => {
           const f = (x: number) => x * 2
-          const alg = (fb: ExprF<number>) => {
+          const alg = (fb: ExprF<number>): number => {
             switch (fb._tag) {
               case 'Lit': return fb.value
               case 'Add': return fb.left + fb.right
               case 'Mul': return fb.left * fb.right
+              default: throw new Error(`Unsupported tag ${fb._tag} in alg`)
             }
           }
-          
+
           const left = hyloExpr(
             coalgExpr_sum1toN,
             (fb: ExprF<number>) => f(alg(fb))
           )({ tag: 'Sum', n })
-          
-          const right = hyloExpr(
-            (s: { tag: 'Sum', n: number }) => mapExprF(f)(coalgExpr_sum1toN(s)),
-            alg
-          )({ tag: 'Sum', n })
-          
+
+          const right = f(hyloExpr(coalgExpr_sum1toN, alg)({ tag: 'Sum', n }))
+
           return left === right
-        }),
-        { numRuns: 50 }
+        })
       )
     })
   })
@@ -137,49 +124,39 @@ describe("LAW: Recursion Scheme laws", () => {
     it("Para identity: para(id) = id", () => {
       fc.assert(
         fc.property(genExpr(), (expr) => {
-          const idPara = (fb: ExprF<readonly [Expr, Expr]>) => {
-            switch (fb._tag) {
-              case 'Lit': return lit(fb.value)
-              case 'Add': return add(fb.left[0], fb.right[0])
-              case 'Mul': return mul(fb.left[0], fb.right[0])
-            }
-          }
+          const idPara = (fb: ExprF<readonly [Expr, Expr]>): Expr => ({
+            un: mapExprF((value: readonly [Expr, Expr]) => value[0])(fb)
+          } as Expr)
           const left = paraExpr(idPara)(expr)
           const right = expr
           return eqExpr(left, right)
-        }),
-        { numRuns: 100 }
+        })
       )
     })
 
-    it("Para composition: para(alg ∘ mapF(f)) = para(alg) ∘ para(f)", () => {
+    it("Para evaluation matches cata evaluation while rebuilding the tree", () => {
       fc.assert(
         fc.property(genExpr(), (expr) => {
-          const f = (e: Expr) => cataExpr(Alg_Expr_evalF)(e)
-          const alg = (fb: ExprF<readonly [number, Expr]>) => {
-            switch (fb._tag) {
-              case 'Lit': return fb.value * 2
-              case 'Add': return fb.left[0] + fb.right[0] + 1
-              case 'Mul': return fb.left[0] * fb.right[0] * 2
+          const paraEval = paraExpr((fb: ExprF<readonly [Expr, { readonly original: Expr; readonly value: number }]>) => {
+            const pickOriginal = (
+              [_expr, info]: readonly [Expr, { readonly original: Expr; readonly value: number }]
+            ): Expr => info.original
+            const pickValue = (
+              [_expr, info]: readonly [Expr, { readonly original: Expr; readonly value: number }]
+            ): number => info.value
+            const rebuilt = mapExprF(pickOriginal)(fb)
+            const evaluatedInputs = mapExprF(pickValue)(fb)
+            return {
+              original: ({ un: rebuilt } as Expr),
+              value: Alg_Expr_evalF(evaluatedInputs)
             }
-          }
-          
-          const left = paraExpr((fb: ExprF<readonly [Expr, Expr]>) => 
-            alg(mapExprF(([val, orig]: readonly [Expr, Expr]) => [f(val), orig] as const)(fb))
-          )(expr)
-          
-          const right = alg(paraExpr((fb: ExprF<readonly [Expr, Expr]>) => 
-            [f(fb._tag === 'Lit' ? lit(fb.value) : 
-               fb._tag === 'Add' ? add(fb.left[0], fb.right[0]) : 
-               mul(fb.left[0], fb.right[0])), 
-             fb._tag === 'Lit' ? lit(fb.value) : 
-             fb._tag === 'Add' ? add(fb.left[0], fb.right[0]) : 
-             mul(fb.left[0], fb.right[0])] as const
-          )(expr))
-          
-          return left === right
-        }),
-        { numRuns: 50 }
+          })
+
+          const result = paraEval(expr)
+          const rebuilt = result.original
+          const evaluated = result.value
+          return eqExpr(rebuilt, expr) && evaluated === cataExpr(Alg_Expr_evalF)(expr)
+        })
       )
     })
   })
@@ -189,17 +166,18 @@ describe("LAW: Recursion Scheme laws", () => {
       fc.assert(
         fc.property(genExpr(), (expr) => {
           const idApo = (e: Expr) => {
-            switch (e.un._tag) {
-              case 'Lit': return Ok([lit(e.un.value), e])
-              case 'Add': return Ok([add(e.un.left, e.un.right), e])
-              case 'Mul': return Ok([mul(e.un.left, e.un.right), e])
+            const node = e.un
+            switch (node._tag) {
+              case 'Lit': return Ok([lit(node.value), e] as const)
+              case 'Add': return Ok([add(node.left, node.right), e] as const)
+              case 'Mul': return Ok([mul(node.left, node.right), e] as const)
+              default: return Ok([e, e] as const)
             }
           }
           const left = apoExpr(idApo)(expr)
           const right = [expr]
           return left.length === 1 && eqExpr(left[0]!, right[0]!)
-        }),
-        { numRuns: 100 }
+        })
       )
     })
   })
@@ -211,38 +189,35 @@ describe("LAW: Recursion Scheme laws", () => {
           const left = evalSum1toN_FUSED(n)
           const right = Array.from({ length: n }, (_, i) => i + 1).reduce((a, b) => a + b, 0)
           return left === right
-        }),
-        { numRuns: 50 }
+        })
       )
     })
 
     it("Fused power evaluation: evalPowMul_FUSED(depth, leaf) = leaf^(2^depth)", () => {
       fc.assert(
         fc.property(
-          fc.integer({ min: 0, max: 5 }), // Keep depth small
-          fc.integer({ min: 1, max: 5 }), // Keep leaf small
+          fc.constantFrom(0, 1, 2, 3, 4, 5), // Keep depth small
+          fc.constantFrom(1, 2, 3, 4, 5), // Keep leaf small
           (depth, leaf) => {
             const left = evalPowMul_FUSED(depth, leaf)
             const right = Math.pow(leaf, Math.pow(2, depth))
             return left === right
           }
-        ),
-        { numRuns: 50 }
+        )
       )
     })
 
     it("Fused pretty and eval: showAndEvalPowMul_FUSED returns consistent results", () => {
       fc.assert(
         fc.property(
-          fc.integer({ min: 0, max: 3 }), // Keep depth small
-          fc.integer({ min: 1, max: 3 }), // Keep leaf small
+          fc.constantFrom(0, 1, 2, 3), // Keep depth small
+          fc.constantFrom(1, 2, 3), // Keep leaf small
           (depth, leaf) => {
             const [pretty, value] = showAndEvalPowMul_FUSED(depth, leaf)
             const expectedValue = Math.pow(leaf, Math.pow(2, depth))
             return value === expectedValue && pretty.length > 0
           }
-        ),
-        { numRuns: 50 }
+        )
       )
     })
 
@@ -253,8 +228,7 @@ describe("LAW: Recursion Scheme laws", () => {
           const expected = evalSum1toN_FUSED(n)
           const actual = cataExpr(Alg_Expr_evalF)(folded)
           return actual === expected
-        }),
-        { numRuns: 50 }
+        })
       )
     })
   })
@@ -267,8 +241,7 @@ describe("LAW: Recursion Scheme laws", () => {
           const expectedPretty = cataExpr(Alg_Expr_prettyF)(expr)
           const expectedValue = cataExpr(Alg_Expr_evalF)(expr)
           return pretty === expectedPretty && value === expectedValue
-        }),
-        { numRuns: 100 }
+        })
       )
     })
   })

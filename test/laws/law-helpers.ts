@@ -7,41 +7,72 @@
 
 import * as fc from 'fast-check'
 
+type MaybePromiseBoolean = boolean | PromiseLike<boolean>
+
+const mapArbitrary = <Input, Output>(
+  arbitrary: fc.Arbitrary<Input>,
+  mapper: (value: Input) => Output
+): fc.Arbitrary<Output> => {
+  const mapFn = (arbitrary as { map?: (fn: (value: Input) => Output) => fc.Arbitrary<Output> }).map
+  if (typeof mapFn !== 'function') {
+    throw new Error('fast-check arbitrary missing map implementation')
+  }
+  return mapFn.call(arbitrary, mapper) as fc.Arbitrary<Output>
+}
+
+const normalizeInteger = (value: number) => {
+  const span = 201
+  const modulo = ((value % span) + span) % span
+  return modulo - 100
+}
+
+const truncateString = (value: string) => value.slice(0, 10)
+
 // ===============================================
 // Generic Law Test Helpers
 // ===============================================
 
 export interface LawTestConfig<A> {
-  name: string
-  genA: () => fc.Arbitrary<A>
-  eq: (a: A, b: A) => boolean
+  readonly name: string
+  readonly genA: () => fc.Arbitrary<A>
+  readonly eq: (a: A, b: A) => MaybePromiseBoolean
 }
 
-export interface FunctorConfig<F, A, B> {
-  name: string
-  genA: () => fc.Arbitrary<A>
-  genFA: () => fc.Arbitrary<F>
-  genF: () => fc.Arbitrary<(a: A) => B>
-  genG: () => fc.Arbitrary<(b: B) => any>
-  map: (f: (a: A) => B) => (fa: F) => F
-  id: (a: A) => A
-  eq: (left: F, right: F) => boolean | Promise<boolean>
+export interface FunctorConfig<F, A> {
+  readonly name: string
+  readonly genA: () => fc.Arbitrary<A>
+  readonly genFA: () => fc.Arbitrary<F>
+  readonly genF: () => fc.Arbitrary<(a: A) => unknown>
+  readonly genG: () => fc.Arbitrary<(value: unknown) => unknown>
+  readonly map: (f: (a: A) => unknown) => (fa: F) => F
+  readonly id: (a: A) => A
+  readonly eq: (left: F, right: F) => MaybePromiseBoolean
 }
 
-export interface ApplicativeConfig<F, A, B> extends FunctorConfig<F, A, B> {
-  genFFA: () => fc.Arbitrary<F> // F[A -> B]
-  pure: (a: A) => F
-  ap: (ff: F) => (fa: F) => F
+export interface ApplicativeConfig<A> {
+  readonly name: string
+  readonly genA: () => fc.Arbitrary<A>
+  readonly genFA: () => fc.Arbitrary<unknown>
+  readonly genFunc: () => fc.Arbitrary<(a: A) => A>
+  readonly genFFA: () => fc.Arbitrary<unknown>
+  readonly pure: (value: unknown) => unknown
+  readonly ap: (ff: unknown) => (fa: unknown) => unknown
+  readonly eq: (left: unknown, right: unknown) => MaybePromiseBoolean
 }
 
-export interface MonadConfig<F, A, B> extends ApplicativeConfig<F, A, B> {
-  genK: () => fc.Arbitrary<(a: A) => F> // A -> F[B]
-  chain: (k: (a: A) => F) => (fa: F) => F
+export interface MonadConfig<F, A> {
+  readonly name: string
+  readonly genA: () => fc.Arbitrary<A>
+  readonly genFA: () => fc.Arbitrary<F>
+  readonly genK: () => fc.Arbitrary<(a: A) => F>
+  readonly pure: <T>(value: T) => F
+  readonly chain: (k: (a: A) => F) => (fa: F) => F
+  readonly eq: (left: F, right: F) => MaybePromiseBoolean
 }
 
 export interface MonoidConfig<A> extends LawTestConfig<A> {
-  empty: A
-  concat: (a: A, b: A) => A
+  readonly empty: A
+  readonly concat: (a: A, b: A) => A
 }
 
 // ===============================================
@@ -49,40 +80,34 @@ export interface MonoidConfig<A> extends LawTestConfig<A> {
 // ===============================================
 
 export interface FunctorLawResult {
-  identity: () => void
-  composition: () => void
+  readonly identity: () => void | Promise<void>
+  readonly composition: () => void | Promise<void>
 }
 
-export const testFunctorLaws = <F, A, B>(
-  config: FunctorConfig<F, A, B>
-): FunctorLawResult => {
-  const { name, genA, genFA, genF, genG, map, id, eq } = config
+const assertProperty = (property: fc.Property) => fc.assert(property)
 
-  const ensureBoolean = (value: boolean | Promise<boolean>) =>
-    typeof value === 'boolean' ? value : value.then(Boolean)
+export const testFunctorLaws = <F, A>(
+  config: FunctorConfig<F, A>
+): FunctorLawResult => {
+  const { genFA, genF, genG, map, id, eq } = config
 
   return {
-    identity: () => {
-      fc.assert(
-        fc.property(genFA(), (fa) => {
-          const left = map(id)(fa)
-          const right = fa
-          return ensureBoolean(eq(left, right))
-        }),
-        { numRuns: 200 }
-      )
-    },
+    identity: () =>
+      assertProperty(
+        fc.asyncProperty(genFA(), async (fa) => eq(map(id)(fa), fa))
+      ),
 
-    composition: () => {
-      fc.assert(
-        fc.property(genFA(), genF(), genG(), (fa, f, g) => {
-          const left = map((a: A) => g(f(a)))(fa)
-          const right = map(g)(map(f)(fa))
-          return ensureBoolean(eq(left, right))
-        }),
-        { numRuns: 200 }
+    composition: () =>
+      assertProperty(
+        fc.asyncProperty(
+          fc.tuple(genFA(), genF(), genG()),
+          async ([fa, f, g]) => {
+            const left = map((a: A) => g(f(a)))(fa)
+            const right = map(g)(map(f)(fa))
+            return eq(left, right)
+          }
+        )
       )
-    }
   }
 }
 
@@ -90,54 +115,54 @@ export const testFunctorLaws = <F, A, B>(
 // Applicative Law Tests
 // ===============================================
 
-export const testApplicativeLaws = <F, A, B>(config: ApplicativeConfig<F, A, B>) => {
-  const { name, genA, genFA, genFFA, pure, ap, eq } = config
+export const testApplicativeLaws = <A>(config: ApplicativeConfig<A>) => {
+  const { genA, genFA, genFunc, genFFA, pure, ap, eq } = config
+
+  const identityFn = (value: A) => value
 
   return {
-    identity: () => {
-      fc.assert(
-        fc.property(genFA(), (fa) => {
-          const left = ap(pure(id))(fa)
-          const right = fa
-          return eq(left, right)
-        }),
-        { numRuns: 200 }
-      )
-    },
+    identity: () =>
+      assertProperty(
+        fc.asyncProperty(genFA(), async (fa) => eq(ap(pure(identityFn))(fa), fa))
+      ),
 
-    homomorphism: () => {
-      fc.assert(
-        fc.property(genA(), genF(), (a, f) => {
-          const left = ap(pure(f))(pure(a))
-          const right = pure(f(a))
-          return eq(left, right)
-        }),
-        { numRuns: 200 }
-      )
-    },
+    homomorphism: () =>
+      assertProperty(
+        fc.asyncProperty(
+          fc.tuple(genA(), genFunc()),
+          async ([a, f]) => {
+            const left = ap(pure(f))(pure(a))
+            const right = pure(f(a))
+            return eq(left, right)
+          }
+        )
+      ),
 
-    interchange: () => {
-      fc.assert(
-        fc.property(genFFA(), genA(), (ff, a) => {
-          const left = ap(ff)(pure(a))
-          const right = ap(pure((f: (a: A) => B) => f(a)))(ff)
-          return eq(left, right)
-        }),
-        { numRuns: 200 }
-      )
-    },
+    interchange: () =>
+      assertProperty(
+        fc.asyncProperty(
+          fc.tuple(genFFA(), genA()),
+          async ([ff, a]) => {
+            const applyTo = (fn: (value: A) => A) => fn(a)
+            const left = ap(ff)(pure(a))
+            const right = ap(pure(applyTo))(ff)
+            return eq(left, right)
+          }
+        )
+      ),
 
-    composition: () => {
-      fc.assert(
-        fc.property(genFFA(), genFFA(), genFA(), (ff, gg, fa) => {
-          const compose = (f: (a: A) => B, g: (b: B) => any) => (a: A) => g(f(a))
-          const left = ap(ap(ap(pure(compose))(ff))(gg))(fa)
-          const right = ap(ff)(ap(gg)(fa))
-          return eq(left, right)
-        }),
-        { numRuns: 200 }
+    composition: () =>
+      assertProperty(
+        fc.asyncProperty(
+          fc.tuple(genFFA(), genFFA(), genFA()),
+          async ([ff, gg, fa]) => {
+            const compose = (f: (a: A) => A, g: (value: A) => A) => (a: A) => g(f(a))
+            const left = ap(ap(ap(pure(compose))(ff))(gg))(fa)
+            const right = ap(ff)(ap(gg)(fa))
+            return eq(left, right)
+          }
+        )
       )
-    }
   }
 }
 
@@ -145,42 +170,34 @@ export const testApplicativeLaws = <F, A, B>(config: ApplicativeConfig<F, A, B>)
 // Monad Law Tests
 // ===============================================
 
-export const testMonadLaws = <F, A, B>(config: MonadConfig<F, A, B>) => {
-  const { name, genA, genFA, genK, pure, chain, eq } = config
+export const testMonadLaws = <F, A>(config: MonadConfig<F, A>) => {
+  const { genA, genFA, genK, pure, chain, eq } = config
 
   return {
-    leftIdentity: () => {
-      fc.assert(
-        fc.property(genA(), genK(), (a, k) => {
-          const left = chain(k)(pure(a))
-          const right = k(a)
-          return eq(left, right)
-        }),
-        { numRuns: 200 }
-      )
-    },
+    leftIdentity: () =>
+      assertProperty(
+        fc.asyncProperty(
+          fc.tuple(genA(), genK()),
+          async ([a, k]) => eq(chain(k)(pure(a)), k(a))
+        )
+      ),
 
-    rightIdentity: () => {
-      fc.assert(
-        fc.property(genFA(), (fa) => {
-          const left = chain(pure)(fa)
-          const right = fa
-          return eq(left, right)
-        }),
-        { numRuns: 200 }
-      )
-    },
+    rightIdentity: () =>
+      assertProperty(
+        fc.asyncProperty(genFA(), async (fa) => eq(chain(pure)(fa), fa))
+      ),
 
-    associativity: () => {
-      fc.assert(
-        fc.property(genFA(), genK(), genK(), (fa, k1, k2) => {
-          const left = chain(k2)(chain(k1)(fa))
-          const right = chain((a: A) => chain(k2)(k1(a)))(fa)
-          return eq(left, right)
-        }),
-        { numRuns: 200 }
+    associativity: () =>
+      assertProperty(
+        fc.asyncProperty(
+          fc.tuple(genFA(), genK(), genK()),
+          async ([fa, k1, k2]) => {
+            const left = chain(k2)(chain(k1)(fa))
+            const right = chain((a: A) => chain(k2)(k1(a)))(fa)
+            return eq(left, right)
+          }
+        )
       )
-    }
   }
 }
 
@@ -189,41 +206,26 @@ export const testMonadLaws = <F, A, B>(config: MonadConfig<F, A, B>) => {
 // ===============================================
 
 export const testMonoidLaws = <A>(config: MonoidConfig<A>) => {
-  const { name, genA, empty, concat, eq } = config
+  const { genA, empty, concat, eq } = config
 
   return {
-    leftIdentity: () => {
-      fc.assert(
-        fc.property(genA(), (a) => {
-          const left = concat(empty, a)
-          const right = a
-          return eq(left, right)
-        }),
-        { numRuns: 200 }
-      )
-    },
+    leftIdentity: () =>
+      assertProperty(
+        fc.asyncProperty(genA(), async (a) => eq(concat(empty, a), a))
+      ),
 
-    rightIdentity: () => {
-      fc.assert(
-        fc.property(genA(), (a) => {
-          const left = concat(a, empty)
-          const right = a
-          return eq(left, right)
-        }),
-        { numRuns: 200 }
-      )
-    },
+    rightIdentity: () =>
+      assertProperty(
+        fc.asyncProperty(genA(), async (a) => eq(concat(a, empty), a))
+      ),
 
-    associativity: () => {
-      fc.assert(
-        fc.property(genA(), genA(), genA(), (a, b, c) => {
-          const left = concat(concat(a, b), c)
-          const right = concat(a, concat(b, c))
-          return eq(left, right)
-        }),
-        { numRuns: 200 }
+    associativity: () =>
+      assertProperty(
+        fc.asyncProperty(
+          fc.tuple(genA(), genA(), genA()),
+          async ([a, b, c]) => eq(concat(concat(a, b), c), concat(a, concat(b, c)))
+        )
       )
-    }
   }
 }
 
@@ -233,25 +235,25 @@ export const testMonoidLaws = <A>(config: MonoidConfig<A>) => {
 
 export const commonGenerators = {
   // Numbers
-  integer: () => fc.integer({ min: -100, max: 100 }),
+  integer: () => mapArbitrary(fc.integer(), normalizeInteger),
   float: () => fc.float({ min: -100, max: 100 }),
-  
+
   // Strings
-  string: () => fc.string({ minLength: 0, maxLength: 10 }),
-  
+  string: () => mapArbitrary(fc.string(), truncateString),
+
   // Functions
   fn: <A, B>(genB: () => fc.Arbitrary<B>) =>
-    fc.func(genB()).map(fn => (a: A) => fn(a as unknown)) as fc.Arbitrary<(a: A) => B>,
-  
+    mapArbitrary(fc.func(genB()), (fn) => (a: A) => fn(a as unknown)) as fc.Arbitrary<(a: A) => B>,
+
   // Arrays
-  array: <A>(genA: () => fc.Arbitrary<A>) => 
+  array: <A>(genA: () => fc.Arbitrary<A>) =>
     fc.array(genA(), { minLength: 0, maxLength: 5 }),
-  
+
   // Either-like
   either: <A, B>(genA: () => fc.Arbitrary<A>, genB: () => fc.Arbitrary<B>) =>
     fc.oneof(
-      genA().map(a => ({ _tag: 'Left' as const, value: a })),
-      genB().map(b => ({ _tag: 'Right' as const, value: b }))
+      mapArbitrary(genA(), (value) => ({ _tag: 'Left' as const, value })),
+      mapArbitrary(genB(), (value) => ({ _tag: 'Right' as const, value }))
     )
 }
 
@@ -277,10 +279,15 @@ export const commonEquality = {
   },
   
   // Either equality
-  either: <A, B>(eqA: (a: A, b: A) => boolean, eqB: (a: B, b: B) => boolean) =>
-    (ea: { _tag: 'Left'; value: A } | { _tag: 'Right'; value: B }, 
-     eb: { _tag: 'Left'; value: A } | { _tag: 'Right'; value: B }) => {
-      if (ea._tag !== eb._tag) return false
-      return ea._tag === 'Left' ? eqA(ea.value, eb.value) : eqB(ea.value, eb.value)
+  either: <A, B>(eqA: (left: A, right: A) => boolean, eqB: (left: B, right: B) => boolean) =>
+    (ea: { readonly _tag: 'Left'; readonly value: A } | { readonly _tag: 'Right'; readonly value: B },
+     eb: { readonly _tag: 'Left'; readonly value: A } | { readonly _tag: 'Right'; readonly value: B }) => {
+      if (ea._tag === 'Left' && eb._tag === 'Left') {
+        return eqA(ea.value, eb.value)
+      }
+      if (ea._tag === 'Right' && eb._tag === 'Right') {
+        return eqB(ea.value, eb.value)
+      }
+      return false
     }
 }

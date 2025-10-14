@@ -35,8 +35,8 @@ describe("LAW: Functor laws", () => {
   }
 
   const runFunctorLaws = (
-    config: FunctorConfig<any, number, number>
-  ): FunctorLawResult => testFunctorLaws<any, number, number>(config)
+    config: FunctorConfig<any, number>
+  ): FunctorLawResult => testFunctorLaws<any, number>(config)
 
   describe("Result functor", () => {
     const okResult: fc.Arbitrary<Result<string, number>> = mapArbitrary(
