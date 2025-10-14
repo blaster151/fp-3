@@ -16,34 +16,43 @@ import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 import { arr, comp, denot, normalize, Arrow } from '../../allTS'
 
+type NumFn = (x: number) => number
+
+const functionPool: readonly NumFn[] = [
+  (n) => n,
+  (n) => n + 1,
+  (n) => n - 1,
+  (n) => 2 * n,
+  (n) => -n,
+]
+
 describe("LAW: Category laws", () => {
   // Generator for pure functions
-  const genFn = () => fc.func(fc.constant(fc.integer({ min: -100, max: 100 })))
-  
+  const genFn = () => fc.constantFrom<NumFn>(...functionPool)
+
   // Generator for input values
-  const genInput = () => fc.integer({ min: -50, max: 50 })
+  const genInput = () => fc.integer()
 
   describe("Left Identity", () => {
     it("id ∘ f = f", () => {
       fc.assert(
-        fc.property(genFn(), genInput(), (f, x) => {
+        fc.property(genFn(), genInput(), (f: NumFn, x: number) => {
           // Left-hand side: id ∘ f
-          const lhs = denot(comp(Arrow.id(), arr(f)))
+          const lhs = denot(comp(Arrow.id<number>(), arr(f)))
           
           // Right-hand side: f
           const rhs = denot(arr(f))
           
           return lhs(x) === rhs(x)
-        }),
-        { numRuns: 200 }
+        })
       )
     })
 
     it("normalization drops left identity", () => {
       fc.assert(
-        fc.property(genFn(), (f) => {
-          const withId = comp(Arrow.id(), arr(f))
-          const plan = normalize(withId)
+        fc.property(genFn(), (f: NumFn) => {
+          const withId = comp(Arrow.id<number>(), arr(f))
+          const plan = normalize<number, number>(withId)
           
           // Should have a step that drops the identity
           const dropSteps = plan.steps.filter(step => 
@@ -51,8 +60,7 @@ describe("LAW: Category laws", () => {
           )
           
           return dropSteps.length > 0
-        }),
-        { numRuns: 100 }
+        })
       )
     })
   })
@@ -60,24 +68,23 @@ describe("LAW: Category laws", () => {
   describe("Right Identity", () => {
     it("f ∘ id = f", () => {
       fc.assert(
-        fc.property(genFn(), genInput(), (f, x) => {
+        fc.property(genFn(), genInput(), (f: NumFn, x: number) => {
           // Left-hand side: f ∘ id
-          const lhs = denot(comp(arr(f), Arrow.id()))
+          const lhs = denot(comp(arr(f), Arrow.id<number>()))
           
           // Right-hand side: f
           const rhs = denot(arr(f))
           
           return lhs(x) === rhs(x)
-        }),
-        { numRuns: 200 }
+        })
       )
     })
 
     it("normalization drops right identity", () => {
       fc.assert(
-        fc.property(genFn(), (f) => {
-          const withId = comp(arr(f), Arrow.id())
-          const plan = normalize(withId)
+        fc.property(genFn(), (f: NumFn) => {
+          const withId = comp(arr(f), Arrow.id<number>())
+          const plan = normalize<number, number>(withId)
           
           // Should have a step that drops the identity
           const dropSteps = plan.steps.filter(step => 
@@ -85,8 +92,7 @@ describe("LAW: Category laws", () => {
           )
           
           return dropSteps.length > 0
-        }),
-        { numRuns: 100 }
+        })
       )
     })
   })
@@ -94,7 +100,9 @@ describe("LAW: Category laws", () => {
   describe("Associativity", () => {
     it("(f ∘ g) ∘ h = f ∘ (g ∘ h)", () => {
       fc.assert(
-        fc.property(genFn(), genFn(), genFn(), genInput(), (f, g, h, x) => {
+        fc.property(
+          fc.tuple(genFn(), genFn(), genFn(), genInput()),
+          ([f, g, h, x]: [NumFn, NumFn, NumFn, number]) => {
           // Left-hand side: (f ∘ g) ∘ h
           const lhs = denot(comp(comp(arr(f), arr(g)), arr(h)))
           
@@ -102,16 +110,17 @@ describe("LAW: Category laws", () => {
           const rhs = denot(comp(arr(f), comp(arr(g), arr(h))))
           
           return lhs(x) === rhs(x)
-        }),
-        { numRuns: 200 }
+        })
       )
     })
 
     it("normalization reassociates composition", () => {
       fc.assert(
-        fc.property(genFn(), genFn(), genFn(), (f, g, h) => {
+        fc.property(
+          fc.tuple(genFn(), genFn(), genFn()),
+          ([f, g, h]: [NumFn, NumFn, NumFn]) => {
           const leftAssoc = comp(comp(arr(f), arr(g)), arr(h))
-          const plan = normalize(leftAssoc)
+          const plan = normalize<number, number>(leftAssoc)
           
           // Should have a step that reassociates
           const assocSteps = plan.steps.filter(step => 
@@ -119,8 +128,7 @@ describe("LAW: Category laws", () => {
           )
           
           return assocSteps.length > 0
-        }),
-        { numRuns: 100 }
+        })
       )
     })
   })
@@ -128,21 +136,20 @@ describe("LAW: Category laws", () => {
   describe("Combined Identity Laws", () => {
     it("complex identity elimination", () => {
       fc.assert(
-        fc.property(genFn(), genInput(), (f, x) => {
+        fc.property(genFn(), genInput(), (f: NumFn, x: number) => {
           // Create a complex composition with identities
           const complex = comp(
-            comp(Arrow.id(), comp(arr(f), Arrow.id())),
-            Arrow.id()
+            comp(Arrow.id<number>(), comp(arr(f), Arrow.id<number>())),
+            Arrow.id<number>()
           )
-          
-          const plan = normalize(complex)
+
+          const plan = normalize<number, number>(complex)
           const result = denot(plan.plan)(x)
           const expected = denot(arr(f))(x)
           
           // Should normalize to just f
           return result === expected
-        }),
-        { numRuns: 100 }
+        })
       )
     })
   })

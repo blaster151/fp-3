@@ -41,11 +41,16 @@ describe("p-almost-sure equality", () => {
     expect(report.holds).toBe(true);
     expect(report.failures).toHaveLength(0);
     expect(report.support).toHaveLength(1);
-    expect(report.support[0].value).toBe("x0");
-    expect(report.support[0].totalMass).toBeCloseTo(2, 10);
-    expect(report.support[0].contributions).toHaveLength(2);
-    expect(report.support[0].contributions.map((c) => c.input)).toEqual(["a0", "a1"]);
-    expect(report.support[0].contributions.map((c) => c.weight)).toEqual([1, 1]);
+    const firstSupport = report.support[0];
+    expect(firstSupport).toBeDefined();
+    if (!firstSupport) {
+      throw new Error("expected support entry");
+    }
+    expect(firstSupport.value).toBe("x0");
+    expect(firstSupport.totalMass).toBeCloseTo(2, 10);
+    expect(firstSupport.contributions).toHaveLength(2);
+    expect(firstSupport.contributions.map((c) => c.input)).toEqual(["a0", "a1"]);
+    expect(firstSupport.contributions.map((c) => c.weight)).toEqual([1, 1]);
     expect(report.composite).toBeDefined();
     expect(report.equalComposite).toBe(true);
   });
@@ -94,6 +99,10 @@ describe("p-almost-sure equality", () => {
     expect(report.support).toHaveLength(2);
     expect(report.failures).toHaveLength(1);
     const failure = report.failures[0];
+    expect(failure).toBeDefined();
+    if (!failure) {
+      throw new Error("expected failure entry");
+    }
     expect(failure.supportPoint).toBe("x1");
     expect(new Set(failure.sources)).toEqual(new Set(["a0", "a1"]));
     expect(failure.differences).toHaveLength(2);

@@ -20300,6 +20300,26 @@ export {
   type FinGroup,
 } from "./kinds/group-as-category"
 export {
+  type Group,
+  type GroupHomomorphism,
+  type GroupIsomorphism,
+  type GroupAutomorphism,
+  type Rational,
+  isGroupHomomorphism,
+  isGroupIsomorphism,
+  isGroupAutomorphism,
+  IntegerAdditionGroup,
+  RationalAdditionGroup,
+  integerSamples,
+  rationalSamples,
+  identityAutomorphismZ,
+  negationAutomorphismZ,
+  scalingAutomorphismQ,
+  rational,
+  verifyIntegerAutomorphisms,
+  verifyScalingAutomorphism,
+} from "./kinds/group-automorphism"
+export {
   isGroupoid,
   actionGroupoid,
 } from "./kinds/groupoid"

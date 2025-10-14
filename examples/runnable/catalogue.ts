@@ -75,6 +75,8 @@ import { stage071TopVietorisZeroOneScaffolding } from "./071-top-vietoris-zero-o
 import { stage072PushoutCalculatorsAndUniversalMediators } from "./072-pushout-calculators-and-universal-mediators";
 import { stage073MonoidCategoriesAndHoms } from "./073-monoid-categories-and-homs";
 import { stage074FreeCategoryOnADirectedGraph } from "./074-free-category-on-a-directed-graph";
+import { stage075FiniteTopologyBasics } from "./075-finite-topology-basics";
+import { stage076TopProductUniversalProperty } from "./076-top-product-universal-property";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -153,4 +155,6 @@ export const registry: RunnableRegistry = [
   stage072PushoutCalculatorsAndUniversalMediators,
   stage073MonoidCategoriesAndHoms,
   stage074FreeCategoryOnADirectedGraph,
+  stage075FiniteTopologyBasics,
+  stage076TopProductUniversalProperty,
 ];

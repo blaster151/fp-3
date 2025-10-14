@@ -123,11 +123,12 @@ describe("Informativeness: classic garbling witness", () => {
       
       const result = moreInformativeClassic(Prob, Θs, f, g, candidates);
       expect(result.ok).toBe(true);
-      
+
       // Should find the identity function
-      if (result.ok) {
-        expect(result.c("obs1")).toBe("obs1");
-        expect(result.c("obs2")).toBe("obs2");
+      const witness = result.ok ? result.c : undefined;
+      if (witness) {
+        expect(witness("obs1")).toBe("obs1");
+        expect(witness("obs2")).toBe("obs2");
       }
     });
   });
@@ -238,15 +239,15 @@ describe("Informativeness: classic garbling witness", () => {
       const originalC = (x: X) => x === "x1" ? "y1" : "y2";
       
       // Create some joint distributions using this garbling
-      const joints = [
-        d([
-          [["x1", "y1"], 0.6],
-          [["x2", "y2"], 0.4]
+      const joints: Array<Dist<number, [X, Y]>> = [
+        d<[X, Y]>([
+          [["x1", "y1"] as [X, Y], 0.6],
+          [["x2", "y2"] as [X, Y], 0.4],
         ]),
-        d([
-          [["x1", "y1"], 0.3],
-          [["x2", "y2"], 0.7]
-        ])
+        d<[X, Y]>([
+          [["x1", "y1"] as [X, Y], 0.3],
+          [["x2", "y2"] as [X, Y], 0.7],
+        ]),
       ];
       
       const recovered = recoverGarblingFromJoint(xVals, yVals, joints);
@@ -267,11 +268,11 @@ describe("Informativeness: classic garbling witness", () => {
       const yVals: Y[] = ["y1", "y2"];
       
       // Ambiguous joint (both x values map to both y values)
-      const ambiguousJoint = d([
-        [["x1", "y1"], 0.25],
-        [["x1", "y2"], 0.25],
-        [["x2", "y1"], 0.25],
-        [["x2", "y2"], 0.25]
+      const ambiguousJoint: Dist<number, [X, Y]> = d<[X, Y]>([
+        [["x1", "y1"] as [X, Y], 0.25],
+        [["x1", "y2"] as [X, Y], 0.25],
+        [["x2", "y1"] as [X, Y], 0.25],
+        [["x2", "y2"] as [X, Y], 0.25],
       ]);
       
       const recovered = recoverGarblingFromJoint(xVals, yVals, [ambiguousJoint]);
@@ -292,9 +293,10 @@ describe("Informativeness: classic garbling witness", () => {
       
       const result = moreInformativeClassic(Prob, ["test"], f, g, candidates);
       expect(result.ok).toBe(true);
-      
-      if (result.ok) {
-        expect(result.c("anything")).toBe("garbled");
+
+      const witness = result.ok ? result.c : undefined;
+      if (witness) {
+        expect(witness("anything")).toBe("garbled");
       }
     });
 
@@ -419,7 +421,7 @@ describe("Informativeness: classic garbling witness", () => {
       const functions = generateAllFunctions(domain, codomain);
       expect(functions.length).toBe(1); // Only one constant function
       
-      const f = functions[0];
+      const f = functions[0]!;
       expect(f("a")).toBe("single");
       expect(f("b")).toBe("single");
       expect(f("c")).toBe("single");

@@ -17,12 +17,15 @@ export interface LawTestConfig<A> {
   eq: (a: A, b: A) => boolean
 }
 
-export interface FunctorConfig<F, A, B> extends LawTestConfig<A> {
+export interface FunctorConfig<F, A, B> {
+  name: string
+  genA: () => fc.Arbitrary<A>
   genFA: () => fc.Arbitrary<F>
   genF: () => fc.Arbitrary<(a: A) => B>
   genG: () => fc.Arbitrary<(b: B) => any>
   map: (f: (a: A) => B) => (fa: F) => F
   id: (a: A) => A
+  eq: (left: F, right: F) => boolean | Promise<boolean>
 }
 
 export interface ApplicativeConfig<F, A, B> extends FunctorConfig<F, A, B> {
@@ -45,8 +48,18 @@ export interface MonoidConfig<A> extends LawTestConfig<A> {
 // Functor Law Tests
 // ===============================================
 
-export const testFunctorLaws = <F, A, B>(config: FunctorConfig<F, A, B>) => {
+export interface FunctorLawResult {
+  identity: () => void
+  composition: () => void
+}
+
+export const testFunctorLaws = <F, A, B>(
+  config: FunctorConfig<F, A, B>
+): FunctorLawResult => {
   const { name, genA, genFA, genF, genG, map, id, eq } = config
+
+  const ensureBoolean = (value: boolean | Promise<boolean>) =>
+    typeof value === 'boolean' ? value : value.then(Boolean)
 
   return {
     identity: () => {
@@ -54,7 +67,7 @@ export const testFunctorLaws = <F, A, B>(config: FunctorConfig<F, A, B>) => {
         fc.property(genFA(), (fa) => {
           const left = map(id)(fa)
           const right = fa
-          return eq(left, right)
+          return ensureBoolean(eq(left, right))
         }),
         { numRuns: 200 }
       )
@@ -65,7 +78,7 @@ export const testFunctorLaws = <F, A, B>(config: FunctorConfig<F, A, B>) => {
         fc.property(genFA(), genF(), genG(), (fa, f, g) => {
           const left = map((a: A) => g(f(a)))(fa)
           const right = map(g)(map(f)(fa))
-          return eq(left, right)
+          return ensureBoolean(eq(left, right))
         }),
         { numRuns: 200 }
       )
@@ -227,8 +240,8 @@ export const commonGenerators = {
   string: () => fc.string({ minLength: 0, maxLength: 10 }),
   
   // Functions
-  fn: <A, B>(genB: () => fc.Arbitrary<B>) => 
-    fc.func(fc.constant(genB())),
+  fn: <A, B>(genB: () => fc.Arbitrary<B>) =>
+    fc.func(genB()).map(fn => (a: A) => fn(a as unknown)) as fc.Arbitrary<(a: A) => B>,
   
   // Arrays
   array: <A>(genA: () => fc.Arbitrary<A>) => 

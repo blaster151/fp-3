@@ -35,9 +35,11 @@ describe("CRing⊕ infinite tensor filtered colimit", () => {
   it("normalizes addition and negation of formal tensors", () => {
     const doubled = addTensors(family, tensorA, tensorA);
     expect(doubled.terms).toHaveLength(1);
-    expect(doubled.terms[0].coefficient).toBe(2n);
-    expect(doubled.terms[0].entries).toHaveLength(1);
-    expect(doubled.terms[0].entries[0]?.value).toBe(2n);
+    const first = doubled.terms[0];
+    if (!first) throw new Error("expected normalized tensor term");
+    expect(first.coefficient).toBe(2n);
+    expect(first.entries).toHaveLength(1);
+    expect(first.entries[0]?.value).toBe(2n);
 
     const cancelled = addTensors(family, doubled, negateTensor(family, tensorA));
     expect(cancelled.terms).toHaveLength(1);
@@ -82,7 +84,7 @@ describe("CRing⊕ infinite tensor filtered colimit", () => {
 
   it("tracks tensor support sets", () => {
     const sum = addTensors(family, tensorA, addTensors(family, tensorB, tensorC));
-    const support = tensorSupport(family, sum).sort();
-    expect(support).toEqual(["a", "b", "c"]);
+    const support = Array.from(tensorSupport(family, sum));
+    expect(support.sort()).toEqual(["a", "b", "c"]);
   });
 });
