@@ -135,7 +135,7 @@ export const RelativeMonadLawRegistry = {
     name: "Enriched Eilenberg–Moore T-algebra",
     registryPath: "relativeMonad.enriched.eilenbergMooreAlgebra",
     summary:
-      "Definition 8.16 equips a carrier with an extension operator whose unit and multiplication diagrams commute; the oracle checks those composites reuse the enriched unit/extension witnesses and share the expected boundaries.",
+      "Definition 8.16 equips a carrier with an extension operator whose unit and multiplication diagrams commute; the oracle currently only confirms those composites reuse the enriched unit/extension witnesses and share the expected boundaries, marking the law pending until enriched 2-cell composition becomes executable.",
   },
   enrichedKleisliInclusion: {
     name: "Enriched Kleisli identity-on-objects inclusion",
