@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { FinSetCat, type FuncArr } from "../models/finset-cat"
+import type { FiniteCategory } from "../finite-cat"
 import { buildLeftInverseForInjective, buildRightInverseForSurjective } from "../models/finset-inverses"
 import { checkInverseEquation } from "../diagnostics"
 import {
@@ -20,6 +21,29 @@ describe("Inverse diagnostics and oracle implications", () => {
 
   const category = FinSetCat(universe)
   const registry = category.arrows as FuncArr[]
+  type ObjName = keyof typeof universe
+  const expectObj = (object: unknown): ObjName => {
+    if (typeof object === 'string' && object in universe) {
+      return object as ObjName
+    }
+    throw new Error('expected FinSet object name')
+  }
+  const expectArrow = (arrow: unknown): FuncArr => {
+    if (arrow && typeof arrow === 'object' && 'dom' in arrow && 'cod' in arrow && 'map' in arrow) {
+      return arrow as FuncArr
+    }
+    throw new Error('expected FinSet arrow')
+  }
+  const categoryForOracles: FiniteCategory<unknown, unknown> = {
+    objects: category.objects as ReadonlyArray<unknown>,
+    arrows: registry as ReadonlyArray<unknown>,
+    id: (object) => category.id(expectObj(object)),
+    compose: (g, f) => category.compose(expectArrow(g), expectArrow(f)),
+    src: (arrow) => category.src(expectArrow(arrow)),
+    dst: (arrow) => category.dst(expectArrow(arrow)),
+    eq: (left, right) => category.eq(expectArrow(left), expectArrow(right)),
+    traits: category.traits,
+  }
 
   const s: FuncArr = {
     name: "s",
@@ -69,19 +93,19 @@ describe("Inverse diagnostics and oracle implications", () => {
   })
 
   it("oracles detect the expected cancellability properties", () => {
-    expect(LeftInverseImpliesMono.applies({ cat: category, arrow: r })).toBe(true)
-    expect(LeftInverseImpliesMono.check({ cat: category, arrow: r })).toBe(true)
+    expect(LeftInverseImpliesMono.applies({ cat: categoryForOracles, arrow: r })).toBe(true)
+    expect(LeftInverseImpliesMono.check({ cat: categoryForOracles, arrow: r })).toBe(true)
 
-    expect(RightInverseImpliesEpi.applies({ cat: category, arrow: s })).toBe(true)
-    expect(RightInverseImpliesEpi.check({ cat: category, arrow: s })).toBe(true)
+    expect(RightInverseImpliesEpi.applies({ cat: categoryForOracles, arrow: s })).toBe(true)
+    expect(RightInverseImpliesEpi.check({ cat: categoryForOracles, arrow: s })).toBe(true)
 
-    expect(IsoIsMonoAndEpi.applies({ cat: category, arrow: u })).toBe(true)
-    expect(IsoIsMonoAndEpi.check({ cat: category, arrow: u })).toBe(true)
+    expect(IsoIsMonoAndEpi.applies({ cat: categoryForOracles, arrow: u })).toBe(true)
+    expect(IsoIsMonoAndEpi.check({ cat: categoryForOracles, arrow: u })).toBe(true)
 
-    expect(MonoWithRightInverseIsIso.applies({ cat: category, arrow: u })).toBe(true)
-    expect(MonoWithRightInverseIsIso.check({ cat: category, arrow: u })).toBe(true)
+    expect(MonoWithRightInverseIsIso.applies({ cat: categoryForOracles, arrow: u })).toBe(true)
+    expect(MonoWithRightInverseIsIso.check({ cat: categoryForOracles, arrow: u })).toBe(true)
 
-    expect(EpiWithLeftInverseIsIso.applies({ cat: category, arrow: v })).toBe(true)
-    expect(EpiWithLeftInverseIsIso.check({ cat: category, arrow: v })).toBe(true)
+    expect(EpiWithLeftInverseIsIso.applies({ cat: categoryForOracles, arrow: v })).toBe(true)
+    expect(EpiWithLeftInverseIsIso.check({ cat: categoryForOracles, arrow: v })).toBe(true)
   })
 })

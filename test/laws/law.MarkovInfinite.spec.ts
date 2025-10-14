@@ -24,6 +24,7 @@ import {
   type DoubleIndex,
   type TensorIndex,
   type TensorCarrier,
+  type KernelR,
 } from "../../markov-infinite";
 import {
   checkTailEventInvariance,
@@ -42,6 +43,7 @@ import {
 import type { Dist } from "../../dist";
 import type { ProjectiveLimitSection } from "../../markov-infinite";
 import { mkFin, detK, fromMatrix, tensorObj, pair, FinMarkov } from "../../markov-category";
+import type { Fin } from "../../markov-category";
 import { buildMarkovComonoidWitness } from "../../markov-comonoid-structure";
 import { buildMarkovDeterministicWitness } from "../../markov-deterministic-structure";
 import { buildMarkovConditionalWitness } from "../../markov-conditional-independence";
@@ -68,6 +70,31 @@ const discreteWitness = (indices: Iterable<number>): MeasurabilityWitness<number
     reason: "Finite discrete spaces carry the discrete Borel sigma-algebra.",
   };
 };
+
+const expectSingleEntry = <K, V>(map: ReadonlyMap<K, V>, context: string): readonly [K, V] => {
+  const iterator = map.entries();
+  const first = iterator.next();
+  if (first.done || first.value === undefined) {
+    throw new Error(`Expected ${context} to contain at least one entry.`);
+  }
+  const second = iterator.next();
+  if (!second.done) {
+    throw new Error(`Expected ${context} to contain exactly one entry.`);
+  }
+  return first.value;
+};
+
+const expectSingleValue = <V>(map: ReadonlyMap<unknown, V>, context: string): V =>
+  expectSingleEntry(map, context)[1];
+
+const stringFin = (letters: ReadonlyArray<string>): Fin<unknown> =>
+  mkFin<unknown>(
+    letters,
+    (a, b) => typeof a === "string" && typeof b === "string" && a === b,
+    (value) => String(value),
+  );
+
+const booleanDelta = dirac<number, boolean>(Prob);
 
 const buildZeroOneFixtures = () => {
   const indices = [0, 1, 2];
@@ -289,11 +316,19 @@ describe("Markov infinite products", () => {
         if (entries.length === 0) {
           return deterministic;
         }
-        const [originalSection] = entries[0];
+        const firstEntry = entries[0];
+        if (!firstEntry) {
+          return deterministic;
+        }
+        const [originalSection] = firstEntry;
         const primary = new Map(originalSection) as CylinderSection<number, number>;
         const toggled = new Map(primary) as CylinderSection<number, number>;
-        const toggleIndex = subset[0];
-        const current = primary.get(toggleIndex) ?? 0;
+        const [maybeToggleIndex] = subset;
+        if (maybeToggleIndex === undefined) {
+          return deterministic;
+        }
+        const toggleIndex = maybeToggleIndex;
+        const current = primary.has(toggleIndex) ? primary.get(toggleIndex)! : 0;
         toggled.set(toggleIndex, current === 0 ? 1 : 0);
         const dist: Dist<number, CylinderSection<number, number>> = { R: Prob, w: new Map() };
         dist.w.set(primary, 0.5);
@@ -362,10 +397,18 @@ describe("Markov infinite products", () => {
         if (entries.length === 0) {
           return deterministic;
         }
-        const [originalSection] = entries[0];
+        const firstEntry = entries[0];
+        if (!firstEntry) {
+          return deterministic;
+        }
+        const [originalSection] = firstEntry;
         const primary = new Map(originalSection) as CylinderSection<number, number>;
         const toggled = new Map(primary) as CylinderSection<number, number>;
-        const toggleIndex = subset[0];
+        const [maybeToggleIndex] = subset;
+        if (maybeToggleIndex === undefined) {
+          return deterministic;
+        }
+        const toggleIndex = maybeToggleIndex;
         const current = primary.get(toggleIndex) ?? 0;
         toggled.set(toggleIndex, current === 0 ? 1 : 0);
         const dist: Dist<number, CylinderSection<number, number>> = { R: Prob, w: new Map() };
@@ -408,23 +451,24 @@ describe("Markov infinite products", () => {
     const constantZero: ProjectiveLimitSection<number, number> = () => 0;
     const copy = obj.copy(constantZero);
     expect(copy.w.size).toBe(1);
-    const [[pair, weight]] = Array.from(copy.w.entries());
+    const [pair, weight] = expectSingleEntry(copy.w, "copy kernel");
     expect(weight).toBeCloseTo(1);
     expect(pair[0](0)).toBe(0);
     expect(pair[1](1)).toBe(0);
 
     const discarded = obj.discard(constantZero);
     expect(discarded.w.size).toBe(1);
-    expect(Array.from(discarded.w.values())[0]).toBeCloseTo(1);
+    const discardWeight = expectSingleValue(discarded.w, "discard kernel");
+    expect(discardWeight).toBeCloseTo(1);
 
     const projection = obj.projectKernel([0, 1])(constantZero);
-    const [[section, p]] = Array.from(projection.w.entries());
+    const [section, p] = expectSingleEntry(projection.w, "projection kernel");
     expect(p).toBeCloseTo(1);
     expect(section.get(0)).toBe(0);
     expect(section.get(1)).toBe(0);
 
-    const parityKernel = (s: ReadonlyMap<number, number>) =>
-      delta(((s.get(0) ?? 0) + (s.get(1) ?? 0)) % 2 === 0);
+    const parityKernel: KernelR<number, ReadonlyMap<number, number>, boolean> = (s) =>
+      booleanDelta(((s.get(0) ?? 0) + (s.get(1) ?? 0)) % 2 === 0);
     const lifted = obj.liftKernel([0, 1], parityKernel)(constantZero);
     expect(deterministicBooleanValue(Prob, lifted)).toBe(true);
   });
@@ -441,14 +485,17 @@ describe("Markov infinite products", () => {
     expect(singleton(sample)).toBe(1);
 
     const delta = asDeterministicKernel(Prob, singleton)(sample);
-    const [[value, weight]] = Array.from(delta.w.entries());
+    const [value, weight] = expectSingleEntry(delta.w, "deterministic projection");
     expect(weight).toBeCloseTo(1);
     expect(value).toBe(1);
 
     const witness = buildDeterministicKolmogorovProductWitness(obj);
     const cached = witness.projection(1);
     expect(cached.base(sample)).toBe(0);
-    const [[componentValue, componentWeight]] = Array.from(cached.kernel(sample).w.entries());
+    const [componentValue, componentWeight] = expectSingleEntry(
+      cached.kernel(sample).w,
+      "cached kernel",
+    );
     expect(componentWeight).toBeCloseTo(1);
     expect(componentValue).toBe(0);
 
@@ -472,7 +519,10 @@ describe("Markov infinite products", () => {
     expect(output1(0)).toBe(1);
     expect(output1(1)).toBe(0);
 
-    const [[section, sectionWeight]] = Array.from(mediatorKernel(0).w.entries());
+    const [section, sectionWeight] = expectSingleEntry(
+      mediatorKernel(0).w,
+      "mediator kernel",
+    );
     expect(sectionWeight).toBeCloseTo(1);
     expect(section(0)).toBe(0);
     expect(section(1)).toBe(1);
@@ -795,7 +845,7 @@ describe("Markov infinite products", () => {
     const restrictedObj = restrictInfObj(createInfObj(family), subset);
     const sample: ProjectiveLimitSection<number, number> = (index) => (subset.includes(index) ? 1 : 0);
     const projection = restrictedObj.projectKernel(subset)(sample);
-    const [[section]] = Array.from(projection.w.entries());
+    const [section] = expectSingleEntry(projection.w, "restricted projection");
     expect(section.get(0)).toBe(1);
     expect(section.get(2)).toBe(1);
   });
@@ -912,8 +962,8 @@ describe("Markov infinite products", () => {
     const constantZero: ProjectiveLimitSection<number, number> = () => 0;
     const singleOne: ProjectiveLimitSection<number, number> = (i) => (i === 0 ? 1 : 0);
 
-    const tailEvent = (section: ProjectiveLimitSection<number, number>) =>
-      delta(section(5) === 0);
+    const tailEvent: KernelR<number, ProjectiveLimitSection<number, number>, boolean> = (section) =>
+      booleanDelta(section(5) === 0);
 
     const patches = [new Map<number, number>([[0, 1]]), new Map<number, number>([[5, 1]])];
     const invariance = checkTailEventInvariance(obj, tailEvent, [constantZero, singleOne], patches);
@@ -935,7 +985,8 @@ describe("Markov infinite products", () => {
     const constantZero: ProjectiveLimitSection<number, number> = () => 0;
     const measure = makeMeasure([[constantZero, 1]]);
 
-    const tailEvent = (section: ProjectiveLimitSection<number, number>) => delta(section(3) === 0);
+    const tailEvent: KernelR<number, ProjectiveLimitSection<number, number>, boolean> = (section) =>
+      booleanDelta(section(3) === 0);
     const witness = kolmogorovZeroOneWitness(obj, measure, tailEvent);
     expect(witness.ok).toBe(true);
     expect(witness.probability).toBeCloseTo(1);
@@ -956,7 +1007,8 @@ describe("Markov infinite products", () => {
     }
 
     const delta = dirac(Prob);
-    const tailEvent = (section: ProjectiveLimitSection<number, number>) => delta(section(4) === 0);
+    const tailEvent: KernelR<number, ProjectiveLimitSection<number, number>, boolean> = (section) =>
+      booleanDelta(section(4) === 0);
     const subsets: Array<FiniteSubset<number>> = [[0], [0, 1], [2, 3]];
 
     const report = checkTailSigmaIndependence(obj, extension.measure, tailEvent, subsets);
@@ -981,7 +1033,8 @@ describe("Markov infinite products", () => {
     }
 
     const delta = dirac(Prob);
-    const headEvent = (section: ProjectiveLimitSection<number, number>) => delta(section(0) === 0);
+    const headEvent: KernelR<number, ProjectiveLimitSection<number, number>, boolean> = (section) =>
+      booleanDelta(section(0) === 0);
     const result = checkTailSigmaIndependence(obj, extension.measure, headEvent, [[0]]);
     expect(result.ok).toBe(false);
     expect(result.subsets[0]?.errors.length).toBe(0);
@@ -1177,7 +1230,8 @@ describe("Markov infinite products", () => {
       [constantOne, 0.5],
     ]);
 
-    const headEvent = (section: ProjectiveLimitSection<number, number>) => delta(section(0) === 0);
+    const headEvent: KernelR<number, ProjectiveLimitSection<number, number>, boolean> = (section) =>
+      booleanDelta(section(0) === 0);
     const witness = kolmogorovZeroOneWitness(obj, measure, headEvent);
     expect(witness.ok).toBe(false);
     expect(witness.countable).toBe(true);
@@ -1206,7 +1260,7 @@ describe("Markov infinite products", () => {
       return (index: number) => (index === 0 ? section(1) : index === 1 ? section(0) : section(index));
     };
 
-    const tailEvent = (section: ProjectiveLimitSection<number, number>) => delta(true);
+    const tailEvent: KernelR<number, ProjectiveLimitSection<number, number>, boolean> = () => booleanDelta(true);
     const witness = hewittSavageZeroOneWitness(obj, measure, tailEvent, [swap01]);
     expect(witness.ok).toBe(true);
     expect(witness.exchangeable).toBe(true);
@@ -1231,7 +1285,7 @@ describe("Markov infinite products", () => {
 
     const analysis = analyzeFinStochInfiniteTensor(
       infiniteIndices,
-      (index) => (index % 2 === 0 ? mkFin(["a", "b"]) : mkFin(["a"])),
+      (index) => (index % 2 === 0 ? stringFin(["a", "b"]) : stringFin(["a"])),
       { sampleLimit: 64, threshold: 16 }
     );
 
@@ -1243,7 +1297,7 @@ describe("Markov infinite products", () => {
     const finiteIndices = [0, 1, 2];
     const finiteAnalysis = analyzeFinStochInfiniteTensor(
       finiteIndices,
-      (index) => (index === 0 ? mkFin(["a", "b"]) : mkFin(["a"]))
+      (index) => (index === 0 ? stringFin(["a", "b"]) : stringFin(["a"])),
     );
 
     expect(finiteAnalysis.status).toBe("ok");
@@ -1252,7 +1306,7 @@ describe("Markov infinite products", () => {
 
     const emptyAnalysis = analyzeFinStochInfiniteTensor(
       [0, 1],
-      (index) => (index === 0 ? mkFin<string>([]) : mkFin(["a"]))
+      (index) => (index === 0 ? stringFin([]) : stringFin(["a"])),
     );
 
     expect(emptyAnalysis.status).toBe("obstructed");

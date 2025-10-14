@@ -10,11 +10,11 @@ describe('Right adjunction u^* ⊣ Π_u on discrete indices (enumerable)', () =>
     const Jcar = [0, 1, 2, 3] as const
     type I = (typeof Icar)[number]
     type J = (typeof Jcar)[number]
-    const Ifin = { carrier: Icar as unknown as I[] }
-    const Jfin = { carrier: Jcar as unknown as J[] }
+    const Ifin = IndexedFamilies.finiteIndex<I>(Icar)
+    const Jfin = IndexedFamilies.finiteIndex<J>(Jcar)
 
     // Index map u: J -> I
-    const u = (j: number): number => j % Icar.length
+    const u: (j: J) => I = (j) => Icar[Number(j) % Icar.length]!
 
     // A : I -> Set (enumerable)
     const A: IndexedFamilies.EnumFamily<I, number> = (i) => ({
@@ -27,7 +27,7 @@ describe('Right adjunction u^* ⊣ Π_u on discrete indices (enumerable)', () =>
 
     // Check: for every j and y ∈ A(u(j)),  ε_j( (u^*η)_j(y) ) = y
     for (const j of Jfin.carrier) {
-      const i = u(j) as I
+      const i = u(j)
       for (const y of A(i).enumerate()) {
         const pulledUnit = eta(i)(y)   // a choice over the fiber of i
         const back = eps(j)(pulledUnit)
@@ -37,11 +37,13 @@ describe('Right adjunction u^* ⊣ Π_u on discrete indices (enumerable)', () =>
   })
 
   test('Unit creates constant choices over fibers', () => {
-    const Jcar = [0, 1, 2, 3]
-    const u = (j: number) => j % 2 // fibers: {0,2} at i=0, {1,3} at i=1
-    const Jfin = { carrier: Jcar }
-    
-    const eta = IndexedFamilies.unitPiEnum<number, number, string>(u, Jfin)
+    const Jcar = [0, 1, 2, 3] as const
+    type J = (typeof Jcar)[number]
+    type I = 0 | 1
+    const u: (j: J) => I = (j) => (Number(j) % 2) as I // fibers: {0,2} at i=0, {1,3} at i=1
+    const Jfin = IndexedFamilies.finiteIndex<J>(Jcar)
+
+    const eta = IndexedFamilies.unitPiEnum<J, I, string>(u, Jfin)
     
     // Test unit at i=0 with element 'hello'
     const choice0 = eta(0)('hello')
@@ -59,31 +61,35 @@ describe('Right adjunction u^* ⊣ Π_u on discrete indices (enumerable)', () =>
   })
 
   test('Counit extracts correct component from choice', () => {
-    const Jcar = [0, 1, 2]
-    const u = (j: number) => Math.floor(j / 2) // fibers: {0,1} at i=0, {2} at i=1
-    const Jfin = { carrier: Jcar }
-    
-    const eps = IndexedFamilies.counitPiEnum<number, number, string>(u, Jfin)
+    const Jcar = [0, 1, 2] as const
+    type J = (typeof Jcar)[number]
+    type I = 0 | 1
+    const u: (j: J) => I = (j) => Math.floor(Number(j) / 2) as I // fibers: {0,1} at i=0, {2} at i=1
+    const Jfin = IndexedFamilies.finiteIndex<J>(Jcar)
+
+    const eps = IndexedFamilies.counitPiEnum<J, I, string>(u, Jfin)
     
     // Test extraction from choice
-    const choice: ReadonlyArray<readonly [number, string]> = [
+    const choice: ReadonlyArray<readonly [J, string]> = [
       [0, 'zero'],
-      [1, 'one'], 
+      [1, 'one'],
       [2, 'two']
     ]
-    
-    expect(eps(0)(choice)).toBe('zero')
-    expect(eps(1)(choice)).toBe('one')
-    expect(eps(2)(choice)).toBe('two')
+
+    expect(eps(0 as J)(choice)).toBe('zero')
+    expect(eps(1 as J)(choice)).toBe('one')
+    expect(eps(2 as J)(choice)).toBe('two')
   })
 
   test('Unit-counit round trip property', () => {
-    const Jcar = [0, 1, 2, 3]
-    const u = (j: number) => j % 2
-    const Jfin = { carrier: Jcar }
-    
-    const eta = IndexedFamilies.unitPiEnum<number, number, number>(u, Jfin)
-    const eps = IndexedFamilies.counitPiEnum<number, number, number>(u, Jfin)
+    const Jcar = [0, 1, 2, 3] as const
+    type J = (typeof Jcar)[number]
+    type I = 0 | 1
+    const u: (j: J) => I = (j) => (Number(j) % 2) as I
+    const Jfin = IndexedFamilies.finiteIndex<J>(Jcar)
+
+    const eta = IndexedFamilies.unitPiEnum<J, I, number>(u, Jfin)
+    const eps = IndexedFamilies.counitPiEnum<J, I, number>(u, Jfin)
     
     // For any j and element a, round trip should preserve: eps_j(eta_{u(j)}(a)) = a
     for (const j of Jcar) {

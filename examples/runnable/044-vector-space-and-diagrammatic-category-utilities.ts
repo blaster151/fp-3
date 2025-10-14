@@ -1,8 +1,6 @@
+import * as AllTS from "../../allTS";
+import type { ChainMap, Complex, Mat } from "../../allTS";
 import type { RunnableExample } from "./types";
-
-declare function require(id: string): any;
-
-const all = require("../../allTS") as any;
 
 const {
   FieldReal,
@@ -17,30 +15,20 @@ const {
   toVectAtDegree,
   arrowMatrixAtDegree,
   Pretty,
-} = all;
+} = AllTS;
 
-type RealComplex = {
-  readonly S: typeof FieldReal;
-  readonly degrees: ReadonlyArray<number>;
-  readonly dim: Record<number, number>;
-  readonly d: Record<number, ReadonlyArray<ReadonlyArray<number>>>;
-};
-
-type RealChainMap = {
-  readonly S: typeof FieldReal;
-  readonly X: RealComplex;
-  readonly Y: RealComplex;
-  readonly f: Record<number, ReadonlyArray<ReadonlyArray<number>>>;
-};
-
-const complex0 = (dimension: number): RealComplex => ({
+const complex0 = (dimension: number): Complex<number> => ({
   S: FieldReal,
   degrees: [0],
   dim: { 0: dimension },
   d: {},
 });
 
-const chain = (domain: RealComplex, codomain: RealComplex, matrix: ReadonlyArray<ReadonlyArray<number>>): RealChainMap => ({
+const chain = (
+  domain: Complex<number>,
+  codomain: Complex<number>,
+  matrix: Mat<number>,
+): ChainMap<number> => ({
   S: FieldReal,
   X: domain,
   Y: codomain,
@@ -101,7 +89,7 @@ export const stage044VectorSpaceAndDiagrammaticCategoryUtilities: RunnableExampl
     })();
 
     const complexSection = (() => {
-      const sampleComplex: RealComplex = {
+      const sampleComplex: Complex<number> = {
         S: FieldReal,
         degrees: [0, 1],
         dim: { 0: 2, 1: 1 },
@@ -109,7 +97,7 @@ export const stage044VectorSpaceAndDiagrammaticCategoryUtilities: RunnableExampl
           1: [
             [1],
             [-1],
-          ],
+          ] as Mat<number>,
         },
       };
 
@@ -141,13 +129,15 @@ export const stage044VectorSpaceAndDiagrammaticCategoryUtilities: RunnableExampl
         cover,
         (a: string, b: string) => {
           if (a === "a" && b === "b") {
-            return chain(Xa, Xb, [
+            const edge: Mat<number> = [
               [1],
               [1],
-            ]);
+            ];
+            return chain(Xa, Xb, edge);
           }
           if (a === "b" && b === "c") {
-            return chain(Xb, Xc, [[1, -1]]);
+            const edge: Mat<number> = [[1, -1]];
+            return chain(Xb, Xc, edge);
           }
           throw new Error(`Unexpected cover edge ${a}→${b}`);
         },

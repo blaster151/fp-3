@@ -1,13 +1,12 @@
 import { describe, it, expect, test } from 'vitest'
-import { 
-  FieldReal, 
-  Complex,
-  VectView, 
-  Pretty, 
-  IntSNF, 
-  DiagramClosure, 
-  DiagramLaws, 
-  IndexedFamilies, 
+import {
+  FieldReal,
+  VectView,
+  Pretty,
+  IntSNF,
+  DiagramClosure,
+  DiagramLaws,
+  IndexedFamilies,
   DiscreteCategory,
   EnhancedVect,
   ArrowFamilies,
@@ -17,6 +16,7 @@ import {
   idChainMapCompat,
   randomTwoTermComplex
 } from '../allTS'
+import type { ChainMap, Complex } from '../allTS'
 
 describe('Indexed Families and Discrete Categories', () => {
   describe('VectView namespace', () => {
@@ -32,8 +32,8 @@ describe('Indexed Families and Discrete Categories', () => {
       
       const vectView = VectView.toVectAtDegree(FieldReal)(diagram, 0)
       
-      expect(vectView.V.a?.dim).toBe(1)
-      expect(vectView.V.b?.dim).toBe(2)
+      expect(vectView.V['a']?.dim).toBe(1)
+      expect(vectView.V['b']?.dim).toBe(2)
       
       const arrow = vectView.arr('a', 'b')
       expect(arrow?.M).toEqual([[1], [0]])
@@ -109,9 +109,9 @@ describe('Indexed Families and Discrete Categories', () => {
       const indices = ['a', 'bb', 'ccc']
       const DD = IndexedFamilies.familyToDiscDiagram(family, indices)
       
-      expect(DD.a?.dim[0]).toBe(1)
-      expect(DD.bb?.dim[0]).toBe(2)
-      expect(DD.ccc?.dim[0]).toBe(3)
+      expect(DD['a']?.dim[0]).toBe(1)
+      expect(DD['bb']?.dim[0]).toBe(2)
+      expect(DD['ccc']?.dim[0]).toBe(3)
       
       const backToFamily = IndexedFamilies.discDiagramToFamily(DD)
       expect(backToFamily('a').dim[0]).toBe(1)
@@ -128,7 +128,7 @@ describe('Indexed Families and Discrete Categories', () => {
       const total = IndexedFamilies.reduceFamily(idx, family, 0, (acc, x) => acc + x)
       expect(total).toBe(6)
       
-      const doubled = IndexedFamilies.mapFamily((x: number) => x * 2)(family)
+      const doubled = IndexedFamilies.mapFamily((x: number, _i: string) => x * 2)(family)
       expect(doubled('xx')).toBe(4)
     })
   })
@@ -188,12 +188,12 @@ describe('Indexed Families and Discrete Categories', () => {
       const complexes = { a: C1, b: C1, c: C1, d: C1 }
       
       // Only provide cover arrows (not composites)
-      const coverArrows = [
+      const coverArrows: Array<[string, string, ChainMap<number>]> = [
         ['a', 'b', { S: FieldReal, X: C1, Y: C1, f: { 0: [[2]] } }], // a→b: *2
-        ['a', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[3]] } }], // a→c: *3  
+        ['a', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[3]] } }], // a→c: *3
         ['b', 'd', { S: FieldReal, X: C1, Y: C1, f: { 0: [[5]] } }], // b→d: *5
-        ['c', 'd', { S: FieldReal, X: C1, Y: C1, f: { 0: [[7]] } }]  // c→d: *7
-      ] as const
+        ['c', 'd', { S: FieldReal, X: C1, Y: C1, f: { 0: [[7]] } }]
+      ]
       
       const baseDiagram = makePosetDiagramCompat(poset, complexes, coverArrows)
       
@@ -230,14 +230,14 @@ describe('Indexed Families and Discrete Categories', () => {
       const C1: Complex<number> = { S: FieldReal, degrees: [0], dim: {0: 1}, d: {} }
       const complexes = { a: C1, b: C1, c: C1 }
       
-      const arrows = [
+      const arrows: Array<[string, string, ChainMap<number>]> = [
         ['a', 'a', idChainMapCompat(C1)],
         ['b', 'b', idChainMapCompat(C1)],
         ['c', 'c', idChainMapCompat(C1)],
         ['a', 'b', { S: FieldReal, X: C1, Y: C1, f: { 0: [[2]] } }],
         ['b', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[3]] } }],
-        ['a', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[6]] } }] // 2*3=6
-      ] as const
+        ['a', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[6]] } }]
+      ]
       
       const diagram = makePosetDiagramCompat(poset, complexes, arrows)
       const validation = DiagramLaws.validateFunctoriality(FieldReal)(diagram)
@@ -252,14 +252,14 @@ describe('Indexed Families and Discrete Categories', () => {
       const C1: Complex<number> = { S: FieldReal, degrees: [0], dim: {0: 1}, d: {} }
       const complexes = { a: C1, b: C1, c: C1 }
       
-      const arrows = [
+      const arrows: Array<[string, string, ChainMap<number>]> = [
         ['a', 'a', idChainMapCompat(C1)],
         ['b', 'b', idChainMapCompat(C1)],
         ['c', 'c', idChainMapCompat(C1)],
         ['a', 'b', { S: FieldReal, X: C1, Y: C1, f: { 0: [[2]] } }],
         ['b', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[3]] } }],
-        ['a', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[7]] } }] // Wrong! Should be 6
-      ] as const
+        ['a', 'c', { S: FieldReal, X: C1, Y: C1, f: { 0: [[7]] } }]
+      ]
       
       const diagram = makePosetDiagramCompat(poset, complexes, arrows)
       const validation = DiagramLaws.validateFunctoriality(FieldReal)(diagram)
@@ -286,18 +286,16 @@ describe('Indexed Families and Discrete Categories', () => {
     })
 
     it('reindex(v∘u) = reindex(u)∘reindex(v) (composition law)', () => {
-      const family = (i: number) => i * i
+      const family: IndexedFamilies.Family<number, number> = (i) => i * i
       const u = (j: string) => j.length
-      const v = (k: boolean) => k ? 1 : 0
-      
+      const v = (k: boolean) => (k ? 'yy' : 'n')
+
       // Left side: reindex(v∘u)
-      const vu = (k: boolean) => u(v(k) === 1 ? 'x' : '')
-      const leftSide = IndexedFamilies.reindex(vu, family)
-      
-      // Right side: reindex(u)∘reindex(v)  
-      const reindexV = IndexedFamilies.reindex(v, (n: number) => n)
+      const leftSide = IndexedFamilies.reindex((k: boolean) => u(v(k)), family)
+
+      // Right side: reindex(u)∘reindex(v)
       const reindexU = IndexedFamilies.reindex(u, family)
-      const rightSide = IndexedFamilies.reindex((k: boolean) => v(k), reindexU)
+      const rightSide = IndexedFamilies.reindex(v, reindexU)
       
       // Test equivalence
       expect(leftSide(true)).toBe(rightSide(true))
@@ -306,8 +304,9 @@ describe('Indexed Families and Discrete Categories', () => {
 
     it('dependent sum/product adjunction properties', () => {
       // Test Σ and Π operations
-      const family = (i: string) => i.length
-      const idx = IndexedFamilies.finiteIndex(['a', 'bb', 'ccc'])
+      const sigmaIndices = ['a', 'bb', 'ccc'] as const
+      const family: IndexedFamilies.Family<typeof sigmaIndices[number], number> = (i) => i.length
+      const idx = IndexedFamilies.finiteIndex(sigmaIndices)
       
       // Dependent sum
       const sumResult = IndexedFamilies.sigma(idx, family)
@@ -318,7 +317,7 @@ describe('Indexed Families and Discrete Categories', () => {
       ])
       
       // Dependent product  
-      const prodResult = IndexedFamilies.pi(['a', 'bb', 'ccc'] as const, family)
+      const prodResult = IndexedFamilies.pi(sigmaIndices, family)
       expect(prodResult).toEqual({ a: 1, bb: 2, ccc: 3 })
       
       // Round-trip property: sigmaFromRecord ∘ pi ≈ sigma
@@ -427,15 +426,15 @@ describe('Indexed Families and Discrete Categories', () => {
     it('family operations satisfy functor laws', () => {
       // Test: mapFamily(id) = id
       const family = (i: string) => i.length
-      const idMapped = IndexedFamilies.mapFamily((x: number) => x)(family)
+      const idMapped = IndexedFamilies.mapFamily((x: number, _i: string) => x)(family)
       
       expect(idMapped('test')).toBe(family('test'))
       
       // Test: mapFamily(f ∘ g) = mapFamily(f) ∘ mapFamily(g)
       const f = (x: number) => x * 2
       const g = (x: number) => x + 1
-      const composed = IndexedFamilies.mapFamily((x: number) => f(g(x)))(family)
-      const sequential = IndexedFamilies.mapFamily(f)(IndexedFamilies.mapFamily(g)(family))
+      const composed = IndexedFamilies.mapFamily((x: number, _i: string) => f(g(x)))(family)
+      const sequential = IndexedFamilies.mapFamily((x: number, _i: string) => f(x))(IndexedFamilies.mapFamily((x: number, _i: string) => g(x))(family))
       
       expect(composed('ab')).toBe(sequential('ab'))
     })
@@ -675,8 +674,8 @@ describe('Indexed Families and Discrete Categories', () => {
       
       // 6. Extract Vect view
       const vectView = VectView.toVectAtDegree(FieldReal)(closed, 0)
-      expect(vectView.V.small?.dim).toBe(1)
-      expect(vectView.V.big?.dim).toBe(2)
+      expect(vectView.V['small']?.dim).toBe(1)
+      expect(vectView.V['big']?.dim).toBe(2)
       
       // 7. Pretty-print for debugging
       const prettyView = Pretty.vectDiagramAtDegree(FieldReal)('Family View', vectView)

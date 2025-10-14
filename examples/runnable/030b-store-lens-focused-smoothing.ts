@@ -1,4 +1,5 @@
 import type { Lens, Store } from "../../allTS";
+import * as AllTS from "../../allTS";
 import type { RunnableExample } from "./types";
 
 const {
@@ -9,7 +10,7 @@ const {
   extendThroughLens,
   movingAvg3,
   movingAvgOnField,
-} = require("../../allTS") as typeof import("../../allTS");
+} = AllTS;
 
 type TelemetrySeries = {
   readonly name: string;

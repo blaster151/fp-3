@@ -22,8 +22,10 @@ describe("Isomorphism axioms", () => {
 
     expect(isIso(category, iso)).toBe(true)
 
-    const [inverse] = category.candidatesToInvert(iso)
-    expect(inverse).toBeDefined()
+    const inverse = category.candidatesToInvert(iso)[0]
+    if (!inverse) {
+      throw new Error("Expected IsoReadyFinSet to construct an inverse candidate")
+    }
 
     const unique = IsoAxioms.uniqueInverse(category, iso, inverse, inverse)
     expect(unique.holds).toBe(true)
@@ -49,8 +51,10 @@ describe("Isomorphism axioms", () => {
     }
     ;(category.arrows as FuncArr[]).push(iso)
 
-    const [inverse] = category.candidatesToInvert(iso)
-    expect(inverse).toBeDefined()
+    const inverse = category.candidatesToInvert(iso)[0]
+    if (!inverse) {
+      throw new Error("Expected IsoReadyFinSet to construct an inverse candidate")
+    }
 
     const bogus: FuncArr = {
       name: "const",

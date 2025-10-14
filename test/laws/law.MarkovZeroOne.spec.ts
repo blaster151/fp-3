@@ -8,6 +8,7 @@ import {
   snd,
   swap,
 } from "../../markov-category";
+import type { Pair } from "../../markov-category";
 import {
   buildDeterminismLemmaWitness,
   checkDeterminismLemma,
@@ -20,7 +21,11 @@ import {
 } from "../../markov-zero-one";
 import type { FinitePermutation, FiniteInjection } from "../../markov-permutation";
 
-const mkBit = () => mkFin([0, 1] as const, (a, b) => a === b);
+type Bit = 0 | 1;
+type BitPair = Pair<Bit, Bit>;
+
+const mkBit = () => mkFin<Bit>([0, 1] as const, (a, b) => a === b);
+const asBitPair = (x: Bit, y: Bit): BitPair => [x, y] as const;
 
 type A = "a0" | "a1";
 
@@ -30,10 +35,8 @@ describe("determinism lemma oracle", () => {
   const pair = tensorObj(bit, bit);
   const tFin = mkBit();
 
-  const prior = detK(AFin, pair, (a) =>
-    a === "a0" ? ([0, 0] as [number, number]) : ([1, 1] as [number, number]),
-  );
-  const stat = detK(pair, tFin, ([x]) => x as 0 | 1);
+  const prior = detK(AFin, pair, (a) => (a === "a0" ? asBitPair(0, 0) : asBitPair(1, 1)));
+  const stat = detK(pair, tFin, ([x]) => x);
 
   it("certifies determinism when hypotheses hold", () => {
     const witness = buildDeterminismLemmaWitness(prior, stat, { label: "toy" });
@@ -45,11 +48,12 @@ describe("determinism lemma oracle", () => {
   });
 
   it("flags non-deterministic composites", () => {
-    const noisyStat = new FinMarkov(pair, tFin, ([x, y]: [number, number]) => {
+    const noisyStat = new FinMarkov(pair, tFin, ([x, y]: BitPair) => {
       if (x === y) {
-        return new Map([[x, 0.6], [1 - x, 0.4]]);
+        const alt: Bit = x === 0 ? 1 : 0;
+        return new Map<Bit, number>([[x, 0.6], [alt, 0.4]]);
       }
-      return new Map([
+      return new Map<Bit, number>([
         [0, 0.5],
         [1, 0.5],
       ]);
@@ -69,13 +73,11 @@ describe("Kolmogorov zero-one oracle", () => {
   const pair = tensorObj(bit, bit);
   const tFin = mkBit();
 
-  const prior = detK(AFin, pair, (a) =>
-    a === "a0" ? ([0, 0] as [number, number]) : ([1, 1] as [number, number]),
-  );
-  const stat = detK(pair, tFin, ([x]) => x as 0 | 1);
+  const prior = detK(AFin, pair, (a) => (a === "a0" ? asBitPair(0, 0) : asBitPair(1, 1)));
+  const stat = detK(pair, tFin, ([x]) => x);
 
-  const piFirst = new FinMarkov(pair, bit, fst<number, number>());
-  const piSecond = new FinMarkov(pair, bit, snd<number, number>());
+  const piFirst = new FinMarkov(pair, bit, fst<Bit, Bit>());
+  const piSecond = new FinMarkov(pair, bit, snd<Bit, Bit>());
   const finiteMarginals = [
     { F: "first", piF: piFirst },
     { F: "second", piF: piSecond },
@@ -94,16 +96,16 @@ describe("Kolmogorov zero-one oracle", () => {
   it("detects failure of finite marginal independence", () => {
     const correlatedPrior = new FinMarkov(AFin, pair, (a: A) =>
       a === "a0"
-        ? new Map<readonly [number, number], number>([
-            [[0, 0], 0.5],
-            [[0, 1], 0.5],
+        ? new Map<BitPair, number>([
+            [asBitPair(0, 0), 0.5],
+            [asBitPair(0, 1), 0.5],
           ])
-        : new Map<readonly [number, number], number>([
-            [[1, 0], 0.5],
-            [[1, 1], 0.5],
+        : new Map<BitPair, number>([
+            [asBitPair(1, 0), 0.5],
+            [asBitPair(1, 1), 0.5],
           ]),
     );
-    const xorStat = detK(pair, tFin, ([x, y]) => ((x ^ y) as 0 | 1));
+    const xorStat = detK(pair, tFin, ([x, y]) => ((x ^ y) as Bit));
 
     const witness = buildKolmogorovZeroOneWitness(correlatedPrior, xorStat, finiteMarginals, {
       label: "xor",
@@ -122,23 +124,21 @@ describe("Hewitt–Savage zero-one oracle", () => {
   const pair = tensorObj(bit, bit);
   const tFin = mkBit();
 
-  const prior = detK(AFin, pair, (a) =>
-    a === "a0" ? ([0, 0] as [number, number]) : ([1, 1] as [number, number]),
-  );
-  const statSym = detK(pair, tFin, ([x, y]) => ((x ^ y) as 0 | 1));
+  const prior = detK(AFin, pair, (a) => (a === "a0" ? asBitPair(0, 0) : asBitPair(1, 1)));
+  const statSym = detK(pair, tFin, ([x, y]) => ((x ^ y) as Bit));
 
-  const piFirst = new FinMarkov(pair, bit, fst<number, number>());
-  const piSecond = new FinMarkov(pair, bit, snd<number, number>());
+  const piFirst = new FinMarkov(pair, bit, fst<Bit, Bit>());
+  const piSecond = new FinMarkov(pair, bit, snd<Bit, Bit>());
   const finiteMarginals = [
     { F: "first", piF: piFirst },
     { F: "second", piF: piSecond },
   ];
 
-  const swapSymmetry: FinitePermutation<[number, number]> = {
+  const swapSymmetry: FinitePermutation<BitPair> = {
     name: "swap",
-    sigmaHat: new FinMarkov(pair, pair, swap<number, number>()),
+    sigmaHat: new FinMarkov(pair, pair, swap<Bit, Bit>()),
   };
-  const permutations: ReadonlyArray<FinitePermutation<[number, number]>> = [swapSymmetry];
+  const permutations: ReadonlyArray<FinitePermutation<BitPair>> = [swapSymmetry];
 
   it("confirms permutation invariance along with Kolmogorov hypotheses", () => {
     const witness = buildHewittSavageWitness(prior, statSym, finiteMarginals, permutations, { label: "toy" });
@@ -149,9 +149,7 @@ describe("Hewitt–Savage zero-one oracle", () => {
   });
 
   it("flags permutation asymmetry", () => {
-    const asymmetricPrior = detK(AFin, pair, (a) =>
-      a === "a0" ? ([0, 1] as [number, number]) : ([1, 0] as [number, number]),
-    );
+    const asymmetricPrior = detK(AFin, pair, (a) => (a === "a0" ? asBitPair(0, 1) : asBitPair(1, 0)));
     const witness = buildHewittSavageWitness(
       asymmetricPrior,
       statSym,
@@ -167,10 +165,10 @@ describe("Hewitt–Savage zero-one oracle", () => {
   });
 
   it("accepts injections preserved on the support via almost-sure equality", () => {
-    const diagInjection: FiniteInjection<[number, number]> = {
+    const diagInjection: FiniteInjection<BitPair> = {
       name: "diag",
       kind: "injection",
-      sigmaHat: detK(pair, pair, ([x, _y]) => [x, x] as [number, number]),
+      sigmaHat: detK(pair, pair, ([x]) => asBitPair(x, x)),
     };
 
     const witness = buildHewittSavageWitness(

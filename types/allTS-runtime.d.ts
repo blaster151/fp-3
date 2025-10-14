@@ -1,4 +1,4 @@
-declare module './allTS' {
+declare module '*allTS' {
   export const PartialFn: unique symbol
   export const JsonF: unique symbol
   export const NatK1: unique symbol

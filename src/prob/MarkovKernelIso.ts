@@ -15,7 +15,9 @@ export function kernelToMatrix<A, B>(
     const row = Bs.map(() => 0);
     for (const { x, p } of d) {
       const j = Bs.findIndex((b) => eqB(b, x));
-      if (j >= 0) row[j] += p;
+      if (j >= 0) {
+        row[j] = (row[j] ?? 0) + p;
+      }
     }
     const s = row.reduce((acc, value) => acc + value, 0) || 1;
     return row.map((value) => value / s);
@@ -36,14 +38,26 @@ export function matrixToKernel<A, B>(
   };
   return (a: A) => {
     const i = idxA(a);
-    return Bs.map((b, j) => ({ x: b, p: P[i][j] })) as Dist<B>;
+    const row = P[i];
+    if (!row) return Bs.map((b) => ({ x: b, p: 0 })) as Dist<B>;
+    return Bs.map((b, j) => ({ x: b, p: row[j] ?? 0 })) as Dist<B>;
   };
 }
 
 export function approxEqMatrix(P: Stoch, Q: Stoch, eps = 1e-7): boolean {
-  if (P.length !== Q.length || P[0].length !== Q[0].length) return false;
-  for (let i = 0; i < P.length; i++) for (let j = 0; j < P[0].length; j++) {
-    if (Math.abs(P[i][j] - Q[i][j]) > eps) return false;
+  const p0 = P[0];
+  const q0 = Q[0];
+  if (!p0 || !q0 || P.length !== Q.length || p0.length !== q0.length) return false;
+  for (let i = 0; i < P.length; i++) {
+    const pRow = P[i];
+    const qRow = Q[i];
+    if (!pRow || !qRow || pRow.length !== qRow.length) return false;
+    for (let j = 0; j < pRow.length; j++) {
+      const p = pRow[j];
+      const q = qRow[j];
+      if (p === undefined || q === undefined) return false;
+      if (Math.abs(p - q) > eps) return false;
+    }
   }
   return true;
 }

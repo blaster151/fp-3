@@ -57,7 +57,7 @@ describe("LAW: Monad laws", () => {
       genA: genInt,
       genFA: () => genResult(),
       genK: () => genResultFn(),
-      pure: Ok,
+      pure: (value: number): Result<string, number> => Ok(value),
       chain: <A, B>(k: (a: A) => Result<string, B>) =>
         (fa: Result<string, A>): Result<string, B> => {
           if (isErr(fa)) return fa
@@ -97,7 +97,7 @@ describe("LAW: Monad laws", () => {
       genA: genInt,
       genFA: () => genReader(),
       genK: () => genReaderK(),
-      pure: <A>(a: A): Reader<number, A> => Reader.of(a),
+      pure: (value: number): Reader<number, number> => Reader.of(value),
       chain: <A, B>(k: (a: A) => Reader<number, B>) =>
         (fa: Reader<number, A>): Reader<number, B> =>
           Reader.chain(k)(fa),
@@ -138,7 +138,7 @@ describe("LAW: Monad laws", () => {
       genA: genInt,
       genFA: () => genTask(),
       genK: () => genTaskK(),
-      pure: <A>(a: A): Task<A> => Task.of(a),
+      pure: (value: number): Task<number> => Task.of(value),
       chain: <A, B>(k: (a: A) => Task<B>) =>
         (fa: Task<A>): Task<B> =>
           Task.chain(k)(fa),
@@ -179,7 +179,7 @@ describe("LAW: Monad laws", () => {
       genA: genInt,
       genFA: () => genReaderTask(),
       genK: () => genReaderTaskK(),
-      pure: <A>(a: A): ReaderTask<number, A> => ReaderTask.of(a),
+      pure: (value: number): ReaderTask<number, number> => ReaderTask.of(value),
       chain: <A, B>(k: (a: A) => ReaderTask<number, B>) =>
         (fa: ReaderTask<number, A>): ReaderTask<number, B> =>
           ReaderTask.chain(k)(fa),
@@ -236,7 +236,7 @@ describe("LAW: Monad laws", () => {
       genA: genInt,
       genFA: () => genReaderTaskResult(),
       genK: () => genReaderTaskResultK(),
-      pure: <A>(a: A): ReaderTaskResult<number, string, A> => readerTaskResultMonad.of(a),
+      pure: (value: number): ReaderTaskResult<number, string, number> => readerTaskResultMonad.of(value),
       chain: <A, B>(k: (a: A) => ReaderTaskResult<number, string, B>) =>
         (fa: ReaderTaskResult<number, string, A>): ReaderTaskResult<number, string, B> =>
           async (env: number) => {

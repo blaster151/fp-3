@@ -52,4 +52,10 @@ declare module 'vitest' {
   export const test: ChainableTest;
   export const it: ChainableTest;
   export function expect(actual: unknown): MatcherTree;
+
+  namespace expect {
+    function arrayContaining<T>(expected: readonly T[]): unknown;
+    function stringContaining(expected: string): unknown;
+    function objectContaining<T extends Record<string, unknown>>(expected: T): unknown;
+  }
 }

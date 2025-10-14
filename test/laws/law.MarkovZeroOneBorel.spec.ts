@@ -31,9 +31,15 @@ describe("Kolmogorov zero–one witness adapters for BorelStoch", () => {
   );
 
   const projection = (index: number) =>
-    new FinMarkov(tripleFin, bit, (tuple: Triple) => new Map([[tuple[index], 1]]));
+    new FinMarkov(tripleFin, bit, (tuple: Triple) => {
+      const value = tuple[index];
+      if (value === undefined) {
+        throw new Error(`Projection ${index} received a tuple outside the carrier`);
+      }
+      return new Map([[value, 1]]);
+    });
 
-  const finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<Triple>> = [
+  const finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<Triple, Bit>> = [
     { F: "first", piF: projection(0) },
     { F: "second", piF: projection(1) },
     { F: "third", piF: projection(2) },
@@ -45,7 +51,13 @@ describe("Kolmogorov zero–one witness adapters for BorelStoch", () => {
     (omega) => omega[2],
   ];
 
-  const sampler: Sampler<Triple> = () => tripleFin.elems[0];
+  const sampler: Sampler<Triple> = () => {
+    const first = tripleFin.elems[0];
+    if (!first) {
+      throw new Error("Expected tripleFin to contain at least one element");
+    }
+    return first;
+  };
 
   const product = (values: ReadonlyArray<Bit>): Triple => {
     const [a, b, c] = values as [Bit, Bit, Bit];
@@ -74,7 +86,11 @@ describe("Kolmogorov zero–one witness adapters for BorelStoch", () => {
     const report = checkBorelKolmogorovZeroOne(witness);
     expect(report.holds).toBe(true);
     expect(report.deterministic).toBe(true);
-    const composite = report.composite.k(IFin.elems[0]);
+    const unit = IFin.elems[0];
+    if (!unit) {
+      throw new Error("Expected IFin to contain a terminal element");
+    }
+    const composite = report.composite.k(unit);
     expect(composite.size).toBe(1);
     const probabilityOne = composite.get(1);
     expect(probabilityOne).not.toBeUndefined();

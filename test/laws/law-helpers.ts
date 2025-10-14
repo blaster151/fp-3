@@ -65,9 +65,10 @@ export interface MonadConfig<F, A> {
   readonly genA: () => fc.Arbitrary<A>
   readonly genFA: () => fc.Arbitrary<F>
   readonly genK: () => fc.Arbitrary<(a: A) => F>
-  readonly pure: <T>(value: T) => F
+  readonly pure: (value: A) => F
   readonly chain: (k: (a: A) => F) => (fa: F) => F
   readonly eq: (left: F, right: F) => MaybePromiseBoolean
+  readonly isAsync?: boolean
 }
 
 export interface MonoidConfig<A> extends LawTestConfig<A> {

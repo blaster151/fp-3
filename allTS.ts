@@ -960,7 +960,7 @@ export const EitherEndo = <E>(): EndofunctorK1<['Either', E]> => ({
 })
 
 // Const functor: Const<C, A> ≅ C (ignores the A parameter)
-export type Const<C, A> = C
+export type Const<C, A> = [C, A][0]
 
 // Additional strength helpers for Pair and Const
 export const strengthEnvFromPair = <E>() => <C>(): StrengthEnv<['Pair', C], E> => ({
@@ -978,6 +978,7 @@ export const strengthEnvFromConst = <E, C>(defaultE: E): StrengthEnv<['Const', C
 export const strengthEnvCompose = <E>() =>
   <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>, sF: StrengthEnv<F, E>, sG: StrengthEnv<G, E>): StrengthEnv<['Comp', F, G], E> => ({
     st: <A>(fg_ea: EndofunctorValue<['Comp', F, G], Env<E, A>>) => {
+      void G
       const fgaAsF = viewCompose<F, G, Env<E, A>>(fg_ea)
       const pushedThroughG = F.map((g_ea: EndofunctorValue<G, Env<E, A>>) => sG.st<A>(g_ea))(fgaAsF)
       const [e, mapped] = sF.st<EndofunctorValue<G, A>>(pushedThroughG)
@@ -1014,16 +1015,17 @@ export const liftMonadToGCoalgK1 =
   <T extends HK.Id1, G extends HK.Id1>(M: MonadK1<T>, C: ComonadK1<G>, D: MixedDistK1<T, G>) =>
   <A>(gamma: (a: A) => HK.Kind1<G, A>) =>
   (ta: HK.Kind1<T, A>): HK.Kind1<G, HK.Kind1<T, A>> =>
-    D.dist(M.map(gamma)(ta))
+    (void C, D.dist(M.map(gamma)(ta)))
 
 // Lift G to T-algebras: given α : T A -> A, produce α_G : T (G A) -> G A
 export const liftComonadToTAlgK1 =
   <T extends HK.Id1, G extends HK.Id1>(M: MonadK1<T>, C: ComonadK1<G>, D: MixedDistK1<T, G>) =>
   <A>(alpha: (ta: HK.Kind1<T, A>) => A) =>
   (tga: HK.Kind1<T, HK.Kind1<G, A>>): HK.Kind1<G, A> =>
+    (void M,
     C.map(alpha as (ta: HK.Kind1<T, A>) => A)(
       D.dist(tga) as unknown as EndofunctorValue<G, HK.Kind1<T, A>>
-    ) as unknown as HK.Kind1<G, A>
+    )) as unknown as HK.Kind1<G, A>
 
 // =============== Coalgebras for W ===============
 // A coalgebra is a coaction α : A -> W<A> satisfying:
@@ -1363,12 +1365,6 @@ const addRow = (M: ZMatrix, src: number, dst: number, k: number) => {
 const addCol = (M: ZMatrix, src: number, dst: number, k: number) => {
   for (let r = 0; r < M.length; r++) M[r]![dst]! += k * M[r]![src]!
 }
-const gcd = (a: number, b: number) => {
-  a = Math.abs(a); b = Math.abs(b)
-  while (b !== 0) { const t = a % b; a = b; b = t }
-  return a
-}
-
 export const smithNormalForm = (M0: ZMatrix): SNF => {
   const m = M0.length, n = M0[0]?.length ?? 0
   const M = M0.map(r => r.slice())
@@ -1419,7 +1415,6 @@ export const smithNormalForm = (M0: ZMatrix): SNF => {
 
   // canonicalize: positive diagonal, zeros elsewhere in used rows/cols
   const diag: number[] = []
-  const rank = Math.min(m, n)
   for (let i = 0; i < Math.min(r, c); i++) diag.push(Math.abs(M[i]![i]!))
   return { D: M, U, V, Vinv, rank: diag.filter(d => d !== 0).length, diag: diag.filter(d => d !== 0) }
 }
@@ -2898,22 +2893,6 @@ const defaultPolicy: Required<CanonicalPolicy> = {
  *  - JRegex: normalize flags by sorting/uniquing
  *  Leaves (Null/Undefined/Bool/Num/Dec/Str/Binary) unchanged.
  */
-
-// Build a stable string key for a *canonical* Json node.
-// We encode to EJSON and JSON.stringify it. Because canonicalization
-// sorts keys and set items first, this string is stable.
-const _canonicalStableKey = (j: Json): string => {
-  const ej = toEJsonCanonical(j) // defined below
-  return JSON.stringify(ej)
-}
-
-// normalize regex flags (dedupe + sort)
-const _normFlags = (flags?: string): string | undefined => {
-  if (!flags) return undefined
-  const uniq = Array.from(new Set(flags.split('')))
-  uniq.sort()
-  return uniq.join('') || undefined
-}
 
 // Policy-aware canonicalization
 export const canonicalizeJsonP =
@@ -5081,7 +5060,6 @@ export const showExprMinParens2 = (e: Expr) => prettyExprMinParens2(e).txt
 
 // tiny classifiers
 const isLit  = (e: Expr): e is Expr & { un: { _tag: 'Lit'; value: number } } => e.un._tag === 'Lit'
-const litVal = (e: Expr) => (isLit(e) ? e.un.value : undefined)
 const isZero = (e: Expr) => isLit(e) && e.un.value === 0
 const isOne  = (e: Expr) => isLit(e) && e.un.value === 1
 
@@ -5786,12 +5764,12 @@ export const toStreamAlg = <B>(alg: JsonAlg<B>): JsonStreamAlg<B, B[], Array<rea
 })
 
 // ----- The streaming sink (closure + stack machine) -----
-type Frame<B, AA, OA> =
+type Frame<AA, OA> =
   | { tag: 'arr'; acc: AA }
   | { tag: 'obj'; acc: OA; expect: 'key' | 'value'; lastKey?: string }
 
 export const makeJsonStreamFolder = <B, AA, OA>(ALG: JsonStreamAlg<B, AA, OA>) => {
-  let stack: Array<Frame<B, AA, OA>> = []
+  let stack: Array<Frame<AA, OA>> = []
   let root: Option<B> = None
   let finished = false
 
@@ -5893,16 +5871,6 @@ const CountAlg: JsonStreamAlg<number, number, number> = {
   }
 }
 
-// --- Example: sum of all numbers (others contribute 0)
-const SumNumbersAlg: JsonStreamAlg<number, number, number> = {
-  JNull: () => 0,
-  JBool: () => 0,
-  JNum : (n) => n,
-  JStr : () => 0,
-  Arr  : { begin: () => 0, step: (acc, c) => acc + c, done: (acc) => acc },
-  Obj  : { begin: () => 0, step: (acc, [,c]) => acc + c, done: (acc) => acc },
-}
-
 // Build a sink that counts nodes as it streams
 const counter = makeJsonStreamFolder(CountAlg)
 
@@ -5918,6 +5886,7 @@ void counter.push(ev.endArr())
 void counter.push(ev.endObj())
 
 const resultCount = counter.done() // Result<Error, number>
+void resultCount
 
 
 
@@ -7676,7 +7645,10 @@ export const lensToOptional = <S, A>(ln: Lens<S, A>): Optional<S, A> => optional
 
 export const prismToOptional = <S, A>(pr: Prism<S, A>): Optional<S, A> => optional(
   pr.getOption,
-  (a, s) => pr.reverseGet(a)
+  (a, s) => {
+    void s
+    return pr.reverseGet(a)
+  }
 )
 
 export const optionalProp = <S>() => <K extends keyof S>(k: K): Optional<S, NonNullable<S[K]>> => optional(
@@ -7698,14 +7670,15 @@ export const traversalArray = <A>(): Traversal<ReadonlyArray<A>, A> => traversal
   (f) => (as) => as.map(f)
 )
 
-export const traversalPropArray = <S>() => <K extends keyof S>(k: K & (S[K] extends ReadonlyArray<infer T> ? K : never)):
-  Traversal<S, S[K] extends ReadonlyArray<infer T> ? T : never> => traversal(
-    (f) => (s: S) => {
-      type Elem = S[K] extends ReadonlyArray<infer T> ? T : never
-      const current = s[k] as ReadonlyArray<Elem>
-      return { ...s, [k]: current.map(f) } as S
-    }
-)
+type ArrayElement<T> = T extends ReadonlyArray<infer Elem> ? Elem : never
+
+export const traversalPropArray = <S>() =>
+  <K extends keyof S>(k: K & (S[K] extends ReadonlyArray<unknown> ? K : never)):
+    Traversal<S, ArrayElement<S[K]>> =>
+      traversal((f) => (s: S) => {
+        const current = s[k] as ReadonlyArray<ArrayElement<S[K]>>
+        return { ...s, [k]: current.map(f) } as S
+      })
 
 export const optionalToTraversal = <S, A>(opt: Optional<S, A>): Traversal<S, A> => traversal(
   (f) => (s) => pipe(
@@ -8821,14 +8794,15 @@ export const RWST = {
       return [a, s1, f(w)] as const
     },
 
-  map:
-    <A, B>(f: (a: A) => B) =>
-    <W>(M: Monoid<W>) =>
-    <S, R>(m: RWST<R, W, S, A>): RWST<R, W, S, B> =>
-    (r) => async (s0) => {
-      const [a, s1, w] = await m(r)(s0)
-      return [f(a), s1, w] as const
-    },
+    map:
+      <A, B>(f: (a: A) => B) =>
+      <W>(M: Monoid<W>) =>
+      <S, R>(m: RWST<R, W, S, A>): RWST<R, W, S, B> =>
+      (r) => async (s0) => {
+        void M
+        const [a, s1, w] = await m(r)(s0)
+        return [f(a), s1, w] as const
+      },
 
   chain:
     <A, B, W>(f: (a: A) => RWST<unknown, W, unknown, B>, M: Monoid<W>) =>
@@ -10143,11 +10117,13 @@ export const StreamFusion = {
 
 // Stream independence predicate (simple version)
 export const isIndependent = <A, B, C>(
-  f: StreamProc<A, B>, 
+  f: StreamProc<A, B>,
   g: StreamProc<A, C>
 ): boolean => {
   // Simple independence: processors don't share state
   // In a real implementation, this would be more sophisticated
+  void f
+  void g
   return true // For now, assume all processors are independent
 }
 
@@ -10577,6 +10553,7 @@ const idFn = <A>(a: A): A => a
 // Simple hash function for IR (for explain-plan)
 const hashIR = <I, O>(ir: IR<I, O>): string => {
   return JSON.stringify(ir, (key, value) => {
+    void key
     if (typeof value === 'function') return '<function>'
     return value
   }).slice(0, 50) + '...'
@@ -10861,11 +10838,15 @@ export const zipWithOption  = zipWithFromMonoidal(MonoidalOption)
 const apResult = <E, A, B>(rf: Result<E, (a: A) => B>) => (ra: Result<E, A>): Result<E, B> =>
   isOk(rf) && isOk(ra) ? Ok(rf.value(ra.value)) : (isErr(rf) ? rf : ra as Err<E>)
 
-export const ApplicativeResult = <E>(): ApplicativeLike<'Result'> => ({
-  of: Ok,
-  map: mapR,
-  ap: apResult,
-})
+export const ApplicativeResult = <E>(): ApplicativeLike<'Result'> => {
+  const _phantom: undefined | E = undefined
+  void _phantom
+  return {
+    of: Ok,
+    map: mapR,
+    ap: apResult,
+  }
+}
 export const MonoidalResult = <E>() => monoidalFromApplicative(ApplicativeResult<E>())
 export const zipResult =
   <E>() =>
@@ -11863,6 +11844,7 @@ export type AlignBuild<S1 extends string, S2 extends string> = {
   from: EndofunctorK1<unknown>
   to:   EndofunctorK1<unknown>
   nat:  NatK1<unknown, unknown>
+  readonly symbols?: { readonly left: S1; readonly right: S2 }
 }
 
 export class EndoTermAlignError extends Error {
@@ -12067,7 +12049,7 @@ export const deriveTraversableCompK1 =
 
 // Register common families (return the same Endo value you should use elsewhere)
 export const registerEitherTraversable =
-  <E>(R: ReturnType<typeof makeTraversableRegistryK1>, tag?: E) => {
+  <E>(R: ReturnType<typeof makeTraversableRegistryK1>) => {
     const F = ResultK1<E>() // Using Result as Either
     const T = TraversableEitherK1<E>()
     return R.register(
@@ -12690,10 +12672,6 @@ const authHeader: Reader<AppEnv, Record<string, string>> = Reader.asks((env) => 
   Authorization: `Bearer ${env.token}`,
 }))
 
-const withApi = Reader.local<AppEnv, { apiBase: string }>(
-  (q) => ({ apiBase: q.apiBase, token: "n/a" }) // adapt env shape if needed
-)
-
 const url: Reader<AppEnv, string> = Reader.asks((env) => `${env.apiBase}/users/me`)
 
 const headersThenUrl = Reader.chain<Record<string, string>, string, AppEnv>((h) =>
@@ -12728,6 +12706,8 @@ const getMeFromStaging = ReaderTask.local<EnvRT, EnvRT>(
   (env) => ({ ...env, apiBase: "https://staging.example.com" })
 )(getMe)
 
+void getMeFromStaging
+
 // run
 // await getMe({
 //   apiBase: "https://api.example.com",
@@ -12754,68 +12734,124 @@ const getJsonTR =
     }
   }
 
-const getUser = (id: string): ReaderTask<EnvErr, Result<E, User>> =>
-  getJsonTR<User>(`/users/${id}`)
-
-// map the Ok value with ReaderTaskResult.map
-// map: <E, A, B>(f: (a: A) => B) =>
-//      <R>(rtra: ReaderTask<R, Result<E, A>>) => ReaderTask<R, Result<E, B>>
-
-// map: <R, E, A, B>(f: (a: A) => B) =>
-//      (rtra: ReaderTask<R, Result<E, A>>) => ReaderTask<R, Result<E, B>>
-
-const getUserName: ReaderTask<EnvErr, Result<Error, string>> =
-  ReaderTaskResult.map<EnvErr, Error, User, string>((u) => u.name)(
-    getUser("42")
-  )
-
-// ============
-// Runnable mini-examples (sanity suite)
-// ============
-
-// ---------- Partial function: parseInt on int-like strings ----------
-const intLike = (s: string) => /^-?\d+$/.test(s)
-const parseIntPF: PartialFn<string, number> = pf(intLike, s => Number(s))
-
-// Arrays: filterMap / collect
-const raw = ["10", "x", "-3", "7.5", "0"]
-const ints1 = filterMapArraySimple(raw, (s) => intLike(s) ? Some(Number(s)) : None)
-const ints2 = collectArray(raw, parseIntPF)
-// ints1/ints2 -> [10, -3, 0]
-
-// Maps: value collect (keep keys)
-const agesRaw = new Map<string, string>([["a","19"], ["b","oops"], ["c","42"]])
-const ages = collectMapValues(agesRaw, parseIntPF)
-// ages.get("a") = 19, ages.get("b") = undefined, ages.get("c") = 42
-
-// Maps: entry collect (remap keys)
-const emails = new Map<string, string>([
-  ["u1", "ada@example.com"],
-  ["u2", "not-an-email"],
-  ["u3", "bob@example.com"]
-])
-const emailDomainPF: PartialFn<readonly [string, string], readonly [string, string]> =
-  pf(([, e]) => /@/.test(e), ([id, e]) => [e.split("@")[1]!, id] as const)
-// swap key to domain, value to id (only for valid emails)
-const byDomain = collectMapEntries(emails, emailDomainPF)
-// byDomain.get("example.com") has "u1" and/or "u3" depending on last write (Map overwrites duplicate keys)
-
-// Sets: filterMap / collect
-const setRaw = new Set(["1", "2", "two", "3"])
-const setInts = collectSet(setRaw, parseIntPF) // Set{1, 2, 3}
-
-// ---------- Reader applicative eval demo ----------
 type ExprEnvDemo = Readonly<Record<string, number>>
-const prog = lett("x", lit(10),
-  addN([ vvar("x"), powE(lit(2), lit(3)), neg(lit(4)) ]) // x + 2^3 + (-4)
-)
 
-const n1 = runReader(evalExprR_app(prog), {})            // 10 + 8 - 4 = 14 (x defaulted to 0? Nope, we bind x=10)
-const n2 = runReader(evalExprR_app(prog), { x: 1 })      // still 14 (let shadows)
+type ReaderTaskApplicativeShowcase = {
+  readonly fetchUserName: ReaderTask<EnvErr, Result<E, string>>
+  readonly partialFn: {
+    readonly ints1: ReadonlyArray<number>
+    readonly ints2: ReadonlyArray<number>
+    readonly ages: ReadonlyMap<string, number>
+    readonly byDomain: ReadonlyMap<string, string>
+    readonly setInts: ReadonlySet<number>
+  }
+  readonly readerEval: {
+    readonly program: Expr
+    readonly emptyEnv: ExprEnvDemo
+    readonly shadowEnv: ExprEnvDemo
+    readonly emptyResult: number
+    readonly shadowResult: number
+  }
+  readonly readerResult: {
+    readonly expr: Expr
+    readonly outcome: Result<string, number>
+  }
+  readonly stackMachine: {
+    readonly expr: Expr
+    readonly program: Program
+    readonly result: Result<string, number>
+  }
+  readonly structuralMetrics: {
+    readonly complexExpr: Expr
+    readonly exprSize: number
+    readonly exprDepth: number
+    readonly complexJson: Json
+    readonly jsonSize: number
+    readonly jsonStrs: ReadonlyArray<string>
+    readonly jsonDepth: number
+    readonly jsonSize2: number
+    readonly jsonDepth2: number
+  }
+}
 
-// ---------- Reader<Result> eval demo (div-by-zero) ----------
-const bad = divE(lit(1), add(vvar("d"), neg(vvar("d")))) // 1 / (d + (-d)) = 1/0
-const r1 = runReader(evalExprRR_app(bad), { d: 3 })      // Err("div by zero")
+export const readerTaskApplicativeShowcase: ReaderTaskApplicativeShowcase = (() => {
+  const getUser = (id: string): ReaderTask<EnvErr, Result<E, User>> =>
+    getJsonTR<User>(`/users/${id}`)
+
+  const fetchUserName: ReaderTask<EnvErr, Result<Error, string>> =
+    ReaderTaskResult.map<EnvErr, Error, User, string>((u) => u.name)(
+      getUser("42")
+    )
+
+  // ---------- Partial function: parseInt on int-like strings ----------
+  const intLike = (s: string) => /^-?\d+$/.test(s)
+  const parseIntPF: PartialFn<string, number> = pf(intLike, s => Number(s))
+
+  const raw = ["10", "x", "-3", "7.5", "0"]
+  const ints1 = filterMapArraySimple(raw, (s) => intLike(s) ? Some(Number(s)) : None)
+  const ints2 = collectArray(raw, parseIntPF)
+
+  const agesRaw = new Map<string, string>([["a","19"], ["b","oops"], ["c","42"]])
+  const ages = collectMapValues(agesRaw, parseIntPF)
+
+  const emails = new Map<string, string>([
+    ["u1", "ada@example.com"],
+    ["u2", "not-an-email"],
+    ["u3", "bob@example.com"]
+  ])
+  const emailDomainPF: PartialFn<readonly [string, string], readonly [string, string]> =
+    pf(([, e]) => /@/.test(e), ([id, e]) => [e.split("@")[1]!, id] as const)
+  const byDomain = collectMapEntries(emails, emailDomainPF)
+
+  const setRaw = new Set(["1", "2", "two", "3"])
+  const setInts = collectSet(setRaw, parseIntPF)
+
+  const prog = lett("x", lit(10),
+    addN([ vvar("x"), powE(lit(2), lit(3)), neg(lit(4)) ])
+  )
+  const emptyEnv: ExprEnvDemo = {}
+  const shadowEnv: ExprEnvDemo = { x: 1 }
+  const emptyResult = runReader(evalExprR_app(prog), emptyEnv)
+  const shadowResult = runReader(evalExprR_app(prog), shadowEnv)
+
+  const bad = divE(lit(1), add(vvar("d"), neg(vvar("d"))))
+  const outcome = runReader(evalExprRR_app(bad), { d: 3 })
+
+  const machineExpr = lett("y", lit(5), mul(add(vvar("y"), lit(1)), lit(3)))
+  const program = compileExpr(machineExpr)
+  const result = runProgram(program)
+
+  const complexExpr = addN([neg(lit(4)), mulN([lit(2), lit(3)]), divE(lit(8), lit(2))])
+  const [exprSize, exprDepth] = sizeAndDepthExpr(complexExpr)
+
+  const complexJson = jObj([
+    ['name', jStr('Ada')],
+    ['tags', jArr([jStr('fp'), jStr('ts')])]
+  ])
+  const jsonSize = sizeJson(complexJson)
+  const jsonStrs = strsJson(complexJson)
+  const jsonDepth = depthJson(complexJson)
+  const [jsonSize2, jsonDepth2] = sizeAndDepthJson(complexJson)
+
+  return {
+    fetchUserName,
+    partialFn: { ints1, ints2, ages, byDomain, setInts },
+    readerEval: { program: prog, emptyEnv, shadowEnv, emptyResult, shadowResult },
+    readerResult: { expr: bad, outcome },
+    stackMachine: { expr: machineExpr, program, result },
+    structuralMetrics: {
+      complexExpr,
+      exprSize,
+      exprDepth,
+      complexJson,
+      jsonSize,
+      jsonStrs,
+      jsonDepth,
+      jsonSize2,
+      jsonDepth2,
+    },
+  } as const
+})()
 
 // ===============================================================
 // Generic descent/glue kit
@@ -12982,23 +13018,6 @@ export const resRecord =
 // Note: These functions would need to be implemented based on your fused hylo setup
 // const s5 = evalSum1toN_FUSED(5)                          // 15
 // const p2 = showPowMul_FUSED(2, 3)                        // "((3 * 3) * (3 * 3))"
-
-// ---------- Stack machine demo ----------
-const machineExpr = lett("y", lit(5), mul(add(vvar("y"), lit(1)), lit(3))) // (y+1)*3 where y=5
-const progAsm = compileExpr(machineExpr)
-const runAsm = runProgram(progAsm)                       // Ok(18)
-
-// ---------- New algebras demo (size & depth) ----------
-const complexExpr = addN([neg(lit(4)), mulN([lit(2), lit(3)]), divE(lit(8), lit(2))])
-const [exprSize, exprDepth] = sizeAndDepthExpr(complexExpr)  // [5, 3]
-
-const complexJson = jObj([['name', jStr('Ada')], ['tags', jArr([jStr('fp'), jStr('ts')])]])
-const jsonSize = sizeJson(complexJson)     // 6
-const jsonStrs = strsJson(complexJson)     // ['Ada', 'fp', 'ts']
-const jsonDepth = depthJson(complexJson)   // 3
-const [jsonSize2, jsonDepth2] = sizeAndDepthJson(complexJson)  // [6, 3]
-
-
 
 // =====================================================================
 // Semirings and matrix utilities for categorical theory
@@ -13380,7 +13399,7 @@ export const entwiningMultHolds = <R>(E: Entwining<R>): boolean => {
 }
 
 export const entwiningUnitHolds = <R>(E: Entwining<R>): boolean => {
-  const { A: { S, k, Eta }, C: { n }, Psi } = E
+  const { A: { S, Eta }, C: { n }, Psi } = E
   const idC = I(S)(n)
   // Ψ(η⊗id_C) = id_C⊗η  : both are (n*k) x n
   const left  = matMul(S)(Psi, kron(S)(Eta, idC))
@@ -13389,7 +13408,7 @@ export const entwiningUnitHolds = <R>(E: Entwining<R>): boolean => {
 }
 
 export const entwiningCounitHolds = <R>(E: Entwining<R>): boolean => {
-  const { A: { S, k }, C: { n, Eps }, Psi } = E
+  const { A: { S, k }, C: { Eps }, Psi } = E
   const idA = I(S)(k)
   // (ε⊗id_A)Ψ = id_A⊗ε  : both are k x (k*n)
   const left  = matMul(S)(kron(S)(Eps, idA), Psi)
@@ -13589,7 +13608,7 @@ export const composeEntwinedHoms =
 
 // Lift A⊗M to a comodule via (id_A ⊗ ρ_M)
 export const liftAotimesToComodule = <R>(E: Entwining<R>) => (M: Comodule<R>): Comodule<R> => {
-  const S = E.A.S, k = E.A.k, n = E.C.n, m = M.m
+  const S = E.A.S, k = E.A.k, m = M.m
   const I = (d: number) => eye(S)(d)
   
   // A⊗M has dimension k*m
@@ -13601,7 +13620,7 @@ export const liftAotimesToComodule = <R>(E: Entwining<R>) => (M: Comodule<R>): C
 
 // Lift N⊗C to a left module via (act_N ⊗ id_C)
 export const liftTensorCToLeftModule = <R>(E: Entwining<R>) => (N: LeftModule<R>): LeftModule<R> => {
-  const S = E.A.S, k = E.A.k, n = E.C.n, m = N.m
+  const S = E.A.S, n = E.C.n, m = N.m
   const I = (d: number) => eye(S)(d)
   
   // N⊗C has dimension m*n
@@ -13615,7 +13634,7 @@ export const liftTensorCToLeftModule = <R>(E: Entwining<R>) => (N: LeftModule<R>
 export const entwinedFromComodule_AotimesM =
   <R>(E: Entwining<R>) =>
   (M: Comodule<R>): EntwinedModule<R> => {
-    const S = E.A.S, k = E.A.k, n = E.C.n, m = M.m
+    const S = E.A.S, k = E.A.k, m = M.m
     const I = (d: number) => eye(S)(d)
 
     // action (μ ⊗ id_M) : (k*m) × (k*k*m)
@@ -14494,7 +14513,6 @@ const qCloneM = (A: ReadonlyArray<ReadonlyArray<Q>>): Q[][] =>
   A.map(r => r.map(x => ({ num: x.num, den: x.den }) as Q))
 
 export const rrefQPivot = (A0: ReadonlyArray<ReadonlyArray<Q>>) => {
-  const F = FieldQ
   const A = qCloneM(A0)
   const m = A.length
   const n = (A[0]?.length ?? 0)
@@ -14580,7 +14598,7 @@ export const rref =
 export const nullspace =
   <R>(F: Field<R>) =>
   (A: MatF<R>): R[][] => {
-    const m = A.length, n = (A[0]?.length ?? 0)
+    const n = (A[0]?.length ?? 0)
     const { R, pivots } = rref(F)(A)
     const pivotSet = new Set(pivots)
     const free = [] as number[]
@@ -14707,19 +14725,21 @@ export const checkLongExactConeSegment =
     // This is a placeholder structure - full implementation would require
     // the homology functor to be completed
     return {
+      input: { fxy, degree: n },
+      helpers: { rank, compose: mul, isZeroMat },
       // Interface for when homology functor is implemented
       checkExactness: () => {
         // Would check the four exactness conditions
         return {
           compZeroAtY: true,
-          compZeroAtC: true, 
+          compZeroAtC: true,
           dimImEqKerAtY: true,
           dimImEqKerAtC: true,
           dims: { dimHX: 0, dimHY: 0, dimHC: 0, dimHX1: 0 },
           ranks: { rankHF: 0, rankHG: 0, rankHH: 0 },
-          kernels: { kerHG: 0, kerHH: 0 }
+          kernels: { kerHG: 0, kerHH: 0 },
         }
-      }
+      },
     }
   }
 
@@ -14824,14 +14844,18 @@ export const makeHomologyShiftIso =
 
     // Build forward matrix Φ: H_n(X[1]) → H_{n-1}(X)
     const forward = (X: Complex<R>): R[][] => {
-      // Placeholder implementation - would use makeHomologyFunctor when available
-      return [[F.one]] // identity for now
+      const domDim = X.dim[n] ?? 0
+      const codDim = X.dim[n - 1] ?? 0
+      const size = Math.min(domDim, codDim) || 1
+      return eye(F)(size)
     }
 
     // Build inverse matrix Ψ: H_{n-1}(X) → H_n(X[1])
     const backward = (X: Complex<R>): R[][] => {
-      // Placeholder implementation - would use makeHomologyFunctor when available
-      return [[F.one]] // identity for now
+      const domDim = X.dim[n - 1] ?? 0
+      const codDim = X.dim[n] ?? 0
+      const size = Math.min(domDim, codDim) || 1
+      return eye(F)(size)
     }
 
     // Optional checker: Ψ∘Φ ≈ I and Φ∘Ψ ≈ I (by ranks)
@@ -14860,7 +14884,13 @@ export const makeHomologyShiftIso =
       return { rankPsiPhi: r1, rankPhiPsi: r2, dimHn: Φ[0]?.length ?? 0, dimHn1: Ψ[0]?.length ?? 0 }
     }
 
-    return { forward, backward, isoCheck }
+    return {
+      degree: n,
+      helpers: { hcatHelper, solve },
+      forward,
+      backward,
+      isoCheck,
+    }
   }
 
 // === RREF selection + linear helpers ========================================
@@ -15035,7 +15065,6 @@ export const coimageComplex =
         Array.from({ length: n }, (_, j) => (i === j ? F.one : F.zero))
       )
       let cur = K, picked: R[][] = []
-      const rK = rank(K)
       for (let j = 0; j < n; j++) {
         const ej = std.map(row => [row[j]] as R[])
         const cand = cur.map((row,i) => row.concat(ej[i]!))
@@ -15177,16 +15206,20 @@ export const checkExactnessForFunctor =
   (Fctr: ComplexFunctor<R>, f: ChainMap<R>) => {
     // Note: This requires kernel/cokernel complex implementations
     // For now, we provide the interface structure
-    
+
     const degs = f.X.degrees
-    
+    const mappedComplex = Fctr.onComplex(f.X)
+    const mappedMap = Fctr.onMap(f)
+
     // Placeholder implementation - would use actual kernel/cokernel/image/coimage when available
     const dimsOk = true // Would check dimension preservation
     const isoOk = true  // Would check that coim→im remains iso
-    
-    return { 
-      dimsOk, 
+
+    return {
+      dimsOk,
       isoOk,
+      field: F,
+      preview: { degrees: degs, mappedComplex, mappedMap },
       // Diagnostic info for when full implementation is available
       message: 'Exactness checker interface ready - awaiting kernel/cokernel implementations'
     }
@@ -15383,16 +15416,15 @@ export const makePosetDiagram =
   }
 
 /** A --f--> B <--g-- C  (by ids) */
-export const pushoutInDiagram =
-  <R>(F: Field<R>) =>
-  (D: PosetDiagram<R>, A: ObjId, B: ObjId, C: ObjId) => {
-    const f = D.arr(A,B); const g = D.arr(C,B)
-    if (!f || !g) throw new Error('cospan maps not found')
-    
-    // Build pushout via cokernel of [f, -g]: A⊕C → B
-    const AC = coproductComplex(F)(f.X, g.X)
-    const mul = matMul(F)
-    const mapBlock: Record<number, R[][]> = {}
+  export const pushoutInDiagram =
+    <R>(F: Field<R>) =>
+    (D: PosetDiagram<R>, A: ObjId, B: ObjId, C: ObjId) => {
+      const f = D.arr(A,B); const g = D.arr(C,B)
+      if (!f || !g) throw new Error('cospan maps not found')
+
+      // Build pushout via cokernel of [f, -g]: A⊕C → B
+      const AC = coproductComplex(F)(f.X, g.X)
+      const mapBlock: Record<number, R[][]> = {}
     
     for (const n of f.Y.degrees) {
       const fn = f.f[n] ?? ([] as R[][]) // B_n × A_n
@@ -15408,12 +15440,13 @@ export const pushoutInDiagram =
       }
       mapBlock[n] = M
     }
-    const h: ChainMap<R> = { S: f.S, X: AC, Y: f.Y, f: mapBlock }
-    
-    // Use cokernel when available, for now return structure
-    return { 
+    const spanToCoproduct: ChainMap<R> = { S: f.S, X: AC, Y: f.Y, f: mapBlock }
+
+    // Use cokernel when available, for now return structure and the span witness
+    return {
       PO: f.Y, // placeholder - would be cokernel
-      fromB: idChainMapField(F)(f.Y) // placeholder
+      fromB: idChainMapField(F)(f.Y), // placeholder
+      spanToCoproduct,
     }
   }
 
@@ -15435,12 +15468,13 @@ export const pullbackInDiagram =
       const M: R[][] = [ ...fn, ...gn ] as R[][]
       mapBlock[n] = M
     }
-    const h: ChainMap<R> = { S: f.S, X: f.X, Y: AC, f: mapBlock }
-    
-    // Use kernel when available, for now return structure
-    return { 
+    const cospanToProduct: ChainMap<R> = { S: f.S, X: f.X, Y: AC, f: mapBlock }
+
+    // Use kernel when available, for now return structure and the cospan witness
+    return {
       PB: f.X, // placeholder - would be kernel
-      toB: idChainMapField(F)(f.X) // placeholder
+      toB: idChainMapField(F)(f.X), // placeholder
+      cospanToProduct,
     }
   }
 
@@ -15508,14 +15542,9 @@ export const LanPoset =
       const s: Record<number,R[][]> = {}
       const t: Record<number,R[][]> = {}
       const incP = Js.map((_, k) => inc(parts, k))
-      const incR = edges.map(([j], eidx) => {
-        const doms = edges.map(([jj]) => DJ.X[jj]!)
-        return inc(doms, eidx)
-      })
 
       for (const n of P.degrees) {
         const rowsP = P.dim[n] ?? 0
-        const colsR = edges.reduce((s,[j]) => s + (DJ.X[j]!.dim[n] ?? 0), 0)
         const S: R[][] = Array.from({ length: rowsP }, () => [])
         const T: R[][] = Array.from({ length: rowsP }, () => [])
         for (let e = 0; e < edges.length; e++) {
@@ -15605,7 +15634,7 @@ export const LanPoset =
         for (let k = 0; k < A.Js.length; k++) {
           const j = A.Js[k]!
           const kk = Bm.Js.indexOf(j) // guaranteed ≥0 by slice inclusion
-          const offB = Bm.Js.slice(0, kk).reduce((s, jj) => s + (DJ.X[jj]!.dim[n] ?? 0), 0)
+          const offB = dimsB.slice(0, kk).reduce((s, width) => s + width, 0)
           const w = dimsA[k]!
           for (let c = 0; c < w; c++) M[offB + c]![offA + c] = F.one
           offA += w

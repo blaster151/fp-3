@@ -46,10 +46,27 @@ export function FinSetCat(universe: Record<FinSetName, readonly string[]>): FinS
   const objects: FinSetName[] = Object.keys(carriers)
   const arrows: FuncArr[] = []
 
-  const eq = (f: FuncArr, g: FuncArr) =>
-    f.dom === g.dom &&
-    f.cod === g.cod &&
-    requireCarrier(carriers, f.dom).every((x) => f.map(x) === g.map(x))
+  const isFuncArr = (value: unknown): value is FuncArr => {
+    if (typeof value !== "object" || value === null) return false
+    const candidate = value as Partial<FuncArr>
+    return (
+      typeof candidate.dom === "string" &&
+      typeof candidate.cod === "string" &&
+      typeof candidate.map === "function"
+    )
+  }
+
+  const eq: {
+    (left: FuncArr, right: FuncArr): boolean
+    (left: unknown, right: unknown): boolean
+  } = (left: unknown, right: unknown) => {
+    if (!isFuncArr(left) || !isFuncArr(right)) return false
+    return (
+      left.dom === right.dom &&
+      left.cod === right.cod &&
+      requireCarrier(carriers, left.dom).every((x) => left.map(x) === right.map(x))
+    )
+  }
 
   const id = (A: FinSetName): FuncArr => ({
     name: `id_${A}`,

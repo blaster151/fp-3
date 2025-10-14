@@ -15,6 +15,7 @@ const Thin2: SimpleCat<Obj, Arr> = {
 describe("dual category", () => {
   const Op = Dual(Thin2);
   const arrow: Arr = { s: 0, t: 1 };
+  const objects: ReadonlyArray<Obj> = [0, 1];
 
   it("reverses sources and targets", () => {
     expect(Op.src(arrow)).toBe(1);
@@ -22,6 +23,6 @@ describe("dual category", () => {
   });
 
   it("is involutive on samples", () => {
-    expect(isInvolutive(Thin2, [arrow], [0, 1])).toBe(true);
+    expect(isInvolutive<Obj, Arr>(Thin2, [arrow], objects)).toBe(true);
   });
 });

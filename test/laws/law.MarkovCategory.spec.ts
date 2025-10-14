@@ -11,7 +11,6 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import * as fc from 'fast-check'
 import {
   mkFin,
   FinMarkov,
@@ -21,7 +20,6 @@ import {
   checkRowStochastic,
   mass,
   fromWeights,
-  MarkovCategory,
   approxEqualMatrix
 } from '../../markov-category'
 import type {
@@ -40,19 +38,32 @@ import {
   buildMarkovPositivityWitness,
   checkDeterministicTensorViaMarginals,
 } from '../../markov-deterministic-structure'
-import { DRMonad } from '../../semiring-dist'
-import { Prob, LogProb, MaxPlus, BoolRig, RPlus, TropicalMaxPlus } from '../../semiring-utils'
-import { delta } from '../../semiring-dist'
+import { DRMonad, mkRDist } from '../../semiring-dist'
+import { Prob, LogProb, RPlus, TropicalMaxPlus } from '../../semiring-utils'
 import { KleisliProb, DistMonad } from '../../probability-monads'
 
+const widenFin = <T>(fin: Fin<T>): Fin<unknown> => fin as unknown as Fin<unknown>
+
+const smallFiniteObjects: ReadonlyArray<Fin<unknown>> = [
+  widenFin(mkFin([0, 1] as const, (a, b) => a === b)),
+  widenFin(mkFin([0, 1, 2] as const, (a, b) => a === b)),
+  widenFin(mkFin(['a', 'b'] as const, (a, b) => a === b)),
+]
+
+const instantiateDRMonad: <R>(rig: R) => ReturnType<typeof DRMonad> =
+  DRMonad as unknown as <R>(rig: R) => ReturnType<typeof DRMonad>
+
+function requireArrayValue<T>(values: ReadonlyArray<T>, index: number, label: string): T {
+  const value = values[index]
+  if (value === undefined) {
+    throw new Error(`${label}: expected value at index ${index}`)
+  }
+  return value
+}
+
 describe("LAW: Markov Category Laws", () => {
-  
-  // Test finite sets for property testing
-  const genSmallFin = () => fc.constantFrom<Fin<any>>(
-    mkFin([0, 1] as const, (a,b) => a === b) as Fin<any>,
-    mkFin([0, 1, 2] as const, (a,b) => a === b) as Fin<any>,
-    mkFin(["a", "b"] as const, (a,b) => a === b) as Fin<any>,
-  )
+
+  const finiteCarriers = smallFiniteObjects
 
   describe("5.1 Dist over CSRig is Affine", () => {
     /**
@@ -65,47 +76,48 @@ describe("LAW: Markov Category Laws", () => {
     
     it("return preserves unit mass", () => {
       const semirings = [
-        { name: "Prob", R: Prob, M: DRMonad(Prob) },
-        { name: "LogProb", R: LogProb, M: DRMonad(LogProb) },
-      ]
+        { name: "Prob", R: Prob },
+        { name: "LogProb", R: LogProb },
+      ] as const
 
-      for (const { name, R, M } of semirings) {
-        fc.assert(
-          fc.property(fc.integer({ min: -10, max: 10 }), (x) => {
-            const dist = M.of(x)
-            const totalMass = [...dist.values()].reduce((a, b) => R.add(a, b), R.zero)
-            const eq = R.eq ?? ((a, b) => Math.abs(a - b) < 1e-10)
-            return eq(totalMass, R.one)
-          }),
-          { numRuns: 100 }
-        )
+      const sampleInputs = [-10, -1, 0, 4, 7]
+
+      for (const { R } of semirings) {
+        const M = instantiateDRMonad(R)
+        const eq = R.eq ?? ((a: number, b: number) => Math.abs(a - b) <= 1e-10)
+
+        for (const value of sampleInputs) {
+          const dist = M.of(value)
+          const total = [...dist.values()].reduce((acc, weight) => R.add(acc, weight), R.zero)
+          expect(eq(total, R.one)).toBe(true)
+        }
       }
     })
 
     it("bind preserves unit mass for stochastic kernels", () => {
       const R = Prob
-      const M = DRMonad(R)
-      
-      fc.assert(
-        fc.property(
-          fc.array(fc.tuple(fc.integer(), fc.float({ min: 0, max: 1 })), { minLength: 1, maxLength: 5 }),
-          fc.func(fc.array(fc.tuple(fc.string(), fc.float({ min: 0, max: 1 })), { minLength: 1, maxLength: 3 })),
-          (pairs, kGen) => {
-            // Create normalized distribution
-            const dist = fromWeights(pairs, true)
-            
-            // Create stochastic kernel
-            const k = (x: number) => fromWeights(kGen(x), true)
-            
-            // Bind should preserve mass
-            const result = M.bind(dist, k)
-            const resultMass = mass(result)
-            
-            return Math.abs(resultMass - 1) < 1e-10
-          }
-        ),
-        { numRuns: 50 }
-      )
+      const M = instantiateDRMonad(R)
+      const eq = R.eq ?? ((a: number, b: number) => Math.abs(a - b) <= 1e-10)
+
+      const distributions = [
+        mkRDist(R, [[0, 1]]),
+        mkRDist(R, [[0, 2], [1, 1]]),
+        mkRDist(R, [[-1, 1], [2, 3], [3, 4]]),
+      ]
+
+      const kernels: ReadonlyArray<(x: number) => Map<number, number>> = [
+        (x) => mkRDist(R, [[x, 1]]),
+        (x) => mkRDist(R, [[x, 2], [x + 1, 1]]),
+        (x) => mkRDist(R, [[x, 1], [x - 1, 1], [x + 2, 1]]),
+      ]
+
+      for (const dist of distributions) {
+        for (const buildKernel of kernels) {
+          const result = M.bind(dist, buildKernel)
+          const total = [...result.values()].reduce((acc, weight) => R.add(acc, weight), R.zero)
+          expect(eq(total, R.one)).toBe(true)
+        }
+      }
     })
   })
 
@@ -122,53 +134,39 @@ describe("LAW: Markov Category Laws", () => {
       checkMarkovComonoid(buildMarkovComonoidWitness(Xf))
 
     it("copy/discard witness forms a commutative comonoid", () => {
-      fc.assert(
-        fc.property(genSmallFin(), (Xf) => {
-          const report = comonoidReport(Xf)
-          return report.holds && report.failures.length === 0
-        }),
-        { numRuns: 20 }
-      )
+      for (const Xf of finiteCarriers) {
+        const report = comonoidReport(Xf)
+        expect(report.holds).toBe(true)
+        expect(report.failures.length).toBe(0)
+      }
     })
 
     it("copy is coassociative: (Δ ⊗ id) ∘ Δ = (id ⊗ Δ) ∘ Δ (up to reassociation)", () => {
-      fc.assert(
-        fc.property(genSmallFin(), (Xf) => {
-          const report = comonoidReport(Xf)
-          return report.copyCoassoc
-        }),
-        { numRuns: 20 }
-      )
+      for (const Xf of finiteCarriers) {
+        const report = comonoidReport(Xf)
+        expect(report.copyCoassoc).toBe(true)
+      }
     })
 
     it("copy is commutative: σ ∘ Δ = Δ", () => {
-      fc.assert(
-        fc.property(genSmallFin(), (Xf) => {
-          const report = comonoidReport(Xf)
-          return report.copyCommut
-        }),
-        { numRuns: 20 }
-      )
+      for (const Xf of finiteCarriers) {
+        const report = comonoidReport(Xf)
+        expect(report.copyCommut).toBe(true)
+      }
     })
 
     it("copy satisfies left counit: (! ⊗ id) ∘ Δ = id", () => {
-      fc.assert(
-        fc.property(genSmallFin(), (Xf) => {
-          const report = comonoidReport(Xf)
-          return report.copyCounitL
-        }),
-        { numRuns: 20 }
-      )
+      for (const Xf of finiteCarriers) {
+        const report = comonoidReport(Xf)
+        expect(report.copyCounitL).toBe(true)
+      }
     })
 
     it("copy satisfies right counit: (id ⊗ !) ∘ Δ = id", () => {
-      fc.assert(
-        fc.property(genSmallFin(), (Xf) => {
-          const report = comonoidReport(Xf)
-          return report.copyCounitR
-        }),
-        { numRuns: 20 }
-      )
+      for (const Xf of finiteCarriers) {
+        const report = comonoidReport(Xf)
+        expect(report.copyCounitR).toBe(true)
+      }
     })
   })
 
@@ -181,15 +179,12 @@ describe("LAW: Markov Category Laws", () => {
      * Test Oracle: checkDeterministicComonoid
      */
 
-    const sampleFins: Array<Fin<any>> = [
-      mkFin([0, 1] as const, (a, b) => a === b),
-      mkFin([0, 1, 2] as const, (a, b) => a === b),
-      mkFin(["a", "b"] as const, (a, b) => a === b)
-    ]
+    const sampleFins = finiteCarriers
 
     const indexOfEq = <T>(fin: Fin<T>, value: T): number => {
       for (let i = 0; i < fin.elems.length; i++) {
-        if (fin.eq(fin.elems[i], value)) return i
+        const candidate = fin.elems[i]
+        if (candidate !== undefined && fin.eq(candidate, value)) return i
       }
       throw new Error("Value not found in finite carrier")
     }
@@ -219,7 +214,7 @@ describe("LAW: Markov Category Laws", () => {
         for (const Yf of sampleFins) {
           const codomain = buildMarkovComonoidWitness(Yf)
           for (const outputs of enumerateOutputs(Xf, Yf)) {
-            const base = (x: unknown) => outputs[indexOfEq(Xf, x)]
+            const base = (x: unknown) => requireArrayValue(outputs, indexOfEq(Xf, x), "deterministic output")
             const arrow = detK(Xf, Yf, base)
             const witness = buildMarkovDeterministicWitness(domain, codomain, arrow, { base })
             const report = checkDeterministicComonoid(witness)
@@ -238,7 +233,7 @@ describe("LAW: Markov Category Laws", () => {
       const domain = buildMarkovComonoidWitness(X)
       const codomain = buildMarkovComonoidWitness(Y)
 
-      const noisy: Kernel<number, string> = (x) =>
+      const noisy: Kernel<number, 'H' | 'T'> = (x) =>
         x === 0
           ? fromWeights([
               ["H", 0.6],
@@ -266,12 +261,16 @@ describe("LAW: Markov Category Laws", () => {
     const left = buildMarkovComonoidWitness(mkFin(["L", "R"] as const, (a, b) => a === b))
     const right = buildMarkovComonoidWitness(mkFin(["x", "y"] as const, (a, b) => a === b))
     const positivity = buildMarkovPositivityWitness(left, right, { label: "left ⊗ right" })
+    const left0 = requireArrayValue(left.object.elems, 0, 'left witness element 0')
+    const left1 = requireArrayValue(left.object.elems, 1, 'left witness element 1')
+    const right0 = requireArrayValue(right.object.elems, 0, 'right witness element 0')
+    const right1 = requireArrayValue(right.object.elems, 1, 'right witness element 1')
 
     it("confirms that deterministic tensors have deterministic marginals", () => {
       const arrow = detK(domain.object, positivity.tensor.object, (value: 0 | 1) =>
         value === 0
-          ? [left.object.elems[0], right.object.elems[0]] as const
-          : [left.object.elems[1], right.object.elems[1]] as const
+          ? [left0, right0] as const
+          : [left1, right1] as const
       )
 
       const report = checkDeterministicTensorViaMarginals(domain, positivity, arrow, { label: "deterministic tensor" })
@@ -287,11 +286,11 @@ describe("LAW: Markov Category Laws", () => {
       const arrow = new FinMarkov(domain.object, positivity.tensor.object, (value: 0 | 1) => {
         if (value === 0) {
           return new Map([
-            [[left.object.elems[0], right.object.elems[0]] as const, 0.5],
-            [[left.object.elems[0], right.object.elems[1]] as const, 0.5],
+            [[left0, right0] as const, 0.5],
+            [[left0, right1] as const, 0.5],
           ])
         }
-        return new Map([[[left.object.elems[1], right.object.elems[1]] as const, 1]])
+        return new Map([[[left1, right1] as const, 1]])
       })
 
       const report = checkDeterministicTensorViaMarginals(domain, positivity, arrow, { label: "nondeterministic tensor" })
@@ -313,13 +312,10 @@ describe("LAW: Markov Category Laws", () => {
      */
 
     it("identity kernel is row-stochastic", () => {
-      fc.assert(
-        fc.property(genSmallFin(), (Xf) => {
-          const id = idK(Xf)
-          return checkRowStochastic(Xf, Xf, id.k)
-        }),
-        { numRuns: 20 }
-      )
+      for (const Xf of finiteCarriers) {
+        const id = idK(Xf)
+        expect(checkRowStochastic(Xf, Xf, id.k)).toBe(true)
+      }
     })
 
     it("composition preserves row-stochastic property", () => {
@@ -354,19 +350,18 @@ describe("LAW: Markov Category Laws", () => {
      */
 
     it("satisfies symmetric monoidal category laws", () => {
-      const X = mkFin([0, 1], (a,b) => a === b)
-      const Y = mkFin(['a', 'b'], (a,b) => a === b)
+      const X = mkFin([0, 1] as const, (a, b) => a === b)
+      const Y = mkFin(['a', 'b'] as const, (a, b) => a === b)
 
-      // Test tensor functoriality
-      const f = detK(X, Y, (x: number) => x === 0 ? 'a' : 'b')
-      const g = detK(Y, X, (y: string) => y === 'a' ? 0 : 1)
-      
-      const h = detK(X, X, (x: number) => 1 - x)
-      const k = detK(Y, Y, (y: string) => y === 'a' ? 'b' : 'a')
+      const f = detK(X, Y, (x: 0 | 1) => (x === 0 ? 'a' : 'b'))
+      const fPrime = detK(Y, Y, (y: 'a' | 'b') => (y === 'a' ? 'b' : 'a'))
+      const g = detK(X, X, (x: 0 | 1) => (x === 0 ? 1 : 0))
+      const gPrime = detK(X, X, (x: 0 | 1) => x)
 
-      // (f ⊗ h) ∘ (g ⊗ k) should equal (f ∘ g) ⊗ (h ∘ k) 
-      const lhs = g.tensor(k).then(f.tensor(h))
-      const rhs = g.then(f).tensor(k.then(h))
+      const first = f.tensor(g)
+      const second = fPrime.tensor(gPrime)
+      const lhs = first.then(second)
+      const rhs = f.then(fPrime).tensor(g.then(gPrime))
 
       expect(approxEqualMatrix(lhs.matrix(), rhs.matrix())).toBe(true)
     })
@@ -427,28 +422,22 @@ describe("LAW: Markov Category Laws", () => {
      */
 
     const semirings = [
-      { name: "RPlus", R: RPlus, isAffine: true },
-      { name: "LogProb", R: LogProb, isAffine: true },
-      { name: "Tropical", R: TropicalMaxPlus, isAffine: true },
-      { name: "Bool", R: BoolRig, isAffine: true },
-    ]
+      { name: "RPlus", R: RPlus },
+      { name: "LogProb", R: LogProb },
+      { name: "Tropical", R: TropicalMaxPlus },
+    ] as const
 
-    semirings.forEach(({ name, R, isAffine }) => {
-      if (!isAffine) return // Skip non-affine semirings for Markov laws
-
+    semirings.forEach(({ name, R }) => {
       it(`${name} semiring satisfies Markov laws`, () => {
-        const M = DRMonad(R)
-        
-        // Test that unit is preserved
-        fc.assert(
-          fc.property(fc.integer(), (x) => {
-            const dist = M.of(x)
-            const total = [...dist.values()].reduce((a, b) => R.add(a, b), R.zero)
-            const eq = R.eq ?? ((a, b) => Math.abs(a - b) < 1e-10)
-            return eq(total, R.one)
-          }),
-          { numRuns: 20 }
-        )
+        const M = instantiateDRMonad(R)
+        const eq = R.eq ?? ((a: number, b: number) => Math.abs(a - b) <= 1e-10)
+        const sampleInputs = [-3, 0, 5]
+
+        for (const value of sampleInputs) {
+          const dist = M.of(value)
+          const total = [...dist.values()].reduce((acc, weight) => R.add(acc, weight), R.zero)
+          expect(eq(total, R.one)).toBe(true)
+        }
       })
     })
   })

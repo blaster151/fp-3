@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import { Prob, BoolRig, MaxPlus, GhostRig, directSum, isEntire } from "../../semiring-utils";
+import type { CSRig } from "../../semiring-utils";
 import { 
   checkEntirety, 
   checkEntiretyDetailed, 
@@ -97,7 +98,7 @@ describe("Entirety law (3.6)", () => {
 
   describe("Cross-Semiring Analysis", () => {
     it("analyzes entirety law across multiple semirings", () => {
-      const semirings = [
+      const semirings: ReadonlyArray<{ readonly name: string; readonly R: CSRig<unknown> }> = [
         { name: "Prob", R: Prob },
         { name: "BoolRig", R: BoolRig },
         { name: "MaxPlus", R: MaxPlus },
@@ -123,7 +124,7 @@ describe("Entirety law (3.6)", () => {
     });
 
     it("finds no counterexamples in well-behaved semirings", () => {
-      const semirings = [
+      const semirings: ReadonlyArray<{ readonly name: string; readonly R: CSRig<unknown> }> = [
         { name: "Prob", R: Prob },
         { name: "BoolRig", R: BoolRig },
         { name: "MaxPlus", R: MaxPlus },
@@ -135,7 +136,7 @@ describe("Entirety law (3.6)", () => {
     });
 
     it("correctly identifies entirety status", () => {
-      const testCases = [
+      const testCases: ReadonlyArray<{ readonly name: string; readonly R: CSRig<unknown>; readonly shouldBeEntire: boolean }> = [
         { name: "Prob", R: Prob, shouldBeEntire: true },
         { name: "BoolRig", R: BoolRig, shouldBeEntire: true },
         { name: "MaxPlus", R: MaxPlus, shouldBeEntire: true },
@@ -144,8 +145,9 @@ describe("Entirety law (3.6)", () => {
       ];
       
       testCases.forEach(({ name, R, shouldBeEntire }) => {
-        expect(isEntire(R)).toBe(shouldBeEntire);
-        expect(satisfiesEntiretyLaw(R, A, f, g)).toBe(true);
+        const rig = R as CSRig<unknown>;
+        expect(isEntire(rig)).toBe(shouldBeEntire);
+        expect(satisfiesEntiretyLaw(rig, A, f, g)).toBe(true);
       });
     });
   });
@@ -186,17 +188,18 @@ describe("Entirety law (3.6)", () => {
   describe("Integration with Previous Steps", () => {
     it("entirety check builds on pullback square foundation", () => {
       // This test verifies that Step 6 properly integrates with Step 5
-      const semirings = [Prob, BoolRig, MaxPlus, GhostRig];
+      const semirings: ReadonlyArray<CSRig<unknown>> = [Prob, BoolRig, MaxPlus, GhostRig];
       
       semirings.forEach(R => {
-        expect(isEntire(R)).toBe(true);
-        
+        const rig = R as CSRig<unknown>;
+        expect(isEntire(rig)).toBe(true);
+
         // The entirety check should delegate to pullback square
-        const entiretyResult = checkEntirety(R, A, f, g);
+        const entiretyResult = checkEntirety(rig, A, f, g);
         expect(entiretyResult).toBe(true);
-        
+
         // Verify this matches direct pullback square check
-        const directResult = checkPullbackSquare(R, A, f, g);
+        const directResult = checkPullbackSquare(rig, A, f, g);
         expect(entiretyResult).toBe(directResult);
       });
     });
@@ -230,8 +233,9 @@ describe("Entirety law (3.6)", () => {
       
       // For all entire semirings, entirety check must pass
       entireSemirings.forEach(({ name, R }) => {
-        expect(isEntire(R)).toBe(true);
-        expect(checkEntirety(R, A, f, g)).toBe(true);
+        const rig = R as CSRig<unknown>;
+        expect(isEntire(rig)).toBe(true);
+        expect(checkEntirety(rig, A, f, g)).toBe(true);
       });
       
       // For non-entire semirings, no requirement (but we don't assert failure)

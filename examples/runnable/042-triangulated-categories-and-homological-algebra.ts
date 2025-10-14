@@ -1,8 +1,6 @@
+import * as AllTS from "../../allTS";
+import type { ChainMap, Complex, ComplexFunctor } from "../../allTS";
 import type { RunnableExample } from "./types";
-
-declare function require(id: string): any;
-
-const all = require("../../allTS") as any;
 
 const {
   RingReal,
@@ -14,26 +12,7 @@ const {
   triangleIsSane,
   smithNormalForm,
   checkExactnessForFunctor,
-} = all;
-
-type Complex<R> = {
-  readonly S: unknown;
-  readonly degrees: ReadonlyArray<number>;
-  readonly dim: Record<number, number>;
-  readonly d: Record<number, ReadonlyArray<ReadonlyArray<R>>>;
-};
-
-type ChainMap<R> = {
-  readonly S: unknown;
-  readonly X: Complex<R>;
-  readonly Y: Complex<R>;
-  readonly f: Record<number, ReadonlyArray<ReadonlyArray<R>>>;
-};
-
-type ComplexFunctor<R> = {
-  onComplex(complex: Complex<R>): Complex<R>;
-  onMap(map: ChainMap<R>): ChainMap<R>;
-};
+} = AllTS;
 
 function formatDimensions(complex: Complex<number>): string {
   return complex.degrees.map((degree) => `${degree}:${complex.dim[degree] ?? 0}`).join(" ");

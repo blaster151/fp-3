@@ -11,18 +11,39 @@ describe("Markov kernels (row-stochastic matrices)", () => {
 
     const lhs = compose(compose(P, Q), R);
     const rhs = compose(P, compose(Q, R));
-    // compare rows approximately
-    for (let i = 0; i < lhs.length; i++)
-      for (let j = 0; j < lhs[0].length; j++)
-        expect(Math.abs(lhs[i][j] - rhs[i][j])).toBeLessThan(1e-7);
+    expect(lhs.length).toBe(rhs.length);
+    lhs.forEach((lhsRow, i) => {
+      const rhsRow = rhs[i];
+      expect(rhsRow).toBeDefined();
+      if (!rhsRow) throw new Error("rhs row missing");
+      expect(lhsRow.length).toBe(rhsRow.length);
+      lhsRow.forEach((lhsValue, j) => {
+        const rhsValue = rhsRow[j];
+        expect(rhsValue).toBeDefined();
+        if (rhsValue === undefined) throw new Error("rhs column missing");
+        expect(Math.abs(lhsValue - rhsValue)).toBeLessThan(1e-7);
+      });
+    });
 
     const I = idStoch(2);
     const PI = compose(P, I);
     const IP = compose(I, P);
-    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
-      expect(Math.abs(PI[i][j] - P[i][j])).toBeLessThan(1e-7);
-      expect(Math.abs(IP[i][j] - P[i][j])).toBeLessThan(1e-7);
-    }
+    PI.forEach((piRow, i) => {
+      const pRow = P[i];
+      const ipRow = IP[i];
+      expect(pRow).toBeDefined();
+      expect(ipRow).toBeDefined();
+      if (!pRow || !ipRow) throw new Error("expected stochastic rows");
+      piRow.forEach((piValue, j) => {
+        const pValue = pRow[j];
+        const ipValue = ipRow[j];
+        expect(pValue).toBeDefined();
+        expect(ipValue).toBeDefined();
+        if (pValue === undefined || ipValue === undefined) throw new Error("expected entries");
+        expect(Math.abs(piValue - pValue)).toBeLessThan(1e-7);
+        expect(Math.abs(ipValue - pValue)).toBeLessThan(1e-7);
+      });
+    });
   });
 
   it("push acts on distributions and respects identity", () => {
@@ -31,7 +52,10 @@ describe("Markov kernels (row-stochastic matrices)", () => {
     const d = [0.4, 0.6];
     const out = push(d, P);
     const idOut = push(d, I);
-    expect(Math.abs(idOut[0] - d[0]) + Math.abs(idOut[1] - d[1])).toBeLessThan(1e-9);
-    expect(Math.abs(out[0] + out[1] - 1)).toBeLessThan(1e-9);
+    const [idOut0 = 0, idOut1 = 0] = idOut;
+    const [d0 = 0, d1 = 0] = d;
+    const [out0 = 0, out1 = 0] = out;
+    expect(Math.abs(idOut0 - d0) + Math.abs(idOut1 - d1)).toBeLessThan(1e-9);
+    expect(Math.abs(out0 + out1 - 1)).toBeLessThan(1e-9);
   });
 });

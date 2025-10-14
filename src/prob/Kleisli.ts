@@ -1,4 +1,5 @@
-import { Dist, DistMonad } from "./Dist";
+import type { Dist } from "./Dist";
+import { DistMonad } from "./Dist";
 
 /** A Markov kernel (finite): a -> Dist<b> */
 export type Kernel<A, B> = (a: A) => Dist<B>;
