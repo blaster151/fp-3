@@ -497,8 +497,9 @@ This document catalogs the algebraic laws that our functional programming constr
   cell and combines both framing reports to witness strict morphisms as common
   refinements of the left/right notions.
 - `relativeAdjunction.resolution.relativeMonad` keeps Theorem 5.24 visible in
-  the registry; the analyzer will compare the induced relative monad against the
-  adjunction’s hom-isomorphism data once the mate calculus is executable.
+  the registry; `relativeMonadFromAdjunction` now synthesises the induced
+  relative monad so the analyzer can immediately compare the recorded
+  unit/extension data against the adjunction’s hom-isomorphism witnesses.
 - `relativeResolution.definition.5.25` certifies that a resolution records the
   inclusion \(j\), apex loose morphism, and comparison isomorphisms that
   reconstruct the underlying \(j\)-relative monad while caching the witnesses

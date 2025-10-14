@@ -60,7 +60,7 @@ import {
   describeRelativeAdjunctionSectionWitness,
 } from "./relative-adjunctions";
 import type { RelativeMonadData } from "./relative-monads";
-import { analyzeRelativeMonadResolution } from "./relative-monads";
+import { analyzeRelativeMonadResolution, relativeMonadFromAdjunction } from "./relative-monads";
 import {
   RelativeAdjunctionLawRegistry,
   type RelativeAdjunctionLawKey,
@@ -653,19 +653,57 @@ export const RelativeAdjunctionOracles = {
     monad?: RelativeMonadData<Obj, Arr, Payload, Evidence>,
   ): RelativeAdjunctionOracleResult => {
     const descriptor = RelativeAdjunctionLawRegistry.resolution;
-    if (!monad) {
-      return pendingOracle(
-        "resolution",
-        `${descriptor.name} oracle requires a relative monad to compare against; none was supplied. Summary: ${descriptor.summary}`,
-      );
+    const derived = monad ? undefined : relativeMonadFromAdjunction(data);
+    const candidate = monad ?? derived?.monad;
+
+    if (!candidate) {
+      const derivedIssues = derived ? derived.issues : [
+        "No relative monad supplied and the adjunction-derived construction failed to produce one.",
+      ];
+      const details = derived
+        ? derived.details
+        : `${descriptor.name} oracle requires either a supplied monad or a successful adjunction-derived construction.`;
+      return {
+        holds: false,
+        pending: false,
+        registryPath: descriptor.registryPath,
+        details,
+        issues: derivedIssues,
+        analysis: derived,
+      };
     }
-    const report = analyzeRelativeMonadResolution({ monad, adjunction: data });
+
+    const report = analyzeRelativeMonadResolution({ monad: candidate, adjunction: data });
+
+    const derivedIssues = derived && !derived.holds ? derived.issues : [];
+    const combinedIssues = [
+      ...derivedIssues,
+      ...(report.holds ? [] : report.issues),
+    ];
+
+    const holds = report.holds && (derived ? derived.holds : true);
+
+    const detailFragments = [
+      derived && derived.details,
+      report.details,
+    ].filter((fragment): fragment is string => fragment !== undefined);
+    const details = holds
+      ? detailFragments.join(" ")
+      : (combinedIssues.length > 0
+          ? `Relative adjunction resolution issues: ${combinedIssues.join("; ")}`
+          : detailFragments.join(" "));
+
     return {
-      holds: report.holds,
+      holds,
       pending: false,
       registryPath: descriptor.registryPath,
-      details: report.details,
-      issues: report.issues,
+      details,
+      issues: holds ? [] : combinedIssues,
+      witness: candidate,
+      analysis: {
+        resolution: report,
+        ...(derived ? { derived } : {}),
+      },
     };
   },
 } as const;
