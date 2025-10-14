@@ -94,7 +94,18 @@ type MarkovCategoryModule = {
 
 type MarkovOraclesModule = {
   readonly MarkovOracles: {
-    readonly top: { readonly vietoris: { readonly status: string } };
+    readonly top: {
+      readonly vietoris: {
+        readonly status: string;
+        readonly adapters?: () => {
+          readonly makeClosedSubset: Function;
+          readonly makeDiscreteTopSpace: Function;
+          readonly makeKolmogorovProductSpace: Function;
+          readonly makeProductPrior: Function;
+          readonly makeDeterministicStatistic: Function;
+        } | undefined;
+      };
+    };
   };
 };
 
@@ -241,6 +252,22 @@ function factorySection(): Transcript {
   ];
 }
 
+function adapterRegistrySection(): Transcript {
+  const adapters = MarkovOracles.top.vietoris.adapters?.();
+  if (!adapters) {
+    return [
+      "== Top/Vietoris adapter registry ==",
+      "Adapters unavailable (Top/Vietoris module not loaded)",
+    ];
+  }
+
+  const entries = Object.keys(adapters).sort();
+  return [
+    "== Top/Vietoris adapter registry ==",
+    `Registered helpers=${entries.join(", ")}`,
+  ];
+}
+
 export const stage071TopVietorisZeroOneScaffolding: RunnableExample = {
   id: "071",
   title: "Top/Vietoris zero-one scaffolding",
@@ -249,6 +276,8 @@ export const stage071TopVietorisZeroOneScaffolding: RunnableExample = {
     "Kolmogorov witness adapters for the Vietoris Kleisli category with concrete priors/statistics and explicit Hewitt–Savage limitations",
   async run() {
     const logs: string[] = [
+      ...adapterRegistrySection(),
+      "",
       ...productSection(),
       "",
       ...kolmogorovSection(),

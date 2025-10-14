@@ -14,7 +14,7 @@ import {
   type Eq,
   type Fin,
 } from "./markov-category";
-import { MarkovOracles } from "./markov-oracles";
+import { MarkovOracles, registerTopVietorisAdapters } from "./markov-oracles";
 import type { KolmogorovFiniteMarginal } from "./markov-zero-one";
 import type { Dist } from "./dist";
 import { Prob } from "./semiring-utils";
@@ -252,3 +252,11 @@ export function makeDeterministicStatistic<XJ, T = 0 | 1>(
   }
   return morphism;
 }
+
+registerTopVietorisAdapters({
+  makeClosedSubset,
+  makeDiscreteTopSpace,
+  makeKolmogorovProductSpace,
+  makeProductPrior,
+  makeDeterministicStatistic,
+});

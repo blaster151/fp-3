@@ -842,7 +842,8 @@ so failures can be traced to sub-lemmas.
   finite Kolmogorov products together with their cylinder closed sets and
   marginal projections. These feed the Kolmogorov zero–one oracles via the
   factory pair `makeProductPrior`/`makeDeterministicStatistic` in
-  `top-vietoris-examples.ts`.
+  `top-vietoris-examples.ts`, and are re-exported through
+  `MarkovOracles.top.vietoris.adapters()` for centralized discovery.
 
 - **Constant-function law:** Continuous maps into a Hausdorff space that are
   independent of all finite subsets of the input are necessarily constant.
@@ -853,8 +854,9 @@ so failures can be traced to sub-lemmas.
   limitation is visible at runtime.
 
 - **Examples/tests:** Runnable example 071 exercises the Kolmogorov witness
-  adapter and documents the Hewitt–Savage limitation. Law tests live in
-  `test/laws/top-vietoris.spec.ts`.
+  adapter, confirms the oracle registry exposes the helpers, and documents
+  the Hewitt–Savage limitation. Law tests live in
+  `test/laws/top-vietoris.spec.ts` and `test/laws/markov-oracles.top.spec.ts`.
 
 - **Open problem:** Finding an interesting causal Markov category with all
   Kolmogorov products remains open.
