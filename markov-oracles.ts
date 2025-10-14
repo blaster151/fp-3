@@ -217,7 +217,7 @@ export const MarkovOracles = {
   top: {
     vietoris: {
       status:
-        "Kolmogorov witnesses supported in principle; Hewitt–Savage unavailable because Kl(H) is not causal.",
+        "Kolmogorov witness adapters available via makeProductPrior/makeDeterministicStatistic; Hewitt–Savage unavailable because Kl(H) is not causal.",
     },
   },
   

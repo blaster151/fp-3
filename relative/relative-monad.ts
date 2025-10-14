@@ -1,9 +1,14 @@
 import {
   defaultObjectEquality,
+  horizontalComposeManyProarrows,
+  identityCell,
   type Equipment2Cell,
   type EquipmentProarrow,
   type EquipmentVerticalBoundary,
+  verticalComposeCells,
   type VirtualEquipment,
+  whiskerLeftCell,
+  whiskerRightCell,
 } from "../virtual-equipment/virtual-equipment";
 
 /**
@@ -55,6 +60,7 @@ export interface RelativeMonadActionResult<Obj, Arr, Payload, Evidence> {
   readonly expectedTarget: Obj;
   readonly issues: ReadonlyArray<string>;
   readonly result?: EquipmentProarrow<Obj, Payload>;
+  readonly composite?: Equipment2Cell<Obj, Arr, Payload, Evidence>;
 }
 
 /**
@@ -70,6 +76,31 @@ export interface RelativeMonadActionInput<Obj, Payload> {
 
 const actionPendingDetails =
   "Relative monad action helpers validate boundary alignment and record the supplied morphism; Street-style composites remain pending until the 2-cell calculus lands.";
+
+interface StreetCompositeResult<Obj, Arr, Payload, Evidence> {
+  readonly composite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly details: string;
+}
+
+const pickStreetComposite = <Obj, Arr, Payload, Evidence>(
+  attempts: ReadonlyArray<
+    () => StreetCompositeResult<Obj, Arr, Payload, Evidence> | undefined
+  >,
+): StreetCompositeResult<Obj, Arr, Payload, Evidence> | undefined => {
+  for (const attempt of attempts) {
+    const result = attempt();
+    if (result) {
+      return result;
+    }
+  }
+  return undefined;
+};
+
+const composeTargetArrows = <Obj, Arr, Payload, Evidence>(
+  equipment: VirtualEquipment<Obj, Arr, Payload, Evidence>,
+  cell: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+): EquipmentProarrow<Obj, Payload> | undefined =>
+  horizontalComposeManyProarrows(equipment, cell.target.arrows);
 
 /**
  * Placeholder for the relative extension operator.  The helper advertises the
@@ -90,20 +121,108 @@ export const relativeExtend = <Obj, Arr, Payload, Evidence>(
     issues.push("Relative extend expects the supplied arrow to land at cod(t).");
   }
 
+  const boundariesAligned = issues.length === 0;
+
+  let compositeResult: StreetCompositeResult<Obj, Arr, Payload, Evidence> | undefined;
+  if (boundariesAligned) {
+    compositeResult = pickStreetComposite([
+      () => {
+        const whiskered = whiskerLeftCell(
+          monad.equipment,
+          morphism.arrow,
+          monad.unit,
+        );
+        if (!whiskered) {
+          return undefined;
+        }
+        const composite = verticalComposeCells(
+          monad.equipment,
+          monad.extension,
+          whiskered,
+        );
+        if (!composite) {
+          return undefined;
+        }
+        return {
+          composite,
+          details:
+            "Street composite computed by left-whiskering the unit 2-cell before applying the extension witness.",
+        } as const;
+      },
+      () => {
+        const whiskered = whiskerRightCell(
+          monad.equipment,
+          monad.unit,
+          morphism.arrow,
+        );
+        if (!whiskered) {
+          return undefined;
+        }
+        const composite = verticalComposeCells(
+          monad.equipment,
+          monad.extension,
+          whiskered,
+        );
+        if (!composite) {
+          return undefined;
+        }
+        return {
+          composite,
+          details:
+            "Street composite computed by right-whiskering the unit 2-cell before applying the extension witness.",
+        } as const;
+      },
+      () => {
+        const morphismCell = identityCell(monad.equipment, morphism.arrow);
+        const composite = verticalComposeCells(
+          monad.equipment,
+          monad.extension,
+          morphismCell,
+        );
+        if (!composite) {
+          return undefined;
+        }
+        return {
+          composite,
+          details:
+            "Street composite obtained by vertically composing the extension witness with the morphism identity cell.",
+        } as const;
+      },
+    ]);
+    if (!compositeResult) {
+      issues.push(
+        "Street composite could not be formed from the relative monad unit and extension witnesses.",
+      );
+    }
+  }
+
+  const resultProarrow =
+    compositeResult && composeTargetArrows(monad.equipment, compositeResult.composite);
+  if (compositeResult && !resultProarrow) {
+    issues.push(
+      "Street composite target arrows failed to compose horizontally inside the equipment.",
+    );
+  }
+
   const holds = issues.length === 0;
-  const details = holds
-    ? actionPendingDetails
-    : `${actionPendingDetails} Pending issues: ${issues.join("; ")}`;
+  const pending = !holds || !compositeResult || !resultProarrow;
+  const details = pending
+    ? `${
+        compositeResult?.details ?? actionPendingDetails
+      } Pending issues: ${issues.join("; ")}`.trim()
+    : compositeResult?.details ?? actionPendingDetails;
 
   return {
     holds,
-    pending: true,
+    pending,
     details,
     monad,
     morphism: morphism.arrow,
     expectedSource: monad.carrier.from,
     expectedTarget: monad.carrier.to,
     issues,
+    ...(resultProarrow && { result: resultProarrow }),
+    ...(compositeResult && { composite: compositeResult.composite }),
   };
 };
 
@@ -126,20 +245,108 @@ export const relativeKleisli = <Obj, Arr, Payload, Evidence>(
     issues.push("Relative Kleisli expects the supplied arrow to land at cod(t).");
   }
 
+  const boundariesAligned = issues.length === 0;
+
+  let compositeResult: StreetCompositeResult<Obj, Arr, Payload, Evidence> | undefined;
+  if (boundariesAligned) {
+    compositeResult = pickStreetComposite([
+      () => {
+        const whiskered = whiskerLeftCell(
+          monad.equipment,
+          morphism.arrow,
+          monad.extension,
+        );
+        if (!whiskered) {
+          return undefined;
+        }
+        const composite = verticalComposeCells(
+          monad.equipment,
+          monad.extension,
+          whiskered,
+        );
+        if (!composite) {
+          return undefined;
+        }
+        return {
+          composite,
+          details:
+            "Kleisli composite computed by left-whiskering the extension witness with the supplied morphism.",
+        } as const;
+      },
+      () => {
+        const whiskered = whiskerRightCell(
+          monad.equipment,
+          monad.extension,
+          morphism.arrow,
+        );
+        if (!whiskered) {
+          return undefined;
+        }
+        const composite = verticalComposeCells(
+          monad.equipment,
+          whiskered,
+          monad.extension,
+        );
+        if (!composite) {
+          return undefined;
+        }
+        return {
+          composite,
+          details:
+            "Kleisli composite computed by right-whiskering the extension witness with the supplied morphism.",
+        } as const;
+      },
+      () => {
+        const morphismCell = identityCell(monad.equipment, morphism.arrow);
+        const composite = verticalComposeCells(
+          monad.equipment,
+          monad.extension,
+          morphismCell,
+        );
+        if (!composite) {
+          return undefined;
+        }
+        return {
+          composite,
+          details:
+            "Kleisli composite obtained by vertically composing the extension witness with the morphism identity cell.",
+        } as const;
+      },
+    ]);
+    if (!compositeResult) {
+      issues.push(
+        "Kleisli Street composite could not be formed from the relative monad extension witness.",
+      );
+    }
+  }
+
+  const resultProarrow =
+    compositeResult && composeTargetArrows(monad.equipment, compositeResult.composite);
+  if (compositeResult && !resultProarrow) {
+    issues.push(
+      "Kleisli Street composite target arrows failed to compose horizontally inside the equipment.",
+    );
+  }
+
   const holds = issues.length === 0;
-  const details = holds
-    ? actionPendingDetails
-    : `${actionPendingDetails} Pending issues: ${issues.join("; ")}`;
+  const pending = !holds || !compositeResult || !resultProarrow;
+  const details = pending
+    ? `${
+        compositeResult?.details ?? actionPendingDetails
+      } Pending issues: ${issues.join("; ")}`.trim()
+    : compositeResult?.details ?? actionPendingDetails;
 
   return {
     holds,
-    pending: true,
+    pending,
     details,
     monad,
     morphism: morphism.arrow,
     expectedSource: monad.carrier.from,
     expectedTarget: monad.carrier.to,
     issues,
+    ...(resultProarrow && { result: resultProarrow }),
+    ...(compositeResult && { composite: compositeResult.composite }),
   };
 };
 
