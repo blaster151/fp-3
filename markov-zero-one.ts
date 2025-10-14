@@ -24,16 +24,16 @@ export interface KolmogorovFiniteMarginal<XJ, XF = unknown> {
   readonly piF: FinMarkov<XJ, XF>;
 }
 
-export interface KolmogorovZeroOneWitness<A, XJ, T> {
+export interface KolmogorovZeroOneWitness<A, XJ, T, XF = unknown> {
   readonly prior: FinMarkov<A, XJ>;
   readonly stat: FinMarkov<XJ, T>;
-  readonly finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ>>;
+  readonly finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ, XF>>;
   readonly label?: string;
 }
 
-export interface KolmogorovZeroOneReport<A, XJ, T> {
+export interface KolmogorovZeroOneReport<A, XJ, T, XF = unknown> {
   readonly holds: boolean;
-  readonly witness: KolmogorovZeroOneWitness<A, XJ, T>;
+  readonly witness: KolmogorovZeroOneWitness<A, XJ, T, XF>;
   readonly composite: FinMarkov<A, T>;
   readonly deterministic: boolean;
   readonly ciFamilyVerified: boolean;
@@ -48,12 +48,12 @@ export interface KolmogorovZeroOneOptions {
   readonly tolerance?: number;
 }
 
-export function buildKolmogorovZeroOneWitness<A, XJ, T>(
+export function buildKolmogorovZeroOneWitness<A, XJ, T, XF = unknown>(
   p: FinMarkov<A, XJ>,
   s: FinMarkov<XJ, T>,
-  finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ>>,
+  finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ, XF>>,
   options: { label?: string } = {},
-): KolmogorovZeroOneWitness<A, XJ, T> {
+): KolmogorovZeroOneWitness<A, XJ, T, XF> {
   if (p.Y !== s.X) {
     throw new Error("Kolmogorov zero–one witness requires s to consume the prior codomain.");
   }
@@ -76,9 +76,9 @@ const forgetComonoidWitness = <X>(witness: MarkovComonoidWitness<X>): MarkovComo
 const forgetCodomain = <X, Y>(arrow: FinMarkov<X, Y>): FinMarkov<X, unknown> =>
   arrow as unknown as FinMarkov<X, unknown>;
 
-const forgetStatistic = <A, XJ, T>(
-  witness: KolmogorovZeroOneWitness<A, XJ, T>,
-): KolmogorovZeroOneWitness<A, XJ, unknown> => ({
+const forgetStatistic = <A, XJ, XF, T>(
+  witness: KolmogorovZeroOneWitness<A, XJ, T, XF>,
+): KolmogorovZeroOneWitness<A, XJ, unknown, XF> => ({
   prior: witness.prior,
   stat: forgetCodomain(witness.stat),
   finiteMarginals: witness.finiteMarginals,
@@ -101,8 +101,8 @@ function combineStateProjections<XJ>(
   return new FinMarkov<XJ, unknown>(first.X, codomain, kernel);
 }
 
-function marginalIndependenceChecks<A, XJ, T>(
-  witness: KolmogorovZeroOneWitness<A, XJ, T>,
+function marginalIndependenceChecks<A, XJ, T, XF>(
+  witness: KolmogorovZeroOneWitness<A, XJ, T, XF>,
   composite: FinMarkov<A, T>,
 ): Array<{ F: string; report: MarkovConditionalReport<A> }> {
   const domainLabel = witness.label ? `${witness.label} domain` : undefined;
@@ -143,8 +143,8 @@ function marginalIndependenceChecks<A, XJ, T>(
   });
 }
 
-function checkGlobalIndependence<A, XJ>(
-  witness: KolmogorovZeroOneWitness<A, XJ, unknown>,
+function checkGlobalIndependence<A, XJ, XF>(
+  witness: KolmogorovZeroOneWitness<A, XJ, unknown, XF>,
 ): MarkovConditionalReport<A> | undefined {
   if (witness.finiteMarginals.length === 0) {
     return undefined;
@@ -161,7 +161,9 @@ function checkGlobalIndependence<A, XJ>(
       }),
     ),
   );
-  const stateCombined = combineStateProjections(witness.finiteMarginals.map((entry) => entry.piF));
+  const stateCombined = combineStateProjections(
+    witness.finiteMarginals.map((entry) => forgetCodomain(entry.piF)),
+  );
   const combined = witness.prior.then(stateCombined);
   const conditional = buildMarkovConditionalWitness(domain, outputs, forgetCodomain(combined), {
     label: witness.label ? `${witness.label} finite marginals` : "Kolmogorov finite marginals",
@@ -169,10 +171,10 @@ function checkGlobalIndependence<A, XJ>(
   return checkConditionalIndependence(conditional);
 }
 
-export function checkKolmogorovZeroOne<A, XJ, T>(
-  witness: KolmogorovZeroOneWitness<A, XJ, T>,
+export function checkKolmogorovZeroOne<A, XJ, T, XF = unknown>(
+  witness: KolmogorovZeroOneWitness<A, XJ, T, XF>,
   options: KolmogorovZeroOneOptions = {},
-): KolmogorovZeroOneReport<A, XJ, T> {
+): KolmogorovZeroOneReport<A, XJ, T, XF> {
   const tolerance = options.tolerance ?? DEFAULT_TOLERANCE;
   const composite = witness.prior.then(witness.stat);
 
@@ -220,31 +222,33 @@ export function checkKolmogorovZeroOne<A, XJ, T>(
   };
 }
 
-export interface HewittSavageWitness<A, XJ, T> extends KolmogorovZeroOneWitness<A, XJ, T> {
+export interface HewittSavageWitness<A, XJ, T, XF = unknown>
+  extends KolmogorovZeroOneWitness<A, XJ, T, XF> {
   readonly permutations: ReadonlyArray<FiniteSymmetry<XJ>>;
 }
 
-export interface HewittSavageReport<A, XJ, T> extends KolmogorovZeroOneReport<A, XJ, T> {
+export interface HewittSavageReport<A, XJ, T, XF = unknown>
+  extends KolmogorovZeroOneReport<A, XJ, T, XF> {
   readonly permutationInvariant: boolean;
   readonly permutationFailures: ReadonlyArray<string>;
   readonly permutationReport?: FinitePermutationInvarianceReport<A, XJ, T>;
 }
 
-export function buildHewittSavageWitness<A, XJ, T>(
+export function buildHewittSavageWitness<A, XJ, T, XF = unknown>(
   p: FinMarkov<A, XJ>,
   s: FinMarkov<XJ, T>,
-  finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ>>,
+  finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ, XF>>,
   permutations: ReadonlyArray<FiniteSymmetry<XJ>>,
   options: { label?: string } = {},
-): HewittSavageWitness<A, XJ, T> {
+): HewittSavageWitness<A, XJ, T, XF> {
   const base = buildKolmogorovZeroOneWitness(p, s, finiteMarginals, options);
   return { ...base, permutations };
 }
 
-export function checkHewittSavageZeroOne<A, XJ, T>(
-  witness: HewittSavageWitness<A, XJ, T>,
+export function checkHewittSavageZeroOne<A, XJ, T, XF = unknown>(
+  witness: HewittSavageWitness<A, XJ, T, XF>,
   options: KolmogorovZeroOneOptions = {},
-): HewittSavageReport<A, XJ, T> {
+): HewittSavageReport<A, XJ, T, XF> {
   const base = checkKolmogorovZeroOne(witness, options);
   const permutationReport = checkFinitePermutationInvariance(
     witness.prior,

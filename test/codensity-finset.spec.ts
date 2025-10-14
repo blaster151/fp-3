@@ -9,7 +9,8 @@ import {
   CFunctor,
   codensityCarrierFinSet,
   homSetObjFinSet,
-  expFinSet
+  expFinSet,
+  expPostcompose
 } from '../allTS'
 
 function discCat(objects: string[]): FiniteCategory<string, { from: string; to: string }> {

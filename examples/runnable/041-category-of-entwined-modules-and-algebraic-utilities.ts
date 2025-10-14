@@ -1,8 +1,6 @@
+import * as AllTS from "../../allTS";
+import type { HMM, Mat, WeightedAutomaton } from "../../allTS";
 import type { RunnableExample } from "./types";
-
-declare function require(id: string): any;
-
-const all = require("../../allTS") as any;
 
 const {
   SemiringNat,
@@ -28,25 +26,7 @@ const {
   waAcceptsBool,
   diagFromVec,
   hmmForward,
-} = all;
-
-type Mat<R> = ReadonlyArray<ReadonlyArray<R>>;
-
-type WeightedAutomaton<R, Sym extends string> = {
-  readonly S: unknown;
-  readonly n: number;
-  readonly init: ReadonlyArray<R>;
-  readonly final: ReadonlyArray<R>;
-  readonly delta: Record<Sym, Mat<R>>;
-};
-
-type HMM<R, Obs extends string> = {
-  readonly S: unknown;
-  readonly n: number;
-  readonly T: Mat<R>;
-  readonly E: Record<Obs, Mat<R>>;
-  readonly pi: ReadonlyArray<R>;
-};
+} = AllTS;
 
 function formatNumberMatrix(matrix: ReadonlyArray<ReadonlyArray<number>>): string {
   return matrix

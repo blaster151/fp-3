@@ -58,8 +58,12 @@ describe("conditional independence", () => {
     const witness = buildMarkovConditionalWitness(domain, [out1, out2], arrow, { label: "p" });
     const components = conditionalMarginals(witness);
     expect(components).toHaveLength(2);
-    expect(components[0].Y).toBe(Bit1);
-    expect(components[1].Y).toBe(Bit2);
+    const [firstComponent, secondComponent] = components;
+    if (!firstComponent || !secondComponent) {
+      throw new Error("conditionalMarginals returned insufficient components");
+    }
+    expect(firstComponent.Y).toBe(Bit1);
+    expect(secondComponent.Y).toBe(Bit2);
 
     const factorized = factorizeConditional(witness);
     const report = checkConditionalIndependence(witness, { permutations: [[1, 0]] });
@@ -67,7 +71,11 @@ describe("conditional independence", () => {
     expect(report.equality).toBe(true);
     expect(report.failures).toHaveLength(0);
     expect(report.permutations).toHaveLength(1);
-    expect(report.permutations[0].holds).toBe(true);
+    const [firstPermutation] = report.permutations;
+    if (!firstPermutation) {
+      throw new Error("conditional independence report missing permutation details");
+    }
+    expect(firstPermutation.holds).toBe(true);
     expect(report.factorized.matrix()).toEqual(factorized.matrix());
   });
 
@@ -97,7 +105,11 @@ describe("conditional independence", () => {
     expect(report.holds).toBe(false);
     expect(report.equality).toBe(false);
     expect(report.failures.some((failure) => failure.law === "factorization")).toBe(true);
-    expect(report.permutations[0].holds).toBe(false);
+    const [firstPermutation] = report.permutations;
+    if (!firstPermutation) {
+      throw new Error("conditional independence report missing permutation details");
+    }
+    expect(firstPermutation.holds).toBe(false);
   });
 
   it("records permutation validation errors", () => {
@@ -113,7 +125,11 @@ describe("conditional independence", () => {
 
     expect(report.holds).toBe(false);
     expect(report.failures.some((failure) => failure.law === "permutation")).toBe(true);
-    expect(report.permutations[0].holds).toBe(false);
+    const [firstPermutation] = report.permutations;
+    if (!firstPermutation) {
+      throw new Error("conditional independence report missing permutation details");
+    }
+    expect(firstPermutation.holds).toBe(false);
   });
 });
 

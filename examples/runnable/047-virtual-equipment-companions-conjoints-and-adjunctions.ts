@@ -1,14 +1,14 @@
+import { TwoObjectCategory } from "../../two-object-cat";
+import { virtualizeFiniteCategory } from "../../virtual-equipment/adapters";
+import { companionViaIdentityRestrictions } from "../../virtual-equipment/companions";
+import { conjointViaIdentityRestrictions } from "../../virtual-equipment/conjoints";
+import { summarizeEquipmentOracles } from "../../virtual-equipment/equipment-oracles";
+import { identityProarrow } from "../../virtual-equipment/virtual-equipment";
+import { IndexedFamilies, FieldReal, LanPoset } from "../../allTS";
+import type { Complex } from "../../allTS";
+import type { TwoArrow, TwoObject } from "../../two-object-cat";
+import type { Tight1Cell, TightCategory } from "../../virtual-equipment/tight-primitives";
 import type { RunnableExample } from "./types";
-
-declare function require(id: string): any;
-
-const { TwoObjectCategory } = require("../../two-object-cat") as any;
-const { virtualizeFiniteCategory } = require("../../virtual-equipment/adapters") as any;
-const { companionViaIdentityRestrictions } = require("../../virtual-equipment/companions") as any;
-const { conjointViaIdentityRestrictions } = require("../../virtual-equipment/conjoints") as any;
-const { summarizeEquipmentOracles } = require("../../virtual-equipment/equipment-oracles") as any;
-const { identityProarrow } = require("../../virtual-equipment/virtual-equipment") as any;
-const { IndexedFamilies, FieldReal, LanPoset } = require("../../allTS") as any;
 
 type Attempt = {
   readonly available: boolean;
@@ -93,19 +93,19 @@ function analyseSigmaPiChain(): readonly string[] {
   const u = (j: number) => (j < 2 ? 0 : 1);
   const Jfin = { carrier: Jcar as ReadonlyArray<number> };
 
-  const sigmaUnit = IndexedFamilies.unitSigmaEnum(u, Jfin);
-  const sigmaCounit = IndexedFamilies.counitSigmaEnum(u, Jfin);
-  const sigmaTriangle = IndexedFamilies.sigmaOfUnitEnum(u, Jfin);
+  const sigmaUnit = IndexedFamilies.unitSigmaEnum<number, number, string>(u, Jfin);
+  const sigmaCounit = IndexedFamilies.counitSigmaEnum<number, number, SigmaSample>(u, Jfin);
+  const sigmaTriangle = IndexedFamilies.sigmaOfUnitEnum<number, number, string>(u, Jfin);
 
   const sigmaElement: SigmaSample = { j: 1, x: "payload" };
   const sigmaIndex = u(sigmaElement.j);
   const throughTriangle = sigmaTriangle(sigmaIndex)(sigmaElement);
   const sigmaReturned = sigmaCounit(sigmaIndex)(throughTriangle);
 
-  const piUnit = IndexedFamilies.unitPiEnum(u, Jfin);
-  const piCounit = IndexedFamilies.counitPiEnum(u, Jfin);
-  const etaForPi = IndexedFamilies.etaForPiEnum(u, Jfin);
-  const piOfEps = IndexedFamilies.PiOfEpsEnum(u, Jfin);
+  const piUnit = IndexedFamilies.unitPiEnum<number, number, string>(u, Jfin);
+  const piCounit = IndexedFamilies.counitPiEnum<number, number, string>(u, Jfin);
+  const etaForPi = IndexedFamilies.etaForPiEnum<number, number, string>(u, Jfin);
+  const piOfEps = IndexedFamilies.PiOfEpsEnum<number, number, string>(u, Jfin);
 
   const piIndex = 0;
   const piPayload = "sections";
@@ -125,7 +125,7 @@ function analyseSigmaPiChain(): readonly string[] {
 }
 
 function analyseVectKanExtension(): readonly string[] {
-  const makeComplex = (dimension: number) => ({
+  const makeComplex = (dimension: number): Complex<number> => ({
     S: FieldReal,
     degrees: [0],
     dim: { 0: dimension },
@@ -177,12 +177,15 @@ export const stage047VirtualEquipmentCompanionsConjointsAndAdjunctions: Runnable
     const equipment = virtualizeFiniteCategory(TwoObjectCategory);
     const identityCompanion = companionViaIdentityRestrictions(equipment, equipment.tight.identity) as Attempt;
 
-    const constantFunctor = {
+    const constantFunctor: Tight1Cell<
+      TightCategory<TwoObject, TwoArrow>,
+      TightCategory<TwoObject, TwoArrow>
+    > = {
       source: equipment.tight.category,
       target: equipment.tight.category,
-      onObj: (_: unknown) => "•",
-      onMor: (_: unknown) => TwoObjectCategory.id("•"),
-    } as const;
+      onObj: (_: TwoObject) => "•",
+      onMor: (_: TwoArrow) => TwoObjectCategory.id("•"),
+    };
 
     const constantCompanion = companionViaIdentityRestrictions(equipment, constantFunctor) as Attempt;
     const identityConjoint = conjointViaIdentityRestrictions(equipment, equipment.tight.identity) as Attempt;

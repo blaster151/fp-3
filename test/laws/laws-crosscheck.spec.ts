@@ -1,12 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "fs";
+import { readFileSync } from "node:fs";
+
+const fileUrlToPath = (input: URL): string => {
+  if (input.protocol !== "file:") {
+    throw new Error(`Unsupported protocol for fileUrlToPath: ${input.protocol}`);
+  }
+
+  const decoded = decodeURIComponent(input.pathname);
+  if (/^\/[A-Za-z]:/.test(decoded)) {
+    return decoded.slice(1).replace(/\//g, "\\");
+  }
+  return decoded;
+};
 import { MarkovOracles } from "../../markov-oracles";
 
-const laws = readFileSync(new URL("../../LAWS.md", import.meta.url), "utf-8");
-const guidelines = readFileSync(
-  new URL("../../AI_MATHEMATICAL_IMPL_GUIDELINES.md", import.meta.url),
-  "utf-8",
-);
+const lawsPath = fileUrlToPath(new URL("../../LAWS.md", import.meta.url));
+const guidelinesPath = fileUrlToPath(new URL("../../AI_MATHEMATICAL_IMPL_GUIDELINES.md", import.meta.url));
+
+const laws = readFileSync(lawsPath, "utf-8");
+const guidelines = readFileSync(guidelinesPath, "utf-8");
 
 describe("LAWS.md ↔ oracle registry cross-check", () => {
   it("documents Top/Vietoris limitations", () => {

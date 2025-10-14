@@ -1,10 +1,7 @@
+import * as AllTS from "../../allTS";
 import type { RunnableExample } from "./types";
 
-declare function require(id: string): any;
-
-const all = require("../../allTS") as any;
-
-const { FieldQ, Qof, QtoString, solveLinear, nullspace, colspace, smithNormalForm } = all;
+const { FieldQ, Qof, QtoString, solveLinear, nullspace, colspace, smithNormalForm } = AllTS;
 
 type Q = { readonly num: bigint; readonly den: bigint };
 

@@ -16,8 +16,14 @@ describe("fork utilities and functional traits", () => {
   const surj: FuncArr = { name: "surj", dom: "B", cod: "A", map: (y) => (y === "b2" ? "a2" : "a1") }
   const nonSurj: FuncArr = { name: "const", dom: "B", cod: "A", map: () => "a1" }
 
-  const [eta1, eta2] = C.globals("A")
-  ;(C.arrows as FuncArr[]).push(inj, nonInj, surj, nonSurj, eta1, eta2)
+  const globalsA = C.globals("A")
+  const eta1 = globalsA[0]
+  const eta2 = globalsA[1]
+  if (!eta1 || !eta2) {
+    throw new Error('expected two global elements for A')
+  }
+  const arrows = C.arrows as FuncArr[]
+  arrows.push(inj, nonInj, surj, nonSurj, eta1, eta2)
 
   it("detects commuting forks witnessing non-monic arrows", () => {
     expect(forkCommutes(C, nonInj, eta1, eta2)).toBe(true)

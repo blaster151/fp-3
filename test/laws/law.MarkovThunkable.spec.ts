@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { Prob, BoolRig, MaxPlus, GhostRig } from "../../semiring-utils";
+import { Prob, BoolRig, MaxPlus, GhostRig, type CSRig } from "../../semiring-utils";
 import type { Dist } from "../../dist";
 import { dirac } from "../../dist";
 import { 
@@ -328,34 +328,34 @@ describe("Thunkability ⇔ determinism", () => {
 
   describe("Cross-Semiring Consistency", () => {
     it("thunkability works across all semirings", () => {
-      const semirings = [
-        { name: "Prob", R: Prob },
-        { name: "BoolRig", R: BoolRig },
-        { name: "MaxPlus", R: MaxPlus },
-        { name: "GhostRig", R: GhostRig }
-      ];
-      
-      semirings.forEach(({ name, R }) => {
-        const base = (n: number) => `${name}_${n}`;
-        const f = makeDeterministic(R, base);
+      const expectDeterministicThunkable = <R>(label: string, R: CSRig<R>) => {
+        const base = (n: number) => `${label}_${n}`;
         const domain = [0, 1, 2];
-        
-        const result = verifyDeterministicIsThunkable(R, base, domain);
-        expect(result).toBe(true);
-      });
+
+        const deterministic = makeDeterministic(R, base);
+        expect(verifyDeterministicIsThunkable(R, base, domain)).toBe(true);
+
+        // sanity check: makeDeterministic composes with domain points without throwing
+        domain.forEach(n => {
+          const dist = deterministic(n);
+          expect(dist.R).toBe(R);
+        });
+      };
+
+      expectDeterministicThunkable("Prob", Prob);
+      expectDeterministicThunkable("BoolRig", BoolRig);
+      expectDeterministicThunkable("MaxPlus", MaxPlus);
+      expectDeterministicThunkable("GhostRig", GhostRig);
     });
 
     it("non-deterministic functions fail across semirings", () => {
-      const semirings = [
-        { name: "Prob", R: Prob, stoch: (_: number) => ({ R: Prob, w: new Map([["A", 0.5], ["B", 0.5]]) }) },
-        { name: "BoolRig", R: BoolRig, stoch: (_: number) => ({ R: BoolRig, w: new Map([["X", true], ["Y", true]]) }) }
-      ];
-      
-      semirings.forEach(({ name, R, stoch }) => {
+      const expectStochasticRejected = <R>(R: CSRig<R>, build: (n: number) => Dist<R, string>) => {
         const domain = [1, 2];
-        const result = verifyStochasticNotThunkable(R, stoch as any, domain);
-        expect(result).toBe(true);
-      });
+        expect(verifyStochasticNotThunkable(R, build as any, domain)).toBe(true);
+      };
+
+      expectStochasticRejected(Prob, () => ({ R: Prob, w: new Map([["A", 0.5], ["B", 0.5]]) }));
+      expectStochasticRejected(BoolRig, () => ({ R: BoolRig, w: new Map([["X", true], ["Y", true]]) }));
     });
   });
 

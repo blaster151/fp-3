@@ -6,46 +6,36 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { Prob, MaxPlus, BoolRig, GhostRig, directSum, isEntire } from "../../semiring-utils";
+import { Prob, MaxPlus, BoolRig, GhostRig, directSum, isEntire, type CSRig } from "../../semiring-utils";
 import { checkFaithfulness, checkSplitMono } from "../../pullback-check";
 
 describe("Entirety Implications (3.6)", () => {
   
   describe("Entire Semirings Pass Faithfulness", () => {
-    const entireSemirings = [
-      { name: "Prob", R: Prob },
-      { name: "MaxPlus", R: MaxPlus },
-      { name: "BoolRig", R: BoolRig },
-      { name: "GhostRig", R: GhostRig }
-    ];
+    const domain = ["a", "b"] as const;
 
-    entireSemirings.forEach(({ name, R }) => {
+    const expectFaithfulness = <R>(name: string, R: CSRig<R>, extras: ReadonlyArray<Map<string, R>>) => {
       it(`${name}: entirety ⇒ faithfulness`, () => {
         expect(isEntire(R)).toBe(true);
-        
-        // Create diverse test samples (avoid zero weights for cleaner tests)
-        const samples = [
-          { R, w: new Map([["a", R.one]]) },
-          { R, w: new Map([["b", R.one]]) }
+
+        const baseSamples = [
+          { R, w: new Map<string, R>([["a", R.one]]) },
+          { R, w: new Map<string, R>([["b", R.one]]) }
         ];
-        
-        // Add a mixed distribution if the semiring supports it
-        if (R === Prob) {
-          samples.push({ R, w: new Map([["a", 0.3], ["b", 0.7]]) });
-        } else if (R === MaxPlus) {
-          samples.push({ R, w: new Map([["a", 0], ["b", -1]]) });
-        } else {
-          // For other semirings, add a distribution with both elements
-          samples.push({ R, w: new Map([["a", R.one], ["b", R.one]]) });
-        }
-        
-        const domain = ["a", "b"];
+        const extraSamples = extras.map((w) => ({ R, w }));
+        const samples = [...baseSamples, ...extraSamples];
+
         const result = checkFaithfulness(R, samples, domain);
-        
+
         expect(result.splitMono).toBe(true);
         expect(result.deltaMonic).toBe(true);
       });
-    });
+    };
+
+    expectFaithfulness("Prob", Prob, [new Map<string, number>([["a", 0.3], ["b", 0.7]])]);
+    expectFaithfulness("MaxPlus", MaxPlus, [new Map<string, number>([["a", 0], ["b", -1]])]);
+    expectFaithfulness("BoolRig", BoolRig, [new Map<string, boolean>([["a", BoolRig.one], ["b", BoolRig.one]])]);
+    expectFaithfulness("GhostRig", GhostRig, [new Map<string, typeof GhostRig.one>([["a", GhostRig.one], ["b", GhostRig.one]])]);
   });
 
   describe("Non-Entire Semirings: Counterexample Arena", () => {
@@ -91,8 +81,8 @@ describe("Entirety Implications (3.6)", () => {
       // This is a forward-looking test for when we implement
       // the full "entirety ⇒ determinism=Dirac" property
       
-      const entireSemirings = [Prob, MaxPlus, BoolRig, GhostRig];
-      
+      const entireSemirings: ReadonlyArray<CSRig<unknown>> = [Prob, MaxPlus, BoolRig, GhostRig];
+
       entireSemirings.forEach(R => {
         expect(isEntire(R)).toBe(true);
         
@@ -120,25 +110,21 @@ describe("Entirety Implications (3.6)", () => {
 
   describe("Cross-Semiring Consistency", () => {
     it("all entire semirings behave consistently", () => {
-      const entireSemirings = [
-        { name: "Prob", R: Prob, unit: 1, zero: 0 },
-        { name: "MaxPlus", R: MaxPlus, unit: 0, zero: -Infinity },
-        { name: "BoolRig", R: BoolRig, unit: true, zero: false },
-        { name: "GhostRig", R: GhostRig, unit: 2, zero: 0 }
-      ];
-      
-      entireSemirings.forEach(({ name, R, unit, zero }) => {
-        // Basic semiring properties
+      const assertConsistency = <R>(name: string, R: CSRig<R>, unit: R, zero: R) => {
         expect(isEntire(R)).toBe(true);
         expect(R.eq(R.one, unit)).toBe(true);
         expect(R.eq(R.zero, zero)).toBe(true);
-        
-        // Faithfulness with unit distribution
-        const unitDist = { R, w: new Map([["test", R.one]]) };
+
+        const unitDist = { R, w: new Map<string, R>([["test", R.one]]) };
         const result = checkFaithfulness(R, [unitDist], ["test"]);
         expect(result.splitMono).toBe(true);
         expect(result.deltaMonic).toBe(true);
-      });
+      };
+
+      assertConsistency("Prob", Prob, 1, 0);
+      assertConsistency("MaxPlus", MaxPlus, 0, -Infinity);
+      assertConsistency("BoolRig", BoolRig, true, false);
+      assertConsistency("GhostRig", GhostRig, GhostRig.one, GhostRig.zero);
     });
   });
 });

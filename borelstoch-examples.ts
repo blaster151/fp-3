@@ -79,14 +79,14 @@ function buildBorelPrior<Ω, Coord, XJ>(
   return { prior, canonicalize };
 }
 
-export function buildBorelKolmogorovWitness<Ω, Coord, XJ, T = 0 | 1>(
+export function buildBorelKolmogorovWitness<Ω, Coord, XJ, XF = unknown, T = 0 | 1>(
   _omega: Sampler<Ω>,
   coords: ReadonlyArray<MeasurableMap<Ω, Coord>>,
   product: (vals: ReadonlyArray<Coord>) => XJ,
-  finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ>>,
+  finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ, XF>>,
   tail: Indicator<XJ, T>,
   options: BorelKolmogorovOptions<Ω, XJ, T>,
-): KolmogorovZeroOneWitness<I, XJ, T> {
+): KolmogorovZeroOneWitness<I, XJ, T, XF> {
   const descriptor = options.label ?? "Borel Kolmogorov witness";
   const { prior } = buildBorelPrior(coords, product, options, descriptor);
   const productSpace = options.productSpace;
@@ -106,22 +106,22 @@ export function buildBorelKolmogorovWitness<Ω, Coord, XJ, T = 0 | 1>(
   );
 }
 
-export function checkBorelKolmogorovZeroOne<XJ, T = 0 | 1>(
-  witness: KolmogorovZeroOneWitness<I, XJ, T>,
+export function checkBorelKolmogorovZeroOne<XJ, T = 0 | 1, XF = unknown>(
+  witness: KolmogorovZeroOneWitness<I, XJ, T, XF>,
   options?: KolmogorovZeroOneOptions,
-): KolmogorovZeroOneReport<I, XJ, T> {
+): KolmogorovZeroOneReport<I, XJ, T, XF> {
   return checkKolmogorovZeroOne(witness, options);
 }
 
-export function buildBorelHewittSavageWitness<Ω, Coord, XJ, T = 0 | 1>(
+export function buildBorelHewittSavageWitness<Ω, Coord, XJ, XF = unknown, T = 0 | 1>(
   _omega: Sampler<Ω>,
   coords: ReadonlyArray<MeasurableMap<Ω, Coord>>,
   product: (vals: ReadonlyArray<Coord>) => XJ,
-  finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ>>,
+  finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ, XF>>,
   permutations: ReadonlyArray<BorelPermutation<XJ>>,
   sInv: Indicator<XJ, T>,
   options: BorelHewittSavageOptions<Ω, XJ, T>,
-): HewittSavageWitness<I, XJ, T> {
+): HewittSavageWitness<I, XJ, T, XF> {
   const descriptor = options.label ?? "Borel Hewitt–Savage witness";
   const { prior, canonicalize } = buildBorelPrior(coords, product, options, descriptor);
   const productSpace = options.productSpace;
@@ -150,9 +150,9 @@ export function buildBorelHewittSavageWitness<Ω, Coord, XJ, T = 0 | 1>(
   );
 }
 
-export function checkBorelHewittSavageZeroOne<XJ, T = 0 | 1>(
-  witness: HewittSavageWitness<I, XJ, T>,
+export function checkBorelHewittSavageZeroOne<XJ, T = 0 | 1, XF = unknown>(
+  witness: HewittSavageWitness<I, XJ, T, XF>,
   options?: KolmogorovZeroOneOptions,
-): HewittSavageReport<I, XJ, T> {
+): HewittSavageReport<I, XJ, T, XF> {
   return checkHewittSavageZeroOne(witness, options);
 }

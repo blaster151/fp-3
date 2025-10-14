@@ -1,130 +1,118 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-// ---------------------------------------------------------------------
-// Property tests for exact functors
-// - Random 2-term complexes over RingReal (numbers)
-// - Identity ring hom φ for makeScalarExactFunctor
-// - Checks: preservesShift, preservesCones, composition law
-// ---------------------------------------------------------------------
+import { expect, test } from 'vitest';
 
-import { expect, test } from 'vitest'
-import fc from 'fast-check'
 import {
-  RingReal, Complex, ChainMap, Triangle,
-  complexIsValid, triangleFromMap, triangleIsSane, composeExact,
-} from '../allTS'
+  RingReal,
+  complexIsValid,
+  triangleFromMap,
+  composeExact,
+} from '../allTS';
+import type { ChainMap, Complex, Triangle, Mat } from '../allTS';
+import {
+  makeScalarExactFunctor,
+  makeShiftExactFunctor,
+  type RingHom,
+} from '../exact';
 
-// Import exact functors from the modular files
-import { makeScalarExactFunctor, makeShiftExactFunctor, type RingHom } from '../exact'
+const deterministicMatrix = (rows: number, cols: number): Mat<number> =>
+  Array.from({ length: rows }, (_, row) =>
+    Array.from({ length: cols }, (_, col) => ((row + col) % 3) - 1),
+  );
 
-type MatN = number[][]
-const randMat = (rows: number, cols: number, lo = -2, hi = 2): MatN =>
-  Array.from({ length: rows }, () =>
-    Array.from({ length: cols }, () => Math.floor(Math.random()*(hi-lo+1))+lo)
-  )
+const buildComplex = (m: number, n: number): Complex<number> => {
+  const dim: Record<number, number> = {};
+  dim[-1] = m;
+  dim[0] = n;
 
-const arbDim = fc.integer({ min: 0, max: 2 })
+  const d: Record<number, Mat<number>> = {};
+  d[0] = deterministicMatrix(m, n);
 
-// Random 2-term complex in degrees [-1,0]:
-//   dim[-1]=m, dim[0]=n,  d0 : m×n  (no d_{-1})
-const arbComplex = fc.record({
-  m: arbDim, n: arbDim
-}).map(({m, n}) => {
-  const d0 = randMat(m, n)
-  const X: Complex<number> = {
-    S: RingReal,
-    degrees: [-1, 0],
-    dim: { [-1]: m, [0]: n },
-    d:   { [0]: d0 }
+  return { S: RingReal, degrees: [-1, 0], dim, d };
+};
+
+const buildIdentity = (X: Complex<number>): ChainMap<number> => {
+  const identityMatrix = (n: number): Mat<number> =>
+    Array.from({ length: n }, (_, i) =>
+      Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)),
+    );
+
+  const f: Record<number, Mat<number>> = {};
+  for (const degree of X.degrees) {
+    const size = X.dim[degree] ?? 0;
+    if (size > 0) f[degree] = identityMatrix(size);
   }
-  return X
-}).filter(complexIsValid)
 
-// identity chain map X→X
-const idMap = (X: Complex<number>): ChainMap<number> => {
-  const idn = (n: number): number[][] => Array.from({ length: n }, (_, i) =>
-    Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))
-  )
-  const f: Record<number, number[][]> = {}
-  for (const k of X.degrees) {
-    const n = X.dim[k] ?? 0
-    if (n > 0) f[k] = idn(n)
+  return { S: RingReal, X, Y: X, f };
+};
+
+const sampleDims: ReadonlyArray<[number, number]> = [
+  [0, 0],
+  [1, 0],
+  [0, 1],
+  [1, 1],
+  [2, 1],
+  [1, 2],
+  [2, 2],
+];
+
+const phiId: RingHom<number, number> = {
+  src: RingReal,
+  dst: RingReal,
+  phi: (x: number) => x,
+};
+
+const Fscalar = makeScalarExactFunctor(phiId);
+const Fshift = makeShiftExactFunctor(RingReal);
+
+test('ExactFunctor.preservesShift on representative complexes', () => {
+  for (const [m, n] of sampleDims) {
+    const X = buildComplex(m, n);
+    expect(complexIsValid(X)).toBe(true);
+    expect(Fscalar.preservesShift(X)).toBe(true);
+    expect(Fshift.preservesShift(X)).toBe(true);
   }
-  return { S: RingReal, X, Y: X, f }
-}
-
-// Ring hom φ = id
-const φ_id: RingHom<number, number> = { src: RingReal, dst: RingReal, phi: (x: number) => x }
-
-// Build functors under test
-const Fscalar = makeScalarExactFunctor(φ_id) // R→R
-const Fshift  = makeShiftExactFunctor(RingReal) // R→R
-
-test('ExactFunctor.preservesShift on random complexes', () => {
-  fc.assert(fc.property(arbComplex, (X) => {
-    expect(complexIsValid(X)).toBe(true)
-    expect(Fscalar.preservesShift(X)).toBe(true)
-    expect(Fshift.preservesShift(X)).toBe(true)
-  }), { seed: 1337, numRuns: 10 })
-})
+});
 
 test('ExactFunctor.preservesCones on identity maps', () => {
-  fc.assert(fc.property(arbComplex, (X) => {
-    const f = idMap(X)
-    expect(Fscalar.preservesCones(f)).toBe(true)
-    expect(Fshift.preservesCones(f)).toBe(true)
-  }), { seed: 1337, numRuns: 10 })
-})
-
-test('composeExact equals sequential application on triangles', () => {
-  fc.assert(fc.property(arbComplex, (X) => {
-    // Skip degenerate cases
-    const totalDim = (X.dim[-1] ?? 0) + (X.dim[0] ?? 0)
-    if (totalDim === 0) return true // skip empty complexes
-    
-    const f = idMap(X)
-    
-    try {
-      const T = triangleFromMap(f)
-      const FG = composeExact(Fscalar, Fshift)   // shift ∘ scalar
-      const T1 = FG.imageTriangle(T)
-      const T2 = Fshift.imageTriangle(Fscalar.imageTriangle(T))
-
-      // Basic sanity - the operations should complete without error
-      expect(typeof T1).toBe('object')
-      expect(typeof T2).toBe('object')
-      
-      // Note: Full triangle sanity checking needs refinement for general cases
-      // This property test exercises the composition code paths
-      return true
-    } catch (e) {
-      // Skip cases that cause matrix dimension issues
-      return true
-    }
-  }), { seed: 1337, numRuns: 10 })
-})
-
-test('exact functor interfaces work correctly', () => {
-  // Test that our functors implement the interface correctly
-  const X: Complex<number> = {
-    S: RingReal,
-    degrees: [-1, 0],
-    dim: { [-1]: 1, [0]: 1 },
-    d: { [0]: [[0]] }
+  for (const [m, n] of sampleDims) {
+    const X = buildComplex(m, n);
+    const f = buildIdentity(X);
+    expect(Fscalar.preservesCones(f)).toBe(true);
+    expect(Fshift.preservesCones(f)).toBe(true);
   }
-  
-  expect(complexIsValid(X)).toBe(true)
-  
-  const FX_scalar = Fscalar.onComplex(X)
-  const FX_shift = Fshift.onComplex(X)
-  
-  expect(complexIsValid(FX_scalar)).toBe(true)
-  expect(complexIsValid(FX_shift)).toBe(true)
-  
-  const f = idMap(X)
-  const Ff_scalar = Fscalar.onMap(f)
-  const Ff_shift = Fshift.onMap(f)
-  
-  // Basic type checking - the functions should return valid objects
-  expect(typeof Ff_scalar).toBe('object')
-  expect(typeof Ff_shift).toBe('object')
-})
+});
+
+test('composeExact matches sequential application on triangles', () => {
+  for (const [m, n] of sampleDims) {
+    if (m + n === 0) continue;
+
+    const X = buildComplex(m, n);
+    const f = buildIdentity(X);
+    const triangle: Triangle<number> = triangleFromMap(f);
+
+    const FG = composeExact(Fscalar, Fshift);
+    const composite = FG.imageTriangle(triangle);
+    const sequential = Fshift.imageTriangle(Fscalar.imageTriangle(triangle));
+
+    expect(typeof composite).toBe('object');
+    expect(typeof sequential).toBe('object');
+  }
+});
+
+test('exact functor interfaces act on complexes and maps', () => {
+  const X = buildComplex(1, 1);
+
+  expect(complexIsValid(X)).toBe(true);
+
+  const FXScalar = Fscalar.onComplex(X);
+  const FXShift = Fshift.onComplex(X);
+
+  expect(complexIsValid(FXScalar)).toBe(true);
+  expect(complexIsValid(FXShift)).toBe(true);
+
+  const f = buildIdentity(X);
+  const FfScalar = Fscalar.onMap(f);
+  const FfShift = Fshift.onMap(f);
+
+  expect(typeof FfScalar).toBe('object');
+  expect(typeof FfShift).toBe('object');
+});

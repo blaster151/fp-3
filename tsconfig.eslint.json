@@ -3,6 +3,7 @@
   "compilerOptions": {
     "moduleResolution": "bundler",
     "resolvePackageJsonExports": true,
+    "typeRoots": ["./types", "./node_modules/@types"],
     "types": ["node", "vitest"]
   },
   "include": ["**/*.ts", "eslint-plugin-fp-3/**/*.js"]

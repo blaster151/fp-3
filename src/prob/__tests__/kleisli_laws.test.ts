@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { eqDist } from "../Dist";
-import { Kernel, kid, kcomp, kmap } from "../Kleisli";
+import { kid, kcomp, kmap } from "../Kleisli";
+import type { Kernel } from "../Kleisli";
 
 const eqNum = (a: number, b: number) => a === b;
 

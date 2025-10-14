@@ -3,7 +3,6 @@
 
 import type { CSRig } from "./semiring-utils";
 import type { Dist } from "./dist";
-import { dirac, bind } from "./dist";
 
 // ===== Almost-Sure Equality Framework =====
 
@@ -143,9 +142,8 @@ export function createNullMask<X>(nullValues: readonly X[]): (x: X) => boolean {
  * (i.e., has enough structure to distinguish "null" from "non-null" events)
  */
 export function supportsASEquality<R>(R: CSRig<R>): boolean {
-  // For our purposes, all semirings support a.s. equality
-  // The question is whether sampling cancellation holds
-  return true;
+  const eq = R.eq ?? ((x: R, y: R) => Object.is(x, y))
+  return !eq(R.zero, R.one)
 }
 
 // ===== Counterexample Construction Utilities =====

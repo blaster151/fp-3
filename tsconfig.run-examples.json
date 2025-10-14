@@ -2,9 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "CommonJS",
+    "moduleResolution": "node",
     "outDir": "./dist",
     "rootDir": "./",
-    "types": ["node"],
     "verbatimModuleSyntax": false
   },
   "files": ["run-examples-simple.ts"]

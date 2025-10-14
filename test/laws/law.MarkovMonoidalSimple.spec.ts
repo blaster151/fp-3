@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { Prob, MaxPlus, BoolRig, GhostRig } from "../../semiring-utils";
+import { Prob, MaxPlus, BoolRig, GhostRig, type CSRig } from "../../semiring-utils";
 import type { Dist } from "../../dist";
 import { dirac, argmaxSamp, strength, map } from "../../dist";
 import { independentProduct, push } from "../../markov-monoidal";
@@ -32,26 +32,24 @@ describe("Monoidal laws: δ and σ (Simplified)", () => {
     });
 
     it("Works across semirings", () => {
-      const semirings = [
-        { name: "Prob", R: Prob },
-        { name: "MaxPlus", R: MaxPlus },
-        { name: "BoolRig", R: BoolRig },
-        { name: "GhostRig", R: GhostRig }
-      ];
-      
-      semirings.forEach(({ name, R }) => {
-        const dx = dirac(R)("test");
-        const dy = dirac(R)(1);
+      const expectDiracProduct = <R>(R: CSRig<R>) => {
+        const dx = dirac<R, string>(R)("test");
+        const dy = dirac<R, number>(R)(1);
         const dxy = independentProduct(R, dx, dy);
-        
+
         expect(dxy.w.size).toBe(1);
-        
-        let totalMass = R.zero;
+
+        let totalMass: R = R.zero;
         dxy.w.forEach(weight => {
           totalMass = R.add(totalMass, weight);
         });
         expect(R.eq(totalMass, R.one)).toBe(true);
-      });
+      };
+
+      expectDiracProduct(Prob);
+      expectDiracProduct(MaxPlus);
+      expectDiracProduct(BoolRig);
+      expectDiracProduct(GhostRig);
     });
   });
 
@@ -59,7 +57,7 @@ describe("Monoidal laws: δ and σ (Simplified)", () => {
     it("Strength preserves mass", () => {
       const x = "tag";
       const dy = dNum([[1, 0.3], [2, 0.7]]);
-      const sigma = strength<number, string, number>(Prob);
+      const sigma = strength(Prob);
       const result = sigma(x, dy);
       
       // Should preserve the mass of dy
@@ -73,7 +71,7 @@ describe("Monoidal laws: δ and σ (Simplified)", () => {
     it("Strength creates proper pairs", () => {
       const x = "fixed";
       const dy = dNum([[1, 0.6], [2, 0.4]]);
-      const sigma = strength<number, string, number>(Prob);
+      const sigma = strength(Prob);
       const result = sigma(x, dy);
       
       // Should have same number of elements as dy
@@ -182,51 +180,61 @@ describe("Monoidal laws: δ and σ (Simplified)", () => {
 
   describe("Cross-Semiring Basic Tests", () => {
     it("All semirings support Dirac products", () => {
-      const semirings = [Prob, MaxPlus, BoolRig, GhostRig];
-      
-      semirings.forEach(R => {
-        const dx = dirac(R)("x");
-        const dy = dirac(R)(1);
+      const expectDiracProduct = <R>(R: CSRig<R>) => {
+        const dx = dirac<R, string>(R)("x");
+        const dy = dirac<R, number>(R)(1);
         const dxy = independentProduct(R, dx, dy);
-        
+
         expect(dxy.w.size).toBe(1);
-        
-        let mass = R.zero;
-        dxy.w.forEach(w => mass = R.add(mass, w));
+
+        let mass: R = R.zero;
+        dxy.w.forEach(w => {
+          mass = R.add(mass, w);
+        });
         expect(R.eq(mass, R.one)).toBe(true);
-      });
+      };
+
+      expectDiracProduct(Prob);
+      expectDiracProduct(MaxPlus);
+      expectDiracProduct(BoolRig);
+      expectDiracProduct(GhostRig);
     });
 
     it("All semirings support strength operation", () => {
-      const semirings = [Prob, MaxPlus, BoolRig, GhostRig];
-      
-      semirings.forEach(R => {
+      const expectStrengthProduct = <R>(R: CSRig<R>) => {
         const x = "test";
-        const dy = { R, w: new Map([[1, R.one]]) };
-        const sigma = strength<any, string, number>(R);
+        const dy = dirac<R, number>(R)(1);
+        const sigma = strength(R);
         const result = sigma(x, dy);
-        
+
         expect(result.w.size).toBe(1);
-        
-        let mass = R.zero;
-        result.w.forEach(w => mass = R.add(mass, w));
+
+        let mass: R = R.zero;
+        result.w.forEach(w => {
+          mass = R.add(mass, w);
+        });
         expect(R.eq(mass, R.one)).toBe(true);
-      });
+      };
+
+      expectStrengthProduct(Prob);
+      expectStrengthProduct(MaxPlus);
+      expectStrengthProduct(BoolRig);
+      expectStrengthProduct(GhostRig);
     });
   });
 
   describe("Integration Verification", () => {
     it("Monoidal structure works with previous steps", () => {
       // Verify that the monoidal operations integrate well
-      const dx = dirac(Prob)("test");
-      const dy = dirac(Prob)(42);
+      const dx = dirac<number, string>(Prob)("test");
+      const dy = dirac<number, number>(Prob)(42);
       
       // Independent product
       const dxy = independentProduct(Prob, dx, dy);
       expect(dxy.w.size).toBe(1);
       
       // Strength operation
-      const sigma = strength<number, string, number>(Prob);
+      const sigma = strength(Prob);
       const strengthResult = sigma("fixed", dy);
       expect(strengthResult.w.size).toBe(1);
       

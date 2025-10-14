@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { FiniteCategory } from "../finite-cat";
-import { describe, expect, it } from "vitest";
-import type { FiniteCategory } from "../finite-cat";
 import { makeComma, type Functor } from "../comma";
 
 type Obj = "A" | "B" | "C";

@@ -7,6 +7,7 @@ import type {
   StrengthEnv,
   TraversableK1,
 } from "../../allTS";
+import * as AllTS from "../../allTS";
 import type { RunnableExample } from "./types";
 
 const {
@@ -43,7 +44,7 @@ const {
   strengthEnvFromPair,
   strengthEnvFromConst,
   deriveStrengthEnv,
-} = require("../../allTS") as typeof import("../../allTS");
+} = AllTS;
 
 type BaseFunctors = "Option" | "ResultString";
 

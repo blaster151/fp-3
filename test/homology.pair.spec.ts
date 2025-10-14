@@ -1,23 +1,34 @@
 import { describe, it, expect } from 'vitest'
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import {
   buildBoundariesForPair, composeMatrices, bettiReduced, bettiUnreduced,
-  ZMatrix, rankQ
+  rankQ
 } from '../allTS'
+import type { ZMatrix } from '../allTS'
 
 // simple structural matrix compare
 const isZeroMatrix = (M: number[][]) => M.every(row => row.every(x => x === 0))
+
+const requireValue = <T>(value: T | undefined, message: string): T => {
+  if (value === undefined) throw new Error(message)
+  return value
+}
 
 describe('Pair comonad simplicial chain complex', () => {
   it('∂ ∘ ∂ = 0 up to N=3 for small E,A', () => {
     fc.assert(fc.property(
       // keep tiny to avoid combinatorial blowup
-      fc.array(fc.string(), { minLength: 1, maxLength: 2, unique: true }),
-      fc.array(fc.string(), { minLength: 1, maxLength: 2, unique: true }),
-      (E: readonly string[], A: readonly string[]) => {
+      fc.array(fc.string(), { minLength: 1, maxLength: 2 }),
+      fc.array(fc.string(), { minLength: 1, maxLength: 2 }),
+      (E0: readonly string[], A0: readonly string[]) => {
+        const E = [...new Set(E0)]
+        const A = [...new Set(A0)]
         const { d } = buildBoundariesForPair(E, A, 3)
         for (let n = 1; n < d.length; n++) {
-          const comp = composeMatrices(d[n - 1], d[n])
+          const prev = d[n - 1]
+          const curr = d[n]
+          if (!prev || !curr) continue
+          const comp = composeMatrices(prev, curr)
           if (!isZeroMatrix(comp)) return false
         }
         return true
@@ -58,11 +69,15 @@ describe('Pair comonad simplicial chain complex', () => {
     expect(dims[2]).toBe(8)  // |E|³ × |A| = 8 × 1 = 8
 
     // Check matrix dimensions
-    expect(d[0].length).toBe(A.length)     // ∂_0: C_0 → A
-    expect(d[0][0].length).toBe(dims[0])   // columns = dim(C_0)
-    
-    expect(d[1].length).toBe(dims[0])      // ∂_1: C_1 → C_0
-    expect(d[1][0].length).toBe(dims[1])   // columns = dim(C_1)
+    const d0 = requireValue(d[0], 'expected boundary d0 for ∂_0')
+    expect(d0.length).toBe(A.length)       // ∂_0: C_0 → A
+    const d00 = requireValue(d0[0], 'expected first row of d0')
+    expect(d00.length).toBe(dims[0])       // columns = dim(C_0)
+
+    const d1 = requireValue(d[1], 'expected boundary d1 for ∂_1')
+    expect(d1.length).toBe(dims[0])        // ∂_1: C_1 → C_0
+    const d10 = requireValue(d1[0], 'expected first row of d1')
+    expect(d10.length).toBe(dims[1])       // columns = dim(C_1)
   })
 
   it('boundary composition ∂_{n-1} ∘ ∂_n = 0 for concrete small case', () => {
@@ -164,10 +179,13 @@ describe('Pair comonad simplicial chain complex', () => {
     expect(dims[1]).toBe(4)  // X_1 = E²×A has 4 elements
     
     // Augmentation maps each (e,*) to *
-    expect(d[0]).toEqual([[1, 1]]) // all X_0 elements map to the single point *
-    
+    const aug = requireValue(d[0], 'expected augmentation boundary d0')
+    expect(aug).toEqual([[1, 1]]) // all X_0 elements map to the single point *
+
     // ∂_1 should be alternating sum of faces
-    expect(d[1].length).toBe(2)  // maps to C_0 (2 elements)
-    expect(d[1][0].length).toBe(4)  // from C_1 (4 elements)
+    const bdry1 = requireValue(d[1], 'expected boundary d1 for ∂_1')
+    expect(bdry1.length).toBe(2)  // maps to C_0 (2 elements)
+    const bdry10 = requireValue(bdry1[0], 'expected first row of d1 for ∂_1')
+    expect(bdry10.length).toBe(4)  // from C_1 (4 elements)
   })
 })

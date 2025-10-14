@@ -6,6 +6,14 @@ import type { Store } from '../allTS'
 
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
+const requireValue = <T>(values: readonly T[], index: number): T => {
+  const value = values[index]
+  if (value === undefined) {
+    throw new Error(`Expected value at index ${index}`)
+  }
+  return value
+}
+
 describe('Store<S,_> comonad laws', () => {
   const W = StoreComonad<number>()
   const F = StoreEndo<number>()
@@ -79,8 +87,10 @@ describe('Store – Co-Kleisli moving average', () => {
     const out = collectStore<number>(xs.length)(ws)
     // Just check shape + a couple of key points
     expect(out.length).toBe(xs.length)
-    expect(Math.round(out[0]*100)/100).toBe(Math.round((1+1+2)/3*100)/100)  // ≈ 1.33…
-    expect(Math.round(out[2]*100)/100).toBe(Math.round((2+100+2)/3*100)/100) // ≈ 34.67…
+    const first = requireValue(out, 0)
+    const third = requireValue(out, 2)
+    expect(Math.round(first*100)/100).toBe(Math.round((1+1+2)/3*100)/100)  // ≈ 1.33…
+    expect(Math.round(third*100)/100).toBe(Math.round((2+100+2)/3*100)/100) // ≈ 34.67…
   })
 
   it('movingAvg3 helper function works correctly', () => {
@@ -94,14 +104,16 @@ describe('Store – Co-Kleisli moving average', () => {
     // Test specific expected values
     const expected = [
       (1+1+2)/3,     // [0]: clamp(-1,0,1) = (1,1,2)
-      (1+2+100)/3,   // [1]: (0,1,2) = (1,2,100)  
+      (1+2+100)/3,   // [1]: (0,1,2) = (1,2,100)
       (2+100+2)/3,   // [2]: (1,2,3) = (2,100,2)
       (100+2+1)/3,   // [3]: (2,3,4) = (100,2,1)
       (2+1+1)/3      // [4]: (3,4,5) = (2,1,1) - clamp(5) = 4
     ]
-    
+
     for (let i = 0; i < expected.length; i++) {
-      expect(Math.abs(out[i] - expected[i])).toBeLessThan(0.001)
+      const value = requireValue(out, i)
+      const expectedValue = requireValue(expected, i)
+      expect(Math.abs(value - expectedValue)).toBeLessThan(0.001)
     }
   })
 
@@ -165,11 +177,11 @@ describe('Store – Co-Kleisli moving average', () => {
     // At i=3: left=5, right=1 -> |1-5| = 4
     // At i=4: left=5, right=1 -> |1-5| = 4
     // At i=5: left=1, right=1(clamped) -> |1-1| = 0
-    expect(edgeValues[0]).toBe(0)   // |1-1| = 0
-    expect(edgeValues[1]).toBe(4)   // |5-1| = 4 (edge!)
-    expect(edgeValues[2]).toBe(4)   // |5-1| = 4 (edge!)
-    expect(edgeValues[3]).toBe(4)   // |1-5| = 4 (edge!)
-    expect(edgeValues[4]).toBe(4)   // |1-5| = 4 (edge!)
-    expect(edgeValues[5]).toBe(0)   // |1-1| = 0
+    expect(requireValue(edgeValues, 0)).toBe(0)   // |1-1| = 0
+    expect(requireValue(edgeValues, 1)).toBe(4)   // |5-1| = 4 (edge!)
+    expect(requireValue(edgeValues, 2)).toBe(4)   // |5-1| = 4 (edge!)
+    expect(requireValue(edgeValues, 3)).toBe(4)   // |1-5| = 4 (edge!)
+    expect(requireValue(edgeValues, 4)).toBe(4)   // |1-5| = 4 (edge!)
+    expect(requireValue(edgeValues, 5)).toBe(0)   // |1-1| = 0
   })
 })

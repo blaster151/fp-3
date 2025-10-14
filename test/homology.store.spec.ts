@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
 import {
   toChainComplexStore, toChainComplexPair, composeMatrices, bettiReduced, bettiUnreduced,
-  smithNormalForm, homologyZ_fromBoundaries, HomologyZ
+  smithNormalForm, homologyZ_fromBoundaries
 } from '../allTS'
 
 const isZero = (M: number[][]) => M.every(r => r.every(x => x === 0))

@@ -4,12 +4,6 @@ import { IsoRegistry } from "../iso/registry"
 import { GoalRewriter } from "../iso/goal-rewriter"
 import type { IsoWitness } from "../iso/types"
 
-interface Arrow {
-  readonly id: string
-  readonly src: Obj
-  readonly dst: Obj
-}
-
 type Obj = "A" | "C" | "D"
 
 type ArrowName =
@@ -22,6 +16,12 @@ type ArrowName =
   | "f∘u"
   | "v"
   | "v∘g"
+
+interface Arrow {
+  readonly id: ArrowName
+  readonly src: Obj
+  readonly dst: Obj
+}
 
 type ArrowMap = Record<ArrowName, Arrow>
 
@@ -41,7 +41,7 @@ const buildCategory = (): FiniteCategory<Obj, Arrow> => {
     "v∘g": make("v∘g", "D", "A"),
   }
 
-  const table: Record<ComposeKey, Arrow> = {
+  const table: Partial<Record<ComposeKey, Arrow>> = {
     "1_A|1_A": arrows["1_A"],
     "1_C|1_C": arrows["1_C"],
     "1_D|1_D": arrows["1_D"],

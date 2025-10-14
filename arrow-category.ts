@@ -2,7 +2,7 @@ import type { FiniteCategory } from "./finite-cat";
 import { pushUnique } from "./finite-cat";
 import type { Functor } from "./functor";
 
-export interface ArrowSquare<Obj, Arr> {
+export interface ArrowSquare<Arr> {
   readonly src: Arr;
   readonly dst: Arr;
   readonly j: Arr;
@@ -10,7 +10,7 @@ export interface ArrowSquare<Obj, Arr> {
 }
 
 function squareEq<Obj, Arr>(base: FiniteCategory<Obj, Arr>) {
-  return (a: ArrowSquare<Obj, Arr>, b: ArrowSquare<Obj, Arr>): boolean =>
+  return (a: ArrowSquare<Arr>, b: ArrowSquare<Arr>): boolean =>
     base.eq(a.src, b.src) &&
     base.eq(a.dst, b.dst) &&
     base.eq(a.j, b.j) &&
@@ -19,12 +19,12 @@ function squareEq<Obj, Arr>(base: FiniteCategory<Obj, Arr>) {
 
 export function makeArrowCategory<Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
-): FiniteCategory<Arr, ArrowSquare<Obj, Arr>> {
+): FiniteCategory<Arr, ArrowSquare<Arr>> {
   const objects = [...base.arrows];
   const eq = squareEq(base);
-  const arrows: ArrowSquare<Obj, Arr>[] = [];
+  const arrows: ArrowSquare<Arr>[] = [];
 
-  const id = (arrow: Arr): ArrowSquare<Obj, Arr> => ({
+  const id = (arrow: Arr): ArrowSquare<Arr> => ({
     src: arrow,
     dst: arrow,
     j: base.id(base.src(arrow)),
@@ -52,9 +52,9 @@ export function makeArrowCategory<Obj, Arr>(
   }
 
   const compose = (
-    g: ArrowSquare<Obj, Arr>,
-    f: ArrowSquare<Obj, Arr>,
-  ): ArrowSquare<Obj, Arr> => {
+    g: ArrowSquare<Arr>,
+    f: ArrowSquare<Arr>,
+  ): ArrowSquare<Arr> => {
     if (!base.eq(f.dst, g.src)) {
       throw new Error("makeArrowCategory: square domains mismatch");
     }
@@ -68,15 +68,15 @@ export function makeArrowCategory<Obj, Arr>(
     return { src: f.src, dst: g.dst, j, k };
   };
 
-  const src = (square: ArrowSquare<Obj, Arr>): Arr => square.src;
-  const dst = (square: ArrowSquare<Obj, Arr>): Arr => square.dst;
+  const src = (square: ArrowSquare<Arr>): Arr => square.src;
+  const dst = (square: ArrowSquare<Arr>): Arr => square.dst;
 
   return { objects, arrows, id, compose, src, dst, eq };
 }
 
 export function makeArrowDomainFunctor<Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
-): Functor<Arr, ArrowSquare<Obj, Arr>, Obj, Arr> {
+): Functor<Arr, ArrowSquare<Arr>, Obj, Arr> {
   return {
     F0: (arrow) => base.src(arrow),
     F1: (square) => square.j,
@@ -85,7 +85,7 @@ export function makeArrowDomainFunctor<Obj, Arr>(
 
 export function makeArrowCodomainFunctor<Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
-): Functor<Arr, ArrowSquare<Obj, Arr>, Obj, Arr> {
+): Functor<Arr, ArrowSquare<Arr>, Obj, Arr> {
   return {
     F0: (arrow) => base.dst(arrow),
     F1: (square) => square.k,
