@@ -1,9 +1,7 @@
 import type { RunnableExample } from "./types";
 import { Result } from "./structures";
+import type { ReaderArrow, TaskArrow, ReaderTaskResultArrow } from "./effects";
 import {
-  ReaderArrow,
-  TaskArrow,
-  ReaderTaskResultArrow,
   composeReaderArrows,
   composeTaskArrows,
   composeReaderTaskResultArrows,

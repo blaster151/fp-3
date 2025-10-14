@@ -1,5 +1,6 @@
 import type { RunnableExample } from "./types";
-import { Result, TaskResult, resultDo, taskResultDo } from "./structures";
+import { Result, resultDo, taskResultDo } from "./structures";
+import type { TaskResult } from "./structures";
 
 /**
  * Stage 002 demonstrates how the same Result workflow is written twice: once

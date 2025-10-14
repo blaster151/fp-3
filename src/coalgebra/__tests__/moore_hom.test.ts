@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { Moore, isCoalgebraHom } from "../Coalgebra";
+import type { Moore } from "../Coalgebra";
+import { isCoalgebraHom } from "../Coalgebra";
 
 /** Tiny example: states {A,B}, Sigma={0,1}, outputs O={0,1}. */
 type X = "A" | "B";

@@ -49,38 +49,41 @@ export const storeLensFocusedSmoothing: RunnableExample = {
     ];
 
     const telemetryStore: TimeSeriesStore = storeFromArray(telemetry, 0);
+    const storeC = StoreComonad<number>();
 
     const seriesLens: Lens<TelemetrySeries, ReadonlyArray<number>> = {
       get: (entry) => entry.series,
       set: (series) => (entry) => ({ ...entry, series }),
     };
 
-    const movingAverageStore = StoreComonad<number>().extend((cursor: TimeSeriesStore) => {
+    const movingAverageStore: TimeSeriesStore = storeC.extend<TelemetrySeries, TelemetrySeries>((cursor: TimeSeriesStore) => {
       const entry = cursor.peek(cursor.pos);
       if (!entry) {
         throw new Error("Expected telemetry entry");
       }
       const seriesStore = storeFromArray(entry.series, 0);
       const smoothedSeriesStore = movingAvg3(seriesStore);
-      const smoothedSeries = collectStore(entry.series.length)(smoothedSeriesStore);
+      const smoothedSeries = collectStore<number>(entry.series.length)(smoothedSeriesStore);
       return { ...entry, series: smoothedSeries };
     })(telemetryStore);
 
-    const smoothedTelemetry = collectStore(telemetry.length)(movingAverageStore);
+    const smoothedTelemetry = collectStore<TelemetrySeries>(telemetry.length)(movingAverageStore);
 
-    const focusedStore = focusStoreWithLens(seriesLens)(telemetryStore);
+    const focusedStore = focusStoreWithLens<number, TelemetrySeries, ReadonlyArray<number>>(seriesLens)(telemetryStore);
 
-    const lensSmoothedStore = extendThroughLens(seriesLens)((focused) => {
-      const series = focused.peek(focused.pos);
-      if (!series) {
-        throw new Error("Expected focused series");
-      }
-      const seriesStore = storeFromArray(series, 0);
-      const smoothed = movingAvg3(seriesStore);
-      return collectStore(series.length)(smoothed);
-    })(telemetryStore);
+    const lensSmoothedStore = extendThroughLens<number, TelemetrySeries, ReadonlyArray<number>>(seriesLens)(
+      (focused: Store<number, ReadonlyArray<number>>) => {
+        const series = focused.peek(focused.pos);
+        if (!series) {
+          throw new Error("Expected focused series");
+        }
+        const seriesStore = storeFromArray(series, 0);
+        const smoothed = movingAvg3(seriesStore);
+        return collectStore<number>(series.length)(smoothed);
+      },
+    )(telemetryStore);
 
-    const lensSmoothedTelemetry = collectStore(telemetry.length)(lensSmoothedStore);
+    const lensSmoothedTelemetry = collectStore<TelemetrySeries>(telemetry.length)(lensSmoothedStore);
 
     const seriesValueLens = (index: number): Lens<TelemetrySeries, number> => ({
       get: (entry) => entry.series[index] ?? entry.series[entry.series.length - 1] ?? 0,
@@ -90,14 +93,14 @@ export const storeLensFocusedSmoothing: RunnableExample = {
       }),
     });
 
-    let helperStore = telemetryStore;
+    let helperStore: TimeSeriesStore = telemetryStore;
     const firstSeries = telemetry[0]?.series ?? [];
     for (let index = 0; index < firstSeries.length; index += 1) {
       helperStore = movingAvgOnField(seriesValueLens(index))(helperStore);
     }
-    const helperTelemetry = collectStore(telemetry.length)(helperStore);
+    const helperTelemetry = collectStore<TelemetrySeries>(telemetry.length)(helperStore);
 
-    const manualTelemetry = telemetry.map((entry) => ({
+    const manualTelemetry: ReadonlyArray<TelemetrySeries> = telemetry.map((entry) => ({
       ...entry,
       series: entry.series.map((value, index, collection) => {
         const prev = collection[index - 1] ?? value;
