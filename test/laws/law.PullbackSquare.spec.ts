@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import type { CSRig } from "../../semiring-utils";
 import { Prob, directSum, BoolRig, MaxPlus, GhostRig, isEntire } from "../../semiring-utils";
 import type { Dist } from "../../dist";
 import { 
@@ -77,7 +78,7 @@ describe("Pullback square (3.8) — ordinary probabilities", () => {
 });
 
 describe("Multiple Semirings", () => {
-  const testSemirings = [
+  const testSemirings: Array<{ name: string; R: CSRig<unknown> }> = [
     { name: "Prob", R: Prob },
     { name: "MaxPlus", R: MaxPlus },
     { name: "BoolRig", R: BoolRig },
