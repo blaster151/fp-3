@@ -1,6 +1,7 @@
 import type { Law, Lawful } from "./Witness";
 import { eqDist } from "../prob/Dist";
-import { Kernel, kid, kcomp, kmap } from "../prob/Kleisli";
+import { kid, kcomp, kmap } from "../prob/Kleisli";
+import type { Kernel } from "../prob/Kleisli";
 
 const eqNum = (a: number, b: number) => a === b;
 

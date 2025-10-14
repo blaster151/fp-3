@@ -42,7 +42,10 @@ export function discrete<X>(X: ReadonlyArray<X>): Top<X> {
     const subset: X[] = [];
     for (let i = 0; i < n; i += 1) {
       if (m & (1 << i)) {
-        subset.push(X[i]);
+        const xi = X[i];
+        if (xi !== undefined) {
+          subset.push(xi);
+        }
       }
     }
     opens.push(subset);
