@@ -359,7 +359,7 @@ export const RelativeAdjunctionLawRegistry = {
     name: "Relative adjunction/monad resolution",
     registryPath: "relativeAdjunction.resolution.relativeMonad",
     summary:
-      "Theorem 5.24 sends a relative adjunction to its induced relative monad; the forthcoming analyzer will compare the supplied unit/extension data against the adjunction’s hom-isomorphism witnesses.",
+      "Theorem 5.24 sends a relative adjunction to its induced relative monad; the analyzer now derives the monad via `relativeMonadFromAdjunction` and compares the recorded unit/extension data against the adjunction’s hom-isomorphism witnesses.",
   },
 } satisfies Record<string, RelativeAdjunctionLawDescriptor>;
 

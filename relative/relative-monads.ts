@@ -14,9 +14,6 @@ import type {
   TightCellEvidence,
   VirtualEquipment,
 } from "../virtual-equipment";
-// TODO(relative-adjunctions): integrate with `RelativeAdjunctionData` once
-// Definition 5.1 mate calculus is executable so `analyzeRelativeMonadFraming`
-// can consume adjunction-derived data directly.
 import {
   defaultObjectEquality,
   frameFromProarrow,
@@ -112,6 +109,8 @@ export interface RelativeMonadConstructionResult<
   readonly density?: DensityAnalysis;
   readonly pointwiseLift?: PointwiseLeftExtensionLiftAnalysis;
   readonly fullyFaithful?: FullyFaithfulAnalysis<Obj, Arr, Payload, Evidence>;
+  readonly adjunctionHomIsomorphism?: RelativeAdjunctionFramingReport;
+  readonly resolution?: RelativeMonadResolutionReport<Obj, Arr, Payload, Evidence>;
 }
 
 export interface RelativeMonadEquipmentWitnesses<
@@ -142,6 +141,18 @@ export interface RelativeMonadEquipmentWitnesses<
     Payload,
     Evidence
   >;
+}
+
+export interface RelativeMonadFromAdjunctionOptions<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly overrides?: Partial<
+    Pick<RelativeMonadData<Obj, Arr, Payload, Evidence>, "looseCell" | "unit" | "extension">
+  >;
+  readonly witnesses?: RelativeMonadEquipmentWitnesses<Obj, Arr, Payload, Evidence>;
 }
 
 export interface RelativeMonadFramingReport {
@@ -1816,6 +1827,111 @@ export const relativeMonadFromEquipment = <Obj, Arr, Payload, Evidence>(
     ...(densityReport && { density: densityReport }),
     ...(pointwiseLiftReport && { pointwiseLift: pointwiseLiftReport }),
     ...(fullyFaithfulReport && { fullyFaithful: fullyFaithfulReport }),
+  };
+};
+
+export const relativeMonadFromAdjunction = <Obj, Arr, Payload, Evidence>(
+  adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
+  options: RelativeMonadFromAdjunctionOptions<Obj, Arr, Payload, Evidence> = {},
+): RelativeMonadConstructionResult<Obj, Arr, Payload, Evidence> => {
+  const { overrides = {}, witnesses } = options;
+  const { equipment, root, right } = adjunction;
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const homIsomorphism = analyzeRelativeAdjunctionHomIsomorphism(adjunction);
+
+  const extractionIssues: string[] = [];
+  const targetFrame = adjunction.homIsomorphism.forward.target;
+
+  let looseCell = overrides.looseCell;
+  if (!looseCell) {
+    const matchingArrows = targetFrame.arrows.filter(
+      (arrow) => equality(arrow.from, root.from) && equality(arrow.to, right.to),
+    );
+    if (matchingArrows.length === 1) {
+      [looseCell] = matchingArrows;
+    } else if (matchingArrows.length > 1) {
+      [looseCell] = matchingArrows;
+      extractionIssues.push(
+        "Hom-isomorphism target contains multiple arrows matching dom(j) and cod(r); defaulted to the first.",
+      );
+    } else if (targetFrame.arrows.length > 0) {
+      [looseCell] = targetFrame.arrows;
+      extractionIssues.push(
+        "Hom-isomorphism target lacks an arrow with dom(j) and cod(r); defaulted to its first arrow.",
+      );
+    } else {
+      looseCell = identityProarrow(equipment, root.from);
+      extractionIssues.push(
+        "Hom-isomorphism target does not expose any loose arrows; defaulted to the identity on dom(j).",
+      );
+    }
+  }
+
+  const looseFrame = frameFromProarrow(looseCell);
+  const boundaries = { left: root, right } as const;
+  const identityEvidence = equipment.cells.identity(looseFrame, boundaries);
+
+  const unit = overrides.unit ?? {
+    source: looseFrame,
+    target: looseFrame,
+    boundaries,
+    evidence: identityEvidence,
+  };
+
+  const extension = overrides.extension ?? {
+    source: looseFrame,
+    target: looseFrame,
+    boundaries,
+    evidence: identityEvidence,
+  };
+
+  const monad: RelativeMonadData<Obj, Arr, Payload, Evidence> = {
+    equipment,
+    root,
+    carrier: right,
+    looseCell,
+    extension,
+    unit,
+  };
+
+  const baseResult = relativeMonadFromEquipment(monad, witnesses ?? {});
+  const resolution = analyzeRelativeMonadResolution({ monad, adjunction });
+
+  const combinedIssues = [
+    ...baseResult.issues,
+    ...extractionIssues,
+    ...(homIsomorphism.holds
+      ? []
+      : homIsomorphism.issues.map((issue) => `Hom-isomorphism: ${issue}`)),
+    ...(resolution.holds ? [] : resolution.issues),
+  ];
+
+  const holds =
+    baseResult.holds && extractionIssues.length === 0 && homIsomorphism.holds && resolution.holds;
+
+  const successDetails = `Relative adjunction induced monad: ${baseResult.details} ${resolution.details}`;
+  const failureFragments = [
+    extractionIssues.length > 0
+      ? `Loose arrow extraction issues: ${extractionIssues.join("; ")}`
+      : undefined,
+    baseResult.holds ? undefined : baseResult.details,
+    homIsomorphism.holds ? undefined : homIsomorphism.details,
+    resolution.holds ? undefined : resolution.details,
+  ].filter((fragment): fragment is string => fragment !== undefined);
+
+  const failureDetails =
+    failureFragments.length > 0
+      ? failureFragments.join(" ")
+      : `Relative adjunction-derived monad issues: ${combinedIssues.join("; ")}`;
+
+  return {
+    ...baseResult,
+    holds,
+    issues: holds ? [] : combinedIssues,
+    details: holds ? successDetails : failureDetails,
+    monad,
+    adjunctionHomIsomorphism: homIsomorphism,
+    resolution,
   };
 };
 

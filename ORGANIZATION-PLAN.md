@@ -14,10 +14,10 @@ Split the monolithic `allTS.ts` (420KB+) into manageable, cohesive modules while
   `relative/relative-algebras.ts` so the currently pending diagnostics
   become executable equalities once the diagrammatic witnesses are
   available.
-- **Adjunction-derived constructors.** Replace the TODO stubs in
-  `relative/relative-monads.ts` with concrete builders that derive
-  relative monads and comparison data from relative adjunctions,
-  completing the mates-style comparisons promised near Theorem 5.24.
+- **Adjunction-derived constructors.** ✅ `relative/relative-monads.ts`
+  now includes `relativeMonadFromAdjunction`, deriving relative monads and
+  resolution diagnostics directly from relative adjunction data so the
+  Theorem 5.24 comparisons execute without manual wiring.
 
 ## 📦 Module Structure
 

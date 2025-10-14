@@ -87,7 +87,10 @@ import {
   RelativeAdjunctionOracles,
   type RelativeAdjunctionOracleInputs,
 } from "../../relative/relative-adjunction-oracles";
-import { describeTrivialRelativeMonad } from "../../relative/relative-monads";
+import {
+  describeTrivialRelativeMonad,
+  relativeMonadFromAdjunction,
+} from "../../relative/relative-monads";
 import type { RelativeMonadData } from "../../relative/relative-monads";
 
 const makeTrivialAdjunction = () => {
@@ -992,11 +995,16 @@ describe("Relative adjunction oracles", () => {
     expect(result.holds).toBe(false);
   });
 
-  it("defaults the resolution oracle to pending when no monad is supplied", () => {
-    const { adjunction } = makeTrivialAdjunction();
+  it("derives a resolution monad from the adjunction when none is supplied", () => {
+    const { adjunction, equipment } = makeTrivialAdjunction();
     const result = RelativeAdjunctionOracles.resolution(adjunction);
-    expect(result.pending).toBe(true);
-    expect(result.holds).toBe(false);
+    expect(result.pending).toBe(false);
+    expect(result.holds).toBe(true);
+    expect(result.witness).toBeDefined();
+    const analysis = result.analysis as
+      | { derived?: ReturnType<typeof relativeMonadFromAdjunction> }
+      | undefined;
+    expect(analysis?.derived?.monad?.equipment).toBe(equipment);
   });
 
   it("confirms resolutions when provided with a matching monad", () => {

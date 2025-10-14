@@ -22,6 +22,7 @@ import {
   analyzeRelativeSetEnrichedMonad,
   describeTrivialRelativeMonad,
   fromMonad,
+  relativeMonadFromAdjunction,
   relativeMonadFromEquipment,
   toMonadIfIdentity,
   describeRelativeEnrichedMonadWitness,
@@ -251,6 +252,41 @@ describe("relativeMonadFromEquipment", () => {
     expect(report.rightLift?.holds).toBe(true);
     expect(report.density?.holds).toBe(true);
     expect(report.fullyFaithful?.holds).toBe(true);
+  });
+});
+
+describe("relativeMonadFromAdjunction", () => {
+  it("recovers the trivial relative monad from the identity adjunction", () => {
+    const { equipment } = makeTrivialData();
+    const adjunction = describeTrivialRelativeAdjunction(equipment, "•");
+    const report = relativeMonadFromAdjunction(adjunction);
+    expect(report.holds).toBe(true);
+    expect(report.monad?.equipment).toBe(equipment);
+    expect(report.adjunctionHomIsomorphism?.holds).toBe(true);
+    expect(report.resolution?.holds).toBe(true);
+  });
+
+  it("records extraction issues when the hom-isomorphism lacks the expected loose arrow", () => {
+    const { equipment } = makeTrivialData();
+    const adjunction = describeTrivialRelativeAdjunction(equipment, "•");
+    const broken = {
+      ...adjunction,
+      homIsomorphism: {
+        ...adjunction.homIsomorphism,
+        forward: {
+          ...adjunction.homIsomorphism.forward,
+          target: {
+            ...adjunction.homIsomorphism.forward.target,
+            arrows: [],
+          },
+        },
+      },
+    } as typeof adjunction;
+    const report = relativeMonadFromAdjunction(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Hom-isomorphism target does not expose any loose arrows; defaulted to the identity on dom(j).",
+    );
   });
 });
 
