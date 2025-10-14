@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { Prob, BoolRig, MaxPlus, GhostRig } from "../../semiring-utils";
 import { dirac } from "../../dist";
+import type { Dist } from "../../dist";
 import { isDeterministic, checkSampDeltaIdentity } from "../../markov-laws";
 
 describe("Determinism recognizer", () => {

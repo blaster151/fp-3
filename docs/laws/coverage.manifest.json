@@ -1,0 +1,20 @@
+{
+  "critical": [
+    "Monoid/number/sum",
+    "Prob/Dist/Monad<number>",
+    "Prob/Kleisli/Category",
+    "Prob/KernelMatrixIso"
+  ],
+  "important": [
+    "Prob/KernelMatrixIso/Iso",
+    "Order/Lattice/powerset",
+    "CPO/powerset",
+    "Ring/Zn",
+    "Ring/Poly(Zn)[trunc]",
+    "Adjunction/Galois/basic",
+    "Codensity ~= Nat(G^A,G)",
+    "Top/ProductUP",
+    "Top/Continuity"
+  ],
+  "allowlistTags": []
+}

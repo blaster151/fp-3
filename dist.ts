@@ -77,9 +77,9 @@ export const argmaxSamp = <R, X>(cmp: (a: R, b: R) => number) =>
 // ===== Monoidal Structure =====
 
 // strength σ: X ⊗ PY → P(X ⊗ Y)
-export const strength = <R, X, Y>(R: CSRig<R>) =>
-  (x: X, dy: Dist<R, Y>): Dist<R, [X, Y]> =>
-    bind(dy, (y) => dirac(R)([x, y] as [X, Y])) as Dist<R, [X, Y]>;
+export const strength = <R>(R: CSRig<R>) =>
+  <X, Y>(x: X, dy: Dist<R, Y>): Dist<R, [X, Y]> =>
+    bind(dy, (y) => dirac(R)([x, y] as [X, Y]));
 
 // ===== Legacy Compatibility =====
 

@@ -13,10 +13,22 @@
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 import {
-  mkFin, Fin, FinMarkov, Kernel, Pair, I,
-  idK, detK, tensor,
-  checkRowStochastic, mass, fromWeights,
-  MarkovCategory, approxEqualMatrix
+  mkFin,
+  FinMarkov,
+  idK,
+  detK,
+  tensor,
+  checkRowStochastic,
+  mass,
+  fromWeights,
+  MarkovCategory,
+  approxEqualMatrix
+} from '../../markov-category'
+import type {
+  Fin,
+  Kernel,
+  Pair,
+  I,
 } from '../../markov-category'
 import {
   buildMarkovComonoidWitness,
@@ -36,18 +48,11 @@ import { KleisliProb, DistMonad } from '../../probability-monads'
 describe("LAW: Markov Category Laws", () => {
   
   // Test finite sets for property testing
-  const genSmallFin = () => fc.constantFrom(
-    mkFin([0, 1] as const, (a,b) => a === b),
-    mkFin([0, 1, 2] as const, (a,b) => a === b),
-    mkFin(["a", "b"] as const, (a,b) => a === b)
+  const genSmallFin = () => fc.constantFrom<Fin<any>>(
+    mkFin([0, 1] as const, (a,b) => a === b) as Fin<any>,
+    mkFin([0, 1, 2] as const, (a,b) => a === b) as Fin<any>,
+    mkFin(["a", "b"] as const, (a,b) => a === b) as Fin<any>,
   )
-
-  const genKernel = <X, Y>(Xf: ReturnType<typeof genSmallFin>, Yf: ReturnType<typeof genSmallFin>) => 
-    fc.func(fc.constant(fc.array(fc.tuple(
-      fc.constantFrom(...Yf.elems), 
-      fc.float({ min: 0, max: 1 })
-    ), { minLength: 1, maxLength: Yf.elems.length })
-    .map(pairs => fromWeights(pairs, true))))
 
   describe("5.1 Dist over CSRig is Affine", () => {
     /**
