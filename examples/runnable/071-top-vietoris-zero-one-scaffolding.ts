@@ -35,37 +35,6 @@ type KolmogorovZeroOneReport<A, XJ, T> = {
   readonly details: string;
 };
 
-type ClosedSubset<Point> = {
-  readonly label: string;
-  readonly members: ReadonlyArray<Point>;
-  contains(point: Point): boolean;
-};
-
-type TopSpace<Point> = {
-  readonly label: string;
-  readonly points: Fin<Point>;
-  readonly closedSubsets: ReadonlyArray<ClosedSubset<Point>>;
-};
-
-type KolmogorovProductSpace<Point> = TopSpace<Point> & {
-  readonly factors: ReadonlyArray<TopSpace<unknown>>;
-  readonly finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<Point>>;
-};
-
-type ProductPriorInput<A, XJ> = {
-  readonly domain: Fin<A>;
-  readonly product: KolmogorovProductSpace<XJ>;
-  readonly support: ReadonlyArray<readonly [XJ, number]>;
-  readonly label?: string;
-};
-
-type DeterministicStatisticInput<XJ, T> = {
-  readonly source: TopSpace<XJ>;
-  readonly target: Fin<T>;
-  readonly statistic: (xj: XJ) => T;
-  readonly label?: string;
-};
-
 type TopVietorisModule = {
   readonly buildTopVietorisKolmogorovWitness: <A, XJ, XF, T = 0 | 1>(
     prior: FinMarkov<A, XJ>,
@@ -79,33 +48,20 @@ type TopVietorisModule = {
   ) => KolmogorovZeroOneReport<A, XJ, T>;
   readonly buildTopVietorisHewittSavageWitness: () => never;
   readonly checkTopVietorisHewittSavage: () => never;
-  readonly makeDiscreteTopSpace: <Point>(label: string, points: Fin<Point>) => TopSpace<Point>;
-  readonly makeKolmogorovProductSpace: <Spaces extends ReadonlyArray<TopSpace<any>>>(
-    spaces: Spaces,
-    options?: { readonly label?: string },
-  ) => KolmogorovProductSpace<any>;
-  readonly makeProductPrior: <A, XJ>(mkInput: () => ProductPriorInput<A, XJ>) => FinMarkov<A, XJ>;
-  readonly makeDeterministicStatistic: <XJ, T = 0 | 1>(mkInput: () => DeterministicStatisticInput<XJ, T>) => FinMarkov<XJ, T>;
+  readonly makeProductPrior: <A, XJ>(mkXJ: () => XJ) => FinMarkov<A, XJ>;
+  readonly makeDeterministicStatistic: <XJ, T = 0 | 1>(stat: (xj: XJ) => T) => FinMarkov<XJ, T>;
 };
 
 type MarkovCategoryModule = {
   readonly mkFin: <T>(elems: ReadonlyArray<T>, eq?: (a: T, b: T) => boolean, show?: (value: T) => string) => Fin<T>;
+  readonly detK: <X, Y>(X: Fin<X>, Y: Fin<Y>, f: (x: X) => Y) => FinMarkov<X, Y>;
+  readonly tensorObj: <X, Y>(X: Fin<X>, Y: Fin<Y>) => Fin<readonly [X, Y]>;
+  readonly FinMarkov: new <X, Y>(X: Fin<X>, Y: Fin<Y>, k: (x: X) => Map<Y, number>) => FinMarkov<X, Y>;
 };
 
 type MarkovOraclesModule = {
   readonly MarkovOracles: {
-    readonly top: {
-      readonly vietoris: {
-        readonly status: string;
-        readonly adapters?: () => {
-          readonly makeClosedSubset: Function;
-          readonly makeDiscreteTopSpace: Function;
-          readonly makeKolmogorovProductSpace: Function;
-          readonly makeProductPrior: Function;
-          readonly makeDeterministicStatistic: Function;
-        } | undefined;
-      };
-    };
+    readonly top: { readonly vietoris: { readonly status: string } };
   };
 };
 
@@ -116,21 +72,14 @@ const markovCategory = require("../../markov-category") as MarkovCategoryModule;
 const markovOraclesModule = require("../../markov-oracles") as MarkovOraclesModule;
 require("../../markov-permutation") as FiniteSymmetryModule;
 
-const {
-  buildTopVietorisKolmogorovWitness,
-  checkTopVietorisKolmogorov,
-  buildTopVietorisHewittSavageWitness,
-  checkTopVietorisHewittSavage,
-  makeDiscreteTopSpace,
-  makeKolmogorovProductSpace,
-  makeProductPrior,
-  makeDeterministicStatistic,
-} = topVietoris;
+const { buildTopVietorisKolmogorovWitness, checkTopVietorisKolmogorov, buildTopVietorisHewittSavageWitness, checkTopVietorisHewittSavage, makeProductPrior, makeDeterministicStatistic } =
+  topVietoris;
 const { MarkovOracles } = markovOraclesModule;
-const { mkFin } = markovCategory;
+const { mkFin, detK, tensorObj, FinMarkov } = markovCategory;
 
 type Bit = 0 | 1;
 type Pair = readonly [Bit, Bit];
+type Label = "aligned" | "mirror";
 
 type Transcript = ReadonlyArray<string>;
 
@@ -149,122 +98,86 @@ const describeValue = (value: unknown): string => {
   return String(value);
 };
 
-function makeEnvironment(): {
-  readonly unit: Fin<{}>;
+function makeSpaces(): {
+  readonly domain: Fin<Label>;
   readonly bit: Fin<Bit>;
-  readonly pairSpace: KolmogorovProductSpace<Pair>;
-  readonly aligned: Pair;
-  readonly mirrored: Pair;
-  readonly prior: FinMarkov<{}, Pair>;
-  readonly statistic: FinMarkov<Pair, Bit>;
+  readonly pair: Fin<Pair>;
+  readonly finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<Pair, Bit>>;
 } {
-  const unit = mkFin([{}], (a, b) => Object.is(a, b), () => "•");
+  const domain = mkFin<Label>(["aligned", "mirror"], (a, b) => a === b, (value) => value);
   const bit = mkFin<Bit>([0, 1], (a, b) => a === b, (value) => value.toString());
-  const bitSpace = makeDiscreteTopSpace("bit", bit);
-  const pairSpace = makeKolmogorovProductSpace([bitSpace, bitSpace], { label: "bit²" }) as KolmogorovProductSpace<Pair>;
+  const pair = tensorObj(bit, bit);
 
-  const aligned = pairSpace.points.elems.find((point) => point[0] === 0 && point[1] === 0);
-  const mirrored = pairSpace.points.elems.find((point) => point[0] === 1 && point[1] === 1);
-  if (!aligned || !mirrored) throw new Error("Kolmogorov product is missing canonical aligned/mirrored points");
+  const finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<Pair, Bit>> = [
+    { F: "first", piF: detK(pair, bit, ([x]) => x) },
+    { F: "second", piF: detK(pair, bit, ([, y]) => y) },
+  ];
 
-  const prior = makeProductPrior(() => ({
-    domain: unit,
-    product: pairSpace,
-    support: [
-      [aligned, 0.5],
-      [mirrored, 0.5],
-    ],
-    label: "balanced pair prior",
-  }));
-
-  const statistic = makeDeterministicStatistic(() => ({
-    source: pairSpace,
-    target: bit,
-    statistic: (pair) => pair[0],
-    label: "first coordinate",
-  }));
-
-  return { unit, bit, pairSpace, aligned, mirrored, prior, statistic };
+  return { domain, bit, pair, finiteMarginals };
 }
 
-const environment = makeEnvironment();
+const spaces = makeSpaces();
+
+function alignedPrior(): FinMarkov<Label, Pair> {
+  return detK(spaces.domain, spaces.pair, (label) =>
+    label === "aligned" ? ([0, 0] as Pair) : ([1, 1] as Pair),
+  );
+}
+
+function parityStatistic(): FinMarkov<Pair, Bit> {
+  return detK(spaces.pair, spaces.bit, ([x, y]) => ((x ^ y) as Bit));
+}
+
+function firstCoordinateStatistic(): FinMarkov<Pair, Bit> {
+  return detK(spaces.pair, spaces.bit, ([x]) => x);
+}
 
 function kolmogorovSection(): Transcript {
   const witness = buildTopVietorisKolmogorovWitness(
-    environment.prior,
-    environment.statistic,
-    environment.pairSpace.finiteMarginals,
-    "Top/Vietoris balanced pair",
+    alignedPrior(),
+    firstCoordinateStatistic(),
+    spaces.finiteMarginals,
+    "Top/Vietoris aligned",
   );
   const report = checkTopVietorisKolmogorov(witness);
-  const composite = environment.prior.then(environment.statistic);
-  const domainElement = environment.prior.X.elems[0]!;
+  const composite = witness.prior.then(witness.stat);
+  const domainElement = witness.prior.X.elems[0]!;
   const distribution = composite.k(domainElement);
 
   return [
     "== Top/Vietoris Kolmogorov witness ==",
     `Status hint: ${MarkovOracles.top.vietoris.status}`,
     `Holds=${describeBoolean(report.holds)} — ${report.details}`,
-    `Deterministic composite=${describeBoolean(report.deterministic)}; CI family=${describeBoolean(report.ciFamilyVerified)}`,
+    `Deterministic composite=${describeBoolean(report.deterministic)}; CI family=${describeBoolean(
+      report.ciFamilyVerified,
+    )}`,
     `Composite distribution=${describeDistribution(distribution)}`,
   ];
 }
 
-function productSection(): Transcript {
-  const factors = environment.pairSpace.factors.map((space) => space.label).join(" × ");
-  const marginals = environment.pairSpace.finiteMarginals.map((entry) => entry.F).join(", ");
-  return [
-    "== Encoded Kolmogorov product ==",
-    `Factors=${factors}`,
-    `Cylinder marginals=${marginals}`,
-    `Closed subsets tracked=${environment.pairSpace.closedSubsets.length}`,
-  ];
+function captureError(label: string, action: () => void): Transcript {
+  try {
+    action();
+    return [`${label}: unexpectedly succeeded`];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return [`${label}: ${message}`];
+  }
 }
 
 function hewittSavageSection(): Transcript {
-  const captureError = (label: string, action: () => void): string => {
-    try {
-      action();
-      return `${label}: unexpectedly succeeded`;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return `${label}: ${message}`;
-    }
-  };
-
   return [
-    "== Hewitt–Savage limitation ==",
-    captureError("buildTopVietorisHewittSavageWitness", () => buildTopVietorisHewittSavageWitness()),
-    captureError("checkTopVietorisHewittSavage", () => checkTopVietorisHewittSavage()),
+    "== Hewitt–Savage scaffolding ==",
+    ...captureError("buildTopVietorisHewittSavageWitness", () => buildTopVietorisHewittSavageWitness()),
+    ...captureError("checkTopVietorisHewittSavage", () => checkTopVietorisHewittSavage()),
   ];
 }
 
 function factorySection(): Transcript {
-  const domainElement = environment.prior.X.elems[0]!;
-  const priorDistribution = environment.prior.k(domainElement);
-  const alignedImage = environment.statistic.k(environment.aligned);
-  const mirroredImage = environment.statistic.k(environment.mirrored);
   return [
-    "== Adapter factory outputs ==",
-    `Prior distribution=${describeDistribution(priorDistribution)}`,
-    `Statistic(aligned)=${describeDistribution(alignedImage)}`,
-    `Statistic(mirrored)=${describeDistribution(mirroredImage)}`,
-  ];
-}
-
-function adapterRegistrySection(): Transcript {
-  const adapters = MarkovOracles.top.vietoris.adapters?.();
-  if (!adapters) {
-    return [
-      "== Top/Vietoris adapter registry ==",
-      "Adapters unavailable (Top/Vietoris module not loaded)",
-    ];
-  }
-
-  const entries = Object.keys(adapters).sort();
-  return [
-    "== Top/Vietoris adapter registry ==",
-    `Registered helpers=${entries.join(", ")}`,
+    "== Adapter factory placeholders ==",
+    ...captureError("makeProductPrior", () => makeProductPrior(() => [0, 0] as Pair)),
+    ...captureError("makeDeterministicStatistic", () => makeDeterministicStatistic((pair: Pair) => pair[0])),
   ];
 }
 
@@ -273,13 +186,9 @@ export const stage071TopVietorisZeroOneScaffolding: RunnableExample = {
   title: "Top/Vietoris zero-one scaffolding",
   outlineReference: 71,
   summary:
-    "Kolmogorov witness adapters for the Vietoris Kleisli category with concrete priors/statistics and explicit Hewitt–Savage limitations",
+    "Kolmogorov witness adapters for the Vietoris Kleisli category, explicit Hewitt–Savage failure markers, and TODO factories for product priors and statistics in non-causal settings",
   async run() {
     const logs: string[] = [
-      ...adapterRegistrySection(),
-      "",
-      ...productSection(),
-      "",
       ...kolmogorovSection(),
       "",
       ...hewittSavageSection(),

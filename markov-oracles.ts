@@ -93,11 +93,11 @@ export interface TopVietorisAdapters {
     label: string,
     members: ReadonlyArray<Point>,
     eq: Eq<Point>,
-  ) => TopVietorisClosedSubset<Point>;
+  ) => TopVietorisClosedSubset;
   readonly makeDiscreteTopSpace: <Point>(
     label: string,
     points: Fin<Point>,
-  ) => TopVietorisTopSpace<Point>;
+  ) => TopVietorisTopSpace;
   readonly makeKolmogorovProductSpace: (...args: any[]) => unknown;
   readonly makeProductPrior: (...args: any[]) => FinMarkov<any, any>;
   readonly makeDeterministicStatistic: (...args: any[]) => FinMarkov<any, any>;
