@@ -20,8 +20,12 @@ const nestPair = <A>(layers: number, env: string, value: A): NestedPair<A> => {
 describe('Simplicial object from Pair comonad', () => {
   it('simplicial identity: faces (i<j)', () => {
     fc.assert(fc.property(
-      fc.string(), fc.oneof<Primitive>(fc.integer(), fc.string(), fc.boolean()), fc.integer({ min: 1, max: 3 }),
-      (e: string, a: Primitive, n: number) => {
+      fc.tuple(
+        fc.string(),
+        fc.oneof<Primitive>(fc.integer(), fc.string(), fc.boolean()),
+        fc.constantFrom(1, 2, 3)
+      ),
+      ([e, a, n]) => {
         // level n: X_n = W^{n+1}; pick i<j<=n
         for (let i = 0; i <= n; i++) for (let j = i + 1; j <= n; j++) {
           const x_n = nestPair(n + 1, e, a) // W^{n+1} a
@@ -36,8 +40,12 @@ describe('Simplicial object from Pair comonad', () => {
 
   it('simplicial identity: degeneracies (i<=j)', () => {
     fc.assert(fc.property(
-      fc.string(), fc.oneof<Primitive>(fc.integer(), fc.string(), fc.boolean()), fc.integer({ min: 0, max: 2 }),
-      (e: string, a: Primitive, n: number) => {
+      fc.tuple(
+        fc.string(),
+        fc.oneof<Primitive>(fc.integer(), fc.string(), fc.boolean()),
+        fc.constantFrom(0, 1, 2)
+      ),
+      ([e, a, n]) => {
         for (let i = 0; i <= n; i++) for (let j = i; j <= n; j++) {
           const x_n = nestPair(n + 1, e, a)
           const left  = S.s(n + 1, i).app( S.s(n, j).app(x_n) )
@@ -51,8 +59,12 @@ describe('Simplicial object from Pair comonad', () => {
 
   it('simplicial identity: mixed d_i s_j', () => {
     fc.assert(fc.property(
-      fc.string(), fc.oneof<Primitive>(fc.integer(), fc.string(), fc.boolean()), fc.integer({ min: 0, max: 2 }),
-      (e: string, a: Primitive, n: number) => {
+      fc.tuple(
+        fc.string(),
+        fc.oneof<Primitive>(fc.integer(), fc.string(), fc.boolean()),
+        fc.constantFrom(0, 1, 2)
+      ),
+      ([e, a, n]) => {
         const x_n = nestPair(n + 1, e, a)
 
         for (let j = 0; j <= n; j++) {
@@ -80,7 +92,9 @@ describe('Simplicial object from Pair comonad', () => {
   })
 
   it('augmentation matches d_0 at n=0', () => {
-    fc.assert(fc.property(fc.string(), fc.oneof<Primitive>(fc.integer(), fc.string(), fc.boolean()), (e: string, a: Primitive) => {
+    fc.assert(fc.property(
+      fc.tuple(fc.string(), fc.oneof<Primitive>(fc.integer(), fc.string(), fc.boolean())),
+      ([e, a]) => {
       const x0 = nestPair(1, e, a) // W a
       const left = S.aug.app(x0)
       const right = S.d(0, 0).app(x0)

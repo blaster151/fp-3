@@ -13,7 +13,7 @@ import {
   FinSet,
   EnhancedVect
 } from '../allTS'
-import type { CatMonad, Adjunction, FinSetObj, ObjOf } from '../allTS'
+import type { CatMonad, Adjunction, FinSetObj, ObjOf, FiniteCategory } from '../allTS'
 
 type SimpleKleisliMorph<C> = {
   readonly from: ObjOf<C>
@@ -124,11 +124,20 @@ describe('Pushforward Monad Law Checking', () => {
     const adj = freeForgetfulAdjunction()
     
     // Mock CFunctor for codensity
+    const sourceCategory: FiniteCategory<string, string> = {
+      objects: ['b'],
+      hom: (a: string, b: string) => (a === 'b' && b === 'b' ? ['id_b'] : []),
+      id: () => 'id_b',
+      compose: () => 'id_b',
+      dom: () => 'b',
+      cod: () => 'b'
+    }
+
     const G = {
-      source: { objects: ['b'] },
+      source: sourceCategory,
       target: FinSet,
       onObj: (_b: string) => ({ elements: [0, 1] }),
-      onMor: (_m: unknown) => FinSet.id({ elements: [0, 1] })
+      onMor: (_m: string) => FinSet.id({ elements: [0, 1] })
     }
     
     const A = { elements: ['x', 'y'] }

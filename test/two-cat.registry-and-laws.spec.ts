@@ -22,6 +22,7 @@ import {
 } from '../allTS'
 import type {
   EndofunctorK1,
+  EndofunctorValue,
   SimpleApplicativeK1,
   EndoDict
 } from '../allTS'
@@ -39,9 +40,19 @@ const IdApp: SimpleApplicativeK1<'Id'> = {
 // Compose applicative (Composition of two applicatives)
 const ComposeApp = <G, H>(G: SimpleApplicativeK1<G>, H: SimpleApplicativeK1<H>): SimpleApplicativeK1<['Compose', G, H]> => ({
   of:  <A>(a: A) => G.of(H.of(a)),
-  map: <A, B>(f: (a: A) => B) => <GHA extends EndofunctorValue<G, EndofunctorValue<H, A>>>(gha: GHA) => G.map(H.map(f))(gha),
-  ap:  <A, B>(ghf: EndofunctorValue<G, EndofunctorValue<H, (a: A) => B>>) => (gha: EndofunctorValue<G, EndofunctorValue<H, A>>) =>
-        G.ap(G.map(<HF extends EndofunctorValue<H, (a: A) => B>>(hf: HF) => <HA extends EndofunctorValue<H, A>>(ha: HA) => H.ap(hf)(ha))(ghf))(gha),
+  map: <A, B>(f: (a: A) => B) => (gha: EndofunctorValue<['Compose', G, H], A>) => {
+    const viewed = gha as EndofunctorValue<G, EndofunctorValue<H, A>>
+    const mapped = G.map(H.map(f))(viewed)
+    return mapped as unknown as EndofunctorValue<['Compose', G, H], B>
+  },
+  ap:  <A, B>(ghf: EndofunctorValue<['Compose', G, H], (a: A) => B>) =>
+    (gha: EndofunctorValue<['Compose', G, H], A>) => {
+      const viewedF = ghf as EndofunctorValue<G, EndofunctorValue<H, (a: A) => B>>
+      const viewedA = gha as EndofunctorValue<G, EndofunctorValue<H, A>>
+      const lifted = G.map((hf: EndofunctorValue<H, (a: A) => B>) => H.ap(hf))(viewedF)
+      const applied = G.ap(lifted)(viewedA)
+      return applied as unknown as EndofunctorValue<['Compose', G, H], B>
+    },
 })
 
 describe('Traversable registry + laws', () => {
@@ -56,14 +67,22 @@ describe('Traversable registry + laws', () => {
 
     // Sequence via distributive law explicitly:
     const seqArr = distributePromiseK1(TraversableArrayK1)
-    const explicit = await seqArr.app( await nested ).then((arr: Array<Promise<ReturnType<typeof Some>>>) =>
-      Promise.all(arr.map((po) => po)).then((oas) => oas)
-    )
+    const explicit = await seqArr.app(await nested)
+    const isOptionArray = (value: unknown): value is ReadonlyArray<ReturnType<typeof Some>> =>
+      Array.isArray(value) && value.every((opt) => typeof opt === 'object' && opt !== null && '_tag' in opt)
+
+    if (!isOptionArray(explicit)) {
+      throw new Error('Expected an array of Option values from distributePromiseK1(Array)')
+    }
 
     // Check the result has the expected structure
-    expect(explicit.length).toBe(2)
-    expect(explicit[0]._tag).toBe('Some')
-    expect(explicit[1]._tag).toBe('Some')
+    expect(explicit).toHaveLength(2)
+    if (explicit.length < 2) {
+      throw new Error('Expected two Option results')
+    }
+    const [first, second] = explicit as [ReturnType<typeof Some>, ReturnType<typeof Some>]
+    expect(first._tag).toBe('Some')
+    expect(second._tag).toBe('Some')
   })
 
   it('Option Traversable: identity law', () => {
@@ -126,8 +145,13 @@ describe('Traversable registry + laws', () => {
     const CompEO  = registerCompDerived(R, EitherE as any, OptionF as any)
 
     // check we can sequence Promise through each via registry lookups
-    const seq = <F>(F: EndofunctorK1<F>, val: unknown) =>
-      (distributePromiseK1 as typeof distributePromiseK1<F>)(R.get(F)!).app(val)
+    const seq = <F, A>(F: EndofunctorK1<F>, value: EndofunctorValue<['Comp', F, 'Promise'], A>) => {
+      const traversable = R.get(F)
+      if (!traversable) {
+        throw new Error('Traversable instance not registered')
+      }
+      return (distributePromiseK1 as typeof distributePromiseK1<F>)(traversable).app(value)
+    }
 
     // Sum<Either,Option>
     const sVal = inR<any, any, number>(Some(Promise.resolve(10)))

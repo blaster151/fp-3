@@ -8,6 +8,13 @@ import {
   identityProarrow,
   identityVerticalBoundary,
 } from "../../virtual-equipment";
+import type {
+  Equipment2Cell,
+  EquipmentFrame,
+  EquipmentProarrow,
+  LeftExtensionFromColimitData,
+  RightLiftData,
+} from "../../virtual-equipment";
 import { virtualizeFiniteCategory } from "../../virtual-equipment/adapters";
 import {
   analyzeRelativeAdjunctionFraming,
@@ -154,8 +161,8 @@ const buildTrivialPastingInput = <
   const outer = describeTrivialRelativeAdjunction(equipment, object);
   const inner = describeTrivialRelativeAdjunction(equipment, object);
   const result = describeTrivialRelativeAdjunction(equipment, object);
-  const loose = identityProarrow(equipment, object);
-  const frame = frameFromProarrow(loose);
+  const loose: EquipmentProarrow<Obj, Payload> = identityProarrow(equipment, object);
+  const frame: EquipmentFrame<Obj, Payload> = frameFromProarrow(loose);
   const boundaries = { left: outer.left, right: result.left } as const;
   const evidence = equipment.cells.identity(frame, boundaries);
   return {
@@ -491,17 +498,22 @@ const buildIdentityLeftLiftInput = <
     "Pointwise left lift unit right boundary (identity).",
   );
   const unitEvidence = equipment.cells.identity(frame, { left: leftBoundary, right: rightBoundary });
+  const lift: RightLiftData<Obj, Arr, Payload, Evidence> = {
+    loose,
+    along: adjunction.root.tight,
+    lift: loose,
+    unit: {
+      source: frame,
+      target: frame,
+      boundaries: { left: leftBoundary, right: rightBoundary },
+      evidence: unitEvidence,
+    },
+  };
+
   return {
     lift: {
-      loose,
+      lift,
       along: adjunction.root.tight,
-      lift: loose,
-      unit: {
-        source: frame,
-        target: frame,
-        boundaries: { left: leftBoundary, right: rightBoundary },
-        evidence: unitEvidence,
-      },
     },
   };
 };
@@ -517,8 +529,10 @@ const buildIdentityRightExtensionInput = <
   adjunction: RelativeAdjunctionData<Obj, Arr, Payload, Evidence>,
   leftLift: RelativeAdjunctionLeftLiftInput<Obj, Arr, Payload, Evidence>,
 ): RelativeAdjunctionRightExtensionInput<Obj, Arr, Payload, Evidence> => {
-  const loose = leftLift.lift.loose;
-  const frame = frameFromProarrow(loose);
+  const rightLift: RightLiftData<Obj, Arr, Payload, Evidence> = leftLift.lift.lift;
+  const loose: EquipmentProarrow<Obj, Payload> = rightLift.loose;
+  const extensionArrow: EquipmentProarrow<Obj, Payload> = rightLift.lift;
+  const frame: EquipmentFrame<Obj, Payload> = frameFromProarrow(extensionArrow);
   const leftBoundary = identityVerticalBoundary(
     equipment,
     object,
@@ -530,58 +544,48 @@ const buildIdentityRightExtensionInput = <
     "Left extension counit right boundary (identity).",
   );
   const counitEvidence = equipment.cells.identity(frame, { left: leftBoundary, right: rightBoundary });
-  const counit = {
+  const counit: Equipment2Cell<Obj, Arr, Payload, Evidence> = {
     source: frame,
     target: frame,
     boundaries: { left: leftBoundary, right: rightBoundary },
     evidence: counitEvidence,
-  } as const;
+  };
   const diagram = adjunction.root.tight;
-  return {
-    extension: {
-      colimit: {
-        weight: frame,
-        diagram,
-        apex: loose,
-        cocone: counit,
-      },
-      extension: {
-        loose,
-        along: adjunction.root.tight,
-        extension: loose,
-        counit,
-      },
-    },
+  const colimit = {
+    weight: frame,
+    diagram,
+    apex: extensionArrow,
+    cocone: counit,
+  } satisfies LeftExtensionFromColimitData<Obj, Arr, Payload, Evidence>["colimit"];
+
+  const extensionData = {
+    loose,
+    along: adjunction.root.tight,
+    extension: extensionArrow,
+    counit,
+  };
+
+  const extension: LeftExtensionFromColimitData<Obj, Arr, Payload, Evidence> = {
+    colimit,
+    extension: extensionData,
+  };
+
+  const fullyFaithful = {
     fullyFaithful: {
-      fullyFaithful: {
-        tight: adjunction.root.tight,
-        domain: object,
-        codomain: object,
-      },
-      extension: {
-        loose,
-        along: adjunction.root.tight,
-        extension: loose,
-        counit,
-      },
-      inverse: counit,
+      tight: adjunction.root.tight,
+      domain: object,
+      codomain: object,
     },
+    extension: extensionData,
+    inverse: counit,
+  };
+
+  return {
+    extension,
+    fullyFaithful,
     pointwise: {
-      extension: {
-        colimit: {
-          weight: frame,
-          diagram,
-          apex: loose,
-          cocone: counit,
-        },
-        extension: {
-          loose,
-          along: adjunction.root.tight,
-          extension: loose,
-          counit,
-        },
-      },
-      lift: leftLift.lift,
+      extension,
+      lift: rightLift,
     },
   };
 };
@@ -1770,15 +1774,19 @@ describe("Relative adjunction oracles", () => {
     const byPath = Object.fromEntries(results.map((result) => [result.registryPath, result]));
     const assertActive = (path: string) => {
       const entry = byPath[path];
-      expect(entry, `Missing oracle result for ${path}`).toBeDefined();
+      if (!entry) {
+        throw new Error(`Missing oracle result for ${path}`);
+      }
       expect(entry.pending).toBe(false);
       expect(entry.holds).toBe(true);
     };
     const assertPending = (path: string) => {
       const entry = byPath[path];
-      expect(entry, `Missing oracle result for ${path}`).toBeDefined();
-      expect(entry?.pending).toBe(true);
-      expect(entry?.issues?.length ?? 0).toBe(0);
+      if (!entry) {
+        throw new Error(`Missing oracle result for ${path}`);
+      }
+      expect(entry.pending).toBe(true);
+      expect(entry.issues?.length ?? 0).toBe(0);
     };
 
     assertActive("relativeAdjunction.framing");
