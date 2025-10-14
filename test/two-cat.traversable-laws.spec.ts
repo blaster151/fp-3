@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
+import type { Arbitrary } from 'fast-check'
 import {
   Some, None, Ok, Err, isOk, isSome, mapO, mapR,
   EitherEndo, ResultK1, TraversableEitherK1,
@@ -11,7 +12,7 @@ import {
   SumEndoM, ProdEndoM, CompEndoM, PairEndoM, ConstEndoM,
   inL, inR, prod
 } from '../allTS'
-import type { SimpleApplicativeK1, EndofunctorK1, NEA } from '../allTS'
+import type { SimpleApplicativeK1, EndofunctorK1, NEA, Result, TraversableK1 } from '../allTS'
 
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
@@ -50,14 +51,28 @@ describe('Traversable laws', () => {
     }))
   })
 
-  it('Either<L,_>: identity', () => {
-    const T = TraversableEitherK1<'e'>()
-    fc.assert(fc.property(fc.oneof(fc.integer().map(Ok), fc.constant(Err<'e'>('e'))), (e) => {
-      const lhs = T.traverse(Id)<number, number>(x => Id.of(x))(e)
-      const rhs = Id.of(e)
-      return eq(lhs, rhs)
-    }))
-  })
+    it('Either<L,_>: identity', () => {
+      const T: TraversableK1<['Either', 'e']> = TraversableEitherK1<'e'>()
+      const traverseEither: <A, B>(
+        f: (a: A) => IdBox<B>
+      ) => (e: Result<'e', A>) => IdBox<Result<'e', B>> = T.traverse(Id)
+      const applyTraverse = traverseEither((x: number) => Id.of(x))
+
+      const integerArb: Arbitrary<number> = fc.integer()
+      if (integerArb.map === undefined) {
+        throw new Error('fast-check Arbitrary.map should always be available')
+      }
+      const okArb = integerArb.map((n) => Ok(n) as Result<'e', number>)
+      const eitherArb = fc.oneof(okArb, fc.constant(Err<'e'>('e') as Result<'e', number>))
+
+      fc.assert(
+        fc.property(eitherArb, (e) => {
+          const lhs = applyTraverse(e)
+          const rhs = Id.of(e)
+          return eq(lhs, rhs)
+        })
+      )
+    })
 
   it('NEA: identity & Promise composition', async () => {
     fc.assert(fc.property(fc.array(fc.integer(), { minLength: 1 }), (xs) => {
@@ -107,7 +122,7 @@ describe('Traversable laws', () => {
     
     // Register base traversables
     const OptionF: EndofunctorK1<'Option'> = { map: mapO }
-    const ResultF = ResultK1<string>() as EndofunctorK1<['Either', 'string']>
+    const ResultF: ReturnType<typeof ResultK1<string>> = ResultK1<string>()
     R.register(OptionF, TraversableOptionK1)
     R.register(ResultF, TraversableEitherK1<string>())
     
@@ -126,19 +141,19 @@ describe('Traversable laws', () => {
     expect(TCompM).toBeDefined()
     
     // Test that they work with Promise distribution
-    const sumVal = inL<'Option', ['Either', 'string'], Promise<number>>(Some(Promise.resolve(42)))
+    const sumVal = inL<'Option', ['Either', string], Promise<number>>(Some(Promise.resolve(42)))
     const sumSeq = distributePromiseK1(TSumM!)
     const sumResult = await sumSeq.app(sumVal)
-    expect(eq(sumResult, inL<'Option', ['Either', 'string'], number>(Some(42)))).toBe(true)
+    expect(eq(sumResult, inL<'Option', ['Either', string], number>(Some(42)))).toBe(true)
 
-    const prodVal = prod<'Option', ['Either', 'string'], Promise<number>>(Some(Promise.resolve(10)), Ok(Promise.resolve(20)))
+    const prodVal = prod<'Option', ['Either', string], Promise<number>>(Some(Promise.resolve(10)), ResultF.of(Promise.resolve(20)))
     const prodSeq = distributePromiseK1(TProdM!)
     const prodResult = await prodSeq.app(prodVal)
     expect(eq(prodResult.left, Some(10))).toBe(true)
     expect(eq(prodResult.right, Ok(20))).toBe(true)
-    
+
     // Comp: Option<Result<string, Promise<number>>> -> Promise<Option<Result<string, number>>>
-    const compVal = Some(Ok(Promise.resolve(5)))
+    const compVal = Some(ResultF.of(Promise.resolve(5)))
     const compSeq = distributePromiseK1(TCompM!)
     const compResult = await compSeq.app(compVal)
     expect(eq(compResult, Some(Ok(5)))).toBe(true)

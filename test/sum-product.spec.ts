@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  Some, None, Ok, Err, isOk, isSome, mapO,
+  Some, None, Err, isOk, isSome, mapO,
   ResultK1,
   SumEndo, inL, inR, strengthEnvFromSum, matchSum,
   ProdEndo, prod, strengthEnvFromProd,
@@ -10,8 +10,13 @@ import type {
   EndofunctorK1,
   SumVal,
   ProdVal,
-  Env
+  Env,
+  Result
 } from '../allTS'
+
+type OptionTag = 'Option'
+type ResultTag = ['Either', string]
+type ResultValue<A> = Result<string, A>
 
 const extractSumLeft = <F, G, A>(value: SumVal<F, G, A>) => {
   if (value._sum !== 'L') {
@@ -28,20 +33,20 @@ const extractSumRight = <F, G, A>(value: SumVal<F, G, A>) => {
 }
 
 describe('Sum Endofunctor (F ⊕ G)', () => {
-  const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
+  const OptionF: EndofunctorK1<OptionTag> = { map: mapO as any }
   const ResultF = ResultK1<string>()
   const SumFG = SumEndo(OptionF, ResultF)
 
   describe('construction', () => {
     it('should create left values with inL', () => {
-      const leftVal = inL<typeof OptionF, typeof ResultF, number>(Some(42))
+      const leftVal = inL<OptionTag, ResultTag, number>(Some(42))
       
       expect(leftVal._sum).toBe('L')
       expect(extractSumLeft(leftVal)).toEqual({ _tag: 'Some', value: 42 })
     })
 
     it('should create right values with inR', () => {
-      const rightVal = inR<typeof OptionF, typeof ResultF, number>(Ok(24))
+      const rightVal = inR<OptionTag, ResultTag, number>(ResultF.of(24))
       
       expect(rightVal._sum).toBe('R')
       expect(extractSumRight(rightVal)).toEqual({ _tag: 'Ok', value: 24 })
@@ -49,8 +54,8 @@ describe('Sum Endofunctor (F ⊕ G)', () => {
   })
 
   describe('functor laws', () => {
-    const leftVal = inL<typeof OptionF, typeof ResultF, number>(Some(10))
-    const rightVal = inR<typeof OptionF, typeof ResultF, number>(Ok(20))
+    const leftVal: SumVal<OptionTag, ResultTag, number> = inL<OptionTag, ResultTag, number>(Some(10))
+    const rightVal: SumVal<OptionTag, ResultTag, number> = inR<OptionTag, ResultTag, number>(ResultF.of(20))
 
     it('should satisfy identity law', () => {
       const id = <A>(a: A) => a
@@ -89,13 +94,16 @@ describe('Sum Endofunctor (F ⊕ G)', () => {
   })
 
   describe('matchSum case analysis', () => {
-    const leftVal = inL<typeof OptionF, typeof ResultF, number>(Some(42))
-    const rightVal = inR<typeof OptionF, typeof ResultF, number>(Ok(24))
-    const rightErr = inR<typeof OptionF, typeof ResultF, number>(Err('error'))
+    const leftVal: SumVal<OptionTag, ResultTag, number> = inL<OptionTag, ResultTag, number>(Some(42))
+    const rightVal: SumVal<OptionTag, ResultTag, number> = inR<OptionTag, ResultTag, number>(ResultF.of(24))
+    const rightErr: SumVal<OptionTag, ResultTag, number> = inR<OptionTag, ResultTag, number>(Err<string>('error'))
 
-    const analyze = matchSum<typeof OptionF, typeof ResultF, number, string>(
+    const analyze = matchSum<OptionTag, ResultTag, number, string>(
       (optVal) => isSome(optVal) ? `Option: ${optVal.value}` : 'Option: None',
-      (resVal) => isOk(resVal) ? `Result: ${resVal.value}` : `Error: ${resVal.error}`
+      (resVal) => {
+        const result = resVal as ResultValue<number>
+        return isOk(result) ? `Result: ${result.value}` : `Error: ${result.error}`
+      }
     )
 
     it('should handle left values', () => {
@@ -117,30 +125,24 @@ describe('Sum Endofunctor (F ⊕ G)', () => {
     const sSum = strengthEnvFromSum<string>()(sOption, sResult)
 
     it('should push environment through left branch', () => {
-      const envSum = inL<typeof OptionF, typeof ResultF, Env<string, number>>(
+      const envSum: SumVal<OptionTag, ResultTag, Env<string, number>> = inL<OptionTag, ResultTag, Env<string, number>>(
         Some(['test-env', 100] as const)
       )
-      
-      const [env, sumVal] = sSum.st<number>(envSum) as Env<
-        string,
-        SumVal<typeof OptionF, typeof ResultF, number>
-      >
-      
+
+      const [env, sumVal] = sSum.st<number>(envSum)
+
       expect(env).toBe('test-env')
       expect(sumVal._sum).toBe('L')
       expect(extractSumLeft(sumVal)).toEqual({ _tag: 'Some', value: 100 })
     })
 
     it('should push environment through right branch', () => {
-      const envSum = inR<typeof OptionF, typeof ResultF, Env<string, number>>(
-        Ok(['context', 200] as const)
+      const envSum: SumVal<OptionTag, ResultTag, Env<string, number>> = inR<OptionTag, ResultTag, Env<string, number>>(
+        ResultF.of(['context', 200] as const)
       )
-      
-      const [env, sumVal] = sSum.st<number>(envSum) as Env<
-        string,
-        SumVal<typeof OptionF, typeof ResultF, number>
-      >
-      
+
+      const [env, sumVal] = sSum.st<number>(envSum)
+
       expect(env).toBe('context')
       expect(sumVal._sum).toBe('R')
       expect(extractSumRight(sumVal)).toEqual({ _tag: 'Ok', value: 200 })
@@ -149,13 +151,13 @@ describe('Sum Endofunctor (F ⊕ G)', () => {
 })
 
 describe('Product Endofunctor (F ⊗ G)', () => {
-  const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
+  const OptionF: EndofunctorK1<OptionTag> = { map: mapO as any }
   const ResultF = ResultK1<string>()
   const ProdFG = ProdEndo(OptionF, ResultF)
 
   describe('construction', () => {
     it('should create product values with prod', () => {
-      const productVal = prod<typeof OptionF, typeof ResultF, number>(Some(10), Ok(20))
+    const productVal = prod<OptionTag, ResultTag, number>(Some(10), ResultF.of(20))
       
       expect(productVal.left).toEqual({ _tag: 'Some', value: 10 })
       expect(productVal.right).toEqual({ _tag: 'Ok', value: 20 })
@@ -163,7 +165,7 @@ describe('Product Endofunctor (F ⊗ G)', () => {
   })
 
   describe('functor laws', () => {
-    const productVal = prod<typeof OptionF, typeof ResultF, number>(Some(5), Ok(15))
+    const productVal = prod<OptionTag, ResultTag, number>(Some(5), ResultF.of(15))
 
     it('should satisfy identity law', () => {
       const id = <A>(a: A) => a
@@ -196,15 +198,12 @@ describe('Product Endofunctor (F ⊗ G)', () => {
     const sProd = strengthEnvFromProd<string>()(sOption, sResult)
 
     it('should push environment through product components', () => {
-      const envProd = prod<typeof OptionF, typeof ResultF, Env<string, number>>(
+      const envProd = prod<OptionTag, ResultTag, Env<string, number>>(
         Some(['shared-env', 50] as const),
-        Ok(['shared-env', 75] as const)
+        ResultF.of(['shared-env', 75] as const)
       )
-      
-      const [env, prodVal] = sProd.st<number>(envProd) as Env<
-        string,
-        ProdVal<typeof OptionF, typeof ResultF, number>
-      >
+
+      const [env, prodVal] = sProd.st<number>(envProd)
       
       // Takes environment from left component (by design)
       expect(env).toBe('shared-env')
@@ -213,15 +212,12 @@ describe('Product Endofunctor (F ⊗ G)', () => {
     })
 
     it('should handle None in left component', () => {
-      const envProd = prod<typeof OptionF, typeof ResultF, Env<string, number>>(
+      const envProd = prod<OptionTag, ResultTag, Env<string, number>>(
         None,
-        Ok(['context', 100] as const)
+        ResultF.of(['context', 100] as const)
       )
-      
-      const [env, prodVal] = sProd.st<number>(envProd) as Env<
-        string,
-        ProdVal<typeof OptionF, typeof ResultF, number>
-      >
+
+      const [env, prodVal] = sProd.st<number>(envProd)
       
       // Note: strengthEnvOption returns undefined for None, but we cast it
       expect(prodVal.left).toEqual({ _tag: 'None' })
@@ -229,15 +225,12 @@ describe('Product Endofunctor (F ⊗ G)', () => {
     })
 
     it('should handle error in right component', () => {
-      const envProd = prod<typeof OptionF, typeof ResultF, Env<string, number>>(
+      const envProd = prod<OptionTag, ResultTag, Env<string, number>>(
         Some(['env1', 25] as const),
         Err('test-error')
       )
-      
-      const [env, prodVal] = sProd.st<number>(envProd) as Env<
-        string,
-        ProdVal<typeof OptionF, typeof ResultF, number>
-      >
+
+      const [env, prodVal] = sProd.st<number>(envProd)
       
       expect(env).toBe('env1')
       expect(prodVal.left).toEqual({ _tag: 'Some', value: 25 })
@@ -248,15 +241,15 @@ describe('Product Endofunctor (F ⊗ G)', () => {
 
 describe('Sum and Product Integration', () => {
   it('should work together in complex scenarios', () => {
-    const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
+    const OptionF: EndofunctorK1<OptionTag> = { map: mapO as any }
     const ResultF = ResultK1<string>()
-    
+
     // Create a Sum of Products: (Option ⊗ Result) ⊕ (Option ⊗ Result)
     const ProdFG = ProdEndo(OptionF, ResultF)
     const SumOfProds = SumEndo(ProdFG, ProdFG)
-    
-    const leftProd = prod<typeof OptionF, typeof ResultF, number>(Some(10), Ok(20))
-    const rightProd = prod<typeof OptionF, typeof ResultF, number>(None, Err('error'))
+
+    const leftProd = prod<OptionTag, ResultTag, number>(Some(10), ResultF.of(20))
+    const rightProd = prod<OptionTag, ResultTag, number>(None, Err('error'))
 
     const sumLeftValue = inL<typeof ProdFG, typeof ProdFG, number>(leftProd)
     const sumRightValue = inR<typeof ProdFG, typeof ProdFG, number>(rightProd)
@@ -266,12 +259,12 @@ describe('Sum and Product Integration', () => {
     const mappedRight = SumOfProds.map((n: number) => n + 100)(sumRightValue)
 
     expect(mappedLeft._sum).toBe('L')
-    const mappedLeftProd = extractSumLeft(mappedLeft)
+    const mappedLeftProd = extractSumLeft(mappedLeft) as ProdVal<OptionTag, ResultTag, number>
     expect(mappedLeftProd.left).toEqual({ _tag: 'Some', value: 110 })
     expect(mappedLeftProd.right).toEqual({ _tag: 'Ok', value: 120 })
 
     expect(mappedRight._sum).toBe('R')
-    const mappedRightProd = extractSumRight(mappedRight)
+    const mappedRightProd = extractSumRight(mappedRight) as ProdVal<OptionTag, ResultTag, number>
     expect(mappedRightProd.left).toEqual({ _tag: 'None' })
     expect(mappedRightProd.right).toEqual({ _tag: 'Err', error: 'error' })
   })
