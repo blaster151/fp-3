@@ -9,8 +9,9 @@
  */
 
 import { describe, it, expect } from "vitest";
+import type { CSRig } from "../../semiring-utils";
 import { Prob, MaxPlus, directSum, BoolRig, GhostRig, isEntire } from "../../semiring-utils";
-import { Dist } from "../../dist";
+import type { Dist } from "../../dist";
 import { 
   checkSplitMono, marginals, prodPX, checkDeltaMonic, equalDist,
   checkFaithfulness, checkDeltaMonicityVaried, checkPullbackSquare
@@ -135,10 +136,12 @@ describe("Pullback/faithfulness (3.4) — Δ∘∇ = id", () => {
       ];
       
       const results = checkDeltaMonicityVaried(Prob, A, testCases);
-      
-      expect(results[0].passed).toBe(true);  // identical functions
-      expect(results[1].passed).toBe(true);  // different functions correctly detected
-      expect(results[2].passed).toBe(true);  // domain-specific difference detected
+
+      expect(results).toHaveLength(testCases.length);
+      const [identical, different, equivalent] = results;
+      expect(identical!.passed).toBe(true);  // identical functions
+      expect(different!.passed).toBe(true);  // different functions correctly detected
+      expect(equivalent!.passed).toBe(true);  // domain-specific difference detected
     });
   });
 
@@ -167,8 +170,8 @@ describe("Pullback/faithfulness (3.4) — Δ∘∇ = id", () => {
       
       semirings.forEach(({ name, R }) => {
         const samples = [
-          { R, w: new Map([["x", R.one], ["y", R.zero]]) },
-          { R, w: new Map([["x", R.zero], ["y", R.one]]) }
+          d(R, [["x", R.one], ["y", R.zero]]),
+          d(R, [["x", R.zero], ["y", R.one]])
         ];
         const domain = ["x", "y"];
         
@@ -254,17 +257,19 @@ describe("Pullback/faithfulness (3.4) — Δ∘∇ = id", () => {
     });
 
     it("Entire semirings should pass faithfulness", () => {
-      const entireSemirings = [Prob, MaxPlus, BoolRig, GhostRig];
-      
-      entireSemirings.forEach(R => {
+      const assertFaithful = <R>(R: CSRig<R>) => {
         expect(isEntire(R)).toBe(true);
-        
-        // Simple faithfulness test
-        const samples = [{ R, w: new Map([["test", R.one]]) }];
+
+        const samples = [d(R, [["test", R.one]])];
         const result = checkFaithfulness(R, samples, ["test"]);
         expect(result.splitMono).toBe(true);
         expect(result.deltaMonic).toBe(true);
-      });
+      };
+
+      assertFaithful(Prob);
+      assertFaithful(MaxPlus);
+      assertFaithful(BoolRig);
+      assertFaithful(GhostRig);
     });
 
     it("Non-entire semirings are flagged correctly", () => {
@@ -274,7 +279,7 @@ describe("Pullback/faithfulness (3.4) — Δ∘∇ = id", () => {
       // Even non-entire semirings can pass basic faithfulness tests
       // The failures show up in more complex scenarios (full pullback squares)
       // Use string keys to avoid Map key issues with tuples
-      const samples = [{ R: R2, w: new Map([["pair_1_0", R2.one]]) }];
+      const samples = [d(R2, [["pair_1_0", R2.one]])];
       const result = checkFaithfulness(R2, samples, ["pair_1_0"]);
       expect(result.splitMono).toBe(true);
       expect(result.deltaMonic).toBe(true);
