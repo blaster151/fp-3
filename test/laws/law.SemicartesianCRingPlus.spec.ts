@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import fc from "fast-check";
+import * as fc from "fast-check";
 
 import {
   IntegersObject,
@@ -10,6 +10,8 @@ import {
   equalHom,
   semicartesianStructureCRingPlus,
   type CRingPlusHom,
+  type CRingPlusObject,
+  type CRingPlusMor,
 } from "../../cring-plus";
 
 import type { InitialArrowSample } from "../../semicartesian-structure";
@@ -18,6 +20,17 @@ describe("LAW 2.3: ‚Ñ§ initial object yields semicartesian structure in CRing_‚ä
   const mod5 = createModObject(5n);
   const canonicalToMod5 = canonicalInitialHom(mod5);
   const canonicalToZ = canonicalInitialHom(IntegersObject);
+
+  const narrowHom = <A, B>(
+    hom: CRingPlusMor,
+    source: CRingPlusObject<A>,
+    target: CRingPlusObject<B>
+  ): CRingPlusHom<A, B> => {
+    if (hom.source !== source || hom.target !== target) {
+      throw new Error("Hom object has unexpected domain or codomain");
+    }
+    return hom as CRingPlusHom<A, B>;
+  };
 
   const shifted: CRingPlusHom<bigint, bigint> = {
     source: IntegersObject,
@@ -38,7 +51,10 @@ describe("LAW 2.3: ‚Ñ§ initial object yields semicartesian structure in CRing_‚ä
     expect(result.failures).toHaveLength(0);
 
     const witnessMap = result.witness.globalElement(mod5);
-    expect(equalHom(witnessMap, canonicalToMod5)).toBe(true);
+    expect(witnessMap.source).toBe(IntegersObject);
+    expect(witnessMap.target).toBe(mod5);
+    const canonicalWitness = narrowHom<bigint, bigint>(witnessMap, IntegersObject, mod5);
+    expect(equalHom(canonicalWitness, canonicalToMod5)).toBe(true);
   });
 
   it("canonical hom is additive and unit-preserving", () => {
@@ -55,12 +71,24 @@ describe("LAW 2.3: ‚Ñ§ initial object yields semicartesian structure in CRing_‚ä
   it("semicartesian witness composes with fast-check samples", () => {
     const structure = semicartesianStructureCRingPlus();
     const witnessMap = structure.globalElement(mod5);
+    expect(witnessMap.source).toBe(IntegersObject);
+    expect(witnessMap.target).toBe(mod5);
+    const canonicalWitness = narrowHom<bigint, bigint>(witnessMap, IntegersObject, mod5);
+    const eq = mod5.ring.eq;
+    if (eq === undefined) {
+      throw new Error("mod5 ring must provide equality");
+    }
+
     fc.assert(
-      fc.property(fc.bigInt({ min: -4n, max: 4n }), fc.bigInt({ min: -4n, max: 4n }), (a, b) => {
-        const lhs = witnessMap.map(a + b);
-        const rhs = mod5.ring.add(witnessMap.map(a), witnessMap.map(b));
-        expect(mod5.ring.eq(lhs, rhs)).toBe(true);
-      })
+      fc.property(
+        fc.constantFrom(-4n, -3n, -2n, -1n, 0n, 1n, 2n, 3n, 4n),
+        fc.constantFrom(-4n, -3n, -2n, -1n, 0n, 1n, 2n, 3n, 4n),
+        (a: bigint, b: bigint) => {
+          const lhs = canonicalWitness.map(a + b);
+          const rhs = mod5.ring.add(canonicalWitness.map(a), canonicalWitness.map(b));
+          expect(eq(lhs, rhs)).toBe(true);
+        }
+      )
     );
   });
 });

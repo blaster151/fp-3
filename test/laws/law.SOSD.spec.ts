@@ -8,8 +8,8 @@
 import { describe, it, expect } from "vitest";
 import { Prob, MaxPlus, BoolRig } from "../../semiring-utils";
 import type { Dist } from "../../dist";
-import { 
-  sosdFromWitness, 
+import {
+  sosdFromWitness,
   expectation,
   isDilation,
   testDilationDetailed,
@@ -21,10 +21,14 @@ import {
   findAllSOSDRelationships,
   push
 } from "../../sosd";
+import type { Dilation } from "../../sosd";
 
 // Helper to create distributions
 const d = (pairs: [number, number][]): Dist<number, number> =>
   ({ R: Prob, w: new Map(pairs) });
+
+const identityProbDilation = (): Dilation<number, number> =>
+  identityDilation<number, number>(Prob);
 
 describe("SOSD via dilation witness", () => {
   
@@ -69,7 +73,7 @@ describe("SOSD via dilation witness", () => {
       ];
       
       const e = expectation();
-      const tId = identityDilation(Prob);
+      const tId = identityProbDilation();
       
       distributions.forEach(dist => {
         // Identity dilation should preserve the distribution
@@ -105,7 +109,7 @@ describe("SOSD via dilation witness", () => {
 
     it("handles edge cases", () => {
       const e = expectation();
-      const tId = identityDilation(Prob);
+      const tId = identityProbDilation();
       
       // Empty sample set
       const result1 = testDilationDetailed(Prob, tId, e, []);
@@ -227,7 +231,7 @@ describe("SOSD via dilation witness", () => {
       ];
       
       const e = expectation();
-      const tId = identityDilation(Prob);
+      const tId = identityProbDilation();
       
       // Every distribution should be SOSD-related to itself
       distributions.forEach(dist => {
@@ -241,7 +245,7 @@ describe("SOSD via dilation witness", () => {
     it("SOSD is reflexive via identity dilation", () => {
       const dist = d([[1, 0.4], [2, 0.6]]);
       const e = expectation();
-      const tId = identityDilation(Prob);
+      const tId = identityProbDilation();
       
       const result = sosdFromWitness(Prob, dist, dist, e, tId, [1, 2], "qFromP");
       expect(result).toBe(true);
@@ -285,7 +289,7 @@ describe("SOSD via dilation witness", () => {
   describe("Dilation Construction and Validation", () => {
     it("identity dilation is always valid", () => {
       const e = expectation();
-      const tId = identityDilation(Prob);
+      const tId = identityProbDilation();
       const samples = [0, 1, 2, 3, 4, 5];
       
       const result = isDilation(Prob, tId, e, samples);
@@ -306,14 +310,22 @@ describe("SOSD via dilation witness", () => {
       const uniform = uniformSpread(Prob, support);
       
       // Create an evaluation that works with uniform distributions
-      const uniformEval = (d: Dist<number, number>): number => {
+      const uniformEval = (distribution: Dist<number, number>): number => {
         // For uniform distributions, return the first element
         // For point masses, return the unique element
-        if (d.w.size === 1) {
-          return [...d.w.keys()][0];
+        if (distribution.w.size === 1) {
+          const first = distribution.w.keys().next();
+          if (first.done) {
+            throw new Error("Expected non-empty distribution support");
+          }
+          return first.value;
         } else {
           // For uniform over support, return any element (we'll use first)
-          return support[0];
+          const [firstSupport] = support;
+          if (firstSupport === undefined) {
+            throw new Error("Support must contain at least one element");
+          }
+          return firstSupport;
         }
       };
       
@@ -359,7 +371,7 @@ describe("SOSD via dilation witness", () => {
       ];
       
       evaluations.forEach(({ name, eval: e }) => {
-        const tId = identityDilation(Prob);
+        const tId = identityProbDilation();
         const result = isDilation(Prob, tId, e, [0, 1, 2]);
         expect(result).toBe(true); // Identity should always be a dilation
       });
@@ -392,7 +404,7 @@ describe("SOSD via dilation witness", () => {
       const p2 = d([[2, 1]]);
       
       // SOSD relationships should respect products (conceptually)
-      const tId = identityDilation(Prob);
+      const tId = identityProbDilation();
       expect(isDilation(Prob, tId, e, [1, 2])).toBe(true);
     });
   });
@@ -400,7 +412,7 @@ describe("SOSD via dilation witness", () => {
   describe("Performance and Scalability", () => {
     it("handles large sample sets efficiently", () => {
       const e = expectation();
-      const tId = identityDilation(Prob);
+      const tId = identityProbDilation();
       const largeSamples = Array.from({ length: 100 }, (_, i) => i);
       
       const start = Date.now();

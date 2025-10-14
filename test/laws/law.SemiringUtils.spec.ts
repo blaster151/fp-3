@@ -6,10 +6,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { 
+import {
   Prob, MaxPlus, MinPlus, BoolRig, GhostRig, LogProb,
-  isEntire, directSum, CSRig 
+  isEntire, directSum
 } from '../../semiring-utils'
+import type { CSRig } from '../../semiring-utils'
 
 describe("semiring-utils smoke tests", () => {
   
@@ -45,7 +46,7 @@ describe("semiring-utils smoke tests", () => {
   });
 
   it("GhostRig table", () => {
-    const { zero: Z, one: O } = GhostRig;
+    const O = GhostRig.one;
     // ε is the middle element (1 in our encoding)
     const E = 1 as const;
     

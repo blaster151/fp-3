@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import type { Dist } from "../../dist";
+import { Prob } from "../../semiring-utils";
 import { 
   standardMeasure, 
   posterior, 
@@ -20,8 +21,8 @@ import {
   valueOfInformation
 } from "../../standard-experiment";
 
-const d = <X>(pairs: [X, number][]): Dist<number, X> =>
-  ({ R: { zero: 0, one: 1, add:(a:number,b:number)=>a+b, mul:(a,b)=>a*b, eq:(a,b)=>Math.abs(a-b)<=1e-12 }, w: new Map(pairs) });
+const d = <X>(pairs: ReadonlyArray<readonly [X, number]>): Dist<number, X> =>
+  ({ R: Prob, w: new Map(pairs) });
 
 describe("Standard experiment / standard measure", () => {
   
@@ -29,9 +30,9 @@ describe("Standard experiment / standard measure", () => {
     it("Computes Bayes posteriors and standard measure on a finite example", () => {
       type Θ = "θ0" | "θ1";
       type X = "x0" | "x1";
-      const m: Dist<number, Θ> = d([["θ0", 0.3], ["θ1", 0.7]]);
-      const f = (θ: Θ): Dist<number, X> => θ === "θ0" ? d([["x0", 0.9], ["x1", 0.1]])
-                                                        : d([["x0", 0.2], ["x1", 0.8]]);
+      const m: Dist<number, Θ> = d([["θ0", 0.3], ["θ1", 0.7]] as const);
+      const f = (θ: Θ): Dist<number, X> => θ === "θ0" ? d([["x0", 0.9], ["x1", 0.1]] as const)
+                                                        : d([["x0", 0.2], ["x1", 0.8]] as const);
       
       // Posterior for x0: proportional to [0.3*0.9, 0.7*0.2] = [0.27, 0.14] → normalize to [0.6585..., 0.3415...]
       const post_x0 = posterior(m, f, "x0");
@@ -67,9 +68,9 @@ describe("Standard experiment / standard measure", () => {
       type Θ = "state1" | "state2";
       type X = "obs1" | "obs2";
       
-      const m = d([["state1", 0.4], ["state2", 0.6]]);
-      const f = (θ: Θ): Dist<number, X> => 
-        θ === "state1" ? d([["obs1", 1]]) : d([["obs2", 1]]);
+      const m: Dist<number, Θ> = d([["state1", 0.4], ["state2", 0.6]] as const);
+      const f = (θ: Θ): Dist<number, X> =>
+        θ === "state1" ? d([["obs1", 1]] as const) : d([["obs2", 1]] as const);
       
       const post1 = posterior(m, f, "obs1");
       const post2 = posterior(m, f, "obs2");
@@ -85,11 +86,11 @@ describe("Standard experiment / standard measure", () => {
     it("handles uniform priors", () => {
       type Θ = "θ1" | "θ2" | "θ3";
       
-      const uniform = d([["θ1", 1/3], ["θ2", 1/3], ["θ3", 1/3]]);
+      const uniform: Dist<number, Θ> = d([["θ1", 1 / 3], ["θ2", 1 / 3], ["θ3", 1 / 3]] as const);
       const f = (θ: Θ): Dist<number, string> =>
-        θ === "θ1" ? d([["A", 0.8], ["B", 0.2]]) :
-        θ === "θ2" ? d([["A", 0.5], ["B", 0.5]]) :
-        d([["A", 0.2], ["B", 0.8]]);
+        θ === "θ1" ? d([["A", 0.8], ["B", 0.2]] as const) :
+        θ === "θ2" ? d([["A", 0.5], ["B", 0.5]] as const) :
+        d([["A", 0.2], ["B", 0.8]] as const);
       
       const postA = posterior(uniform, f, "A");
       const postB = posterior(uniform, f, "B");
@@ -106,16 +107,16 @@ describe("Standard experiment / standard measure", () => {
 
   describe("Standard Measure Properties", () => {
     it("standard measure is properly normalized", () => {
-      const m = d([["θ1", 0.6], ["θ2", 0.4]]);
-      const f = (θ: string) => d([["x1", 0.7], ["x2", 0.3]]);
+      const m = d([["θ1", 0.6], ["θ2", 0.4]] as const);
+      const f = (θ: string) => d([["x1", 0.7], ["x2", 0.3]] as const);
       
       const sm = standardMeasure(m, f, ["x1", "x2"]);
       expect(verifyStandardMeasureNormalized(sm)).toBe(true);
     });
 
     it("standard measure support has correct structure", () => {
-      const m = d([["θ1", 0.5], ["θ2", 0.5]]);
-      const f = (θ: string) => θ === "θ1" ? d([["x1", 1]]) : d([["x2", 1]]);
+      const m = d([["θ1", 0.5], ["θ2", 0.5]] as const);
+      const f = (θ: string) => θ === "θ1" ? d([["x1", 1]] as const) : d([["x2", 1]] as const);
       
       const sm = standardMeasure(m, f, ["x1", "x2"]);
       const support = standardMeasureSupport(sm);
@@ -129,21 +130,25 @@ describe("Standard experiment / standard measure", () => {
     });
 
     it("handles zero-probability observations", () => {
-      const m = d([["θ1", 1]]);
-      const f = (θ: string) => d([["possible", 1]]);
+      const m = d([["θ1", 1]] as const);
+      const f = (θ: string) => d([["possible", 1]] as const);
       
       const sm = standardMeasure(m, f, ["possible", "impossible"]);
       
       // Should only have support on "possible" observation
       const support = standardMeasureSupport(sm);
       expect(support.length).toBe(1);
-      expect(support[0].weight).toBeCloseTo(1.0);
+      const first = support[0];
+      if (first === undefined) {
+        throw new Error("Expected support to contain one posterior");
+      }
+      expect(first.weight).toBeCloseTo(1.0);
     });
   });
 
   describe("Bayesian Decision Theory", () => {
     it("computes expected utilities correctly", () => {
-      const posterior = d([["good", 0.7], ["bad", 0.3]]);
+      const posterior = d([["good", 0.7], ["bad", 0.3]] as const);
       const utility = (θ: string) => θ === "good" ? 10 : -5;
       
       const expected = expectedUtility(posterior, utility);
@@ -151,7 +156,7 @@ describe("Standard experiment / standard measure", () => {
     });
 
     it("finds optimal actions under uncertainty", () => {
-      const sm = d([[d([["θ1", 0.8], ["θ2", 0.2]]), 1]]); // Single posterior
+      const sm = d([[d([["θ1", 0.8], ["θ2", 0.2]] as const), 1]] as const); // Single posterior
       const actions = ["act1", "act2"];
         const utility = (action: string, theta: string) => {
           if (action === "act1") {
@@ -171,8 +176,8 @@ describe("Standard experiment / standard measure", () => {
 
     it("computes value of information", () => {
       // Simplified test to verify the concept works
-      const m = d([["θ1", 0.5], ["θ2", 0.5]]);
-      const f = (θ: string) => θ === "θ1" ? d([["x1", 1]]) : d([["x2", 1]]);
+      const m = d([["θ1", 0.5], ["θ2", 0.5]] as const);
+      const f = (θ: string) => θ === "θ1" ? d([["x1", 1]] as const) : d([["x2", 1]] as const);
       
       // Just verify that we can compute a standard measure
       const sm = standardMeasure(m, f, ["x1", "x2"]);
@@ -189,10 +194,10 @@ describe("Standard experiment / standard measure", () => {
       type Θ = "state1" | "state2";
       type X = "obs1" | "obs2";
       
-      const m = d([["state1", 0.6], ["state2", 0.4]]);
+      const m: Dist<number, Θ> = d([["state1", 0.6], ["state2", 0.4]] as const);
       const f = (θ: Θ): Dist<number, X> =>
-        θ === "state1" ? d([["obs1", 0.9], ["obs2", 0.1]]) :
-        d([["obs1", 0.1], ["obs2", 0.9]]);
+        θ === "state1" ? d([["obs1", 0.9], ["obs2", 0.1]] as const) :
+        d([["obs1", 0.1], ["obs2", 0.9]] as const);
       
       // Compute standard measure
       const sm = standardMeasure(m, f, ["obs1", "obs2"]);
@@ -205,8 +210,8 @@ describe("Standard experiment / standard measure", () => {
 
     it("works with previous step's dilation theory", () => {
       // Standard experiments should respect mean-preserving transformations
-      const m = d([["θ", 1]]);
-      const f = (θ: string) => d([[1, 0.5], [3, 0.5]]); // Mean = 2
+      const m = d([["θ", 1]] as const);
+      const f = (θ: string) => d([[1, 0.5], [3, 0.5]] as const); // Mean = 2
       
       const sm = standardMeasure(m, f, [1, 3]);
       expect(verifyStandardMeasureNormalized(sm)).toBe(true);

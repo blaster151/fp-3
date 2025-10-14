@@ -13,7 +13,7 @@ import {
   FinSet,
   EnhancedVect
 } from '../allTS'
-import type { CatMonad, Adjunction, FinSetObj, ObjOf, FiniteCategory } from '../allTS'
+import type { CatMonad, Adjunction, FinSetObj, FinSetMor, ObjOf, FiniteCategory, CFunctor } from '../allTS'
 
 type SimpleKleisliMorph<C> = {
   readonly from: ObjOf<C>
@@ -133,14 +133,14 @@ describe('Pushforward Monad Law Checking', () => {
       cod: () => 'b'
     }
 
-    const G = {
+    const G: CFunctor<string, string, FinSetObj, FinSetMor> = {
       source: sourceCategory,
       target: FinSet,
-      onObj: (_b: string) => ({ elements: [0, 1] }),
-      onMor: (_m: string) => FinSet.id({ elements: [0, 1] })
+      onObj: (_b: string) => ({ elements: [0, 1] as const }),
+      onMor: (_m: string) => FinSet.id({ elements: [0, 1] as const })
     }
-    
-    const A = { elements: ['x', 'y'] }
+
+    const A: FinSetObj = { elements: ['x', 'y'] as const }
     
     const comparison = compareCodensityAcrossAdjunction(adj, G, A)
     expect(comparison).toBeDefined()
