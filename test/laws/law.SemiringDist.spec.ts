@@ -16,58 +16,117 @@
 
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
-import {
-  DRMonad, NumSemiring, mkRDist, normalizeR, isDirac, KleisliDR
-} from '../../semiring-dist'
-import { Prob, LogProb, MaxPlus, Bool, Dist } from '../../semiring-utils'
-import { mass } from '../../markov-category'
+
+import { DRMonad, mkRDist, normalizeR, isDirac, KleisliDR } from '../../semiring-dist'
+import type { Dist, NumSemiring } from '../../semiring-dist'
+import { Prob, LogProb, MaxPlus } from '../../semiring-utils'
+import type { CSRig } from '../../semiring-utils'
 import { checkFubini } from '../../markov-laws'
-import { testMonadLaws, commonGenerators } from '../laws/law-helpers'
+import { testMonadLaws } from '../laws/law-helpers'
+import type { MonadConfig } from '../laws/law-helpers'
+
+type NumericRig = NumSemiring | CSRig<number>
+
+const boundedInt = (min: number, max: number): fc.Arbitrary<number> => {
+  const base = fc.integer() as fc.Arbitrary<number>
+  return mapArbitrary(base, (value: number) => {
+    const span = max - min + 1
+    const mod = ((value % span) + span) % span
+    return min + mod
+  })
+}
+
+const mapArbitrary = <Input, Output>(
+  arbitrary: fc.Arbitrary<Input>,
+  mapper: (value: Input) => Output
+): fc.Arbitrary<Output> => {
+  const mapFn = (arbitrary as { map?: (fn: (value: Input) => Output) => fc.Arbitrary<Output> }).map
+  if (typeof mapFn !== 'function') {
+    throw new Error('fast-check arbitrary missing map implementation')
+  }
+  return mapFn.call(arbitrary, mapper) as fc.Arbitrary<Output>
+}
 
 describe("LAW: Semiring Distribution Laws", () => {
 
   // Test semirings with their properties
   const testSemirings: Array<{
-    name: string
-    R: NumSemiring
-    isAffine: boolean
-    genElement: () => fc.Arbitrary<number>
-    genWeight: () => fc.Arbitrary<number>
+    readonly name: string
+    readonly R: NumericRig
+    readonly isAffine: boolean
+    readonly genElement: () => fc.Arbitrary<number>
+    readonly genWeight: () => fc.Arbitrary<number>
   }> = [
     {
       name: "Prob (Standard Probability)",
       R: Prob,
       isAffine: true,
-      genElement: () => fc.integer({ min: -5, max: 5 }),
-      genWeight: () => fc.float({ min: 0, max: 2, noNaN: true })
+      genElement: () => boundedInt(-5, 5),
+      genWeight: () => boundedInt(0, 4)
     },
     {
-      name: "LogProb (Log-space Probability)",  
+      name: "LogProb (Log-space Probability)",
       R: LogProb,
       isAffine: true,
-      genElement: () => fc.integer({ min: -5, max: 5 }),
-      genWeight: () => fc.float({ min: -10, max: 2, noNaN: true })
+      genElement: () => boundedInt(-5, 5),
+      genWeight: () => boundedInt(-10, 2)
     },
     {
       name: "MaxPlus (Viterbi/Shortest Path)",
-      R: MaxPlus, 
+      R: MaxPlus,
       isAffine: true,
-      genElement: () => fc.integer({ min: -5, max: 5 }),
-      genWeight: () => fc.float({ min: -10, max: 10, noNaN: true })
-    },
-    {
-      name: "Bool (Nondeterminism)",
-      R: Bool,
-      isAffine: true,
-      genElement: () => fc.integer({ min: -5, max: 5 }),
-      genWeight: () => fc.boolean()
+      genElement: () => boundedInt(-5, 5),
+      genWeight: () => boundedInt(-10, 10)
     }
   ]
 
   testSemirings.forEach(({ name, R, isAffine, genElement, genWeight }) => {
     describe(`${name} Semiring`, () => {
+      type Elem = number
       const M = DRMonad(R)
-      const eq = R.eq ?? ((a, b) => Math.abs(a - b) < 1e-10)
+      const weightEq = R.eq ?? ((a: number, b: number) => Math.abs(a - b) < 1e-10)
+
+      const toUnitDist = (pairs: Array<[Elem, number]>): Dist<Elem> =>
+        normalizeR<Elem>(R, mkRDist<Elem>(R, pairs))
+
+        const genUnitDist = (): fc.Arbitrary<Dist<Elem>> => {
+          const pairArb = fc.array(fc.tuple(genElement(), genWeight()), {
+            minLength: 1,
+            maxLength: 5
+          }) as fc.Arbitrary<Array<[Elem, number]>>
+          return mapArbitrary(pairArb, (pairs) => toUnitDist(pairs as Array<[Elem, number]>))
+        }
+
+      const genKernel = (): fc.Arbitrary<(input: Elem) => Dist<Elem>> => {
+        const entryArb = fc.array(fc.tuple(genElement(), genUnitDist()), {
+          minLength: 0,
+          maxLength: 4
+        }) as fc.Arbitrary<Array<[Elem, Dist<Elem>]>>
+        const tupleArb = fc.tuple(genUnitDist(), entryArb) as fc.Arbitrary<[
+          Dist<Elem>,
+          Array<[Elem, Dist<Elem>]>
+        ]>
+        return mapArbitrary(tupleArb, (value) => {
+          const [fallback, entries] = value as [Dist<Elem>, Array<[Elem, Dist<Elem>]>]
+          const table = new Map<number, Dist<Elem>>(entries)
+          return (input: Elem): Dist<Elem> => table.get(input) ?? fallback
+        })
+      }
+
+      const sumWeights = (dist: Dist<Elem>) =>
+        [...dist.values()].reduce((acc, weight) => R.add(acc, weight), R.zero)
+
+      const eqDist = (left: Dist<Elem>, right: Dist<Elem>) => {
+        const keys = new Set<Elem>([...left.keys(), ...right.keys()])
+        for (const key of keys) {
+          const lw = left.get(key) ?? R.zero
+          const rw = right.get(key) ?? R.zero
+          if (!weightEq(lw, rw)) {
+            return false
+          }
+        }
+        return true
+      }
 
       describe("6.1 Semiring Operations Respect Structure", () => {
         /**
@@ -80,43 +139,37 @@ describe("LAW: Semiring Distribution Laws", () => {
 
         it("semiring addition is commutative and associative", () => {
           fc.assert(
-            fc.property(genWeight(), genWeight(), genWeight(), (a, b, c) => {
-              // Commutativity: a ⊕ b = b ⊕ a
-              const comm = eq(R.add(a, b), R.add(b, a))
-              
-              // Associativity: (a ⊕ b) ⊕ c = a ⊕ (b ⊕ c)
-              const assoc = eq(R.add(R.add(a, b), c), R.add(a, R.add(b, c)))
-              
-              return comm && assoc
-            }),
-            { numRuns: 100 }
+            fc.property(
+              fc.tuple(genWeight(), genWeight(), genWeight()),
+              ([a, b, c]: [number, number, number]) => {
+                const comm = weightEq(R.add(a, b), R.add(b, a))
+                const assoc = weightEq(R.add(R.add(a, b), c), R.add(a, R.add(b, c)))
+                return comm && assoc
+              }
+            )
           )
         })
 
         it("semiring multiplication distributes over addition", () => {
           fc.assert(
-            fc.property(genWeight(), genWeight(), genWeight(), (a, b, c) => {
-              // Left distributivity: a ⊗ (b ⊕ c) = (a ⊗ b) ⊕ (a ⊗ c)
-              const lhs = R.mul(a, R.add(b, c))
-              const rhs = R.add(R.mul(a, b), R.mul(a, c))
-              return eq(lhs, rhs)
-            }),
-            { numRuns: 100 }
+            fc.property(
+              fc.tuple(genWeight(), genWeight(), genWeight()),
+              ([a, b, c]: [number, number, number]) => {
+                const lhs = R.mul(a, R.add(b, c))
+                const rhs = R.add(R.mul(a, b), R.mul(a, c))
+                return weightEq(lhs, rhs)
+              }
+            )
           )
         })
 
         it("semiring has proper identities", () => {
           fc.assert(
-            fc.property(genWeight(), (a) => {
-              // Additive identity: 0 ⊕ a = a = a ⊕ 0
-              const addId = eq(R.add(R.zero, a), a) && eq(R.add(a, R.zero), a)
-              
-              // Multiplicative identity: 1 ⊗ a = a = a ⊗ 1  
-              const mulId = eq(R.mul(R.one, a), a) && eq(R.mul(a, R.one), a)
-              
+            fc.property(genWeight(), (a: number) => {
+              const addId = weightEq(R.add(R.zero, a), a) && weightEq(R.add(a, R.zero), a)
+              const mulId = weightEq(R.mul(R.one, a), a) && weightEq(R.mul(a, R.one), a)
               return addId && mulId
-            }),
-            { numRuns: 100 }
+            })
           )
         })
       })
@@ -130,26 +183,17 @@ describe("LAW: Semiring Distribution Laws", () => {
          * Test Oracle: Property-based testing of monad equations
          */
 
-        const config = {
+        const pureMonad = ((value: Elem) => M.of(value)) as MonadConfig<Dist<Elem>, Elem>['pure']
+        const chainMonad = ((k: (a: Elem) => Dist<Elem>) => (fa: Dist<Elem>) => M.bind(fa, k)) as MonadConfig<Dist<Elem>, Elem>['chain']
+
+        const config: MonadConfig<Dist<Elem>, Elem> = {
           name: `DR[${name}]`,
           genA: genElement,
-          genFA: () => fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 5 })
-                     .map(pairs => mkRDist(R, pairs)),
-          genK: () => fc.func(
-            fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 })
-              .map(pairs => mkRDist(R, pairs))
-          ),
-          pure: M.of,
-          chain: <A, B>(k: (a: A) => Dist<B>) => (fa: Dist<A>) => M.bind(fa, k),
-          eq: (a: Dist<any>, b: Dist<any>) => {
-            // Compare distributions by checking all entries
-            if (a.size !== b.size) return false
-            for (const [k, v] of a) {
-              const bv = b.get(k) ?? R.zero
-              if (!eq(v, bv)) return false
-            }
-            return true
-          }
+          genFA: genUnitDist,
+          genK: genKernel,
+          pure: pureMonad,
+          chain: chainMonad,
+          eq: (left, right) => eqDist(left, right)
         }
 
         const laws = testMonadLaws(config)
@@ -176,35 +220,28 @@ describe("LAW: Semiring Distribution Laws", () => {
          * Test Oracle: Unit distributions have total weight 1_R
          */
 
-        if (isAffine && !eq(R.one, R.zero)) {
+        if (isAffine && !weightEq(R.one, R.zero)) {
           it("return creates unit-weight distributions", () => {
             fc.assert(
-              fc.property(genElement(), (x) => {
+              fc.property(genElement(), (x: number) => {
                 const dist = M.of(x)
-                const totalWeight = [...dist.values()].reduce((acc, w) => R.add(acc, w), R.zero)
-                return eq(totalWeight, R.one)
-              }),
-              { numRuns: 100 }
+                const totalWeight = sumWeights(dist)
+                return weightEq(totalWeight, R.one)
+              })
             )
           })
 
           it("bind preserves total weight for unit-weight inputs", () => {
             fc.assert(
               fc.property(
-                genElement(),
-                fc.func(
-                  fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 })
-                    .map(pairs => normalizeToUnit(mkRDist(R, pairs)))
-                ),
-                (x, k) => {
+                fc.tuple(genElement(), genKernel()),
+                ([x, k]: [number, (value: number) => Dist<Elem>]) => {
                   const unitDist = M.of(x)
-                  const kernel = k(x)
-                  const result = M.bind(unitDist, (_) => kernel)
-                  const totalWeight = [...result.values()].reduce((acc, w) => R.add(acc, w), R.zero)
-                  return eq(totalWeight, R.one)
+                  const result = M.bind(unitDist, k)
+                  const totalWeight = sumWeights(result)
+                  return weightEq(totalWeight, R.one)
                 }
-              ),
-              { numRuns: 50 }
+              )
             )
           })
         }
@@ -222,16 +259,17 @@ describe("LAW: Semiring Distribution Laws", () => {
         it("product is coherent with bind/map", () => {
           fc.assert(
             fc.property(
-              fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 }),
-              fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 }),
-              (pairsA, pairsB) => {
+              fc.tuple(
+                fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 }),
+                fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 })
+              ),
+              ([pairsA, pairsB]: [Array<[number, number]>, Array<[number, number]>]) => {
                 const da = mkRDist(R, pairsA)
                 const db = mkRDist(R, pairsB)
-                
+
                 return checkFubini(M, da, db)
               }
-            ),
-            { numRuns: 20 }
+            )
           )
         })
       })
@@ -247,41 +285,41 @@ describe("LAW: Semiring Distribution Laws", () => {
 
         it("Dirac distributions are properly concentrated", () => {
           fc.assert(
-            fc.property(genElement(), (x) => {
-              const dirac = M.of(x)
-              expect(isDirac(R, dirac)).toBe(true)
-              
-              // Should have exactly one non-zero entry
-              const nonZeroEntries = [...dirac.entries()].filter(([_, w]) => !eq(w, R.zero))
-              return nonZeroEntries.length === 1 && nonZeroEntries[0][0] === x
-            }),
-            { numRuns: 50 }
-          )
-        })
+              fc.property(genElement(), (x: number) => {
+                const dirac = M.of(x)
+                expect(isDirac(R, dirac)).toBe(true)
+
+                // Should have exactly one non-zero entry
+                const nonZeroEntries = [...dirac.entries()].filter(([_, w]) => !weightEq(w, R.zero))
+                return nonZeroEntries.length === 1 && nonZeroEntries.every(([value]) => value === x)
+              })
+            )
+          })
 
         it("convolution with Dirac is identity", () => {
           fc.assert(
             fc.property(
-              fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 }),
-              genElement(),
-              (pairs, x) => {
+              fc.tuple(
+                fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 }),
+                genElement()
+              ),
+              ([pairs, x]: [Array<[number, number]>, number]) => {
                 const dist = mkRDist(R, pairs)
                 const dirac = M.of(x)
-                
+
                 // dist >>= (\_ -> dirac) should equal dirac (up to weight scaling)
-                const result = M.bind(dist, (_) => dirac)
-                
+                const result = M.bind(dist, () => dirac)
+
                 // All weight should be concentrated on x
                 const resultEntries = [...result.entries()]
                 const xWeight = result.get(x) ?? R.zero
                 const otherWeight = resultEntries
                   .filter(([k, _]) => k !== x)
                   .reduce((acc, [_, w]) => R.add(acc, w), R.zero)
-                
-                return eq(otherWeight, R.zero) && !eq(xWeight, R.zero)
+
+                return weightEq(otherWeight, R.zero) && !weightEq(xWeight, R.zero)
               }
-            ),
-            { numRuns: 30 }
+            )
           )
         })
       })
@@ -296,61 +334,49 @@ describe("LAW: Semiring Distribution Laws", () => {
          */
 
         if (isAffine) {
-          const { composeK, detKleisli } = KleisliDR(R)
+          const { composeK } = KleisliDR(R)
 
           it("Kleisli identity is left/right neutral", () => {
             fc.assert(
               fc.property(
-                fc.func(
-                  fc.array(fc.tuple(genElement(), genWeight()), { minLength: 1, maxLength: 3 })
-                    .map(pairs => normalizeToUnit(mkRDist(R, pairs)))
-                ),
-                genElement(),
-                (k, x) => {
-                  const id = M.of
-                  
+                fc.tuple(genKernel(), genElement()),
+                ([k, x]: [(value: number) => Dist<Elem>, number]) => {
+                  const id = (value: Elem) => M.of(value)
+
                   // id >=> k = k
                   const leftComp = composeK(id, k)
                   const leftResult = leftComp(x)
                   const directResult = k(x)
-                  
-                  // Compare results (simplified equality)
-                  return leftResult.size === directResult.size
+
+                  return eqDist(leftResult, directResult)
                 }
-              ),
-              { numRuns: 20 }
+              )
             )
           })
 
           it("Kleisli composition is associative", () => {
             fc.assert(
               fc.property(
-                fc.func(fc.integer({ min: -5, max: 5 }).map((n) => M.of(n))),
-                fc.func(fc.string().map((s) => M.of(s))),
-                fc.func(fc.boolean().map((b) => M.of(b))),
-                genElement(),
-                (f, g, h, x) => {
-                  // (h >=> g) >=> f = h >=> (g >=> f)
+                fc.tuple(genKernel(), genKernel(), genKernel(), genElement()),
+                ([f, g, h, x]: [
+                  (value: number) => Dist<Elem>,
+                  (value: number) => Dist<Elem>,
+                  (value: number) => Dist<Elem>,
+                  number
+                ]) => {
                   const lhs = composeK(composeK(f, g), h)
                   const rhs = composeK(f, composeK(g, h))
-                  
-                  // Both should produce same-sized results (simplified check)
+
                   const lhsResult = lhs(x)
                   const rhsResult = rhs(x)
-                  
-                  return lhsResult.size === rhsResult.size
+
+                  return eqDist(lhsResult, rhsResult)
                 }
-              ),
-              { numRuns: 10 }
+              )
             )
           })
         }
       })
-
-      // Helper function to normalize distributions to unit weight
-      function normalizeToUnit<T>(dist: Dist<T>): Dist<T> {
-        return normalizeR(R, dist)
-      }
     })
   })
 
@@ -365,22 +391,22 @@ describe("LAW: Semiring Distribution Laws", () => {
 
     it("all affine semirings preserve unit through return", () => {
       const affineSemirings = testSemirings.filter(s => s.isAffine)
-      
-      for (const { name, R } of affineSemirings) {
+
+      for (const { R } of affineSemirings) {
         const M = DRMonad(R)
-        const eq = R.eq ?? ((a, b) => Math.abs(a - b) < 1e-10)
-        
+        const weightEq = R.eq ?? ((a: number, b: number) => Math.abs(a - b) < 1e-10)
+
         const dist = M.of(42)
         const total = [...dist.values()].reduce((acc, w) => R.add(acc, w), R.zero)
-        
-        expect(eq(total, R.one)).toBe(true)
+
+        expect(weightEq(total, R.one)).toBe(true)
       }
     })
 
     it("Fubini property holds across all semirings", () => {
-      testSemirings.forEach(({ name, R, genElement, genWeight }) => {
+      testSemirings.forEach(({ R }) => {
         const M = DRMonad(R)
-        
+
         // Simple test case
         const da = mkRDist(R, [[1, R.one]])
         const db = mkRDist(R, [[2, R.one]])

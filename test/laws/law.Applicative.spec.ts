@@ -25,17 +25,29 @@ describe("LAW: Applicative laws", () => {
   const genString = commonGenerators.string
   const genFn = () => commonGenerators.fn(genInt)
 
+  const mapArbitrary = <Input, Output>(
+    arbitrary: fc.Arbitrary<Input>,
+    mapper: (value: Input) => Output
+  ): fc.Arbitrary<Output> => {
+    const mapFn = arbitrary.map as any
+    if (typeof mapFn !== 'function') {
+      throw new Error('fast-check arbitrary missing map implementation')
+    }
+    return mapFn.call(arbitrary, mapper) as fc.Arbitrary<Output>
+  }
+
   describe("Result applicative", () => {
     const config = {
       name: "Result",
       genA: genInt,
       genFA: () => fc.oneof(
-        genInt().map(Ok),
-        genString().map(Err)
+        mapArbitrary(genInt(), (value) => Ok(value)),
+        mapArbitrary(genString(), (error) => Err(error))
       ),
+      genFunc: genFn,
       genFFA: () => fc.oneof(
-        genFn().map(f => Ok(f)),
-        genString().map(Err)
+        mapArbitrary(genFn(), (f) => Ok(f)),
+        mapArbitrary(genString(), (error) => Err(error))
       ),
       pure: Ok,
       ap: <A, B>(ff: Result<string, (a: A) => B>) => (fa: Result<string, A>): Result<string, B> => {
@@ -75,6 +87,7 @@ describe("LAW: Applicative laws", () => {
       name: "Reader",
       genA: genInt,
       genFA: () => fc.func(fc.constant(genInt())),
+      genFunc: genFn,
       genFFA: () => fc.func(fc.constant(genFn())),
       pure: <A>(a: A): Reader<number, A> => Reader.of(a),
       ap: <A, B>(ff: Reader<number, (a: A) => B>) => (fa: Reader<number, A>): Reader<number, B> => 
@@ -113,6 +126,7 @@ describe("LAW: Applicative laws", () => {
       name: "Task",
       genA: genInt,
       genFA: () => fc.func(fc.constant(fc.constant(genInt()))),
+      genFunc: genFn,
       genFFA: () => fc.func(fc.constant(fc.constant(genFn()))),
       pure: <A>(a: A): Task<A> => Task.of(a),
       ap: <A, B>(ff: Task<(a: A) => B>) => (fa: Task<A>): Task<B> => 
@@ -148,6 +162,7 @@ describe("LAW: Applicative laws", () => {
       name: "ReaderTask",
       genA: genInt,
       genFA: () => fc.func(fc.constant(fc.constant(genInt()))),
+      genFunc: genFn,
       genFFA: () => fc.func(fc.constant(fc.constant(genFn()))),
       pure: <A>(a: A): ReaderTask<number, A> => ReaderTask.of(a),
       ap: <A, B>(ff: ReaderTask<number, (a: A) => B>) => (fa: ReaderTask<number, A>): ReaderTask<number, B> => 
@@ -188,12 +203,13 @@ describe("LAW: Applicative laws", () => {
       name: "ReaderTaskResult",
       genA: genInt,
       genFA: () => fc.func(fc.constant(fc.constant(fc.oneof(
-        genInt().map(Ok),
-        genString().map(Err)
+        mapArbitrary(genInt(), (value) => Ok(value)),
+        mapArbitrary(genString(), (error) => Err(error))
       )))),
+      genFunc: genFn,
       genFFA: () => fc.func(fc.constant(fc.constant(fc.oneof(
-        genFn().map(f => Ok(f)),
-        genString().map(Err)
+        mapArbitrary(genFn(), (f) => Ok(f)),
+        mapArbitrary(genString(), (error) => Err(error))
       )))),
       pure: <A>(a: A): ReaderTaskResult<number, string, A> => ReaderTaskResult.of(a),
       ap: <A, B>(ff: ReaderTaskResult<number, string, (a: A) => B>) => (fa: ReaderTaskResult<number, string, A>): ReaderTaskResult<number, string, B> => 
@@ -240,12 +256,13 @@ describe("LAW: Applicative laws", () => {
       name: "Validation",
       genA: genInt,
       genFA: () => fc.oneof(
-        genInt().map(Ok),
-        genString().map(Err)
+        mapArbitrary(genInt(), (value) => Ok(value)),
+        mapArbitrary(genString(), (error) => Err(error))
       ),
+      genFunc: genFn,
       genFFA: () => fc.oneof(
-        genFn().map(f => Ok(f)),
-        genString().map(Err)
+        mapArbitrary(genFn(), (f) => Ok(f)),
+        mapArbitrary(genString(), (error) => Err(error))
       ),
       pure: Ok,
       ap: <A, B>(ff: Validation<string, (a: A) => B>) => (fa: Validation<string, A>): Validation<string, B> => {
