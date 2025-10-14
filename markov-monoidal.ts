@@ -18,8 +18,8 @@ export function independentProduct<R, X, Y>(
 ): Dist<R, [X, Y]> {
   // σ: X ⊗ PY → P(X ⊗ Y), then integrate over X
   // i.e., ∇(dx,dy) = bind(dx, x => strength(R)<X,Y>(x, dy))
-  const sigma = strength<R, X, Y>(R);
-  return bind(dx, (x) => sigma(x, dy));
+  const sigma = strength(R);
+  return bind<R, X, [X, Y]>(dx, (x) => sigma<X, Y>(x, dy));
 }
 
 // ===== Pushforward along deterministic map =====
@@ -84,14 +84,13 @@ export function checkStrengthNaturality<R, X, Y, Z>(
   dy: Dist<R, Y>,
   h: (y: Y) => Z
 ): boolean {
-  const sigma = strength<R, X, Y>(R);
-  const sigmaZ = strength<R, X, Z>(R);
-  
+  const sigma = strength(R);
+
   // Left side: σ ∘ (id × P h)
-  const left = sigmaZ(x, push(R, dy, h));
-  
-  // Right side: P(id×h) ∘ σ  
-  const right = pushPairSecond(R, sigma(x, dy), h);
+  const left = sigma<X, Z>(x, push(R, dy, h));
+
+  // Right side: P(id×h) ∘ σ
+  const right = pushPairSecond(R, sigma<X, Y>(x, dy), h);
   
   return equalDist(R, left, right);
 }

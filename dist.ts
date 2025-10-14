@@ -79,7 +79,10 @@ export const argmaxSamp = <R, X>(cmp: (a: R, b: R) => number) =>
 // strength σ: X ⊗ PY → P(X ⊗ Y)
 export const strength = <R>(R: CSRig<R>) =>
   <X, Y>(x: X, dy: Dist<R, Y>): Dist<R, [X, Y]> =>
-    bind(dy, (y) => dirac(R)([x, y] as [X, Y]));
+    bind<R, Y, [X, Y]>(dy, (y) => {
+      const paired: [X, Y] = [x, y];
+      return dirac<R, [X, Y]>(R)(paired);
+    });
 
 // ===== Legacy Compatibility =====
 

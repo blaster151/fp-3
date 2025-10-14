@@ -5,6 +5,7 @@ import type {
   NatDict,
   StrengthDict,
   StrengthEnv,
+  TraversableK1,
 } from "../../allTS";
 import type { RunnableExample } from "./types";
 
@@ -51,6 +52,10 @@ type EnvTag = string;
 type EnvPayload<A> = readonly [EnvTag, A];
 
 type Task<A> = () => Promise<A>;
+
+const ArrayEndo: EndofunctorK1<'Array'> = {
+  map: <A, B>(f: (a: A) => B) => (values: ReadonlyArray<A>): ReadonlyArray<B> => values.map(f),
+};
 
 const OptionEndo: EndofunctorK1<'Option'> = { map: mapO };
 const ResultEndo = ResultK1<string>();
@@ -116,8 +121,9 @@ export const freeEndofunctorAlgebraStrengths: RunnableExample = {
     const optionId = idNatK1<'Option'>();
     const resultId = idNatK1<['Result', 'string']>();
 
-    const sumIdentity = sumNat(optionId, resultId);
-    const sumLeftOnly = sumNatL<'Option', 'Option', ['Result', 'string']>(optionId);
+    const prodRightIdentity = idNatK1<['Prod', ['Result', 'string'], 'Option']>();
+    const sumIdentity = sumNat(optionId, prodRightIdentity);
+    const sumLeftOnly = sumNatL<'Option', 'Option', ['Prod', ['Result', 'string'], 'Option']>(optionId);
 
     const sumLeftValue = inL<'Option', ['Prod', ['Result', 'string'], 'Option'], number>(Some(42));
     const sumRightValue = inR<'Option', ['Prod', ['Result', 'string'], 'Option'], number>(
@@ -129,7 +135,7 @@ export const freeEndofunctorAlgebraStrengths: RunnableExample = {
     const leftIncremented = sumLeftOnly.app<number>(sumLeftValue);
 
     const prodIdentity = prodNat(optionId, resultId);
-    const prodLeft = prodNatL<'Option', ['Result', 'string'], 'Option'>(optionId);
+    const prodLeft = prodNatL<'Option', 'Option', ['Result', 'string']>(optionId);
 
     const productValue = prod<'Option', ['Result', 'string'], number>(Some(10), Ok(20));
     const productIdentity = prodIdentity.app<number>(productValue);
@@ -157,7 +163,7 @@ export const freeEndofunctorAlgebraStrengths: RunnableExample = {
     const taskDistributor = distributeTaskK1(TraversableArrayK1);
 
     const distributedPromise = await promiseDistributor.app<number>(promiseArray);
-    const distributedTask = await taskDistributor.app<string>(taskArray);
+    const distributedTask = await taskDistributor.app<string>(taskArray)();
 
     logs.push("\n== Traversable Promise/Task distribution ==");
     logs.push(`Promise distribution → [${distributedPromise.join(", ")}]`);
@@ -230,15 +236,20 @@ export const freeEndofunctorAlgebraStrengths: RunnableExample = {
     logs.push(`Pair strength extracts env=${JSON.stringify(pairResult[0])}`);
     logs.push(`Const strength extracts env=${JSON.stringify(constResult[0])}`);
 
-    const travRegistry = <F>(F: EndofunctorK1<F>) => (F === TraversableArrayK1 ? TraversableArrayK1 : null);
+    const travRegistry = <F>(F: EndofunctorK1<F>): TraversableK1<F> | null => {
+      if (F === (ArrayEndo as unknown as EndofunctorK1<F>)) {
+        return TraversableArrayK1 as unknown as TraversableK1<F>;
+      }
+      return null;
+    };
     const promiseLax2 = makePostcomposePromise2(travRegistry);
-    const promiseArrayEndo = promiseLax2.on1(TraversableArrayK1);
+    const promiseArrayEndo = promiseLax2.on1(ArrayEndo);
     const eta = promiseLax2.eta();
     const promiseEtaResult = await eta.app<string>("unit-value");
 
     logs.push("\n== Promise lax 2-functor ==");
     logs.push(`Promise∘Array endofunctor map field → ${typeof promiseArrayEndo.map}`);
-    logs.push(`Promise η (unit) → ${await promiseEtaResult}`);
+    logs.push(`Promise η (unit) → ${promiseEtaResult}`);
 
     return { logs };
   },
