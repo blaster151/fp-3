@@ -8,8 +8,6 @@ import {
   checkSetMultInfiniteProduct,
 } from "../../setmult-oracles";
 import {
-  DeterministicSetMultWitness,
-  SetMultIndexedFamily,
   createSetMultInfObj,
   createSetMultObj,
   deterministicToSetMulti,
@@ -17,7 +15,10 @@ import {
   projectSetMult,
   setMultObjFromFin,
   setMultiToKernel,
+  type SetMultProduct,
+  type SetMultTuple,
 } from "../../setmult-category";
+import type { DeterministicSetMultWitness, SetMultIndexedFamily } from "../../setmult-category";
 
 describe("SetMult semicartesian structure", () => {
   const boolObj = createSetMultObj<boolean>({
@@ -85,13 +86,13 @@ describe("SetMult infinite products", () => {
     const family = {
       index: ["x", "y"] as const,
       coordinate: () => boolObj,
-      countability: { kind: "finite", enumerate: () => ["x", "y"] as const, sample: ["x", "y"], size: 2 },
+      countability: { kind: "finite", enumerate: () => ["x", "y"] as const, sample: ["x", "y"] as const, size: 2 },
     } satisfies SetMultIndexedFamily<"x" | "y", boolean>;
 
     const report = checkSetMultInfiniteProduct(family, (index) => index === "x", [
-      { subset: ["x"] },
-      { subset: ["y"] },
-      { subset: ["x", "y"] },
+      { subset: ["x"] as const },
+      { subset: ["y"] as const },
+      { subset: ["x", "y"] as const },
     ]);
 
     expect(report.holds).toBe(true);
@@ -109,8 +110,8 @@ describe("SetMult infinite products", () => {
       family,
       (index) => index === "x",
       [
-        { subset: ["x"], expected: new Map([["x", false]]) },
-        { subset: ["y"], expected: new Map([["y", true]]) },
+        { subset: ["x"] as const, expected: new Map<"x", boolean>([["x", false]]) },
+        { subset: ["y"] as const, expected: new Map<"y", boolean>([["y", true]]) },
       ],
     );
 
@@ -124,14 +125,18 @@ describe("SetMult infinite products", () => {
       coordinate: () => boolObj,
     } satisfies SetMultIndexedFamily<"x" | "y", boolean>;
 
-    const product = createSetMultInfObj(family);
+    const product: SetMultProduct<"x" | "y", boolean> = createSetMultInfObj(family);
     const tuple = product.carrier((index) => (index === "x" ? true : false));
-    const projection = projectSetMult(product, ["x"]);
+    const projection = projectSetMult(product, ["x"] as const);
     const fibre = Array.from(projection(tuple));
 
     expect(fibre).toHaveLength(1);
     const section = fibre[0];
+    if (section === undefined) {
+      throw new Error("Expected projection fibre to contain a section");
+    }
     expect(section.get("x")).toBe(true);
-    expect(product.sectionObj(["x"]).eq(section, new Map([["x", true]]))).toBe(true);
+    const oneCoordinate: SetMultTuple<"x" | "y", boolean> = new Map<"x", boolean>([["x", true]]);
+    expect(product.sectionObj(["x"] as const).eq(section, oneCoordinate)).toBe(true);
   });
 });
