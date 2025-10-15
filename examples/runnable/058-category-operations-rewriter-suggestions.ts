@@ -1,8 +1,13 @@
-import type { Suggestion, Rewrite } from "../../operations/rewriter";
+import type {
+  OperationContext,
+  OperationRule,
+  Suggestion,
+  Rewrite,
+} from "../../operations/rewriter";
 import type { FuncArr } from "../../models/finset-cat";
 import type { RunnableExample } from "./types";
 
-declare function require(id: string): any;
+declare function require(id: string): unknown;
 
 const { FinSetCat } = require("../../models/finset-cat") as {
   FinSetCat: (universe: Record<string, readonly string[]>) => {
@@ -15,17 +20,15 @@ const { FinSetCat } = require("../../models/finset-cat") as {
 };
 
 const { Rewriter, defaultOperationRules } = require("../../operations/rewriter") as {
-  Rewriter: new <Obj, Arr>(rules: ReadonlyArray<any>) => {
-    analyze(context: { category: any; path?: readonly Arr[]; focus?: Arr }): Suggestion<Obj, Arr>[];
+  Rewriter: new <Obj, Arr>(rules?: ReadonlyArray<OperationRule<Obj, Arr>>) => {
+    analyze(context: OperationContext<Obj, Arr>): Suggestion<Obj, Arr>[];
   };
-  defaultOperationRules: <Obj, Arr>() => ReadonlyArray<any>;
+  defaultOperationRules: <Obj, Arr>() => OperationRule<Obj, Arr>[];
 };
 
 type Section = readonly string[];
 
 type FinSetCategory = ReturnType<typeof FinSetCat>;
-
-type RuleTuple = readonly [any, any, any, any, any, any];
 
 type Universe = Record<string, readonly string[]>;
 
@@ -130,7 +133,7 @@ function summariseSuggestions(
 }
 
 function describeOperations(category: FinSetCategory): readonly Section[] {
-  const rules = defaultOperationRules<string, FuncArr>() as RuleTuple;
+  const rules = defaultOperationRules<string, FuncArr>();
   const [isoRule, upgradeRule, balancedRule, epiMonoRule, mergeObjectsRule, mergeSubobjectsRule] =
     rules;
 

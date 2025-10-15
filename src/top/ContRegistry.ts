@@ -9,7 +9,7 @@ export type ContEntry<A, B> = {
   readonly eqCod?: (b: B, c: B) => boolean;
 };
 
-const entries: ContEntry<any, any>[] = [];
+const entries: ContEntry<unknown, unknown>[] = [];
 
 export function registerCont<A, B>(entry: ContEntry<A, B>): void {
   entries.push(entry);
@@ -19,7 +19,7 @@ export function clearCont(): void {
   entries.length = 0;
 }
 
-export function allCont(): ReadonlyArray<ContEntry<any, any>> {
+export function allCont(): ReadonlyArray<ContEntry<unknown, unknown>> {
   return entries.slice();
 }
 

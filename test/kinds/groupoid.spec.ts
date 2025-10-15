@@ -19,17 +19,17 @@ describe("kinds/groupoid", () => {
     const category = catFromGroup(z2)
     const { group } = groupFromOneObjectGroupoid(category)
 
-    const names = group.elements.map((arrow) => (arrow as any).element).sort()
+    const names = group.elements.map((arrow) => arrow.element).sort()
     expect(names).toEqual(["e", "s"])
 
     const elementByName = (name: string) =>
-      group.elements.find((arrow) => (arrow as any).element === name)!
+      group.elements.find((arrow) => arrow.element === name)!
 
     const s = elementByName("s")
     const product = group.multiply(s, s)
-    expect((product as any).element).toBe("e")
+    expect(product.element).toBe("e")
     const inverse = group.inverse(s)
-    expect((inverse as any).element).toBe("s")
+    expect(inverse.element).toBe("s")
   })
 
   it("builds an action groupoid for Z2 acting on three points", () => {

@@ -33,7 +33,7 @@ const extractSumRight = <F, G, A>(value: SumVal<F, G, A>) => {
 }
 
 describe('Sum Endofunctor (F ⊕ G)', () => {
-  const OptionF: EndofunctorK1<OptionTag> = { map: mapO as any }
+  const OptionF: EndofunctorK1<OptionTag> = { map: mapO }
   const ResultF = ResultK1<string>()
   const SumFG = SumEndo(OptionF, ResultF)
 
@@ -151,7 +151,7 @@ describe('Sum Endofunctor (F ⊕ G)', () => {
 })
 
 describe('Product Endofunctor (F ⊗ G)', () => {
-  const OptionF: EndofunctorK1<OptionTag> = { map: mapO as any }
+  const OptionF: EndofunctorK1<OptionTag> = { map: mapO }
   const ResultF = ResultK1<string>()
   const ProdFG = ProdEndo(OptionF, ResultF)
 
@@ -241,7 +241,7 @@ describe('Product Endofunctor (F ⊗ G)', () => {
 
 describe('Sum and Product Integration', () => {
   it('should work together in complex scenarios', () => {
-    const OptionF: EndofunctorK1<OptionTag> = { map: mapO as any }
+    const OptionF: EndofunctorK1<OptionTag> = { map: mapO }
     const ResultF = ResultK1<string>()
 
     // Create a Sum of Products: (Option ⊗ Result) ⊕ (Option ⊗ Result)

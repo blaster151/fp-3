@@ -5668,7 +5668,7 @@ export const ConstT= <S extends string>(C: unknown): EndoTerm<S> => ({ tag: 'Con
 export type EndoDict<Sym extends string> = Record<Sym, EndofunctorK1<unknown>>
 export type StrengthDict<Sym extends string, E> = Record<Sym, StrengthEnv<unknown, E>>
 export type NatDict<SymFrom extends string, SymTo extends string> =
-  (name: SymFrom) => { to: SymTo; nat: NatK1<any, any> }
+  (name: SymFrom) => { to: SymTo; nat: NatK1<unknown, unknown> }
 
 // evaluate term to EndofunctorK1
 export const evalEndo =
@@ -5977,32 +5977,23 @@ export const deriveTraversableCompK1 =
 // Register common families (return the same Endo value you should use elsewhere)
 export const registerEitherTraversable =
   <E>(R: ReturnType<typeof makeTraversableRegistryK1>) => {
-    const F = ResultK1<E>() // Using Result as Either
-    const T = TraversableEitherK1<E>()
-    return R.register(
-      F as EndofunctorK1<unknown>,
-      T as TraversableK1<unknown>
-    )
+    const F: EndofunctorK1<['Either', E]> = ResultK1<E>() // Using Result as Either
+    const T: TraversableK1<['Either', E]> = TraversableEitherK1<E>()
+    return R.register(F, T)
   }
 
 export const registerPairTraversable =
   <C>(R: ReturnType<typeof makeTraversableRegistryK1>) => {
-    const F = PairEndo<C>()
-    const T = TraversablePairK1<C>()
-    return R.register(
-      F as EndofunctorK1<unknown>,
-      T as TraversableK1<unknown>
-    )
+    const F: EndofunctorK1<['Pair', C]> = PairEndo<C>()
+    const T: TraversableK1<['Pair', C]> = TraversablePairK1<C>()
+    return R.register(F, T)
   }
 
 export const registerConstTraversable =
   <C>(R: ReturnType<typeof makeTraversableRegistryK1>) => {
-    const F = ConstEndo<C>()
-    const T = TraversableConstK1<C>()
-    return R.register(
-      F as EndofunctorK1<unknown>,
-      T as TraversableK1<unknown>
-    )
+    const F: EndofunctorK1<['Const', C]> = ConstEndo<C>()
+    const T: TraversableK1<['Const', C]> = TraversableConstK1<C>()
+    return R.register(F, T)
   }
 
 // Compose/derive & register at runtime from parts already in registry
@@ -6011,11 +6002,8 @@ export const registerSumDerived =
     const TF = R.get(FEndo); const TG = R.get(GEndo)
     if (!TF || !TG) throw new Error('registerSumDerived: missing component traversables')
     const FE = SumEndo(FEndo, GEndo)
-    const TT = deriveTraversableSumK1(
-      TF as TraversableK1<unknown>,
-      TG as TraversableK1<unknown>
-    )
-    return R.register(FE as EndofunctorK1<unknown>, TT as TraversableK1<unknown>)
+    const TT = deriveTraversableSumK1(TF, TG)
+    return R.register(FE, TT)
   }
 
 export const registerProdDerived =
@@ -6023,11 +6011,8 @@ export const registerProdDerived =
     const TF = R.get(FEndo); const TG = R.get(GEndo)
     if (!TF || !TG) throw new Error('registerProdDerived: missing component traversables')
     const FE = ProdEndo(FEndo, GEndo)
-    const TT = deriveTraversableProdK1(
-      TF as TraversableK1<unknown>,
-      TG as TraversableK1<unknown>
-    )
-    return R.register(FE as EndofunctorK1<unknown>, TT as TraversableK1<unknown>)
+    const TT = deriveTraversableProdK1(TF, TG)
+    return R.register(FE, TT)
   }
 
 export const registerCompDerived =
@@ -6035,11 +6020,8 @@ export const registerCompDerived =
     const TF = R.get(FEndo); const TG = R.get(GEndo)
     if (!TF || !TG) throw new Error('registerCompDerived: missing component traversables')
     const FE = composeEndoK1(FEndo, GEndo)
-    const TT = deriveTraversableCompK1(
-      TF as TraversableK1<unknown>,
-      TG as TraversableK1<unknown>
-    )
-    return R.register(FE as EndofunctorK1<unknown>, TT as TraversableK1<unknown>)
+    const TT = deriveTraversableCompK1(TF, TG)
+    return R.register(FE, TT)
   }
 
 // Lax 2-functor (Promise postcompose) that consults the registry

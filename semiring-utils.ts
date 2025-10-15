@@ -160,8 +160,8 @@ export function isEntire<R>(R: CSRig<R>, probes = 128): boolean {
   for (let i = 0; i < probes; i++) {
     const a = sample();
     const b = sample();
-    if (isZero(a as any) || isZero(b as any)) continue;
-    if (isZero(R.mul(a, b) as any)) return false;
+    if (isZero(a) || isZero(b)) continue;
+    if (isZero(R.mul(a, b))) return false;
   }
   return true;
 }
@@ -213,22 +213,26 @@ export function fromBoolSupport<T>(support: Iterable<T>): Map<T, boolean> {
 // Read off the "best" key(s) for a distribution under a semiring
 export function argBestR<R, T>(R: CSRig<R>, d: Map<T, R>): T[] {
   if (isNumericRig(R)) {
-    let best: R | null = null;
+    let best: number | null = null;
     let out: T[] = [];
-    for (const [x, w] of d) {
+    for (const [x, weight] of d) {
+      if (typeof weight !== "number") {
+        throw new Error("Numeric rig weights must be numbers");
+      }
       if (best === null) {
-        best = w;
+        best = weight;
         out = [x];
         continue;
       }
 
-      if (R.eq(w as any, best as any)) {
+      const currentBest = best;
+      if (R.eq(weight, currentBest)) {
         out.push(x);
         continue;
       }
 
-      if ((w as any) > (best as any)) {
-        best = w;
+      if (weight > currentBest) {
+        best = weight;
         out = [x];
       }
     }

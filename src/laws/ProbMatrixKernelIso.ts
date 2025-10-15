@@ -9,13 +9,13 @@ import {
 
 const eqNum = (a: number, b: number) => a === b;
 
-export function lawfulKernelMatrixIso(): Lawful<any, { to: unknown; from: unknown }> {
+export function lawfulKernelMatrixIso(): Lawful<unknown, { to: typeof kernelToMatrix; from: typeof matrixToKernel }> {
   const tag = "Prob/KernelMatrixIso";
 
   const A = [0, 1, 2];
   const B = [10, 20];
 
-  const laws: Law<any>[] = [
+  const laws: Law<unknown>[] = [
     {
       name: "to ∘ from = id (matrices)",
       check: () => {
@@ -45,5 +45,10 @@ export function lawfulKernelMatrixIso(): Lawful<any, { to: unknown; from: unknow
     },
   ];
 
-  return { tag, eq: (a: any, b: any) => a === b, struct: { to: kernelToMatrix, from: matrixToKernel }, laws };
+  return {
+    tag,
+    eq: (a: unknown, b: unknown) => a === b,
+    struct: { to: kernelToMatrix, from: matrixToKernel },
+    laws,
+  };
 }

@@ -82,7 +82,7 @@ export function checkDeterminismLemma<A, X, T>(
   const joint = buildJoint(witness.prior, witness.stat);
   const conditional = buildMarkovConditionalWitness(
     domain,
-    [xWitness, tWitness] as ReadonlyArray<MarkovComonoidWitness<any>>,
+    [xWitness, tWitness] as ReadonlyArray<MarkovComonoidWitness<unknown>>,
     joint as unknown as FinMarkov<A, unknown>,
     {
       label: witness.label ? `${witness.label} joint` : "determinism lemma joint",

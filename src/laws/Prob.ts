@@ -6,7 +6,7 @@ export function lawfulDistNumber(): Lawful<number, typeof DistMonad> {
   const eq = (a:number,b:number)=>a===b;
   const of = DistMonad.of, ch = DistMonad.chain;
 
-  const laws: Law<any>[] = [
+  const laws: Law<number>[] = [
     {
       name: "left identity",
       check: ()=> [0,1,2].every(a => {

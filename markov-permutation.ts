@@ -12,7 +12,7 @@ export type FiniteSymmetryKind = "permutation" | "injection";
 
 export interface FiniteSymmetry<XJ> {
   readonly name: string;
-  readonly sigmaHat: FinMarkov<XJ, XJ> | FinMarkov<any, any>;
+  readonly sigmaHat: FinMarkov<XJ, XJ> | FinMarkov<unknown, unknown>;
   readonly kind?: FiniteSymmetryKind | undefined;
 }
 

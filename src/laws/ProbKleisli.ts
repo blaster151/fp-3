@@ -5,7 +5,7 @@ import type { Kernel } from "../prob/Kleisli";
 
 const eqNum = (a: number, b: number) => a === b;
 
-export function lawfulKleisliCategory(): Lawful<any, { kid: Function; kcomp: Function; kmap: Function }> {
+export function lawfulKleisliCategory(): Lawful<number, { kid: typeof kid; kcomp: typeof kcomp; kmap: typeof kmap }> {
   const tag = "Prob/Kleisli/Category";
   const A = [0, 1, 2];
 
@@ -19,7 +19,7 @@ export function lawfulKleisliCategory(): Lawful<any, { kid: Function; kcomp: Fun
     { x: a + 3, p: 0.7 },
   ];
 
-  const laws: Law<any>[] = [
+  const laws: Law<number>[] = [
     {
       name: "identity (left/right)",
       check: () => {
@@ -52,5 +52,5 @@ export function lawfulKleisliCategory(): Lawful<any, { kid: Function; kcomp: Fun
     },
   ];
 
-  return { tag, eq: (a: any, b: any) => a === b, struct: { kid, kcomp, kmap }, laws };
+  return { tag, eq: eqNum, struct: { kid, kcomp, kmap }, laws };
 }
