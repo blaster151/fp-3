@@ -54,6 +54,66 @@ export const composePreordHom = <A, B, C>(
   };
 };
 
+export type ExtremalFailure<A> =
+  | { readonly kind: "candidateMissing"; readonly candidate: A }
+  | { readonly kind: "violatesLowerBound"; readonly witness: A; readonly witnessInCarrier: boolean }
+  | { readonly kind: "violatesUpperBound"; readonly witness: A; readonly witnessInCarrier: boolean };
+
+export interface ExtremalAnalysis<A> {
+  readonly holds: boolean;
+  readonly failure?: ExtremalFailure<A>;
+}
+
+export const analyzeLeastElement = <A>(
+  preorder: Preorder<A>,
+  candidate: A,
+  samples: ReadonlyArray<A> = preorder.elems,
+): ExtremalAnalysis<A> => {
+  if (!inCarrier(preorder.elems, candidate)) {
+    return { holds: false, failure: { kind: "candidateMissing", candidate } };
+  }
+
+  for (const element of samples) {
+    if (!preorder.le(candidate, element)) {
+      return {
+        holds: false,
+        failure: {
+          kind: "violatesLowerBound",
+          witness: element,
+          witnessInCarrier: inCarrier(preorder.elems, element),
+        },
+      };
+    }
+  }
+
+  return { holds: true };
+};
+
+export const analyzeGreatestElement = <A>(
+  preorder: Preorder<A>,
+  candidate: A,
+  samples: ReadonlyArray<A> = preorder.elems,
+): ExtremalAnalysis<A> => {
+  if (!inCarrier(preorder.elems, candidate)) {
+    return { holds: false, failure: { kind: "candidateMissing", candidate } };
+  }
+
+  for (const element of samples) {
+    if (!preorder.le(element, candidate)) {
+      return {
+        holds: false,
+        failure: {
+          kind: "violatesUpperBound",
+          witness: element,
+          witnessInCarrier: inCarrier(preorder.elems, element),
+        },
+      };
+    }
+  }
+
+  return { holds: true };
+};
+
 export const PreordCat = {
   obj: <A>(P: Preorder<A>) => P,
   hom: <A, B>(dom: Preorder<A>, cod: Preorder<B>, map: (value: A) => B): PreordHom<A, B> => {
