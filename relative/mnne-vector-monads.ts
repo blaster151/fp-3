@@ -1,4 +1,12 @@
-import { SemiringBoolOrAnd, type Semiring } from "../allTS";
+import type { Semiring } from "../allTS";
+
+const boolOrAndSemiring: Semiring<boolean> = {
+  add: (left, right) => left || right,
+  zero: false,
+  mul: (left, right) => left && right,
+  one: true,
+  eq: (left, right) => left === right,
+};
 
 export type Vector<R> = ReadonlyArray<R>;
 
@@ -7,7 +15,7 @@ export interface FiniteSemiring<R> extends Semiring<R> {
 }
 
 export const FiniteSemiringBoolOrAnd: FiniteSemiring<boolean> = {
-  ...SemiringBoolOrAnd,
+  ...boolOrAndSemiring,
   elements: [false, true],
 };
 
