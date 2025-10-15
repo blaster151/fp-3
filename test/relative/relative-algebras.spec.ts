@@ -25,6 +25,7 @@ import {
   analyzeRelativeOpalgebraExtraordinaryTransformation,
   analyzeRelativeOpalgebraRightAction,
   analyzeRelativeOpalgebraRightActionFromMonoid,
+  analyzeRelativeOpalgebraRepresentableActionBridge,
   analyzeRelativeStreetActionCoherence,
   analyzeRelativeStreetActionData,
   analyzeRelativeStreetActionHomomorphism,
@@ -626,6 +627,25 @@ describe("Representable Street restriction analyzer", () => {
     expect(report.issues).toContain(
       "Representable Street restriction must mark the Street action carrier as representable.",
     );
+  });
+});
+
+describe("Representable Street bridge analyzer", () => {
+  it("confirms the trivial opalgebra induces a representable Street action", () => {
+    const { opalgebraPresentation } = makeTrivialPresentations();
+    const streetAction = describeRelativeOpalgebraRightAction(opalgebraPresentation);
+    const restriction = describeRelativeStreetRepresentableRestriction(
+      opalgebraPresentation.monad,
+      streetAction,
+    );
+    const report = analyzeRelativeOpalgebraRepresentableActionBridge(
+      opalgebraPresentation,
+      restriction,
+    );
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
+    expect(report.issues).toHaveLength(0);
+    expect(report.comparison?.holds).toBe(true);
   });
 });
 

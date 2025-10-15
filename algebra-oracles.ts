@@ -70,11 +70,11 @@ export const checkRelativeMonadLaws = <Obj, Arr, Payload, Evidence>(
     analysis.rootIdentity.pending;
 
   const holds = !pending && componentIssues.length === 0;
-  const details = holds
-    ? "Relative monad laws verified: framing, unit compatibility, associativity, and root identity preservation all hold."
-    : componentIssues.length > 0
-      ? `Relative monad law issues: ${componentIssues.join("; ")}`
-      : "Relative monad law verification pending Street-calculus witnesses; structural prerequisites satisfied.";
+  const details = componentIssues.length > 0
+    ? `Relative monad law issues: ${componentIssues.join("; ")}`
+    : pending
+      ? "Relative monad law verification pending Street composites for the unit or extension witnesses."
+      : "Relative monad laws verified: framing, Street unit compatibility, associativity, and root identity preservation all hold.";
 
   return { holds, pending, details, analysis };
 };

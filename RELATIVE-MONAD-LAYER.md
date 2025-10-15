@@ -244,8 +244,9 @@
     `analyzeRelativeEnrichedEilenbergMooreAlgebra` and the
     `relativeMonad.enriched.eilenbergMooreAlgebra` oracle, which insist the
     carrier shares the monad boundaries, the extension operator reuses the
-    enriched extension witness, and the unit/multiplication composites collapse
-    to the recorded enriched unit/extension comparisons.
+    enriched extension witness, and the Street pastings for the unit and
+    multiplication composites collapse to the recorded enriched
+    unit/extension comparisons.
   - ✅ Lemma 8.7’s Kleisli inclusion is enforced by
     `analyzeRelativeEnrichedKleisliInclusion` and the
     `relativeMonad.enriched.kleisliInclusion` oracle, ensuring the functor is

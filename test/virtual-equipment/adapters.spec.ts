@@ -126,11 +126,11 @@ describe("virtual equipment adapters", () => {
     expect(cosliceEquipment.objects.length).toBeGreaterThan(0);
   });
 
-  test("summarizeEquipmentOracles surfaces pending status", () => {
+  test("summarizeEquipmentOracles reports satisfied laws for the identity equipment", () => {
     const summary = summarizeEquipmentOracles();
-    expect(summary.overall).toBe(false);
-    expect(summary.companion.unit.pending).toBe(true);
-    expect(summary.conjoint.counit.details).toContain("not implemented yet");
-    expect(summary.extensions.rightExtension.pending).toBe(true);
+    expect(summary.overall).toBe(true);
+    expect(summary.companion.unit.holds).toBe(true);
+    expect(summary.conjoint.counit.pending).toBe(false);
+    expect(summary.extensions.rightExtension.holds).toBe(true);
   });
 });

@@ -140,7 +140,7 @@ const buildConstantRootRelativeMonad = (): RelativeMonad => {
 };
 
 describe("Relative monad law aggregation", () => {
-  it("confirms identity-root embeddings satisfy the structural laws", () => {
+  it("confirms identity-root embeddings satisfy the Street laws", () => {
     const classical = makeIdentityCatMonad();
     const relative = fromMonad(classical, {
       rootObject: "•" as const,
@@ -148,9 +148,14 @@ describe("Relative monad law aggregation", () => {
     });
 
     const result = checkRelativeMonadLaws(relative);
-    expect(result.pending).toBe(true);
+    expect(result.pending).toBe(false);
+    expect(result.holds).toBe(true);
     expect(result.analysis.framing.holds).toBe(true);
+    expect(result.analysis.unitCompatibility.pending).toBe(false);
     expect(result.analysis.unitCompatibility.issues).toHaveLength(0);
+    expect(result.analysis.unitCompatibility.witness.comparison?.red).toBeDefined();
+    expect(result.analysis.unitCompatibility.witness.comparison?.green).toBeDefined();
+    expect(result.analysis.extensionAssociativity.pending).toBe(false);
     expect(result.analysis.extensionAssociativity.issues).toHaveLength(0);
     expect(result.analysis.rootIdentity.issues).toHaveLength(0);
   });
@@ -159,10 +164,42 @@ describe("Relative monad law aggregation", () => {
     const relative = buildConstantRootRelativeMonad();
     const result = checkRelativeMonadLaws(relative);
 
+    expect(result.pending).toBe(false);
+    expect(result.holds).toBe(true);
     expect(result.analysis.framing.holds).toBe(true);
     expect(result.analysis.unitCompatibility.holds).toBe(true);
     expect(result.analysis.extensionAssociativity.holds).toBe(true);
     expect(result.analysis.rootIdentity.holds).toBe(true);
+  });
+
+  it("flags Street-level unit compatibility mismatches", () => {
+    const classical = makeIdentityCatMonad();
+    const relative = fromMonad(classical, {
+      rootObject: "•" as const,
+      objects: TwoObjectCategory.objects,
+    });
+
+    const brokenExtension = {
+      ...relative.extension,
+      target: {
+        ...relative.extension.target,
+        arrows: [
+          ...relative.extension.target.arrows,
+          ...relative.extension.target.arrows,
+        ],
+      },
+    } as typeof relative.extension;
+    const broken = { ...relative, extension: brokenExtension } as typeof relative;
+
+    const result = checkRelativeMonadLaws(broken);
+
+    expect(result.pending).toBe(false);
+    expect(result.holds).toBe(false);
+    expect(result.analysis.unitCompatibility.pending).toBe(false);
+    expect(result.analysis.unitCompatibility.holds).toBe(false);
+    expect(result.analysis.unitCompatibility.issues).toContain(
+      "Relative monad unit compatibility Street composites must coincide.",
+    );
   });
 });
 

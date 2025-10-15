@@ -50,11 +50,12 @@ This document catalogs the algebraic laws that our functional programming constr
   `faithfulness.restrictions`, `faithfulness.pointwise`,
   `faithfulness.leftExtension`, `absolute.colimit`,
   `absolute.leftExtension`, `absolute.pointwiseLeftLift`).
-- **Witness Builder:** `enumeratePendingEquipmentOracles()` currently records
-  the outstanding checks so the oracle registry can surface TODO status.
-- **Check:** `EquipmentOracles` functions (`companion.unit`, etc.) return
-  structured `{ pending: true }` results until concrete implementations are
-  wired up.
+- **Witness Builder:** `enumerateEquipmentOracles()` evaluates every registered
+  law and returns the structured oracle results, making it easy to surface
+  which witnesses succeed for a given equipment.
+- **Check:** `EquipmentOracles` functions (`companion.unit`, etc.) now call the
+  matching analyzers and return `{ holds, pending, details }` objects alongside
+  the analyzer output for downstream inspection.
 - **Implementation Notes:** the oracle stubs live alongside the law catalogue in
   `virtual-equipment/equipment-oracles.ts`, making it straightforward to swap in
   executable witnesses in later steps without changing documentation links.
@@ -65,18 +66,18 @@ This document catalogs the algebraic laws that our functional programming constr
   loose arrow framing and identity vertical boundaries, setting the stage for the
   paper’s Proposition 4.12 equivalence between relative monads and loose
   monoids.
-- **Remark 2.20 hook:** `virtualEquipment.maps.representableRight` will certify
+- **Remark 2.20 hook:** `virtualEquipment.maps.representableRight` certifies
   that a loose adjunction whose right leg is representable classifies its left
-  leg as a map; until implemented the oracle remains pending but the law is
-  catalogued for future automation.
-- **Definition 3.2 / Lemma 3.4 hooks:** the pending laws
+  leg as a map, reporting both the framing analysis and the representability
+  witness status.
+- **Definition 3.2 / Lemma 3.4 hooks:** the laws
   `virtualEquipment.extensions.rightExtension`,
   `virtualEquipment.extensions.rightLift`, and
   `virtualEquipment.extensions.compatibility` mirror the paper’s right
   extension/right lift framing requirements and their interplay.  The new
   analyzers in `virtual-equipment/extensions.ts` enforce the structural
   preconditions so executable oracles can be wired in later.
-- **Definition 3.9 / Lemma 3.13 / Lemma 3.14 hooks:** the pending laws
+- **Definition 3.9 / Lemma 3.13 / Lemma 3.14 hooks:** the laws
   `virtualEquipment.weighted.cone`, `virtualEquipment.weighted.cocone`,
   `virtualEquipment.weighted.colimitRestriction`,
   `virtualEquipment.weighted.limitRestriction`, and
@@ -179,11 +180,9 @@ This document catalogs the algebraic laws that our functional programming constr
   arrow.
 - `relativeMonad.enriched.eilenbergMooreAlgebra` realises Definition 8.16’s
   enriched T-algebra by checking that the carrier shares the monad boundaries,
-  the extension operator reuses the enriched extension witness, and the unit
-  and multiplication composites coincide with the recorded enriched
-  comparisons. Until horizontal/vertical 2-cell composition lands in the
-  virtual equipment, the oracle only confirms this boundary reuse and reports
-  pending status.
+  the extension operator reuses the enriched extension witness, and the Street
+  pastings for the unit and multiplication composites evaluate to the recorded
+  enriched comparisons.
 - `relativeMonad.enriched.kleisliInclusion` exposes Lemma 8.7’s
   identity-on-objects inclusion into Kl(T), requiring the functor to reuse the
   loose arrow, unit, and extension witnesses and to supply the κ_T opalgebra

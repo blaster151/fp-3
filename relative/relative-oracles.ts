@@ -372,16 +372,11 @@ export const RelativeMonadOracles = {
       options.enrichedEilenbergMooreWitness ??
       describeRelativeEnrichedEilenbergMooreAlgebraWitness(enrichedWitness);
     const report = analyzeRelativeEnrichedEilenbergMooreAlgebra(algebraWitness);
-    const limitationNote =
-      "Enriched 2-cell composition is not yet executable, so this oracle only confirms boundary reuse of the supplied witnesses.";
-    const details = report.details.includes(limitationNote)
-      ? report.details
-      : `${report.details} ${limitationNote}`;
     return {
       holds: report.holds,
-      pending: true,
+      pending: report.pending,
       registryPath: descriptor.registryPath,
-      details,
+      details: report.details,
       issues: report.issues,
     };
   },

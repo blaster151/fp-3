@@ -200,10 +200,10 @@ Recent Section 6 additions:
   witness against the Boolean vector relative monad, confirming Example 1’s
   arrow viewpoint coincides with the canonical unit/extension data.
 - `RelativeMonadOracles.enrichedEilenbergMooreAlgebra` operationalises
-- `RelativeMonadOracles.enrichedEilenbergMooreAlgebra` operationalises
   Definition 8.16 by demanding the carrier share the monad boundaries, the
-  extension operator reuse the enriched extension witness, and the unit and
-  multiplication composites agree with the recorded enriched comparisons.
+  extension operator reuse the enriched extension witness, and by evaluating
+  the Street pastings for the unit and multiplication composites against the
+  recorded enriched comparisons.
 - `RelativeMonadOracles.enrichedKleisliInclusion` captures Lemma 8.7’s
   identity-on-objects V-functor k_T : A → Kl(T) by insisting the inclusion
   reuses the monad’s loose arrow, unit, and extension witnesses and that the
