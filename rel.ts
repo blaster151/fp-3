@@ -19,6 +19,40 @@ export function makeRel<A, B>(pairs: Iterable<readonly [A, B]>): Rel<A, B> {
   return result;
 }
 
+function hasPair<A, B>(rel: Rel<A, B>, pair: readonly [A, B]): boolean {
+  for (const candidate of rel) {
+    if (candidate[0] === pair[0] && candidate[1] === pair[1]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function relEquals<A, B>(left: Rel<A, B>, right: Rel<A, B>): boolean {
+  if (left.size !== right.size) return false;
+  for (const pair of left) {
+    if (!hasPair(right, pair)) return false;
+  }
+  for (const pair of right) {
+    if (!hasPair(left, pair)) return false;
+  }
+  return true;
+}
+
+export function emptyRelation<A, B>(): Rel<A, B> {
+  return makeRel<A, B>([]);
+}
+
+export function initialRelation<B>(target: ReadonlyArray<B>): Rel<never, B> {
+  void target;
+  return emptyRelation<never, B>();
+}
+
+export function terminalRelation<A>(source: ReadonlyArray<A>): Rel<A, never> {
+  void source;
+  return emptyRelation<A, never>();
+}
+
 export function idRel<A>(carrier: Iterable<A>): Rel<A, A> {
   const seen = new Set<A>();
   const result = new Set<readonly [A, A]>();

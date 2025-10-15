@@ -1125,6 +1125,78 @@ so failures can be traced to sub-lemmas.
 - **In code**: `preord-cat.ts` defines `PreordCat` and `isMonotone` to build and certify monotone morphisms.
 - **Witness**: `test/preord-cat.spec.ts` validates accepted morphisms and rejects non-monotone maps.
 
+### Relations and the empty zero object
+
+- **Domain**: `RelCat` on finite carriers realised as arrays of strings.
+- **Statement**: The empty relation mediates both the initial and terminal universal properties—`initialRelation` and `terminalRelation` coincide with `emptyRelation`, and any composite through the empty set collapses to it.
+- **Rationale**: Captures Awodey’s observation that `Rel` has a zero object at `∅`, making the “only relation is empty” argument executable.
+- **Oracles**: `test/laws/law.RelZeroObject.spec.ts` compares canonical witnesses with arbitrary constructions and inspects composites through the zero object.
+- **Witness Builder**: `RelCat.hom([], target, [])` / `RelCat.hom(source, [], [])` provide the concrete empty relations used in the checks.
+
+### Finite posets: initial and terminal objects
+
+- **Domain**: `FinPosCat` instances equipped with the designated empty and singleton posets.
+- **Statement**: The empty poset is initial—every monotone map out of it coincides with `FinPos.initialArrow`—and the singleton is terminal—every map into it agrees with `FinPos.terminate`; its unique global element matches the identity on `1`.
+- **Rationale**: Operationalises the textbook characterisation of finite posets via the newly exposed `FinPos.zero()`, `FinPos.initialArrow`, and `FinPos.terminate` helpers.
+- **Oracles**: `test/laws/law.FinPosInitialTerminal.spec.ts` compares canonical witnesses against arbitrary monotone maps and inspects the global-element enumerator.
+- **Witness Builder**: `FinPosCat([...objects, FinPos.zero(), FinPos.one()])` ensures both extremal objects participate in the category fixture.
+
+### Preorder extremal-element diagnostics
+
+- **Domain**: Small preorders realised with `Preorder<{ elems, le }>`.
+- **Statement**: `analyzeLeastElement` and `analyzeGreatestElement` scan supplied samples, certifying when an element is least/greatest and returning explicit counterexamples when it fails.
+- **Rationale**: Encodes the “bottom/top” reasoning from Awodey’s discussion so ℕ and ℤ examples become executable.
+- **Oracles**: `test/laws/law.PreorderInitialTerminal.spec.ts` verifies that 0 witnesses ℕ’s initial object, that no terminal element exists in ℕ thanks to successor witnesses, and that ℤ lacks both extremal elements on every sampled candidate.
+- **Witness Builder**: `analyzeLeastElement(preorder, candidate, samples)` / `analyzeGreatestElement(preorder, candidate, samples)` return structured `{ holds, failure }` reports exposing the offending witness when the universal property fails.
+
+### Finite groups and the trivial zero object
+
+- **Domain**: `FinGrpCat` with the automatically registered trivial group.
+- **Statement**: `FinGrp.initialArrow` maps the unique element of the trivial group to the identity of any target, while `FinGrp.terminate` collapses any source to the trivial identity—both satisfy the universal properties and exclude non-identity alternatives.
+- **Rationale**: Executes the textbook reasoning that the unique one-object group is simultaneously initial and terminal in `Grp`.
+- **Oracles**: `test/laws/law.FinGrpZeroObject.spec.ts` validates the canonical witnesses, confirms the trivial object’s presence in the category, and rejects maps that fail to preserve identities.
+- **Witness Builder**: `FinGrpCat([...samples])` automatically adds the trivial object; `FinGrp.initialArrow(target)` / `FinGrp.terminate(source)` expose the unique morphisms.
+
+### Initial and terminal uniqueness up to unique isomorphism
+
+- **Domain**: `FinPosCat` fixtures containing both the canonical empty/singleton posets and alternative candidates with matching carriers.
+- **Statement**: `FinPos.initialArrowFrom` and `FinPos.terminateAt` produce mutually inverse mediators between any two choices of empty or singleton posets, and every competing monotone map coincides with them, realising Awodey’s “unique up to unique isomorphism” theorem.
+- **Rationale**: Encodes Theorem 27 so that equality of arrows out of `0` and into `1` enforces the isomorphism between competing extremal objects inside the executable poset category.
+- **Oracles**: `test/laws/law.InitialTerminalUniqueness.spec.ts` composes the candidate maps and checks they reduce to the relevant identities while rejecting attempts to fabricate alternative isomorphisms.
+- **Witness Builder**: `FinPos.initialArrowFrom(initial, target)` / `FinPos.terminateAt(source, terminal)` specialise the universal arrows to arbitrary empty/singleton representatives.
+
+### Null objects in finite groups
+
+- **Domain**: `FinGrpCat` instantiated with the canonical trivial group plus any alternative one-element group.
+- **Statement**: `FinGrp.initialArrowFrom` and `FinGrp.terminateAt` witness that every null object—both initial and terminal—collapses to and expands from the trivial group via a unique isomorphism; they also force every map to or from such a candidate to factor through the canonical constant arrows.
+- **Rationale**: Operationalises Definition 39 by turning “null object” into an executable invariant: the trivial group mediates all maps to/from any other one-object group, and the composites necessarily equal the identity.
+- **Oracles**: `test/laws/law.NullObject.spec.ts` checks the canonical trivial group’s extremal behaviour, composes the arrows between competing null objects, and confirms their uniqueness.
+- **Witness Builder**: `FinGrp.initialArrowFrom(candidate, target)` and `FinGrp.terminateAt(source, candidate)` construct the canonical homomorphisms needed for the null-object certification.
+
+### Pointed sets and the zero object
+
+- **Domain**: The pointed-set façade `pointed-set-cat.ts` where objects carry a distinguished basepoint.
+- **Statement**: The singleton pointed set is simultaneously initial and terminal; there is exactly one basepoint-preserving arrow from it into any pointed set and one back into it from any source.
+- **Rationale**: Makes the Set* zero-object example executable so pointed sets sit alongside the Set/FinSet coverage.
+- **Oracles**: `test/laws/law.PointedSetZeroObject.spec.ts` compares arbitrary basepoint-preserving morphisms against the canonical `PointedSet.fromSingleton`/`PointedSet.toSingleton` witnesses and rejects maps that fail to preserve the basepoint.
+- **Witness Builder**: `PointedSet.fromSingleton(target, singleton)` and `PointedSet.toSingleton(source, singleton)` package the canonical zero-object arrows.
+
+### Arrow category extremal arrows
+
+- **Domain**: Arrow categories assembled with `makeArrowCategory(FinSetCat(...))` so objects are concrete set functions.
+- **Statement**: The identity on the singleton set `id₁ : 1 → 1` is terminal in `Set^→`, while `id₀ : 0 → 0` is initial; every commutative square into/out of these objects factors through the unique maps witnessing Set’s terminal and initial objects.
+- **Rationale**: Realises Awodey’s observation that extremal objects lift along the arrow construction by reusing the explicit unique maps to `1` and from `0` in `FinSetCat`.
+- **Oracles**: `test/laws/law.ArrowInitialTerminal.spec.ts` enumerates commutative squares and confirms their components coincide with the canonical injections/co-injections.
+- **Witness Builder**: Canonical maps such as `!_A : A → 1` and `0 → B` are registered alongside identities before constructing the arrow category so they participate in every mediating square.
+
+### Slice Set/X initial and terminal objects
+
+- **Domain**: Slice categories `makeSlice(FinSetCat(...), "X")` anchored at a fixed set `X`.
+- **Statement**: The leg `∅ → X` is initial and `id_X : X → X` is terminal—mediating maps from the former are forced to be the unique functions out of the empty set, while mediating maps into the latter reduce to the original arrows landing in `X`.
+- **Rationale**: Encodes the Set/X slice example so the “unique filler” conditions become executable checks over explicit finite sets.
+- **Oracles**: `test/laws/law.SliceInitialTerminal.spec.ts` inspects all slice morphisms, verifying their mediating arrows match the canonical `∅`-legs and the original structure maps into `X`.
+- **Witness Builder**: Populate the FinSet arrow registry with the empty-set inclusions and the slice legs `A → X` before calling `makeSlice` so the oracle can recover the universal squares directly.
+
 ### Monoid Laws
 For any monoid `(M, ⊕, ε)`:
 

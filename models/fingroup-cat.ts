@@ -23,6 +23,19 @@ export interface FinGrpCategory extends FiniteCategory<string, Hom> {
   readonly lookup: (name: string) => FinGrpObj
 }
 
+const TRIVIAL_GROUP_NAME = "1"
+const TRIVIAL_ELEMENT = "e"
+
+function makeTrivialGroup(): FinGrpObj {
+  return {
+    name: TRIVIAL_GROUP_NAME,
+    elems: [TRIVIAL_ELEMENT],
+    mul: () => TRIVIAL_ELEMENT,
+    e: TRIVIAL_ELEMENT,
+    inv: () => TRIVIAL_ELEMENT,
+  }
+}
+
 function ensureObject(index: Record<string, FinGrpObj>, name: string): FinGrpObj {
   const obj = index[name]
   if (!obj) {
@@ -35,6 +48,9 @@ export function FinGrpCat(objects: readonly FinGrpObj[]): FinGrpCategory {
   const byName: Record<string, FinGrpObj> = {}
   for (const obj of objects) {
     byName[obj.name] = obj
+  }
+  if (!byName[TRIVIAL_GROUP_NAME]) {
+    byName[TRIVIAL_GROUP_NAME] = makeTrivialGroup()
   }
 
   const objectList = Object.keys(byName)
@@ -117,5 +133,52 @@ export const FinGrp = {
       pending.delete(f.map(a))
     }
     return pending.size === 0
+  },
+  trivial(): FinGrpObj {
+    return makeTrivialGroup()
+  },
+  initialArrowFrom(initial: FinGrpObj, target: FinGrpObj): Hom {
+    if (initial.elems.length !== 1) {
+      throw new Error(
+        `FinGrp.initialArrowFrom: ${initial.name} must have exactly one element to witness initiality`,
+      )
+    }
+    const [generator] = initial.elems
+    if (!generator || initial.e !== generator) {
+      throw new Error(
+        `FinGrp.initialArrowFrom: ${initial.name} must have its identity as the unique element`,
+      )
+    }
+    return {
+      name: `!_${initial.name}→${target.name}`,
+      dom: initial.name,
+      cod: target.name,
+      map: () => target.e,
+    }
+  },
+  initialArrow(target: FinGrpObj): Hom {
+    return FinGrp.initialArrowFrom(FinGrp.trivial(), target)
+  },
+  terminateAt(source: FinGrpObj, terminal: FinGrpObj): Hom {
+    if (terminal.elems.length !== 1) {
+      throw new Error(
+        `FinGrp.terminateAt: ${terminal.name} must have exactly one element to witness terminality`,
+      )
+    }
+    const [identity] = terminal.elems
+    if (!identity || terminal.e !== identity) {
+      throw new Error(
+        `FinGrp.terminateAt: ${terminal.name} must designate its sole element as the identity`,
+      )
+    }
+    return {
+      name: `!^{${source.name}}→${terminal.name}`,
+      dom: source.name,
+      cod: terminal.name,
+      map: () => identity,
+    }
+  },
+  terminate(source: FinGrpObj): Hom {
+    return FinGrp.terminateAt(source, FinGrp.trivial())
   },
 }

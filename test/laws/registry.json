@@ -55,6 +55,17 @@
     "Plus.RightId": "implemented|witnessed",
     "Plus.Assoc": "implemented|witnessed"
   },
+  "CategoryTheory": {
+    "Rel.ZeroObject": "implemented|witnessed",
+    "FinGrp.ZeroObject": "implemented|witnessed",
+    "InitialTerminal.UniqueIso": "implemented|witnessed",
+    "NullObject.FinGrp": "implemented|witnessed",
+    "FinPos.InitialTerminal": "implemented|witnessed",
+    "Preorder.ExtremalElements": "implemented|witnessed",
+    "PointedSet.ZeroObject": "implemented|witnessed",
+    "ArrowCategory.InitialTerminal": "implemented|witnessed",
+    "Slice.InitialTerminal": "implemented|witnessed"
+  },
   "RecSchemes": {
     "CataOverAnaIso": "implemented|witnessed",
     "CataAssociativity": "implemented|witnessed",
