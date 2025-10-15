@@ -41,7 +41,7 @@ export function checkComonoidLaws<X>(Xf: Fin<X>) {
   const XxX = tensorObj(Xf, Xf);
   const Δ = new FinMarkov(Xf, XxX, copy<X>());
   const swapXX = new FinMarkov(XxX, XxX, swap<X,X>());
-  const copyCommut  = approxEqualMatrix(swapXX.then(Δ as any).matrix(), Δ.matrix());
+  const copyCommut  = approxEqualMatrix(Δ.then(swapXX).matrix(), Δ.matrix());
 
   // Counits (using fst/snd via tensor with I)
   const copyCounitR = approxEqualMatrix(

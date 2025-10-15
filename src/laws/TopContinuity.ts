@@ -18,7 +18,7 @@ function eqPair<X, Y>(
   return eqX(a.x, b.x) && eqY(a.y, b.y);
 }
 
-export function lawfulTopContinuity(): Lawful<any, { tag: "Top/Continuity" }> {
+export function lawfulTopContinuity(): Lawful<unknown, { tag: "Top/Continuity" }> {
   const tag = "Top/Continuity";
 
   const X = [0, 1, 2];

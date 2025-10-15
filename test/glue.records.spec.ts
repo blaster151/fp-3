@@ -56,9 +56,13 @@ describe('glueRecordCover', () => {
     
     expect(isVErr(result)).toBe(true)
     if (isVErr(result)) {
-      expect(result.errors[0]!._tag).toBe('Incomplete')
-      expect((result.errors[0] as any).i).toBe('U')
-      expect((result.errors[0] as any).details).toContain('missing b')
+      const firstError = result.errors[0]
+      expect(firstError?._tag).toBe('Incomplete')
+      if (!firstError || firstError._tag !== 'Incomplete') {
+        throw new Error('expected incomplete error for missing section value')
+      }
+      expect(firstError.i).toBe('U')
+      expect(firstError.details).toContain('missing b')
     }
   })
 
@@ -71,10 +75,13 @@ describe('glueRecordCover', () => {
     
     expect(isVErr(result)).toBe(true)
     if (isVErr(result)) {
-      const conflict = result.errors[0] as any
-      expect(conflict._tag).toBe('Conflict')
-      expect(conflict.left).toEqual({ b: 100 }) // restricted records
-      expect(conflict.right).toEqual({ b: 200 })
+      const firstError = result.errors[0]
+      expect(firstError?._tag).toBe('Conflict')
+      if (!firstError || firstError._tag !== 'Conflict') {
+        throw new Error('expected conflict error when overlap values disagree')
+      }
+      expect(firstError.left).toEqual({ b: 100 }) // restricted records
+      expect(firstError.right).toEqual({ b: 200 })
     }
   })
 
@@ -232,8 +239,16 @@ describe('glueRecordCover', () => {
     
     expect(isVErr(result)).toBe(true)
     if (isVErr(result)) {
-      const conflict = result.errors.find(e => e._tag === 'Conflict') as any
+      const conflict = result.errors.find(
+        (error): error is Extract<
+          GlueErr<Source, Readonly<Record<ConfigKey, string>>>,
+          { _tag: 'Conflict' }
+        > => error._tag === 'Conflict'
+      )
       expect(conflict).toBeDefined()
+      if (!conflict) {
+        throw new Error('expected conflict error to describe overlapping configuration mismatch')
+      }
       expect(conflict.left).toEqual({ port: '8080', host: 'localhost' }) // full overlap
       expect(conflict.right).toEqual({ port: '3000', host: 'localhost' })
     }

@@ -21,7 +21,7 @@ type SumValInternal<F, G, A> =
 export type ProdVal<F, G, A> = ProdValInternal<NormalizeEndofunctor<F>, NormalizeEndofunctor<G>, A>
 export type SumVal<F, G, A> = SumValInternal<NormalizeEndofunctor<F>, NormalizeEndofunctor<G>, A>
 
-type CanonicalEndofunctor<F> = Exclude<NormalizeEndofunctor<F>, EndofunctorK1<any>>
+type CanonicalEndofunctor<F> = Exclude<NormalizeEndofunctor<F>, EndofunctorK1<unknown>>
 
 export type EndofunctorValue<F, A> =
   CanonicalEndofunctor<F> extends infer NF

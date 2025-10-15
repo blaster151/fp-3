@@ -13,8 +13,8 @@ export type ValidationTag<E> = { readonly tag: 'Validation'; readonly error: E }
 
 export type FunctorValue<F, A> =
   F extends 'Option' ? Option<A> :
-  F extends 'Result' ? Result<any, A> :
-  F extends 'Either' ? Result<any, A> :
+  F extends 'Result' ? Result<unknown, A> :
+  F extends 'Either' ? Result<unknown, A> :
   F extends 'Promise' ? Promise<A> :
   F extends 'Task' ? Task<A> :
   F extends 'Array' ? ReadonlyArray<A> :

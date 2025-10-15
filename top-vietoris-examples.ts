@@ -31,7 +31,7 @@ export interface TopSpace<Point> {
   readonly closedSubsets: ReadonlyArray<ClosedSubset<Point>>;
 }
 
-export interface KolmogorovProductSpace<Point, Factors extends ReadonlyArray<TopSpace<any>> = ReadonlyArray<TopSpace<any>>>
+export interface KolmogorovProductSpace<Point, Factors extends ReadonlyArray<TopSpace<unknown>> = ReadonlyArray<TopSpace<unknown>>>
   extends TopSpace<Point> {
   readonly factors: Factors;
   readonly finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<Point, unknown>>;
@@ -53,7 +53,7 @@ export interface DeterministicStatisticInput<XJ, T> {
   readonly label?: string;
 }
 
-type FactorPoints<Spaces extends ReadonlyArray<TopSpace<any>>> = {
+type FactorPoints<Spaces extends ReadonlyArray<TopSpace<unknown>>> = {
   readonly [Index in keyof Spaces]: Spaces[Index] extends TopSpace<infer Point> ? Point : never;
 };
 
@@ -82,7 +82,7 @@ export function makeDiscreteTopSpace<Point>(label: string, points: Fin<Point>): 
   };
 }
 
-function enumerateProductPoints<Spaces extends ReadonlyArray<TopSpace<any>>>(
+function enumerateProductPoints<Spaces extends ReadonlyArray<TopSpace<unknown>>>(
   spaces: Spaces,
 ): Array<FactorPoints<Spaces>> {
   const results: Array<FactorPoints<Spaces>> = [];
@@ -107,7 +107,7 @@ function enumerateProductPoints<Spaces extends ReadonlyArray<TopSpace<any>>>(
   return results;
 }
 
-export function makeKolmogorovProductSpace<Spaces extends ReadonlyArray<TopSpace<any>>>(
+export function makeKolmogorovProductSpace<Spaces extends ReadonlyArray<TopSpace<unknown>>>(
   spaces: Spaces,
   options: { readonly label?: string } = {},
 ): KolmogorovProductSpace<FactorPoints<Spaces>, Spaces> {

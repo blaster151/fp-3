@@ -5,6 +5,9 @@ import type { CSRig } from "./semiring-utils";
 import type { Dist } from "./dist";
 import type {
   ClosedSubset as TopVietorisClosedSubset,
+  DeterministicStatisticInput,
+  KolmogorovProductSpace,
+  ProductPriorInput,
   TopSpace as TopVietorisTopSpace,
 } from "./top-vietoris-examples";
 import type { Eq, Fin, FinMarkov } from "./markov-category";
@@ -88,6 +91,10 @@ import {
 } from "./borelstoch-examples";
 import { SetOracles } from "./oracles/set-oracles";
 
+type AdapterFactorPoints<Spaces extends ReadonlyArray<TopVietorisTopSpace<unknown>>> = {
+  readonly [Index in keyof Spaces]: Spaces[Index] extends TopVietorisTopSpace<infer Point> ? Point : never;
+};
+
 export interface TopVietorisAdapters {
   readonly makeClosedSubset: <Point>(
     label: string,
@@ -98,9 +105,14 @@ export interface TopVietorisAdapters {
     label: string,
     points: Fin<Point>,
   ) => TopVietorisTopSpace<Point>;
-  readonly makeKolmogorovProductSpace: (...args: any[]) => unknown;
-  readonly makeProductPrior: (...args: any[]) => FinMarkov<any, any>;
-  readonly makeDeterministicStatistic: (...args: any[]) => FinMarkov<any, any>;
+  readonly makeKolmogorovProductSpace: <Spaces extends ReadonlyArray<TopVietorisTopSpace<unknown>>>(
+    spaces: Spaces,
+    options?: { readonly label?: string },
+  ) => KolmogorovProductSpace<AdapterFactorPoints<Spaces>, Spaces>;
+  readonly makeProductPrior: <A, XJ>(mkInput: () => ProductPriorInput<A, XJ>) => FinMarkov<A, XJ>;
+  readonly makeDeterministicStatistic: <XJ, T>(
+    mkInput: () => DeterministicStatisticInput<XJ, T>,
+  ) => FinMarkov<XJ, T>;
 }
 
 let topVietorisAdapters: TopVietorisAdapters | undefined;
@@ -285,8 +297,11 @@ export function checkAllMarkovLaws<R>(
   testData?: {
     samples?: Array<unknown>;
     distributions?: Array<Dist<R, unknown>>;
-    functions?: Array<unknown>;
-    domain?: Array<unknown>;
+    domain?: ReadonlyArray<unknown>;
+    functions?: readonly [
+      (a: unknown) => unknown,
+      (a: unknown) => unknown
+    ];
   }
 ): {
   foundational: {
@@ -323,8 +338,13 @@ export function checkAllMarkovLaws<R>(
   const entirety = isEntire(R);
   const faithfulness = testData?.distributions ? 
     checkSplitMono(R, testData.distributions) : true;
-  const pullbackSquare = testData?.domain && testData?.functions ? 
-    checkPullbackSquare(R, testData.domain, testData.functions[0] as any, testData.functions[1] as any) : true;
+  const pullbackSquare = testData?.domain && testData?.functions ?
+    checkPullbackSquare<R, unknown, unknown, unknown>(
+      R,
+      testData.domain,
+      testData.functions[0],
+      testData.functions[1],
+    ) : true;
   
   // Collect results
   const foundational = {

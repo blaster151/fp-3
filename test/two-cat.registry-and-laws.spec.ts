@@ -24,7 +24,8 @@ import type {
   EndofunctorK1,
   EndofunctorValue,
   SimpleApplicativeK1,
-  EndoDict
+  EndoDict,
+  ProdVal
 } from '../allTS'
 
 // util: JSON equality
@@ -59,8 +60,8 @@ describe('Traversable registry + laws', () => {
   it('registry lookup drives Promise-postcompose for Array & Option', async () => {
     const R = makeTraversableRegistryK1()
     // register core traversables
-    const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
-    R.register(OptionF as any, TraversableOptionK1 as any)
+    const OptionF: EndofunctorK1<'Option'> = { map: mapO }
+    R.register(OptionF, TraversableOptionK1)
 
     // shape: Promise< Array< Promise<Option<number>> > >
     const nested = Promise.resolve([Promise.resolve(Some(1)), Promise.resolve(Some(2))])
@@ -105,7 +106,7 @@ describe('Traversable registry + laws', () => {
   })
 
   it('Derived Sum/Prod/Comp traversables obey traverse shapes', async () => {
-    const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
+    const OptionF: EndofunctorK1<'Option'> = { map: mapO }
     const ResultF = ResultK1<string>()
     const TF = TraversableOptionK1
     const TG = TraversableEitherK1<string>()
@@ -121,12 +122,14 @@ describe('Traversable registry + laws', () => {
 
     // Prod
     const p0 = prod<'Option','Either', number>(Some(4), Ok(5))
-    const p1 = await TP.traverse(PromiseApp)<number, number>(n => Promise.resolve(n * 2))(p0)
-    expect(eq((p1 as any).left, Some(8))).toBe(true)
-    expect(eq((p1 as any).right, Ok(10))).toBe(true)
+    const p1: ProdVal<'Option', ['Either', string], number> =
+      await TP.traverse(PromiseApp)<number, number>((n) => Promise.resolve(n * 2))(p0)
+    const { left, right } = p1
+    expect(eq(left, Some(8))).toBe(true)
+    expect(eq(right, Ok(10))).toBe(true)
 
     // Comp: Option∘Either (Option of Result)
-    const compVal = Some(Ok(7)) as any
+    const compVal: EndofunctorValue<['Comp', 'Option', ['Either', string]], number> = Some(Ok(7))
     const c1 = await TC.traverse(PromiseApp)<number, number>(n => Promise.resolve(n - 1))(compVal)
     expect(eq(c1, Some(Ok(6)))).toBe(true)
   })
@@ -134,15 +137,15 @@ describe('Traversable registry + laws', () => {
   it('Registry: register parameterized & derived functors then use them', async () => {
     const R = makeTraversableRegistryK1()
     // base
-    const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
-    R.register(OptionF as any, TraversableOptionK1 as any)
+    const OptionF: EndofunctorK1<'Option'> = { map: mapO }
+    R.register(OptionF, TraversableOptionK1)
     const EitherE = registerEitherTraversable<string>(R)
     const Pair7   = registerPairTraversable<7>(R)
-    
+
     // derived
-    const SumEO   = registerSumDerived(R, EitherE as any, OptionF as any)
-    const Prod7O  = registerProdDerived(R, Pair7 as any, OptionF as any)
-    const CompEO  = registerCompDerived(R, EitherE as any, OptionF as any)
+    const SumEO   = registerSumDerived(R, EitherE, OptionF)
+    const Prod7O  = registerProdDerived(R, Pair7, OptionF)
+    const CompEO  = registerCompDerived(R, EitherE, OptionF)
 
     // check we can sequence Promise through each via registry lookups
     const seq = <F, A>(F: EndofunctorK1<F>, value: EndofunctorValue<['Comp', F, 'Promise'], A>) => {
@@ -150,29 +153,33 @@ describe('Traversable registry + laws', () => {
       if (!traversable) {
         throw new Error('Traversable instance not registered')
       }
-      return (distributePromiseK1 as typeof distributePromiseK1<F>)(traversable).app(value)
+      return distributePromiseK1(traversable).app(value)
     }
 
     // Sum<Either,Option>
-    const sVal = inR<any, any, number>(Some(Promise.resolve(10)))
-    const sOut = await seq(SumEO as any, sVal)
-    expect(eq(sOut, inR<any, any, number>(Some(10)))).toBe(true)
+    const sVal = inR<['Either', string], 'Option', Promise<number>>(Some(Promise.resolve(10)))
+    const sOut = await seq(SumEO, sVal)
+    expect(eq(sOut, inR<['Either', string], 'Option', number>(Some(10)))).toBe(true)
 
     // Prod<Pair7,Option>
-    const pVal = { left: [7 as const, Promise.resolve(1)] as const, right: Some(Promise.resolve(2)) }
-    const pOut = await seq(Prod7O as any, pVal as any)
-    expect(eq((pOut as any).left, [7, 1])).toBe(true)
-    expect(eq((pOut as any).right, Some(2))).toBe(true)
+    const pairPromise: EndofunctorValue<['Pair', 7], Promise<number>> =
+      [7 as const, Promise.resolve(1)] as const
+    const optionPromise: EndofunctorValue<'Option', Promise<number>> = Some(Promise.resolve(2))
+    const pVal = prod<['Pair', 7], 'Option', Promise<number>>(pairPromise, optionPromise)
+    const pOut = await seq(Prod7O, pVal)
+    const { left: pairResult, right: optionResult } = pOut
+    expect(eq(pairResult, [7, 1] as const)).toBe(true)
+    expect(eq(optionResult, Some(2))).toBe(true)
 
     // Comp<Either,Option>  ~ Either<Option<_>>
     const cVal = Ok(Some(Promise.resolve(5)))
-    const cOut = await seq(CompEO as any, cVal)
+    const cOut = await seq(CompEO, cVal)
     expect(eq(cOut, Ok(Some(5)))).toBe(true)
   })
 
   it('buildNatForTerms: align matching structures', () => {
     type Bases = 'Option' | 'Either'
-    const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
+    const OptionF: EndofunctorK1<'Option'> = { map: mapO }
     const EitherF = EitherEndo<string>()
     
     const dict: EndoDict<Bases> = { 
@@ -200,7 +207,7 @@ describe('Traversable registry + laws', () => {
 
   it('buildNatForTerms: throws on mismatched structures', () => {
     type Bases = 'Option'
-    const OptionF: EndofunctorK1<'Option'> = { map: mapO as any }
+    const OptionF: EndofunctorK1<'Option'> = { map: mapO }
     const dict: EndoDict<Bases> = { 'Option': OptionF }
     const baseId = (l: Bases, r: Bases) => idNatK1()
     

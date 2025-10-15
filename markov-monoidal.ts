@@ -223,11 +223,17 @@ export function generateMonoidalTestData<R>(
   const dx: Dist<R, string> = { R, w: new Map([["x", weight1], ["y", weight2]]) };
   
   // Create appropriate samplers
-  const compare = (isNumericRig(R)
-    ? ((a: any, b: any) => a - b)
-    : isBooleanRig(R)
-    ? ((a: any, b: any) => (a ? 1 : 0) - (b ? 1 : 0))
-    : (a: any, b: any) => (R.eq(a as R, b as R) ? 0 : 1)) as (a: R, b: R) => number;
+  const compare: (a: R, b: R) => number = (a, b) => {
+    if (isNumericRig(R)) {
+      return (a as number) - (b as number);
+    }
+    if (isBooleanRig(R)) {
+      const left = a as boolean;
+      const right = b as boolean;
+      return (left ? 1 : 0) - (right ? 1 : 0);
+    }
+    return R.eq(a, b) ? 0 : 1;
+  };
   
   const sampX = createArgmaxSampler(R, compare);
   const sampY = createArgmaxSampler(R, compare);

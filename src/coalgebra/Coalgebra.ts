@@ -22,4 +22,8 @@ export function isCoalgebraHom<O,Sigma,X,Y>(
 /** Small Σ sampler: infer from step's second arg by probing common finite alphabets.
  * In real code, pass Sigma[] explicitly; here we default to boolean-ish [0,1].
  */
-function sample<M>(_:any): any[] { return [0,1]; }
+const DEFAULT_SIGMA_SAMPLES = [0, 1] as const;
+
+function sample<O, Sigma, X>(_: Moore<O, Sigma, X>): ReadonlyArray<Sigma> {
+  return DEFAULT_SIGMA_SAMPLES as unknown as ReadonlyArray<Sigma>;
+}

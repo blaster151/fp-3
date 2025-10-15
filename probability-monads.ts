@@ -66,7 +66,7 @@ export function makeKleisli(spec: DistLikeMonadSpec): KleisliOperations {
     then<Z>(that: FinKleisliInstance<Y,Z>)      { return new FinKleisli(this.X, that.Y, composeK(this.k, that.k)); }
     tensor<Z,W>(that: FinKleisliInstance<Z,W>)  {
       const dom = tensorObj(this.X, that.X), cod = tensorObj(this.Y, that.Y);
-      return new FinKleisli(dom as any, cod, tensorK(this.k, that.k));
+      return new FinKleisli<Pair<X, Z>, Pair<Y, W>>(dom, cod, tensorK(this.k, that.k));
     }
     matrix()              { return kernelToMatrix(this.X, this.Y, this.k); }
     pretty(digits=4)      { return prettyMatrix(this.matrix(), digits); }

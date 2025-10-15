@@ -61,7 +61,10 @@ describe("Informativeness: classic garbling witness", () => {
 
       const found = moreInformativeClassic(Prob, Θs, f, g, cCandidates);
       expect(found.ok).toBe(true);
-      const c = (found as any).c as (x: X) => Y;
+      if (!found.ok) {
+        throw new Error('expected garbling witness for informativeness example');
+      }
+      const c = found.c;
 
       // Verify explicitly
       for (const t of Θs) {
