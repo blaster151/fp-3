@@ -12,6 +12,27 @@ import type {
 } from "./top-vietoris-examples";
 import type { Eq, Fin, FinMarkov } from "./markov-category";
 
+type TopVietorisModule = typeof import("./top-vietoris-examples");
+
+const loadTopVietorisModule = (): TopVietorisModule =>
+  require("./top-vietoris-examples") as TopVietorisModule;
+
+const buildTopVietorisKolmogorovWitnessProxy: TopVietorisModule["buildTopVietorisKolmogorovWitness"] = (
+  p,
+  s,
+  finiteMarginals,
+  label?,
+) => loadTopVietorisModule().buildTopVietorisKolmogorovWitness(p, s, finiteMarginals, label);
+
+const checkTopVietorisKolmogorovProxy: TopVietorisModule["checkTopVietorisKolmogorov"] = (witness, opts?) =>
+  loadTopVietorisModule().checkTopVietorisKolmogorov(witness, opts);
+
+const buildTopVietorisConstantFunctionWitnessProxy: TopVietorisModule["buildTopVietorisConstantFunctionWitness"] = (mkInput) =>
+  loadTopVietorisModule().buildTopVietorisConstantFunctionWitness(mkInput);
+
+const checkTopVietorisConstantFunctionProxy: TopVietorisModule["checkTopVietorisConstantFunction"] = (witness) =>
+  loadTopVietorisModule().checkTopVietorisConstantFunction(witness);
+
 // Import all oracle functions
 import { isEntire } from "./semiring-utils";
 import { checkSplitMono, checkDeltaMonic, checkFaithfulness } from "./pullback-check";
@@ -259,8 +280,16 @@ export const MarkovOracles = {
   top: {
     vietoris: {
       status:
-        "Kolmogorov witness adapters available via makeProductPrior/makeDeterministicStatistic; Hewitt–Savage unavailable because Kl(H) is not causal.",
+        "Kolmogorov adapters and constant-function law helpers available; Hewitt–Savage unavailable because Kl(H) is not causal.",
       adapters: () => topVietorisAdapters,
+      kolmogorov: {
+        witness: buildTopVietorisKolmogorovWitnessProxy,
+        check: checkTopVietorisKolmogorovProxy,
+      },
+      constantFunction: {
+        witness: buildTopVietorisConstantFunctionWitnessProxy,
+        check: checkTopVietorisConstantFunctionProxy,
+      },
     },
   },
   

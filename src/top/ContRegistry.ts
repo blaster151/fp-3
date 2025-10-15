@@ -1,12 +1,8 @@
-import { continuous, type Top } from "./Topology";
+import type { ContinuousMap } from "./Category";
 
 export type ContEntry<A, B> = {
   readonly tag: string;
-  readonly eqDom: (a: A, b: A) => boolean;
-  readonly TA: Top<A>;
-  readonly TB: Top<B>;
-  readonly f: (a: A) => B;
-  readonly eqCod?: (b: B, c: B) => boolean;
+  readonly morphism: ContinuousMap<A, B>;
 };
 
 const entries: ContEntry<unknown, unknown>[] = [];
@@ -26,6 +22,6 @@ export function allCont(): ReadonlyArray<ContEntry<unknown, unknown>> {
 export function runContAll(): ReadonlyArray<{ readonly tag: string; readonly ok: boolean }> {
   return entries.map((entry) => ({
     tag: entry.tag,
-    ok: continuous(entry.eqDom, entry.TA, entry.TB, entry.f, entry.eqCod),
+    ok: entry.morphism.witness.verify(),
   }));
 }

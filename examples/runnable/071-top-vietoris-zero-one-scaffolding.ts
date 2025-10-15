@@ -66,6 +66,22 @@ type DeterministicStatisticInput<XJ, T> = {
   readonly label?: string;
 };
 
+type ConstantFunctionWitness<XJ, Y> = {
+  readonly product: TopSpace<XJ>;
+  readonly target: TopSpace<Y>;
+  readonly map: (xj: XJ) => Y;
+  readonly finiteSubsets: ReadonlyArray<ReadonlyArray<number>>;
+  readonly label?: string;
+};
+
+type ConstantFunctionReport<XJ, Y> = {
+  readonly holds: boolean;
+  readonly independence: boolean;
+  readonly constant: boolean;
+  readonly constantValue?: Y;
+  readonly details: string;
+};
+
 type TopVietorisModule = {
   readonly buildTopVietorisKolmogorovWitness: <A, XJ, XF, T = 0 | 1>(
     prior: FinMarkov<A, XJ>,
@@ -79,6 +95,17 @@ type TopVietorisModule = {
   ) => KolmogorovZeroOneReport<A, XJ, T>;
   readonly buildTopVietorisHewittSavageWitness: () => never;
   readonly checkTopVietorisHewittSavage: () => never;
+  readonly buildTopVietorisConstantFunctionWitness: <XJ, Y>(
+    mkInput: () => {
+      readonly product: TopSpace<XJ>;
+      readonly target: TopSpace<Y>;
+      readonly map: (xj: XJ) => Y;
+      readonly label?: string;
+    },
+  ) => ConstantFunctionWitness<XJ, Y>;
+  readonly checkTopVietorisConstantFunction: <XJ, Y>(
+    witness: ConstantFunctionWitness<XJ, Y>,
+  ) => ConstantFunctionReport<XJ, Y>;
   readonly makeDiscreteTopSpace: <Point>(label: string, points: Fin<Point>) => TopSpace<Point>;
   readonly makeKolmogorovProductSpace: <Spaces extends ReadonlyArray<TopSpace<any>>>(
     spaces: Spaces,
@@ -94,7 +121,19 @@ type MarkovCategoryModule = {
 
 type MarkovOraclesModule = {
   readonly MarkovOracles: {
-    readonly top: { readonly vietoris: { readonly status: string } };
+    readonly top: {
+      readonly vietoris: {
+        readonly status: string;
+        readonly kolmogorov: {
+          readonly witness: (...args: any[]) => unknown;
+          readonly check: (...args: any[]) => unknown;
+        };
+        readonly constantFunction: {
+          readonly witness: (...args: any[]) => unknown;
+          readonly check: (...args: any[]) => unknown;
+        };
+      };
+    };
   };
 };
 
@@ -110,6 +149,8 @@ const {
   checkTopVietorisKolmogorov,
   buildTopVietorisHewittSavageWitness,
   checkTopVietorisHewittSavage,
+  buildTopVietorisConstantFunctionWitness,
+  checkTopVietorisConstantFunction,
   makeDiscreteTopSpace,
   makeKolmogorovProductSpace,
   makeProductPrior,
@@ -141,6 +182,7 @@ const describeValue = (value: unknown): string => {
 function makeEnvironment(): {
   readonly unit: Fin<{}>;
   readonly bit: Fin<Bit>;
+  readonly bitSpace: TopSpace<Bit>;
   readonly pairSpace: KolmogorovProductSpace<Pair>;
   readonly aligned: Pair;
   readonly mirrored: Pair;
@@ -173,7 +215,7 @@ function makeEnvironment(): {
     label: "first coordinate",
   }));
 
-  return { unit, bit, pairSpace, aligned, mirrored, prior, statistic };
+  return { unit, bit, bitSpace, pairSpace, aligned, mirrored, prior, statistic };
 }
 
 const environment = makeEnvironment();
@@ -241,6 +283,31 @@ function factorySection(): Transcript {
   ];
 }
 
+function constantFunctionSection(): Transcript {
+  const constantWitness = buildTopVietorisConstantFunctionWitness<Pair, Bit>(() => ({
+    product: environment.pairSpace,
+    target: environment.bitSpace,
+    map: () => 1,
+    label: "tail constant map",
+  }));
+  const dependentWitness = buildTopVietorisConstantFunctionWitness<Pair, Bit>(() => ({
+    product: environment.pairSpace,
+    target: environment.bitSpace,
+    map: (pair) => pair[0],
+    label: "finite dependent map",
+  }));
+
+  const constantReport = checkTopVietorisConstantFunction(constantWitness);
+  const dependentReport = checkTopVietorisConstantFunction(dependentWitness);
+
+  return [
+    "== Constant-function law ==",
+    `Constant witness holds=${describeBoolean(constantReport.holds)}; value=${constantReport.constantValue}`,
+    `Dependent witness holds=${describeBoolean(dependentReport.holds)}; independence=${describeBoolean(dependentReport.independence)}`,
+    `Dependent details=${dependentReport.details}`,
+  ];
+}
+
 export const stage071TopVietorisZeroOneScaffolding: RunnableExample = {
   id: "071",
   title: "Top/Vietoris zero-one scaffolding",
@@ -252,6 +319,8 @@ export const stage071TopVietorisZeroOneScaffolding: RunnableExample = {
       ...productSection(),
       "",
       ...kolmogorovSection(),
+      "",
+      ...constantFunctionSection(),
       "",
       ...hewittSavageSection(),
       "",

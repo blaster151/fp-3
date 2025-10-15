@@ -4,6 +4,8 @@ import {
   checkTopVietorisKolmogorov,
   buildTopVietorisHewittSavageWitness,
   checkTopVietorisHewittSavage,
+  buildTopVietorisConstantFunctionWitness,
+  checkTopVietorisConstantFunction,
   makeDiscreteTopSpace,
   makeKolmogorovProductSpace,
   makeProductPrior,
@@ -85,5 +87,43 @@ describe("Top/Vietoris adapters", () => {
   it("exposes Hewitt–Savage as an explicit non-causal stub", () => {
     expect(() => buildTopVietorisHewittSavageWitness()).toThrow(/not causal/i);
     expect(() => checkTopVietorisHewittSavage()).toThrow(/not causal/i);
+  });
+
+  it("accepts constant maps that ignore all finite subsets", () => {
+    const bit = mkFin<Bit>([0, 1], (a, b) => a === b);
+    const bitSpace = makeDiscreteTopSpace("bit", bit);
+    const pairSpace = makeKolmogorovProductSpace([bitSpace, bitSpace]) as unknown as KolmogorovProductSpace<Pair>;
+
+    const witness = buildTopVietorisConstantFunctionWitness<Pair, Bit>(() => ({
+      product: pairSpace,
+      target: bitSpace,
+      map: () => 1,
+      label: "constant tail map",
+    }));
+
+    const report = checkTopVietorisConstantFunction(witness);
+
+    expect(report.holds).toBe(true);
+    expect(report.constant).toBe(true);
+    expect(report.constantValue).toBe(1);
+  });
+
+  it("rejects maps that depend on a finite coordinate subset", () => {
+    const bit = mkFin<Bit>([0, 1], (a, b) => a === b);
+    const bitSpace = makeDiscreteTopSpace("bit", bit);
+    const pairSpace = makeKolmogorovProductSpace([bitSpace, bitSpace]) as unknown as KolmogorovProductSpace<Pair>;
+
+    const witness = buildTopVietorisConstantFunctionWitness<Pair, Bit>(() => ({
+      product: pairSpace,
+      target: bitSpace,
+      map: (pair) => pair[0],
+      label: "finite dependent map",
+    }));
+
+    const report = checkTopVietorisConstantFunction(witness);
+
+    expect(report.holds).toBe(false);
+    expect(report.independence).toBe(false);
+    expect(report.counterexample).toBeDefined();
   });
 });

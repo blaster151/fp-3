@@ -849,7 +849,10 @@ so failures can be traced to sub-lemmas.
 
 - **Constant-function law:** Continuous maps into a Hausdorff space that are
   independent of all finite subsets of the input are necessarily constant.
-  This mirrors the tail-triviality intuition for topological hyperspaces.
+  Witness builders `buildTopVietorisConstantFunctionWitness` and checkers
+  `checkTopVietorisConstantFunction` package this guarantee and are exposed
+  via `MarkovOracles.top.vietoris.constantFunction`. This mirrors the
+  tail-triviality intuition for topological hyperspaces.
 
 - **Hewitt–Savage zero–one law:** **Not supported.** Kl(H) is not causal.
   As per guidelines, HS oracles remain explicit throwing stubs so the
