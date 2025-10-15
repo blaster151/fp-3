@@ -359,7 +359,10 @@ describe("Relative enriched Eilenberg–Moore algebra analyzer", () => {
     const witness = describeRelativeEnrichedEilenbergMooreAlgebraWitness(enriched);
     const report = analyzeRelativeEnrichedEilenbergMooreAlgebra(witness);
     expect(report.holds).toBe(true);
+    expect(report.pending).toBe(false);
     expect(report.issues).toHaveLength(0);
+    expect(report.witness.diagrams.associativity.comparison?.holds).toBe(true);
+    expect(report.witness.diagrams.unit.comparison?.holds).toBe(true);
   });
 
   it("flags mismatched extension operators", () => {
@@ -400,7 +403,7 @@ describe("Relative enriched Eilenberg–Moore algebra analyzer", () => {
       diagrams: {
         associativity: {
           ...baseWitness.diagrams.associativity,
-          viaExtension: baseWitness.diagrams.unit.viaUnit,
+          redPasting: [[enriched.unitComparison]],
         },
         unit: { ...baseWitness.diagrams.unit },
       },
@@ -409,6 +412,33 @@ describe("Relative enriched Eilenberg–Moore algebra analyzer", () => {
     expect(report.holds).toBe(false);
     expect(report.issues).toContain(
       "Eilenberg–Moore associativity diagram must commute.",
+    );
+  });
+
+  it("marks the enriched report pending when Street pastings are incomplete", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const baseWitness = describeRelativeEnrichedEilenbergMooreAlgebraWitness(enriched);
+    const broken: RelativeEnrichedEilenbergMooreAlgebraWitness<
+      RelativeParams[0],
+      RelativeParams[1],
+      RelativeParams[2],
+      RelativeParams[3]
+    > = {
+      ...baseWitness,
+      diagrams: {
+        associativity: {
+          ...baseWitness.diagrams.associativity,
+          redPasting: [],
+        },
+        unit: { ...baseWitness.diagrams.unit },
+      },
+    };
+    const report = analyzeRelativeEnrichedEilenbergMooreAlgebra(broken);
+    expect(report.pending).toBe(true);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Eilenberg–Moore associativity Street pastings could not be constructed from the supplied witnesses.",
     );
   });
 });
@@ -767,16 +797,20 @@ describe("Relative monad resolution analyzer", () => {
 });
 
 describe("checkRelativeMonadLaws", () => {
-  it("reports pending Street equalities while passing structural checks", () => {
+  it("confirms Street composites for the trivial relative monad", () => {
     const { trivial } = makeTrivialData();
     const report = checkRelativeMonadLaws(trivial);
-    expect(report.pending).toBe(true);
-    expect(report.holds).toBe(false);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.analysis.framing.holds).toBe(true);
     expect(report.analysis.unitCompatibility.holds).toBe(true);
+    expect(report.analysis.unitCompatibility.pending).toBe(false);
     expect(report.analysis.extensionAssociativity.holds).toBe(true);
+    expect(report.analysis.extensionAssociativity.pending).toBe(false);
     expect(report.analysis.rootIdentity.holds).toBe(true);
     expect(report.analysis.unitCompatibility.witness.unitArrow).toBeDefined();
+    expect(report.analysis.unitCompatibility.witness.comparison?.red).toBeDefined();
+    expect(report.analysis.unitCompatibility.witness.comparison?.green).toBeDefined();
     expect(
       report.analysis.extensionAssociativity.witness.extensionSourceArrows.length,
     ).toBeGreaterThan(0);

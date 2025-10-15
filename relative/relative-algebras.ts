@@ -1,5 +1,6 @@
 import type {
   Equipment2Cell,
+  EquipmentFrame,
   EquipmentVerticalBoundary,
 } from "../virtual-equipment";
 import {
@@ -8,6 +9,10 @@ import {
   verticalBoundariesEqual,
   verticalComposeCells,
 } from "../virtual-equipment";
+import {
+  evaluateStreetComparison,
+  type StreetComparisonEvaluation,
+} from "../virtual-equipment/street-calculus";
 import type {
   FullyFaithfulAnalysis,
   FullyFaithfulInput,
@@ -380,6 +385,7 @@ export interface RelativeOpalgebraRepresentableActionBridgeReport<
     Payload,
     Evidence
   >;
+  readonly comparison?: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
 }
 
 export interface RelativeOpalgebraStreetActionEquivalenceWitness<
@@ -1277,6 +1283,38 @@ const framingDetails = (prefix: string, issues: string[]): string =>
   issues.length === 0
     ? prefix
     : `${prefix.replace(/\.$/, "")} issues: ${issues.join("; ")}`;
+
+const framesStructurallyEqual = <Obj, Payload>(
+  equality: (left: Obj, right: Obj) => boolean,
+  left: EquipmentFrame<Obj, Payload>,
+  right: EquipmentFrame<Obj, Payload>,
+): boolean => {
+  if (
+    !equality(left.leftBoundary, right.leftBoundary) ||
+    !equality(left.rightBoundary, right.rightBoundary) ||
+    left.arrows.length !== right.arrows.length
+  ) {
+    return false;
+  }
+  return left.arrows.every((arrow, index) => {
+    const candidate = right.arrows[index];
+    return (
+      candidate !== undefined &&
+      equality(arrow.from, candidate.from) &&
+      equality(arrow.to, candidate.to)
+    );
+  });
+};
+
+const cellsStructurallyEqual = <Obj, Arr, Payload, Evidence>(
+  equality: (left: Obj, right: Obj) => boolean,
+  left: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  right: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+): boolean =>
+  framesStructurallyEqual(equality, left.source, right.source) &&
+  framesStructurallyEqual(equality, left.target, right.target) &&
+  verticalBoundariesEqual(equality, left.boundaries.left, right.boundaries.left) &&
+  verticalBoundariesEqual(equality, left.boundaries.right, right.boundaries.right);
 
 const morphismDetails = (
   successDetails: string,
@@ -2710,17 +2748,79 @@ export const analyzeRelativeOpalgebraRepresentableActionBridge = <
     );
   }
 
-  const pending = issues.length === 0;
+  const comparison = evaluateStreetComparison(
+    presentation.monad.equipment,
+    [witness.streetAction.rightAction],
+    [witness.streetAction.action],
+    "Representable Street bridge",
+  );
+  issues.push(...comparison.issues);
+
+  if (comparison.red) {
+    ensureBoundary(
+      equality,
+      comparison.red.boundaries.left,
+      presentation.opalgebra.action.boundaries.left,
+      "Representable Street bridge red composite left boundary",
+      issues,
+    );
+    ensureBoundary(
+      equality,
+      comparison.red.boundaries.right,
+      presentation.opalgebra.action.boundaries.right,
+      "Representable Street bridge red composite right boundary",
+      issues,
+    );
+  }
+
+  if (comparison.green) {
+    ensureBoundary(
+      equality,
+      comparison.green.boundaries.left,
+      presentation.opalgebra.action.boundaries.left,
+      "Representable Street bridge green composite left boundary",
+      issues,
+    );
+    ensureBoundary(
+      equality,
+      comparison.green.boundaries.right,
+      presentation.opalgebra.action.boundaries.right,
+      "Representable Street bridge green composite right boundary",
+      issues,
+    );
+  }
+
+  if (comparison.red && comparison.green) {
+    if (!cellsStructurallyEqual(equality, comparison.red, comparison.green)) {
+      issues.push(
+        "Representable Street bridge requires the red and green composites to coincide structurally.",
+      );
+    }
+    if (
+      !cellsStructurallyEqual(
+        equality,
+        comparison.red,
+        presentation.opalgebra.action,
+      )
+    ) {
+      issues.push(
+        "Representable Street bridge red composite must reproduce the opalgebra action 2-cell.",
+      );
+    }
+  }
+
+  const holds = issues.length === 0;
   return {
-    holds: false,
-    pending,
+    holds,
+    pending: false,
     issues,
-    details: pending
-      ? "Representable Street bridge recorded; Theorem 6.22 witnesses pending."
+    details: holds
+      ? "Representable Street bridge comparisons succeed; Street and opalgebra presentations coincide."
       : `Representable Street bridge issues: ${issues.join("; ")}`,
     actionReport,
     restrictionReport,
     witness,
+    comparison,
   };
 };
 

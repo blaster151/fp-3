@@ -11,6 +11,7 @@ import type {
   LooseMonoidShapeReport,
   ObjectEquality,
   RepresentabilityWitness,
+  StreetComparisonEvaluation,
   TightCategory,
   TightCellEvidence,
   VirtualEquipment,
@@ -23,6 +24,8 @@ import {
   isIdentityVerticalBoundary,
   verticalBoundariesEqual,
   virtualizeCategory,
+  evaluateStreetComparison,
+  evaluateStreetPastingComparison,
 } from "../virtual-equipment";
 import type {
   RelativeAdjunctionData,
@@ -557,20 +560,39 @@ export interface RelativeEnrichedYonedaDistributorReport<
   readonly rightLift: RightLiftAnalysis;
 }
 
+export interface RelativeEnrichedEilenbergMooreDiagramWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly redPasting: ReadonlyArray<
+    ReadonlyArray<Equipment2Cell<Obj, Arr, Payload, Evidence>>
+  >;
+  readonly greenPasting: ReadonlyArray<
+    ReadonlyArray<Equipment2Cell<Obj, Arr, Payload, Evidence>>
+  >;
+  readonly comparison?: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
+}
+
 export interface RelativeEnrichedEilenbergMooreDiagrams<
   Obj,
   Arr,
   Payload,
   Evidence,
 > {
-  readonly associativity: {
-    readonly viaExtension: Equipment2Cell<Obj, Arr, Payload, Evidence>;
-    readonly viaMonad: Equipment2Cell<Obj, Arr, Payload, Evidence>;
-  };
-  readonly unit: {
-    readonly viaExtension: Equipment2Cell<Obj, Arr, Payload, Evidence>;
-    readonly viaUnit: Equipment2Cell<Obj, Arr, Payload, Evidence>;
-  };
+  readonly associativity: RelativeEnrichedEilenbergMooreDiagramWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly unit: RelativeEnrichedEilenbergMooreDiagramWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
 }
 
 export interface RelativeEnrichedEilenbergMooreAlgebraWitness<
@@ -598,6 +620,7 @@ export interface RelativeEnrichedEilenbergMooreAlgebraReport<
   Evidence,
 > {
   readonly holds: boolean;
+  readonly pending: boolean;
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly witness: RelativeEnrichedEilenbergMooreAlgebraWitness<
@@ -743,6 +766,7 @@ export const analyzeRelativeEnrichedEilenbergMooreAlgebra = <
   const equality =
     enriched.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
   const issues: string[] = [];
+  let pending = false;
 
   ensureBoundary(
     equality,
@@ -774,66 +798,140 @@ export const analyzeRelativeEnrichedEilenbergMooreAlgebra = <
   }
 
   const { associativity, unit } = diagrams;
-
-  ensureBoundary(
-    equality,
-    associativity.viaExtension.boundaries.left,
-    enriched.monad.root,
-    "Eilenberg–Moore associativity left boundary",
-    issues,
+  const associativityComparison = evaluateStreetPastingComparison(
+    enriched.monad.equipment,
+    associativity.redPasting,
+    associativity.greenPasting,
+    "Enriched Eilenberg–Moore associativity",
   );
-  ensureBoundary(
-    equality,
-    associativity.viaExtension.boundaries.right,
-    carrier,
-    "Eilenberg–Moore associativity right boundary",
-    issues,
-  );
+  issues.push(...associativityComparison.issues);
 
-  if (associativity.viaMonad !== enriched.extensionComparison) {
-    issues.push(
-      "Eilenberg–Moore associativity comparison must reuse the enriched extension comparison witness.",
+  if (associativityComparison.red && associativityComparison.green) {
+    ensureBoundary(
+      equality,
+      associativityComparison.red.boundaries.left,
+      enriched.monad.root,
+      "Eilenberg–Moore associativity left boundary",
+      issues,
     );
-  }
-  if (associativity.viaExtension !== associativity.viaMonad) {
-    issues.push(
-      "Eilenberg–Moore associativity diagram must commute.",
+    ensureBoundary(
+      equality,
+      associativityComparison.red.boundaries.right,
+      carrier,
+      "Eilenberg–Moore associativity right boundary",
+      issues,
     );
+
+    if (
+      !cellsStructurallyEqual(
+        equality,
+        associativityComparison.red,
+        associativityComparison.green,
+      )
+    ) {
+      issues.push("Eilenberg–Moore associativity diagram must commute.");
+    }
+
+    if (
+      !cellsStructurallyEqual(
+        equality,
+        associativityComparison.red,
+        enriched.extensionComparison,
+      )
+    ) {
+      issues.push(
+        "Eilenberg–Moore associativity composite must coincide with the enriched extension comparison witness.",
+      );
+    }
+  } else {
+    pending = true;
+    if (associativityComparison.issues.length === 0) {
+      issues.push(
+        "Eilenberg–Moore associativity Street pastings could not be constructed from the supplied witnesses.",
+      );
+    }
   }
 
-  ensureBoundary(
-    equality,
-    unit.viaExtension.boundaries.left,
-    enriched.monad.root,
-    "Eilenberg–Moore unit left boundary",
-    issues,
+  const unitComparison = evaluateStreetPastingComparison(
+    enriched.monad.equipment,
+    unit.redPasting,
+    unit.greenPasting,
+    "Enriched Eilenberg–Moore unit",
   );
-  ensureBoundary(
-    equality,
-    unit.viaExtension.boundaries.right,
-    carrier,
-    "Eilenberg–Moore unit right boundary",
-    issues,
-  );
+  issues.push(...unitComparison.issues);
 
-  if (unit.viaUnit !== enriched.unitComparison) {
-    issues.push(
-      "Eilenberg–Moore unit comparison must reuse the enriched unit witness.",
+  if (unitComparison.red && unitComparison.green) {
+    ensureBoundary(
+      equality,
+      unitComparison.red.boundaries.left,
+      enriched.monad.root,
+      "Eilenberg–Moore unit left boundary",
+      issues,
     );
-  }
-  if (unit.viaExtension !== unit.viaUnit) {
-    issues.push("Eilenberg–Moore unit diagram must commute.");
+    ensureBoundary(
+      equality,
+      unitComparison.red.boundaries.right,
+      carrier,
+      "Eilenberg–Moore unit right boundary",
+      issues,
+    );
+
+    if (
+      !cellsStructurallyEqual(
+        equality,
+        unitComparison.red,
+        unitComparison.green,
+      )
+    ) {
+      issues.push("Eilenberg–Moore unit diagram must commute.");
+    }
+
+    if (
+      !cellsStructurallyEqual(
+        equality,
+        unitComparison.red,
+        enriched.unitComparison,
+      )
+    ) {
+      issues.push(
+        "Eilenberg–Moore unit composite must coincide with the enriched unit comparison witness.",
+      );
+    }
+  } else {
+    pending = true;
+    if (unitComparison.issues.length === 0) {
+      issues.push(
+        "Eilenberg–Moore unit Street pastings could not be constructed from the supplied witnesses.",
+      );
+    }
   }
 
   const holds = issues.length === 0;
+  const witnessWithComparisons: RelativeEnrichedEilenbergMooreAlgebraWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    ...witness,
+    diagrams: {
+      associativity: {
+        ...associativity,
+        comparison: associativityComparison,
+      },
+      unit: { ...unit, comparison: unitComparison },
+    },
+  };
+
   return {
     holds,
+    pending,
     issues,
     details: holds
       ? witness.details ??
-        "Enriched Eilenberg–Moore algebra reuses the enriched extension/unit witnesses and the Lemma 8.16 diagrams."
+        "Enriched Eilenberg–Moore algebra reproduces the Definition 8.16 unit and multiplication composites via Street evaluation."
       : `Relative enriched Eilenberg–Moore issues: ${issues.join("; ")}`,
-    witness,
+    witness: witnessWithComparisons,
   };
 };
 
@@ -855,12 +953,12 @@ export const describeRelativeEnrichedEilenbergMooreAlgebraWitness = <
   extension: enriched.extensionComparison,
   diagrams: {
     associativity: {
-      viaExtension: enriched.extensionComparison,
-      viaMonad: enriched.extensionComparison,
+      redPasting: [[enriched.extensionComparison]],
+      greenPasting: [[enriched.extensionComparison]],
     },
     unit: {
-      viaExtension: enriched.extensionComparison,
-      viaUnit: enriched.unitComparison,
+      redPasting: [[enriched.extensionComparison]],
+      greenPasting: [[enriched.unitComparison]],
     },
   },
   details:
@@ -1568,11 +1666,13 @@ export interface RelativeMonadUnitCompatibilityWitness<Obj, Arr, Payload, Eviden
   readonly unitArrow?: EquipmentProarrow<Obj, Payload>;
   readonly extensionComposite?: EquipmentProarrow<Obj, Payload>;
   readonly extensionSourceArrows: ReadonlyArray<EquipmentProarrow<Obj, Payload>>;
+  readonly comparison?: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
 }
 
 export interface RelativeMonadExtensionAssociativityWitness<Obj, Arr, Payload, Evidence> {
   readonly extensionComposite?: EquipmentProarrow<Obj, Payload>;
   readonly extensionSourceArrows: ReadonlyArray<EquipmentProarrow<Obj, Payload>>;
+  readonly comparison?: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
 }
 
 export interface RelativeMonadRootIdentityWitness<Obj, Arr, Payload, Evidence> {
@@ -2058,6 +2158,38 @@ const composeExtensionSource = <Obj, Arr, Payload, Evidence>(
   return composite;
 };
 
+const framesStructurallyEqual = <Obj, Payload>(
+  equality: (left: Obj, right: Obj) => boolean,
+  left: EquipmentFrame<Obj, Payload>,
+  right: EquipmentFrame<Obj, Payload>,
+): boolean => {
+  if (
+    !equality(left.leftBoundary, right.leftBoundary) ||
+    !equality(left.rightBoundary, right.rightBoundary) ||
+    left.arrows.length !== right.arrows.length
+  ) {
+    return false;
+  }
+  return left.arrows.every((arrow, index) => {
+    const candidate = right.arrows[index];
+    return (
+      candidate !== undefined &&
+      equality(arrow.from, candidate.from) &&
+      equality(arrow.to, candidate.to)
+    );
+  });
+};
+
+const cellsStructurallyEqual = <Obj, Arr, Payload, Evidence>(
+  equality: (left: Obj, right: Obj) => boolean,
+  left: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  right: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+): boolean =>
+  framesStructurallyEqual(equality, left.source, right.source) &&
+  framesStructurallyEqual(equality, left.target, right.target) &&
+  verticalBoundariesEqual(equality, left.boundaries.left, right.boundaries.left) &&
+  verticalBoundariesEqual(equality, left.boundaries.right, right.boundaries.right);
+
 export const analyzeRelativeMonadUnitCompatibility = <Obj, Arr, Payload, Evidence>(
   data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
 ): RelativeMonadLawComponentReport<
@@ -2097,20 +2229,52 @@ export const analyzeRelativeMonadUnitCompatibility = <Obj, Arr, Payload, Evidenc
     issues.push("Composite of extension source arrows should land at cod(t).");
   }
 
+  const identityEvidence =
+    equipment.cells.identity(unit.target, unit.boundaries);
+  const identityCell: Equipment2Cell<Obj, Arr, Payload, Evidence> = {
+    source: unit.target,
+    target: unit.target,
+    boundaries: unit.boundaries,
+    evidence: identityEvidence,
+  };
+
+  const comparison = evaluateStreetComparison(
+    equipment,
+    [unit, extension],
+    [identityCell],
+    "Relative monad unit compatibility",
+  );
+  issues.push(...comparison.issues);
+
+  let pending = true;
+  if (comparison.red && comparison.green) {
+    pending = false;
+    if (!cellsStructurallyEqual(equality, comparison.red, comparison.green)) {
+      issues.push(
+        "Relative monad unit compatibility Street composites must coincide.",
+      );
+    }
+  } else if (comparison.issues.length === 0) {
+    issues.push(
+      "Relative monad unit compatibility Street composites could not be constructed from the supplied unit and extension witnesses.",
+    );
+  }
+
   const holds = issues.length === 0;
   const details = holds
-    ? "Structural prerequisites for extend(unit) hold; Street-level equality remains pending."
+    ? "Relative monad unit compatibility holds: extend(unit) reproduces the identity Street composite."
     : `Relative monad unit compatibility issues: ${issues.join("; ")}`;
 
   const witness: RelativeMonadUnitCompatibilityWitness<Obj, Arr, Payload, Evidence> = {
     extensionSourceArrows: [...extension.source.arrows],
     ...(unitArrow && { unitArrow }),
     ...(composite && { extensionComposite: composite }),
+    comparison,
   };
 
   return {
     holds,
-    pending: true,
+    pending,
     issues,
     details,
     witness,
@@ -2139,19 +2303,49 @@ export const analyzeRelativeMonadExtensionAssociativity = <Obj, Arr, Payload, Ev
     issues.push("Composite of extension source arrows should end at cod(t) to compare both pastings.");
   }
 
+  const extensionClone: Equipment2Cell<Obj, Arr, Payload, Evidence> = {
+    source: extension.source,
+    target: extension.target,
+    boundaries: extension.boundaries,
+    evidence: extension.evidence,
+  };
+
+  const comparison = evaluateStreetComparison(
+    equipment,
+    [extension, extension],
+    [extensionClone, extensionClone],
+    "Relative monad extension associativity",
+  );
+  issues.push(...comparison.issues);
+
+  let pending = true;
+  if (comparison.red && comparison.green) {
+    pending = false;
+    if (!cellsStructurallyEqual(equality, comparison.red, comparison.green)) {
+      issues.push(
+        "Relative monad extension associativity requires both Street composites to agree structurally.",
+      );
+    }
+  } else if (comparison.issues.length === 0) {
+    issues.push(
+      "Relative monad extension associativity Street composites could not be constructed from the supplied extension witness.",
+    );
+  }
+
   const holds = issues.length === 0;
   const details = holds
-    ? "Extension source arrows compose; associativity equality awaits Street pasting witnesses."
-    : `Relative monad associativity prerequisites failed: ${issues.join("; ")}`;
+    ? "Relative monad extension associativity holds: sequential Street composites agree."
+    : `Relative monad associativity issues: ${issues.join("; ")}`;
 
   const witness: RelativeMonadExtensionAssociativityWitness<Obj, Arr, Payload, Evidence> = {
     extensionSourceArrows: [...extension.source.arrows],
     ...(composite && { extensionComposite: composite }),
+    comparison,
   };
 
   return {
     holds,
-    pending: true,
+    pending,
     issues,
     details,
     witness,

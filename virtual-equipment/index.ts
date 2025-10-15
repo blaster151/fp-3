@@ -13,3 +13,4 @@ export * from "./absoluteness";
 export * from "./faithfulness";
 export * from "./skew-multicategory";
 export * from "../relative/relative-monad";
+export * from "./street-calculus";

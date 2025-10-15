@@ -40,14 +40,15 @@ machinery into the equipment setting.
   concrete equipments without re-deriving the tight data.  The adapters share
   the same proarrow payload type as `virtualiseTightCategory`, ensuring tests
   and future relative monad code can mix and match instances freely.
-- `companions.ts` / `conjoints.ts` contribute typed placeholders and diagnostic
-  helpers so future implementations can report availability of companions and
-  conjoints without guessing about return shapes.  The new
-  `companionViaIdentityRestrictions` / `conjointViaIdentityRestrictions`
-  utilities thread the restriction builders into concrete attempts, surfacing
-  the cartesian witnesses when identity boundaries are available, forwarding any
-  `RepresentabilityWitness` evidence, and recording structured failure messages
-  otherwise.
+- `companions.ts` / `conjoints.ts` now ship executable constructors that factor
+  through the restriction calculus.  `constructCompanionFromRestrictions` and
+  `constructConjointFromRestrictions` recover the canonical B(f,1)/B(1,f)
+  proarrows, validate that the resulting loose arrows land on the requested
+  domain/codomain, and thread any `RepresentabilityWitness` evidence back to the
+  caller.  The identity-heuristic helpers
+  (`companionViaIdentityRestrictions`/`conjointViaIdentityRestrictions`) are now
+  thin adapters over those constructors so legacy call sites keep working while
+  the new tests exercise the full Rel/slice/coslice instances.
 - `loose-structures.ts` introduces `analyzeLooseMonoidShape` (aliased as
   `analyzeLooseMonadShape`) which encodes Definition 2.16’s framing checks for
   loose monads: it verifies that multiplication sources are composable strings

@@ -422,11 +422,38 @@ export const RelativeAlgebraOracles = {
       witness: report.witness,
     };
   },
-  opalgebraRepresentableActionBridge: (): RelativeAlgebraOracleResult =>
-    pendingOracle(
-      "opalgebraRepresentableActionBridge",
-      "Representable Street bridge oracle awaits the data converting Definition 6.4 opalgebras into actions in X[j,B]_\iota^B together with the representability witnesses that compare the two presentations; implementation pending.",
-    ),
+  opalgebraRepresentableActionBridge: <Obj, Arr, Payload, Evidence>(
+    presentation: RelativeOpalgebraPresentation<Obj, Arr, Payload, Evidence>,
+    witness?: RelativeStreetRepresentableRestrictionWitness<
+      Obj,
+      Arr,
+      Payload,
+      Evidence
+    >,
+  ): RelativeAlgebraOracleResult => {
+    const descriptor = RelativeAlgebraLawRegistry.opalgebraRepresentableActionBridge;
+    const actionWitness =
+      witness?.streetAction ?? describeRelativeOpalgebraRightAction(presentation);
+    const effectiveWitness =
+      witness ??
+      describeRelativeStreetRepresentableRestriction(
+        presentation.monad,
+        actionWitness,
+      );
+    const report = analyzeRelativeOpalgebraRepresentableActionBridge(
+      presentation,
+      effectiveWitness,
+    );
+    return {
+      holds: report.holds,
+      pending: report.pending,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+      witness: report.witness,
+      analysis: report,
+    };
+  },
   actionsRightLeftCoherence: <Obj, Arr, Payload, Evidence>(
     monad: RelativeMonadData<Obj, Arr, Payload, Evidence>,
     witness?: RelativeStreetActionWitness<Obj, Arr, Payload, Evidence>,
@@ -1281,7 +1308,10 @@ export const enumerateRelativeAlgebraOracles = <Obj, Arr, Payload, Evidence>(
       kleisliPresentation.monad,
       streetAction,
     ),
-    RelativeAlgebraOracles.opalgebraRepresentableActionBridge(),
+    RelativeAlgebraOracles.opalgebraRepresentableActionBridge(
+      kleisliPresentation,
+      representableRestriction,
+    ),
     RelativeAlgebraOracles.actionsRightLeftCoherence(
       kleisliPresentation.monad,
       streetAction,

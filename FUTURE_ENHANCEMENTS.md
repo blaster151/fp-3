@@ -1,10 +1,5 @@
 # Future Enhancements
 
-## Enriched Eilenberg–Moore Calculus
-- **What could be implemented:** Once the virtual equipment exposes executable horizontal/vertical composition for enriched 2-cells, upgrade `analyzeRelativeEnrichedEilenbergMooreAlgebra` to *derive* the Definition 8.16 composites instead of comparing user-supplied placeholders.
-- **Trigger factor:** Availability of full 2-cell composition/whiskering for enriched distributors so the analyzer can synthesise the red/green pastings internally.
-- **Source:** Section 8 (Definition 8.16) of the Street-style relative monad paper (see image reference provided by the user).
-
 ## Virtual Equipment Dualisation for V-Cat^co
 - **What could be implemented:** Proposition 8.22 identifies an isomorphism between the virtual double categories V-Cat^co and V^co-Cat. Once the virtual equipment API exposes a programmatic dualisation (on objects, tight morphisms, and loose cells), we can add witnesses/analyzers that replay this equivalence and compare the induced distributors.
 - **Trigger factor:** Implemented support for forming the co equipment (reversing tight 1-cells and proarrows) together with automatic transport of enriched hom/tensor data.
