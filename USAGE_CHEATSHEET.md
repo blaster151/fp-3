@@ -433,6 +433,30 @@ const indicator = SetCat.hom(B, SetCat.obj([true, false]), (tag) => tag === "eve
 
 const parityIsEven = SetCat.compose(indicator, parity);
 console.log(parityIsEven.map(2)); // true
+
+const { object: product, projections, pair } = SetCat.product(A, B);
+const diagonal = pair(SetCat.id(A), parity);
+
+console.log(product.size); // 6 ordered pairs with canonical witnesses
+console.log(SetCat.compose(projections.fst, diagonal).map(1)); // 1 → 1 in A
+console.log(SetCat.compose(projections.snd, diagonal).map(2)); // 2 → "even" in B
+
+const { object: sum, injections, copair } = SetCat.coproduct(A, B);
+const tags = SetCat.obj(['from A', 'from B'] as const);
+const folded = copair(
+  SetCat.hom(A, tags, () => 'from A'),
+  SetCat.hom(B, tags, () => 'from B'),
+);
+
+console.log(sum.size); // 5 tagged values (three from A, two from B)
+console.log(SetCat.compose(folded, injections.inl).map(1)); // 'from A'
+console.log(SetCat.compose(folded, injections.inr).map('even')); // 'from B'
+
+const { object: terminal, terminate } = SetCat.terminal();
+console.log(terminate(A).map(1) === [...terminal][0]); // unique map into 1
+
+const { object: initial, initialize } = SetCat.initial();
+console.log(initialize(B).dom === initial); // unique map out of 0
 ```
 
 ### **Quick Set Law Checks**
