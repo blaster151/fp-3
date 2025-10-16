@@ -17,9 +17,7 @@ describe("Finite posets initial and terminal objects", () => {
   }
 
   const chainElems = ["0", "1", "2"] as const
-  const chainOrder: Map<string, number> = new Map<string, number>(
-    chainElems.map((value, index) => [value, index] as const),
-  )
+  const chainOrder = new Map<string, number>(chainElems.map((value, index) => [value, index]))
   const chain: FinPosObj = {
     name: "Chain₃",
     elems: chainElems.slice(),

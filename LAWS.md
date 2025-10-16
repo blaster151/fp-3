@@ -1139,10 +1139,33 @@ so failures can be traced to sub-lemmas.
 ### Finite posets: initial and terminal objects
 
 - **Domain**: `FinPosCat` instances equipped with the designated empty and singleton posets.
-- **Statement**: The empty poset is initial—every monotone map out of it coincides with `FinPos.initialArrow`—and the singleton is terminal—every map into it agrees with `FinPos.terminate`; its unique global element matches the identity on `1`.
-- **Rationale**: Operationalises the textbook characterisation of finite posets via the newly exposed `FinPos.zero()`, `FinPos.initialArrow`, and `FinPos.terminate` helpers.
-- **Oracles**: `test/laws/law.FinPosInitialTerminal.spec.ts` compares canonical witnesses against arbitrary monotone maps and inspects the global-element enumerator.
-- **Witness Builder**: `FinPosCat([...objects, FinPos.zero(), FinPos.one()])` ensures both extremal objects participate in the category fixture.
+  - **Statement**: The empty poset is initial—every monotone map out of it coincides with `FinPos.initialArrow`—and the singleton is terminal—every map into it agrees with `FinPos.terminate`; its unique global element matches the identity on `1`.
+  - **Law**: `FinPos.checkTerminalArrowUniqueness` mechanises Theorem 29 by collapsing any `FinPos` arrow into the singleton target to the canonical `FinPos.terminateAt` witness while reporting mismatches when the codomain is not terminal.
+  - **Supplement**: `FinPos.checkTerminalElementTransport` confirms that any element picked out by a singleton `1'` matches the canonical global element of `1` by transporting along the unique terminal isomorphism.
+  - **Separator**: `FinPos.checkPointSeparation` operationalises the well-pointedness criterion by producing a concrete global element that distinguishes any pair of parallel monotone maps with different behaviour.
+  - **Rationale**: Operationalises the textbook characterisation of finite posets via the newly exposed `FinPos.zero()`, `FinPos.initialArrow`, and `FinPos.terminate` helpers.
+  - **Oracles**: `test/laws/law.FinPosInitialTerminal.spec.ts` compares canonical witnesses against arbitrary monotone maps and inspects the global-element enumerator, `test/laws/law.TerminalArrowUniqueness.spec.ts` checks that every collapse into `1` factors through the canonical witness, `test/laws/law.TerminalElementTransport.spec.ts` ensures elements defined via alternative terminals coincide with the canonical point, and `test/laws/law.WellPointedness.spec.ts` finds separating points for distinct monotone pairs while confirming that identical arrows are indistinguishable.
+  - **Witness Builder**: `FinPosCat([...objects, FinPos.zero(), FinPos.one()])` ensures both extremal objects participate in the category fixture.
+  - **Generalized Elements**: `FinPos.generalizedElements(shape, target)` enumerates every monotone map from a shape into a target poset, powering separation analyses that require richer probes than terminal points.
+
+### Terminal separators and well-pointedness
+
+- **Toolkit**: `traits/well-pointedness.ts` generalises the terminal-point separator analysis to any finite category that exposes a
+  terminal object and enumerates global elements.
+  - `checkPointSeparator(category, f, g)` reproduces the separator oracle for arbitrary categories by composing each sampled
+    pair of parallel arrows with every terminal point of their shared domain, returning a distinguishing witness whenever one exists
+    and classifying the precise failure mode when it does not.
+  - `checkWellPointedness(category, pairs)` batches those analyses, summarising separating witnesses, terminal-point shortages, and
+    indistinguishable pairs so fixtures can confirm well-pointedness across a supplied test set.
+- **Oracles**: `test/traits/well-pointedness.spec.ts` exercises both helpers on finite sets and on synthetic categories that lack
+  global elements, ensuring the toolkit reports successes, indistinguishable samples, and failures in a structured fashion.
+
+### Generalized elements and separation
+
+- **Toolkit**: `traits/generalized-elements.ts` elevates Theorem 32 into code by scanning generalized elements across supplied shapes and returning explicit witnesses when two parallel arrows act differently.
+  - `checkGeneralizedElementSeparation(category, f, g, { shapes })` composes each candidate with every available generalized element of its domain, classifying domain/codomain mismatches, barren shapes, indistinguishable pairs, and genuine separating witnesses with structured diagnostics.
+- **Oracles**: `test/traits/generalized-elements.spec.ts` exercises the toolkit on finite posets, confirming the discovery of separating shape witnesses, the inability of the initial shape to distinguish non-identical arrows, and the reporting of barren shapes that cannot map into the probed domain.
+- **Law**: `test/laws/law.GeneralizedElementSeparation.spec.ts` demonstrates Awodey’s generalized-element criterion by exhibiting separating witnesses for divergent monotone maps and recording indistinguishable pairs when every generalized element yields matching composites.
 
 ### Preorder extremal-element diagnostics
 
@@ -1176,6 +1199,22 @@ so failures can be traced to sub-lemmas.
 - **Oracles**: `test/laws/law.NullObject.spec.ts` checks the canonical trivial group’s extremal behaviour, composes the arrows between competing null objects, and confirms their uniqueness.
 - **Witness Builder**: `FinGrp.initialArrowFrom(candidate, target)` and `FinGrp.terminateAt(source, candidate)` construct the canonical homomorphisms needed for the null-object certification.
 
+### Finite-group direct products
+
+- **Domain**: `FinGrpCat` supplied with sample finite groups alongside the direct-product carrier returned by `FinGrp.product(left, right)`.
+- **Statement**: `FinGrp.product` enumerates the cartesian carrier, exposes the canonical projections, and supplies `pair(domain, f, g)` so every pair of compatible homomorphisms collapses to the unique mediator demanded by the universal property; it also provides `componentwise(target, [f, g])` to synthesise the product map `f × g`, `swap()` for the symmetry isomorphism `⟨π₂, π₁⟩`, `diagonal()` for the canonical map `⟨id, id⟩`, and `leftUnit()` / `rightUnit()` so products with the trivial factor collapse back to the non-terminal leg, while any leg that fails to preserve the group law is rejected and the projections into the trivial factor are certified as non-isomorphisms. The witness integrates with `CategoryLimits.checkBinaryProductComponentwiseCollapse`, `CategoryLimits.checkBinaryProductSwapCompatibility`, and `CategoryLimits.checkBinaryProductNaturality`, ensuring `(f × g) ∘ ⟨j, k⟩` matches `⟨f ∘ j, g ∘ k⟩`, swap symmetry commutes with componentwise arrows, and precomposition of mediating homomorphisms agrees with the canonical pairing.
+- **Rationale**: Executes the textbook construction of `G × H` so the Awodey product examples become runnable—coordinatewise multiplication and inversion are implemented directly and stitched into our universal-property checker.
+- **Oracles**: `test/laws/law.FinGrpProduct.spec.ts` confirms the projections are homomorphisms, composes them with the canonical pairing to recover the supplied legs, checks the swap isomorphism collapses back to the identity, verifies the diagonal composes to both identities and matches the pairing of identity legs, uses `checkProductUP` to certify uniqueness while rejecting a deliberately collapsed leg, exercises the new unit witnesses to show `1×G ≅ G ≅ G×1` whereas the projections into the trivial factor fail the `isIso` test (demonstrating that \(0 × G \ncong 0\)), and now drives `CategoryLimits.checkBinaryProductComponentwiseCollapse`, `CategoryLimits.checkBinaryProductSwapCompatibility`, and `CategoryLimits.checkBinaryProductNaturality` to prove componentwise mediators collapse correctly, swap symmetry commutes with componentwise arrows, and precomposition agrees with the canonical pairing while perturbed data triggers the expected failures.
+- **Witness Builder**: `FinGrp.product(left, right)` returns `{ object, projection1, projection2, pair, decode, componentwise, swap, diagonal }`, letting downstream code register the product object, access the coordinate projections, manufacture mediating homomorphisms or the componentwise map `f × g`, and extract the symmetry witnesses or the canonical diagonal.
+
+### Binary product projections need not be epimorphisms
+
+- **Domain**: The four-object category from `makeToyNonEpicProductCategory()` with objects `A`, `B`, `P`, and `Z`.
+- **Statement**: `P` together with `π₁ : P → A` and `π₂ : P → B` satisfies the universal property of the binary product, yet `π₁` fails to be epimorphic because distinct arrows `σ, τ : A → Z` collapse to the same composite once postcomposed with `π₁`.
+- **Rationale**: Operationalises Awodey’s warning that product projections need not be epic by providing an explicit finite counterexample where the universal property still holds.
+- **Oracles**: `test/laws/law.NonEpicProductProjection.spec.ts` feeds the toy category through `checkProductUP` to confirm the universal property, exhibits the collapsing composites, and verifies that `isEpi` detects the failure of right cancellability.
+- **Witness Builder**: `makeToyNonEpicProductCategory()` exposes `{ product, nonEpicWitness }`, packaging the projections, canonical tuple, and the parallel arrows that witness the non-epic behaviour.
+
 ### Pointed sets and the zero object
 
 - **Domain**: The pointed-set façade `pointed-set-cat.ts` where objects carry a distinguished basepoint.
@@ -1198,7 +1237,15 @@ so failures can be traced to sub-lemmas.
 - **Statement**: The leg `∅ → X` is initial and `id_X : X → X` is terminal—mediating maps from the former are forced to be the unique functions out of the empty set, while mediating maps into the latter reduce to the original arrows landing in `X`.
 - **Rationale**: Encodes the Set/X slice example so the “unique filler” conditions become executable checks over explicit finite sets.
 - **Oracles**: `test/laws/law.SliceInitialTerminal.spec.ts` inspects all slice morphisms, verifying their mediating arrows match the canonical `∅`-legs and the original structure maps into `X`.
-- **Witness Builder**: Populate the FinSet arrow registry with the empty-set inclusions and the slice legs `A → X` before calling `makeSlice` so the oracle can recover the universal squares directly.
+
+### Slice Set/X fiber products
+
+- **Domain**: `makeSlice(FinSetCat(...), "X")` together with fiber products constructed by `makeSliceProduct(category, "X", left, right)` and their finite-family extension via `makeFiniteSliceProduct(category, "X", factors)`.
+- **Statement**: `makeSliceProduct` enumerates the pullback carrier, exposes the canonical projections into each leg, and provides `pair(leftLeg, rightLeg)` so any commutative pair of arrows into the factors yields the unique mediating arrow whose composites recover the supplied legs; the witness now exposes `componentwise(target, [f, g])` to manufacture fiber-product arrows `f ×_X g`, `swap()` for the symmetry isomorphism exchanging the two legs, `diagonal()` for the canonical slice arrow `⟨id, id⟩`, and `leftUnit()` / `rightUnit()` so slice products with the terminal object collapse to the non-terminal leg. `makeFiniteSliceProduct` iterates that construction across arbitrary finite families (including the empty case through the terminal slice), exposes `tuple(domain, legs)` for collapsing compatible leg families to the canonical mediator, and likewise publishes the binary componentwise constructor, swap, diagonal, and unitors whenever the relevant factors are present. Both witnesses interoperate with `CategoryLimits.checkBinaryProductComponentwiseCollapse`, `CategoryLimits.checkBinaryProductSwapCompatibility`, and `CategoryLimits.checkBinaryProductNaturality`, ensuring componentwise maps collapse against mediating pairings, swap symmetry commutes with componentwise arrows, and precomposition of slice mediators agrees with the canonical pairing while flagging mismatched domains immediately.
+- **Rationale**: Realises the Set/X fiber-product example from the text, allowing us to certify the universal property executably instead of reasoning about underlying tuples by hand, and generalises it to finite cones so `CategoryLimits.finiteProduct` can target slices directly.
+- **Oracles**: `test/laws/law.SliceProduct.spec.ts` inspects the enumerated carrier, confirms the projections and pairing agree with the sample legs, checks the fiber-product swap collapses back to the identity and exchanges the projections, verifies the diagonal composes to the identity on its source and matches the pairing of identity legs, demonstrates the unit laws \(X×_X A ≅ A ≅ A×_X X\) with the executable witnesses, exercises the componentwise constructor `componentwise(target, [f, g])`, and runs `checkProductUP` to validate both the canonical mediator and a counterexample with a mismatched leg, while the new tests drive `CategoryLimits.checkBinaryProductComponentwiseCollapse`, `CategoryLimits.checkBinaryProductSwapCompatibility`, and `CategoryLimits.checkBinaryProductNaturality` to show componentwise collapse, swap coherence, and precomposition all agree with the canonical slice pairing and that incompatible domains raise the expected composition error; `test/laws/law.SliceFiniteProduct.spec.ts` exercises the triple fiber product, verifies the iterated universal property, checks the `CategoryLimits` integration path, and confirms the componentwise constructor matches the expected tuple.
+- **Witness Builder**: `makeSliceProduct(...)` returns `{ object, projectionLeft, projectionRight, pair, decode, componentwise, swap, diagonal }`, while `makeFiniteSliceProduct(...)` returns `{ object, projections, tuple, decode, componentwise, swap, diagonal }` and registers metadata consumed by `makeSliceProductsWithTuple(base, "X")` so downstream code can invoke `CategoryLimits.finiteProduct`/`mediateProduct` with slice objects.
+- **Witness Builder**: Populate the FinSet arrow registry with the slice legs `A → X` (and any additional factors) before calling `makeSlice` so the oracles can recover the universal squares directly.
 
 ### Monoid Laws
 For any monoid `(M, ⊕, ε)`:

@@ -15,7 +15,7 @@ describe("Preorder initial and terminal behaviour", () => {
   })
 
   it("exhibits arbitrarily large witnesses showing ℕ has no terminal object", () => {
-    const successorWitnesses = naturals.elems.map((candidate) => {
+    naturals.elems.forEach((candidate, index) => {
       const report = analyzeGreatestElement(naturals, candidate, [...naturals.elems, candidate + 1])
       expect(report.holds).toBe(false)
       expect(report.failure?.kind).toBe("violatesUpperBound")
