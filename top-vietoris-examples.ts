@@ -32,7 +32,7 @@ export interface TopSpace<Point> {
   readonly closedSubsets: ReadonlyArray<ClosedSubset<Point>>;
 }
 
-export interface KolmogorovProductSpace<Point, Factors extends ReadonlyArray<TopSpace<unknown>> = ReadonlyArray<TopSpace<unknown>>>
+export interface KolmogorovProductSpace<Point, Factors extends ReadonlyArray<TopSpace<any>> = ReadonlyArray<TopSpace<any>>>
   extends TopSpace<Point> {
   readonly factors: Factors;
   readonly finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<Point, unknown>>;
@@ -78,7 +78,7 @@ export interface TopVietorisConstantFunctionReport<XJ, Y> {
   readonly details: string;
 }
 
-type FactorPoints<Spaces extends ReadonlyArray<TopSpace<unknown>>> = {
+type FactorPoints<Spaces extends ReadonlyArray<TopSpace<any>>> = {
   readonly [Index in keyof Spaces]: Spaces[Index] extends TopSpace<infer Point> ? Point : never;
 };
 
@@ -221,7 +221,7 @@ function normalizeFiniteSubsets(
   return normalized;
 }
 
-function pointsAgreeOutsideSubset<Spaces extends ReadonlyArray<TopSpace<unknown>>>(
+function pointsAgreeOutsideSubset<Spaces extends ReadonlyArray<TopSpace<any>>>(
   factors: Spaces,
   subset: ReadonlyArray<number>,
   left: FactorPoints<Spaces>,
@@ -263,7 +263,7 @@ export function makeDiscreteTopSpace<Point>(label: string, points: Fin<Point>): 
   };
 }
 
-function enumerateProductPoints<Spaces extends ReadonlyArray<TopSpace<unknown>>>(
+function enumerateProductPoints<Spaces extends ReadonlyArray<TopSpace<any>>>(
   spaces: Spaces,
 ): Array<FactorPoints<Spaces>> {
   const results: Array<FactorPoints<Spaces>> = [];
@@ -288,7 +288,7 @@ function enumerateProductPoints<Spaces extends ReadonlyArray<TopSpace<unknown>>>
   return results;
 }
 
-export function makeKolmogorovProductSpace<Spaces extends ReadonlyArray<TopSpace<unknown>>>(
+export function makeKolmogorovProductSpace<Spaces extends ReadonlyArray<TopSpace<any>>>(
   spaces: Spaces,
   options: { readonly label?: string } = {},
 ): KolmogorovProductSpace<FactorPoints<Spaces>, Spaces> {

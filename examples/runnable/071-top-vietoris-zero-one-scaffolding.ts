@@ -48,7 +48,7 @@ type TopSpace<Point> = {
 };
 
 type KolmogorovProductSpace<Point> = TopSpace<Point> & {
-  readonly factors: ReadonlyArray<TopSpace<unknown>>;
+  readonly factors: ReadonlyArray<TopSpace<any>>;
   readonly finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<Point>>;
 };
 

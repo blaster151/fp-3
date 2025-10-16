@@ -12,7 +12,7 @@ const sameHom = <A, B>(f: PointedSetHom<A, B>, g: PointedSetHom<A, B>): boolean 
 describe("Pointed sets admit a zero object", () => {
   const singleton = PointedSet.singleton("𝟙⋆")
 
-  const pointedSets: ReadonlyArray<PointedSetObj<unknown>> = [
+  const pointedSets: ReadonlyArray<PointedSetObj<any>> = [
     PointedSet.create({
       label: "Bool⊥",
       elems: [false, true],

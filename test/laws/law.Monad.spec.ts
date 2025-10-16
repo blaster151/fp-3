@@ -29,10 +29,11 @@ describe("LAW: Monad laws", () => {
     arbitrary: fc.Arbitrary<Input>,
     mapper: (value: Input) => Output
   ): fc.Arbitrary<Output> => {
-    if (typeof arbitrary.map !== 'function') {
+    const mapFn = typeof arbitrary.map === 'function' ? arbitrary.map.bind(arbitrary) : undefined
+    if (!mapFn) {
       throw new Error('fast-check arbitrary missing map implementation')
     }
-    return arbitrary.map(mapper) as fc.Arbitrary<Output>
+    return mapFn((value: unknown) => mapper(value as Input)) as fc.Arbitrary<Output>
   }
 
   describe("Result monad", () => {

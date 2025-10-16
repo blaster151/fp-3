@@ -10,7 +10,7 @@ import {
   pairing,
   productStructure,
   projection1,
-} from "../Category";
+} from "../ContinuousMap";
 
 const eqNum = (a: number, b: number) => a === b;
 

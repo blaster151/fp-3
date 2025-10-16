@@ -112,7 +112,7 @@ import {
 } from "./borelstoch-examples";
 import { SetOracles } from "./oracles/set-oracles";
 
-type AdapterFactorPoints<Spaces extends ReadonlyArray<TopVietorisTopSpace<unknown>>> = {
+type AdapterFactorPoints<Spaces extends ReadonlyArray<TopVietorisTopSpace<any>>> = {
   readonly [Index in keyof Spaces]: Spaces[Index] extends TopVietorisTopSpace<infer Point> ? Point : never;
 };
 
@@ -126,7 +126,7 @@ export interface TopVietorisAdapters {
     label: string,
     points: Fin<Point>,
   ) => TopVietorisTopSpace<Point>;
-  readonly makeKolmogorovProductSpace: <Spaces extends ReadonlyArray<TopVietorisTopSpace<unknown>>>(
+  readonly makeKolmogorovProductSpace: <Spaces extends ReadonlyArray<TopVietorisTopSpace<any>>>(
     spaces: Spaces,
     options?: { readonly label?: string },
   ) => KolmogorovProductSpace<AdapterFactorPoints<Spaces>, Spaces>;

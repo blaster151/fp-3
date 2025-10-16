@@ -3,7 +3,7 @@
 import {
   Some, None, Ok, Err, VOk, VErr, isSome, isErr, isVOk,
   Reader, DoR, DoTR, SRT, runSRT, ReaderTaskResult, ReaderTask, Task,
-  sequenceArrayValidation, sequenceArrayResult, sequenceStructValidation, sequenceStructResult,
+  sequenceArrayValidation, sequenceArrayResult, sequenceStructValidation, sequenceSRTResult,
   partitionSet, partitionSetWith, productTR, zipWithTR, sequenceState, traverseSRT,
   filterMapArray, collectArray, filterMapMapValues, collectMapValues, filterMapMapEntries, collectMapEntries, filterMapSet, collectSet,
   pf,
@@ -88,7 +88,7 @@ import {
   // Canonical multimap and groupBy
   CanonicalJsonMultiMap, groupByCanonical, groupPairsByCanonical, multiMapByCanonical, multiMapPairsByCanonical,
   // Json zipper
-  fromJsonZ, toJsonZ, downArr, downSet, downObjKey, up, left, right, replaceFocus, modifyFocus,
+  fromJsonZ, toJsonZ, downArr, downSet, downObjKey,
   focusAtPath, optionalAtPath, modifyAtPath,
   // Kleisli arrows
   makeKleisliArrowReader, makeKleisliArrowTask, makeKleisliArrowReaderTask, makeKleisliArrowRTR,
@@ -106,6 +106,7 @@ import {
   // Result utilities
   isOk
 } from './allTS'
+import { zipRight } from './json-recursion'
 import type {
   Result,
   Validation,
@@ -655,7 +656,7 @@ async function runExamples() {
     ]
     const oz = focusAtPath(doc, pTag0)
     if (isSome(oz)) {
-      const moved = right(oz.value) // focus next tag
+      const moved = zipRight(oz.value) // focus next tag
       const doc3 = isSome(moved) ? toJsonZ(moved.value) : doc
       console.log('Moved to next tag in set')
       void doc3

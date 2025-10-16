@@ -19,10 +19,21 @@ describe("Preorder initial and terminal behaviour", () => {
       const report = analyzeGreatestElement(naturals, candidate, [...naturals.elems, candidate + 1])
       expect(report.holds).toBe(false)
       expect(report.failure?.kind).toBe("violatesUpperBound")
-      return report.failure?.witness
+      if (report.failure?.kind !== "violatesUpperBound") {
+        return undefined
+      }
+      return report.failure.witness
     })
 
-    expect(successorWitnesses.every((witness, index) => witness === naturals.elems[index] + 1)).toBe(true)
+    expect(
+      successorWitnesses.every((witness, index) => {
+        const baseline = naturals.elems[index]
+        if (baseline === undefined || witness === undefined) {
+          return false
+        }
+        return witness === baseline + 1
+      }),
+    ).toBe(true)
   })
 
   const integers: Preorder<number> = {

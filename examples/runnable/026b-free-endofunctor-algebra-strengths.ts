@@ -8,6 +8,7 @@ import type {
   TraversableK1,
 } from "../../allTS";
 import * as AllTS from "../../allTS";
+import type { Result } from "../../result";
 import type { RunnableExample } from "./types";
 
 const {
@@ -214,7 +215,7 @@ export const freeEndofunctorAlgebraStrengths: RunnableExample = {
     );
     const envRight = inR<'Option', ['Prod', ['Result', 'string'], 'Option'], EnvPayload<number>>(
       prod<['Result', 'string'], 'Option', EnvPayload<number>>(
-        Ok<EnvPayload<number>>(["result-env", 11] as const),
+        Ok<EnvPayload<number>>(["result-env", 11] as const) as Result<string, EnvPayload<number>>,
         Some<EnvPayload<number>>(["option-env", 5] as const),
       ),
     );

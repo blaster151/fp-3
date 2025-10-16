@@ -18,7 +18,7 @@ export interface MarkovConditionalWitnessOptions {
 
 export interface MarkovConditionalWitness<A> {
   readonly domain: MarkovComonoidWitness<A>;
-  readonly outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>;
+  readonly outputs: ReadonlyArray<MarkovComonoidWitness<any>>;
   readonly arrow: FinMarkov<A, unknown>;
   readonly projections: ReadonlyArray<FinMarkov<unknown, unknown>>;
   readonly label?: string;
@@ -55,7 +55,7 @@ export interface MarkovConditionalReport<A> {
   readonly details: string;
 }
 
-function productCardinality(outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>): number {
+function productCardinality(outputs: ReadonlyArray<MarkovComonoidWitness<any>>): number {
   return outputs.reduce((acc, witness) => acc * witness.object.elems.length, 1);
 }
 
@@ -115,7 +115,7 @@ function buildProjection(
 
 function inferDefaultProjections(
   codomain: Fin<unknown>,
-  outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>,
+  outputs: ReadonlyArray<MarkovComonoidWitness<any>>,
 ): ReadonlyArray<FinMarkov<unknown, unknown>> {
   if (outputs.length === 0) {
     throw new Error("Cannot infer projections without at least one output object.");
@@ -132,7 +132,7 @@ function inferDefaultProjections(
 
 export function buildMarkovConditionalWitness<A, B>(
   domain: MarkovComonoidWitness<A>,
-  outputs: ReadonlyArray<MarkovComonoidWitness<unknown>>,
+  outputs: ReadonlyArray<MarkovComonoidWitness<any>>,
   arrow: FinMarkov<A, B>,
   options: MarkovConditionalWitnessOptions = {},
 ): MarkovConditionalWitness<A> {

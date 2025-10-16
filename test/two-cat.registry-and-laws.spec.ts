@@ -107,6 +107,7 @@ describe('Traversable registry + laws', () => {
 
   it('Derived Sum/Prod/Comp traversables obey traverse shapes', async () => {
     const OptionF: EndofunctorK1<'Option'> = { map: mapO }
+    type EitherString = ['Either', string]
     const ResultF = ResultK1<string>()
     const TF = TraversableOptionK1
     const TG = TraversableEitherK1<string>()
@@ -115,21 +116,25 @@ describe('Traversable registry + laws', () => {
     const TC = deriveTraversableCompK1(TF, TG)
 
     // Sum
-    const sL = await TS.traverse(PromiseApp)<number, number>(n => Promise.resolve(n + 1))(inL<'Option','Either', number>(Some(1)))
-    const sR = await TS.traverse(PromiseApp)<number, number>(n => Promise.resolve(n + 1))(inR<'Option','Either', number>(Ok(2)))
-    expect(eq(sL, inL<'Option','Either', number>(Some(2)))).toBe(true)
-    expect(eq(sR, inR<'Option','Either', number>(Ok(3)))).toBe(true)
+    const sL = await TS.traverse(PromiseApp)<number, number>(n => Promise.resolve(n + 1))(
+      inL<'Option', EitherString, number>(Some(1)),
+    )
+    const sR = await TS.traverse(PromiseApp)<number, number>(n => Promise.resolve(n + 1))(
+      inR<'Option', EitherString, number>(ResultF.of<number>(2)),
+    )
+    expect(eq(sL, inL<'Option', EitherString, number>(Some(2)))).toBe(true)
+    expect(eq(sR, inR<'Option', EitherString, number>(Ok(3)))).toBe(true)
 
     // Prod
-    const p0 = prod<'Option','Either', number>(Some(4), Ok(5))
-    const p1: ProdVal<'Option', ['Either', string], number> =
+    const p0 = prod<'Option', EitherString, number>(Some(4), ResultF.of<number>(5))
+    const p1: ProdVal<'Option', EitherString, number> =
       await TP.traverse(PromiseApp)<number, number>((n) => Promise.resolve(n * 2))(p0)
     const { left, right } = p1
     expect(eq(left, Some(8))).toBe(true)
     expect(eq(right, Ok(10))).toBe(true)
 
     // Comp: Option∘Either (Option of Result)
-    const compVal: EndofunctorValue<['Comp', 'Option', ['Either', string]], number> = Some(Ok(7))
+    const compVal: EndofunctorValue<['Comp', 'Option', EitherString], number> = Some(Ok(7))
     const c1 = await TC.traverse(PromiseApp)<number, number>(n => Promise.resolve(n - 1))(compVal)
     expect(eq(c1, Some(Ok(6)))).toBe(true)
   })

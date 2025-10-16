@@ -8,7 +8,7 @@ import {
   productStructure,
   projection1,
   projection2,
-} from "./Category";
+} from "./ContinuousMap";
 
 const eqNum = (a: number, b: number) => a === b;
 
