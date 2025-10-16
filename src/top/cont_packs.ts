@@ -1,8 +1,14 @@
 import { registerCont } from "./ContRegistry";
-import { discrete, indiscrete, product } from "./Topology";
+import { discrete, indiscrete } from "./Topology";
 import { subspace } from "./Subspace";
 import { inclusion } from "./Embeddings";
-import { pair, proj1, proj2 } from "./ProductUP";
+import {
+  makeContinuousMap,
+  pairing,
+  productStructure,
+  projection1,
+  projection2,
+} from "./ContinuousMap";
 
 const eqNum = (a: number, b: number) => a === b;
 
@@ -19,52 +25,54 @@ const S: ReadonlyArray<number> = [0, 2];
 const TS = subspace(eqNum, TXd, S);
 registerCont({
   tag: "Top/cont/subspace-inclusion:S↪X",
-  eqDom: eqNum,
-  TA: TS,
-  TB: TXd,
-  f: inclusion(eqNum, S, X),
-  eqCod: eqNum,
+  morphism: makeContinuousMap({
+    source: TS,
+    target: TXd,
+    eqSource: eqNum,
+    eqTarget: eqNum,
+    map: inclusion(eqNum, S, X),
+  }),
 });
 
-type XYPair = { readonly x: number; readonly y: number };
-
-const eqPair = (p: XYPair, q: XYPair) => p.x === q.x && p.y === q.y;
-
-const Tprod = product(eqNum, eqNum, TXd, TYd);
+const productInfo = productStructure(eqNum, eqNum, TXd, TYd);
 registerCont({
   tag: "Top/cont/proj1:X×Y→X",
-  eqDom: eqPair,
-  TA: Tprod,
-  TB: TXd,
-  f: proj1,
-  eqCod: eqNum,
+  morphism: projection1(productInfo),
 });
 registerCont({
   tag: "Top/cont/proj2:X×Y→Y",
-  eqDom: eqPair,
-  TA: Tprod,
-  TB: TYd,
-  f: proj2,
-  eqCod: eqNum,
+  morphism: projection2(productInfo),
 });
 
 const f = (z: number) => (z === 42 ? 0 : 1);
 const g = (_: number) => 20;
+const fMap = makeContinuousMap({
+  source: TZd,
+  target: TXd,
+  eqSource: eqNum,
+  eqTarget: eqNum,
+  map: f,
+});
+const gMap = makeContinuousMap({
+  source: TZd,
+  target: TYd,
+  eqSource: eqNum,
+  eqTarget: eqNum,
+  map: g,
+});
 registerCont({
   tag: "Top/cont/pair:Z→X×Y",
-  eqDom: eqNum,
-  TA: TZd,
-  TB: Tprod,
-  f: pair(f, g),
-  eqCod: eqPair,
+  morphism: pairing(fMap, gMap, { topology: productInfo.topology, eq: productInfo.eq }),
 });
 
 const h = (_: number) => 2;
 registerCont({
   tag: "Top/cont/to-indiscrete:Z→Xi",
-  eqDom: eqNum,
-  TA: TZd,
-  TB: TXi,
-  f: h,
-  eqCod: eqNum,
+  morphism: makeContinuousMap({
+    source: TZd,
+    target: TXi,
+    eqSource: eqNum,
+    eqTarget: eqNum,
+    map: h,
+  }),
 });

@@ -12,6 +12,36 @@ function eqArr<X>(eq: (a: X, b: X) => boolean, A: ReadonlyArray<X>, B: ReadonlyA
   );
 }
 
+function dedupeSets<X>(
+  eqX: (a: X, b: X) => boolean,
+  sets: ReadonlyArray<ReadonlyArray<X>>,
+): ReadonlyArray<ReadonlyArray<X>> {
+  const eqSet = (A: ReadonlyArray<X>, B: ReadonlyArray<X>) => eqArr(eqX, A, B);
+  const unique: Array<ReadonlyArray<X>> = [];
+  for (const candidate of sets) {
+    if (!unique.some((existing) => eqSet(existing, candidate))) {
+      unique.push([...candidate]);
+    }
+  }
+  return unique;
+}
+
+function complement<X>(
+  eqX: (a: X, b: X) => boolean,
+  carrier: ReadonlyArray<X>,
+  subset: ReadonlyArray<X>,
+): ReadonlyArray<X> {
+  return carrier.filter((x) => !subset.some((y) => eqX(x, y)));
+}
+
+function neighborhoods<X>(
+  eqX: (a: X, b: X) => boolean,
+  T: Top<X>,
+  point: X,
+): ReadonlyArray<ReadonlyArray<X>> {
+  return T.opens.filter((U) => U.some((u) => eqX(u, point)));
+}
+
 export function isTopology<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
   const { carrier: Xs, opens } = T;
   const inCarrier = (U: ReadonlyArray<X>) => U.every((x) => Xs.some((y) => eqX(x, y)));
@@ -165,4 +195,88 @@ export function isHausdorff<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean
     }
   }
   return true;
+}
+
+export function closedSets<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): ReadonlyArray<ReadonlyArray<X>> {
+  const { carrier, opens } = T;
+  const complements = opens.map((U) => complement(eqX, carrier, U));
+  return dedupeSets(eqX, complements);
+}
+
+export function closure<X>(
+  eqX: (a: X, b: X) => boolean,
+  T: Top<X>,
+  subset: ReadonlyArray<X>,
+): ReadonlyArray<X> {
+  const { carrier } = T;
+  return carrier.filter((x) =>
+    neighborhoods(eqX, T, x).every((U) => U.some((u) => subset.some((s) => eqX(u, s)))),
+  );
+}
+
+export function interior<X>(
+  eqX: (a: X, b: X) => boolean,
+  T: Top<X>,
+  subset: ReadonlyArray<X>,
+): ReadonlyArray<X> {
+  const contained = T.opens.filter((U) => U.every((u) => subset.some((s) => eqX(u, s))));
+  const points: X[] = [];
+  for (const U of contained) {
+    for (const u of U) {
+      if (!points.some((p) => eqX(p, u))) {
+        points.push(u);
+      }
+    }
+  }
+  return points;
+}
+
+export function boundary<X>(
+  eqX: (a: X, b: X) => boolean,
+  T: Top<X>,
+  subset: ReadonlyArray<X>,
+): ReadonlyArray<X> {
+  const cl = closure(eqX, T, subset);
+  const int = interior(eqX, T, subset);
+  return cl.filter((x) => !int.some((y) => eqX(x, y)));
+}
+
+export function isConnected<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
+  const { carrier, opens } = T;
+  const eqSet = (A: ReadonlyArray<X>, B: ReadonlyArray<X>) => eqArr(eqX, A, B);
+  for (const U of opens) {
+    if (U.length === 0 || eqSet(U, carrier)) {
+      continue;
+    }
+    const complementOpen = opens.some((V) => eqSet(V, complement(eqX, carrier, U)));
+    if (complementOpen) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export type SpecializationRelation<X> = ReadonlyArray<readonly [X, X]>;
+
+export function specializationOrder<X>(
+  eqX: (a: X, b: X) => boolean,
+  T: Top<X>,
+): SpecializationRelation<X> {
+  const { carrier } = T;
+  const relation: Array<readonly [X, X]> = [];
+  const pushPair = (a: X, b: X) => {
+    if (!relation.some(([x, y]) => eqX(x, a) && eqX(y, b))) {
+      relation.push([a, b]);
+    }
+  };
+  for (const x of carrier) {
+    for (const y of carrier) {
+      const xNeighborhoods = neighborhoods(eqX, T, x);
+      const everyContainsY = xNeighborhoods.every((U) => U.some((u) => eqX(u, y)));
+      if (everyContainsY) {
+        pushPair(x, y);
+      }
+    }
+  }
+  return relation;
 }

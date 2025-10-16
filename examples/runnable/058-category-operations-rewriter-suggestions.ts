@@ -4,19 +4,13 @@ import type {
   Suggestion,
   Rewrite,
 } from "../../operations/rewriter";
-import type { FuncArr } from "../../models/finset-cat";
+import type { FinSetCategory, FuncArr } from "../../models/finset-cat";
 import type { RunnableExample } from "./types";
 
 declare function require(id: string): unknown;
 
 const { FinSetCat } = require("../../models/finset-cat") as {
-  FinSetCat: (universe: Record<string, readonly string[]>) => {
-    readonly arrows: FuncArr[];
-    readonly compose: (g: FuncArr, f: FuncArr) => FuncArr;
-    readonly id: (name: string) => FuncArr;
-    readonly src: (arrow: FuncArr) => string;
-    readonly dst: (arrow: FuncArr) => string;
-  } & Record<string, unknown>;
+  FinSetCat: (universe: Record<string, readonly string[]>) => FinSetCategory;
 };
 
 const { Rewriter, defaultOperationRules } = require("../../operations/rewriter") as {
@@ -27,8 +21,6 @@ const { Rewriter, defaultOperationRules } = require("../../operations/rewriter")
 };
 
 type Section = readonly string[];
-
-type FinSetCategory = ReturnType<typeof FinSetCat>;
 
 type Universe = Record<string, readonly string[]>;
 
@@ -48,7 +40,7 @@ function registerSampleArrows(category: FinSetCategory): {
   readonly g: FuncArr;
   readonly h: FuncArr;
 } {
-  const registry = category.arrows;
+  const registry = category.arrows as FuncArr[];
 
   const u: FuncArr = {
     name: "u",

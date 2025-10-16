@@ -20,10 +20,20 @@ describe("Preorder initial and terminal behaviour", () => {
       expect(report.holds).toBe(false)
       expect(report.failure?.kind).toBe("violatesUpperBound")
       if (report.failure?.kind !== "violatesUpperBound") {
-        throw new Error("Expected an upper-bound violation witness")
+        return undefined
       }
-      expect(report.failure.witness).toBe(naturals.elems[index]! + 1)
+      return report.failure.witness
     })
+
+    expect(
+      successorWitnesses.every((witness, index) => {
+        const baseline = naturals.elems[index]
+        if (baseline === undefined || witness === undefined) {
+          return false
+        }
+        return witness === baseline + 1
+      }),
+    ).toBe(true)
   })
 
   const integers: Preorder<number> = {

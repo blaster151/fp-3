@@ -14,10 +14,11 @@ import {
   type Eq,
   type Fin,
 } from "./markov-category";
-import { MarkovOracles } from "./markov-oracles";
+import { MarkovOracles, registerTopVietorisAdapters, type TopVietorisAdapters } from "./markov-oracles";
 import type { KolmogorovFiniteMarginal } from "./markov-zero-one";
 import type { Dist } from "./dist";
 import { Prob } from "./semiring-utils";
+import { continuous, isHausdorff, isTopology, type Top } from "./src/top/Topology";
 
 export interface ClosedSubset<Point> {
   readonly label: string;
@@ -31,7 +32,7 @@ export interface TopSpace<Point> {
   readonly closedSubsets: ReadonlyArray<ClosedSubset<Point>>;
 }
 
-export interface KolmogorovProductSpace<Point, Factors extends ReadonlyArray<TopSpace<unknown>> = ReadonlyArray<TopSpace<unknown>>>
+export interface KolmogorovProductSpace<Point, Factors extends ReadonlyArray<TopSpace<any>> = ReadonlyArray<TopSpace<any>>>
   extends TopSpace<Point> {
   readonly factors: Factors;
   readonly finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<Point, unknown>>;
@@ -53,11 +54,191 @@ export interface DeterministicStatisticInput<XJ, T> {
   readonly label?: string;
 }
 
-type FactorPoints<Spaces extends ReadonlyArray<TopSpace<unknown>>> = {
+export interface TopVietorisConstantFunctionWitness<XJ, Y> {
+  readonly product: KolmogorovProductSpace<XJ>;
+  readonly target: TopSpace<Y>;
+  readonly map: Cont<XJ, Y>;
+  readonly finiteSubsets: ReadonlyArray<ReadonlyArray<number>>;
+  readonly label?: string;
+}
+
+export interface TopVietorisConstantFunctionReport<XJ, Y> {
+  readonly holds: boolean;
+  readonly hausdorff: boolean;
+  readonly continuous: boolean;
+  readonly independence: boolean;
+  readonly constant: boolean;
+  readonly witness: TopVietorisConstantFunctionWitness<XJ, Y>;
+  readonly constantValue?: Y;
+  readonly counterexample?: {
+    readonly subset: ReadonlyArray<number>;
+    readonly points: readonly [XJ, XJ];
+    readonly outputs: readonly [Y, Y];
+  };
+  readonly details: string;
+}
+
+type FactorPoints<Spaces extends ReadonlyArray<TopSpace<any>>> = {
   readonly [Index in keyof Spaces]: Spaces[Index] extends TopSpace<infer Point> ? Point : never;
 };
 
 const DEFAULT_PRODUCT_LABEL = "Top/Vietoris product" as const;
+
+const defined = <T>(value: T | undefined): value is T => value !== undefined;
+
+function eqSubset<Point>(
+  eq: Eq<Point>,
+  left: ReadonlyArray<Point>,
+  right: ReadonlyArray<Point>,
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((l) => right.some((r) => eq(l, r))) &&
+    right.every((r) => left.some((l) => eq(l, r)))
+  );
+}
+
+function dedupePointSets<Point>(
+  eq: Eq<Point>,
+  sets: ReadonlyArray<ReadonlyArray<Point>>,
+): Array<ReadonlyArray<Point>> {
+  const unique: Array<ReadonlyArray<Point>> = [];
+  for (const candidate of sets) {
+    if (!unique.some((existing) => eqSubset(eq, existing, candidate))) {
+      unique.push([...candidate]);
+    }
+  }
+  return unique;
+}
+
+function saturateClosedSets<Point>(
+  eq: Eq<Point>,
+  carrier: ReadonlyArray<Point>,
+  seeds: ReadonlyArray<ReadonlyArray<Point>>,
+): Array<ReadonlyArray<Point>> {
+  const closed = dedupePointSets(eq, [...seeds, [], [...carrier]]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    outer: for (const A of closed) {
+      for (const B of closed) {
+        const union: Point[] = [...A];
+        for (const candidate of B) {
+          if (!union.some((existing) => eq(existing, candidate))) {
+            union.push(candidate);
+          }
+        }
+        if (!closed.some((existing) => eqSubset(eq, existing, union))) {
+          closed.push(union);
+          changed = true;
+          break outer;
+        }
+        const intersection = A.filter((a) => B.some((b) => eq(a, b)));
+        if (!closed.some((existing) => eqSubset(eq, existing, intersection))) {
+          closed.push(intersection);
+          changed = true;
+          break outer;
+        }
+      }
+    }
+  }
+  return closed;
+}
+
+function complementOf<Point>(
+  eq: Eq<Point>,
+  carrier: ReadonlyArray<Point>,
+  subset: ReadonlyArray<Point>,
+): ReadonlyArray<Point> {
+  return carrier.filter((candidate) => !subset.some((member) => eq(candidate, member)));
+}
+
+function topologyFromClosed<Point>(space: TopSpace<Point>): Top<Point> {
+  const carrier = space.points.elems.filter(defined);
+  const eq = space.points.eq;
+  const saturated = saturateClosedSets(
+    eq,
+    carrier,
+    space.closedSubsets.map((subset) => subset.members.filter(defined)),
+  );
+  const opens = dedupePointSets(
+    eq,
+    saturated.map((closed) => complementOf(eq, carrier, closed)),
+  );
+  const topology: Top<Point> = {
+    carrier,
+    opens,
+    ...(space.points.show ? { show: space.points.show } : {}),
+  };
+  if (!isTopology(eq, topology)) {
+    throw new Error(`${space.label}: provided closed subsets do not determine a topology.`);
+  }
+  return topology;
+}
+
+function enumerateFiniteSubsets(arity: number): Array<ReadonlyArray<number>> {
+  const results: Array<ReadonlyArray<number>> = [];
+  const pick: number[] = [];
+
+  const dfs = (index: number) => {
+    if (index === arity) {
+      if (pick.length > 0) {
+        results.push([...pick]);
+      }
+      return;
+    }
+    pick.push(index);
+    dfs(index + 1);
+    pick.pop();
+    dfs(index + 1);
+  };
+
+  dfs(0);
+  return results.map((subset) => subset.slice().sort((a, b) => a - b));
+}
+
+function normalizeFiniteSubsets(
+  arity: number,
+  subsets?: ReadonlyArray<ReadonlyArray<number>>,
+): ReadonlyArray<ReadonlyArray<number>> {
+  const pool = subsets ? [...subsets] : enumerateFiniteSubsets(arity);
+  const normalized: Array<ReadonlyArray<number>> = [];
+  for (const subset of pool) {
+    const ordered = [...subset].sort((a, b) => a - b);
+    if (ordered.some((index) => index < 0 || index >= arity)) {
+      throw new Error(`Top/Vietoris constant law: subset ${ordered.join(",")} exceeds factor range [0, ${arity}).`);
+    }
+    if (ordered.length === 0) {
+      continue;
+    }
+    if (!normalized.some((existing) => existing.length === ordered.length && existing.every((v, i) => v === ordered[i]))) {
+      normalized.push(ordered);
+    }
+  }
+  if (normalized.length === 0) {
+    throw new Error("Top/Vietoris constant law: at least one finite subset is required to encode tail independence.");
+  }
+  return normalized;
+}
+
+function pointsAgreeOutsideSubset<Spaces extends ReadonlyArray<TopSpace<any>>>(
+  factors: Spaces,
+  subset: ReadonlyArray<number>,
+  left: FactorPoints<Spaces>,
+  right: FactorPoints<Spaces>,
+): boolean {
+  return factors.every((factor, index) => {
+    if (subset.includes(index)) {
+      return true;
+    }
+    const eq = factor?.points.eq ?? ((a: unknown, b: unknown) => a === b);
+    return eq(left[index], right[index]);
+  });
+}
+
+function valueInFin<T>(fin: Fin<T>, value: T): boolean {
+  return fin.elems.filter(defined).some((candidate) => fin.eq(candidate, value));
+}
 
 export function makeClosedSubset<Point>(label: string, members: ReadonlyArray<Point>, eq: Eq<Point>): ClosedSubset<Point> {
   const support = [...members];
@@ -82,7 +263,7 @@ export function makeDiscreteTopSpace<Point>(label: string, points: Fin<Point>): 
   };
 }
 
-function enumerateProductPoints<Spaces extends ReadonlyArray<TopSpace<unknown>>>(
+function enumerateProductPoints<Spaces extends ReadonlyArray<TopSpace<any>>>(
   spaces: Spaces,
 ): Array<FactorPoints<Spaces>> {
   const results: Array<FactorPoints<Spaces>> = [];
@@ -107,7 +288,7 @@ function enumerateProductPoints<Spaces extends ReadonlyArray<TopSpace<unknown>>>
   return results;
 }
 
-export function makeKolmogorovProductSpace<Spaces extends ReadonlyArray<TopSpace<unknown>>>(
+export function makeKolmogorovProductSpace<Spaces extends ReadonlyArray<TopSpace<any>>>(
   spaces: Spaces,
   options: { readonly label?: string } = {},
 ): KolmogorovProductSpace<FactorPoints<Spaces>, Spaces> {
@@ -252,3 +433,173 @@ export function makeDeterministicStatistic<XJ, T = 0 | 1>(
   }
   return morphism;
 }
+
+function evaluateConstantMap<XJ, Y>(
+  witness: TopVietorisConstantFunctionWitness<XJ, Y>,
+): Array<{ readonly point: XJ; readonly value: Y }> {
+  const points = witness.product.points.elems.filter(defined) as XJ[];
+  return points.map((point) => ({ point, value: witness.map(point) }));
+}
+
+function checkContinuity<XJ, Y>(
+  witness: TopVietorisConstantFunctionWitness<XJ, Y>,
+): { ok: boolean; details?: string; domain?: Top<XJ>; codomain?: Top<Y> } {
+  try {
+    const domain = topologyFromClosed(witness.product) as Top<XJ>;
+    const codomain = topologyFromClosed(witness.target) as Top<Y>;
+    const eqX = witness.product.points.eq as Eq<XJ>;
+    const continuousReport = continuous(eqX, domain, codomain, witness.map, witness.target.points.eq);
+    return continuousReport
+      ? { ok: true, domain, codomain }
+      : { ok: false, details: `${witness.label ?? "Top/Vietoris constant"}: map is not continuous.` };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, details: message };
+  }
+}
+
+function independenceCheck<XJ, Y>(
+  witness: TopVietorisConstantFunctionWitness<XJ, Y>,
+  evaluations: ReadonlyArray<{ readonly point: XJ; readonly value: Y }>,
+): {
+  ok: boolean;
+  counterexample?: {
+    readonly subset: ReadonlyArray<number>;
+    readonly points: readonly [XJ, XJ];
+    readonly outputs: readonly [Y, Y];
+  };
+} {
+  const eqY = witness.target.points.eq;
+  const factors = witness.product.factors;
+  for (const subset of witness.finiteSubsets) {
+    for (let i = 0; i < evaluations.length; i += 1) {
+      for (let j = i + 1; j < evaluations.length; j += 1) {
+        const left = evaluations[i]!;
+        const right = evaluations[j]!;
+        if (pointsAgreeOutsideSubset(factors, subset, left.point as never, right.point as never)) {
+          if (!eqY(left.value, right.value)) {
+            return {
+              ok: false,
+              counterexample: {
+                subset,
+                points: [left.point, right.point],
+                outputs: [left.value, right.value],
+              },
+            };
+          }
+        }
+      }
+    }
+  }
+  return { ok: true };
+}
+
+function checkConstantValue<XJ, Y>(
+  witness: TopVietorisConstantFunctionWitness<XJ, Y>,
+  evaluations: ReadonlyArray<{ readonly point: XJ; readonly value: Y }>,
+): { constant: boolean; value?: Y } {
+  const [first] = evaluations;
+  if (!first) {
+    return { constant: true };
+  }
+  const eqY = witness.target.points.eq;
+  const constant = evaluations.every((entry) => eqY(entry.value, first.value));
+  return constant ? { constant: true, value: first.value } : { constant: false };
+}
+
+export function buildTopVietorisConstantFunctionWitness<XJ, Y>(
+  mkInput: () => {
+    readonly product: KolmogorovProductSpace<XJ>;
+    readonly target: TopSpace<Y>;
+    readonly map: Cont<XJ, Y>;
+    readonly label?: string;
+    readonly finiteSubsets?: ReadonlyArray<ReadonlyArray<number>>;
+  },
+): TopVietorisConstantFunctionWitness<XJ, Y> {
+  const input = mkInput();
+  const descriptor = input.label ?? "Top/Vietoris constant";
+  const arity = input.product.factors.length;
+  if (arity === 0) {
+    throw new Error(`${descriptor}: product requires at least one factor.`);
+  }
+  const finiteSubsets = normalizeFiniteSubsets(arity, input.finiteSubsets);
+  const points = input.product.points.elems.filter(defined) as XJ[];
+  for (const point of points) {
+    const value = input.map(point);
+    if (!valueInFin(input.target.points, value)) {
+      const show = input.target.points.show ?? ((value: Y) => String(value));
+      throw new Error(`${descriptor}: value ${show(value)} escapes the declared codomain.`);
+    }
+  }
+  return {
+    product: input.product,
+    target: input.target,
+    map: input.map,
+    finiteSubsets,
+    ...(input.label ? { label: input.label } : {}),
+  };
+}
+
+export function checkTopVietorisConstantFunction<XJ, Y>(
+  witness: TopVietorisConstantFunctionWitness<XJ, Y>,
+): TopVietorisConstantFunctionReport<XJ, Y> {
+  const evaluations = evaluateConstantMap(witness);
+
+  const continuity = checkContinuity(witness);
+  let hausdorff = false;
+  let hausdorffDetails: string | undefined;
+  try {
+    const codomain = continuity.codomain ?? (topologyFromClosed(witness.target) as Top<Y>);
+    hausdorff = isHausdorff(witness.target.points.eq, codomain);
+    if (!hausdorff) {
+      hausdorffDetails = `${witness.label ?? "Top/Vietoris constant"}: target is not Hausdorff.`;
+    }
+  } catch (error) {
+    hausdorffDetails = error instanceof Error ? error.message : String(error);
+  }
+
+  const independence = independenceCheck(witness, evaluations);
+  const constant = checkConstantValue(witness, evaluations);
+
+  const holds = Boolean(continuity.ok && hausdorff && independence.ok && constant.constant);
+
+  const detailParts: string[] = [];
+  if (!continuity.ok && continuity.details) {
+    detailParts.push(continuity.details);
+  }
+  if (!hausdorff && hausdorffDetails) {
+    detailParts.push(hausdorffDetails);
+  }
+  if (!independence.ok && independence.counterexample) {
+    const subset = independence.counterexample.subset.join(",");
+    detailParts.push(`Independence failed on subset {${subset}}.`);
+  }
+  if (!constant.constant) {
+    detailParts.push("Map is not constant.");
+  }
+  const details = detailParts.length > 0 ? detailParts.join(" ") : "All constant-function checks passed.";
+
+  return {
+    holds,
+    hausdorff,
+    continuous: continuity.ok,
+    independence: independence.ok,
+    constant: constant.constant,
+    witness,
+    ...(constant.constant && constant.value !== undefined ? { constantValue: constant.value } : {}),
+    ...(!independence.ok && independence.counterexample
+      ? { counterexample: independence.counterexample }
+      : {}),
+    details,
+  };
+}
+
+const registeredAdapters: TopVietorisAdapters = {
+  makeClosedSubset,
+  makeDiscreteTopSpace,
+  makeKolmogorovProductSpace,
+  makeProductPrior,
+  makeDeterministicStatistic,
+};
+
+registerTopVietorisAdapters(registeredAdapters);
