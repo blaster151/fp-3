@@ -992,7 +992,8 @@ so failures can be traced to sub-lemmas.
 - **Domain**: The SetMult category of sets with multi-valued morphisms equipped with copy/discard structure and indexed products.
 - **Statement**: Copy and discard maps satisfy the semicartesian comonoid laws on every sampled object; the cartesian product of a SetMult family projects to each finite coordinate subset; and a SetMult morphism is deterministic precisely when every fibre is singleton.
 - **Rationale**: Implements the paper’s Set-based multi-valued morphisms so infinite products and determinism checks are executable alongside the Markov infrastructure.
-- **Oracles**: `checkSetMultComonoid(obj, samples)`; `checkSetMultInfiniteProduct(family, assignment, tests)`; `checkSetMultDeterminism(witness)` and the lightweight `checkSetMultDeterministic(witness, samples)`.
+- **Oracles**: `checkSetMultComonoid(obj)`; `checkSetMultInfiniteProduct(family, assignment, tests)`; `checkSetMultDeterminism(witness)` and the lightweight `checkSetMultDeterministic(witness)`.
+- **Ergonomics**: Both `checkSetMultComonoid` and `checkSetMultDeterministic` automatically fall back to the sampled points recorded on their inputs when explicit samples are omitted, making quick smoke tests easier to write.
 - **Witness**: `buildSetMultDeterminismWitness(domain, codomain, morphism)` packages finite carriers with their SetMult morphisms for deterministic comparisons.
 - **Tests**: `law.SetMult.spec.ts`
 - **Examples**: Boolean carriers with copy/discard; deterministic indicator functions; finite Boolean products whose projections recover the original tuple.
