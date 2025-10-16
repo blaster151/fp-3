@@ -75,6 +75,94 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
     // Should be identical
     expect(EnhancedVect.Vect.equalMor!(generic, specialized)).toBe(true)
   })
+
+  test('uniqueness flag detects competing mediator', () => {
+    const X: EnhancedVect.VectObj = { dim: 1 }
+    const [V1, V2]: readonly [EnhancedVect.VectObj, EnhancedVect.VectObj] = [{ dim: 1 }, { dim: 1 }]
+    const { Ifin } = IndexedFamilies.familyFromArray([0, 1])
+    const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (i) => (i === 0 ? V1 : V2)
+
+    const f0: EnhancedVect.VectMor = { matrix: [[2]], from: X, to: V1 }
+    const f1: EnhancedVect.VectMor = { matrix: [[3]], from: X, to: V2 }
+    const cone: CategoryLimits.Cone<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
+      tip: X,
+      legs: (i: number) => (i === 0 ? f0 : f1)
+    }
+
+    const dims = Ifin.carrier.map((i) => F(i).dim)
+    const total = dims.reduce((a, b) => a + b, 0) + 1 // add a ghost coordinate unseen by projections
+    const productWithGhost: EnhancedVect.VectObj = { dim: total }
+
+    const projectionsWithGhost: IndexedFamilies.Family<number, EnhancedVect.VectMor> = (i) => {
+      const idx = Ifin.carrier.indexOf(i)
+      const rows = F(i).dim
+      const matrix = Array.from({ length: rows }, () => Array(total).fill(0))
+      const offset = dims.slice(0, idx).reduce((acc, d) => acc + d, 0)
+      for (let r = 0; r < rows; r++) matrix[r]![offset + r] = 1
+      return { matrix, from: productWithGhost, to: F(i) }
+    }
+
+    const tupleWithGhost = (
+      domain: EnhancedVect.VectObj,
+      legs: ReadonlyArray<EnhancedVect.VectMor>,
+      product: EnhancedVect.VectObj
+    ): EnhancedVect.VectMor => {
+      const matrix = Array.from({ length: domain.dim }, () => Array(product.dim).fill(0))
+      let offset = 0
+      for (const leg of legs) {
+        for (let r = 0; r < domain.dim; r++) {
+          for (let c = 0; c < leg.to.dim; c++) {
+            matrix[r]![offset + c] = leg.matrix[r]![c]
+          }
+        }
+        offset += leg.to.dim
+      }
+      return { matrix, from: domain, to: product }
+    }
+
+    const legsArr = Ifin.carrier.map((i) => cone.legs(i))
+    const canonical = tupleWithGhost(cone.tip, legsArr, productWithGhost)
+
+    const baseline = CategoryLimits.isProductForCone(
+      EnhancedVect.Vect,
+      EnhancedVect.Vect.equalMor!,
+      Ifin,
+      F,
+      productWithGhost,
+      projectionsWithGhost,
+      cone,
+      tupleWithGhost,
+      { competitor: canonical }
+    )
+
+    expect(baseline.triangles).toBe(true)
+    expect(baseline.unique).toBe(true)
+
+    const ghostIndex = productWithGhost.dim - 1
+    const perturbedMatrix = canonical.matrix.map((row) =>
+      row.map((value, c) => (c === ghostIndex ? value + 5 : value))
+    )
+    const competitor: EnhancedVect.VectMor = {
+      matrix: perturbedMatrix,
+      from: canonical.from,
+      to: canonical.to
+    }
+
+    const verification = CategoryLimits.isProductForCone(
+      EnhancedVect.Vect,
+      EnhancedVect.Vect.equalMor!,
+      Ifin,
+      F,
+      productWithGhost,
+      projectionsWithGhost,
+      cone,
+      tupleWithGhost,
+      { competitor }
+    )
+
+    expect(verification.triangles).toBe(true)
+    expect(verification.unique).toBe(false)
+  })
 })
 
 describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
@@ -141,6 +229,94 @@ describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
     
     // Should be identical
     expect(EnhancedVect.Vect.equalMor!(generic, specialized)).toBe(true)
+  })
+
+  test('uniqueness flag detects competing cotuple', () => {
+    const [V1, V2]: readonly [EnhancedVect.VectObj, EnhancedVect.VectObj] = [{ dim: 1 }, { dim: 1 }]
+    const Y: EnhancedVect.VectObj = { dim: 1 }
+    const { Ifin } = IndexedFamilies.familyFromArray([0, 1])
+    const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (i) => (i === 0 ? V1 : V2)
+
+    const g0: EnhancedVect.VectMor = { matrix: [[4]], from: V1, to: Y }
+    const g1: EnhancedVect.VectMor = { matrix: [[7]], from: V2, to: Y }
+    const cocone: CategoryLimits.Cocone<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
+      coTip: Y,
+      legs: (i: number) => (i === 0 ? g0 : g1)
+    }
+
+    const dims = Ifin.carrier.map((i) => F(i).dim)
+    const total = dims.reduce((a, b) => a + b, 0) + 1
+    const coproductWithGhost: EnhancedVect.VectObj = { dim: total }
+
+    const injectionsWithGhost: IndexedFamilies.Family<number, EnhancedVect.VectMor> = (i) => {
+      const idx = Ifin.carrier.indexOf(i)
+      const cols = F(i).dim
+      const matrix = Array.from({ length: total }, () => Array(cols).fill(0))
+      const offset = dims.slice(0, idx).reduce((acc, d) => acc + d, 0)
+      for (let r = 0; r < cols; r++) matrix[offset + r]![r] = 1
+      return { matrix, from: F(i), to: coproductWithGhost }
+    }
+
+    const cotupleWithGhost = (
+      coproduct: EnhancedVect.VectObj,
+      legs: ReadonlyArray<EnhancedVect.VectMor>,
+      codomain: EnhancedVect.VectObj
+    ): EnhancedVect.VectMor => {
+      const matrix = Array.from({ length: coproduct.dim }, () => Array(codomain.dim).fill(0))
+      let offset = 0
+      for (const leg of legs) {
+        for (let r = 0; r < leg.from.dim; r++) {
+          for (let c = 0; c < codomain.dim; c++) {
+            matrix[offset + r]![c] = leg.matrix[r]![c]
+          }
+        }
+        offset += leg.from.dim
+      }
+      return { matrix, from: coproduct, to: codomain }
+    }
+
+    const legsArr = Ifin.carrier.map((i) => cocone.legs(i))
+    const canonical = cotupleWithGhost(coproductWithGhost, legsArr, cocone.coTip)
+
+    const baseline = CategoryLimits.isCoproductForCocone(
+      EnhancedVect.Vect,
+      EnhancedVect.Vect.equalMor!,
+      Ifin,
+      F,
+      coproductWithGhost,
+      injectionsWithGhost,
+      cocone,
+      cotupleWithGhost,
+      { competitor: canonical }
+    )
+
+    expect(baseline.triangles).toBe(true)
+    expect(baseline.unique).toBe(true)
+
+    const ghostRow = coproductWithGhost.dim - 1
+    const perturbedMatrix = canonical.matrix.map((row, r) =>
+      row.map((value, c) => (r === ghostRow ? value + 3 : value))
+    )
+    const competitor: EnhancedVect.VectMor = {
+      matrix: perturbedMatrix,
+      from: canonical.from,
+      to: canonical.to
+    }
+
+    const verification = CategoryLimits.isCoproductForCocone(
+      EnhancedVect.Vect,
+      EnhancedVect.Vect.equalMor!,
+      Ifin,
+      F,
+      coproductWithGhost,
+      injectionsWithGhost,
+      cocone,
+      cotupleWithGhost,
+      { competitor }
+    )
+
+    expect(verification.triangles).toBe(true)
+    expect(verification.unique).toBe(false)
   })
 })
 
