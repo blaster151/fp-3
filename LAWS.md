@@ -992,11 +992,11 @@ so failures can be traced to sub-lemmas.
 - **Domain**: The SetMult category of sets with multi-valued morphisms equipped with copy/discard structure and indexed products.
 - **Statement**: Copy and discard maps satisfy the semicartesian comonoid laws on every sampled object; the cartesian product of a SetMult family projects to each finite coordinate subset; and a SetMult morphism is deterministic precisely when every fibre is singleton.
 - **Rationale**: Implements the paper’s Set-based multi-valued morphisms so infinite products and determinism checks are executable alongside the Markov infrastructure.
-- **Oracles**: `checkSetMultComonoid(obj, samples)`; `checkSetMultInfiniteProduct(family, assignment, tests)`; `checkSetMultDeterminism(witness)` and the lightweight `checkSetMultDeterministic(witness, samples)`.
-- **Witness**: `buildSetMultDeterminismWitness(domain, codomain, morphism)` packages finite carriers with their SetMult morphisms for deterministic comparisons.
-- **Tests**: `law.SetMult.spec.ts`
+- **Oracles**: `checkSetMultComonoid(obj, samples?)`; `checkSetMultInfiniteProduct(family, assignment, tests)`; `checkSetMultDeterminism(witness)` and the lightweight `checkSetMultDeterministic(witness, samples?)`—both SetMult determinism helpers now default to the samples stored on their carriers when explicit arrays are omitted.
+- **Witness**: `buildSetMultDeterminismWitness(domain, codomain, morphism)` packages finite carriers with their SetMult morphisms for deterministic comparisons and now accepts plain `Set` carriers alongside `Fin` metadata; `buildSetMultDeterminismWitnessFromSetHom(SetCat.hom(A, B, f))` lifts deterministic Set morphisms—including higher-order maps from `SetCat.exponential`—into SetMult witnesses while preserving samples from the underlying sets; `setSemicartesianProductWitness(family, options)` instantiates Set-backed infinite products as `SemicartesianProductWitness` instances so the semicartesian compatibility and universal-property checks can run on canonical Set samples.
+- **Tests**: `law.SetMult.spec.ts`; `set-semicartesian-product.spec.ts`
 - **Examples**: Boolean carriers with copy/discard; deterministic indicator functions; finite Boolean products whose projections recover the original tuple.
-- **Implementation Notes**: Determinism reports cross-check SetMult fibres against optional finite Markov kernels, providing explicit counterexamples when supports disagree.
+- **Implementation Notes**: Determinism reports cross-check SetMult fibres against optional finite Markov kernels, providing explicit counterexamples when supports disagree, while the Set-specialised semicartesian witness reuses SetMult metadata to keep `checkSemicartesianProductCone` and `checkSemicartesianUniversalProperty` in sync with indexed products.
 
 ### Sets with total functions
 
@@ -1008,16 +1008,21 @@ so failures can be traced to sub-lemmas.
 
 ### Set basics via hom-set counts
 
-- **Unique map from ∅:** `set.uniqueFromEmpty.check(set.uniqueFromEmpty.witness(Y))` confirms \(|\operatorname{Hom}(\emptyset, Y)| = 1\) for any sampled finite codomain.
-- **Empty-set characterisation:** `set.emptyByHoms.check(set.emptyByHoms.witness(E, samples))` succeeds precisely when \(E\) is empty and no sampled nonempty set admits a morphism into \(E\).
-- **Singleton characterisation:** `set.singletonByHoms.check(set.singletonByHoms.witness(S, samples))` verifies that \(S\) has a single point and every sampled domain maps to it uniquely.
+- **Unique map from ∅:** `SetLaws.uniqueFromEmpty(Y).holds` (equivalently `set.uniqueFromEmpty.check(set.uniqueFromEmpty.witness(Y)).holds`) confirms \(|\operatorname{Hom}(\emptyset, Y)| = 1\) for any sampled codomain.
+- **Empty-set characterisation:** `SetLaws.emptyByHoms(E, samples).holds` succeeds precisely when \(E\) is empty and no sampled nonempty set admits a morphism into \(E\).
+- **Singleton characterisation:** `SetLaws.singletonByHoms(S, samples).holds` verifies that \(S\) has a single point and every sampled domain maps to it uniquely.
 - **Graph reminder:** Even identical graphs can correspond to different arrows because `SetHom` retains both domain and codomain; `test/set-laws.spec.ts` walks through the comparison.
 - **Registry Path:** `set`
 
 #### Elements as arrows
 
 - Fixing a singleton object \(1\), elements of a set \(A\) correspond bijectively to arrows \(1 \to A\).
-- **Oracle:** `set.elementsAsArrows.check(set.elementsAsArrows.witness(A))` compares \(|\operatorname{Hom}(1, A)|\) with \(|A|\) using the chosen singleton.
+- **Oracle:** `SetLaws.elementsAsArrows(A).holds` (delegating to `set.elementsAsArrows.check`) compares \(|\operatorname{Hom}(1, A)|\) with \(|A|\) using the chosen singleton.
+
+#### Binary products and coproducts in Set
+
+- **Product universal property:** `set.product.check(set.product.witness(A, B, samples))` confirms that each sampled cone \(X \xrightarrow{(f, g)} A \times B\) satisfies the projection triangles, agrees with the canonical pairing, and collapses componentwise via `CategoryLimits.checkBinaryProductComponentwiseCollapse`.
+- **Coproduct universal property:** `set.coproduct.check(set.coproduct.witness(A, B, samples))` verifies that each sampled cocone \(A + B \xrightarrow{[f, g]} Y\) composes with the injections to recover the provided legs, matches the canonical cotuple, and agrees after precomposition with the injections.
 
 #### Concrete categories
 

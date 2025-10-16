@@ -120,7 +120,7 @@ type SetMultDeterminismSummary<A, B> = {
 type SetMultOracleModule = {
   readonly checkSetMultDeterministic: <A, B>(
     witness: DeterministicSetMultWitness<A, B>,
-    samples: Iterable<A>,
+    samples?: Iterable<A>,
   ) => SetMultDeterminismSummary<A, B>;
 };
 
@@ -242,7 +242,7 @@ function setMultBridgeSection(): readonly string[] {
     morphism: kernelToSetMulti(Statuses, calibrate.k),
     label: "calibration",
   };
-  const calibrationSetReport = checkSetMultDeterministic(calibrationSetWitness, Devices.elems);
+  const calibrationSetReport = checkSetMultDeterministic(calibrationSetWitness);
 
   const noisySetWitness: DeterministicSetMultWitness<Device, Status> = {
     domain: deviceSet,
@@ -250,7 +250,7 @@ function setMultBridgeSection(): readonly string[] {
     morphism: kernelToSetMulti(Statuses, noisyArrow.k),
     label: "noisy dispatch",
   };
-  const noisySetReport = checkSetMultDeterministic(noisySetWitness, Devices.elems);
+  const noisySetReport = checkSetMultDeterministic(noisySetWitness);
 
   const counterexampleDescription = noisySetReport.report.counterexample
     ? `${noisySetReport.report.counterexample.input} fibre=${Array.from(noisySetReport.report.counterexample.fibre).join(",")}`

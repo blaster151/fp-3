@@ -9,21 +9,21 @@ describe("Set basics (hom-set characterisations)", () => {
   const Three = SetCat.obj(["a", "b", "c"]);
 
   it("has a unique map from the empty set", () => {
-    expect(SetLaws.uniqueFromEmpty(Empty)).toBe(true);
-    expect(SetLaws.uniqueFromEmpty(One)).toBe(true);
-    expect(SetLaws.uniqueFromEmpty(Two)).toBe(true);
-    expect(SetLaws.uniqueFromEmpty(Three)).toBe(true);
+    expect(SetLaws.uniqueFromEmpty(Empty).holds).toBe(true);
+    expect(SetLaws.uniqueFromEmpty(One).holds).toBe(true);
+    expect(SetLaws.uniqueFromEmpty(Two).holds).toBe(true);
+    expect(SetLaws.uniqueFromEmpty(Three).holds).toBe(true);
   });
 
   it("characterises the empty set via hom-sets", () => {
-    expect(SetLaws.isEmptyByHoms(Empty)).toBe(true);
-    expect(SetLaws.isEmptyByHoms(One)).toBe(false);
+    expect(SetLaws.emptyByHoms(Empty).holds).toBe(true);
+    expect(SetLaws.emptyByHoms(One).holds).toBe(false);
   });
 
   it("characterises singletons via hom-sets", () => {
     const samples = [Empty, Two, Three];
-    expect(SetLaws.isSingletonByHoms(One, samples)).toBe(true);
-    expect(SetLaws.isSingletonByHoms(Two, samples)).toBe(false);
+    expect(SetLaws.singletonByHoms(One, samples).holds).toBe(true);
+    expect(SetLaws.singletonByHoms(Two, samples).holds).toBe(false);
   });
 
   it("reminds that codomains matter beyond graphs", () => {

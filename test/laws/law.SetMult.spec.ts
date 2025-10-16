@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { mkFin } from "../../markov-category";
-import { buildSetMultDeterminismWitness, checkSetMultDeterminism } from "../../markov-deterministic-structure";
+import {
+  buildSetMultDeterminismWitness,
+  buildSetMultDeterminismWitnessFromSetHom,
+  checkSetMultDeterminism,
+} from "../../markov-deterministic-structure";
 import {
   checkSetMultComonoid,
   checkSetMultDeterministic,
@@ -19,6 +23,7 @@ import {
   type SetMultTuple,
 } from "../../setmult-category";
 import type { DeterministicSetMultWitness, SetMultIndexedFamily } from "../../setmult-category";
+import { SetCat } from "../../set-cat";
 
 describe("SetMult semicartesian structure", () => {
   const boolObj = createSetMultObj<boolean>({
@@ -29,7 +34,7 @@ describe("SetMult semicartesian structure", () => {
   });
 
   it("verifies copy/discard laws on boolean samples", () => {
-    const report = checkSetMultComonoid(boolObj, boolObj.samples ?? []);
+    const report = checkSetMultComonoid(boolObj);
     expect(report.holds).toBe(true);
     expect(report.failures).toHaveLength(0);
   });
@@ -49,7 +54,7 @@ describe("SetMult determinism", () => {
   };
 
   it("confirms singleton fibres are deterministic", () => {
-    const summary = checkSetMultDeterministic(deterministicWitness, boolFin.elems);
+    const summary = checkSetMultDeterministic(deterministicWitness);
     expect(summary.holds).toBe(true);
     expect(summary.report.base?.(true)).toBe(1);
   });
@@ -61,7 +66,7 @@ describe("SetMult determinism", () => {
       morphism: (value) => (value ? new Set([0, 1]) : new Set([0])),
       label: "partial",
     };
-    const summary = checkSetMultDeterministic(multiValued, boolFin.elems);
+    const summary = checkSetMultDeterministic(multiValued);
     expect(summary.holds).toBe(false);
     expect(summary.report.counterexample).toBeDefined();
   });
@@ -75,6 +80,39 @@ describe("SetMult determinism", () => {
     for (const input of boolFin.elems) {
       expect(support(input)).toEqual(deterministicWitness.morphism(input));
     }
+  });
+
+  it("builds determinism witnesses directly from Set carriers", () => {
+    const boolSet = new Set([false, true]);
+    const numberSet = new Set([0, 1]);
+
+    const witness = buildSetMultDeterminismWitness(boolSet, numberSet, deterministicWitness.morphism, {
+      label: "Set determinism",
+    });
+
+    expect(witness.domain.set).toBeDefined();
+    expect(witness.domain.samples).toEqual(expect.arrayContaining([false, true]));
+
+    const report = checkSetMultDeterminism(witness);
+    expect(report.holds).toBe(true);
+    expect(report.witness.codomain.set?.has(1)).toBe(true);
+    expect(report.base?.(true)).toBe(1);
+  });
+
+  it("derives determinism witnesses from SetCat homs", () => {
+    const Bool = SetCat.obj([false, true]);
+    const flip = (value: boolean) => !value;
+    const id = (value: boolean) => value;
+    const BoolExp = SetCat.exponential(Bool, Bool, { functions: [id, flip] });
+    const evaluate = SetCat.evaluate(Bool, Bool, BoolExp);
+
+    const witness = buildSetMultDeterminismWitnessFromSetHom(evaluate, {
+      label: "eval",
+    });
+
+    const report = checkSetMultDeterminism(witness);
+    expect(report.holds).toBe(true);
+    expect(report.base?.([true, flip])).toBe(false);
   });
 });
 

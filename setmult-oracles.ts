@@ -70,9 +70,10 @@ const describeSet = <T>(show: (value: T) => string, set: ReadonlySet<T>): string
 
 export function checkSetMultComonoid<T>(
   object: SetMultObj<T>,
-  samples: ReadonlyArray<T>,
+  samples?: ReadonlyArray<T>,
 ): SetMultComonoidReport<T> {
   const failures: Array<SetMultComonoidFailure<T>> = [];
+  const sampleList: ReadonlyArray<T> = samples ?? object.samples ?? [];
   const copy = copySetMulti(object);
   const discard = discardSetMulti<T>();
   const id = idSetMulti(object);
@@ -115,7 +116,7 @@ export function checkSetMultComonoid<T>(
   const tripleShow = (triple: Triple<T>): string =>
     `(${object.show(triple[0])}, ${object.show(triple[1])}, ${object.show(triple[2])})`;
 
-  for (const sample of samples) {
+  for (const sample of sampleList) {
     const copyFibre = copy(sample);
     if (!equalSet(pairObj.eq, copyFibre, new Set([[sample, sample] as const]))) {
       failures.push({
@@ -172,7 +173,7 @@ export function checkSetMultComonoid<T>(
 
   const holds = failures.length === 0;
   const details = holds
-    ? `Copy/discard satisfied semicartesian laws on ${samples.length} sample${samples.length === 1 ? "" : "s"}.`
+    ? `Copy/discard satisfied semicartesian laws on ${sampleList.length} sample${sampleList.length === 1 ? "" : "s"}.`
     : `${failures.length} semicartesian check${failures.length === 1 ? "" : "s"} failed.`;
 
   return { holds, details, failures };
@@ -247,9 +248,10 @@ export interface SetMultDeterminismSummary<A, B> {
 
 export function checkSetMultDeterministic<A, B>(
   witness: DeterministicSetMultWitness<A, B>,
-  samples: Iterable<A>,
+  samples?: Iterable<A>,
 ): SetMultDeterminismSummary<A, B> {
-  const report = isDeterministicSetMulti(witness, { samples });
+  const options = samples !== undefined ? { samples } : undefined;
+  const report = isDeterministicSetMulti(witness, options);
   return {
     holds: report.deterministic,
     details: report.details,

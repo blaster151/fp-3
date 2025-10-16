@@ -1,32 +1,59 @@
+import type {
+  OracleReport,
+  UniqueFromEmptyWitness,
+  EmptyByHomsWitness,
+  SingletonByHomsWitness,
+  ElementsAsArrowsWitness,
+  SetProductWitness,
+  SetProductSampleSpec,
+  SetCoproductWitness,
+  SetCoproductSampleSpec,
+} from "./oracles/set-oracles";
+import { SetOracles } from "./oracles/set-oracles";
 import type { AnySet } from "./set-cat";
 
-const EMPTY = new Set<never>();
+type UniqueFromEmptyReport = ReturnType<(typeof SetOracles.uniqueFromEmpty)["check"]>;
+type EmptyByHomsReport = ReturnType<(typeof SetOracles.emptyByHoms)["check"]>;
+type SingletonByHomsReport = ReturnType<(typeof SetOracles.singletonByHoms)["check"]>;
+type ElementsAsArrowsReport = ReturnType<(typeof SetOracles.elementsAsArrows)["check"]>;
 
-function homCount<X, Y>(domain: AnySet<X>, codomain: AnySet<Y>): number {
-  return Math.pow(codomain.size, domain.size);
-}
+const uniqueFromEmpty = <Y>(codomain: AnySet<Y>): UniqueFromEmptyReport =>
+  SetOracles.uniqueFromEmpty.check(SetOracles.uniqueFromEmpty.witness(codomain));
 
-function uniqueFromEmpty<Y>(codomain: AnySet<Y>): boolean {
-  return homCount(EMPTY, codomain) === 1;
-}
+const emptyByHoms = <E>(
+  candidate: AnySet<E>,
+  nonemptySamples: ReadonlyArray<AnySet<unknown>> = [],
+): EmptyByHomsReport =>
+  SetOracles.emptyByHoms.check(SetOracles.emptyByHoms.witness(candidate, nonemptySamples));
 
-function isEmptyByHoms<E>(candidate: AnySet<E>): boolean {
-  return candidate.size === 0;
-}
-
-function isSingletonByHoms<S>(
+const singletonByHoms = <S>(
   candidate: AnySet<S>,
   universeSamples: ReadonlyArray<AnySet<unknown>> = [],
-): boolean {
-  if (candidate.size !== 1) return false;
-  return universeSamples.every(sample => homCount(sample, candidate) === 1);
-}
+): SingletonByHomsReport =>
+  SetOracles.singletonByHoms.check(SetOracles.singletonByHoms.witness(candidate, universeSamples));
+
+const elementsAsArrows = <A>(carrier: AnySet<A>): ElementsAsArrowsReport =>
+  SetOracles.elementsAsArrows.check(SetOracles.elementsAsArrows.witness(carrier));
 
 export const SetLaws = {
-  homCount,
   uniqueFromEmpty,
-  isEmptyByHoms,
-  isSingletonByHoms,
+  emptyByHoms,
+  singletonByHoms,
+  elementsAsArrows,
+  product: SetOracles.product,
+  coproduct: SetOracles.coproduct,
+  oracles: SetOracles,
 };
 
-export type { AnySet };
+export type {
+  AnySet,
+  OracleReport,
+  UniqueFromEmptyWitness,
+  EmptyByHomsWitness,
+  SingletonByHomsWitness,
+  ElementsAsArrowsWitness,
+  SetProductWitness,
+  SetProductSampleSpec,
+  SetCoproductWitness,
+  SetCoproductSampleSpec,
+};

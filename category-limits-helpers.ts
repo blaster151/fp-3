@@ -1,3 +1,91 @@
+export type IndexedFamily<I, X> = (index: I) => X
+
+export interface CategoryWithDomCod<O, M> {
+  readonly compose: (g: M, f: M) => M
+  readonly dom: (m: M) => O
+  readonly cod: (m: M) => O
+}
+
+export interface CategoryWithCompose<M> {
+  readonly compose: (g: M, f: M) => M
+}
+
+export interface Cone<I, O, M> {
+  readonly tip: O
+  readonly legs: IndexedFamily<I, M>
+}
+
+export interface Cocone<I, O, M> {
+  readonly coTip: O
+  readonly legs: IndexedFamily<I, M>
+}
+
+export const productMediates = <I, O, M>(
+  category: CategoryWithDomCod<O, M>,
+  eq: (x: M, y: M) => boolean,
+  projections: IndexedFamily<I, M>,
+  mediator: M,
+  cone: Cone<I, O, M>,
+  indices: ReadonlyArray<I>,
+): boolean => {
+  if (category.dom(mediator) !== cone.tip) return false
+  for (const index of indices) {
+    const lhs = category.compose(projections(index), mediator)
+    const rhs = cone.legs(index)
+    if (!eq(lhs, rhs)) return false
+  }
+  return true
+}
+
+export const coproductMediates = <I, O, M>(
+  category: CategoryWithDomCod<O, M>,
+  eq: (x: M, y: M) => boolean,
+  injections: IndexedFamily<I, M>,
+  mediator: M,
+  cocone: Cocone<I, O, M>,
+  indices: ReadonlyArray<I>,
+): boolean => {
+  if (category.cod(mediator) !== cocone.coTip) return false
+  for (const index of indices) {
+    const lhs = category.compose(mediator, injections(index))
+    const rhs = cocone.legs(index)
+    if (!eq(lhs, rhs)) return false
+  }
+  return true
+}
+
+export const agreeUnderProjections = <I, M>(
+  category: CategoryWithCompose<M>,
+  eq: (x: M, y: M) => boolean,
+  projections: IndexedFamily<I, M>,
+  mediator: M,
+  competitor: M,
+  indices: ReadonlyArray<I>,
+): boolean => {
+  for (const index of indices) {
+    const lhs = category.compose(projections(index), mediator)
+    const rhs = category.compose(projections(index), competitor)
+    if (!eq(lhs, rhs)) return false
+  }
+  return true
+}
+
+export const agreeUnderInjections = <I, M>(
+  category: CategoryWithCompose<M>,
+  eq: (x: M, y: M) => boolean,
+  injections: IndexedFamily<I, M>,
+  mediator: M,
+  competitor: M,
+  indices: ReadonlyArray<I>,
+): boolean => {
+  for (const index of indices) {
+    const lhs = category.compose(mediator, injections(index))
+    const rhs = category.compose(competitor, injections(index))
+    if (!eq(lhs, rhs)) return false
+  }
+  return true
+}
+
 export interface BinaryProductTuple<O, M> {
   readonly object: O
   readonly projections: readonly [M, M]

@@ -46,4 +46,80 @@ describe("Set oracles", () => {
     expect(report.details.homCount).toBe(Three.size);
     expect(report.details.size).toBe(Three.size);
   });
+
+  it("certifies binary products via universal-property witnesses", () => {
+    const Domain = SetCat.obj([0, 1, 2]);
+    const leftLeg = SetCat.hom(Domain, Two, (n) => (n % 2 === 0 ? 0 : 1));
+    const rightLeg = SetCat.hom(Domain, Three, (n) => (n === 0 ? "a" : n === 1 ? "b" : "c"));
+    const witness = SetOracles.product.witness(Two, Three, [
+      { label: "domain legs", domain: Domain, legs: [leftLeg, rightLeg] },
+    ]);
+
+    const report = SetOracles.product.check(witness);
+    expect(report.holds).toBe(true);
+    expect(report.details.samples[0]?.trianglesHold).toBe(true);
+    expect(report.details.samples[0]?.componentwiseCollapse).toBe(true);
+  });
+
+  it("flags product mediators that fail the universal property", () => {
+    const Domain = SetCat.obj([0, 1, 2]);
+    const leftLeg = SetCat.hom(Domain, Two, (n) => (n % 2 === 0 ? 0 : 1));
+    const rightLeg = SetCat.hom(Domain, Three, (n) => (n === 0 ? "a" : n === 1 ? "b" : "c"));
+    const witness = SetOracles.product.witness(Two, Three, [
+      { label: "bad mediator", domain: Domain, legs: [leftLeg, rightLeg] },
+    ]);
+    const canonicalSample = witness.samples[0]!;
+    const wrongPair = Array.from(witness.product)[0]!;
+    const wrongMediator = SetCat.hom(canonicalSample.domain, witness.product, () => wrongPair);
+    const brokenWitness = {
+      ...witness,
+      samples: [
+        {
+          ...canonicalSample,
+          mediator: wrongMediator,
+        },
+      ],
+    } as typeof witness;
+
+    const report = SetOracles.product.check(brokenWitness);
+    expect(report.holds).toBe(false);
+    expect(report.failures[0]).toContain("fails product triangles");
+  });
+
+  it("certifies binary coproducts via universal-property witnesses", () => {
+    const Codomain = SetCat.obj(["left", "right", "other"]);
+    const leftLeg = SetCat.hom(Two, Codomain, (n) => (n === 0 ? "left" : "other"));
+    const rightLeg = SetCat.hom(Three, Codomain, (c) => (c === "a" ? "left" : c === "b" ? "right" : "other"));
+    const witness = SetOracles.coproduct.witness(Two, Three, [
+      { label: "cotuple", codomain: Codomain, legs: [leftLeg, rightLeg] },
+    ]);
+
+    const report = SetOracles.coproduct.check(witness);
+    expect(report.holds).toBe(true);
+    expect(report.details.samples[0]?.trianglesHold).toBe(true);
+  });
+
+  it("flags coproduct mediators that break the universal property", () => {
+    const Codomain = SetCat.obj(["left", "right", "other"]);
+    const leftLeg = SetCat.hom(Two, Codomain, () => "left");
+    const rightLeg = SetCat.hom(Three, Codomain, () => "right");
+    const witness = SetOracles.coproduct.witness(Two, Three, [
+      { label: "bad cotuple", codomain: Codomain, legs: [leftLeg, rightLeg] },
+    ]);
+    const canonicalSample = witness.samples[0]!;
+    const wrongMediator = SetCat.hom(witness.coproduct, Codomain, () => "other");
+    const brokenWitness = {
+      ...witness,
+      samples: [
+        {
+          ...canonicalSample,
+          mediator: wrongMediator,
+        },
+      ],
+    } as typeof witness;
+
+    const report = SetOracles.coproduct.check(brokenWitness);
+    expect(report.holds).toBe(false);
+    expect(report.failures[0]).toContain("fails coproduct triangles");
+  });
 });

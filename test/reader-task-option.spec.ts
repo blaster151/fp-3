@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "vitest"
 import { None, Some } from "../option"
 import { Err, Ok } from "../result"
 import { DoRTO, RTO_, ReaderTaskOption, TaskOption, genRTO } from "../reader-task-option"
@@ -26,12 +26,16 @@ describe("TaskOption", () => {
   })
 
   it("short-circuits chain on None", async () => {
-    const spy = vi.fn(() => TaskOption.of("should not run"))
-    const start = TaskOption.none<number>()
+    const chainCalls: Array<number> = []
+    const spy = (value: number) => {
+      chainCalls.push(value)
+      return TaskOption.of("should not run")
+    }
+    const start = TaskOption.none()
 
     const result = await TaskOption.chain(spy)(start)()
     expect(result).toBe(None)
-    expect(spy).not.toHaveBeenCalled()
+    expect(chainCalls.length).toBe(0)
   })
 
   it("ap combines present values", async () => {
@@ -40,15 +44,19 @@ describe("TaskOption", () => {
   })
 
   it("orElse only evaluates the fallback when needed", async () => {
-    const fallback = vi.fn(() => TaskOption.of(42))
+    let fallbackCallCount = 0
+    const fallback = () => {
+      fallbackCallCount += 1
+      return TaskOption.of(42)
+    }
 
     const keepOriginal = await TaskOption.orElse(fallback)(TaskOption.of(5))()
     expect(keepOriginal).toEqual(Some(5))
-    expect(fallback).not.toHaveBeenCalled()
+    expect(fallbackCallCount).toBe(0)
 
-    const useFallback = await TaskOption.orElse(fallback)(TaskOption.none<number>())()
+    const useFallback = await TaskOption.orElse(fallback)(TaskOption.none())()
     expect(useFallback).toEqual(Some(42))
-    expect(fallback).toHaveBeenCalledTimes(1)
+    expect(fallbackCallCount).toBe(1)
   })
 
   it("converts to and from TaskResult", async () => {
@@ -62,7 +70,7 @@ describe("TaskOption", () => {
     await expect(TaskOption.toResult(() => "missing")(TaskOption.of("value"))()).resolves.toEqual(
       Ok("value"),
     )
-    await expect(TaskOption.toResult(() => "missing")(TaskOption.none<string>())()).resolves.toEqual(
+    await expect(TaskOption.toResult(() => "missing")(TaskOption.none())()).resolves.toEqual(
       Err("missing"),
     )
   })
@@ -81,12 +89,16 @@ describe("ReaderTaskOption", () => {
   })
 
   it("short-circuits chain when a bound computation is None", async () => {
-    const spy = vi.fn((_n: number) => ReaderTaskOption.of<Env, string>("impossible"))
+    const calls: Array<number> = []
+    const spy = (_n: number) => {
+      calls.push(_n)
+      return ReaderTaskOption.of<Env, string>("impossible")
+    }
     const start: ReaderTaskOptionT<Env, number> = async () => None
 
     const result = await ReaderTaskOption.chain(spy)(start)({ base: 1, increment: 2 })
     expect(result).toBe(None)
-    expect(spy).not.toHaveBeenCalled()
+    expect(calls.length).toBe(0)
   })
 
   it("getOrElse recovers with a default when the option is empty", async () => {
@@ -167,7 +179,7 @@ describe("genRTO", () => {
     const program = genRTO<Env>()(function* () {
       const env = yield* RTO_(ReaderTaskOption.ask<Env>())
       if (!env.enabled) {
-        return (yield* RTO_(ReaderTaskOption.none<Env>())) as never
+        return (yield* RTO_(ReaderTaskOption.none<Env>() as ReaderTaskOptionT<Env, string>)) as never
       }
       return env.message
     })

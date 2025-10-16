@@ -9,7 +9,18 @@
 
 import type { Eq, Fin, Kernel, Pair, Show } from "./markov-category";
 import { byRefEq, defaultShow, deterministic } from "./markov-category";
+import type { SetHom, SetObj } from "./set-cat";
+import { SetCat } from "./set-cat";
 import type { CountabilityWitness } from "./markov-infinite";
+import type {
+  FiniteSubset,
+  SemicartesianCone,
+  SemicartesianFactorization,
+  SemicartesianProductWitness,
+  SemicartesianTensorDiagram,
+} from "./semicartesian-infinite-product";
+
+type AnySetHom = SetHom<unknown, unknown>;
 
 export interface SetMultObj<T> {
   readonly eq: Eq<T>;
@@ -54,6 +65,48 @@ export const setMultObjFromFin = <T>(fin: Fin<T>, label?: string): SetMultObj<T>
     show: fin.show ?? defaultShow,
     ...(metadata ?? {}),
   });
+};
+
+export interface SetMultObjFromSetOptions<T> {
+  readonly eq?: Eq<T>;
+  readonly show?: Show<T>;
+  readonly label?: string;
+  readonly samples?: Iterable<T>;
+  readonly samplesFromSet?: boolean;
+}
+
+export const setMultObjFromSet = <T>(
+  set: SetObj<T>,
+  options: SetMultObjFromSetOptions<T> = {},
+): SetMultObj<T> => {
+  const samples =
+    options.samples !== undefined
+      ? Array.from(options.samples)
+      : options.samplesFromSet
+        ? Array.from(set)
+        : undefined;
+
+  const args: {
+    eq?: Eq<T>;
+    show?: Show<T>;
+    label?: string;
+    samples?: ReadonlyArray<T>;
+  } = {};
+
+  if (options.eq !== undefined) {
+    args.eq = options.eq;
+  }
+  if (options.show !== undefined) {
+    args.show = options.show;
+  }
+  if (options.label !== undefined) {
+    args.label = options.label;
+  }
+  if (samples !== undefined) {
+    args.samples = samples;
+  }
+
+  return createSetMultObj(args);
 };
 
 export type SetMulti<A, B> = (a: A) => ReadonlySet<B>;
@@ -242,6 +295,53 @@ export const deterministicToSetMulti = <A, B>(
   fn: (a: A) => B,
 ): SetMulti<A, B> => (input) => singletonFibre(fn(input), codomain.eq, codomain.show);
 
+export interface DeterministicSetHomOptions<A, B> {
+  readonly label?: string;
+  readonly domain?: SetMultObj<A>;
+  readonly codomain?: SetMultObj<B>;
+  readonly samples?: Iterable<A>;
+}
+
+export const deterministicWitnessFromSetHom = <A, B>(
+  hom: SetHom<A, B>,
+  options: DeterministicSetHomOptions<A, B> = {},
+): DeterministicSetMultWitness<A, B> => {
+  const label = options.label;
+  const domain =
+    options.domain ??
+    (() => {
+      const domainOptions: SetMultObjFromSetOptions<A> = {
+        ...(label ? { label: `${label} domain` } : {}),
+        ...(options.samples !== undefined ? { samples: options.samples } : {}),
+      };
+      return setMultObjFromSet(hom.dom, domainOptions);
+    })();
+  const codomain =
+    options.codomain ??
+    (() => {
+      const codomainOptions: SetMultObjFromSetOptions<B> = label
+        ? { label: `${label} codomain` }
+        : {};
+      return setMultObjFromSet(hom.cod, codomainOptions);
+    })();
+
+  return {
+    domain,
+    codomain,
+    morphism: deterministicToSetMulti(domain, codomain, hom.map),
+    ...(label ? { label } : {}),
+  };
+};
+
+export const deterministicReportFromSetHom = <A, B>(
+  hom: SetHom<A, B>,
+  options: DeterministicSetHomOptions<A, B> = {},
+): DeterministicSetMultResult<A, B> =>
+  isDeterministicSetMulti(
+    deterministicWitnessFromSetHom(hom, options),
+    options.samples !== undefined ? { samples: options.samples } : {},
+  );
+
 export const setMultiToDeterministic = <A, B>(
   witness: DeterministicSetMultWitness<A, B>,
   options: DeterministicSetMultOptions<A> = {},
@@ -294,8 +394,17 @@ export interface SetMultProduct<J, X> {
   readonly carrier: (assignment: (index: J) => X) => SetMultTuple<J, X>;
   readonly project: (tuple: SetMultTuple<J, X>, finite: ReadonlyArray<J>) => SetMultTuple<J, X>;
   readonly object: SetMultObj<SetMultTuple<J, X>>;
+  readonly setObject: SetObj<SetMultTuple<J, X>>;
   readonly sectionObj: (subset: ReadonlyArray<J>) => SetMultObj<SetMultTuple<J, X>>;
+  readonly semicartesian: SemicartesianProductWitness<J, SetObj<unknown>, AnySetHom>;
+  readonly samples: ReadonlyArray<SetMultTuple<J, X>>;
   readonly countability?: CountabilityWitness<J>;
+}
+
+export interface SetMultProductOptions<J, X> {
+  readonly label?: string;
+  readonly describeIndex?: (index: J) => string;
+  readonly tupleSamples?: Iterable<SetMultTuple<J, X>>;
 }
 
 const describeIndex = (index: unknown): string => String(index);
@@ -337,49 +446,420 @@ const eqTuple = <J, X>(
 
 const tupleEntries = <J, X>(tuple: SetMultTuple<J, X>): Array<J> => Array.from(tuple.keys());
 
+const dedupeTuples = <J, X>(
+  samples: Iterable<SetMultTuple<J, X>>,
+  eq: (left: SetMultTuple<J, X>, right: SetMultTuple<J, X>) => boolean,
+): ReadonlyArray<SetMultTuple<J, X>> => {
+  const unique: Array<SetMultTuple<J, X>> = [];
+  for (const sample of samples) {
+    const tuple = sample;
+    if (!unique.some((existing) => eq(existing, tuple))) {
+      unique.push(tuple);
+    }
+  }
+  return unique;
+};
+
 export const createSetMultProductObj = <J, X>(
   family: SetMultIndexedFamily<J, X>,
-  options: { readonly label?: string } = {},
-): SetMultObj<SetMultTuple<J, X>> =>
-  createSetMultObj({
-    eq: (left, right) => {
-      if (left.size !== right.size) return false;
-      for (const [index, value] of left) {
-        const coordinate = family.coordinate(index);
-        const other = right.get(index);
-        if (other === undefined || !coordinate.eq(value, other)) {
-          return false;
-        }
+  options: { readonly label?: string; readonly samples?: Iterable<SetMultTuple<J, X>> } = {},
+): SetMultObj<SetMultTuple<J, X>> => {
+  const eq = (left: SetMultTuple<J, X>, right: SetMultTuple<J, X>): boolean => {
+    if (left.size !== right.size) return false;
+    for (const [index, value] of left) {
+      const coordinate = family.coordinate(index);
+      const other = right.get(index);
+      if (other === undefined || !coordinate.eq(value, other)) {
+        return false;
       }
-      return true;
-    },
-    show: (tuple) => {
-      const entries = tupleEntries(tuple).map((index) => {
-        const coordinate = family.coordinate(index);
-        const value = tuple.get(index);
-        return `${describeIndex(index)}:${value === undefined ? "⟂" : coordinate.show(value)}`;
-      });
-      entries.sort();
-      return `{${entries.join(", ")}}`;
-    },
+    }
+    return true;
+  };
+
+  const show = (tuple: SetMultTuple<J, X>): string => {
+    const entries = tupleEntries(tuple).map((index) => {
+      const coordinate = family.coordinate(index);
+      const value = tuple.get(index);
+      return `${describeIndex(index)}:${value === undefined ? "⟂" : coordinate.show(value)}`;
+    });
+    entries.sort();
+    return `{${entries.join(", ")}}`;
+  };
+
+  const samples = options.samples ? dedupeTuples(options.samples, eq) : undefined;
+
+  return createSetMultObj({
+    eq,
+    show,
     ...(options.label !== undefined ? { label: options.label } : {}),
+    ...(samples !== undefined ? { samples } : {}),
   });
+};
 
 export const createSetMultSectionObj = <J, X>(
   family: Pick<SetMultIndexedFamily<J, X>, "coordinate">,
   subset: ReadonlyArray<J>,
-  options: { readonly label?: string } = {},
-): SetMultObj<SetMultTuple<J, X>> =>
-  createSetMultObj({
-    eq: eqTuple(family, subset),
+  options: { readonly label?: string; readonly samples?: Iterable<SetMultTuple<J, X>> } = {},
+): SetMultObj<SetMultTuple<J, X>> => {
+  const eq = eqTuple(family, subset);
+  const samples = options.samples ? dedupeTuples(options.samples, eq) : undefined;
+
+  return createSetMultObj({
+    eq,
     show: showTuple(family, subset),
     ...(options.label !== undefined ? { label: options.label } : {}),
+    ...(samples !== undefined ? { samples } : {}),
   });
+};
+
+interface SubsetData<J, X> {
+  readonly subset: ReadonlyArray<J>;
+  readonly sections: Array<SetMultTuple<J, X>>;
+  readonly object: SetObj<SetMultTuple<J, X>>;
+  canonicalize(candidate: ReadonlyMap<J, X>): { tuple: SetMultTuple<J, X>; added: boolean };
+}
+
+const projectSubsetMap = <J, X>(
+  tuple: ReadonlyMap<J, X>,
+  subset: ReadonlyArray<J>,
+  describe: (index: J) => string,
+): Map<J, X> => {
+  const section = new Map<J, X>();
+  for (const index of subset) {
+    const value = tuple.get(index);
+    if (value === undefined) {
+      throw new Error(`Set semicartesian projection missing coordinate ${describe(index)}`);
+    }
+    section.set(index, value);
+  }
+  return section;
+};
+
+const buildProductSamples = <J, X>(
+  indices: ReadonlyArray<J>,
+  lookup: (index: J) => ReadonlyArray<X>,
+  add: (assignment: ReadonlyMap<J, X>) => void,
+) => {
+  if (indices.length === 0) {
+    add(new Map());
+    return;
+  }
+
+  const partial = new Map<J, X>();
+  const step = (position: number) => {
+    if (position === indices.length) {
+      add(new Map(partial));
+      return;
+    }
+    const index = indices[position];
+    if (index === undefined) {
+      return;
+    }
+    const samples = lookup(index);
+    if (samples.length === 0) {
+      return;
+    }
+    for (const value of samples) {
+      partial.set(index, value);
+      step(position + 1);
+    }
+    partial.delete(index);
+  };
+  step(0);
+};
+
+const summarizeMorphism = (
+  morphism: AnySetHom,
+  label?: string,
+): string => {
+  const domSize = (morphism.dom as Set<unknown>).size;
+  const codSize = (morphism.cod as Set<unknown>).size;
+  const summary = `SetHom(${domSize}→${codSize})`;
+  return label ? `${label} ${summary}` : summary;
+};
+
+export interface SetSemicartesianProductOptions<J, X> {
+  readonly label?: string;
+  readonly describeIndex?: (index: J) => string;
+  readonly tupleSamples?: Iterable<SetMultTuple<J, X>>;
+}
+
+export interface SetSemicartesianProductResult<J, X> {
+  readonly witness: SemicartesianProductWitness<J, SetObj<unknown>, AnySetHom>;
+  readonly tupleObject: SetObj<SetMultTuple<J, X>>;
+  readonly tupleSamples: ReadonlyArray<SetMultTuple<J, X>>;
+  readonly canonicalizeTuple: (candidate: ReadonlyMap<J, X>) => SetMultTuple<J, X>;
+  readonly canonicalizeSubset: (
+    subset: ReadonlyArray<J>,
+    section: ReadonlyMap<J, X>,
+  ) => SetMultTuple<J, X>;
+  readonly subsetSections: (subset: ReadonlyArray<J>) => ReadonlyArray<SetMultTuple<J, X>>;
+  readonly describeSubset: (subset: ReadonlyArray<J>) => string;
+}
+
+export const setSemicartesianProductWitness = <J, X>(
+  family: SetMultIndexedFamily<J, X>,
+  options: SetSemicartesianProductOptions<J, X> = {},
+): SetSemicartesianProductResult<J, X> => {
+  const describeIndexLabel = options.describeIndex ?? describeIndex;
+  const indexArray = Array.from(family.index);
+
+  const indexIds = new Map<J, string>();
+  indexArray.forEach((index, position) => {
+    indexIds.set(index, `${position}`);
+  });
+
+  const subsetKey = (subset: ReadonlyArray<J>): string =>
+    subset
+      .map((index) => indexIds.get(index) ?? describeIndexLabel(index))
+      .join("|");
+
+  const coordinateSamples = new Map<J, ReadonlyArray<X>>();
+  for (const index of indexArray) {
+    const coordinate = family.coordinate(index);
+    const samples = coordinate.samples ? Array.from(coordinate.samples) : [];
+    coordinateSamples.set(index, samples);
+  }
+
+  const subsetCache = new Map<string, SubsetData<J, X>>();
+  const subsetListeners = new Map<string, SubsetData<J, X>>();
+  const seeded = new Set<string>();
+
+  const getSubsetData = (subset: ReadonlyArray<J>): SubsetData<J, X> => {
+    const key = subsetKey(subset);
+    const existing = subsetCache.get(key);
+    if (existing) return existing;
+
+    const sections: Array<SetMultTuple<J, X>> = [];
+    const object: SetObj<SetMultTuple<J, X>> = new Set();
+    const eq = eqTuple(family, subset);
+
+    const canonicalize = (candidate: ReadonlyMap<J, X>): { tuple: SetMultTuple<J, X>; added: boolean } => {
+      for (const index of subset) {
+        if (!candidate.has(index)) {
+          throw new Error(
+            `Set semicartesian section missing coordinate ${describeIndexLabel(index)}`,
+          );
+        }
+      }
+      for (const existingSection of sections) {
+        if (eq(existingSection, candidate as SetMultTuple<J, X>)) {
+          return { tuple: existingSection, added: false };
+        }
+      }
+      const canonical = new Map(candidate) as SetMultTuple<J, X>;
+      sections.push(canonical);
+      object.add(canonical);
+      return { tuple: canonical, added: true };
+    };
+
+    const data: SubsetData<J, X> = { subset, sections, object, canonicalize };
+    subsetCache.set(key, data);
+    subsetListeners.set(key, data);
+    return data;
+  };
+
+  const tupleData = getSubsetData(indexArray);
+  const tupleSamples: Array<SetMultTuple<J, X>> = [];
+
+  const propagateTuple = (tuple: SetMultTuple<J, X>): void => {
+    for (const [key, data] of subsetListeners) {
+      if (data === tupleData) continue;
+      const projection = projectSubsetMap(tuple, data.subset, describeIndexLabel);
+      data.canonicalize(projection);
+    }
+  };
+
+  const seedTuple = (candidate: ReadonlyMap<J, X>): void => {
+    const { tuple, added } = tupleData.canonicalize(candidate);
+    if (added) {
+      tupleSamples.push(tuple);
+      propagateTuple(tuple);
+    }
+  };
+
+  const canonicalizeTuple = (candidate: ReadonlyMap<J, X>): SetMultTuple<J, X> => {
+    const { tuple, added } = tupleData.canonicalize(candidate);
+    if (added) {
+      propagateTuple(tuple);
+    }
+    return tuple;
+  };
+
+  if (options.tupleSamples) {
+    for (const sample of options.tupleSamples) {
+      seedTuple(sample);
+    }
+  }
+
+  if (tupleSamples.length === 0) {
+    const allHaveSamples = indexArray.every((index) => (coordinateSamples.get(index)?.length ?? 0) > 0);
+    if (allHaveSamples) {
+      buildProductSamples(indexArray, (index) => coordinateSamples.get(index) ?? [], seedTuple);
+    }
+  }
+
+  const seedSubset = (subset: ReadonlyArray<J>): void => {
+    const key = subsetKey(subset);
+    if (seeded.has(key)) return;
+    seeded.add(key);
+    const data = getSubsetData(subset);
+    if (subset.length === 0) {
+      data.canonicalize(new Map());
+    }
+    for (const tuple of tupleData.sections) {
+      const projection = projectSubsetMap(tuple, subset, describeIndexLabel);
+      data.canonicalize(projection);
+    }
+    buildProductSamples(
+      subset,
+      (index) => coordinateSamples.get(index) ?? [],
+      (assignment) => {
+        data.canonicalize(assignment);
+      },
+    );
+  };
+
+  const subsetSections = (subset: ReadonlyArray<J>): ReadonlyArray<SetMultTuple<J, X>> => {
+    seedSubset(subset);
+    return getSubsetData(subset).sections;
+  };
+
+  const canonicalizeSubset = (
+    subset: ReadonlyArray<J>,
+    section: ReadonlyMap<J, X>,
+  ): SetMultTuple<J, X> => {
+    seedSubset(subset);
+    const { tuple } = getSubsetData(subset).canonicalize(section);
+    return tuple;
+  };
+
+  const compose = (g: AnySetHom, f: AnySetHom): AnySetHom =>
+    SetCat.compose(g as SetHom<any, any>, f as SetHom<any, any>) as AnySetHom;
+
+  const equal = (left: AnySetHom, right: AnySetHom): boolean => {
+    if (left.dom !== right.dom || left.cod !== right.cod) {
+      return false;
+    }
+    for (const value of left.dom as Set<unknown>) {
+      const leftImage = left.map(value);
+      const rightImage = right.map(value);
+      if (leftImage !== rightImage) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const describeSubsetLabel = (subset: ReadonlyArray<J>): string =>
+    subset.length === 0 ? "∅" : subset.map((index) => describeIndexLabel(index)).join(", ");
+
+  const tensorDiagram: SemicartesianTensorDiagram<J, SetObj<unknown>, AnySetHom> = {
+    index: family.index,
+    tensor: (subset) => {
+      seedSubset(subset);
+      return getSubsetData(subset).object as SetObj<unknown>;
+    },
+    restriction: (larger, smaller) => {
+      seedSubset(larger);
+      seedSubset(smaller);
+      const largerData = getSubsetData(larger);
+      const smallerData = getSubsetData(smaller);
+      const hom = SetCat.hom(
+        largerData.object,
+        smallerData.object,
+        (section: SetMultTuple<J, X>) => {
+          const projection = projectSubsetMap(section, smaller, describeIndexLabel);
+          return smallerData.canonicalize(projection).tuple;
+        },
+      );
+      return hom as AnySetHom;
+    },
+    compose,
+    equal,
+    describeSubset: describeSubsetLabel,
+    describeMorphism: (morphism) => summarizeMorphism(morphism, options.label),
+  };
+
+  const projection = (subset: FiniteSubset<J>): AnySetHom => {
+    seedSubset(subset);
+    const subsetData = getSubsetData(subset);
+    const hom = SetCat.hom(
+      tupleData.object,
+      subsetData.object,
+      (tuple: SetMultTuple<J, X>) => {
+        const projection = projectSubsetMap(tuple, subset, describeIndexLabel);
+        return subsetData.canonicalize(projection).tuple;
+      },
+    );
+    return hom as AnySetHom;
+  };
+
+  const factor = (
+    cone: SemicartesianCone<J, SetObj<unknown>, AnySetHom>,
+  ): SemicartesianFactorization<AnySetHom> => {
+    const apex = cone.apex as SetObj<any>;
+    const mediator = SetCat.hom(apex, tupleData.object, (value: unknown) => {
+      const tuple = new Map<J, X>();
+      for (const index of indexArray) {
+        const leg = cone.leg([index]) as AnySetHom;
+        const image = leg.map(value) as SetMultTuple<J, X>;
+        if (!image.has(index)) {
+          throw new Error(
+            `Set semicartesian cone leg missing coordinate ${describeIndexLabel(index)}`,
+          );
+        }
+        tuple.set(index, image.get(index) as X);
+      }
+      return canonicalizeTuple(tuple);
+    });
+
+    return {
+      mediator: mediator as AnySetHom,
+      details: options.label ? `Set product mediator for ${options.label}` : "Set product mediator",
+    };
+  };
+
+  const witness: SemicartesianProductWitness<J, SetObj<unknown>, AnySetHom> = {
+    object: tupleData.object as SetObj<unknown>,
+    diagram: tensorDiagram,
+    projection,
+    factor,
+    ...(options.label ? { label: options.label } : {}),
+  };
+
+  return {
+    witness,
+    tupleObject: tupleData.object,
+    tupleSamples,
+    canonicalizeTuple,
+    canonicalizeSubset,
+    subsetSections,
+    describeSubset: describeSubsetLabel,
+  };
+};
 
 export const createSetMultInfObj = <J, X>(
   family: SetMultIndexedFamily<J, X>,
+  options: SetMultProductOptions<J, X> = {},
 ): SetMultProduct<J, X> => {
-  const project = (tuple: ReadonlyMap<J, X>, finite: ReadonlyArray<J>): ReadonlyMap<J, X> => {
+  const semicartesianOptions: SetSemicartesianProductOptions<J, X> = {
+    ...(options.label !== undefined ? { label: options.label } : {}),
+    ...(options.describeIndex !== undefined ? { describeIndex: options.describeIndex } : {}),
+    ...(options.tupleSamples !== undefined ? { tupleSamples: options.tupleSamples } : {}),
+  };
+
+  const semicartesian = setSemicartesianProductWitness(family, semicartesianOptions);
+
+  const carrier = (assignment: (index: J) => X): SetMultTuple<J, X> => {
+    const tuple = new Map<J, X>();
+    for (const index of family.index) {
+      tuple.set(index, assignment(index));
+    }
+    return semicartesian.canonicalizeTuple(tuple);
+  };
+
+  const project = (tuple: SetMultTuple<J, X>, finite: ReadonlyArray<J>): SetMultTuple<J, X> => {
     const section = new Map<J, X>();
     for (const index of finite) {
       const value = tuple.get(index);
@@ -388,20 +868,21 @@ export const createSetMultInfObj = <J, X>(
       }
       section.set(index, value);
     }
-    return section;
+    return semicartesian.canonicalizeSubset(finite, section);
   };
 
-  const carrier = (assignment: (index: J) => X): ReadonlyMap<J, X> => {
-    const tuple = new Map<J, X>();
-    for (const index of family.index) {
-      tuple.set(index, assignment(index));
-    }
-    return tuple;
-  };
+  const object = createSetMultProductObj(family, {
+    ...(options.label !== undefined ? { label: options.label } : {}),
+    samples: semicartesian.tupleSamples,
+  });
 
-  const object = createSetMultProductObj(family);
-
-  const sectionObj = (subset: ReadonlyArray<J>) => createSetMultSectionObj(family, subset);
+  const sectionObj = (subset: ReadonlyArray<J>) =>
+    createSetMultSectionObj(family, subset, {
+      ...(options.label
+        ? { label: `${options.label} ${semicartesian.describeSubset(subset)}` }
+        : {}),
+      samples: semicartesian.subsetSections(subset),
+    });
 
   return {
     index: family.index,
@@ -409,7 +890,10 @@ export const createSetMultInfObj = <J, X>(
     carrier,
     project,
     object,
+    setObject: semicartesian.tupleObject,
     sectionObj,
+    semicartesian: semicartesian.witness,
+    samples: semicartesian.tupleSamples,
     ...(family.countability !== undefined ? { countability: family.countability } : {}),
   };
 };
