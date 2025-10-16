@@ -2,7 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { DynCat, isDynHom } from '../dynsys';
 import type { DynSys } from '../dynsys';
 import { checkAction, isMSetHom } from '../mset';
-import { dynHomToM2, dynToM2, M2SetCat, m2HomToDyn, m2ToDyn } from '../m2-set';
+import {
+  checkM2BinaryProduct,
+  dynHomToM2,
+  dynToM2,
+  makeM2Morphism,
+  makeM2Object,
+  type M2Object,
+  M2SetCat,
+  m2HomToDyn,
+  m2ToDyn,
+  productM2,
+} from '../m2-set';
 
 describe('M2-Set and Set^circle correspondence', () => {
   const cycle: DynSys<number> = DynCat.obj([0, 1, 2], (x) => (x + 1) % 3);
@@ -55,5 +66,84 @@ describe('M2-Set and Set^circle correspondence', () => {
     expect(isMSetHom(hom)).toBe(true);
     const comp = C.compose(id, hom);
     expect(isMSetHom(comp)).toBe(true);
+  });
+});
+
+describe('M2 binary products', () => {
+  const eqNumber = (a: number, b: number) => a === b;
+  const eqLetter = (a: string, b: string) => a === b;
+
+  const X = makeM2Object({
+    carrier: [0, 1, 2],
+    endo: (n: number) => (n === 2 ? 1 : n),
+    eq: eqNumber,
+  });
+
+  const Y = makeM2Object({
+    carrier: ['a', 'b'],
+    endo: (letter: string) => (letter === 'b' ? 'a' : letter),
+    eq: eqLetter,
+  });
+
+  const domain = makeM2Object({
+    carrier: ['left', 'right', 'fixed'],
+    endo: (tag: string) => (tag === 'right' ? 'fixed' : tag),
+  });
+
+  const leftLeg = makeM2Morphism({
+    dom: domain,
+    cod: X,
+    map: (tag) => (tag === 'left' ? 2 : tag === 'right' ? 1 : 0),
+  });
+
+  const rightLeg = makeM2Morphism({
+    dom: domain,
+    cod: Y,
+    map: (tag) => (tag === 'left' ? 'b' : 'a'),
+  });
+
+  const product = productM2({
+    left: X,
+    right: Y,
+    equaliser: ([x, y]) => X.eq(X.endo(x), x) && Y.eq(Y.endo(y), y),
+  });
+
+  it('confirms the universal property for valid legs', () => {
+    const check = checkM2BinaryProduct({ product, domain, legs: [leftLeg, rightLeg] });
+    expect(check.holds).toBe(true);
+    expect(check.issues).toHaveLength(0);
+  });
+
+  it('detects equivariance failures in the legs', () => {
+    const distortedRight = {
+      ...rightLeg,
+      map: (tag: string) => (tag === 'left' ? 'a' : 'b'),
+    } as unknown as typeof rightLeg;
+
+    const check = checkM2BinaryProduct({ product, domain, legs: [leftLeg, distortedRight] });
+    expect(check.holds).toBe(false);
+    expect(check.issues.some((issue) => issue.includes('right leg fails equivariance'))).toBe(true);
+  });
+
+  it('flags mediators that leave the subset of fixed points', () => {
+    const brokenObject: M2Object<readonly [number, string]> = {
+      carrier: [[2, 'b']],
+      endo: product.object.endo,
+      eq: product.object.eq,
+      contains: (value) => value[0] === 2 && value[1] === 'b',
+    };
+
+    const distortedProduct = {
+      ...product,
+      object: brokenObject,
+    };
+
+    const check = checkM2BinaryProduct({
+      product: distortedProduct,
+      domain,
+      legs: [leftLeg, rightLeg],
+    });
+    expect(check.holds).toBe(false);
+    expect(check.issues.some((issue) => issue.includes('preserve the chosen subset'))).toBe(true);
   });
 });

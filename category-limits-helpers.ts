@@ -139,3 +139,111 @@ export const checkBinaryProductSwapCompatibility = <O, M>({
   const right = category.compose(swappedComponentwise, sourceSwap.forward)
   return category.eq(left, right)
 }
+
+export interface BinaryProductDiagonalPairingInput<O, M> {
+  readonly category: {
+    readonly compose: (g: M, f: M) => M
+    readonly eq: (f: M, g: M) => boolean
+  }
+  readonly target: BinaryProductTuple<O, M>
+  readonly diagonal: M
+  readonly domain: O
+  readonly legs: readonly [M, M]
+  readonly componentwise: M
+}
+
+export const checkBinaryProductDiagonalPairing = <O, M>({
+  category,
+  target,
+  diagonal,
+  domain,
+  legs,
+  componentwise,
+}: BinaryProductDiagonalPairingInput<O, M>): boolean => {
+  if (legs.length !== 2) {
+    throw new Error(
+      `checkBinaryProductDiagonalPairing: expected 2 legs for a binary product, received ${legs.length}`,
+    )
+  }
+
+  const canonical = target.tuple(domain, legs)
+  const viaComponentwise = category.compose(componentwise, diagonal)
+  return category.eq(viaComponentwise, canonical)
+}
+
+export interface BinaryProductInterchangeInput<O, M> {
+  readonly category: {
+    readonly compose: (g: M, f: M) => M
+    readonly eq: (f: M, g: M) => boolean
+  }
+  readonly source: BinaryProductTuple<O, M>
+  readonly middle: BinaryProductTuple<O, M>
+  readonly target: BinaryProductTuple<O, M>
+  readonly components: {
+    readonly sourceToMiddle: readonly [M, M]
+    readonly middleToTarget: readonly [M, M]
+  }
+}
+
+export const checkBinaryProductInterchange = <O, M>({
+  category,
+  source,
+  middle,
+  target,
+  components,
+}: BinaryProductInterchangeInput<O, M>): boolean => {
+  const [f, g] = components.sourceToMiddle
+  const [h, k] = components.middleToTarget
+
+  const firstStage = makeBinaryProductComponentwise({
+    category,
+    source,
+    target: middle,
+    components: [f, g],
+  })
+
+  const secondStage = makeBinaryProductComponentwise({
+    category,
+    source: middle,
+    target,
+    components: [h, k],
+  })
+
+  const sequential = category.compose(secondStage, firstStage)
+
+  const composedLeft = category.compose(h, f)
+  const composedRight = category.compose(k, g)
+
+  const direct = makeBinaryProductComponentwise({
+    category,
+    source,
+    target,
+    components: [composedLeft, composedRight],
+  })
+
+  return category.eq(sequential, direct)
+}
+
+export interface BinaryProductUnitPointCompatibilityInput<O, M> {
+  readonly category: {
+    readonly compose: (g: M, f: M) => M
+    readonly eq: (f: M, g: M) => boolean
+  }
+  readonly diagonal: M
+  readonly point: M
+  readonly backward: M
+  readonly componentwise: M
+}
+
+export const checkBinaryProductUnitPointCompatibility = <O, M>({
+  category,
+  diagonal,
+  point,
+  backward,
+  componentwise,
+}: BinaryProductUnitPointCompatibilityInput<O, M>): boolean => {
+  const mediated = category.compose(backward, point)
+  const lifted = category.compose(componentwise, mediated)
+  const canonical = category.compose(diagonal, point)
+  return category.eq(lifted, canonical)
+}

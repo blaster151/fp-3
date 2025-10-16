@@ -15,7 +15,7 @@ describe("Preorder initial and terminal behaviour", () => {
   })
 
   it("exhibits arbitrarily large witnesses showing ℕ has no terminal object", () => {
-    naturals.elems.forEach((candidate, index) => {
+    const successorWitnesses = naturals.elems.map((candidate) => {
       const report = analyzeGreatestElement(naturals, candidate, [...naturals.elems, candidate + 1])
       expect(report.holds).toBe(false)
       expect(report.failure?.kind).toBe("violatesUpperBound")
@@ -25,15 +25,15 @@ describe("Preorder initial and terminal behaviour", () => {
       return report.failure.witness
     })
 
-    expect(
-      successorWitnesses.every((witness, index) => {
-        const baseline = naturals.elems[index]
-        if (baseline === undefined || witness === undefined) {
-          return false
-        }
-        return witness === baseline + 1
-      }),
-    ).toBe(true)
+    const everyWitnessIsSuccessor = successorWitnesses.every((witness, index) => {
+      const baseline = naturals.elems[index]
+      if (baseline === undefined || witness === undefined) {
+        return false
+      }
+      return witness === baseline + 1
+    })
+
+    expect(everyWitnessIsSuccessor).toBe(true)
   })
 
   const integers: Preorder<number> = {
