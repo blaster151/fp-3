@@ -70,7 +70,7 @@ const describeSet = <T>(show: (value: T) => string, set: ReadonlySet<T>): string
 
 export function checkSetMultComonoid<T>(
   object: SetMultObj<T>,
-  samples: ReadonlyArray<T>,
+  samples: ReadonlyArray<T> = object.samples ?? [],
 ): SetMultComonoidReport<T> {
   const failures: Array<SetMultComonoidFailure<T>> = [];
   const copy = copySetMulti(object);
@@ -247,9 +247,9 @@ export interface SetMultDeterminismSummary<A, B> {
 
 export function checkSetMultDeterministic<A, B>(
   witness: DeterministicSetMultWitness<A, B>,
-  samples: Iterable<A>,
+  samples?: Iterable<A>,
 ): SetMultDeterminismSummary<A, B> {
-  const report = isDeterministicSetMulti(witness, { samples });
+  const report = isDeterministicSetMulti(witness, { samples: samples ?? witness.domain.samples ?? [] });
   return {
     holds: report.deterministic,
     details: report.details,

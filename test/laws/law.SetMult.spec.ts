@@ -31,7 +31,7 @@ describe("SetMult semicartesian structure", () => {
   });
 
   it("verifies copy/discard laws on boolean samples", () => {
-    const report = checkSetMultComonoid(boolObj, boolObj.samples ?? []);
+    const report = checkSetMultComonoid(boolObj);
     expect(report.holds).toBe(true);
     expect(report.failures).toHaveLength(0);
   });
@@ -51,7 +51,7 @@ describe("SetMult determinism", () => {
   };
 
   it("confirms singleton fibres are deterministic", () => {
-    const summary = checkSetMultDeterministic(deterministicWitness, boolFin.elems);
+    const summary = checkSetMultDeterministic(deterministicWitness);
     expect(summary.holds).toBe(true);
     expect(summary.report.base?.(true)).toBe(1);
   });
@@ -63,7 +63,7 @@ describe("SetMult determinism", () => {
       morphism: (value) => (value ? new Set([0, 1]) : new Set([0])),
       label: "partial",
     };
-    const summary = checkSetMultDeterministic(multiValued, boolFin.elems);
+    const summary = checkSetMultDeterministic(multiValued);
     expect(summary.holds).toBe(false);
     expect(summary.report.counterexample).toBeDefined();
   });
