@@ -64,7 +64,15 @@
     "Preorder.ExtremalElements": "implemented|witnessed",
     "PointedSet.ZeroObject": "implemented|witnessed",
     "ArrowCategory.InitialTerminal": "implemented|witnessed",
-    "Slice.InitialTerminal": "implemented|witnessed"
+    "Slice.InitialTerminal": "implemented|witnessed",
+    "FinGrp.Product": "implemented|witnessed",
+    "Slice.FiberProduct": "implemented|witnessed",
+    "Slice.FiniteProduct": "implemented|witnessed",
+    "ProductProjection.NonEpic": "implemented|witnessed",
+    "TerminalArrow.Uniqueness": "implemented|witnessed",
+    "TerminalElement.Transport": "implemented|witnessed",
+    "TerminalPoint.Separation": "implemented|witnessed",
+    "GeneralizedElements.Separation": "implemented|witnessed"
   },
   "RecSchemes": {
     "CataOverAnaIso": "implemented|witnessed",

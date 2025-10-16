@@ -38,6 +38,39 @@ import {
   getOrElseR,
   tryCatch,
 } from "./result"
+import {
+  FinGrp as FinGrpModel,
+  type FinGrpObj as FinGrpObjModel,
+  type Hom as FinGrpHomModel,
+} from "./models/fingroup-cat"
+import {
+  makeFiniteSliceProduct,
+  lookupSliceProductMetadata,
+  type SliceObject as SliceObjectModel,
+  type SliceArrow as SliceArrowModel,
+} from "./slice-cat"
+import {
+  type FinSetCategory as FinSetCategoryModel,
+  type FinSetName as FinSetNameModel,
+  type FuncArr as FuncArrModel,
+} from "./models/finset-cat"
+import {
+  checkBinaryProductComponentwiseCollapse as checkBinaryProductComponentwiseCollapseHelper,
+  checkBinaryProductNaturality as checkBinaryProductNaturalityHelper,
+  checkBinaryProductSwapCompatibility as checkBinaryProductSwapCompatibilityHelper,
+  makeBinaryProductComponentwise,
+  makeBinaryProductDiagonal,
+  makeBinaryProductSwap,
+  type BinaryProductComponentwiseCollapseInput as CategoryBinaryProductComponentwiseCollapseInput,
+  type BinaryProductComponentwiseInput as CategoryBinaryProductComponentwiseInput,
+  type BinaryProductDiagonalFactor as CategoryBinaryProductDiagonalFactor,
+  type BinaryProductNaturalityInput as CategoryBinaryProductNaturalityInput,
+  type BinaryProductSwapCompatibilityInput as CategoryBinaryProductSwapCompatibilityInput,
+  type BinaryProductSwapResult as CategoryBinaryProductSwapResult,
+  type BinaryProductTuple as CategoryBinaryProductTuple,
+} from "./category-limits-helpers"
+import { isIso } from "./kinds/inverses"
+import type { FiniteCategory as RegistryFiniteCategory } from "./finite-cat"
 import type { Result as ResultT } from "./result"
 import type {
   EndofunctorValue,
@@ -13659,6 +13692,37 @@ export namespace EnhancedVect {
   export const VectCoproductsEx = { ...VectHasFiniteCoproducts, ...VectInitial }
 }
 
+/** Mediator-enabled FinGrp adapters */
+export const FinGrpProductsWithTuple: CategoryLimits.HasProductMediators<FinGrpObjModel, FinGrpHomModel> = {
+  product: (objs) => {
+    const witness = FinGrpModel.productMany(objs)
+    return { obj: witness.object, projections: witness.projections }
+  },
+  tuple: (domain, legs, product) => FinGrpModel.tupleMany(domain, legs, product)
+}
+
+type SliceObjModel = SliceObjectModel<FinSetNameModel, FuncArrModel>
+type SliceArrModel = SliceArrowModel<FinSetNameModel, FuncArrModel>
+
+export const makeSliceProductsWithTuple = (
+  base: FinSetCategoryModel,
+  anchor: FinSetNameModel,
+): CategoryLimits.HasProductMediators<SliceObjModel, SliceArrModel> => ({
+  product: (objs) => {
+    const witness = makeFiniteSliceProduct(base, anchor, objs)
+    return { obj: witness.object, projections: witness.projections }
+  },
+  tuple: (domain, legs, product) => {
+    const metadata = lookupSliceProductMetadata(product)
+    if (!metadata) {
+      throw new Error(
+        `makeSliceProductsWithTuple: unrecognised product object ${product.domain}; build it via makeFiniteSliceProduct first`,
+      )
+    }
+    return metadata.tuple(domain, legs)
+  }
+})
+
 /* ================================================================
    General (co)limit interfaces for categories
    ================================================================ */
@@ -13907,7 +13971,7 @@ export namespace CategoryLimits {
     <I, O, M>(
       C: Category<O, M>,
       eq: (x: M, y: M) => boolean,
-      projections: IndexedFamilies.Family<I, M>, 
+      projections: IndexedFamilies.Family<I, M>,
       m1: M, 
       m2: M,
       indices: ReadonlyArray<I>
@@ -13921,10 +13985,146 @@ export namespace CategoryLimits {
       return true
     }
 
+  /** Helper to check agreement under injections */
+  export const agreeUnderInjections =
+    <I, O, M>(
+      C: Category<O, M>,
+      eq: (x: M, y: M) => boolean,
+      injections: IndexedFamilies.Family<I, M>,
+      m1: M,
+      m2: M,
+      indices: ReadonlyArray<I>
+    ): boolean => {
+      for (const i of indices) {
+        const lhs = C.compose(m1, injections(i))
+        const rhs = C.compose(m2, injections(i))
+        if (!eq(lhs, rhs)) return false
+      }
+      return true
+    }
+
   /** Trait for building mediating maps (beyond shapes) */
   export interface HasProductMediators<O, M> extends HasFiniteProducts<O, M> {
     // build ⟨f_i⟩ : X -> ∏F(i) from legs f_i and known product object
     tuple: (domain: O, legs: ReadonlyArray<M>, product: O) => M
+  }
+
+  export type BinaryProductTuple<O, M> = CategoryBinaryProductTuple<O, M>
+
+  export type BinaryProductSwapResult<O, M> = CategoryBinaryProductSwapResult<O, M>
+
+  export type BinaryProductDiagonalFactor<O, M> = CategoryBinaryProductDiagonalFactor<O, M>
+
+  export type BinaryProductComponentwiseInput<O, M> = CategoryBinaryProductComponentwiseInput<O, M>
+
+  export type BinaryProductNaturalityInput<O, M> = CategoryBinaryProductNaturalityInput<O, M>
+
+  export interface BinaryProductUnitCategory<C, M> {
+    readonly objects: ReadonlyArray<C>
+    readonly arrows: ReadonlyArray<M>
+    readonly eq: (a: M, b: M) => boolean
+    readonly compose: (g: M, f: M) => M
+    readonly id: (object: C) => M
+    readonly src: (arrow: M) => C
+    readonly dst: (arrow: M) => C
+  }
+
+  export interface BinaryProductUnitInput<O, C, M> {
+    readonly category: BinaryProductUnitCategory<C, M>
+    readonly product: BinaryProductTuple<O, M>
+    readonly factor: BinaryProductDiagonalFactor<O, M>
+    readonly projection: M
+    readonly legs: readonly [M, M]
+    readonly productIdentity: M
+  }
+
+  export interface BinaryProductUnitWitness<M> {
+    readonly forward: M
+    readonly backward: M
+  }
+
+  export const swapBinaryProduct = makeBinaryProductSwap as <O, M>(
+    current: BinaryProductTuple<O, M>,
+    swapped: BinaryProductTuple<O, M>,
+  ) => BinaryProductSwapResult<O, M>
+
+  export const diagonalBinaryProduct = makeBinaryProductDiagonal as <O, M>(
+    product: BinaryProductTuple<O, M>,
+    factor: BinaryProductDiagonalFactor<O, M>,
+  ) => M
+
+  export const componentwiseBinaryProduct = makeBinaryProductComponentwise as <O, M>(
+    input: BinaryProductComponentwiseInput<O, M>,
+  ) => M
+
+  export const checkBinaryProductComponentwiseCollapse =
+    checkBinaryProductComponentwiseCollapseHelper as <O, M>(
+      input: CategoryBinaryProductComponentwiseCollapseInput<O, M>,
+    ) => boolean
+
+  export const checkBinaryProductNaturality = checkBinaryProductNaturalityHelper as <O, M>(
+    input: BinaryProductNaturalityInput<O, M>,
+  ) => boolean
+
+  export const checkBinaryProductSwapCompatibility =
+    checkBinaryProductSwapCompatibilityHelper as <O, M>(
+      input: CategoryBinaryProductSwapCompatibilityInput<O, M>,
+    ) => boolean
+
+  export const unitBinaryProduct = <O, C, M>({
+    category,
+    product,
+    factor,
+    projection,
+    legs,
+    productIdentity,
+  }: BinaryProductUnitInput<O, C, M>): BinaryProductUnitWitness<M> => {
+    if (legs.length !== 2) {
+      throw new Error("CategoryLimits.unitBinaryProduct: expected exactly two legs")
+    }
+
+    const backward = product.tuple(factor.object, legs)
+    const forward = projection
+
+    const registry = category.arrows as M[]
+    const eq = category.eq
+
+    if (!registry.some((arrow) => eq(arrow, forward))) {
+      registry.push(forward)
+    }
+    if (!registry.some((arrow) => eq(arrow, backward))) {
+      registry.push(backward)
+    }
+
+    const compose = category.compose
+    const identityFactor = factor.identity
+    const identityProduct = productIdentity
+
+    const forwardThenBackward = compose(forward, backward)
+    if (!eq(forwardThenBackward, identityFactor)) {
+      throw new Error(
+        "CategoryLimits.unitBinaryProduct: forward ∘ backward must equal the identity on the factor",
+      )
+    }
+
+    const backwardThenForward = compose(backward, forward)
+    if (!eq(backwardThenForward, identityProduct)) {
+      throw new Error(
+        "CategoryLimits.unitBinaryProduct: backward ∘ forward must equal the identity on the product",
+      )
+    }
+
+    const isoCategory = category as unknown as RegistryFiniteCategory<O, M>
+
+    if (!isIso(isoCategory, forward)) {
+      throw new Error("CategoryLimits.unitBinaryProduct: expected the forward arrow to be an isomorphism")
+    }
+
+    if (!isIso(isoCategory, backward)) {
+      throw new Error("CategoryLimits.unitBinaryProduct: expected the backward arrow to be an isomorphism")
+    }
+
+    return { forward, backward }
   }
 
   /** Trait for building coproduct mediating maps */
@@ -13983,12 +14183,25 @@ export namespace CategoryLimits {
       productObj: O,
       projections: IndexedFamilies.Family<I, M>,
       cone: Cone<I, O, M>,                         // f_i : X -> F(i)
-      tuple: (X: O, legs: ReadonlyArray<M>, P: O) => M
+      tuple: (X: O, legs: ReadonlyArray<M>, P: O) => M,
+      options?: { competitor?: M }
     ) => {
-      const legsArr = Ifin.carrier.map((i) => cone.legs(i))
+      const indices = Ifin.carrier
+      const legsArr = indices.map((i) => cone.legs(i))
       const mediator = tuple(cone.tip, legsArr, productObj)
-      const triangles = productMediates(C, eq, projections, mediator, cone, Ifin.carrier)
-      const unique = true // In well-behaved categories, canonical construction ensures uniqueness
+      const triangles = productMediates(C, eq, projections, mediator, cone, indices)
+      let unique = triangles
+
+      if (triangles) {
+        const competitor = options?.competitor
+        if (competitor) {
+          const competitorTriangles = productMediates(C, eq, projections, competitor, cone, indices)
+          if (competitorTriangles) {
+            const agrees = agreeUnderProjections(C, eq, projections, mediator, competitor, indices)
+            if (!agrees || !eq(competitor, mediator)) unique = false
+          }
+        }
+      }
       return { triangles, unique }
     }
 
@@ -14002,12 +14215,25 @@ export namespace CategoryLimits {
       coproductObj: O,
       injections: IndexedFamilies.Family<I, M>,
       cocone: Cocone<I, O, M>,                     // g_i : F(i) -> Y
-      cotuple: (Cop: O, legs: ReadonlyArray<M>, Y: O) => M
+      cotuple: (Cop: O, legs: ReadonlyArray<M>, Y: O) => M,
+      options?: { competitor?: M }
     ) => {
-      const legsArr = Ifin.carrier.map((i) => cocone.legs(i))
+      const indices = Ifin.carrier
+      const legsArr = indices.map((i) => cocone.legs(i))
       const mediator = cotuple(coproductObj, legsArr, cocone.coTip)
-      const triangles = coproductMediates(C, eq, injections, mediator, cocone, Ifin.carrier)
-      const unique = true // In well-behaved categories, canonical construction ensures uniqueness
+      const triangles = coproductMediates(C, eq, injections, mediator, cocone, indices)
+      let unique = triangles
+
+      if (triangles) {
+        const competitor = options?.competitor
+        if (competitor) {
+          const competitorTriangles = coproductMediates(C, eq, injections, competitor, cocone, indices)
+          if (competitorTriangles) {
+            const agrees = agreeUnderInjections(C, eq, injections, mediator, competitor, indices)
+            if (!agrees || !eq(competitor, mediator)) unique = false
+          }
+        }
+      }
       return { triangles, unique }
     }
 }
@@ -14096,11 +14322,18 @@ export {
   makeSlice,
   makeCoslice,
   makePostcomposeOnSlice,
+  makeSliceProduct,
+  makeFiniteSliceProduct,
+  lookupSliceProductMetadata,
   type SliceObject,
   type SliceArrow,
   type CosliceObject,
   type CosliceArrow,
   type SlicePostcomposeFunctor,
+  type SliceProductWitness,
+  type SliceFiniteProductWitness,
+  type SliceProductDiagonal,
+  type SliceProductUnit,
 } from "./slice-cat"
 export {
   makeSliceTripleArrow,
@@ -14181,6 +14414,23 @@ export {
 export { type CatTraits } from "./kinds/traits"
 export { arrowGlyph, prettyArrow } from "./pretty"
 export { isMonoByGlobals, type HasTerminal } from "./traits/global-elements"
+export {
+  checkGeneralizedElementSeparation,
+  type GeneralizedElementAnalysis,
+  type GeneralizedElementFailure,
+  type GeneralizedElementOptions,
+  type GeneralizedElementWitness,
+  type HasGeneralizedElements,
+} from "./traits/generalized-elements"
+export {
+  checkPointSeparator,
+  checkWellPointedness,
+  type ParallelPair,
+  type PointSeparatorAnalysis,
+  type PointSeparatorFailure,
+  type PointSeparatorWitness,
+  type WellPointednessAnalysis,
+} from "./traits/well-pointedness"
 export { nonEpiWitnessInSet, type NonEpiWitness } from "./kinds/epi-witness-set"
 export {
   FinSetCat,
@@ -14207,7 +14457,17 @@ export {
   type FinGrpCategory,
   type FinGrpObj,
   type Hom as FinGrpHom,
+  type FinGrpProductWitness,
+  type FinGrpFiniteProductWitness,
+  type FinGrpProductDiagonal,
+  type FinGrpProductUnit,
 } from "./models/fingroup-cat"
+export {
+  makeToyNonEpicProductCategory,
+  type ToyArrow,
+  type ToyNonEpicProductCategory,
+  type ToyObject,
+} from "./models/toy-non-epi-product"
 export {
   kernelElements,
   nonMonoWitness as finGrpNonMonoWitness,

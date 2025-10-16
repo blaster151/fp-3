@@ -15,14 +15,15 @@ describe("Preorder initial and terminal behaviour", () => {
   })
 
   it("exhibits arbitrarily large witnesses showing ℕ has no terminal object", () => {
-    const successorWitnesses = naturals.elems.map((candidate) => {
+    naturals.elems.forEach((candidate, index) => {
       const report = analyzeGreatestElement(naturals, candidate, [...naturals.elems, candidate + 1])
       expect(report.holds).toBe(false)
       expect(report.failure?.kind).toBe("violatesUpperBound")
-      return report.failure?.witness
+      if (report.failure?.kind !== "violatesUpperBound") {
+        throw new Error("Expected an upper-bound violation witness")
+      }
+      expect(report.failure.witness).toBe(naturals.elems[index]! + 1)
     })
-
-    expect(successorWitnesses.every((witness, index) => witness === naturals.elems[index] + 1)).toBe(true)
   })
 
   const integers: Preorder<number> = {
