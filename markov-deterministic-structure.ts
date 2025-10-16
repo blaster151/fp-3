@@ -7,7 +7,7 @@
 //   2. Extract deterministic base functions and compare against comonoid homomorphism checks.
 //   3. Emit rich oracle reports exposing determinism diagnostics and constructive witnesses.
 
-import type { Fin, Kernel, ComonoidHomReport, Pair } from "./markov-category";
+import type { Eq, Fin, Kernel, ComonoidHomReport, Pair, Show } from "./markov-category";
 import { FinMarkov, checkComonoidHom, tensorObj, fst, snd, approxEqualMatrix } from "./markov-category";
 import { buildMarkovComonoidWitness } from "./markov-comonoid-structure";
 import type { MarkovComonoidWitness } from "./markov-comonoid-structure";
@@ -15,15 +15,18 @@ import type {
   DeterministicSetMultWitness,
   DeterministicSetMultResult,
   SetMulti,
+  SetMultObj,
 } from "./setmult-category";
 import {
   isDeterministicSetMulti,
   kernelToSetMulti,
   setMultObjFromFin,
+  setMultObjFromSet,
   setMultiToDeterministic,
 } from "./setmult-category";
 import type { MarkovConditionalReport, MarkovConditionalWitness } from "./markov-conditional-independence";
 import { checkConditionalIndependence, conditionalMarginals } from "./markov-conditional-independence";
+import type { SetObj } from "./set-cat";
 
 export interface MarkovDeterministicWitness<X, Y> {
   readonly domain: MarkovComonoidWitness<X>;
@@ -522,11 +525,19 @@ const equalSet = <T>(eq: (a: T, b: T) => boolean, left: ReadonlySet<T>, right: R
 export interface SetMultDeterminismOptions<X, Y> {
   readonly label?: string;
   readonly arrow?: FinMarkov<X, Y>;
+  readonly domainEq?: Eq<X>;
+  readonly domainShow?: Show<X>;
+  readonly codomainEq?: Eq<Y>;
+  readonly codomainShow?: Show<Y>;
+  readonly domainSamples?: ReadonlyArray<X>;
+  readonly codomainSamples?: ReadonlyArray<Y>;
+  readonly domainIncludeSamples?: boolean;
+  readonly codomainIncludeSamples?: boolean;
 }
 
 export interface SetMultDeterminismWitness<X, Y> {
-  readonly domain: Fin<X>;
-  readonly codomain: Fin<Y>;
+  readonly domain: Fin<X> | SetObj<X>;
+  readonly codomain: Fin<Y> | SetObj<Y>;
   readonly morphism: SetMulti<X, Y>;
   readonly setWitness: DeterministicSetMultWitness<X, Y>;
   readonly arrow?: FinMarkov<X, Y>;
@@ -543,15 +554,56 @@ export interface SetMultDeterminismReport<X, Y> {
   readonly details: string;
 }
 
+const isFinCarrier = <T>(carrier: Fin<T> | SetObj<T>): carrier is Fin<T> => !(carrier instanceof Set);
+
+const enumerateCarrier = <T>(carrier: Fin<T> | SetObj<T>): ReadonlyArray<T> =>
+  isFinCarrier(carrier) ? carrier.elems : Array.from(carrier);
+
+const buildSetMultObj = <T>(
+  carrier: Fin<T> | SetObj<T>,
+  label: string | undefined,
+  eq: Eq<T> | undefined,
+  show: Show<T> | undefined,
+  samples: ReadonlyArray<T> | undefined,
+  includeSamples: boolean | undefined,
+): SetMultObj<T> => {
+  if (isFinCarrier(carrier)) {
+    return setMultObjFromFin(carrier, label);
+  }
+  return setMultObjFromSet(carrier, {
+    eq,
+    show,
+    label,
+    samples,
+    includeSamples,
+  });
+};
+
 export function buildSetMultDeterminismWitness<X, Y>(
-  domain: Fin<X>,
-  codomain: Fin<Y>,
+  domain: Fin<X> | SetObj<X>,
+  codomain: Fin<Y> | SetObj<Y>,
   morphism: SetMulti<X, Y>,
   options: SetMultDeterminismOptions<X, Y> = {},
 ): SetMultDeterminismWitness<X, Y> {
+  const domainLabel = options.label ? `${options.label} domain` : undefined;
+  const codomainLabel = options.label ? `${options.label} codomain` : undefined;
   const setWitness: DeterministicSetMultWitness<X, Y> = {
-    domain: setMultObjFromFin(domain, options.label ? `${options.label} domain` : undefined),
-    codomain: setMultObjFromFin(codomain, options.label ? `${options.label} codomain` : undefined),
+    domain: buildSetMultObj(
+      domain,
+      domainLabel,
+      options.domainEq,
+      options.domainShow,
+      options.domainSamples,
+      options.domainIncludeSamples,
+    ),
+    codomain: buildSetMultObj(
+      codomain,
+      codomainLabel,
+      options.codomainEq,
+      options.codomainShow,
+      options.codomainSamples,
+      options.codomainIncludeSamples,
+    ),
     morphism,
     ...(options.label !== undefined ? { label: options.label } : {}),
   };
@@ -568,11 +620,16 @@ export function buildSetMultDeterminismWitness<X, Y>(
 export function checkSetMultDeterminism<X, Y>(
   witness: SetMultDeterminismWitness<X, Y>,
 ): SetMultDeterminismReport<X, Y> {
-  const deterministic = isDeterministicSetMulti(witness.setWitness, { samples: witness.domain.elems });
+  const samples =
+    witness.setWitness.domain.samples ?? enumerateCarrier(witness.domain);
+  const deterministic = isDeterministicSetMulti(witness.setWitness, { samples });
   const mismatches: Array<{ input: X; setMult: ReadonlySet<Y>; kernel: ReadonlySet<Y> }> = [];
   let matchesKernel = true;
 
   if (witness.arrow) {
+    if (!isFinCarrier(witness.domain) || !isFinCarrier(witness.codomain)) {
+      throw new Error("SetMult determinism witnesses with arrows require finite carriers");
+    }
     const kernelMulti = kernelToSetMulti(witness.codomain, witness.arrow.k);
     const eq = witness.setWitness.codomain.eq;
     for (const input of witness.domain.elems) {
