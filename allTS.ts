@@ -56,19 +56,104 @@ import {
 } from "./models/finset-cat"
 import {
   checkBinaryProductComponentwiseCollapse as checkBinaryProductComponentwiseCollapseHelper,
+  checkBinaryProductDiagonalPairing as checkBinaryProductDiagonalPairingHelper,
+  checkBinaryProductInterchange as checkBinaryProductInterchangeHelper,
   checkBinaryProductNaturality as checkBinaryProductNaturalityHelper,
   checkBinaryProductSwapCompatibility as checkBinaryProductSwapCompatibilityHelper,
+  checkBinaryProductUnitPointCompatibility as checkBinaryProductUnitPointCompatibilityHelper,
   makeBinaryProductComponentwise,
   makeBinaryProductDiagonal,
   makeBinaryProductSwap,
   type BinaryProductComponentwiseCollapseInput as CategoryBinaryProductComponentwiseCollapseInput,
+  type BinaryProductDiagonalPairingInput as CategoryBinaryProductDiagonalPairingInput,
+  type BinaryProductInterchangeInput as CategoryBinaryProductInterchangeInput,
   type BinaryProductComponentwiseInput as CategoryBinaryProductComponentwiseInput,
   type BinaryProductDiagonalFactor as CategoryBinaryProductDiagonalFactor,
   type BinaryProductNaturalityInput as CategoryBinaryProductNaturalityInput,
   type BinaryProductSwapCompatibilityInput as CategoryBinaryProductSwapCompatibilityInput,
+  type BinaryProductUnitPointCompatibilityInput as CategoryBinaryProductUnitPointCompatibilityInput,
   type BinaryProductSwapResult as CategoryBinaryProductSwapResult,
   type BinaryProductTuple as CategoryBinaryProductTuple,
 } from "./category-limits-helpers"
+import {
+  analyzeInternalGroup,
+  checkInternalGroupAssociativity,
+  checkInternalGroupInversion,
+  checkInternalGroupUnit,
+  enrichInternalGroupDiagonal,
+  type InternalGroupAnalysis,
+  type CategoryOps as InternalGroupCategoryOps,
+  type InternalGroupWitness as InternalGroupWitnessModel,
+  type TerminalWitness as InternalGroupTerminalWitness,
+} from "./internal-group"
+import {
+  analyzeInternalMonoid as analyzeInternalMonoidHelper,
+  checkInternalMonoidAssociativity as checkInternalMonoidAssociativityHelper,
+  checkInternalMonoidUnit as checkInternalMonoidUnitHelper,
+  enrichInternalMonoidDiagonal,
+  type InternalMonoidAnalysis as InternalMonoidAnalysisModel,
+  type InternalMonoidWitness as InternalMonoidWitnessModel,
+} from "./internal-monoid"
+import {
+  analyzeFinGrpInternalGroup as analyzeFinGrpInternalGroupHelper,
+  analyzeFinGrpInternalMonoid as analyzeFinGrpInternalMonoidHelper,
+  makeFinGrpInternalGroupWitness,
+  makeFinGrpInternalMonoidWitness,
+  type FinGrpInternalGroupWitness,
+  type FinGrpInternalGroupAnalysis,
+  type FinGrpInternalMonoidAnalysis,
+  type FinGrpInternalMonoidWitness,
+} from "./internal-group-fingrp"
+import {
+  analyzeM2InternalGroup as analyzeM2InternalGroupHelper,
+  analyzeM2InternalMonoid as analyzeM2InternalMonoidHelper,
+  checkM2InternalGroupCompatibility as checkM2InternalGroupCompatibilityHelper,
+  checkM2InternalMonoidCompatibility as checkM2InternalMonoidCompatibilityHelper,
+  makeM2InternalGroupWitness as makeM2InternalGroupWitnessHelper,
+  makeM2InternalMonoidWitness as makeM2InternalMonoidWitnessHelper,
+  type M2InternalGroupAnalysis as M2InternalGroupAnalysisModel,
+  type M2InternalGroupCompatibilityResult as M2InternalGroupCompatibilityResultModel,
+  type M2InternalMonoidAnalysis as M2InternalMonoidAnalysisModel,
+  type M2InternalMonoidCompatibilityResult as M2InternalMonoidCompatibilityResultModel,
+  type M2InternalMonoidWitness as M2InternalMonoidWitnessModel,
+} from "./internal-group-m2"
+import {
+  analyzeTopInternalGroup as analyzeTopInternalGroupHelper,
+  analyzeTopInternalMonoid as analyzeTopInternalMonoidHelper,
+  makeTopInternalGroupWitness as makeTopInternalGroupWitnessHelper,
+  makeTopInternalMonoidWitness as makeTopInternalMonoidWitnessHelper,
+  type TopInternalGroupAnalysis,
+  type TopInternalGroupInput as TopInternalGroupInputModel,
+  type TopInternalGroupWitness as TopInternalGroupWitnessModel,
+  type TopInternalMonoidAnalysis,
+  type TopInternalMonoidInput as TopInternalMonoidInputModel,
+  type TopInternalMonoidWitness as TopInternalMonoidWitnessModel,
+} from "./internal-group-top"
+import {
+  analyzeSetInternalGroup as analyzeSetInternalGroupHelper,
+  analyzeSetInternalMonoid as analyzeSetInternalMonoidHelper,
+  makeSetInternalGroupWitness as makeSetInternalGroupWitnessHelper,
+  makeSetInternalMonoidWitness as makeSetInternalMonoidWitnessHelper,
+  type SetInternalGroupAnalysis,
+  type SetInternalGroupInput as SetInternalGroupInputModel,
+  type SetInternalGroupWitness as SetInternalGroupWitnessModel,
+  type SetInternalMonoidAnalysis,
+  type SetInternalMonoidInput as SetInternalMonoidInputModel,
+  type SetInternalMonoidWitness as SetInternalMonoidWitnessModel,
+} from "./internal-group-set"
+import {
+  analyzeManInternalGroup as analyzeManInternalGroupHelper,
+  analyzeManInternalMonoid as analyzeManInternalMonoidHelper,
+  makeManInternalGroupWitness as makeManInternalGroupWitnessHelper,
+  makeManInternalMonoidWitness as makeManInternalMonoidWitnessHelper,
+  type ManInternalGroupAnalysis,
+  type ManInternalGroupInput as ManInternalGroupInputModel,
+  type ManInternalGroupWitness as ManInternalGroupWitnessModel,
+  type ManInternalMonoidAnalysis,
+  type ManInternalMonoidInput as ManInternalMonoidInputModel,
+  type ManInternalMonoidWitness as ManInternalMonoidWitnessModel,
+  type SmoothnessWitness as ManInternalGroupSmoothness,
+} from "./internal-group-man"
 import { isIso } from "./kinds/inverses"
 import type { FiniteCategory as RegistryFiniteCategory } from "./finite-cat"
 import type { Result as ResultT } from "./result"
@@ -174,6 +259,77 @@ export * from "./typeclasses"
 export * from "./catTransforms"
 export * from "./reader-tools"
 export * from "./json-recursion"
+
+export {
+  analyzeInternalGroup,
+  analyzeInternalMonoidHelper as analyzeInternalMonoid,
+  analyzeFinGrpInternalGroupHelper as analyzeFinGrpInternalGroup,
+  analyzeFinGrpInternalMonoidHelper as analyzeFinGrpInternalMonoid,
+  analyzeM2InternalGroupHelper as analyzeM2InternalGroup,
+  analyzeM2InternalMonoidHelper as analyzeM2InternalMonoid,
+  analyzeTopInternalGroupHelper as analyzeTopInternalGroup,
+  analyzeTopInternalMonoidHelper as analyzeTopInternalMonoid,
+  analyzeSetInternalGroupHelper as analyzeSetInternalGroup,
+  analyzeSetInternalMonoidHelper as analyzeSetInternalMonoid,
+  analyzeManInternalGroupHelper as analyzeManInternalGroup,
+  analyzeManInternalMonoidHelper as analyzeManInternalMonoid,
+  checkInternalGroupAssociativity,
+  checkInternalMonoidAssociativityHelper as checkInternalMonoidAssociativity,
+  checkInternalGroupUnit,
+  checkInternalMonoidUnitHelper as checkInternalMonoidUnit,
+  checkInternalGroupInversion,
+  enrichInternalGroupDiagonal,
+  enrichInternalMonoidDiagonal,
+  makeFinGrpInternalGroupWitness,
+  makeFinGrpInternalMonoidWitness,
+  makeM2InternalGroupWitnessHelper as makeM2InternalGroupWitness,
+  checkM2InternalGroupCompatibilityHelper as checkM2InternalGroupCompatibility,
+  makeM2InternalMonoidWitnessHelper as makeM2InternalMonoidWitness,
+  checkM2InternalMonoidCompatibilityHelper as checkM2InternalMonoidCompatibility,
+  makeTopInternalGroupWitnessHelper as makeTopInternalGroupWitness,
+  makeTopInternalMonoidWitnessHelper as makeTopInternalMonoidWitness,
+  makeSetInternalGroupWitnessHelper as makeSetInternalGroupWitness,
+  makeSetInternalMonoidWitnessHelper as makeSetInternalMonoidWitness,
+  makeManInternalGroupWitnessHelper as makeManInternalGroupWitness,
+  makeManInternalMonoidWitnessHelper as makeManInternalMonoidWitness,
+}
+
+export type {
+  InternalGroupAnalysis,
+  InternalMonoidAnalysisModel as InternalMonoidAnalysis,
+  M2InternalGroupAnalysisModel as M2InternalGroupAnalysis,
+  M2InternalGroupCompatibilityResultModel as M2InternalGroupCompatibilityResult,
+  M2InternalMonoidAnalysisModel as M2InternalMonoidAnalysis,
+  M2InternalMonoidCompatibilityResultModel as M2InternalMonoidCompatibilityResult,
+  InternalGroupCategoryOps,
+  InternalGroupWitnessModel as InternalGroupWitness,
+  InternalMonoidWitnessModel as InternalMonoidWitness,
+  InternalGroupTerminalWitness,
+  M2InternalMonoidWitnessModel as M2InternalMonoidWitness,
+  FinGrpInternalGroupAnalysis,
+  FinGrpInternalGroupWitness,
+  FinGrpInternalMonoidWitness,
+  FinGrpInternalMonoidAnalysis,
+  TopInternalGroupInputModel as TopInternalGroupInput,
+  TopInternalGroupWitnessModel as TopInternalGroupWitness,
+  TopInternalGroupAnalysis,
+  TopInternalMonoidInputModel as TopInternalMonoidInput,
+  TopInternalMonoidWitnessModel as TopInternalMonoidWitness,
+  TopInternalMonoidAnalysis,
+  SetInternalGroupInputModel as SetInternalGroupInput,
+  SetInternalGroupWitnessModel as SetInternalGroupWitness,
+  SetInternalGroupAnalysis,
+  SetInternalMonoidInputModel as SetInternalMonoidInput,
+  SetInternalMonoidWitnessModel as SetInternalMonoidWitness,
+  SetInternalMonoidAnalysis,
+  ManInternalGroupInputModel as ManInternalGroupInput,
+  ManInternalGroupWitnessModel as ManInternalGroupWitness,
+  ManInternalGroupAnalysis,
+  ManInternalMonoidInputModel as ManInternalMonoidInput,
+  ManInternalMonoidWitnessModel as ManInternalMonoidWitness,
+  ManInternalMonoidAnalysis,
+  ManInternalGroupSmoothness,
+}
 
 // Aggregated exports for the emerging virtual equipment and relative layers.
 export * from "./virtual-equipment";
@@ -14017,7 +14173,13 @@ export namespace CategoryLimits {
 
   export type BinaryProductComponentwiseInput<O, M> = CategoryBinaryProductComponentwiseInput<O, M>
 
+  export type BinaryProductDiagonalPairingInput<O, M> = CategoryBinaryProductDiagonalPairingInput<O, M>
+
+  export type BinaryProductInterchangeInput<O, M> = CategoryBinaryProductInterchangeInput<O, M>
+
   export type BinaryProductNaturalityInput<O, M> = CategoryBinaryProductNaturalityInput<O, M>
+
+  export type BinaryProductUnitPointCompatibilityInput<O, M> = CategoryBinaryProductUnitPointCompatibilityInput<O, M>
 
   export interface BinaryProductUnitCategory<C, M> {
     readonly objects: ReadonlyArray<C>
@@ -14066,9 +14228,22 @@ export namespace CategoryLimits {
     input: BinaryProductNaturalityInput<O, M>,
   ) => boolean
 
+  export const checkBinaryProductDiagonalPairing = checkBinaryProductDiagonalPairingHelper as <O, M>(
+    input: BinaryProductDiagonalPairingInput<O, M>,
+  ) => boolean
+
+  export const checkBinaryProductInterchange = checkBinaryProductInterchangeHelper as <O, M>(
+    input: BinaryProductInterchangeInput<O, M>,
+  ) => boolean
+
   export const checkBinaryProductSwapCompatibility =
     checkBinaryProductSwapCompatibilityHelper as <O, M>(
       input: CategoryBinaryProductSwapCompatibilityInput<O, M>,
+    ) => boolean
+
+  export const checkBinaryProductUnitPointCompatibility =
+    checkBinaryProductUnitPointCompatibilityHelper as <O, M>(
+      input: BinaryProductUnitPointCompatibilityInput<O, M>,
     ) => boolean
 
   export const unitBinaryProduct = <O, C, M>({
@@ -14302,6 +14477,14 @@ export { makeSubcategory, makeFullSubcategory, isFullSubcategory } from "./subca
 export { ProductCat, Pi1, Pi2, Pairing } from "./product-cat"
 export { Dual } from "./dual-cat"
 export { Contra, isContravariant } from "./contravariant"
+export {
+  makeM2Object,
+  makeM2Morphism,
+  productM2,
+  checkM2BinaryProduct,
+} from "./m2-set"
+export type { M2Object, M2Morphism, M2ProductWitness } from "./m2-set"
+export type { M2InternalGroupWitness } from "./internal-group-m2"
 export type { SimpleCat } from "./simple-cat"
 export {
   makeFinitePullbackCalculator,
