@@ -14,11 +14,13 @@ import {
   kernelToSetMulti,
   projectSetMult,
   setMultObjFromFin,
+  setMultObjFromSet,
   setMultiToKernel,
   type SetMultProduct,
   type SetMultTuple,
 } from "../../setmult-category";
 import type { DeterministicSetMultWitness, SetMultIndexedFamily } from "../../setmult-category";
+import { SetCat } from "../../set-cat";
 
 describe("SetMult semicartesian structure", () => {
   const boolObj = createSetMultObj<boolean>({
@@ -75,6 +77,26 @@ describe("SetMult determinism", () => {
     for (const input of boolFin.elems) {
       expect(support(input)).toEqual(deterministicWitness.morphism(input));
     }
+  });
+
+  it("builds deterministic witnesses from SetCat carriers", () => {
+    const boolCarrier = SetCat.obj([false, true]);
+    const numberCarrier = SetCat.obj([0, 1]);
+    const boolObjFromSet = setMultObjFromSet(boolCarrier, { label: "Bool" });
+    const numberObjFromSet = setMultObjFromSet(numberCarrier, { label: "Two" });
+    const morphism = deterministicToSetMulti(
+      boolObjFromSet,
+      numberObjFromSet,
+      (value) => (value ? 1 : 0),
+    );
+    const witness = buildSetMultDeterminismWitness(boolCarrier, numberCarrier, morphism, {
+      label: "SetCat indicator",
+    });
+    const report = checkSetMultDeterminism(witness);
+    expect(report.holds).toBe(true);
+    expect(report.deterministic.base?.(true)).toBe(1);
+    expect(report.deterministic.base?.(false)).toBe(0);
+    expect(witness.setWitness.domain.samples).toEqual([false, true]);
   });
 });
 

@@ -10,6 +10,7 @@
 import type { Eq, Fin, Kernel, Pair, Show } from "./markov-category";
 import { byRefEq, defaultShow, deterministic } from "./markov-category";
 import type { CountabilityWitness } from "./markov-infinite";
+import type { SetObj } from "./set-cat";
 
 export interface SetMultObj<T> {
   readonly eq: Eq<T>;
@@ -53,6 +54,40 @@ export const setMultObjFromFin = <T>(fin: Fin<T>, label?: string): SetMultObj<T>
     eq: fin.eq,
     show: fin.show ?? defaultShow,
     ...(metadata ?? {}),
+  });
+};
+
+export interface SetMultObjFromSetOptions<T> {
+  readonly eq?: Eq<T>;
+  readonly show?: Show<T>;
+  readonly label?: string;
+  readonly samples?: ReadonlyArray<T>;
+  readonly includeSamples?: boolean;
+}
+
+const shouldInferSamples = <T>(
+  set: SetObj<T>,
+  options: SetMultObjFromSetOptions<T>,
+): boolean => {
+  if (options.samples !== undefined) {
+    return false;
+  }
+  if (options.includeSamples !== undefined) {
+    return options.includeSamples;
+  }
+  return set.size <= 16;
+};
+
+export const setMultObjFromSet = <T>(
+  set: SetObj<T>,
+  options: SetMultObjFromSetOptions<T> = {},
+): SetMultObj<T> => {
+  const samples = shouldInferSamples(set, options) ? Array.from(set) : options.samples;
+  return createSetMultObj({
+    eq: options.eq,
+    show: options.show,
+    ...(options.label !== undefined ? { label: options.label } : {}),
+    ...(samples !== undefined ? { samples } : {}),
   });
 };
 
