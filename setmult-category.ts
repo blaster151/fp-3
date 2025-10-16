@@ -10,7 +10,12 @@
 import type { Eq, Fin, Kernel, Pair, Show } from "./markov-category";
 import { byRefEq, defaultShow, deterministic } from "./markov-category";
 import type { CountabilityWitness } from "./markov-infinite";
-import type { SetObj } from "./set-cat";
+import type { SetHom, SetObj } from "./set-cat";
+import {
+  setSemicartesianProductWitness,
+  type SemicartesianProductWitness,
+  type SetSemicartesianFamily,
+} from "./semicartesian-infinite-product";
 
 export interface SetMultObj<T> {
   readonly eq: Eq<T>;
@@ -84,8 +89,8 @@ export const setMultObjFromSet = <T>(
 ): SetMultObj<T> => {
   const samples = shouldInferSamples(set, options) ? Array.from(set) : options.samples;
   return createSetMultObj({
-    eq: options.eq,
-    show: options.show,
+    ...(options.eq !== undefined ? { eq: options.eq } : {}),
+    ...(options.show !== undefined ? { show: options.show } : {}),
     ...(options.label !== undefined ? { label: options.label } : {}),
     ...(samples !== undefined ? { samples } : {}),
   });
@@ -330,6 +335,11 @@ export interface SetMultProduct<J, X> {
   readonly project: (tuple: SetMultTuple<J, X>, finite: ReadonlyArray<J>) => SetMultTuple<J, X>;
   readonly object: SetMultObj<SetMultTuple<J, X>>;
   readonly sectionObj: (subset: ReadonlyArray<J>) => SetMultObj<SetMultTuple<J, X>>;
+  readonly semicartesianWitness: SemicartesianProductWitness<
+    J,
+    SetObj<SetMultTuple<J, X>>,
+    SetHom<SetMultTuple<J, X>, SetMultTuple<J, X>>
+  >;
   readonly countability?: CountabilityWitness<J>;
 }
 
@@ -414,6 +424,36 @@ export const createSetMultSectionObj = <J, X>(
 export const createSetMultInfObj = <J, X>(
   family: SetMultIndexedFamily<J, X>,
 ): SetMultProduct<J, X> => {
+  const indices = Array.from(family.index);
+  const coordinateCache = new Map<J, SetMultObj<X>>();
+  for (const index of indices) {
+    coordinateCache.set(index, family.coordinate(index));
+  }
+
+  const setFamily: SetSemicartesianFamily<J, X> = {
+    index: indices,
+    coordinate: (index) => {
+      const coordinate = coordinateCache.get(index);
+      if (!coordinate) {
+        throw new Error(`Missing SetMult coordinate for ${describeIndex(index)}`);
+      }
+      return {
+        eq: coordinate.eq,
+        show: coordinate.show,
+        ...(coordinate.samples !== undefined ? { samples: coordinate.samples } : {}),
+        ...(coordinate.label !== undefined ? { label: coordinate.label } : {}),
+      };
+    },
+  };
+
+  const semicartesianWitness = setSemicartesianProductWitness(setFamily, {
+    describeIndex,
+    productLabel:
+      indices.length === 0
+        ? "Set product over ∅"
+        : `Set product over ${indices.map((index) => describeIndex(index)).join(", ")}`,
+  });
+
   const project = (tuple: ReadonlyMap<J, X>, finite: ReadonlyArray<J>): ReadonlyMap<J, X> => {
     const section = new Map<J, X>();
     for (const index of finite) {
@@ -428,7 +468,7 @@ export const createSetMultInfObj = <J, X>(
 
   const carrier = (assignment: (index: J) => X): ReadonlyMap<J, X> => {
     const tuple = new Map<J, X>();
-    for (const index of family.index) {
+    for (const index of indices) {
       tuple.set(index, assignment(index));
     }
     return tuple;
@@ -439,12 +479,13 @@ export const createSetMultInfObj = <J, X>(
   const sectionObj = (subset: ReadonlyArray<J>) => createSetMultSectionObj(family, subset);
 
   return {
-    index: family.index,
+    index: indices,
     coordinate: family.coordinate,
     carrier,
     project,
     object,
     sectionObj,
+    semicartesianWitness,
     ...(family.countability !== undefined ? { countability: family.countability } : {}),
   };
 };

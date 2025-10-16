@@ -3,9 +3,14 @@ import { describe, expect, it } from "vitest";
 import { mkFin } from "../../markov-category";
 import { buildSetMultDeterminismWitness, checkSetMultDeterminism } from "../../markov-deterministic-structure";
 import {
+  canonicalSetMultSemicartesianCone,
   checkSetMultComonoid,
   checkSetMultDeterministic,
   checkSetMultInfiniteProduct,
+  checkSetMultSemicartesianProductCone,
+  checkSetMultSemicartesianUniversalProperty,
+  type SetMultSemicartesianCone,
+  type SetMultSemicartesianRestriction,
 } from "../../setmult-oracles";
 import {
   createSetMultInfObj,
@@ -160,5 +165,125 @@ describe("SetMult infinite products", () => {
     expect(section.get("x")).toBe(true);
     const oneCoordinate: SetMultTuple<"x" | "y", boolean> = new Map<"x", boolean>([["x", true]]);
     expect(product.sectionObj(["x"] as const).eq(section, oneCoordinate)).toBe(true);
+  });
+});
+
+describe("Set-backed semicartesian infinite products", () => {
+  const boolObj = createSetMultObj<boolean>({
+    eq: (a, b) => a === b,
+    show: (value) => (value ? "⊤" : "⊥"),
+    samples: [false, true],
+    label: "Bool",
+  });
+
+  const family = {
+    index: ["x", "y"] as const,
+    coordinate: () => boolObj,
+  } satisfies SetMultIndexedFamily<"x" | "y", boolean>;
+
+  const buildProduct = () => createSetMultInfObj(family);
+
+  const restrictions: ReadonlyArray<SetMultSemicartesianRestriction<"x" | "y">> = [
+    { larger: ["x", "y"] as const, smaller: ["x"] as const },
+    { larger: ["x", "y"] as const, smaller: ["y"] as const },
+  ];
+
+  const subsets: ReadonlyArray<ReadonlyArray<"x" | "y">> = [
+    ["x"] as const,
+    ["y"] as const,
+    ["x", "y"] as const,
+  ];
+
+  it("confirms witness projections satisfy restriction compatibility", () => {
+    const product = buildProduct();
+    const result = checkSetMultSemicartesianProductCone(product, restrictions);
+    expect(result.holds).toBe(true);
+    expect(result.failures).toHaveLength(0);
+  });
+
+  it("flags restriction rewrites that break compatibility", () => {
+    const product = buildProduct();
+    const witness = product.semicartesianWitness;
+    const inconsistentWitness: typeof witness = {
+      ...witness,
+      diagram: {
+        ...witness.diagram,
+        restriction: (larger, smaller) => {
+          const base = witness.diagram.restriction(larger, smaller);
+          const target = base.cod;
+          return SetCat.hom(base.dom, target, (tuple) => {
+            const restricted = new Map(base.map(tuple));
+            const first = smaller[0];
+            if (first !== undefined) {
+              restricted.set(first, false);
+            }
+            if (!target.has(restricted)) {
+              target.add(restricted);
+            }
+            return restricted;
+          });
+        },
+      },
+    };
+
+    const tamperedProduct: SetMultProduct<"x" | "y", boolean> = {
+      ...product,
+      semicartesianWitness: inconsistentWitness,
+    };
+
+    const result = checkSetMultSemicartesianProductCone(tamperedProduct, restrictions);
+    expect(result.holds).toBe(false);
+    expect(result.failures.length).toBeGreaterThan(0);
+    expect(result.failures[0]?.reason).toContain("failed compatibility");
+  });
+
+  it("produces mediators that satisfy the universal property tests", () => {
+    const product = buildProduct();
+    const canonicalCone = canonicalSetMultSemicartesianCone(product, { label: "identity cone" });
+
+    const universal = checkSetMultSemicartesianUniversalProperty(product, [canonicalCone], subsets);
+    expect(universal.holds).toBe(true);
+    expect(universal.failures).toHaveLength(0);
+    expect(universal.mediators).toHaveLength(1);
+  });
+
+  it("detects cones whose mediators cannot satisfy all legs", () => {
+    const product = buildProduct();
+    const witness = product.semicartesianWitness;
+    const clampCone: SetMultSemicartesianCone<"x" | "y", boolean> = {
+      apex: witness.object,
+      label: "clamp y",
+      leg: (subset) => {
+        const key = subset.join(",");
+        if (key === "x") {
+          return witness.projection(["x"] as const);
+        }
+        if (key === "y") {
+          const base = witness.projection(["y"] as const);
+          const codomain = base.cod;
+          return SetCat.hom(base.dom, codomain, (tuple) => {
+            const image = new Map(base.map(tuple));
+            image.set("y", true);
+            if (!codomain.has(image)) {
+              codomain.add(image);
+            }
+            return image;
+          });
+        }
+        if (key === "x,y") {
+          return witness.projection(["x", "y"] as const);
+        }
+        return witness.projection(subset);
+      },
+    };
+
+    const universal = checkSetMultSemicartesianUniversalProperty(product, [clampCone], subsets);
+    expect(universal.holds).toBe(false);
+    expect(universal.failures.length).toBeGreaterThan(0);
+    expect(
+      universal.failures.some((failure) =>
+        failure.reason.includes("Mediator failed to reproduce leg"),
+      ),
+    ).toBe(true);
   });
 });

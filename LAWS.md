@@ -990,11 +990,11 @@ so failures can be traced to sub-lemmas.
 ### Set-based multivalued morphisms and products
 
 - **Domain**: The SetMult category of sets with multi-valued morphisms equipped with copy/discard structure and indexed products.
-- **Statement**: Copy and discard maps satisfy the semicartesian comonoid laws on every sampled object; the cartesian product of a SetMult family projects to each finite coordinate subset; and a SetMult morphism is deterministic precisely when every fibre is singleton.
+- **Statement**: Copy and discard maps satisfy the semicartesian comonoid laws on every sampled object; the cartesian product of a SetMult family projects to each finite coordinate subset; semicartesian product cones respect restriction compatibility; and a SetMult morphism is deterministic precisely when every fibre is singleton.
 - **Rationale**: Implements the paper’s Set-based multi-valued morphisms so infinite products and determinism checks are executable alongside the Markov infrastructure.
-- **Oracles**: `checkSetMultComonoid(obj)`; `checkSetMultInfiniteProduct(family, assignment, tests)`; `checkSetMultDeterminism(witness)` and the lightweight `checkSetMultDeterministic(witness)`.
+- **Oracles**: `checkSetMultComonoid(obj)`; `checkSetMultInfiniteProduct(family, assignment, tests)`; `checkSetMultSemicartesianProductCone(product, restrictions)`; `checkSetMultSemicartesianUniversalProperty(product, cones, subsets)`; `checkSetMultDeterminism(witness)` and the lightweight `checkSetMultDeterministic(witness)`.
 - **Ergonomics**: Both `checkSetMultComonoid` and `checkSetMultDeterministic` automatically fall back to the sampled points recorded on their inputs when explicit samples are omitted, making quick smoke tests easier to write.
-- **Witness**: `buildSetMultDeterminismWitness(domain, codomain, morphism)` packages finite carriers with their SetMult morphisms for deterministic comparisons.
+- **Witness**: `buildSetMultDeterminismWitness(domain, codomain, morphism)` packages finite carriers with their SetMult morphisms for deterministic comparisons, while `canonicalSetMultSemicartesianCone(product, options?)` supplies the identity cone for semicartesian universal-property diagnostics.
 - **Tests**: `law.SetMult.spec.ts`
 - **Examples**: Boolean carriers with copy/discard; deterministic indicator functions; finite Boolean products whose projections recover the original tuple.
 - **Implementation Notes**: Determinism reports cross-check SetMult fibres against optional finite Markov kernels, providing explicit counterexamples when supports disagree.
@@ -1019,6 +1019,12 @@ so failures can be traced to sub-lemmas.
 
 - Fixing a singleton object \(1\), elements of a set \(A\) correspond bijectively to arrows \(1 \to A\).
 - **Oracle:** `set.elementsAsArrows.check(set.elementsAsArrows.witness(A))` compares \(|\operatorname{Hom}(1, A)|\) with \(|A|\) using the chosen singleton.
+
+#### Binary products and coproducts
+
+- **Universal witnesses:** `set.product.check(set.product.witness(A, B, options))` and `set.coproduct.check(set.coproduct.witness(A, B, options))` certify that the supplied pairings/copairings recover their legs, match SetCat’s canonical mediators, and remain compatible with the componentwise maps assembled via `CategoryLimits.makeBinaryProductComponentwise` / `makeBinaryCoproductComponentwise`.
+- **Failure diagnostics:** The reports expose which projection/injection composites drift from the requested legs and which componentwise lifts break the collapse/compatibility equations, making counterexamples easy to read off the `failures` array.
+- **Tests:** `test/set-oracles.spec.ts` exercises both success cases and targeted violations, including mediators that swap coordinates and coproduct injections that collapse distinct summands.
 
 #### Concrete categories
 

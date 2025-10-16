@@ -13,6 +13,8 @@ import type {
   DeterministicSetMultWitness,
   SetMultIndexedFamily,
   SetMultObj,
+  SetMultProduct,
+  SetMultTuple,
   SetMulti,
 } from "./setmult-category";
 import {
@@ -28,6 +30,17 @@ import {
   tensorSetMulti,
   tensorSetMultObj,
 } from "./setmult-category";
+import type { SetHom, SetObj } from "./set-cat";
+import {
+  checkSemicartesianProductCone,
+  checkSemicartesianUniversalProperty,
+  type FiniteSubset,
+  type SemicartesianCone,
+  type SemicartesianConeResult,
+  type SemicartesianMediatorSummary,
+  type SemicartesianUniversalFailure,
+  type SemicartesianUniversalResult,
+} from "./semicartesian-infinite-product";
 
 type Triple<T> = readonly [T, T, T];
 
@@ -256,5 +269,76 @@ export function checkSetMultDeterministic<A, B>(
     report,
   };
 }
+
+export interface SetMultSemicartesianRestriction<J> {
+  readonly larger: ReadonlyArray<J>;
+  readonly smaller: ReadonlyArray<J>;
+  readonly label?: string;
+}
+
+const toFiniteSubset = <J>(subset: ReadonlyArray<J>): FiniteSubset<J> =>
+  subset.slice() as FiniteSubset<J>;
+
+const normaliseRestrictions = <J>(
+  restrictions: ReadonlyArray<SetMultSemicartesianRestriction<J>>,
+): ReadonlyArray<{
+  readonly larger: FiniteSubset<J>;
+  readonly smaller: FiniteSubset<J>;
+  readonly label?: string;
+}> =>
+  restrictions.map((restriction) => ({
+    larger: toFiniteSubset(restriction.larger),
+    smaller: toFiniteSubset(restriction.smaller),
+    ...(restriction.label !== undefined ? { label: restriction.label } : {}),
+  }));
+
+export const checkSetMultSemicartesianProductCone = <J, X>(
+  product: SetMultProduct<J, X>,
+  restrictions: ReadonlyArray<SetMultSemicartesianRestriction<J>>,
+): SemicartesianConeResult<J> =>
+  checkSemicartesianProductCone(product.semicartesianWitness, normaliseRestrictions(restrictions));
+
+export type SetMultSemicartesianCone<J, X> = SemicartesianCone<
+  J,
+  SetObj<SetMultTuple<J, X>>,
+  SetHom<SetMultTuple<J, X>, SetMultTuple<J, X>>
+>;
+
+export type SetMultSemicartesianConeResult<J> = SemicartesianConeResult<J>;
+
+export type SetMultSemicartesianMediatorSummary<J, X> = SemicartesianMediatorSummary<
+  J,
+  SetHom<SetMultTuple<J, X>, SetMultTuple<J, X>>
+>;
+
+export type SetMultSemicartesianUniversalFailure<J, X> = SemicartesianUniversalFailure<
+  J,
+  SetHom<SetMultTuple<J, X>, SetMultTuple<J, X>>
+>;
+
+export type SetMultSemicartesianUniversalResult<J, X> = SemicartesianUniversalResult<
+  J,
+  SetHom<SetMultTuple<J, X>, SetMultTuple<J, X>>
+>;
+
+export const canonicalSetMultSemicartesianCone = <J, X>(
+  product: SetMultProduct<J, X>,
+  options: { readonly label?: string } = {},
+): SetMultSemicartesianCone<J, X> => ({
+  apex: product.semicartesianWitness.object,
+  leg: product.semicartesianWitness.projection,
+  ...(options.label !== undefined ? { label: options.label } : {}),
+});
+
+export const checkSetMultSemicartesianUniversalProperty = <J, X>(
+  product: SetMultProduct<J, X>,
+  cones: ReadonlyArray<SetMultSemicartesianCone<J, X>>,
+  subsets: ReadonlyArray<ReadonlyArray<J>>,
+): SetMultSemicartesianUniversalResult<J, X> =>
+  checkSemicartesianUniversalProperty(
+    product.semicartesianWitness,
+    cones,
+    subsets.map((subset) => toFiniteSubset(subset)),
+  );
 
 // 🔮 END_MATH

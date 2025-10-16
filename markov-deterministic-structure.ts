@@ -571,11 +571,11 @@ const buildSetMultObj = <T>(
     return setMultObjFromFin(carrier, label);
   }
   return setMultObjFromSet(carrier, {
-    eq,
-    show,
-    label,
-    samples,
-    includeSamples,
+    ...(eq !== undefined ? { eq } : {}),
+    ...(show !== undefined ? { show } : {}),
+    ...(label !== undefined ? { label } : {}),
+    ...(samples !== undefined ? { samples } : {}),
+    ...(includeSamples !== undefined ? { includeSamples } : {}),
   });
 };
 

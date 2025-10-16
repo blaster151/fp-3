@@ -1,3 +1,6 @@
+import type { SetHom, SetObj } from "./set-cat";
+import { SetCat } from "./set-cat";
+
 // 🔮 BEGIN_MATH: SemicartesianInfiniteTensorProduct
 // 📝 Brief: Capture infinite tensor products in semicartesian symmetric monoidal categories.
 // 🏗️ Domain: Category theory / semicartesian symmetric monoidal structure
@@ -211,6 +214,264 @@ export function checkSemicartesianUniversalProperty<J, Obj, Mor>(
     : `${failures.length} universal-property check${failures.length === 1 ? "" : "s"} failed.`;
 
   return { holds, details, mediators, failures };
+}
+
+export interface SetSemicartesianCoordinate<X> {
+  readonly eq: (left: X, right: X) => boolean;
+  readonly show: (value: X) => string;
+  readonly samples?: Iterable<X>;
+  readonly label?: string;
+}
+
+export interface SetSemicartesianFamily<J, X> {
+  readonly index: Iterable<J>;
+  readonly coordinate: (index: J) => SetSemicartesianCoordinate<X>;
+}
+
+export interface SetSemicartesianWitnessOptions<J, X> {
+  readonly describeIndex?: (index: J) => string;
+  readonly fallbackSamples?: (index: J, coordinate: SetSemicartesianCoordinate<X>) => Iterable<X>;
+  readonly productLabel?: string;
+}
+
+type SetTuple<J, X> = ReadonlyMap<J, X>;
+
+interface SectionMetadata<J, X> {
+  readonly subset: FiniteSubset<J>;
+  readonly object: SetObj<SetTuple<J, X>>;
+  readonly eq: (left: SetTuple<J, X>, right: SetTuple<J, X>) => boolean;
+  readonly show: (value: SetTuple<J, X>) => string;
+  readonly label: string;
+}
+
+const setTupleKey = <J, X>(
+  subset: FiniteSubset<J>,
+  describeIndex: (index: J) => string,
+  showCoordinate: (index: J, value: X) => string,
+  tuple: ReadonlyMap<J, X>,
+): string => {
+  const parts: Array<string> = [];
+  for (const index of subset) {
+    const value = tuple.get(index);
+    const formatted = value === undefined ? "⟂" : showCoordinate(index, value);
+    parts.push(`${describeIndex(index)}=${formatted}`);
+  }
+  return parts.join("|");
+};
+
+const cloneTuple = <J, X>(entries: Iterable<readonly [J, X]>): Map<J, X> => new Map(entries);
+
+const ensureMembership = <J, X>(target: SetObj<SetTuple<J, X>>, tuple: Map<J, X>): ReadonlyMap<J, X> => {
+  if (!target.has(tuple)) {
+    target.add(tuple);
+  }
+  return tuple;
+};
+
+export function setSemicartesianProductWitness<J, X>(
+  family: SetSemicartesianFamily<J, X>,
+  options: SetSemicartesianWitnessOptions<J, X> = {},
+): SemicartesianProductWitness<J, SetObj<SetTuple<J, X>>, SetHom<SetTuple<J, X>, SetTuple<J, X>>> {
+  const indices = Array.from(family.index);
+  const describeIndex = options.describeIndex ?? ((index: J) => `${index}`);
+
+  const coordinateData = new Map<
+    J,
+    SetSemicartesianCoordinate<X> & { readonly samples: ReadonlyArray<X> }
+  >();
+
+  for (const index of indices) {
+    const coordinate = family.coordinate(index);
+    const providedSamples = coordinate.samples
+      ? Array.from(coordinate.samples)
+      : options.fallbackSamples?.(index, coordinate);
+    const samples = providedSamples ? Array.from(providedSamples) : [];
+    coordinateData.set(index, { ...coordinate, samples });
+  }
+
+  const sectionCache = new Map<string, SectionMetadata<J, X>>();
+  const metadataByObject = new Map<SetObj<SetTuple<J, X>>, SectionMetadata<J, X>>();
+
+  const subsetKey = (subset: FiniteSubset<J>): string =>
+    subset.map((index) => describeIndex(index)).join("|");
+
+  const buildAssignments = (subset: FiniteSubset<J>): ReadonlyArray<Map<J, X>> => {
+    if (subset.length === 0) {
+      return [new Map<J, X>()];
+    }
+
+    const lists: Array<ReadonlyArray<X>> = subset.map((index) =>
+      coordinateData.get(index)?.samples ?? [],
+    );
+
+    let assignments: Array<Map<J, X>> = [new Map<J, X>()];
+    subset.forEach((index, position) => {
+      const values = lists[position] ?? [];
+      const next: Array<Map<J, X>> = [];
+      for (const base of assignments) {
+        if (values.length === 0) {
+          continue;
+        }
+        for (const value of values) {
+          const copy = cloneTuple(base);
+          copy.set(index, value);
+          next.push(copy);
+        }
+      }
+      assignments = next;
+    });
+
+    if (assignments.length === 0) {
+      return [];
+    }
+
+    const dedup = new Map<string, Map<J, X>>();
+    for (const assignment of assignments) {
+      const key = setTupleKey(
+        subset,
+        describeIndex,
+        (index, value) => coordinateData.get(index)!.show(value),
+        assignment,
+      );
+      if (!dedup.has(key)) {
+        dedup.set(key, assignment);
+      }
+    }
+    return Array.from(dedup.values());
+  };
+
+  const getSection = (subset: FiniteSubset<J>): SectionMetadata<J, X> => {
+    const key = subsetKey(subset);
+    const cached = sectionCache.get(key);
+    if (cached) return cached;
+
+    const frozenSubset = subset.slice() as FiniteSubset<J>;
+    const assignments = buildAssignments(frozenSubset);
+    const object = SetCat.obj(assignments);
+
+    const eq = (left: SetTuple<J, X>, right: SetTuple<J, X>): boolean => {
+      for (const index of frozenSubset) {
+        const coordinate = coordinateData.get(index);
+        if (!coordinate) return false;
+        const leftValue = left.get(index);
+        const rightValue = right.get(index);
+        if (leftValue === undefined || rightValue === undefined) return false;
+        if (!coordinate.eq(leftValue, rightValue)) return false;
+      }
+      return true;
+    };
+
+    const show = (tuple: SetTuple<J, X>): string => {
+      if (frozenSubset.length === 0) {
+        return "{}";
+      }
+      const pieces = frozenSubset.map((index) => {
+        const coordinate = coordinateData.get(index)!;
+        const value = tuple.get(index);
+        const rendered = value === undefined ? "⟂" : coordinate.show(value);
+        return `${describeIndex(index)}:${rendered}`;
+      });
+      return `{${pieces.join(", ")}}`;
+    };
+
+    const label =
+      frozenSubset.length === 0
+        ? "∅"
+        : frozenSubset.map((index) => describeIndex(index)).join("×");
+
+    const metadata: SectionMetadata<J, X> = { subset: frozenSubset, object, eq, show, label };
+    sectionCache.set(key, metadata);
+    metadataByObject.set(object, metadata);
+    return metadata;
+  };
+
+  const compose = <A, B, C>(g: SetHom<B, C>, f: SetHom<A, B>): SetHom<A, C> => SetCat.compose(g, f);
+
+  const restriction = (larger: FiniteSubset<J>, smaller: FiniteSubset<J>): SetHom<SetTuple<J, X>, SetTuple<J, X>> => {
+    const source = getSection(larger);
+    const target = getSection(smaller);
+    return SetCat.hom(source.object, target.object, (tuple) => {
+      const entries: Array<readonly [J, X]> = [];
+      for (const index of target.subset) {
+        const value = tuple.get(index);
+        if (value !== undefined) {
+          entries.push([index, value]);
+        }
+      }
+      return ensureMembership(target.object, cloneTuple(entries));
+    });
+  };
+
+  const productSection = getSection(indices as FiniteSubset<J>);
+
+  const projection = (subset: FiniteSubset<J>): SetHom<SetTuple<J, X>, SetTuple<J, X>> =>
+    restriction(indices as FiniteSubset<J>, subset);
+
+  const equal = (
+    left: SetHom<SetTuple<J, X>, SetTuple<J, X>>,
+    right: SetHom<SetTuple<J, X>, SetTuple<J, X>>,
+  ): boolean => {
+    if (left.dom !== right.dom || left.cod !== right.cod) {
+      return false;
+    }
+    const metadata = metadataByObject.get(left.cod);
+    for (const value of left.dom) {
+      const leftImage = left.map(value);
+      const rightImage = right.map(value);
+      if (metadata) {
+        if (!metadata.eq(leftImage, rightImage)) {
+          return false;
+        }
+      } else if (leftImage !== rightImage) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const describeSubset = (subset: FiniteSubset<J>): string => getSection(subset).label;
+
+  const diagram: SemicartesianTensorDiagram<J, SetObj<SetTuple<J, X>>, SetHom<SetTuple<J, X>, SetTuple<J, X>>> = {
+    index: indices,
+    tensor: (subset) => getSection(subset).object,
+    restriction,
+    compose,
+    equal,
+    describeSubset,
+    describeMorphism: (morphism) => {
+      const dom = metadataByObject.get(morphism.dom)?.label ?? "domain";
+      const cod = metadataByObject.get(morphism.cod)?.label ?? "codomain";
+      return `${dom}→${cod}`;
+    },
+  };
+
+  const factor = (
+    cone: SemicartesianCone<J, SetObj<SetTuple<J, X>>, SetHom<SetTuple<J, X>, SetTuple<J, X>>>,
+  ): SemicartesianFactorization<SetHom<SetTuple<J, X>, SetTuple<J, X>>> => {
+    const mediator = SetCat.hom(cone.apex, productSection.object, (value) => {
+      const entries: Array<readonly [J, X]> = [];
+      for (const index of indices) {
+        const singleton = [index] as FiniteSubset<J>;
+        const leg = cone.leg(singleton);
+        const image = leg.map(value);
+        const coordinateValue = image.get(index);
+        if (coordinateValue === undefined) {
+          throw new Error(`Mediator leg for ${describeIndex(index)} omitted value.`);
+        }
+        entries.push([index, coordinateValue]);
+      }
+      return ensureMembership(productSection.object, cloneTuple(entries));
+    });
+    return { mediator };
+  };
+
+  return {
+    object: productSection.object,
+    diagram,
+    projection,
+    factor,
+    ...(options.productLabel !== undefined ? { label: options.productLabel } : {}),
+  };
 }
 
 // ✅ END_MATH: SemicartesianInfiniteTensorProduct

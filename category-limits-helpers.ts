@@ -139,3 +139,56 @@ export const checkBinaryProductSwapCompatibility = <O, M>({
   const right = category.compose(swappedComponentwise, sourceSwap.forward)
   return category.eq(left, right)
 }
+
+export interface BinaryCoproductTuple<O, M> {
+  readonly object: O
+  readonly injections: readonly [M, M]
+  readonly cotuple: (codomain: O, legs: readonly [M, M]) => M
+}
+
+export interface BinaryCoproductComponentwiseInput<O, M> {
+  readonly category: {
+    readonly compose: (g: M, f: M) => M
+  }
+  readonly source: BinaryCoproductTuple<O, M>
+  readonly target: BinaryCoproductTuple<O, M>
+  readonly components: readonly [M, M]
+}
+
+export interface BinaryCoproductComponentwiseCompatibilityInput<O, M> {
+  readonly category: {
+    readonly compose: (g: M, f: M) => M
+    readonly eq: (f: M, g: M) => boolean
+  }
+  readonly source: BinaryCoproductTuple<O, M>
+  readonly target: BinaryCoproductTuple<O, M>
+  readonly componentwise: M
+  readonly components: readonly [M, M]
+}
+
+export const makeBinaryCoproductComponentwise = <O, M>({
+  category,
+  source,
+  target,
+  components,
+}: BinaryCoproductComponentwiseInput<O, M>): M => {
+  const [leftComponent, rightComponent] = components
+  const leftLeg = category.compose(target.injections[0], leftComponent)
+  const rightLeg = category.compose(target.injections[1], rightComponent)
+  return source.cotuple(target.object, [leftLeg, rightLeg])
+}
+
+export const checkBinaryCoproductComponentwiseCompatibility = <O, M>({
+  category,
+  source,
+  target,
+  componentwise,
+  components,
+}: BinaryCoproductComponentwiseCompatibilityInput<O, M>): boolean => {
+  const [leftComponent, rightComponent] = components
+  const leftComposite = category.compose(componentwise, source.injections[0])
+  const rightComposite = category.compose(componentwise, source.injections[1])
+  const canonicalLeft = category.compose(target.injections[0], leftComponent)
+  const canonicalRight = category.compose(target.injections[1], rightComponent)
+  return category.eq(leftComposite, canonicalLeft) && category.eq(rightComposite, canonicalRight)
+}
