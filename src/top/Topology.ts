@@ -4,6 +4,53 @@ export type Top<X> = {
   readonly show?: (x: X) => string;
 };
 
+export type TopStructure<X> = {
+  readonly carrier: ReadonlyArray<X>;
+  readonly opens: ReadonlyArray<ReadonlyArray<X>>;
+  readonly eq: (a: X, b: X) => boolean;
+  readonly show?: (x: X) => string;
+};
+
+export function topStructure<X>({
+  carrier,
+  opens,
+  eq,
+  show,
+}: {
+  readonly carrier: ReadonlyArray<X>;
+  readonly opens: ReadonlyArray<ReadonlyArray<X>>;
+  readonly eq: (a: X, b: X) => boolean;
+  readonly show?: (x: X) => string;
+}): TopStructure<X> {
+  const base = {
+    carrier: [...carrier],
+    opens: opens.map((U) => [...U]),
+    eq,
+  } as const;
+  return show === undefined ? base : { ...base, show };
+}
+
+export function structureFromTop<X>(
+  eq: (a: X, b: X) => boolean,
+  topology: Top<X>,
+  options?: { readonly show?: (x: X) => string },
+): TopStructure<X> {
+  const { carrier, opens, show } = topology;
+  const showFn = options?.show ?? show;
+  return showFn === undefined
+    ? topStructure({ carrier, opens, eq })
+    : topStructure({ carrier, opens, eq, show: showFn });
+}
+
+export function forgetStructure<X>(structure: TopStructure<X>): Top<X> {
+  const { carrier, opens, show } = structure;
+  const base = {
+    carrier: [...carrier],
+    opens: opens.map((U) => [...U]),
+  } as const;
+  return show === undefined ? base : { ...base, show };
+}
+
 export type CoproductPoint<X, Y> =
   | { readonly tag: "inl"; readonly value: X }
   | { readonly tag: "inr"; readonly value: Y };
@@ -199,13 +246,37 @@ export function coproduct<X, Y>(
 
 /** Continuity: f^{-1}(V) open in X for all open V in Y. */
 export function continuous<X, Y>(
+  source: TopStructure<X>,
+  target: TopStructure<Y>,
+  f: (x: X) => Y,
+): boolean;
+export function continuous<X, Y>(
   eqX: (a: X, b: X) => boolean,
   TX: Top<X>,
   TY: Top<Y>,
   f: (x: X) => Y,
   eqY?: (a: Y, b: Y) => boolean,
+): boolean;
+export function continuous<X, Y>(
+  arg1:
+    | TopStructure<X>
+    | ((a: X, b: X) => boolean),
+  arg2: TopStructure<Y> | Top<X>,
+  arg3: ((x: X) => Y) | Top<Y>,
+  arg4?: ((x: X) => Y) | ((a: Y, b: Y) => boolean),
+  arg5?: (a: Y, b: Y) => boolean,
 ): boolean {
-  const eqCod = eqY ?? ((a: Y, b: Y) => a === b);
+  if (typeof arg1 !== "function") {
+    const source = arg1;
+    const target = arg2 as TopStructure<Y>;
+    const f = arg3 as (x: X) => Y;
+    return continuous(source.eq, forgetStructure(source), forgetStructure(target), f, target.eq);
+  }
+  const eqX = arg1;
+  const TX = arg2 as Top<X>;
+  const TY = arg3 as Top<Y>;
+  const f = arg4 as (x: X) => Y;
+  const eqCod = arg5 ?? ((a: Y, b: Y) => a === b);
   const eqSetX = (A: ReadonlyArray<X>, B: ReadonlyArray<X>) => eqArr(eqX, A, B);
   for (const V of TY.opens) {
     const fInvV = TX.carrier.filter((x) => V.some((y) => eqCod(f(x), y)));
