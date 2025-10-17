@@ -77,4 +77,12 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 73. **Monoid categories and homomorphisms** – Explore MonCat homomorphisms between Z₄, parity, and Boolean-and monoids and inspect the induced one-object category from Z₄. (examples/runnable/073-monoid-categories-and-homs.ts, mon-cat.ts, monoid-cat.ts)
 74. **Free category on a directed graph** – Build the free category on a depot→hub→campus transit graph, enumerate bounded paths, and compare composed and direct routes. (examples/runnable/074-free-category-on-a-directed-graph.ts, freecat.ts, graph.ts)
 
+75. **Finite topology basics** – Sample discrete/indiscrete finite spaces, compute closures/interiors/boundaries, and inspect specialization orders alongside connectivity and Hausdorff checks. (examples/runnable/075-finite-topology-basics.ts)
+
+76. **Product universal property for finite topological spaces** – Verify that discrete projections and pairings satisfy the product universal property and examine a subspace topology witness. (examples/runnable/076-top-product-universal-property.ts)
+
+77. **Customer record pullback reconciliation** – Model sales/support spreadsheets as a FinSet cospan, compute their pullback, and expose the reconciled golden records together with marketing projections that factor uniquely. (examples/runnable/077-customer-record-pullback.ts)
+
+78. **Pushout fixture shared across workflows** – Reuse the canonical finite pushout fixture to recover coslice reindexing mediators and certify that pushout legs preserve epimorphisms. (examples/runnable/078-pushout-shared-machinery.ts, pushout.ts, kinds/mono-epi.ts, test/pushout-fixture.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.
