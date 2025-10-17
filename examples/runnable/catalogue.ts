@@ -77,6 +77,8 @@ import { stage073MonoidCategoriesAndHoms } from "./073-monoid-categories-and-hom
 import { stage074FreeCategoryOnADirectedGraph } from "./074-free-category-on-a-directed-graph";
 import { stage075FiniteTopologyBasics } from "./075-finite-topology-basics";
 import { stage076TopProductUniversalProperty } from "./076-top-product-universal-property";
+import { stage077CustomerRecordPullback } from "./077-customer-record-pullback";
+import { stage078PushoutSharedMachinery } from "./078-pushout-shared-machinery";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -157,4 +159,6 @@ export const registry: RunnableRegistry = [
   stage074FreeCategoryOnADirectedGraph,
   stage075FiniteTopologyBasics,
   stage076TopProductUniversalProperty,
+  stage077CustomerRecordPullback,
+  stage078PushoutSharedMachinery,
 ];
