@@ -5310,8 +5310,20 @@ export const matMul = <R>(S: Semiring<R>) => (A: Mat<R>, B: Mat<R>): Mat<R> => {
   const m = A.length
   const k = B.length
   const n = B[0]?.length ?? 0
-  if (A[0]?.length !== k) throw new Error('matMul: incompatible dimensions')
-  
+
+  const colsA = (() => {
+    for (const row of A) {
+      if (row) return row.length
+    }
+    return 0
+  })()
+
+  if (colsA !== k) {
+    const zeroRowCase = m === 0 && colsA === 0
+    const zeroColCase = colsA === 0 && k === 0
+    if (!zeroRowCase && !zeroColCase) throw new Error('matMul: incompatible dimensions')
+  }
+
   const result: R[][] = []
   for (let i = 0; i < m; i++) {
     const row: R[] = []

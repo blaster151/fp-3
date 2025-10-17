@@ -289,7 +289,7 @@ export const analyzeFiniteVectorRelativeMonad = <R>(
   witness: FiniteVectorRelativeMonadWitness<R>,
 ): FiniteVectorRelativeMonadReport<R> => {
   const { semiring } = witness;
-  const sortedDimensions = [...witness.dimensions].sort((a, b) => a - b);
+  const sortedDimensions = witness.dimensions.toSorted((a, b) => a - b);
   const uniqueDimensions = sortedDimensions.filter(
     (dimension, index, array) => index === 0 || array[index - 1] !== dimension,
   );
@@ -520,7 +520,7 @@ export const analyzeFiniteVectorKleisliSplitting = <R>(
   witness: FiniteVectorRelativeMonadWitness<R>,
 ): FiniteVectorKleisliSplittingReport<R> => {
   const { semiring } = witness;
-  const sortedDimensions = [...witness.dimensions].sort((a, b) => a - b);
+  const sortedDimensions = witness.dimensions.toSorted((a, b) => a - b);
   const uniqueDimensions = sortedDimensions.filter(
     (dimension, index, array) => index === 0 || array[index - 1] !== dimension,
   );
@@ -713,7 +713,7 @@ export const analyzeFiniteVectorArrowCorrespondence = <R>(
   witness: FiniteVectorArrowCorrespondenceWitness<R>,
 ): FiniteVectorArrowCorrespondenceReport<R> => {
   const { semiring } = witness;
-  const sortedDimensions = [...witness.dimensions].sort((a, b) => a - b);
+  const sortedDimensions = witness.dimensions.toSorted((a, b) => a - b);
   const uniqueDimensions = sortedDimensions.filter(
     (dimension, index, array) => index === 0 || array[index - 1] !== dimension,
   );

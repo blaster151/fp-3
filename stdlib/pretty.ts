@@ -12,7 +12,7 @@ export namespace Pretty {
   export const chainMap =
     <R>(F: Field<R>) =>
     (name: string, f: ChainMap<R>): string => {
-      const ds = f.X.degrees.slice().sort((a, b) => a - b)
+      const ds = f.X.degrees.toSorted((a, b) => a - b)
       const parts = ds.map(n => {
         const M = (f.f[n] ?? []) as R[][]
         return `  degree ${n}: ${f.X.dim[n] ?? 0} → ${f.Y.dim[n] ?? 0}\n${matrix(F)(M)}`

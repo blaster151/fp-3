@@ -218,7 +218,7 @@ function computeTopCustomers(
 }
 
 function formatCustomerSummary(summary: CustomerSummary): string {
-  const skuList = summary.distinctSkus.slice().sort().join(", ");
+  const skuList = summary.distinctSkus.toSorted().join(", ");
   return [
     `${summary.representative} (orders: ${summary.totalOrders})`,
     `units=${summary.totalQuantity}`,
@@ -228,7 +228,7 @@ function formatCustomerSummary(summary: CustomerSummary): string {
 }
 
 function formatCategoryGrouping(grouping: CategoryGrouping): string {
-  const customers = grouping.customers.slice().sort().join(", ");
+  const customers = grouping.customers.toSorted().join(", ");
   return [
     `${grouping.representative}`,
     `customers=[${customers}]`,

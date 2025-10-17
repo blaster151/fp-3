@@ -72,7 +72,7 @@ interface EnumeratedFamilyData {
 }
 
 const uniqueSorted = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
-  [...values].sort().filter((value, index, array) => index === 0 || value !== array[index - 1]);
+  values.toSorted().filter((value, index, array) => index === 0 || value !== array[index - 1]);
 
 const shapeKey = (shape: IndexedContainerShape): string =>
   `${shape.index}::${shape.shape}`;
@@ -82,9 +82,8 @@ const assignmentKey = (assignment: IndexedContainerAssignment): string =>
 
 const elementKey = (element: IndexedContainerElement): string =>
   `${element.index}::${element.shape}::${
-    [...element.assignments]
-      .map(assignmentKey)
-      .sort()
+    Array.from(element.assignments, assignmentKey)
+      .toSorted()
       .join("|")
   }`;
 

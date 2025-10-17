@@ -879,8 +879,8 @@ export function checkFubini<A, B>(M: DistLikeMonadSpec, da: Dist<A>, db: Dist<B>
   const lhs = M.product(da, db);
   // Right: bind/map route
   const rhs = M.bind(da, (a) => M.map(db, (b) => [a, b] as const));
-  const L = [...lhs.entries()].sort();
-  const R = [...rhs.entries()].sort();
+  const L = Array.from(lhs.entries()).toSorted();
+  const R = Array.from(rhs.entries()).toSorted();
   if (L.length !== R.length) return false;
   for (let i = 0; i < L.length; i++) {
     const [kl, vl] = L[i] as unknown as [[A, B], number];

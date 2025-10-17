@@ -171,7 +171,7 @@ export function solveSymmetric(N: Mat, r: Vec): Vec {
 
 // Project a vector onto the probability simplex {v≥0, sum v = 1}
 export function projectToSimplex(v: Vec): Vec {
-  const n=v.length, u=[...v].sort((a,b)=>b-a);
+  const n=v.length, u=v.toSorted((a,b)=>b-a);
   let css=0, rho=0;
   for (let i=0;i<n;i++){
     const ui = u[i];

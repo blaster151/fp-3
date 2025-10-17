@@ -66,9 +66,9 @@ function lookupCoordinate(element: FiniteSupportElement, index: Index): Coordina
 }
 
 function project(element: FiniteSupportElement, subset: FiniteSubset): Projection {
-  return [...subset]
-    .map((index) => ({ index, value: lookupCoordinate(element, index) }))
-    .sort((left, right) => left.index - right.index);
+  return subset
+    .toSorted((left, right) => left - right)
+    .map((index) => ({ index, value: lookupCoordinate(element, index) }));
 }
 
 function restrictProjection(projection: Projection, subset: FiniteSubset): Projection {
@@ -85,7 +85,7 @@ function checkProjectionCompatibility(
   element: FiniteSupportElement,
   subsets: ReadonlyArray<FiniteSubset>,
 ): ReadonlyArray<ProjectionCompatibility> {
-  const sorted = [...subsets].sort((a, b) => a.length - b.length);
+  const sorted = subsets.toSorted((a, b) => a.length - b.length);
   const results: ProjectionCompatibility[] = [];
 
   sorted.forEach((smaller, index) => {

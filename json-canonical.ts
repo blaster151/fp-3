@@ -48,7 +48,7 @@ export const canonicalizeJsonP =
   (policy: CanonicalPolicy = {}): ((j: Json) => Json) => {
     const P = { ...defaultPolicy, ...policy }
     const normFlags = (f: string | undefined) =>
-      !P.normalizeRegexFlags || !f ? f : Array.from(new Set(f.split(''))).sort().join('') || undefined
+      !P.normalizeRegexFlags || !f ? f : Array.from(new Set(f.split(''))).toSorted().join('') || undefined
 
     return cataJson<Json>((f) => {
       switch (f._tag) {
@@ -74,13 +74,13 @@ export const canonicalizeJsonP =
             xs = [...m.values()]
           }
           if (P.sortSets) {
-            xs = [...xs].sort(compareCanonical)
+            xs = xs.toSorted(compareCanonical)
           }
           return jSet(xs)
         }
 
         case 'JObj': {
-          const es = P.sortObjects ? [...f.entries].sort(([a],[b]) => a<b?-1:a>b?1:0) : f.entries
+          const es = P.sortObjects ? f.entries.toSorted(([a],[b]) => a<b?-1:a>b?1:0) : f.entries
           return jObj(es)
         }
       }
