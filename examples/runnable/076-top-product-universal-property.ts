@@ -74,13 +74,22 @@ function runTopologyProductUPDemo(): readonly string[] {
   const g = (_: number) => 20;
 
   const result = checkProductUP(eqNum, eqNum, eqNum, TZ, TX, TY, f, g, continuous);
-  const paired = TZ.carrier.map(pair(f, g));
+  const mediatorEntry = result.mediators[0];
+  const pairing = mediatorEntry?.mediator.arrow ?? pair(f, g);
+  const paired = TZ.carrier.map(pairing);
 
   const logs: string[] = ["== Product topology universal property =="];
   logs.push(
-    `π₁ continuous? ${result.cProj1}  |  π₂ continuous? ${result.cProj2}  |  ⟨f,g⟩ continuous? ${result.cPair}`,
+    `Cone legs: ${result.legs
+      .map((leg) => `${leg.leg.name}: ${leg.holds ? "✓" : "✗"}`)
+      .join("  |  ")}`,
   );
-  logs.push(`UP equations satisfied? ${result.uniqueHolds}`);
+  logs.push(
+    `Mediator ${mediatorEntry?.mediator.name ?? "⟨f,g⟩"}: ${result.holds ? "✓" : "✗"}`,
+  );
+  if (result.failures.length > 0) {
+    logs.push(`Failures: ${result.failures.join("; ")}`);
+  }
   logs.push(
     describeSet(
       "Product carrier",
@@ -108,7 +117,8 @@ function runTopologyProductUPDemo(): readonly string[] {
   const checkProjection = result.productTopology.carrier.every((pt) =>
     eqPair({ x: proj1(pt), y: proj2(pt) }, pt),
   );
-  logs.push("", `Projections recover the product points? ${checkProjection}`);
+  logs.push("", `Universal property holds? ${result.holds}`);
+  logs.push(`Projections recover the product points? ${checkProjection}`);
 
   return logs;
 }

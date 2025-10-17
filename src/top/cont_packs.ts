@@ -143,10 +143,15 @@ const categorize = makeContinuousMap({
   eqTarget: eqNum,
   map: (y: number) => (y === 7 || y === 9 ? 0 : 1),
 });
-const mediator = topFactorThroughCoequalizer(qf, qg, qCoeq.coequalize, categorize);
+const mediatorReport = topFactorThroughCoequalizer(qf, qg, qCoeq.coequalize, categorize);
+if (!mediatorReport.mediator) {
+  throw new Error(
+    `Failed to build coequalizer mediator: ${mediatorReport.failures.join("; ") || "unknown reason"}`,
+  );
+}
 registerCont({
   tag: "Top/cont/coequalizer-mediator:Y∼→axes",
-  morphism: mediator,
+  morphism: mediatorReport.mediator,
 });
 
 const quotientSource = discrete([0, 1, 2, 3]);

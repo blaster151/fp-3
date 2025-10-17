@@ -128,10 +128,18 @@ function runTopologyCoproductUPDemo(): readonly string[] {
   const fold = copair(foldLeft, foldRight, { topology: structure.topology, eq: structure.eq });
 
   const logs: string[] = ["== Coproduct topology universal property =="];
+  const mediatorEntry = result.mediators[0];
   logs.push(
-    `ι₁ continuous? ${result.cInl}  |  ι₂ continuous? ${result.cInr}  |  [f,g] continuous? ${result.cCopair}`,
+    `Cocone legs: ${result.legs
+      .map((leg) => `${leg.leg.name}: ${leg.holds ? "✓" : "✗"}`)
+      .join("  |  ")}`,
   );
-  logs.push(`UP equations satisfied? ${result.uniqueHolds}`);
+  logs.push(
+    `Mediator ${mediatorEntry?.mediator.name ?? "[f,g]"}: ${result.holds ? "✓" : "✗"}`,
+  );
+  if (result.failures.length > 0) {
+    logs.push(`Failures: ${result.failures.join("; ")}`);
+  }
   logs.push(
     `Coproduct carrier: ${result.coproductTopology.carrier.map(showPoint).join(", ") || "∅"}`,
   );
@@ -144,6 +152,7 @@ function runTopologyCoproductUPDemo(): readonly string[] {
   logs.push(
     `Folded outputs: ${result.coproductTopology.carrier.map((pt) => fold.map(pt)).join(", ")}`,
   );
+  logs.push(`Universal property holds? ${result.holds}`);
 
   return logs;
 }

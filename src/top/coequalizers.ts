@@ -2,6 +2,7 @@ import { compose, makeContinuousMap, type ContinuousMap } from "./ContinuousMap"
 import type { Top } from "./Topology";
 import { mapsEqual } from "./Embeddings";
 import { quotientByRelation } from "./Quotient";
+import { makeMediator, makeUniversalPropertyReport, type UniversalPropertyReport } from "./limits";
 
 type Eq<X> = (a: X, b: X) => boolean;
 
@@ -14,6 +15,20 @@ type TopCoequalizerComparison<Y> = {
   readonly forward: ContinuousMap<ReadonlyArray<Y>, ReadonlyArray<Y>>;
   readonly backward: ContinuousMap<ReadonlyArray<Y>, ReadonlyArray<Y>>;
 };
+
+export interface CoequalizerMediatorMetadata {
+  readonly respectsClasses: boolean;
+}
+
+export interface CoequalizerFactorizationResult<X, Y, Z>
+  extends UniversalPropertyReport<
+    never,
+    ContinuousMap<ReadonlyArray<Y>, Z>,
+    never,
+    CoequalizerMediatorMetadata
+  > {
+  readonly mediator?: ContinuousMap<ReadonlyArray<Y>, Z>;
+}
 
 function formatPoint<X>(space: Top<X>, value: X): string {
   const { show } = space;
@@ -174,41 +189,79 @@ export function topFactorThroughCoequalizer<X, Y, Z>(
   g: ContinuousMap<X, Y>,
   coequalize: ContinuousMap<Y, ReadonlyArray<Y>>,
   cocone: ContinuousMap<Y, Z>,
-): ContinuousMap<ReadonlyArray<Y>, Z> {
-  assertParallelPair(f, g);
-  assertCoequalizerShape(coequalize, f);
-  assertCoconeShape(f, cocone);
-  ensureCoequalizing(f, g, cocone);
-  const eqZ = cocone.eqTarget;
-  const mediatorMap = (cls: ReadonlyArray<Y>): Z => {
-    const representative = cls[0];
-    if (representative === undefined) {
-      throw new Error("topFactorThroughCoequalizer: empty equivalence class encountered.");
-    }
-    const image = cocone.map(representative);
-    for (const member of cls) {
-      const memberImage = cocone.map(member);
-      if (!eqZ(image, memberImage)) {
-        const clsLabel = describeClass(coequalize.source, cls);
-        throw new Error(
-          `topFactorThroughCoequalizer: cocone is not constant on ${clsLabel}.`,
-        );
+): CoequalizerFactorizationResult<X, Y, Z> {
+  try {
+    assertParallelPair(f, g);
+    assertCoequalizerShape(coequalize, f);
+    assertCoconeShape(f, cocone);
+    ensureCoequalizing(f, g, cocone);
+    const eqZ = cocone.eqTarget;
+    const mediatorMap = (cls: ReadonlyArray<Y>): Z => {
+      const representative = cls[0];
+      if (representative === undefined) {
+        throw new Error("topFactorThroughCoequalizer: empty equivalence class encountered.");
       }
+      const image = cocone.map(representative);
+      for (const member of cls) {
+        const memberImage = cocone.map(member);
+        if (!eqZ(image, memberImage)) {
+          const clsLabel = describeClass(coequalize.source, cls);
+          throw new Error(
+            `topFactorThroughCoequalizer: cocone is not constant on ${clsLabel}.`,
+          );
+        }
+      }
+      return image;
+    };
+    const mediator = makeContinuousMap({
+      source: coequalize.target,
+      target: cocone.target,
+      eqSource: coequalize.eqTarget,
+      eqTarget: cocone.eqTarget,
+      map: mediatorMap,
+    });
+    const recomposed = compose(mediator, coequalize);
+    if (!mapsEqual(cocone.eqTarget, coequalize.source.carrier, recomposed.map, cocone.map)) {
+      throw new Error("topFactorThroughCoequalizer: constructed mediator does not reproduce the cocone.");
     }
-    return image;
-  };
-  const mediator = makeContinuousMap({
-    source: coequalize.target,
-    target: cocone.target,
-    eqSource: coequalize.eqTarget,
-    eqTarget: cocone.eqTarget,
-    map: mediatorMap,
-  });
-  const recomposed = compose(mediator, coequalize);
-  if (!mapsEqual(cocone.eqTarget, coequalize.source.carrier, recomposed.map, cocone.map)) {
-    throw new Error("topFactorThroughCoequalizer: constructed mediator does not reproduce the cocone.");
+    const mediatorEntry = {
+      mediator: makeMediator<
+        ContinuousMap<ReadonlyArray<Y>, Z>,
+        CoequalizerMediatorMetadata
+      >("coequalizer mediator", mediator, { respectsClasses: true }),
+      holds: true,
+      metadata: { respectsClasses: true },
+    };
+    const report = makeUniversalPropertyReport<
+      never,
+      ContinuousMap<ReadonlyArray<Y>, Z>,
+      never,
+      CoequalizerMediatorMetadata
+    >({
+      mediators: [mediatorEntry],
+    });
+    return { ...report, mediator } satisfies CoequalizerFactorizationResult<X, Y, Z>;
+  } catch (error) {
+    const failure = error instanceof Error ? error.message : String(error);
+    const mediatorEntry = {
+      mediator: makeMediator<
+        ContinuousMap<ReadonlyArray<Y>, Z>,
+        CoequalizerMediatorMetadata
+      >("coequalizer mediator", undefined, { respectsClasses: false }),
+      holds: false,
+      failure,
+      metadata: { respectsClasses: false },
+    };
+    const report = makeUniversalPropertyReport<
+      never,
+      ContinuousMap<ReadonlyArray<Y>, Z>,
+      never,
+      CoequalizerMediatorMetadata
+    >({
+      mediators: [mediatorEntry],
+    });
+    return { ...report, mediator: undefined } satisfies CoequalizerFactorizationResult<X, Y, Z>;
   }
-  return mediator;
 }
 
 export function topCoequalizerComparison<X, Y>(
@@ -217,8 +270,24 @@ export function topCoequalizerComparison<X, Y>(
   first: ContinuousMap<Y, ReadonlyArray<Y>>,
   second: ContinuousMap<Y, ReadonlyArray<Y>>,
 ): TopCoequalizerComparison<Y> {
-  const forward = topFactorThroughCoequalizer(f, g, first, second);
-  const backward = topFactorThroughCoequalizer(f, g, second, first);
+  const forwardReport = topFactorThroughCoequalizer(f, g, first, second);
+  if (!forwardReport.mediator) {
+    throw new Error(
+      `topCoequalizerComparison: unable to construct forward mediator (${forwardReport.failures.join(
+        "; ",
+      )}).`,
+    );
+  }
+  const backwardReport = topFactorThroughCoequalizer(f, g, second, first);
+  if (!backwardReport.mediator) {
+    throw new Error(
+      `topCoequalizerComparison: unable to construct backward mediator (${backwardReport.failures.join(
+        "; ",
+      )}).`,
+    );
+  }
+  const forward = forwardReport.mediator;
+  const backward = backwardReport.mediator;
   const composedForward = compose(forward, first);
   if (!mapsEqual(second.eqTarget, f.target.carrier, composedForward.map, second.map)) {
     throw new Error("topCoequalizerComparison: forward mediator does not reproduce the second coequalizer.");
@@ -240,4 +309,9 @@ export function topCoequalizerComparison<X, Y>(
   return { forward, backward };
 }
 
-export type { TopCoequalizerComparison, TopCoequalizerWitness };
+export type {
+  CoequalizerFactorizationResult,
+  CoequalizerMediatorMetadata,
+  TopCoequalizerComparison,
+  TopCoequalizerWitness,
+};
