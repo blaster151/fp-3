@@ -4,6 +4,8 @@ import {
   product,
   type Top,
   continuous,
+  type TopStructure,
+  forgetStructure,
 } from "./Topology";
 import {
   finalTopology,
@@ -31,6 +33,8 @@ export type ContinuousMap<X, Y> = {
   readonly eqTarget: Eq<Y>;
   readonly map: (x: X) => Y;
   readonly witness: ContinuityWitness<X, Y>;
+  readonly sourceStructure?: TopStructure<X>;
+  readonly targetStructure?: TopStructure<Y>;
 };
 
 type InitialTopologyRequest<X, Y> = {
@@ -51,21 +55,47 @@ type ResolvedContinuousMapData<X, Y> = {
   readonly eqSource: Eq<X>;
   readonly eqTarget: Eq<Y>;
   readonly map: (x: X) => Y;
+  readonly sourceStructure?: TopStructure<X>;
+  readonly targetStructure?: TopStructure<Y>;
 };
 
+type TopInput<X> = Top<X> | TopStructure<X>;
+
 type ContinuousMapData<X, Y> = {
-  readonly source?: Top<X>;
-  readonly target?: Top<Y>;
-  readonly eqSource: Eq<X>;
-  readonly eqTarget: Eq<Y>;
+  readonly source?: TopInput<X>;
+  readonly target?: TopInput<Y>;
+  readonly eqSource?: Eq<X>;
+  readonly eqTarget?: Eq<Y>;
   readonly map: (x: X) => Y;
   readonly initialSource?: InitialTopologyRequest<X, Y>;
   readonly finalTarget?: FinalTopologyRequest<Y>;
 };
 
+function isTopStructure<X>(input: TopInput<X> | undefined): input is TopStructure<X> {
+  return Boolean(input && typeof (input as TopStructure<X>).eq === "function");
+}
+
+type NormalizedTopology<X> = {
+  readonly topology?: Top<X>;
+  readonly eq?: Eq<X>;
+  readonly structure?: TopStructure<X>;
+};
+
+function normalizeTopology<X>(input: TopInput<X> | undefined, eqHint?: Eq<X>): NormalizedTopology<X> {
+  if (!input) {
+    return eqHint === undefined ? {} : { eq: eqHint };
+  }
+  if (isTopStructure(input)) {
+    return { topology: forgetStructure(input), eq: input.eq, structure: input };
+  }
+  return eqHint === undefined ? { topology: input } : { topology: input, eq: eqHint };
+}
+
 function resolveInitialTopology<X, Y>(
   data: ContinuousMapData<X, Y>,
   target: Top<Y>,
+  eqSource: Eq<X>,
+  eqTarget: Eq<Y>,
 ): Top<X> {
   const request = data.initialSource;
   if (!request) {
@@ -75,14 +105,16 @@ function resolveInitialTopology<X, Y>(
     ...(request.extraLegs ?? []),
   ];
   if (request.includeMapLeg ?? true) {
-    legs.push({ target, map: data.map, eqTarget: data.eqTarget });
+    legs.push({ target, map: data.map, eqTarget });
   }
-  return initialTopology(data.eqSource, request.carrier, legs);
+  return initialTopology(eqSource, request.carrier, legs);
 }
 
 function resolveFinalTopology<X, Y>(
   data: ContinuousMapData<X, Y>,
   source: Top<X>,
+  eqSource: Eq<X>,
+  eqTarget: Eq<Y>,
 ): Top<Y> {
   const request = data.finalTarget;
   if (!request) {
@@ -92,14 +124,41 @@ function resolveFinalTopology<X, Y>(
     ...(request.extraLegs ?? []),
   ];
   if (request.includeMapLeg ?? true) {
-    legs.push({ source, map: data.map, eqSource: data.eqSource });
+    legs.push({ source, map: data.map, eqSource });
   }
-  return finalTopology(data.eqTarget, request.carrier, legs);
+  return finalTopology(eqTarget, request.carrier, legs);
 }
 
 function resolveTopologies<X, Y>(data: ContinuousMapData<X, Y>): ResolvedContinuousMapData<X, Y> {
-  let target = data.target;
-  let source = data.source;
+  const normalizedSource = normalizeTopology(data.source, data.eqSource);
+  const normalizedTarget = normalizeTopology(data.target, data.eqTarget);
+
+  let source = normalizedSource.topology;
+  let target = normalizedTarget.topology;
+  let eqSource = normalizedSource.eq;
+  let eqTarget = normalizedTarget.eq;
+
+  const { structure: sourceStructure } = normalizedSource;
+  const { structure: targetStructure } = normalizedTarget;
+
+  if (!eqSource && sourceStructure) {
+    eqSource = sourceStructure.eq;
+  }
+  if (!eqTarget && targetStructure) {
+    eqTarget = targetStructure.eq;
+  }
+
+  if (!eqSource) {
+    throw new Error(
+      "makeContinuousMap: source equality required (provide eqSource or a TopStructure source)",
+    );
+  }
+  if (!eqTarget) {
+    throw new Error(
+      "makeContinuousMap: target equality required (provide eqTarget or a TopStructure target)",
+    );
+  }
+
   if (!target && !data.finalTarget) {
     throw new Error("makeContinuousMap: target topology required when no final topology request is provided");
   }
@@ -107,17 +166,19 @@ function resolveTopologies<X, Y>(data: ContinuousMapData<X, Y>): ResolvedContinu
     if (!target) {
       throw new Error("makeContinuousMap: cannot compute initial topology without target");
     }
-    source = resolveInitialTopology(data, target);
+    source = resolveInitialTopology(data, target, eqSource, eqTarget);
   }
   if (!target) {
-    target = resolveFinalTopology(data, source);
+    target = resolveFinalTopology(data, source, eqSource, eqTarget);
   }
   return {
     source,
     target,
-    eqSource: data.eqSource,
-    eqTarget: data.eqTarget,
+    eqSource,
+    eqTarget,
     map: data.map,
+    ...(sourceStructure ? { sourceStructure } : {}),
+    ...(targetStructure ? { targetStructure } : {}),
   };
 }
 
@@ -127,14 +188,22 @@ export function certifyContinuity<X, Y>({
   eqSource,
   eqTarget,
   map,
+  sourceStructure,
+  targetStructure,
 }: ResolvedContinuousMapData<X, Y>): ContinuityWitness<X, Y> {
-  const holds = continuous(eqSource, source, target, map, eqTarget);
+  const holds =
+    sourceStructure && targetStructure
+      ? continuous(sourceStructure, targetStructure, map)
+      : continuous(eqSource, source, target, map, eqTarget);
   if (!holds) {
     throw new Error("map is not continuous");
   }
   return {
     holds: true,
-    verify: () => continuous(eqSource, source, target, map, eqTarget),
+    verify: () =>
+      sourceStructure && targetStructure
+        ? continuous(sourceStructure, targetStructure, map)
+        : continuous(eqSource, source, target, map, eqTarget),
   };
 }
 
@@ -146,12 +215,27 @@ export function makeContinuousMap<X, Y>(data: ContinuousMapData<X, Y>): Continuo
   };
 }
 
-export function identity<X>(eqX: Eq<X>, TX: Top<X>): ContinuousMap<X, X> {
+export function identity<X>(structure: TopStructure<X>): ContinuousMap<X, X>;
+export function identity<X>(eqX: Eq<X>, TX: Top<X>): ContinuousMap<X, X>;
+export function identity<X>(
+  arg1: Eq<X> | TopStructure<X>,
+  arg2?: Top<X>,
+): ContinuousMap<X, X> {
+  if (typeof arg1 === "function") {
+    const eqX = arg1;
+    const TX = arg2 as Top<X>;
+    return makeContinuousMap({
+      source: TX,
+      target: TX,
+      eqSource: eqX,
+      eqTarget: eqX,
+      map: (x) => x,
+    });
+  }
+  const structure = arg1;
   return makeContinuousMap({
-    source: TX,
-    target: TX,
-    eqSource: eqX,
-    eqTarget: eqX,
+    source: structure,
+    target: structure,
     map: (x) => x,
   });
 }
@@ -187,16 +271,45 @@ function eqSum<X, Y>(eqX: Eq<X>, eqY: Eq<Y>, a: SumPoint<X, Y>, b: SumPoint<X, Y
 }
 
 export function productTopology<X, Y>(
+  TX: TopStructure<X>,
+  TY: TopStructure<Y>,
+): { readonly topology: Top<ProductPoint<X, Y>>; readonly eq: Eq<ProductPoint<X, Y>> };
+export function productTopology<X, Y>(
   eqX: Eq<X>,
   eqY: Eq<Y>,
   TX: Top<X>,
   TY: Top<Y>,
+): { readonly topology: Top<ProductPoint<X, Y>>; readonly eq: Eq<ProductPoint<X, Y>> };
+export function productTopology<X, Y>(
+  arg1: Eq<X> | TopStructure<X>,
+  arg2: Eq<Y> | TopStructure<Y>,
+  arg3?: Top<X>,
+  arg4?: Top<Y>,
 ): { readonly topology: Top<ProductPoint<X, Y>>; readonly eq: Eq<ProductPoint<X, Y>> } {
-  const topology = product(eqX, eqY, TX, TY);
-  return {
-    topology,
-    eq: (a, b) => eqPair(eqX, eqY, a, b),
-  };
+  if (typeof arg1 === "function") {
+    const eqX = arg1;
+    const eqY = arg2 as Eq<Y>;
+    const TX = arg3 as Top<X>;
+    const TY = arg4 as Top<Y>;
+    const topology = product(eqX, eqY, TX, TY);
+    return {
+      topology,
+      eq: (a, b) => eqPair(eqX, eqY, a, b),
+    };
+  }
+  const TXStructure = arg1;
+  if (!isTopStructure(arg2 as TopInput<Y>)) {
+    throw new Error(
+      "productTopology: second argument must be a TopStructure when the first argument is a TopStructure",
+    );
+  }
+  const TYStructure = arg2 as TopStructure<Y>;
+  return productTopology(
+    TXStructure.eq,
+    TYStructure.eq,
+    forgetStructure(TXStructure),
+    forgetStructure(TYStructure),
+  );
 }
 
 export type ProductStructure<X, Y> = {
@@ -213,28 +326,65 @@ export type CoproductStructure<X, Y> = {
   readonly inr: ContinuousMap<Y, SumPoint<X, Y>>;
 };
 
+export function productStructure<X, Y>(TX: TopStructure<X>, TY: TopStructure<Y>): ProductStructure<X, Y>;
 export function productStructure<X, Y>(
   eqX: Eq<X>,
   eqY: Eq<Y>,
   TX: Top<X>,
   TY: Top<Y>,
+): ProductStructure<X, Y>;
+export function productStructure<X, Y>(
+  arg1: Eq<X> | TopStructure<X>,
+  arg2: Eq<Y> | TopStructure<Y>,
+  arg3?: Top<X>,
+  arg4?: Top<Y>,
 ): ProductStructure<X, Y> {
-  const { topology, eq } = productTopology(eqX, eqY, TX, TY);
+  if (typeof arg1 === "function") {
+    const eqX = arg1;
+    const eqY = arg2 as Eq<Y>;
+    const TX = arg3 as Top<X>;
+    const TY = arg4 as Top<Y>;
+    const { topology, eq } = productTopology(eqX, eqY, TX, TY);
+    return {
+      topology,
+      eq,
+      proj1: makeContinuousMap({
+        source: topology,
+        target: TX,
+        eqSource: eq,
+        eqTarget: eqX,
+        map: proj1,
+      }),
+      proj2: makeContinuousMap({
+        source: topology,
+        target: TY,
+        eqSource: eq,
+        eqTarget: eqY,
+        map: proj2,
+      }),
+    };
+  }
+  const TXStructure = arg1;
+  if (!isTopStructure(arg2 as TopInput<Y>)) {
+    throw new Error(
+      "productStructure: second argument must be a TopStructure when the first argument is a TopStructure",
+    );
+  }
+  const TYStructure = arg2 as TopStructure<Y>;
+  const { topology, eq } = productTopology(TXStructure, TYStructure);
   return {
     topology,
     eq,
     proj1: makeContinuousMap({
       source: topology,
-      target: TX,
+      target: TXStructure,
       eqSource: eq,
-      eqTarget: eqX,
       map: proj1,
     }),
     proj2: makeContinuousMap({
       source: topology,
-      target: TY,
+      target: TYStructure,
       eqSource: eq,
-      eqTarget: eqY,
       map: proj2,
     }),
   };
@@ -271,39 +421,108 @@ export function pairing<Z, X, Y>(
 }
 
 export function coproductTopology<X, Y>(
+  TX: TopStructure<X>,
+  TY: TopStructure<Y>,
+): { readonly topology: Top<SumPoint<X, Y>>; readonly eq: Eq<SumPoint<X, Y>> };
+export function coproductTopology<X, Y>(
   eqX: Eq<X>,
   eqY: Eq<Y>,
   TX: Top<X>,
   TY: Top<Y>,
+): { readonly topology: Top<SumPoint<X, Y>>; readonly eq: Eq<SumPoint<X, Y>> };
+export function coproductTopology<X, Y>(
+  arg1: Eq<X> | TopStructure<X>,
+  arg2: Eq<Y> | TopStructure<Y>,
+  arg3?: Top<X>,
+  arg4?: Top<Y>,
 ): { readonly topology: Top<SumPoint<X, Y>>; readonly eq: Eq<SumPoint<X, Y>> } {
-  const topology = coproduct(eqX, eqY, TX, TY);
-  return {
-    topology,
-    eq: (a, b) => eqSum(eqX, eqY, a, b),
-  };
+  if (typeof arg1 === "function") {
+    const eqX = arg1;
+    const eqY = arg2 as Eq<Y>;
+    const TX = arg3 as Top<X>;
+    const TY = arg4 as Top<Y>;
+    const topology = coproduct(eqX, eqY, TX, TY);
+    return {
+      topology,
+      eq: (a, b) => eqSum(eqX, eqY, a, b),
+    };
+  }
+  const TXStructure = arg1;
+  if (!isTopStructure(arg2 as TopInput<Y>)) {
+    throw new Error(
+      "coproductTopology: second argument must be a TopStructure when the first argument is a TopStructure",
+    );
+  }
+  const TYStructure = arg2 as TopStructure<Y>;
+  return coproductTopology(
+    TXStructure.eq,
+    TYStructure.eq,
+    forgetStructure(TXStructure),
+    forgetStructure(TYStructure),
+  );
 }
 
+export function coproductStructure<X, Y>(
+  TX: TopStructure<X>,
+  TY: TopStructure<Y>,
+): CoproductStructure<X, Y>;
 export function coproductStructure<X, Y>(
   eqX: Eq<X>,
   eqY: Eq<Y>,
   TX: Top<X>,
   TY: Top<Y>,
+): CoproductStructure<X, Y>;
+export function coproductStructure<X, Y>(
+  arg1: Eq<X> | TopStructure<X>,
+  arg2: Eq<Y> | TopStructure<Y>,
+  arg3?: Top<X>,
+  arg4?: Top<Y>,
 ): CoproductStructure<X, Y> {
-  const { topology, eq } = coproductTopology(eqX, eqY, TX, TY);
+  if (typeof arg1 === "function") {
+    const eqX = arg1;
+    const eqY = arg2 as Eq<Y>;
+    const TX = arg3 as Top<X>;
+    const TY = arg4 as Top<Y>;
+    const { topology, eq } = coproductTopology(eqX, eqY, TX, TY);
+    return {
+      topology,
+      eq,
+      inl: makeContinuousMap({
+        source: TX,
+        target: topology,
+        eqSource: eqX,
+        eqTarget: eq,
+        map: (x) => ({ tag: "inl" as const, value: x }),
+      }),
+      inr: makeContinuousMap({
+        source: TY,
+        target: topology,
+        eqSource: eqY,
+        eqTarget: eq,
+        map: (y) => ({ tag: "inr" as const, value: y }),
+      }),
+    };
+  }
+  const TXStructure = arg1;
+  if (!isTopStructure(arg2 as TopInput<Y>)) {
+    throw new Error(
+      "coproductStructure: second argument must be a TopStructure when the first argument is a TopStructure",
+    );
+  }
+  const TYStructure = arg2 as TopStructure<Y>;
+  const { topology, eq } = coproductTopology(TXStructure, TYStructure);
   return {
     topology,
     eq,
     inl: makeContinuousMap({
-      source: TX,
+      source: TXStructure,
       target: topology,
-      eqSource: eqX,
       eqTarget: eq,
       map: (x) => ({ tag: "inl" as const, value: x }),
     }),
     inr: makeContinuousMap({
-      source: TY,
+      source: TYStructure,
       target: topology,
-      eqSource: eqY,
       eqTarget: eq,
       map: (y) => ({ tag: "inr" as const, value: y }),
     }),
