@@ -1,5 +1,11 @@
 import { product, type Top, continuous } from "./Topology";
 import { pair, proj1, proj2 } from "./ProductUP";
+import {
+  finalTopology,
+  initialTopology,
+  type FinalMap,
+  type InitialMap,
+} from "./InitialFinal";
 
 type Eq<X> = (a: X, b: X) => boolean;
 
@@ -19,7 +25,19 @@ export type ContinuousMap<X, Y> = {
   readonly witness: ContinuityWitness<X, Y>;
 };
 
-type ContinuousMapData<X, Y> = {
+type InitialTopologyRequest<X> = {
+  readonly kind: "initial";
+  readonly carrier: ReadonlyArray<X>;
+  readonly maps?: ReadonlyArray<InitialMap<X, unknown>>;
+};
+
+type FinalTopologyRequest<Y> = {
+  readonly kind: "final";
+  readonly carrier: ReadonlyArray<Y>;
+  readonly maps?: ReadonlyArray<FinalMap<unknown, Y>>;
+};
+
+type ResolvedContinuousMapData<X, Y> = {
   readonly source: Top<X>;
   readonly target: Top<Y>;
   readonly eqSource: Eq<X>;
@@ -27,13 +45,59 @@ type ContinuousMapData<X, Y> = {
   readonly map: (x: X) => Y;
 };
 
+type ContinuousMapInput<X, Y> = {
+  readonly source: Top<X> | InitialTopologyRequest<X>;
+  readonly target: Top<Y> | FinalTopologyRequest<Y>;
+  readonly eqSource: Eq<X>;
+  readonly eqTarget: Eq<Y>;
+  readonly map: (x: X) => Y;
+};
+
+function isInitialRequest<X>(
+  value: Top<X> | InitialTopologyRequest<X>,
+): value is InitialTopologyRequest<X> {
+  return (value as InitialTopologyRequest<X>).kind === "initial";
+}
+
+function isFinalRequest<Y>(
+  value: Top<Y> | FinalTopologyRequest<Y>,
+): value is FinalTopologyRequest<Y> {
+  return (value as FinalTopologyRequest<Y>).kind === "final";
+}
+
+function resolveInitialMaps<X, Y>(
+  data: ContinuousMapInput<X, Y>,
+  request: InitialTopologyRequest<X>,
+): ReadonlyArray<InitialMap<X, unknown>> {
+  const maps: Array<InitialMap<X, unknown>> = [...(request.maps ?? [])];
+  if (!isFinalRequest(data.target)) {
+    maps.push({ target: data.target, eqTarget: data.eqTarget, map: data.map });
+  }
+  if (maps.length === 0) {
+    throw new Error(
+      "initial topology request requires explicit maps when the codomain topology is inferred",
+    );
+  }
+  return maps;
+}
+
+function resolveFinalMaps<X, Y>(
+  data: ContinuousMapInput<X, Y>,
+  request: FinalTopologyRequest<Y>,
+  resolvedSource: Top<X>,
+): ReadonlyArray<FinalMap<unknown, Y>> {
+  const maps: Array<FinalMap<unknown, Y>> = [...(request.maps ?? [])];
+  maps.push({ source: resolvedSource, eqSource: data.eqSource, map: data.map });
+  return maps;
+}
+
 export function certifyContinuity<X, Y>({
   source,
   target,
   eqSource,
   eqTarget,
   map,
-}: ContinuousMapData<X, Y>): ContinuityWitness<X, Y> {
+}: ResolvedContinuousMapData<X, Y>): ContinuityWitness<X, Y> {
   const holds = continuous(eqSource, source, target, map, eqTarget);
   if (!holds) {
     throw new Error("map is not continuous");
@@ -44,10 +108,27 @@ export function certifyContinuity<X, Y>({
   };
 }
 
-export function makeContinuousMap<X, Y>(data: ContinuousMapData<X, Y>): ContinuousMap<X, Y> {
+export function makeContinuousMap<X, Y>(data: ContinuousMapInput<X, Y>): ContinuousMap<X, Y> {
+  const sourceTopology = isInitialRequest(data.source)
+    ? initialTopology(data.eqSource, data.source.carrier, resolveInitialMaps(data, data.source))
+    : data.source;
+  const targetTopology = isFinalRequest(data.target)
+    ? finalTopology(
+        data.eqTarget,
+        data.target.carrier,
+        resolveFinalMaps(data, data.target, sourceTopology),
+      )
+    : data.target;
+  const resolved: ResolvedContinuousMapData<X, Y> = {
+    source: sourceTopology,
+    target: targetTopology,
+    eqSource: data.eqSource,
+    eqTarget: data.eqTarget,
+    map: data.map,
+  };
   return {
-    ...data,
-    witness: certifyContinuity(data),
+    ...resolved,
+    witness: certifyContinuity(resolved),
   };
 }
 
