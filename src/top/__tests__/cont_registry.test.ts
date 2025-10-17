@@ -1,19 +1,49 @@
 import { describe, it, expect } from "vitest";
 import "../cont_packs";
-import { allCont, runContAll } from "../ContRegistry";
+import {
+  allCont,
+  runContAll,
+  summarizeCont,
+  contReportToJson,
+  contReportToMarkdown,
+} from "../ContRegistry";
 
 describe("Continuous-map registry", () => {
   it("all registered maps are continuous", () => {
     const report = runContAll();
-    const failures = report.filter((entry) => !entry.ok);
-    if (failures.length > 0) {
+    const summary = summarizeCont(report);
+    if (summary.failures > 0) {
       // eslint-disable-next-line no-console
-      console.error("Continuity failures:", failures);
+      console.error("Continuity failures:", report.filter((entry) => !entry.holds || !entry.verified));
     }
-    expect(failures.length).toBe(0);
+    expect(summary.failures).toBe(0);
+    expect(summary.total).toBe(report.length);
+    const markdown = contReportToMarkdown(report);
+    expect(markdown).toContain("| Tag |");
+    const json = contReportToJson(report);
+    const parsed = JSON.parse(json) as { summary: { total: number } };
+    expect(parsed.summary.total).toBe(report.length);
   });
 
   it("sanity: registry has entries", () => {
     expect(allCont().length).toBeGreaterThan(0);
+  });
+
+  it("exposes witness metadata for featured maps", () => {
+    const report = runContAll();
+    const quotientClassifier = report.find((entry) => entry.tag === "Top/cont/quotient:classify-parity");
+    expect(quotientClassifier?.witness?.preimages.length).toBeGreaterThan(0);
+    const parityOpen = quotientClassifier?.witness?.preimages.find((record) => record.open.includes(0));
+    expect(parityOpen?.preimage.length).toBe(1);
+    expect(parityOpen?.preimage[0].includes(0)).toBe(true);
+
+    const pullbackProj = report.find((entry) => entry.tag === "Top/cont/pullback:π₁");
+    expect(pullbackProj?.failures.length).toBe(0);
+    expect(pullbackProj?.witness?.note).toContain("computed");
+
+    const constantComponents = report.find((entry) => entry.tag === "Top/cont/components:constant");
+    const oneOpen = constantComponents?.witness?.preimages.find((record) => record.open.length === 1 && record.open[0] === 1);
+    const sortedPreimage = oneOpen ? [...oneOpen.preimage].sort() : [];
+    expect(sortedPreimage).toEqual([2, 3]);
   });
 });
