@@ -376,7 +376,7 @@ export function makeProductPrior<A, XJ>(mkInput: () => ProductPriorInput<A, XJ>)
   const describePoint = (point: XJ): string => {
     if (show) {
       try {
-        return show(point as FactorPoints<typeof input.product.factors>);
+        return show(point);
       } catch (error) {
         const fallback = JSON.stringify(point);
         return fallback === undefined ? String(point) : fallback;
