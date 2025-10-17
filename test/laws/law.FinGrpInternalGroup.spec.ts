@@ -7,20 +7,8 @@ import {
   checkInternalGroupUnit,
   makeFinGrpInternalGroupWitness,
 } from '../../allTS'
-import type { FinGrpObj, Hom } from '../../models/fingroup-cat'
-
-const cyclicGroup = (order: number, name: string): FinGrpObj => {
-  const elems = Array.from({ length: order }, (_, index) => index.toString())
-  const add = (mod: number) => (a: string, b: string) => ((Number(a) + Number(b)) % mod).toString()
-  const inv = (mod: number) => (a: string) => ((mod - Number(a)) % mod).toString()
-  return {
-    name,
-    elems,
-    e: '0',
-    mul: add(order),
-    inv: inv(order),
-  }
-}
+import type { Hom } from '../../models/fingroup-cat'
+import { cyclicGroup, symmetricGroupS3 } from './fixtures/finGrp'
 
 describe('Finite groups as internal groups in Set', () => {
   const Z3 = cyclicGroup(3, 'Z₃')
@@ -128,5 +116,24 @@ describe('Finite groups as internal groups in Set', () => {
     expect(analysis.overall).toBe(false)
     expect(analysis.diagonalPairing?.right).toBe(false)
     expect(analysis.issues.some((issue) => issue.includes('⟨i, id⟩'))).toBe(true)
+  })
+
+  it('rejects non-abelian groups when building the internal-group witness', () => {
+    const S3 = symmetricGroupS3()
+    expect(() => makeFinGrpInternalGroupWitness(S3)).toThrow(
+      /makeFinGrpInternalGroupWitness\(S₃\): multiplication must be a FinGrp homomorphism; internal groups in Grp require abelian carriers \(dom=S₃×S₃, cod=S₃\): .*fails to preserve products/,
+    )
+  })
+
+  it('rejects inversion maps that fail the homomorphism check', () => {
+    const skewedInverse = {
+      ...cyclicGroup(3, 'Z₃'),
+      name: 'Z₃^inv',
+      inv: (value: string) => ((Number(value) + 1) % 3).toString(),
+    }
+
+    expect(() => makeFinGrpInternalGroupWitness(skewedInverse)).toThrow(
+      /makeFinGrpInternalGroupWitness\(Z₃\^inv\): inversion must be a FinGrp homomorphism; internal groups in Grp require abelian carriers \(dom=Z₃\^inv, cod=Z₃\^inv\): .*sends the identity/,
+    )
   })
 })

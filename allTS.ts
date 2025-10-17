@@ -5945,6 +5945,13 @@ export {
   type KernelWitness as FinGrpKernelWitness,
 } from "./models/fingroup-kernel"
 export {
+  finGrpKernelEqualizer,
+  finGrpFactorThroughKernelEqualizer,
+  finGrpKernelEqualizerComparison,
+  type FinGrpKernelEqualizerWitness,
+  type FinGrpKernelEqualizerComparison,
+} from "./models/fingroup-equalizer"
+export {
   inverse,
   isIso,
   isoWitness,
