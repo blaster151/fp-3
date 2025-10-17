@@ -15,6 +15,7 @@ describe('Smooth internal groups approximated by circle samples', () => {
   const carrier = Array.from({ length: modulus }, (_, index) => index)
   const add = (left: number, right: number) => modulo(left + right, modulus)
   const negate = (value: number) => modulo(-value, modulus)
+  const skewMultiply = (left: number, right: number) => modulo(left + 2 * right, modulus)
 
   const smoothness = {
     certifyBinary: (map: (left: number, right: number) => number) =>
@@ -65,7 +66,7 @@ describe('Smooth internal groups approximated by circle samples', () => {
   it('detects a multiplication that breaks associativity', () => {
     const brokenMultiplication = {
       ...context.witness.multiplication,
-      map: () => 0,
+      map: (value: { left: number; right: number }) => skewMultiply(value.left, value.right),
     }
 
     const result = checkInternalGroupAssociativity({

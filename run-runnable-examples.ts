@@ -33,9 +33,14 @@ async function main(): Promise<void> {
     console.log(`[${ordinal}/${totalTargets}] ${example.id} – ${example.title}`);
     console.log(`\n=== [${example.id}] ${example.title} ===`);
     console.log(example.summary);
-    const outcome = await example.run();
-    for (const line of outcome.logs) {
-      console.log(` • ${line}`);
+    try {
+      const outcome = await example.run();
+      for (const line of outcome.logs) {
+        console.log(` • ${line}`);
+      }
+    } catch (error) {
+      console.error(error);
+      process.exitCode = 1;
     }
   }
 }

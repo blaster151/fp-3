@@ -373,10 +373,23 @@ export function makeProductPrior<A, XJ>(mkInput: () => ProductPriorInput<A, XJ>)
 
   const { eq, elems, show } = input.product.points;
   const contains = (point: XJ) => elems.some((candidate) => candidate !== undefined && eq(candidate, point));
+  const describePoint = (point: XJ): string => {
+    if (show) {
+      try {
+        return show(point as FactorPoints<typeof input.product.factors>);
+      } catch (error) {
+        const fallback = JSON.stringify(point);
+        return fallback === undefined ? String(point) : fallback;
+      }
+    }
+    const rendered = JSON.stringify(point);
+    return rendered === undefined ? String(point) : rendered;
+  };
+
   for (const [point, weight] of input.support) {
     if (!contains(point)) {
       throw new Error(
-        `${descriptor}: point ${show?.(point) ?? String(point)} is outside the encoded product space.`,
+        `${descriptor}: point ${describePoint(point)} is outside the encoded product space.`,
       );
     }
     if (!Number.isFinite(weight) || weight < 0) {

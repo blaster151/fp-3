@@ -148,7 +148,9 @@ function analyseVectKanExtension(): readonly string[] {
         return undefined;
       }
       if (a === b) {
-        return { S: FieldReal, X: makeComplex(a === "x" ? 1 : 2), Y: makeComplex(a === "x" ? 1 : 2), f: { 0: [[1]] } };
+        const dimension = a === "x" ? 1 : 2;
+        const identity = dimension === 1 ? [[1]] : [[1, 0], [0, 1]];
+        return { S: FieldReal, X: makeComplex(dimension), Y: makeComplex(dimension), f: { 0: identity } };
       }
       return { S: FieldReal, X: makeComplex(1), Y: makeComplex(2), f: { 0: [[1], [1]] } };
     },

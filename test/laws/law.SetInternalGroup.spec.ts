@@ -13,6 +13,7 @@ describe('Set internal groups from classical group data', () => {
   const carrier = Array.from({ length: order }, (_, index) => index)
   const modAdd = (left: number, right: number) => (left + right) % order
   const modNeg = (value: number) => (order - value) % order
+  const skewMultiply = (left: number, right: number) => (left + 2 * right) % order
 
   const context = makeSetInternalGroupWitness({
     carrier,
@@ -51,7 +52,7 @@ describe('Set internal groups from classical group data', () => {
   it('detects a multiplication that breaks associativity', () => {
     const brokenMultiplication = {
       ...context.witness.multiplication,
-      map: () => 0,
+      map: (value: { left: number; right: number }) => skewMultiply(value.left, value.right),
     }
 
     const result = checkInternalGroupAssociativity({

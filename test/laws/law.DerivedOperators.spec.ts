@@ -52,7 +52,9 @@ describe("LAW: Derived operators", () => {
             )
 
             // Both should produce the same result on pairs
-            return lhs([x, y]) === rhs([x, y])
+            const left = lhs([x, y])
+            const right = rhs([x, y])
+            return left[0] === right[0] && left[1] === right[1]
           },
         )
       )
@@ -75,7 +77,9 @@ describe("LAW: Derived operators", () => {
               )
             )
 
-            return parDirect([x, y]) === parDerived([x, y])
+            const left = parDirect([x, y])
+            const right = parDerived([x, y])
+            return left[0] === right[0] && left[1] === right[1]
           },
         )
       )
@@ -101,7 +105,9 @@ describe("LAW: Derived operators", () => {
             )
 
             // Both should produce the same result
-            return lhs(x) === rhs(x)
+            const left = lhs(x)
+            const right = rhs(x)
+            return left[0] === right[0] && left[1] === right[1]
           },
         )
       )
@@ -125,7 +131,9 @@ describe("LAW: Derived operators", () => {
               )
             )
 
-            return fanoutDirect(x) === fanoutDerived(x)
+            const left = fanoutDirect(x)
+            const right = fanoutDerived(x)
+            return left[0] === right[0] && left[1] === right[1]
           },
         )
       )
@@ -148,7 +156,7 @@ describe("LAW: Derived operators", () => {
             const parResult = denot(parArrow)([x, y])
             const derivedResult = denot(derivedArrow)([x, y])
 
-            return parResult === derivedResult
+            return parResult[0] === derivedResult[0] && parResult[1] === derivedResult[1]
           },
         )
       )
@@ -170,7 +178,7 @@ describe("LAW: Derived operators", () => {
             const fanoutResult = denot(fanoutArrow)(x)
             const derivedResult = denot(derivedArrow)(x)
 
-            return fanoutResult === derivedResult
+            return fanoutResult[0] === derivedResult[0] && fanoutResult[1] === derivedResult[1]
           },
         )
       )
