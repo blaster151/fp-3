@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { discrete, indiscrete } from "../Topology";
 import { subspace } from "../Subspace";
 import { inclusion } from "../Embeddings";
-import { sierpinski } from "../Spaces";
+import type { ContinuityWitness } from "../ContinuousMap";
+import { discreteSpace, sierpinski } from "../Spaces";
 import {
   compose,
   identity,
@@ -91,5 +92,56 @@ describe("Continuity beyond discrete spaces", () => {
     expect(recoverF.witness.verify()).toBe(true);
     expect(recoverF.map(0)).toBe(10);
     expect(recoverF.map(1)).toBe(11);
+  });
+
+  it("detects non-continuous maps and reports enriched failures", () => {
+    const source = sierpinski();
+    const target = discrete([0, 1]);
+    expect(() =>
+      makeContinuousMap({
+        source,
+        target,
+        eqSource: eqNum,
+        eqTarget: eqNum,
+        map: (x: number) => x,
+      }),
+    ).toThrow(/not continuous/);
+
+    let witness: ContinuityWitness<number, number> | undefined;
+    try {
+      makeContinuousMap({
+        source,
+        target,
+        eqSource: eqNum,
+        eqTarget: eqNum,
+        map: (x: number) => x,
+      });
+    } catch (error) {
+      witness = (error as Error & { witness?: ContinuityWitness<number, number> }).witness;
+    }
+
+    expect(witness).toBeDefined();
+    expect(witness?.holds).toBe(false);
+    expect(witness?.failures.length).toBeGreaterThan(0);
+    const firstFailure = witness?.failures[0];
+    expect(firstFailure?.open).toEqual([0]);
+    expect(firstFailure?.preimage).toEqual([0]);
+    expect(witness?.verify()).toBe(false);
+  });
+
+  it("aggregates witness notes across compositions", () => {
+    const binary = discreteSpace([0, 1], eqNum);
+    const identityBinary = identity(binary);
+    const constantZero = makeContinuousMap<number, number>({
+      source: binary,
+      target: binary,
+      map: () => 0,
+    });
+    const composite = compose(constantZero, identityBinary);
+    const note = composite.witness.witness?.note ?? "";
+    const structuredCount = (note.match(/via structured verification/g) ?? []).length;
+    expect(structuredCount).toBeGreaterThanOrEqual(3);
+    expect(note).toMatch(/composition witness/);
+    expect(composite.witness.verify()).toBe(true);
   });
 });
