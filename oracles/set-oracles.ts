@@ -1,4 +1,16 @@
-import type { AnySet } from "../set-cat";
+import type {
+  BinaryProductComponentwiseCollapseInput,
+  BinaryProductComponentwiseInput,
+  BinaryProductNaturalityInput,
+  BinaryProductTuple,
+} from "../category-limits-helpers";
+import {
+  checkBinaryProductComponentwiseCollapse,
+  checkBinaryProductNaturality,
+  makeBinaryProductComponentwise,
+} from "../category-limits-helpers";
+import type { AnySet, Coproduct, SetHom, SetObj } from "../set-cat";
+import { SetCat, composeSet } from "../set-cat";
 
 export type OracleReport<TExtra = Record<string, unknown>> = {
   holds: boolean;
@@ -11,6 +23,200 @@ const ONE = new Set([null]);
 
 const homCount = <X, Y>(domain: AnySet<X>, codomain: AnySet<Y>): number =>
   Math.pow(codomain.size, domain.size);
+
+type SetObject = AnySet<unknown>;
+type SetMorphism = SetHom<any, any>;
+
+const ensureSetObj = <T>(carrier: AnySet<T>, context: string): SetObj<T> => {
+  if (!(carrier instanceof Set)) {
+    throw new Error(`${context}: expected a concrete Set instance`);
+  }
+  return carrier as SetObj<T>;
+};
+
+const composeSetMorphisms = (g: SetMorphism, f: SetMorphism): SetMorphism =>
+  composeSet(g as SetHom<unknown, unknown>, f as SetHom<unknown, unknown>) as SetMorphism;
+
+const equalSetMorphisms = (left: SetMorphism, right: SetMorphism): boolean => {
+  if (left.dom !== right.dom || left.cod !== right.cod) {
+    return false;
+  }
+
+  const domain = left.dom as SetObject;
+  for (const element of domain) {
+    if (!Object.is(left.map(element), right.map(element))) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const setCategoryForHelpers = {
+  compose: composeSetMorphisms,
+  eq: equalSetMorphisms,
+};
+
+const setCategoryForComponentwise = {
+  compose: composeSetMorphisms,
+};
+
+export interface SetBinaryProductWitness<A, B> {
+  readonly left: AnySet<A>;
+  readonly right: AnySet<B>;
+  readonly product: BinaryProductTuple<SetObject, SetMorphism>;
+  readonly componentwise: (
+    input: Omit<BinaryProductComponentwiseInput<SetObject, SetMorphism>, "category">
+  ) => SetMorphism;
+  readonly checkComponentwiseCollapse: (
+    input: Omit<BinaryProductComponentwiseCollapseInput<SetObject, SetMorphism>, "category">
+  ) => boolean;
+  readonly checkNaturality: (
+    input: Omit<BinaryProductNaturalityInput<SetObject, SetMorphism>, "category">
+  ) => boolean;
+}
+
+export const setBinaryProductWitness = <A, B>(
+  left: AnySet<A>,
+  right: AnySet<B>,
+): SetBinaryProductWitness<A, B> => {
+  const leftObj = ensureSetObj(left, "setBinaryProductWitness");
+  const rightObj = ensureSetObj(right, "setBinaryProductWitness");
+  const data = SetCat.product(leftObj, rightObj);
+  const product: BinaryProductTuple<SetObject, SetMorphism> = {
+    object: data.object,
+    projections: [data.projections.fst, data.projections.snd],
+    tuple: (domain, legs) => {
+      if (legs.length !== 2) {
+        throw new Error(
+          `setBinaryProductWitness: expected 2 legs for pairing, received ${legs.length}`,
+        );
+      }
+
+      const [leftLeg, rightLeg] = legs;
+
+      if (leftLeg.dom !== domain || rightLeg.dom !== domain) {
+        throw new Error("setBinaryProductWitness: pairing legs must share the supplied domain");
+      }
+
+      if (leftLeg.cod !== leftObj || rightLeg.cod !== rightObj) {
+        throw new Error(
+          "setBinaryProductWitness: pairing legs must land in the declared product factors",
+        );
+      }
+
+      return data.pair(leftLeg as SetHom<unknown, A>, rightLeg as SetHom<unknown, B>);
+    },
+  };
+
+  return {
+    left,
+    right,
+    product,
+    componentwise: input =>
+      makeBinaryProductComponentwise({
+        category: setCategoryForComponentwise,
+        ...input,
+      }),
+    checkComponentwiseCollapse: input =>
+      checkBinaryProductComponentwiseCollapse({
+        category: setCategoryForHelpers,
+        ...input,
+      }),
+    checkNaturality: input =>
+      checkBinaryProductNaturality({
+        category: setCategoryForHelpers,
+        ...input,
+      }),
+  };
+};
+
+export interface SetBinaryCoproductWitness<A, B> {
+  readonly left: AnySet<A>;
+  readonly right: AnySet<B>;
+  readonly coproduct: AnySet<Coproduct<A, B>>;
+  readonly injections: readonly [SetHom<A, Coproduct<A, B>>, SetHom<B, Coproduct<A, B>>];
+  readonly copair: <X>(
+    target: AnySet<X>,
+    legs: readonly [SetHom<A, X>, SetHom<B, X>],
+  ) => SetHom<Coproduct<A, B>, X>;
+  readonly checkCopairCollapse: <X>(input: {
+    readonly target: AnySet<X>;
+    readonly mediator: SetHom<Coproduct<A, B>, X>;
+    readonly legs: readonly [SetHom<A, X>, SetHom<B, X>];
+  }) => { readonly holds: boolean; readonly failures: string[] };
+}
+
+export const setBinaryCoproductWitness = <A, B>(
+  left: AnySet<A>,
+  right: AnySet<B>,
+): SetBinaryCoproductWitness<A, B> => {
+  const leftObj = ensureSetObj(left, "setBinaryCoproductWitness");
+  const rightObj = ensureSetObj(right, "setBinaryCoproductWitness");
+  const data = SetCat.coproduct(leftObj, rightObj);
+  const injections = [data.injections.inl, data.injections.inr] as const;
+
+  return {
+    left,
+    right,
+    coproduct: data.object,
+    injections,
+    copair: (target, legs) => {
+      const [fromLeft, fromRight] = legs;
+
+      if (fromLeft.dom !== leftObj || fromRight.dom !== rightObj) {
+        throw new Error("setBinaryCoproductWitness: copair legs must originate from the declared summands");
+      }
+
+      if (fromLeft.cod !== target || fromRight.cod !== target) {
+        throw new Error("setBinaryCoproductWitness: copair legs must land in the declared target set");
+      }
+
+      return data.copair(fromLeft, fromRight);
+    },
+    checkCopairCollapse: ({ target, mediator, legs }) => {
+      const failures: string[] = [];
+      const [fromLeft, fromRight] = legs;
+
+      if (mediator.dom !== data.object) {
+        failures.push("copair collapse: mediator must have the coproduct as its domain");
+      }
+
+      if (mediator.cod !== target) {
+        failures.push("copair collapse: mediator must land in the declared target set");
+      }
+
+      if (fromLeft.dom !== leftObj) {
+        failures.push("copair collapse: left leg domain must match the left summand");
+      }
+
+      if (fromRight.dom !== rightObj) {
+        failures.push("copair collapse: right leg domain must match the right summand");
+      }
+
+      if (fromLeft.cod !== target || fromRight.cod !== target) {
+        failures.push("copair collapse: legs must land in the declared target set");
+      }
+
+      if (failures.length > 0) {
+        return { holds: false, failures };
+      }
+
+      const leftComposite = composeSetMorphisms(mediator, injections[0]);
+      const rightComposite = composeSetMorphisms(mediator, injections[1]);
+
+      if (!equalSetMorphisms(leftComposite, fromLeft)) {
+        failures.push("copair collapse: mediator ∘ inl must recover the left leg");
+      }
+
+      if (!equalSetMorphisms(rightComposite, fromRight)) {
+        failures.push("copair collapse: mediator ∘ inr must recover the right leg");
+      }
+
+      return { holds: failures.length === 0, failures };
+    },
+  };
+};
 
 // ---------- Unique map from ∅ ----------
 export type UniqueFromEmptyWitness<Y> = { Y: AnySet<Y> };
@@ -123,7 +329,7 @@ export const checkElementsAsArrows = <A>(
   };
 };
 
-export const SetOracles = {
+const cardinalityOracles = {
   uniqueFromEmpty: {
     witness: uniqueFromEmptyWitness,
     check: checkUniqueFromEmpty,
@@ -140,4 +346,15 @@ export const SetOracles = {
     witness: elementsAsArrowsWitness,
     check: checkElementsAsArrows,
   },
+} as const;
+
+export const SetOracles = {
+  product: {
+    witness: setBinaryProductWitness,
+  },
+  coproduct: {
+    witness: setBinaryCoproductWitness,
+  },
+  ...cardinalityOracles,
+  cardinality: cardinalityOracles,
 };

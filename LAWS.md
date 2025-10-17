@@ -1020,6 +1020,13 @@ so failures can be traced to sub-lemmas.
 - Fixing a singleton object \(1\), elements of a set \(A\) correspond bijectively to arrows \(1 \to A\).
 - **Oracle:** `set.elementsAsArrows.check(set.elementsAsArrows.witness(A))` compares \(|\operatorname{Hom}(1, A)|\) with \(|A|\) using the chosen singleton.
 
+#### Binary products and coproducts in Set
+
+- **Witness builders:** `set.product.witness(left, right)` and `set.coproduct.witness(left, right)` recover the canonical projections/injections alongside mediating oracles derived from `category-limits-helpers.ts`.
+- **Diagnostics:** The product witness exposes `checkComponentwiseCollapse` and `checkNaturality` so skew pairings or precomposition failures surface immediately; the coproduct witness reports violations when mediators fail to recover recorded legs.
+- **Fallbacks:** The registry continues to surface `set.cardinality.*` for hom-count characterisations when a problem reduces to empty/singleton reasoning.
+- **Tests:** `test/set-oracles.spec.ts` exercises the new witnesses, confirming that compliant mediators succeed while swapped legs or mismatched copairs trigger the expected diagnostics.
+
 #### Concrete categories
 
 - A category is **concrete** when a faithful functor into `Set` exhibits its objects as underlying sets with structure-preserving maps.
