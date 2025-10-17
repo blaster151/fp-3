@@ -9,14 +9,10 @@ module.exports = {
   },
   plugins: [
     "@typescript-eslint",
-    // Reference the local plugin by path using ESLint's "plugins" resolution:
-    // If using ESLint <9, it resolves node_modules only. Add NODE_PATH=.
-    // Easiest: use the "plugin:" prefix via 'eslint-plugin-fp-3' symlink in node_modules
-    // or use ESLint flat config. Simpler: require() in overrides (see below).
-    "fp-3"
+    // The flat-config entry point (eslint.config.js) loads the same plugin instance
+    // so both ESLint 8 (Next.js today) and ESLint 9 pick up identical settings.
+    "fp-3",
   ],
+  extends: ["plugin:fp-3/recommended"],
   settings: {},
-  rules: {
-    "fp-3/no-json-stringify-on-json": "error"
-  },
 };

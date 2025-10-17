@@ -1,9 +1,10 @@
 # eslint-plugin-fp-3
 
 This local ESLint plugin exposes the rules that power our custom lint setup.
-At the moment the plugin ships a single rule, `no-json-stringify-on-json`, and
-is loaded from the repo's root `.eslintrc.cjs` under the `fp-3/no-json-stringify-on-json`
-name.
+The plugin now ships multiple rules and exposes a `recommended` config that
+enables them with the severities we rely on in this repository. Load the config
+from the repo's root `.eslintrc.cjs` via `extends: ["plugin:fp-3/recommended"]`
+or opt into individual rules under the `fp-3/<rule-name>` namespace.
 
 ## `no-json-stringify-on-json`
 
@@ -46,3 +47,43 @@ compiler API does not expose alias names in every scenario.
 New rules can be added under the `rules/` directory and exported from
 [`index.js`](index.js). Once exported, they can be referenced in `.eslintrc.cjs`
 under the `fp-3/<rule-name>` namespace.
+
+## `oracle-result-shape`
+
+**Severity:** error in the recommended config.
+
+Ensures exported oracle helpers (functions named `check*`, `analyze*`, or
+`test*`) expose the canonical `{ holds: boolean; details: string; … }` shape in
+their return types. The rule inspects the TypeScript return type (including
+unwrapping `Promise` results) and raises an error if either property is missing
+or typed incorrectly.
+
+## `registry-path-convention`
+
+**Severity:** error in the recommended config.
+
+Requires object literals with a `registryPath` property to use a dot-delimited
+string literal that starts with a lowercase subsystem prefix (for example,
+`relativeMonad.example`). This keeps registry entries aligned with the naming
+conventions described in the documentation.
+
+## `registry-satisfies-record`
+
+**Severity:** warning in the recommended config.
+
+Warns when exported registry objects (identifiers containing `registry`) are not
+annotated with `satisfies Record<string, Descriptor>` (or an equivalent type
+assertion). Enforcing the constraint ensures descriptor maps remain fully typed
+and immutable.
+
+## `law-registry-registration`
+
+**Severity:** warning in the recommended config.
+
+Warns when a module exports a `Lawful`-typed constant without also calling
+`registerLawful(constant)` in the same file. The heuristic catches unregistered
+law suites before they quietly fall out of the runtime registry.
+
+## Flat config support
+
+Repositories that rely on ESLint’s flat configuration (including toolchains like Next.js once they move to ESLint 9) can import `eslint.config.js`, which reuses the same parser and plugin instance that `.eslintrc.cjs` references today. This keeps framework builds and local CLI runs aligned on the recommended rule set without forcing adopters to duplicate settings.
