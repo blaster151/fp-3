@@ -203,6 +203,90 @@ export function closedSets<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): Readonly
   return dedupeSets(eqX, complements);
 }
 
+export function isT0<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
+  const { carrier } = T;
+  for (const x of carrier) {
+    for (const y of carrier) {
+      if (!eqX(x, y)) {
+        const xHas = neighborhoods(eqX, T, x).some((U) => !U.some((u) => eqX(u, y)));
+        const yHas = neighborhoods(eqX, T, y).some((U) => !U.some((u) => eqX(u, x)));
+        if (!xHas && !yHas) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+export function isT1<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
+  const { carrier } = T;
+  for (const x of carrier) {
+    for (const y of carrier) {
+      if (!eqX(x, y)) {
+        const xHas = neighborhoods(eqX, T, x).some((U) => !U.some((u) => eqX(u, y)));
+        const yHas = neighborhoods(eqX, T, y).some((U) => !U.some((u) => eqX(u, x)));
+        if (!xHas || !yHas) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+function disjoint<X>(eqX: (a: X, b: X) => boolean, A: ReadonlyArray<X>, B: ReadonlyArray<X>): boolean {
+  return A.every((a) => !B.some((b) => eqX(a, b)));
+}
+
+export function isRegular<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
+  if (!isT1(eqX, T)) {
+    return false;
+  }
+  const closed = closedSets(eqX, T);
+  const { carrier } = T;
+  for (const x of carrier) {
+    for (const F of closed) {
+      if (F.some((f) => eqX(f, x)) || F.length === 0) {
+        continue;
+      }
+      const neighborhoodsOfX = neighborhoods(eqX, T, x);
+      const opensContainingF = T.opens.filter((U) => F.every((f) => U.some((u) => eqX(f, u))));
+      const separated = neighborhoodsOfX.some((U) =>
+        opensContainingF.some((V) => disjoint(eqX, U, V)),
+      );
+      if (!separated) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+export function isNormal<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
+  const closed = closedSets(eqX, T);
+  for (const A of closed) {
+    for (const B of closed) {
+      const disjointClosed = A.every((a) => !B.some((b) => eqX(a, b)));
+      if (!disjointClosed) {
+        continue;
+      }
+      if (A.length === 0 || B.length === 0) {
+        continue;
+      }
+      const opensContainingA = T.opens.filter((U) => A.every((a) => U.some((u) => eqX(a, u))));
+      const opensContainingB = T.opens.filter((U) => B.every((b) => U.some((u) => eqX(b, u))));
+      const separated = opensContainingA.some((U) =>
+        opensContainingB.some((V) => disjoint(eqX, U, V)),
+      );
+      if (!separated) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 export function closure<X>(
   eqX: (a: X, b: X) => boolean,
   T: Top<X>,
@@ -279,4 +363,70 @@ export function specializationOrder<X>(
     }
   }
   return relation;
+}
+
+function subspaceTopology<X>(
+  eqX: (a: X, b: X) => boolean,
+  T: Top<X>,
+  subset: ReadonlyArray<X>,
+): Top<X> {
+  const restrictedOpens = T.opens.map((U) => U.filter((u) => subset.some((s) => eqX(s, u))));
+  const opens = dedupeSets(eqX, restrictedOpens);
+  return { carrier: [...subset], opens };
+}
+
+function powerSet<X>(items: ReadonlyArray<X>): ReadonlyArray<ReadonlyArray<X>> {
+  const subsets: Array<ReadonlyArray<X>> = [[]];
+  for (const item of items) {
+    const newSubsets = subsets.map((subset) => [...subset, item]);
+    subsets.push(...newSubsets);
+  }
+  return subsets;
+}
+
+function pushUnique<X>(eqX: (a: X, b: X) => boolean, xs: X[], x: X): void {
+  if (!xs.some((y) => eqX(x, y))) {
+    xs.push(x);
+  }
+}
+
+export function connectedComponents<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): ReadonlyArray<ReadonlyArray<X>> {
+  const { carrier } = T;
+  const subsets = powerSet(carrier).filter((subset) => subset.length > 0);
+  const connectedSubsets = subsets.filter((subset) => isConnected(eqX, subspaceTopology(eqX, T, subset)));
+  const components: Array<ReadonlyArray<X>> = [];
+  const seen: X[] = [];
+
+  for (const x of carrier) {
+    if (seen.some((y) => eqX(x, y))) {
+      continue;
+    }
+    const component: X[] = [x];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const subset of connectedSubsets) {
+        if (!subset.some((s) => eqX(s, x))) {
+          continue;
+        }
+        const hasNewPoint = subset.some((s) => !component.some((c) => eqX(c, s)));
+        if (hasNewPoint) {
+          for (const s of subset) {
+            pushUnique(eqX, component, s);
+          }
+          changed = true;
+        }
+      }
+    }
+    for (const s of component) {
+      pushUnique(eqX, seen, s);
+    }
+    components.push([...component]);
+  }
+
+  return components;
+}
+
+export function isTotallyDisconnected<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
+  return connectedComponents(eqX, T).every((component) => component.length <= 1);
 }

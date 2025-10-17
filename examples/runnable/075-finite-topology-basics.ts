@@ -21,6 +21,12 @@ type TopologyModule = {
     T: Top<X>,
   ) => ReadonlyArray<readonly [X, X]>;
   readonly isConnected: <X>(eqX: (a: X, b: X) => boolean, T: Top<X>) => boolean;
+  readonly isT0: <X>(eqX: (a: X, b: X) => boolean, T: Top<X>) => boolean;
+  readonly isT1: <X>(eqX: (a: X, b: X) => boolean, T: Top<X>) => boolean;
+  readonly isRegular: <X>(eqX: (a: X, b: X) => boolean, T: Top<X>) => boolean;
+  readonly isNormal: <X>(eqX: (a: X, b: X) => boolean, T: Top<X>) => boolean;
+  readonly connectedComponents: <X>(eqX: (a: X, b: X) => boolean, T: Top<X>) => ReadonlyArray<ReadonlyArray<X>>;
+  readonly isTotallyDisconnected: <X>(eqX: (a: X, b: X) => boolean, T: Top<X>) => boolean;
   readonly continuous: <X, Y>(
     eqX: (a: X, b: X) => boolean,
     TX: Top<X>,
@@ -42,6 +48,12 @@ const {
   closedSets,
   specializationOrder,
   isConnected,
+  isT0,
+  isT1,
+  isRegular,
+  isNormal,
+  connectedComponents,
+  isTotallyDisconnected,
   continuous,
   isHausdorff,
   isTopology,
@@ -92,12 +104,21 @@ function exploreFiniteTopologies(): readonly string[] {
     const relation = specializationOrder(eq, space)
       .map(([a, b]) => `${show(a)}≤${show(b)}`)
       .join(", ");
+    const components = connectedComponents(eq, space)
+      .map((component, index) => `C${index + 1}=${describeSet(component, show)}`)
+      .join(", ");
     return [
       `== ${name} invariants ==`,
       `  Connected? ${isConnected(eq, space)}`,
+      `  Totally disconnected? ${isTotallyDisconnected(eq, space)}`,
+      `  T₀? ${isT0(eq, space)}`,
+      `  T₁? ${isT1(eq, space)}`,
+      `  Regular? ${isRegular(eq, space)}`,
+      `  Normal? ${isNormal(eq, space)}`,
       `  closure(S) = ${closureStr}`,
       `  interior(S) = ${interiorStr}`,
       `  boundary(S) = ${boundaryStr}`,
+      `  Components: ${components}`,
       `  Closed sets: ${closedStr}`,
       `  Specialization: ${relation}`,
     ];
@@ -134,6 +155,6 @@ export const stage075FiniteTopologyBasics: RunnableExample = {
   title: "Finite topology basics",
   outlineReference: 75,
   summary:
-    "Construct discrete/indiscrete finite spaces, build their product, and inspect closures, interiors, boundaries, connectedness, and projection continuity.",
+    "Construct discrete/indiscrete finite spaces, build their product, and inspect closures, interiors, boundaries, connectedness, separation axioms, components, and projection continuity.",
   run: async () => ({ logs: exploreFiniteTopologies() }),
 };
