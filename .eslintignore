@@ -1,0 +1,21 @@
+# Build outputs
+dist/
+*.d.ts
+
+# Dependencies
+node_modules/
+
+# Coverage reports
+coverage/
+
+# Build info
+*.tsbuildinfo
+
+# Logs
+*.log
+
+# Script files (not in tsconfig)
+scripts/**/*.js
+scripts/**/*.mjs
+test/laws/**/*.js
+pdi/**/*.js

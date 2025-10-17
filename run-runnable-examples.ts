@@ -19,6 +19,8 @@ async function main(): Promise<void> {
 
   const requestedTags: string[] = [];
   const requestedIds: string[] = [];
+  let stepMode = false;
+  let oneMode = false;
 
   let listRequested = false;
 
@@ -29,6 +31,14 @@ async function main(): Promise<void> {
     }
     if (token === "--list") {
       listRequested = true;
+      continue;
+    }
+    if (token === "--step") {
+      stepMode = true;
+      continue;
+    }
+    if (token === "--one") {
+      oneMode = true;
       continue;
     }
     if (token === "--tag") {
@@ -86,12 +96,52 @@ async function main(): Promise<void> {
     console.log(`[${ordinal}/${totalTargets}] ${example.id} – ${example.title}`);
     console.log(`\n=== [${example.id}] ${example.title} ===`);
     console.log(example.summary);
+    const startTs = new Date().toISOString();
+    console.log(`Starting example ${example.id} (${ordinal}/${totalTargets}) at ${startTs}...`);
     try {
       const outcome = await example.run();
-      for (const line of outcome.logs) {
-        console.log(` • ${line}`);
+      const endTs = new Date().toISOString();
+      console.log(`Finished example ${example.id} at ${endTs}`);
+      console.log(`Duration: ${new Date(endTs).getTime() - new Date(startTs).getTime()} ms`);
+      if (stepMode) {
+        console.log("Step mode: press Enter to continue to next example or Ctrl+C to abort...");
+        // wait for Enter on stdin
+        await new Promise<void>((resolve) => {
+          const nodeProcess = (globalThis as any).process as NodeJS.Process;
+          const stdin = nodeProcess.stdin;
+          stdin.resume();
+          stdin.once("data", () => {
+            stdin.pause();
+            resolve();
+          });
+        });
       }
+      if (oneMode) {
+        console.log("One-mode enabled: stopping after first example.");
+        break;
+      }
+      if (!outcome) {
+        console.warn(`Example ${example.id} completed with no outcome object.`);
+      } else {
+        if (Array.isArray(outcome.logs) && outcome.logs.length > 0) {
+          for (const line of outcome.logs) {
+            console.log(` • ${line}`);
+          }
+        }
+        // RunnableOutcome currently exposes `logs` and optional `metadata`.
+        // Print any metadata as a JSON blob instead of accessing a non-existent
+        // `summary` property.
+        if (outcome.metadata && Object.keys(outcome.metadata).length > 0) {
+          try {
+            console.log(`Result metadata: ${JSON.stringify(outcome.metadata)}`);
+          } catch (_) {
+            console.log("Result metadata: <unserializable>");
+          }
+        }
+      }
+      console.log(`Finished example ${example.id}.`);
     } catch (error) {
+      console.error(`Example ${example.id} failed:`);
       console.error(error);
       process.exitCode = 1;
     }

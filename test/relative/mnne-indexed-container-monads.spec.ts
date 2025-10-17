@@ -174,8 +174,8 @@ describe("MNNE Example 4 indexed container relative monad", () => {
         }
         return rule;
       }),
-    };
-    const report = analyzeIndexedContainerRelativeMonad(tampered);
+  } as IndexedContainerRelativeMonadWitness;
+  const report = analyzeIndexedContainerRelativeMonad(tampered);
     expect(report.holds).toBe(false);
     expect(
       report.issues.some((issue) =>

@@ -40,10 +40,10 @@ describe("lazy lambda relative monad analyzer", () => {
 
   it("propagates failures from the strict analyzer", () => {
     const base = describeCountableLambdaRelativeMonadWitness();
-    const broken: LazyLambdaRelativeMonadWitness = {
+    const broken = {
       ...base,
       customExtend: describeBrokenUntypedLambdaRelativeMonadWitness().customExtend,
-    };
+    } as LazyLambdaRelativeMonadWitness;
 
     const report = analyzeLazyLambdaRelativeMonad(broken);
 
@@ -62,10 +62,10 @@ describe("lazy lambda relative monad analyzer", () => {
 
   it("reports Kleisli failures discovered after materialisation", () => {
     const base = describeCountableLambdaRelativeMonadWitness();
-    const broken: LazyLambdaRelativeMonadWitness = {
+    const broken = {
       ...base,
       customExtend: describeBrokenUntypedLambdaRelativeMonadWitness().customExtend,
-    };
+    } as LazyLambdaRelativeMonadWitness;
 
     const report = analyzeLazyLambdaKleisliSplitting(broken);
 

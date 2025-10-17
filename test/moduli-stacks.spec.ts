@@ -461,7 +461,7 @@ describe("moduli and stack scaffolding", () => {
       ],
       cartesianLifts: [
         {
-          baseArrow: covering.arrows[0],
+          baseArrow: covering.arrows[0]!,
           target,
         },
       ],
@@ -486,7 +486,7 @@ describe("moduli and stack scaffolding", () => {
       arrows: [idArrow(target)],
       cartesianLifts: [
         {
-          baseArrow: covering.arrows[0],
+          baseArrow: covering.arrows[0]!,
           target,
         },
       ],
@@ -558,13 +558,13 @@ describe("moduli and stack scaffolding", () => {
             pullbackIndex: 0,
             target: sampleU.target,
             comparisons: sampleU.comparisons ?? [],
-            label: sampleU.label,
+            label: sampleU.label ?? "",
           },
           {
             pullbackIndex: 1,
             target: sampleV.target,
             comparisons: sampleV.comparisons ?? [],
-            label: sampleV.label,
+            label: sampleV.label ?? "",
           },
         ],
       },
@@ -613,7 +613,7 @@ describe("moduli and stack scaffolding", () => {
             pullbackIndex: 0,
             target: sampleU.target,
             comparisons: sampleU.comparisons ?? [],
-            label: sampleU.label,
+            label: sampleU.label ?? "",
           },
         ],
       },

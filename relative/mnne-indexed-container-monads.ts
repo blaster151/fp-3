@@ -826,8 +826,9 @@ export const analyzeIndexedContainerRelativeMonad = (
               assignmentFailed = true;
               break;
             }
+            const binderPos = assignment.expression.position;
             const binderAssignment = binderElement.assignments.find(
-              (candidate) => candidate.position === assignment.expression.position,
+              (candidate) => candidate.position === binderPos,
             );
             if (!binderAssignment) {
               aggregatedIssues.push(

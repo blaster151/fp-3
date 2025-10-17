@@ -344,7 +344,7 @@ export const analyzeCohomology = <R>(complex: ChainComplex<R>): CohomologyAnalys
 const keyOf = (indices: ReadonlyArray<number>): string => indices.join("|")
 
 const isStrictlyIncreasing = (values: ReadonlyArray<number>): boolean =>
-  values.every((value, index) => index === 0 || value > values[index - 1])
+  values.every((value, index) => index === 0 || value > values[index - 1]!)
 
 const sameKey = (left: ReadonlyArray<number>, right: ReadonlyArray<number>): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index])
@@ -354,7 +354,7 @@ const dedupeVectors = <Section>(
   eq: Equality<Section>,
 ): ReadonlyArray<ReadonlyArray<Section>> => {
   const vectorEq: Equality<ReadonlyArray<Section>> = (left, right) =>
-    left.length === right.length && left.every((value, index) => eq(value, right[index]))
+    left.length === right.length && left.every((value, index) => eq(value, right[index]!))
   return dedupe(vectors, vectorEq)
 }
 
@@ -365,7 +365,7 @@ const buildProductModule = <R, Section>(
   eq: Equality<Section>,
 ): Module<R, ReadonlyArray<Section>> => {
   const vectorEq: Equality<ReadonlyArray<Section>> = (left, right) =>
-    left.length === right.length && left.every((value, index) => eq(value, right[index]))
+    left.length === right.length && left.every((value, index) => eq(value, right[index]!))
 
   const zeroVector = Array.from({ length: size }, () => base.zero) as ReadonlyArray<Section>
 
@@ -373,7 +373,7 @@ const buildProductModule = <R, Section>(
     ring: base.ring,
     zero: zeroVector,
     add: (left, right) =>
-      left.map((value, index) => base.add(value, right[index])) as ReadonlyArray<Section>,
+      left.map((value, index) => base.add(value, right[index]!)) as ReadonlyArray<Section>,
     neg: value => value.map(entry => base.neg(entry)) as ReadonlyArray<Section>,
     scalar: (scalar, value) =>
       value.map(entry => base.scalar(scalar, entry)) as ReadonlyArray<Section>,
@@ -474,7 +474,7 @@ export const buildCechComplex = <Obj, Arr, Section, R>(
       object: domain,
       faces: [],
       samples,
-      label: covering.label ? `${covering.label}[${index}]` : undefined,
+  label: covering.label ? `${covering.label}[${index}]` : "",
     }
   })
 
@@ -507,7 +507,7 @@ export const buildCechComplex = <Obj, Arr, Section, R>(
       object: cell.object,
       faces: normalizedFaces,
       samples,
-      label: cell.label,
+  label: cell.label ?? "",
     }
   })
 
@@ -555,7 +555,7 @@ export const buildCechComplex = <Obj, Arr, Section, R>(
       degree,
       module: moduleForLevel,
       elements,
-      label: `C^${degree}`,
+  label: `C^${degree}`,
     }
     levels.push(level)
 
@@ -599,6 +599,9 @@ export const buildCechComplex = <Obj, Arr, Section, R>(
               throw new Error(`Čech differential missing source for face ${keyOf(face.targetKey)}.`)
             }
             const section = cochain[sourceIndex]
+            if (section === undefined) {
+              throw new Error(`Čech differential encountered missing section at source ${keyOf(face.targetKey)}.`)
+            }
             const restricted = sheaf.restrict(face.arrow, section)
             const signed = face.omit % 2 === 0 ? restricted : module.neg(restricted)
             value = module.add(value, signed)
@@ -707,7 +710,7 @@ export const checkCechCohomology = <Obj, Arr, Section, R>(
     complex,
     chainCheck,
     cohomology,
-    derivedComparison,
+    ...(derivedComparison === undefined ? {} : { derivedComparison }),
     details,
   }
 }
@@ -761,8 +764,8 @@ const twoOpenToMultiOpenSetup = <Obj, Arr, Section, R>(
           { omit: 0, targetKey: [1], arrow: intersection.toSecond },
           { omit: 1, targetKey: [0], arrow: intersection.toFirst },
         ],
-        samples: setup.samples?.intersection,
-        label: intersection.label,
+  samples: setup.samples?.intersection ?? [],
+  label: intersection.label ?? "",
       },
     ],
     coveringSamples,

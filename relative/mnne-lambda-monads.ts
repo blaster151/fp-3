@@ -591,7 +591,6 @@ const materialiseLazyLambdaWitness = (
 
   if (issues.length > 0) {
     return {
-      witness: undefined,
       contextSlice,
       substitutionSlice,
       issues: freezeArray(issues),

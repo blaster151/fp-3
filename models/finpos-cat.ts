@@ -608,7 +608,18 @@ export const FinPos = {
   },
   negation(): MonoMap {
     if (!cachedNegation) {
-      cachedNegation = FinPos.characteristic(FinPos.falseArrow())
+      const truth = truthValuesObj()
+      cachedNegation = {
+        name: `¬_${truth.name}`,
+        dom: truth.name,
+        cod: truth.name,
+        map: (value: string) => {
+          if (!truth.elems.includes(value)) {
+            throw new Error(`FinPos.negation: ${value} is not an element of ${truth.name}.`)
+          }
+          return value === TRUTH_TRUE ? TRUTH_FALSE : TRUTH_TRUE
+        },
+      }
     }
     return cachedNegation
   },

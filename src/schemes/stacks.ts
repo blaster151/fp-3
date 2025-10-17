@@ -1217,12 +1217,12 @@ const buildStackGroupoid = <BaseObj, BaseArr, Obj, Arr>(
     inv,
     dom: (arrow: Arr) => datum.fibered.fiber.src(arrow),
     cod: (arrow: Arr) => datum.fibered.fiber.dst(arrow),
-    eq: datum.fibered.fiber.arrowEq,
+  eq: arrowEq,
     isId: (arrow: Arr) => {
       const source = datum.fibered.fiber.src(arrow)
       return arrowEq(arrow, datum.fibered.fiber.id(source))
     },
-    equalMor: datum.fibered.fiber.arrowEq,
+  equalMor: arrowEq,
   }
 }
 
