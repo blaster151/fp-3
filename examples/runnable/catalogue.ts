@@ -82,6 +82,8 @@ import { stage078PushoutSharedMachinery } from "./078-pushout-shared-machinery";
 import { stage079TopInitialFinal } from "./079-top-initial-final";
 import { stage080TopQuotient } from "./080-top-quotient";
 import { stage081TopCoproductUniversalProperty } from "./081-top-coproduct-universal-property";
+import { stage082TopContinuityDiagnostics } from "./082-top-continuity-diagnostics";
+import { stage083TopUniversalPropertyReports } from "./083-top-universal-property-reports";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -167,4 +169,6 @@ export const registry: RunnableRegistry = [
   stage079TopInitialFinal,
   stage080TopQuotient,
   stage081TopCoproductUniversalProperty,
+  stage082TopContinuityDiagnostics,
+  stage083TopUniversalPropertyReports,
 ];

@@ -78,6 +78,8 @@ describe("Inverse diagnostics and oracle implications", () => {
     expect(result.ok).toBe(false)
     expect(result.msg).toMatch(/≠/)
     expect(result.msg).toMatch(/d1/)
+    expect(result.msg).toMatch(/s∘bad/)
+    expect(result.msg).toMatch(/id_D/)
   })
 
   it("constructs inverses for injective and surjective maps", () => {
