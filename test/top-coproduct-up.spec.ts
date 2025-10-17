@@ -25,10 +25,22 @@ describe("Coproduct universal property on finite spaces", () => {
   it("injections and copairing satisfy the universal property", () => {
     const result = checkCoproductUP(eqNum, eqNum, eqNum, TX, TY, TZ, f, g, continuous);
 
+    expect(result.holds).toBe(true);
+    expect(result.failures).toHaveLength(0);
     expect(result.cInl).toBe(true);
     expect(result.cInr).toBe(true);
     expect(result.cCopair).toBe(true);
     expect(result.uniqueHolds).toBe(true);
+
+    const legNames = result.legs.map((entry) => entry.leg.name);
+    expect(legNames).toContain("inl");
+    expect(legNames).toContain("inr");
+    expect(result.legs.every((entry) => entry.holds)).toBe(true);
+
+    const mediatorEntry = result.mediators[0];
+    expect(mediatorEntry?.holds).toBe(true);
+    expect(mediatorEntry?.mediator.name).toBe("copairing");
+    expect(mediatorEntry?.mediator.arrow).toBeTypeOf("function");
 
     const leftImage = X.map((x) => ({ tag: "inl" as const, value: x }));
     const rightImage = Y.map((y) => ({ tag: "inr" as const, value: y }));

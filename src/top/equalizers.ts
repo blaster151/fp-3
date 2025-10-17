@@ -6,11 +6,21 @@ import {
 } from "./ContinuousMap";
 import type { Top } from "./Topology";
 import { mapsEqual } from "./Embeddings";
+import { makeMediator, makeUniversalPropertyReport, type UniversalPropertyReport } from "./limits";
 
 export type TopEqualizerWitness<X, Y> = {
   readonly obj: Top<X>;
   readonly equalize: ContinuousMap<X, X>;
 };
+
+export interface EqualizerMediatorMetadata {
+  readonly reproducesFork: boolean;
+}
+
+export interface EqualizerFactorizationResult<W, X, Y>
+  extends UniversalPropertyReport<never, ContinuousMap<W, X>, never, EqualizerMediatorMetadata> {
+  readonly mediator?: ContinuousMap<W, X>;
+}
 
 function formatPoint<X>(space: Top<X>, value: X): string {
   const { show } = space;
@@ -112,42 +122,86 @@ export function topFactorThroughEqualizer<W, X, Y>(
   g: ContinuousMap<X, Y>,
   inclusion: ContinuousMap<X, X>,
   fork: ContinuousMap<W, X>,
-): ContinuousMap<W, X> {
-  assertParallelPair(f, g);
-  assertInclusion(f, inclusion);
-  assertForkShape(f, fork);
-  ensureForkCommutes(f, g, fork);
+): EqualizerFactorizationResult<W, X, Y> {
+  try {
+    assertParallelPair(f, g);
+    assertInclusion(f, inclusion);
+    assertForkShape(f, fork);
+    ensureForkCommutes(f, g, fork);
 
-  const eqX = f.eqSource;
-  const mediatorMap = (point: W): X => {
-    const image = fork.map(point);
-    const witness = inclusion.source.carrier.find((candidate) => eqX(inclusion.map(candidate), image));
-    if (witness === undefined) {
-      const pointLabel = formatPoint(fork.source, point);
-      const imageLabel = formatPoint(f.source, image);
+    const eqX = f.eqSource;
+    const mediatorMap = (point: W): X => {
+      const image = fork.map(point);
+      const witness = inclusion.source.carrier.find((candidate) => eqX(inclusion.map(candidate), image));
+      if (witness === undefined) {
+        const pointLabel = formatPoint(fork.source, point);
+        const imageLabel = formatPoint(f.source, image);
+        throw new Error(
+          `topFactorThroughEqualizer: fork lands outside the equalizer at ${pointLabel} -> ${imageLabel}.`,
+        );
+      }
+      return witness;
+    };
+
+    const mediator = makeContinuousMap({
+      source: fork.source,
+      target: inclusion.source,
+      eqSource: fork.eqSource,
+      eqTarget: inclusion.eqSource,
+      map: mediatorMap,
+    });
+
+    const recomposed = compose(inclusion, mediator);
+    if (!mapsEqual(eqX, fork.source.carrier, recomposed.map, fork.map)) {
       throw new Error(
-        `topFactorThroughEqualizer: fork lands outside the equalizer at ${pointLabel} -> ${imageLabel}.`,
+        "topFactorThroughEqualizer: constructed mediator does not reproduce the supplied fork.",
       );
     }
-    return witness;
-  };
 
-  const mediator = makeContinuousMap({
-    source: fork.source,
-    target: inclusion.source,
-    eqSource: fork.eqSource,
-    eqTarget: inclusion.eqSource,
-    map: mediatorMap,
-  });
+    const mediatorEntry = {
+      mediator: makeMediator<ContinuousMap<W, X>, EqualizerMediatorMetadata>(
+        "equalizer mediator",
+        mediator,
+        { reproducesFork: true },
+      ),
+      holds: true,
+      metadata: { reproducesFork: true },
+    };
 
-  const recomposed = compose(inclusion, mediator);
-  if (!mapsEqual(eqX, fork.source.carrier, recomposed.map, fork.map)) {
-    throw new Error(
-      "topFactorThroughEqualizer: constructed mediator does not reproduce the supplied fork.",
-    );
+    const report = makeUniversalPropertyReport<
+      never,
+      ContinuousMap<W, X>,
+      never,
+      EqualizerMediatorMetadata
+    >({
+      mediators: [mediatorEntry],
+    });
+
+    return { ...report, mediator } satisfies EqualizerFactorizationResult<W, X, Y>;
+  } catch (error) {
+    const failure = error instanceof Error ? error.message : String(error);
+    const mediatorEntry = {
+      mediator: makeMediator<ContinuousMap<W, X>, EqualizerMediatorMetadata>(
+        "equalizer mediator",
+        undefined,
+        { reproducesFork: false },
+      ),
+      holds: false,
+      failure,
+      metadata: { reproducesFork: false },
+    };
+
+    const report = makeUniversalPropertyReport<
+      never,
+      ContinuousMap<W, X>,
+      never,
+      EqualizerMediatorMetadata
+    >({
+      mediators: [mediatorEntry],
+    });
+
+    return { ...report, mediator: undefined } satisfies EqualizerFactorizationResult<W, X, Y>;
   }
-
-  return mediator;
 }
 
 export interface TopEqualizerComparison<X> {
@@ -161,8 +215,25 @@ export function topEqualizerComparison<X, Y>(
   first: ContinuousMap<X, X>,
   second: ContinuousMap<X, X>,
 ): TopEqualizerComparison<X> {
-  const forward = topFactorThroughEqualizer(f, g, second, first);
-  const backward = topFactorThroughEqualizer(f, g, first, second);
+  const forwardReport = topFactorThroughEqualizer(f, g, second, first);
+  if (!forwardReport.mediator) {
+    throw new Error(
+      `topEqualizerComparison: unable to construct forward mediator (${forwardReport.failures.join(
+        "; ",
+      )}).`,
+    );
+  }
+  const backwardReport = topFactorThroughEqualizer(f, g, first, second);
+  if (!backwardReport.mediator) {
+    throw new Error(
+      `topEqualizerComparison: unable to construct backward mediator (${backwardReport.failures.join(
+        "; ",
+      )}).`,
+    );
+  }
+
+  const forward = forwardReport.mediator;
+  const backward = backwardReport.mediator;
 
   const eqX = f.eqSource;
   const eqFirst = first.eqSource;
@@ -196,3 +267,10 @@ export function topEqualizerComparison<X, Y>(
 
   return { forward, backward };
 }
+
+export type {
+  EqualizerFactorizationResult,
+  EqualizerMediatorMetadata,
+  TopEqualizerComparison,
+  TopEqualizerWitness,
+};

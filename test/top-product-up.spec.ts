@@ -23,10 +23,23 @@ describe("Product universal property on finite spaces", () => {
   it("projections and pairing satisfy the universal property", () => {
     const result = checkProductUP(eqNum, eqNum, eqNum, TZ, TX, TY, f, g, continuous);
 
+    expect(result.holds).toBe(true);
+    expect(result.failures).toHaveLength(0);
     expect(result.cProj1).toBe(true);
     expect(result.cProj2).toBe(true);
     expect(result.cPair).toBe(true);
     expect(result.uniqueHolds).toBe(true);
+
+    const legNames = result.legs.map((entry) => entry.leg.name);
+    expect(legNames).toContain("π₁");
+    expect(legNames).toContain("π₂");
+    expect(result.legs.every((entry) => entry.holds)).toBe(true);
+
+    const mediatorEntry = result.mediators[0];
+    expect(mediatorEntry?.holds).toBe(true);
+    expect(mediatorEntry?.mediator.name).toBe("pairing");
+    const pairingMap = mediatorEntry?.mediator.arrow;
+    expect(pairingMap).toBeTypeOf("function");
 
     const projected = result.productTopology.carrier.map((pt) => ({
       x: proj1(pt),
@@ -39,7 +52,8 @@ describe("Product universal property on finite spaces", () => {
       }),
     ).toBe(true);
 
-    const paired = TZ.carrier.map(pair(f, g));
+    const pairing = pairingMap ?? pair(f, g);
+    const paired = TZ.carrier.map(pairing);
     expect(paired.every((pt) => pt.y === 20)).toBe(true);
   });
 

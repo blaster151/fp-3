@@ -115,8 +115,9 @@ function runCoequalizerStory(): readonly string[] {
     eqTarget: eqString,
     map: (segment: string) => (segment === "North" || segment === "South" ? "Vertical" : "Horizontal"),
   });
-  const mediator = topFactorThroughCoequalizer(f, g, coeq.coequalize, categorize);
-  const recomposed = compose(mediator, coeq.coequalize);
+  const mediatorReport = topFactorThroughCoequalizer(f, g, coeq.coequalize, categorize);
+  const mediator = mediatorReport.mediator;
+  const recomposed = mediator ? compose(mediator, coeq.coequalize) : undefined;
   return [
     "== Coequalizer via identification ==",
     ...describeTopology(
@@ -125,12 +126,17 @@ function runCoequalizerStory(): readonly string[] {
       coeq.obj,
       (cls) => describeClass(cls as ReadonlyArray<string>),
     ),
-    `  Mediator targets: ${coeq.obj.carrier
-      .map((cls) => `${describeClass(cls)} ↦ ${mediator.map(cls)}`)
-      .join(", ")}`,
-    `  Cocone factors through coequalizer? ${walkwayTopology.carrier.every(
-      (segment) => recomposed.map(segment) === categorize.map(segment),
-    )}`,
+    `  Mediator witness: ${mediatorReport.holds ? "✓" : `✗ (${mediatorReport.failures.join("; ")})`}`,
+    mediator
+      ? `  Mediator targets: ${coeq.obj.carrier
+          .map((cls) => `${describeClass(cls)} ↦ ${mediator.map(cls)}`)
+          .join(", ")}`
+      : "  Mediator targets: (none)",
+    mediator && recomposed
+      ? `  Cocone factors through coequalizer? ${walkwayTopology.carrier.every(
+          (segment) => recomposed.map(segment) === categorize.map(segment),
+        )}`
+      : "  Cocone factors through coequalizer? ✗",
   ];
 }
 

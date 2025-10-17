@@ -42,7 +42,16 @@ describe('Top equalizer schemes', () => {
       map: (w: string) => (w === 'w0' ? 'x0' : 'x2'),
     })
 
-    const mediator = topFactorThroughEqualizer(f, g, equalize, fork)
+    const mediatorReport = topFactorThroughEqualizer(f, g, equalize, fork)
+
+    expect(mediatorReport.holds).toBe(true)
+    expect(mediatorReport.failures).toHaveLength(0)
+
+    const mediator = mediatorReport.mediator
+    expect(mediator).toBeDefined()
+    if (mediator === undefined) {
+      throw new Error('mediator must exist when the report holds')
+    }
 
     expect(mediator.target).toBe(equalizer)
     expect(mediator.map('w0')).toBe('x0')
@@ -64,7 +73,9 @@ describe('Top equalizer schemes', () => {
       map: (w: string) => (w === 'w0' ? 'x0' : 'x1'),
     })
 
-    expect(() => topFactorThroughEqualizer(f, g, equalize, skew)).toThrow(/does not commute/)
+    const skewReport = topFactorThroughEqualizer(f, g, equalize, skew)
+    expect(skewReport.holds).toBe(false)
+    expect(skewReport.failures.some((failure) => /does not commute/.test(failure))).toBe(true)
   })
 
   it('rejects forks that land outside the equalizer subspace', () => {
@@ -78,7 +89,9 @@ describe('Top equalizer schemes', () => {
       map: (_w: string) => 'x1',
     })
 
-    expect(() => topFactorThroughEqualizer(f, g, equalize, outside)).toThrow(/lands outside the equalizer/)
+    const outsideReport = topFactorThroughEqualizer(f, g, equalize, outside)
+    expect(outsideReport.holds).toBe(false)
+    expect(outsideReport.failures.some((failure) => /lands outside the equalizer/.test(failure))).toBe(true)
   })
 
   it('extracts comparison isomorphisms between equalizer witnesses', () => {

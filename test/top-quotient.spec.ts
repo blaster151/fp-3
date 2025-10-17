@@ -128,7 +128,19 @@ describe("Coequalizers in Top", () => {
       eqTarget: eqNum,
       map: () => 0,
     });
-    const mediator = topFactorThroughCoequalizer(f, g, coequalizer.coequalize, constant);
+    const mediatorReport = topFactorThroughCoequalizer(
+      f,
+      g,
+      coequalizer.coequalize,
+      constant,
+    );
+    expect(mediatorReport.holds).toBe(true);
+    expect(mediatorReport.failures).toHaveLength(0);
+    const mediator = mediatorReport.mediator;
+    expect(mediator).toBeDefined();
+    if (mediator === undefined) {
+      throw new Error("mediator must be defined when the report holds");
+    }
     const recomposed = compose(mediator, coequalizer.coequalize);
     expect(mapsEqual(constant.eqTarget, target.carrier, recomposed.map, constant.map)).toBe(true);
   });

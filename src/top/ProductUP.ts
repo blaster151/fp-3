@@ -1,5 +1,11 @@
 import type { Top } from "./Topology";
 import { product } from "./Topology";
+import {
+  coneLeg,
+  makeMediator,
+  makeUniversalPropertyReport,
+  type UniversalPropertyReport,
+} from "./limits";
 
 type Eq<X> = (a: X, b: X) => boolean;
 
@@ -21,13 +27,28 @@ function eqPair<X, Y>(eqX: Eq<X>, eqY: Eq<Y>, a: Pair<X, Y>, b: Pair<X, Y>): boo
   return eqX(a.x, b.x) && eqY(a.y, b.y);
 }
 
-export type CheckProductUPResult<Z, X, Y> = {
+export interface ProductLegMetadata {
+  readonly continuous: boolean;
+}
+
+export interface ProductMediatorMetadata {
+  readonly continuous: boolean;
+  readonly triangles: boolean;
+}
+
+export interface CheckProductUPResult<Z, X, Y>
+  extends UniversalPropertyReport<
+    (pair: Pair<X, Y>) => unknown,
+    (z: Z) => Pair<X, Y>,
+    ProductLegMetadata,
+    ProductMediatorMetadata
+  > {
   readonly cProj1: boolean;
   readonly cProj2: boolean;
   readonly cPair: boolean;
   readonly uniqueHolds: boolean;
   readonly productTopology: Top<Pair<X, Y>>;
-};
+}
 
 /**
  * Finite universal property checker for topological products.
@@ -53,8 +74,11 @@ export function checkProductUP<Z, X, Y>(
   const eqProd = (a: Pair<X, Y>, b: Pair<X, Y>) => eqPair(eqX, eqY, a, b);
   const p = pair(f, g);
 
-  const cProj1 = continuous(eqProd, productTopology, TX, proj1, eqX);
-  const cProj2 = continuous(eqProd, productTopology, TY, proj2, eqY);
+  const pi1 = proj1 as (pair: Pair<X, Y>) => X;
+  const pi2 = proj2 as (pair: Pair<X, Y>) => Y;
+
+  const cProj1 = continuous(eqProd, productTopology, TX, pi1, eqX);
+  const cProj2 = continuous(eqProd, productTopology, TY, pi2, eqY);
   const cPair = continuous(eqZ, TZ, productTopology, p, eqProd);
 
   const uniqueHolds = TZ.carrier.every((z) => {
@@ -62,5 +86,59 @@ export function checkProductUP<Z, X, Y>(
     return eqX(proj1(paired), f(z)) && eqY(proj2(paired), g(z));
   });
 
-  return { cProj1, cProj2, cPair, uniqueHolds, productTopology };
+  const legs = [
+    {
+      leg: coneLeg<(pair: Pair<X, Y>) => X, ProductLegMetadata>("π₁", pi1, {
+        continuous: cProj1,
+      }),
+      holds: cProj1,
+      failure: cProj1 ? undefined : "Projection π₁ is not continuous.",
+      metadata: { continuous: cProj1 },
+    },
+    {
+      leg: coneLeg<(pair: Pair<X, Y>) => Y, ProductLegMetadata>("π₂", pi2, {
+        continuous: cProj2,
+      }),
+      holds: cProj2,
+      failure: cProj2 ? undefined : "Projection π₂ is not continuous.",
+      metadata: { continuous: cProj2 },
+    },
+  ];
+
+  const mediatorEntry = {
+    mediator: makeMediator<(z: Z) => Pair<X, Y>, ProductMediatorMetadata>(
+      "pairing",
+      p,
+      {
+        continuous: cPair,
+        triangles: uniqueHolds,
+      },
+    ),
+    holds: cPair && uniqueHolds,
+    failure: !cPair
+      ? "Pairing map is not continuous."
+      : !uniqueHolds
+      ? "Pairing map does not reproduce the supplied legs."
+      : undefined,
+    metadata: { continuous: cPair, triangles: uniqueHolds },
+  };
+
+  const report = makeUniversalPropertyReport<
+    (pair: Pair<X, Y>) => unknown,
+    (z: Z) => Pair<X, Y>,
+    ProductLegMetadata,
+    ProductMediatorMetadata
+  >({
+    legs,
+    mediators: [mediatorEntry],
+  });
+
+  return {
+    ...report,
+    cProj1,
+    cProj2,
+    cPair,
+    uniqueHolds,
+    productTopology,
+  } satisfies CheckProductUPResult<Z, X, Y>;
 }
