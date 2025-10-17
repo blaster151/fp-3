@@ -14,6 +14,7 @@ import {
   projection2,
 } from "./ContinuousMap";
 import { topCoequalizer, topFactorThroughCoequalizer } from "./coequalizers";
+import { quotientByRelation } from "./Quotient";
 
 const eqNum = (a: number, b: number) => a === b;
 
@@ -146,4 +147,71 @@ const mediator = topFactorThroughCoequalizer(qf, qg, qCoeq.coequalize, categoriz
 registerCont({
   tag: "Top/cont/coequalizer-mediator:Y∼→axes",
   morphism: mediator,
+});
+
+const quotientSource = discrete([0, 1, 2, 3]);
+const quotientResult = quotientByRelation({
+  source: quotientSource,
+  eqSource: eqNum,
+  relation: (a: number, b: number) => a % 2 === b % 2,
+});
+registerCont({
+  tag: "Top/cont/quotient:projection",
+  morphism: quotientResult.projection,
+});
+const quotientClassifier = makeContinuousMap({
+  source: quotientResult.topology,
+  target: discrete([0, 1]),
+  eqSource: quotientResult.eqClass,
+  eqTarget: eqNum,
+  map: (cls: ReadonlyArray<number>) => (cls.some((n) => n % 2 === 0) ? 0 : 1),
+});
+registerCont({
+  tag: "Top/cont/quotient:classify-parity",
+  morphism: quotientClassifier,
+});
+
+const pullA = discrete([0, 1, 2]);
+const pullB = discrete([10, 11, 12]);
+const pullProduct = productStructure(eqNum, eqNum, pullA, pullB);
+const fiberPoints = pullProduct.topology.carrier.filter((pair) => (pair.x % 2) === ((pair.y - 10) % 2));
+const fiberTopology = subspace(pullProduct.eq, pullProduct.topology, fiberPoints);
+const pullbackProjA = makeContinuousMap({
+  source: fiberTopology,
+  target: pullA,
+  eqSource: pullProduct.eq,
+  eqTarget: eqNum,
+  map: (pair) => pair.x,
+});
+registerCont({
+  tag: "Top/cont/pullback:π₁",
+  morphism: pullbackProjA,
+});
+const pullbackProjB = makeContinuousMap({
+  source: fiberTopology,
+  target: pullB,
+  eqSource: pullProduct.eq,
+  eqTarget: eqNum,
+  map: (pair) => pair.y,
+});
+registerCont({
+  tag: "Top/cont/pullback:π₂",
+  morphism: pullbackProjB,
+});
+
+const componentCarrier = [0, 1, 2, 3];
+const componentTopology = {
+  carrier: componentCarrier,
+  opens: [[], [0, 1], [2, 3], componentCarrier],
+} as const;
+const constantOnComponents = makeContinuousMap({
+  source: componentTopology,
+  target: discrete([0, 1]),
+  eqSource: eqNum,
+  eqTarget: eqNum,
+  map: (x: number) => (x < 2 ? 0 : 1),
+});
+registerCont({
+  tag: "Top/cont/components:constant",
+  morphism: constantOnComponents,
 });

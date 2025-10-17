@@ -21,9 +21,21 @@ export type ProductPoint<X, Y> = { readonly x: X; readonly y: Y };
 
 export type SumPoint<X, Y> = CoproductPoint<X, Y>;
 
+export type ContinuityWitnessEntry<X, Y> = {
+  readonly open: ReadonlyArray<Y>;
+  readonly preimage: ReadonlyArray<X>;
+};
+
+export type ContinuityWitnessPayload<X, Y> = {
+  readonly preimages: ReadonlyArray<ContinuityWitnessEntry<X, Y>>;
+  readonly note?: string;
+};
+
 export type ContinuityWitness<X, Y> = {
-  readonly holds: true;
+  readonly holds: boolean;
   readonly verify: () => boolean;
+  readonly failures: ReadonlyArray<ContinuityWitnessEntry<X, Y>>;
+  readonly witness?: ContinuityWitnessPayload<X, Y>;
 };
 
 export type ContinuousMap<X, Y> = {
@@ -191,20 +203,49 @@ export function certifyContinuity<X, Y>({
   sourceStructure,
   targetStructure,
 }: ResolvedContinuousMapData<X, Y>): ContinuityWitness<X, Y> {
-  const holds =
+  const eqCod = targetStructure?.eq ?? eqTarget;
+  const verify = () =>
     sourceStructure && targetStructure
       ? continuous(sourceStructure, targetStructure, map)
       : continuous(eqSource, source, target, map, eqTarget);
-  if (!holds) {
-    throw new Error("map is not continuous");
-  }
-  return {
-    holds: true,
-    verify: () =>
-      sourceStructure && targetStructure
-        ? continuous(sourceStructure, targetStructure, map)
-        : continuous(eqSource, source, target, map, eqTarget),
+
+  const eqSet = (A: ReadonlyArray<X>, B: ReadonlyArray<X>) =>
+    A.length === B.length &&
+    A.every((a) => B.some((b) => eqSource(a, b))) &&
+    B.every((b) => A.some((a) => eqSource(a, b)));
+
+  const records = target.opens.map((open) => {
+    const openCopy = open.slice();
+    const preimage = source.carrier.filter((x) => open.some((y) => eqCod(map(x), y)));
+    const isOpen = source.opens.some((candidate) => eqSet(candidate, preimage));
+    return { open: openCopy, preimage, isOpen };
+  });
+
+  const failures = records
+    .filter((record) => !record.isOpen)
+    .map<ContinuityWitnessEntry<X, Y>>(({ open, preimage }) => ({ open, preimage }));
+
+  const holds = failures.length === 0;
+  const witnessPayload: ContinuityWitnessPayload<X, Y> | undefined = holds
+    ? {
+        preimages: records.map(({ open, preimage }) => ({ open, preimage })),
+        note: sourceStructure || targetStructure ? "via structured verification" : "computed directly",
+      }
+    : undefined;
+
+  const result: ContinuityWitness<X, Y> = {
+    holds,
+    verify,
+    failures,
+    ...(witnessPayload ? { witness: witnessPayload } : {}),
   };
+
+  if (!holds) {
+    const error = new Error("map is not continuous");
+    (error as Error & { witness: ContinuityWitness<X, Y> }).witness = result;
+    throw error;
+  }
+  return result;
 }
 
 export function makeContinuousMap<X, Y>(data: ContinuousMapData<X, Y>): ContinuousMap<X, Y> {
@@ -250,13 +291,35 @@ export function compose<X, Y, Z>(
   if (f.eqTarget !== g.eqSource) {
     throw new Error("compose: equality witness mismatch");
   }
-  return makeContinuousMap({
+  const composed = makeContinuousMap({
     source: f.source,
     target: g.target,
     eqSource: f.eqSource,
     eqTarget: g.eqTarget,
     map: (x) => g.map(f.map(x)),
   });
+  if (composed.witness.holds && composed.witness.witness) {
+    const inheritedNotes = [
+      composed.witness.witness.note,
+      g.witness.witness?.note,
+      f.witness.witness?.note,
+    ].filter((note): note is string => Boolean(note));
+    const note = [
+      ...inheritedNotes,
+      "composition witness",
+    ].join("; ");
+    return {
+      ...composed,
+      witness: {
+        ...composed.witness,
+        witness: {
+          ...composed.witness.witness,
+          note,
+        },
+      },
+    };
+  }
+  return composed;
 }
 
 function eqPair<X, Y>(eqX: Eq<X>, eqY: Eq<Y>, a: ProductPoint<X, Y>, b: ProductPoint<X, Y>): boolean {
