@@ -3,6 +3,7 @@ import {
   boundary,
   closedSets,
   closure,
+  connectedComponents,
   continuous,
   discrete,
   indiscrete,
@@ -10,6 +11,11 @@ import {
   isCompact,
   isConnected,
   isHausdorff,
+  isNormal,
+  isRegular,
+  isT0,
+  isT1,
+  isTotallyDisconnected,
   isTopology,
   product,
   specializationOrder,
@@ -19,6 +25,14 @@ const eqNum = (a: number, b: number) => a === b;
 
 describe("Finite topology basics", () => {
   const X = [0, 1];
+  const sierpinski = {
+    carrier: [0, 1],
+    opens: [[], [1], [0, 1]],
+  } as const;
+  const excludedPoint = {
+    carrier: [0, 1, 2],
+    opens: [[], [0], [0, 1], [0, 2], [0, 1, 2]],
+  } as const;
 
   it("discrete and indiscrete spaces satisfy the topology axioms", () => {
     expect(isTopology(eqNum, discrete(X))).toBe(true);
@@ -65,16 +79,50 @@ describe("Finite topology basics", () => {
   });
 
   it("derives closed sets and specialization order on a Sierpiński space", () => {
-    const sierpinski = {
-      carrier: [0, 1],
-      opens: [[], [1], [0, 1]],
-    } as const;
-
     expect(closedSets(eqNum, sierpinski)).toEqual([[0, 1], [0], []]);
     expect(specializationOrder(eqNum, sierpinski)).toEqual([
       [0, 0],
       [0, 1],
       [1, 1],
     ]);
+  });
+
+  it("classifies separation axioms across finite fixtures", () => {
+    const discreteSpace = discrete([0, 1, 2]);
+    const indiscreteSpace = indiscrete([0, 1, 2]);
+
+    expect(isT0(eqNum, discreteSpace)).toBe(true);
+    expect(isT1(eqNum, discreteSpace)).toBe(true);
+    expect(isRegular(eqNum, discreteSpace)).toBe(true);
+    expect(isNormal(eqNum, discreteSpace)).toBe(true);
+
+    expect(isT0(eqNum, sierpinski)).toBe(true);
+    expect(isT1(eqNum, sierpinski)).toBe(false);
+    expect(isRegular(eqNum, sierpinski)).toBe(false);
+    expect(isNormal(eqNum, sierpinski)).toBe(true);
+
+    expect(isT0(eqNum, indiscreteSpace)).toBe(false);
+    expect(isT1(eqNum, indiscreteSpace)).toBe(false);
+    expect(isRegular(eqNum, indiscreteSpace)).toBe(false);
+    expect(isNormal(eqNum, indiscreteSpace)).toBe(true);
+
+    expect(isT0(eqNum, excludedPoint)).toBe(true);
+    expect(isT1(eqNum, excludedPoint)).toBe(false);
+    expect(isRegular(eqNum, excludedPoint)).toBe(false);
+    expect(isNormal(eqNum, excludedPoint)).toBe(false);
+  });
+
+  it("extracts connected components and total disconnectedness", () => {
+    const discreteSpace = discrete([0, 1, 2]);
+    const indiscreteSpace = indiscrete([0, 1, 2]);
+
+    expect(connectedComponents(eqNum, discreteSpace)).toEqual([[0], [1], [2]]);
+    expect(isTotallyDisconnected(eqNum, discreteSpace)).toBe(true);
+
+    expect(connectedComponents(eqNum, indiscreteSpace)).toEqual([[0, 1, 2]]);
+    expect(isTotallyDisconnected(eqNum, indiscreteSpace)).toBe(false);
+
+    expect(connectedComponents(eqNum, sierpinski)).toEqual([[0, 1]]);
+    expect(isTotallyDisconnected(eqNum, sierpinski)).toBe(false);
   });
 });

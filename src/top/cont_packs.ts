@@ -4,11 +4,16 @@ import { subspace } from "./Subspace";
 import { inclusion } from "./Embeddings";
 import {
   makeContinuousMap,
+  copair,
+  coproductStructure,
+  injectionLeft,
+  injectionRight,
   pairing,
   productStructure,
   projection1,
   projection2,
 } from "./ContinuousMap";
+import { topCoequalizer, topFactorThroughCoequalizer } from "./coequalizers";
 
 const eqNum = (a: number, b: number) => a === b;
 
@@ -44,6 +49,35 @@ registerCont({
   morphism: projection2(productInfo),
 });
 
+const coproductInfo = coproductStructure(eqNum, eqNum, TXd, TYd);
+registerCont({
+  tag: "Top/cont/inl:X→X⊔Y",
+  morphism: injectionLeft(coproductInfo),
+});
+registerCont({
+  tag: "Top/cont/inr:Y→X⊔Y",
+  morphism: injectionRight(coproductInfo),
+});
+
+const leftFold = makeContinuousMap({
+  source: TXd,
+  target: TZd,
+  eqSource: eqNum,
+  eqTarget: eqNum,
+  map: (x: number) => (x === 0 ? 42 : 99),
+});
+const rightFold = makeContinuousMap({
+  source: TYd,
+  target: TZd,
+  eqSource: eqNum,
+  eqTarget: eqNum,
+  map: (y: number) => (y === 10 ? 42 : 99),
+});
+registerCont({
+  tag: "Top/cont/copair:X⊔Y→Z",
+  morphism: copair(leftFold, rightFold, { topology: coproductInfo.topology, eq: coproductInfo.eq }),
+});
+
 const f = (z: number) => (z === 42 ? 0 : 1);
 const g = (_: number) => 20;
 const fMap = makeContinuousMap({
@@ -75,4 +109,41 @@ registerCont({
     eqTarget: eqNum,
     map: h,
   }),
+});
+
+const QX: ReadonlyArray<number> = [0, 1];
+const QY: ReadonlyArray<number> = [7, 8, 9, 10];
+const TXq = discrete(QX);
+const TYq = discrete(QY);
+const qf = makeContinuousMap({
+  source: TXq,
+  target: TYq,
+  eqSource: eqNum,
+  eqTarget: eqNum,
+  map: (x: number) => (x === 0 ? 7 : 8),
+});
+const qg = makeContinuousMap({
+  source: TXq,
+  target: TYq,
+  eqSource: eqNum,
+  eqTarget: eqNum,
+  map: (x: number) => (x === 0 ? 9 : 10),
+});
+const qCoeq = topCoequalizer(qf, qg);
+registerCont({
+  tag: "Top/cont/coequalize:Y→Y∼",
+  morphism: qCoeq.coequalize,
+});
+const TYaxis = discrete([0, 1]);
+const categorize = makeContinuousMap({
+  source: TYq,
+  target: TYaxis,
+  eqSource: eqNum,
+  eqTarget: eqNum,
+  map: (y: number) => (y === 7 || y === 9 ? 0 : 1),
+});
+const mediator = topFactorThroughCoequalizer(qf, qg, qCoeq.coequalize, categorize);
+registerCont({
+  tag: "Top/cont/coequalizer-mediator:Y∼→axes",
+  morphism: mediator,
 });
