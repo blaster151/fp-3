@@ -84,8 +84,8 @@ export const setMultObjFromSet = <T>(
 ): SetMultObj<T> => {
   const samples = shouldInferSamples(set, options) ? Array.from(set) : options.samples;
   return createSetMultObj({
-    eq: options.eq,
-    show: options.show,
+    ...(options.eq !== undefined ? { eq: options.eq } : {}),
+    ...(options.show !== undefined ? { show: options.show } : {}),
     ...(options.label !== undefined ? { label: options.label } : {}),
     ...(samples !== undefined ? { samples } : {}),
   });
