@@ -1,10 +1,10 @@
 import type { Top } from "./Topology";
 import { product } from "./Topology";
-import {
-  coneLeg,
-  makeMediator,
-  makeUniversalPropertyReport,
-  type UniversalPropertyReport,
+import { coneLeg, makeMediator, makeUniversalPropertyReport } from "./limits";
+import type {
+  LegCheckResult,
+  MediatorCheckResult,
+  UniversalPropertyReport,
 } from "./limits";
 
 type Eq<X> = (a: X, b: X) => boolean;
@@ -86,26 +86,44 @@ export function checkProductUP<Z, X, Y>(
     return eqX(proj1(paired), f(z)) && eqY(proj2(paired), g(z));
   });
 
-  const legs = [
-    {
-      leg: coneLeg<(pair: Pair<X, Y>) => X, ProductLegMetadata>("π₁", pi1, {
-        continuous: cProj1,
-      }),
-      holds: cProj1,
-      failure: cProj1 ? undefined : "Projection π₁ is not continuous.",
-      metadata: { continuous: cProj1 },
-    },
-    {
-      leg: coneLeg<(pair: Pair<X, Y>) => Y, ProductLegMetadata>("π₂", pi2, {
-        continuous: cProj2,
-      }),
-      holds: cProj2,
-      failure: cProj2 ? undefined : "Projection π₂ is not continuous.",
-      metadata: { continuous: cProj2 },
-    },
-  ];
+  const legProj1: LegCheckResult<
+    (pair: Pair<X, Y>) => unknown,
+    ProductLegMetadata
+  > = {
+    leg: coneLeg<(pair: Pair<X, Y>) => X, ProductLegMetadata>("π₁", pi1, {
+      continuous: cProj1,
+    }),
+    holds: cProj1,
+    ...(cProj1 ? {} : { failure: "Projection π₁ is not continuous." }),
+    metadata: { continuous: cProj1 },
+  };
 
-  const mediatorEntry = {
+  const legProj2: LegCheckResult<
+    (pair: Pair<X, Y>) => unknown,
+    ProductLegMetadata
+  > = {
+    leg: coneLeg<(pair: Pair<X, Y>) => Y, ProductLegMetadata>("π₂", pi2, {
+      continuous: cProj2,
+    }),
+    holds: cProj2,
+    ...(cProj2 ? {} : { failure: "Projection π₂ is not continuous." }),
+    metadata: { continuous: cProj2 },
+  };
+
+  const legs: ReadonlyArray<
+    LegCheckResult<(pair: Pair<X, Y>) => unknown, ProductLegMetadata>
+  > = [legProj1, legProj2];
+
+  const mediatorFailure = !cPair
+    ? "Pairing map is not continuous."
+    : !uniqueHolds
+    ? "Pairing map does not reproduce the supplied legs."
+    : undefined;
+
+  const mediatorEntry: MediatorCheckResult<
+    (z: Z) => Pair<X, Y>,
+    ProductMediatorMetadata
+  > = {
     mediator: makeMediator<(z: Z) => Pair<X, Y>, ProductMediatorMetadata>(
       "pairing",
       p,
@@ -115,11 +133,7 @@ export function checkProductUP<Z, X, Y>(
       },
     ),
     holds: cPair && uniqueHolds,
-    failure: !cPair
-      ? "Pairing map is not continuous."
-      : !uniqueHolds
-      ? "Pairing map does not reproduce the supplied legs."
-      : undefined,
+    ...(mediatorFailure !== undefined && { failure: mediatorFailure }),
     metadata: { continuous: cPair, triangles: uniqueHolds },
   };
 
