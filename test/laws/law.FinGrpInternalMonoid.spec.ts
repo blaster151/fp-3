@@ -6,19 +6,8 @@ import {
   checkInternalMonoidUnit,
   makeFinGrpInternalMonoidWitness,
 } from '../../allTS'
-import type { FinGrpObj, Hom } from '../../models/fingroup-cat'
-
-const cyclicGroup = (order: number, name: string): FinGrpObj => {
-  const elems = Array.from({ length: order }, (_, index) => index.toString())
-  const add = (mod: number) => (a: string, b: string) => ((Number(a) + Number(b)) % mod).toString()
-  return {
-    name,
-    elems,
-    e: '0',
-    mul: add(order),
-    inv: (value: string) => ((order - Number(value)) % order).toString(),
-  }
-}
+import type { Hom } from '../../models/fingroup-cat'
+import { cyclicGroup, symmetricGroupS3 } from './fixtures/finGrp'
 
 describe('Finite groups as internal monoids in Set', () => {
   const Z3 = cyclicGroup(3, 'Z₃')
@@ -99,5 +88,12 @@ describe('Finite groups as internal monoids in Set', () => {
     expect(analysis.overall).toBe(false)
     expect(analysis.diagonalPairing?.self).toBe(false)
     expect(analysis.issues.some((issue) => issue.includes('diagonal'))).toBe(true)
+  })
+
+  it('rejects non-abelian groups when building the internal-monoid witness', () => {
+    const S3 = symmetricGroupS3()
+    expect(() => makeFinGrpInternalMonoidWitness(S3)).toThrow(
+      /makeFinGrpInternalMonoidWitness\(S₃\): multiplication must be a FinGrp homomorphism; internal monoids in Grp require abelian carriers \(dom=S₃×S₃, cod=S₃\): .*fails to preserve products/,
+    )
   })
 })
