@@ -7,15 +7,14 @@ import {
   checkInternalGroupUnit,
   makeTopInternalGroupWitness,
 } from '../../allTS'
-import { discrete } from '../../src/top/Topology'
+import { discrete, structureFromTop } from '../../src/top/Topology'
 
 const eqBit = (a: number, b: number) => a === b
 const carrier = [0, 1]
 
 const makeWitness = () =>
   makeTopInternalGroupWitness<number>({
-    topology: discrete(carrier),
-    eq: eqBit,
+    structure: structureFromTop(eqBit, discrete(carrier)),
     multiply: (left, right) => (left + right) % 2,
     inverse: (value) => value,
     unit: 0,
@@ -52,6 +51,7 @@ describe('Top internal groups via discrete topologies', () => {
     expect(analysis.diagonalPairing?.left).toBe(true)
     expect(analysis.diagonalPairing?.right).toBe(true)
     expect(analysis.context.object).toBe(context.object)
+    expect(analysis.context.object.structure.eq).toBe(eqBit)
   })
 
   it('detects a multiplication that breaks associativity', () => {
@@ -134,8 +134,7 @@ describe('Top internal groups via discrete topologies', () => {
   it('rejects multiplication that leaves the carrier', () => {
     expect(() =>
       makeTopInternalGroupWitness({
-        topology: discrete(carrier),
-        eq: eqBit,
+        structure: structureFromTop(eqBit, discrete(carrier)),
         multiply: () => 2,
         inverse: (value: number) => value,
         unit: 0,

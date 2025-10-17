@@ -48,6 +48,9 @@ describe("Top/Vietoris adapters", () => {
     expect(report.holds).toBe(true);
     expect(report.deterministic).toBe(true);
     expect(report.ciFamilyVerified).toBe(true);
+    expect(witness.metadata?.heuristics).toBeDefined();
+    expect(witness.metadata?.heuristics?.some((entry) => /enumerates/.test(entry))).toBe(true);
+    expect(witness.metadata?.heuristics?.some((entry) => entry.includes("finite marginals"))).toBe(true);
   });
 
   it("rejects priors whose support escapes the encoded product space", () => {

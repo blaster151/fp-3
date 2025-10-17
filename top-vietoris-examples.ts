@@ -18,7 +18,15 @@ import { MarkovOracles, registerTopVietorisAdapters, type TopVietorisAdapters } 
 import type { KolmogorovFiniteMarginal } from "./markov-zero-one";
 import type { Dist } from "./dist";
 import { Prob } from "./semiring-utils";
-import { continuous, isHausdorff, isTopology, type Top } from "./src/top/Topology";
+import {
+  continuous,
+  forgetStructure,
+  isHausdorff,
+  structureFromTop,
+  type Top,
+  type TopStructure,
+} from "./src/top/Topology";
+import { topologyFromSubbase } from "./src/top/InitialFinal";
 
 export interface ClosedSubset<Point> {
   readonly label: string;
@@ -86,11 +94,22 @@ const DEFAULT_PRODUCT_LABEL = "Top/Vietoris product" as const;
 
 const defined = <T>(value: T | undefined): value is T => value !== undefined;
 
-function eqSubset<Point>(
-  eq: Eq<Point>,
-  left: ReadonlyArray<Point>,
-  right: ReadonlyArray<Point>,
-): boolean {
+const spaceStructureCache = new WeakMap<TopSpace<any>, TopStructure<any>>();
+
+function uniqueCarrier<Point>(points: Fin<Point>): Point[] {
+  const carrier: Point[] = [];
+  for (const candidate of points.elems) {
+    if (candidate === undefined) {
+      continue;
+    }
+    if (!carrier.some((existing) => points.eq(existing, candidate))) {
+      carrier.push(candidate);
+    }
+  }
+  return carrier;
+}
+
+function eqSubset<Point>(eq: Eq<Point>, left: ReadonlyArray<Point>, right: ReadonlyArray<Point>): boolean {
   return (
     left.length === right.length &&
     left.every((l) => right.some((r) => eq(l, r))) &&
@@ -98,83 +117,60 @@ function eqSubset<Point>(
   );
 }
 
-function dedupePointSets<Point>(
+function dedupeSubsets<Point>(
   eq: Eq<Point>,
-  sets: ReadonlyArray<ReadonlyArray<Point>>,
+  subsets: ReadonlyArray<ReadonlyArray<Point>>,
 ): Array<ReadonlyArray<Point>> {
   const unique: Array<ReadonlyArray<Point>> = [];
-  for (const candidate of sets) {
-    if (!unique.some((existing) => eqSubset(eq, existing, candidate))) {
-      unique.push([...candidate]);
+  for (const subset of subsets) {
+    if (!unique.some((existing) => eqSubset(eq, existing, subset))) {
+      unique.push([...subset]);
     }
   }
   return unique;
 }
 
-function saturateClosedSets<Point>(
-  eq: Eq<Point>,
+function evaluateClosedSubset<Point>(
   carrier: ReadonlyArray<Point>,
-  seeds: ReadonlyArray<ReadonlyArray<Point>>,
-): Array<ReadonlyArray<Point>> {
-  const closed = dedupePointSets(eq, [...seeds, [], [...carrier]]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    outer: for (const A of closed) {
-      for (const B of closed) {
-        const union: Point[] = [...A];
-        for (const candidate of B) {
-          if (!union.some((existing) => eq(existing, candidate))) {
-            union.push(candidate);
-          }
-        }
-        if (!closed.some((existing) => eqSubset(eq, existing, union))) {
-          closed.push(union);
-          changed = true;
-          break outer;
-        }
-        const intersection = A.filter((a) => B.some((b) => eq(a, b)));
-        if (!closed.some((existing) => eqSubset(eq, existing, intersection))) {
-          closed.push(intersection);
-          changed = true;
-          break outer;
-        }
-      }
+  eq: Eq<Point>,
+  subset: ClosedSubset<Point>,
+): Point[] {
+  const members: Point[] = [];
+  for (const candidate of carrier) {
+    if (subset.contains(candidate) && !members.some((existing) => eq(existing, candidate))) {
+      members.push(candidate);
     }
   }
-  return closed;
+  return members;
 }
 
-function complementOf<Point>(
+function complementSubset<Point>(
   eq: Eq<Point>,
   carrier: ReadonlyArray<Point>,
   subset: ReadonlyArray<Point>,
-): ReadonlyArray<Point> {
+): Point[] {
   return carrier.filter((candidate) => !subset.some((member) => eq(candidate, member)));
 }
 
-function topologyFromClosed<Point>(space: TopSpace<Point>): Top<Point> {
-  const carrier = space.points.elems.filter(defined);
-  const eq = space.points.eq;
-  const saturated = saturateClosedSets(
-    eq,
-    carrier,
-    space.closedSubsets.map((subset) => subset.members.filter(defined)),
-  );
-  const opens = dedupePointSets(
-    eq,
-    saturated.map((closed) => complementOf(eq, carrier, closed)),
-  );
-  const topology: Top<Point> = {
-    carrier,
-    opens,
-    ...(space.points.show ? { show: space.points.show } : {}),
-  };
-  if (!isTopology(eq, topology)) {
-    throw new Error(`${space.label}: provided closed subsets do not determine a topology.`);
+function spaceStructure<Point>(space: TopSpace<Point>): TopStructure<Point> {
+  const cached = spaceStructureCache.get(space) as TopStructure<Point> | undefined;
+  if (cached) {
+    return cached;
   }
-  return topology;
+
+  const carrier = uniqueCarrier(space.points);
+  const eq = space.points.eq;
+  const closedMembers = space.closedSubsets.map((subset) => evaluateClosedSubset(carrier, eq, subset));
+  closedMembers.push([], [...carrier]);
+  const closed = dedupeSubsets(eq, closedMembers);
+  const subbase = closed.map((subset) => complementSubset(eq, carrier, subset));
+  const topology = topologyFromSubbase(eq, carrier, subbase);
+  const structure = structureFromTop(eq, topology, space.points.show ? { show: space.points.show } : undefined);
+  spaceStructureCache.set(space, structure);
+  return structure;
 }
+
+const spaceTopology = <Point>(space: TopSpace<Point>): Top<Point> => forgetStructure(spaceStructure(space));
 
 function enumerateFiniteSubsets(arity: number): Array<ReadonlyArray<number>> {
   const results: Array<ReadonlyArray<number>> = [];
@@ -341,7 +337,20 @@ export function buildTopVietorisKolmogorovWitness<A, XJ, T = 0 | 1>(
   finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ, unknown>>,
   label = "Top/Vietoris Kolmogorov",
 ) {
-  return MarkovOracles.zeroOne.kolmogorov.witness(p, s, finiteMarginals, { label });
+  const carrierSize = p.Y.elems.filter(defined).length;
+  const marginalLabels = finiteMarginals
+    .map((entry) => entry.F)
+    .filter((value): value is string => typeof value === "string" && value.length > 0);
+  const heuristics: ReadonlyArray<string> = [
+    `${label}: Kolmogorov product enumerates ${carrierSize} carrier point(s) via Top/Vietoris adapters.`,
+    marginalLabels.length > 0
+      ? `${label}: finite marginals reused for factors ${marginalLabels.join(", ")}.`
+      : `${label}: no finite marginals supplied; witness defaults to deterministic heuristics.`,
+  ];
+  return MarkovOracles.zeroOne.kolmogorov.witness(p, s, finiteMarginals, {
+    label,
+    metadata: { heuristics },
+  });
 }
 
 export function checkTopVietorisKolmogorov<A, XJ, T = 0 | 1>(
@@ -458,8 +467,8 @@ function checkContinuity<XJ, Y>(
   witness: TopVietorisConstantFunctionWitness<XJ, Y>,
 ): { ok: boolean; details?: string; domain?: Top<XJ>; codomain?: Top<Y> } {
   try {
-    const domain = topologyFromClosed(witness.product) as Top<XJ>;
-    const codomain = topologyFromClosed(witness.target) as Top<Y>;
+    const domain = spaceTopology(witness.product) as Top<XJ>;
+    const codomain = spaceTopology(witness.target) as Top<Y>;
     const eqX = witness.product.points.eq as Eq<XJ>;
     const continuousReport = continuous(eqX, domain, codomain, witness.map, witness.target.points.eq);
     return continuousReport
@@ -562,7 +571,7 @@ export function checkTopVietorisConstantFunction<XJ, Y>(
   let hausdorff = false;
   let hausdorffDetails: string | undefined;
   try {
-    const codomain = continuity.codomain ?? (topologyFromClosed(witness.target) as Top<Y>);
+    const codomain = continuity.codomain ?? (spaceTopology(witness.target) as Top<Y>);
     hausdorff = isHausdorff(witness.target.points.eq, codomain);
     if (!hausdorff) {
       hausdorffDetails = `${witness.label ?? "Top/Vietoris constant"}: target is not Hausdorff.`;
