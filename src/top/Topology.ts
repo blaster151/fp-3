@@ -4,6 +4,10 @@ export type Top<X> = {
   readonly show?: (x: X) => string;
 };
 
+export type CoproductPoint<X, Y> =
+  | { readonly tag: "inl"; readonly value: X }
+  | { readonly tag: "inr"; readonly value: Y };
+
 function eqArr<X>(eq: (a: X, b: X) => boolean, A: ReadonlyArray<X>, B: ReadonlyArray<X>): boolean {
   return (
     A.length === B.length &&
@@ -24,6 +28,14 @@ function dedupeSets<X>(
     }
   }
   return unique;
+}
+
+function eqSet<X>(
+  eqX: (a: X, b: X) => boolean,
+  A: ReadonlyArray<X>,
+  B: ReadonlyArray<X>,
+): boolean {
+  return eqArr(eqX, A, B);
 }
 
 function complement<X>(
@@ -96,6 +108,18 @@ function eqProduct<X, Y>(
   return eqX(a.x, b.x) && eqY(a.y, b.y);
 }
 
+function eqCoproductPoint<X, Y>(
+  eqX: (a: X, b: X) => boolean,
+  eqY: (a: Y, b: Y) => boolean,
+  a: CoproductPoint<X, Y>,
+  b: CoproductPoint<X, Y>,
+): boolean {
+  if (a.tag !== b.tag) {
+    return false;
+  }
+  return a.tag === "inl" ? eqX(a.value, (b as typeof a).value) : eqY(a.value, (b as typeof a).value);
+}
+
 /** Product topology on X×Y (finite). */
 export function product<X, Y>(
   eqX: (a: X, b: X) => boolean,
@@ -139,6 +163,37 @@ export function product<X, Y>(
       }
     }
   }
+  return { carrier, opens };
+}
+
+/** Coproduct topology on X⊔Y (finite disjoint union). */
+export function coproduct<X, Y>(
+  eqX: (a: X, b: X) => boolean,
+  eqY: (a: Y, b: Y) => boolean,
+  TX: Top<X>,
+  TY: Top<Y>,
+): Top<CoproductPoint<X, Y>> {
+  const left = TX.carrier.map((value) => ({ tag: "inl" as const, value }));
+  const right = TY.carrier.map((value) => ({ tag: "inr" as const, value }));
+  const carrier: Array<CoproductPoint<X, Y>> = [...left, ...right];
+  const liftLeft = (U: ReadonlyArray<X>): Array<CoproductPoint<X, Y>> =>
+    U.map((value) => ({ tag: "inl" as const, value }));
+  const liftRight = (V: ReadonlyArray<Y>): Array<CoproductPoint<X, Y>> =>
+    V.map((value) => ({ tag: "inr" as const, value }));
+  const eqPoint = (a: CoproductPoint<X, Y>, b: CoproductPoint<X, Y>) =>
+    eqCoproductPoint(eqX, eqY, a, b);
+  const opens: Array<Array<CoproductPoint<X, Y>>> = [];
+  const pushUnique = (S: Array<CoproductPoint<X, Y>>) => {
+    if (!opens.some((W) => eqArr(eqPoint, W, S))) {
+      opens.push(S);
+    }
+  };
+  for (const U of TX.opens) {
+    for (const V of TY.opens) {
+      pushUnique([...liftLeft(U), ...liftRight(V)]);
+    }
+  }
+  pushUnique([]);
   return { carrier, opens };
 }
 
@@ -203,6 +258,16 @@ export function closedSets<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): Readonly
   return dedupeSets(eqX, complements);
 }
 
+function subspaceTopology<X>(
+  eqX: (a: X, b: X) => boolean,
+  T: Top<X>,
+  subset: ReadonlyArray<X>,
+): Top<X> {
+  const restrictedOpens = T.opens.map((U) => U.filter((u) => subset.some((s) => eqX(s, u))));
+  const opens = dedupeSets(eqX, restrictedOpens);
+  return { carrier: [...subset], opens };
+}
+
 export function closure<X>(
   eqX: (a: X, b: X) => boolean,
   T: Top<X>,
@@ -243,12 +308,11 @@ export function boundary<X>(
 
 export function isConnected<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
   const { carrier, opens } = T;
-  const eqSet = (A: ReadonlyArray<X>, B: ReadonlyArray<X>) => eqArr(eqX, A, B);
   for (const U of opens) {
-    if (U.length === 0 || eqSet(U, carrier)) {
+    if (U.length === 0 || eqSet(eqX, U, carrier)) {
       continue;
     }
-    const complementOpen = opens.some((V) => eqSet(V, complement(eqX, carrier, U)));
+    const complementOpen = opens.some((V) => eqSet(eqX, V, complement(eqX, carrier, U)));
     if (complementOpen) {
       return false;
     }
@@ -279,4 +343,150 @@ export function specializationOrder<X>(
     }
   }
   return relation;
+}
+
+export function isT0<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
+  const { carrier } = T;
+  for (const x of carrier) {
+    for (const y of carrier) {
+      if (!eqX(x, y)) {
+        const xHas = neighborhoods(eqX, T, x).some((U) => !U.some((u) => eqX(u, y)));
+        const yHas = neighborhoods(eqX, T, y).some((U) => !U.some((u) => eqX(u, x)));
+        if (!xHas && !yHas) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+export function isT1<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
+  const { carrier } = T;
+  for (const x of carrier) {
+    for (const y of carrier) {
+      if (!eqX(x, y)) {
+        const xHas = neighborhoods(eqX, T, x).some((U) => !U.some((u) => eqX(u, y)));
+        const yHas = neighborhoods(eqX, T, y).some((U) => !U.some((u) => eqX(u, x)));
+        if (!xHas || !yHas) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+function disjoint<X>(eqX: (a: X, b: X) => boolean, A: ReadonlyArray<X>, B: ReadonlyArray<X>): boolean {
+  return A.every((a) => !B.some((b) => eqX(a, b)));
+}
+
+export function isRegular<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
+  if (!isT1(eqX, T)) {
+    return false;
+  }
+  const closed = closedSets(eqX, T);
+  const { carrier } = T;
+  for (const x of carrier) {
+    for (const F of closed) {
+      if (F.some((f) => eqX(f, x)) || F.length === 0) {
+        continue;
+      }
+      const neighborhoodsOfX = neighborhoods(eqX, T, x);
+      const opensContainingF = T.opens.filter((U) => F.every((f) => U.some((u) => eqX(f, u))));
+      const separated = neighborhoodsOfX.some((U) =>
+        opensContainingF.some((V) => disjoint(eqX, U, V)),
+      );
+      if (!separated) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+export function isNormal<X>(eqX: (a: X, b: X) => boolean, T: Top<X>): boolean {
+  const closed = closedSets(eqX, T);
+  for (const A of closed) {
+    for (const B of closed) {
+      const disjointClosed = A.every((a) => !B.some((b) => eqX(a, b)));
+      if (!disjointClosed) {
+        continue;
+      }
+      if (A.length === 0 || B.length === 0) {
+        continue;
+      }
+      const opensContainingA = T.opens.filter((U) => A.every((a) => U.some((u) => eqX(a, u))));
+      const opensContainingB = T.opens.filter((U) => B.every((b) => U.some((u) => eqX(b, u))));
+      const separated = opensContainingA.some((U) =>
+        opensContainingB.some((V) => disjoint(eqX, U, V)),
+      );
+      if (!separated) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function powerSet<X>(items: ReadonlyArray<X>): ReadonlyArray<ReadonlyArray<X>> {
+  const subsets: Array<ReadonlyArray<X>> = [[]];
+  for (const item of items) {
+    const newSubsets = subsets.map((subset) => [...subset, item]);
+    subsets.push(...newSubsets);
+  }
+  return subsets;
+}
+
+function pushUnique<X>(eqX: (a: X, b: X) => boolean, xs: X[], x: X): void {
+  if (!xs.some((y) => eqX(x, y))) {
+    xs.push(x);
+  }
+}
+
+export function connectedComponents<X>(
+  eqX: (a: X, b: X) => boolean,
+  T: Top<X>,
+): ReadonlyArray<ReadonlyArray<X>> {
+  const { carrier } = T;
+  const subsets = powerSet(carrier).filter((subset) => subset.length > 0);
+  const connectedSubsets = subsets.filter((subset) => isConnected(eqX, subspaceTopology(eqX, T, subset)));
+  const components: Array<ReadonlyArray<X>> = [];
+  const seen: X[] = [];
+
+  for (const x of carrier) {
+    if (seen.some((y) => eqX(x, y))) {
+      continue;
+    }
+    const component: X[] = [x];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const subset of connectedSubsets) {
+        if (!subset.some((s) => eqX(s, x))) {
+          continue;
+        }
+        const hasNewPoint = subset.some((s) => !component.some((c) => eqX(c, s)));
+        if (hasNewPoint) {
+          for (const s of subset) {
+            pushUnique(eqX, component, s);
+          }
+          changed = true;
+        }
+      }
+    }
+    for (const s of component) {
+      pushUnique(eqX, seen, s);
+    }
+    components.push([...component]);
+  }
+
+  return components;
+}
+
+export function isTotallyDisconnected<X>(
+  eqX: (a: X, b: X) => boolean,
+  T: Top<X>,
+): boolean {
+  return connectedComponents(eqX, T).every((component) => component.length <= 1);
 }
