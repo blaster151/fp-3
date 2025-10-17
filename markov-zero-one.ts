@@ -24,11 +24,17 @@ export interface KolmogorovFiniteMarginal<XJ, XF = unknown> {
   readonly piF: FinMarkov<XJ, XF>;
 }
 
+export interface KolmogorovZeroOneWitnessMetadata {
+  readonly heuristics?: ReadonlyArray<string>;
+  readonly notes?: string;
+}
+
 export interface KolmogorovZeroOneWitness<A, XJ, T, XF = unknown> {
   readonly prior: FinMarkov<A, XJ>;
   readonly stat: FinMarkov<XJ, T>;
   readonly finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ, XF>>;
   readonly label?: string;
+  readonly metadata?: KolmogorovZeroOneWitnessMetadata;
 }
 
 export interface KolmogorovZeroOneReport<A, XJ, T, XF = unknown> {
@@ -52,7 +58,7 @@ export function buildKolmogorovZeroOneWitness<A, XJ, T, XF = unknown>(
   p: FinMarkov<A, XJ>,
   s: FinMarkov<XJ, T>,
   finiteMarginals: ReadonlyArray<KolmogorovFiniteMarginal<XJ, XF>>,
-  options: { label?: string } = {},
+  options: { label?: string; metadata?: KolmogorovZeroOneWitnessMetadata } = {},
 ): KolmogorovZeroOneWitness<A, XJ, T, XF> {
   if (p.Y !== s.X) {
     throw new Error("Kolmogorov zero–one witness requires s to consume the prior codomain.");
@@ -67,6 +73,7 @@ export function buildKolmogorovZeroOneWitness<A, XJ, T, XF = unknown>(
     stat: s,
     finiteMarginals,
     ...(options.label !== undefined ? { label: options.label } : {}),
+    ...(options.metadata !== undefined ? { metadata: options.metadata } : {}),
   };
 }
 
@@ -83,6 +90,7 @@ const forgetStatistic = <A, XJ, XF, T>(
   stat: forgetCodomain(witness.stat),
   finiteMarginals: witness.finiteMarginals,
   ...(witness.label === undefined ? {} : { label: witness.label }),
+  ...(witness.metadata === undefined ? {} : { metadata: witness.metadata }),
 });
 
 function combineStateProjections<XJ>(

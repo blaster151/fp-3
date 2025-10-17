@@ -6,15 +6,14 @@ import {
   checkInternalMonoidUnit,
   makeTopInternalMonoidWitness,
 } from '../../allTS'
-import { discrete } from '../../src/top/Topology'
+import { discrete, structureFromTop } from '../../src/top/Topology'
 
 const eqBit = (a: number, b: number) => a === b
 const carrier = [0, 1]
 
 const makeWitness = () =>
   makeTopInternalMonoidWitness<number>({
-    topology: discrete(carrier),
-    eq: eqBit,
+    structure: structureFromTop(eqBit, discrete(carrier)),
     multiply: (left, right) => (left + right) % 2,
     unit: 0,
   })
@@ -44,6 +43,7 @@ describe('Top internal monoids via discrete topologies', () => {
     expect(analysis.unit.holds).toBe(true)
     expect(analysis.diagonalPairing?.self).toBe(true)
     expect(analysis.context.object).toBe(context.object)
+    expect(analysis.context.object.structure.eq).toBe(eqBit)
   })
 
   it('detects a multiplication that breaks associativity', () => {
@@ -110,8 +110,7 @@ describe('Top internal monoids via discrete topologies', () => {
   it('rejects multiplications that leave the carrier', () => {
     expect(() =>
       makeTopInternalMonoidWitness({
-        topology: discrete(carrier),
-        eq: eqBit,
+        structure: structureFromTop(eqBit, discrete(carrier)),
         multiply: () => 2,
         unit: 0,
       }),

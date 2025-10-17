@@ -22,14 +22,23 @@ import {
   type ContinuousMap,
   type ProductPoint,
 } from './src/top/ContinuousMap'
-import type { Top } from './src/top/Topology'
+import { forgetStructure, topStructure, type Top, type TopStructure } from './src/top/Topology'
 
 export type Eq<X> = (a: X, b: X) => boolean
 
 export interface TopObject<Point> {
+  readonly structure: TopStructure<Point>
   readonly topology: Top<Point>
   readonly eq: Eq<Point>
 }
+
+const toTopology = <Point>(structure: TopStructure<Point>) => forgetStructure(structure)
+
+const makeTopObject = <Point>(structure: TopStructure<Point>): TopObject<Point> => ({
+  structure,
+  topology: toTopology(structure),
+  eq: structure.eq,
+})
 
 const contains = <Point>(carrier: ReadonlyArray<Point>, eq: Eq<Point>) =>
   (value: Point): boolean => carrier.some((candidate) => eq(candidate, value))
@@ -67,18 +76,19 @@ const makeCategoryOps = (): CategoryOps<TopObject<any>, ContinuousMap<any, any>>
 
 const makeTerminal = (): TerminalWitness<TopObject<any>, ContinuousMap<any, any>> => {
   const terminalPoint = '⋆'
-  const topology: Top<string> = { carrier: [terminalPoint], opens: [[], [terminalPoint]] }
-  const object: TopObject<string> = {
-    topology,
-    eq: (left, right) => left === right,
-  }
+  const structure = topStructure({
+    carrier: [terminalPoint],
+    opens: [[], [terminalPoint]],
+    eq: (left: string, right: string) => left === right,
+  })
+  const object = makeTopObject(structure)
 
   return {
     object,
     terminate: (domain) =>
       makeContinuousMap({
         source: domain.topology,
-        target: topology,
+        target: object.topology,
         eqSource: domain.eq,
         eqTarget: object.eq,
         map: () => terminalPoint,
@@ -94,15 +104,18 @@ const makeBinaryProduct = <Left, Right>(input: {
   readonly tuple: BinaryProductTuple<TopObject<any>, ContinuousMap<any, any>>
 } => {
   const { left, right } = input
-  const structure = productStructure(left.eq, right.eq, left.topology, right.topology)
-  const object: TopObject<ProductPoint<Left, Right>> = {
-    topology: structure.topology,
-    eq: structure.eq,
-  }
+  const base = productStructure(left.structure, right.structure)
+  const productStructureArgs = {
+    carrier: base.topology.carrier,
+    opens: base.topology.opens,
+    eq: base.eq,
+  } as const
+  const structure = topStructure(productStructureArgs)
+  const object = makeTopObject(structure)
 
   const tuple: BinaryProductTuple<TopObject<any>, ContinuousMap<any, any>> = {
     object,
-    projections: [structure.proj1, structure.proj2],
+    projections: [base.proj1, base.proj2],
     tuple: (domain, legs) => {
       if (legs.length !== 2) {
         throw new Error(
@@ -110,13 +123,10 @@ const makeBinaryProduct = <Left, Right>(input: {
         )
       }
       const [leftLeg, rightLeg] = legs as readonly [ContinuousMap<any, any>, ContinuousMap<any, any>]
-      if (leftLeg.source !== domain.topology || rightLeg.source !== domain.topology) {
-        throw new Error('makeBinaryProduct: leg sources must match the supplied domain topology')
-      }
       if (leftLeg.eqSource !== domain.eq || rightLeg.eqSource !== domain.eq) {
         throw new Error('makeBinaryProduct: leg equality witnesses must match the domain')
       }
-      return pairing(leftLeg, rightLeg, { topology: structure.topology, eq: structure.eq })
+      return pairing(leftLeg, rightLeg, { topology: base.topology, eq: base.eq })
     },
   }
 
@@ -133,8 +143,7 @@ const ensureContinuousMap = <Source, Target>(build: () => ContinuousMap<Source, 
 }
 
 export interface TopInternalGroupInput<Point> {
-  readonly topology: Top<Point>
-  readonly eq: Eq<Point>
+  readonly structure: TopStructure<Point>
   readonly multiply: (left: Point, right: Point) => Point
   readonly inverse: (value: Point) => Point
   readonly unit: Point
@@ -159,27 +168,28 @@ export type TopInternalGroupAnalysis<Point> = InternalGroupAnalysis<
 }
 
 export const makeTopInternalGroupWitness = <Point>(input: TopInternalGroupInput<Point>): TopInternalGroupWitness<Point> => {
-  const { topology, eq, multiply, inverse, unit } = input
-  const inCarrier = contains(topology.carrier, eq)
+  const { structure, multiply, inverse, unit } = input
+  const { carrier, eq } = structure
+  const inCarrier = contains(carrier, eq)
   if (!inCarrier(unit)) {
     throw new Error('makeTopInternalGroupWitness: unit must lie in the carrier of the topology')
   }
 
-  for (const element of topology.carrier) {
+  for (const element of carrier) {
     if (!inCarrier(inverse(element))) {
       throw new Error('makeTopInternalGroupWitness: inverse must map each element into the carrier')
     }
   }
 
-  for (const a of topology.carrier) {
-    for (const b of topology.carrier) {
+  for (const a of carrier) {
+    for (const b of carrier) {
       if (!inCarrier(multiply(a, b))) {
         throw new Error('makeTopInternalGroupWitness: multiplication must map into the carrier')
       }
     }
   }
 
-  const object: TopObject<Point> = { topology, eq }
+  const object = makeTopObject(structure)
   const category = makeCategoryOps()
 
   const product = makeBinaryProduct({ left: object, right: object })
@@ -190,9 +200,9 @@ export const makeTopInternalGroupWitness = <Point>(input: TopInternalGroupInput<
     () =>
       makeContinuousMap({
         source: product.object.topology,
-        target: topology,
+        target: object.topology,
         eqSource: product.object.eq,
-        eqTarget: eq,
+        eqTarget: object.eq,
         map: (pair: ProductPoint<Point, Point>) => multiply(pair.x, pair.y),
       }),
     'makeTopInternalGroupWitness: multiplication must be continuous',
@@ -201,10 +211,10 @@ export const makeTopInternalGroupWitness = <Point>(input: TopInternalGroupInput<
   const inverseArrow = ensureContinuousMap(
     () =>
       makeContinuousMap({
-        source: topology,
-        target: topology,
-        eqSource: eq,
-        eqTarget: eq,
+        source: object.topology,
+        target: object.topology,
+        eqSource: object.eq,
+        eqTarget: object.eq,
         map: inverse,
       }),
     'makeTopInternalGroupWitness: inverse must be continuous',
@@ -216,9 +226,9 @@ export const makeTopInternalGroupWitness = <Point>(input: TopInternalGroupInput<
     () =>
       makeContinuousMap({
         source: terminal.object.topology,
-        target: topology,
+        target: object.topology,
         eqSource: terminal.object.eq,
-        eqTarget: eq,
+        eqTarget: object.eq,
         map: () => unit,
       }),
     'makeTopInternalGroupWitness: unit arrow must be continuous',
@@ -245,8 +255,7 @@ export const makeTopInternalGroupWitness = <Point>(input: TopInternalGroupInput<
 }
 
 export interface TopInternalMonoidInput<Point> {
-  readonly topology: Top<Point>
-  readonly eq: Eq<Point>
+  readonly structure: TopStructure<Point>
   readonly multiply: (left: Point, right: Point) => Point
   readonly unit: Point
 }
@@ -272,21 +281,22 @@ export type TopInternalMonoidAnalysis<Point> = InternalMonoidAnalysis<
 export const makeTopInternalMonoidWitness = <Point>(
   input: TopInternalMonoidInput<Point>,
 ): TopInternalMonoidWitness<Point> => {
-  const { topology, eq, multiply, unit } = input
-  const inCarrier = contains(topology.carrier, eq)
+  const { structure, multiply, unit } = input
+  const { carrier, eq } = structure
+  const inCarrier = contains(carrier, eq)
   if (!inCarrier(unit)) {
     throw new Error('makeTopInternalMonoidWitness: unit must lie in the carrier of the topology')
   }
 
-  for (const a of topology.carrier) {
-    for (const b of topology.carrier) {
+  for (const a of carrier) {
+    for (const b of carrier) {
       if (!inCarrier(multiply(a, b))) {
         throw new Error('makeTopInternalMonoidWitness: multiplication must map into the carrier')
       }
     }
   }
 
-  const object: TopObject<Point> = { topology, eq }
+  const object = makeTopObject(structure)
   const category = makeCategoryOps()
 
   const product = makeBinaryProduct({ left: object, right: object })
@@ -297,9 +307,9 @@ export const makeTopInternalMonoidWitness = <Point>(
     () =>
       makeContinuousMap({
         source: product.object.topology,
-        target: topology,
+        target: object.topology,
         eqSource: product.object.eq,
-        eqTarget: eq,
+        eqTarget: object.eq,
         map: (pair: ProductPoint<Point, Point>) => multiply(pair.x, pair.y),
       }),
     'makeTopInternalMonoidWitness: multiplication must be continuous',
@@ -311,9 +321,9 @@ export const makeTopInternalMonoidWitness = <Point>(
     () =>
       makeContinuousMap({
         source: terminal.object.topology,
-        target: topology,
+        target: object.topology,
         eqSource: terminal.object.eq,
-        eqTarget: eq,
+        eqTarget: object.eq,
         map: () => unit,
       }),
     'makeTopInternalMonoidWitness: unit arrow must be continuous',
