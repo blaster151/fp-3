@@ -24,6 +24,7 @@ const cyclicGroup = (order: number, name: string): FinGrpObj => {
 
 describe('Finite groups as internal groups in Set', () => {
   const Z3 = cyclicGroup(3, 'Z₃')
+  const skewMultiply = (left: string, right: string) => ((Number(left) + 2 * Number(right)) % 3).toString()
   const context = makeFinGrpInternalGroupWitness(Z3)
 
   it('satisfies the internal-group associativity, unit, and inversion laws', () => {
@@ -54,9 +55,14 @@ describe('Finite groups as internal groups in Set', () => {
   })
 
   it('detects a multiplication that breaks associativity', () => {
+    const [leftProjection, rightProjection] = context.witness.product.projections
     const brokenMultiplication: Hom = {
       ...context.witness.multiplication,
-      map: () => '0',
+      map: (value) => {
+        const left = leftProjection.map(value)
+        const right = rightProjection.map(value)
+        return skewMultiply(left, right)
+      },
     }
 
     const result = checkInternalGroupAssociativity({

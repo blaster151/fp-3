@@ -41,7 +41,7 @@ describe('Internal monoids in Set', () => {
   it('detects a multiplication that breaks associativity', () => {
     const brokenMultiplication = {
       ...context.witness.multiplication,
-      map: (value: { left: boolean }) => value.left,
+      map: (value: { left: boolean; right: boolean }) => (value.left ? false : value.right),
     }
 
     const result = checkInternalMonoidAssociativity({

@@ -19,6 +19,8 @@ const makeWitness = () =>
     unit: 0,
   })
 
+const skewMultiply = (left: number, right: number) => (left === 1 ? 0 : right)
+
 describe('Top internal monoids via discrete topologies', () => {
   it('satisfies the internal-monoid associativity and unit laws', () => {
     const context = makeWitness()
@@ -46,9 +48,11 @@ describe('Top internal monoids via discrete topologies', () => {
 
   it('detects a multiplication that breaks associativity', () => {
     const context = makeWitness()
+    const [leftProjection, rightProjection] = context.witness.product.projections
     const brokenMultiplication = {
       ...context.witness.multiplication,
-      map: () => 0,
+      map: (value: unknown) =>
+        skewMultiply(leftProjection.map(value as never), rightProjection.map(value as never)),
     }
 
     const result = checkInternalMonoidAssociativity({
