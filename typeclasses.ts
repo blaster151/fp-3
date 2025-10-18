@@ -4,6 +4,8 @@ import { Err, Ok, flatMapR, isErr, isOk, mapR } from "./result"
 import type { Result as ResultT } from "./result"
 import type { Task } from "./task"
 import type { Validation } from "./validation"
+import type { List } from "./list"
+import { ap as apList, chain as chainList, map as mapList, of as ofList } from "./list"
 import type { Lazy, Predicate, Refinement } from "./core"
 import type { Monoid } from "./stdlib/monoid"
 
@@ -22,6 +24,7 @@ export type FunctorValue<F, A> =
   F extends 'Promise' ? Promise<A> :
   F extends 'Task' ? Task<A> :
   F extends 'Array' ? ReadonlyArray<A> :
+  F extends 'List' ? List<A> :
   F extends 'Id' ? IdentityValue<A> :
   F extends ValidationTag<infer E> ? Validation<E, A> :
   F extends ResultTag<infer E> ? Result<E, A> :
@@ -583,6 +586,13 @@ export const ResultI: Monad<'Result'> = {
     },
   of: Ok,
   chain: flatMapR,
+}
+
+export const ListI: Monad<'List'> = {
+  map: mapList,
+  ap: apList,
+  of: ofList,
+  chain: chainList,
 }
 
 export const MaybeM = {
