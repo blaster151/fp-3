@@ -12,7 +12,10 @@ export function lawfulMonoid<A>(
   samples: ReadonlyArray<A>
 ): Lawful<A, Monoid<A>> {
   const { empty, concat } = monoid;
-  const law = (name: string, check: () => boolean): Law<A> => ({ name, check });
+  const law = (name: string, check: () => boolean): Law<A> => ({
+    name,
+    check: (_context: A) => check(),
+  });
 
   const laws: Law<A>[] = [
     law("left identity", () => samples.every(a => eq(concat(empty, a), a))),
