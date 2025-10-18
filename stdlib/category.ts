@@ -7,6 +7,31 @@ export interface Category<O, M> {
   equalMor?: (x: M, y: M) => boolean
 }
 
+export interface CartesianClosedBinaryProductWitness<O, M> {
+  readonly obj: O
+  readonly proj1: M
+  readonly proj2: M
+  pair: (X: O, f: M, g: M) => M
+}
+
+export interface CartesianClosedExponentialWitness<O, M> {
+  readonly obj: O
+  readonly evaluation: M
+  readonly product: CartesianClosedBinaryProductWitness<O, M>
+  curry: (X: O, h: M) => M
+  uncurry: (X: O, k: M) => M
+}
+
+export interface CartesianClosedCategory<O, M>
+  extends Category<O, M>, ArrowFamilies.HasDomCod<O, M> {
+  readonly terminal: {
+    readonly obj: O
+    terminate: (X: O) => M
+  }
+  binaryProduct: (A: O, B: O) => CartesianClosedBinaryProductWitness<O, M>
+  exponential: (A: O, B: O) => CartesianClosedExponentialWitness<O, M>
+}
+
 /** Groupoid: category where every morphism is invertible */
 export interface Groupoid<O, M> extends Category<O, M>, ArrowFamilies.HasDomCod<O, M> {
   inv: (m: M) => M                           // inverse for every morphism

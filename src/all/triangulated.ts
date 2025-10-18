@@ -25,6 +25,7 @@ import type {
   CatId,
   CatNatTrans,
   Category,
+  CartesianClosedCategory,
   FiniteGroupoid,
   GFunctor,
   Groupoid,
@@ -2594,14 +2595,72 @@ const assertNestedListElements = (
 
 export const makeFinSetObj = <T>(elements: ReadonlyArray<T>): FinSetObjOf<T> => ({ elements })
 
-export const FinSet: Category<FinSetObj, FinSetMor> & 
+const terminalFinSetObj: FinSetObj = { elements: [null] }
+
+const terminateFinSetAtTerminal = (X: FinSetObj): FinSetMor => ({
+  from: X,
+  to: terminalFinSetObj,
+  map: Array.from({ length: X.elements.length }, () => 0)
+})
+
+const buildBinaryProductWitness = (A: FinSetObj, B: FinSetObj) => {
+  const tuples: Array<readonly [number, number]> = []
+  for (let i = 0; i < A.elements.length; i++) {
+    for (let j = 0; j < B.elements.length; j++) {
+      tuples.push([i, j])
+    }
+  }
+
+  const obj: FinSetObj = { elements: tuples }
+  const tupleIndex = new Map<string, number>()
+  tuples.forEach((tuple, idx) => tupleIndex.set(JSON.stringify(tuple), idx))
+
+  const proj1: FinSetMor = { from: obj, to: A, map: tuples.map(tuple => tuple[0]!) }
+  const proj2: FinSetMor = { from: obj, to: B, map: tuples.map(tuple => tuple[1]!) }
+
+  const pair = (X: FinSetObj, f: FinSetMor, g: FinSetMor): FinSetMor => {
+    if (f.from !== X || g.from !== X) {
+      throw new Error('FinSet.binaryProduct: mediator domain mismatch')
+    }
+    if (f.to !== A) {
+      throw new Error('FinSet.binaryProduct: first leg codomain mismatch')
+    }
+    if (g.to !== B) {
+      throw new Error('FinSet.binaryProduct: second leg codomain mismatch')
+    }
+    if (f.map.length !== X.elements.length || g.map.length !== X.elements.length) {
+      throw new Error('FinSet.binaryProduct: mediator legs must cover every element of the domain')
+    }
+
+    const map = X.elements.map((_, idx) => {
+      const left = f.map[idx]
+      const right = g.map[idx]
+      if (left === undefined || right === undefined) {
+        throw new Error('FinSet.binaryProduct: mediator legs missing image data')
+      }
+      const key = JSON.stringify([left, right])
+      const target = tupleIndex.get(key)
+      if (target === undefined) {
+        throw new Error('FinSet.binaryProduct: mediator tuple not present in product carrier')
+      }
+      return target
+    })
+
+    return { from: X, to: obj, map }
+  }
+
+  return { obj, proj1, proj2, pair }
+}
+
+export const FinSet: Category<FinSetObj, FinSetMor> &
   ArrowFamilies.HasDomCod<FinSetObj, FinSetMor> &
-  CategoryLimits.HasFiniteProducts<FinSetObj, FinSetMor> & 
+  CategoryLimits.HasFiniteProducts<FinSetObj, FinSetMor> &
   CategoryLimits.HasFiniteCoproducts<FinSetObj, FinSetMor> &
-  CategoryLimits.HasEqualizers<FinSetObj, FinSetMor> & 
+  CategoryLimits.HasEqualizers<FinSetObj, FinSetMor> &
   CategoryLimits.HasCoequalizers<FinSetObj, FinSetMor> &
-  CategoryLimits.HasInitial<FinSetObj, FinSetMor> & 
-  CategoryLimits.HasTerminal<FinSetObj, FinSetMor> = {
+  CategoryLimits.HasInitial<FinSetObj, FinSetMor> &
+  CategoryLimits.HasTerminal<FinSetObj, FinSetMor> &
+  CartesianClosedCategory<FinSetObj, FinSetMor> = {
   
   id: (X) => ({ from: X, to: X, map: X.elements.map((_, i) => i) }),
   compose: (g, f) => {
@@ -2695,8 +2754,108 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
   },
 
   initialObj: { elements: [] },
-  terminalObj: { elements: [null] }
+  terminalObj: terminalFinSetObj,
+  terminal: {
+    obj: terminalFinSetObj,
+    terminate: terminateFinSetAtTerminal
+  },
+  binaryProduct: (A: FinSetObj, B: FinSetObj) => buildBinaryProductWitness(A, B),
+  exponential: (A: FinSetObj, B: FinSetObj) => {
+    const expObj = expFinSet(B, A)
+    const evalProduct = buildBinaryProductWitness(expObj, A)
+
+    const evaluation: FinSetMor = {
+      from: evalProduct.obj,
+      to: B,
+      map: evalProduct.obj.elements.map(tuple => {
+        const [funcIx, aIx] = tuple as ReadonlyArray<number>
+        const encoding = expObj.elements[funcIx] as ReadonlyArray<number> | undefined
+        const value = encoding?.[aIx]
+        if (value === undefined) {
+          throw new Error('FinSet.exponential: evaluation lookup failed')
+        }
+        return value
+      })
+    }
+
+    const curry = (X: FinSetObj, h: FinSetMor): FinSetMor => {
+      if (h.to !== B) {
+        throw new Error('FinSet.exponential.curry: codomain mismatch')
+      }
+      const expectedSize = X.elements.length * A.elements.length
+      if (h.map.length !== expectedSize || h.from.elements.length !== expectedSize) {
+        throw new Error('FinSet.exponential.curry: domain must enumerate every (x, a) pair')
+      }
+
+      const domainIndex = new Map<string, number>()
+      h.from.elements.forEach((tuple, idx) => {
+        domainIndex.set(JSON.stringify(tuple), idx)
+      })
+
+      const expIndex = new Map<string, number>()
+      expObj.elements.forEach((tuple, idx) => {
+        expIndex.set(JSON.stringify(tuple), idx)
+      })
+
+      const map = X.elements.map((_x, xIx) => {
+        const values: number[] = []
+        for (let aIx = 0; aIx < A.elements.length; aIx++) {
+          const key = JSON.stringify([xIx, aIx])
+          const position = domainIndex.get(key)
+          if (position === undefined) {
+            throw new Error('FinSet.exponential.curry: missing tuple in domain carrier')
+          }
+          const image = h.map[position]
+          if (image === undefined) {
+            throw new Error('FinSet.exponential.curry: missing map entry for tuple')
+          }
+          values.push(image)
+        }
+        const encoded = JSON.stringify(values)
+        const target = expIndex.get(encoded)
+        if (target === undefined) {
+          throw new Error('FinSet.exponential.curry: resulting function not present in exponential carrier')
+        }
+        return target
+      })
+
+      return { from: X, to: expObj, map }
+    }
+
+    const uncurry = (X: FinSetObj, k: FinSetMor): FinSetMor => {
+      if (k.from !== X) {
+        throw new Error('FinSet.exponential.uncurry: domain mismatch')
+      }
+      if (k.to !== expObj) {
+        throw new Error('FinSet.exponential.uncurry: codomain mismatch')
+      }
+      if (k.map.length !== X.elements.length) {
+        throw new Error('FinSet.exponential.uncurry: arrow must assign a function to each element')
+      }
+
+      const productXA = buildBinaryProductWitness(X, A)
+      const map = productXA.obj.elements.map(tuple => {
+        const [xIx, aIx] = tuple as ReadonlyArray<number>
+        const funcIx = k.map[xIx]
+        if (funcIx === undefined) {
+          throw new Error('FinSet.exponential.uncurry: missing exponential component')
+        }
+        const encoding = expObj.elements[funcIx] as ReadonlyArray<number> | undefined
+        const value = encoding?.[aIx]
+        if (value === undefined) {
+          throw new Error('FinSet.exponential.uncurry: evaluation outside exponential carrier')
+        }
+        return value
+      })
+
+      return { from: productXA.obj, to: B, map }
+    }
+
+    return { obj: expObj, evaluation, product: evalProduct, curry, uncurry }
+  }
 }
+
+export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
 
 /** FinSet bijection helper */
 export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): FinSetMor => {
@@ -2712,7 +2871,7 @@ export const finsetInverse = (bij: FinSetMor): FinSetMor => {
 }
 
 /** FinSet exponential: X^S (all functions S -> X) */
-export const expFinSet = (X: FinSetObj, S: FinSetObj): FinSetObj => {
+export function expFinSet(X: FinSetObj, S: FinSetObj): FinSetObj {
   // elements = all functions S -> X (represented as arrays of indices in X of length |S|)
   const nS = S.elements.length, nX = X.elements.length
   const funcs: number[][] = []
