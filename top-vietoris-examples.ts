@@ -14,7 +14,10 @@ import {
   type Eq,
   type Fin,
 } from "./markov-category";
-import { MarkovOracles, registerTopVietorisAdapters, type TopVietorisAdapters } from "./markov-oracles";
+import {
+  defaultMarkovOracleRegistry,
+  type TopVietorisAdapters,
+} from "./markov-oracles";
 import type { KolmogorovFiniteMarginal } from "./markov-zero-one";
 import type { Dist } from "./dist";
 import { Prob } from "./semiring-utils";
@@ -89,6 +92,8 @@ export interface TopVietorisConstantFunctionReport<XJ, Y> {
 type FactorPoints<Spaces extends ReadonlyArray<TopSpace<any>>> = {
   readonly [Index in keyof Spaces]: Spaces[Index] extends TopSpace<infer Point> ? Point : never;
 };
+
+const { MarkovOracles, registerTopVietorisAdapters } = defaultMarkovOracleRegistry;
 
 const DEFAULT_PRODUCT_LABEL = "Top/Vietoris product" as const;
 

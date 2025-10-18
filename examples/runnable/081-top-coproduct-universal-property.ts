@@ -3,80 +3,9 @@ import type { CoproductPoint, Top } from "../../src/top/Topology";
 
 declare function require(id: string): any;
 
-type TopologyModule = {
-  readonly discrete: <X>(carrier: ReadonlyArray<X>) => Top<X>;
-  readonly continuous: <X, Y>(
-    eqX: (a: X, b: X) => boolean,
-    TX: Top<X>,
-    TY: Top<Y>,
-    f: (x: X) => Y,
-    eqY?: (a: Y, b: Y) => boolean,
-  ) => boolean;
-};
-
-type CoproductUPModule = {
-  readonly checkCoproductUP: <X, Y, Z>(
-    eqX: (a: X, b: X) => boolean,
-    eqY: (a: Y, b: Y) => boolean,
-    eqZ: (a: Z, b: Z) => boolean,
-    TX: Top<X>,
-    TY: Top<Y>,
-    TZ: Top<Z>,
-    f: (x: X) => Z,
-    g: (y: Y) => Z,
-    continuous: <A, B>(
-      eqA: (a: A, b: A) => boolean,
-      TA: Top<A>,
-      TB: Top<B>,
-      h: (a: A) => B,
-      eqB?: (a: B, b: B) => boolean,
-    ) => boolean,
-  ) => {
-    readonly cInl: boolean;
-    readonly cInr: boolean;
-    readonly cCopair: boolean;
-    readonly uniqueHolds: boolean;
-    readonly coproductTopology: Top<CoproductPoint<X, Y>>;
-  };
-};
-
-type ContinuousMap<X, Y> = {
-  readonly source: Top<X>;
-  readonly target: Top<Y>;
-  readonly eqSource: (a: X, b: X) => boolean;
-  readonly eqTarget: (a: Y, b: Y) => boolean;
-  readonly map: (x: X) => Y;
-};
-
-type CoproductStructure<X, Y> = {
-  readonly topology: Top<CoproductPoint<X, Y>>;
-  readonly eq: (a: CoproductPoint<X, Y>, b: CoproductPoint<X, Y>) => boolean;
-  readonly inl: ContinuousMap<X, CoproductPoint<X, Y>>;
-  readonly inr: ContinuousMap<Y, CoproductPoint<X, Y>>;
-};
-
-type ContinuousMapModule = {
-  readonly makeContinuousMap: <X, Y>(data: {
-    readonly source: Top<X>;
-    readonly target: Top<Y>;
-    readonly eqSource: (a: X, b: X) => boolean;
-    readonly eqTarget: (a: Y, b: Y) => boolean;
-    readonly map: (x: X) => Y;
-  }) => ContinuousMap<X, Y>;
-  readonly coproductStructure: <X, Y>(
-    eqX: (a: X, b: X) => boolean,
-    eqY: (a: Y, b: Y) => boolean,
-    TX: Top<X>,
-    TY: Top<Y>,
-  ) => CoproductStructure<X, Y>;
-  readonly injectionLeft: <X, Y>(structure: CoproductStructure<X, Y>) => ContinuousMap<X, CoproductPoint<X, Y>>;
-  readonly injectionRight: <X, Y>(structure: CoproductStructure<X, Y>) => ContinuousMap<Y, CoproductPoint<X, Y>>;
-  readonly copair: <X, Y, Z>(
-    f: ContinuousMap<X, Z>,
-    g: ContinuousMap<Y, Z>,
-    coproductInfo: { readonly topology: Top<CoproductPoint<X, Y>>; readonly eq: (a: CoproductPoint<X, Y>, b: CoproductPoint<X, Y>) => boolean },
-  ) => ContinuousMap<CoproductPoint<X, Y>, Z>;
-};
+type TopologyModule = typeof import("../../src/top/Topology");
+type CoproductUPModule = typeof import("../../src/top/CoproductUP");
+type ContinuousMapModule = typeof import("../../src/top/ContinuousMap");
 
 const { discrete, continuous } = require("../../src/top/Topology") as TopologyModule;
 const { checkCoproductUP } = require("../../src/top/CoproductUP") as CoproductUPModule;
