@@ -8,6 +8,7 @@ import {
   pf,
 } from "./collections-partial"
 import type { PartialFn } from "./collections-partial"
+import { eqStrict } from "../../stdlib/eq"
 import { Reader, runReader } from "../../endo-2category"
 import { ReaderTask, ReaderTaskResult } from "../../task"
 import * as Expr from "../../stdlib/expr"
@@ -139,7 +140,7 @@ export const readerTaskApplicativeShowcase: ReaderTaskApplicativeShowcase = (() 
   const byDomain = collectMapEntries(emails, emailDomainPF)
 
   const setRaw = new Set(["1", "2", "two", "3"])
-  const setInts = collectSet(setRaw, parseIntPF)
+  const setInts = collectSet(eqStrict<number>())(setRaw, parseIntPF)
 
   const prog = Expr.lett("x", Expr.lit(10),
     Expr.addN([ Expr.vvar("x"), Expr.powE(Expr.lit(2), Expr.lit(3)), Expr.neg(Expr.lit(4)) ])

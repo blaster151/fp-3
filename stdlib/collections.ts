@@ -3,6 +3,33 @@ import { None, Some, isSome } from "../option"
 import type { Result } from "../result"
 import { isErr } from "../result"
 import type { PartialFn } from "./partial-fn"
+export {
+  cartesianProduct,
+  collectSet,
+  compact as compactSet,
+  difference as differenceSet,
+  filter as filterSet,
+  filterMap as filterMapSet,
+  fromIterable as setFrom,
+  getDifferenceMagma,
+  getIntersectionSemigroup,
+  getSymmetricDifferenceMagma,
+  getUnionMonoid,
+  intersection as intersectSet,
+  isEmpty as isEmptySet,
+  isSubsetOf,
+  map as mapSet,
+  partition as partitionSet,
+  partitionMap as partitionSetWith,
+  singleton as singletonSet,
+  size as sizeSet,
+  symmetricDifference as symmetricDifferenceSet,
+  cartesianProduct as cartesianProductSet,
+  toReadonlyArray as toArraySet,
+  union as unionSet,
+  wither as witherSet,
+  wilt as wiltSet,
+} from "./set"
 
 export const fromEntriesMap = <K, V>(
   entries: Iterable<readonly [K, V]>
@@ -133,102 +160,6 @@ export const partitionMapWith = <K, V, L, R>(
   return [left as ReadonlyMap<K, L>, right as ReadonlyMap<K, R>]
 }
 
-export const setFrom = <A>(it: Iterable<A>): ReadonlySet<A> =>
-  new Set(it) as ReadonlySet<A>
-
-export const toArraySet = <A>(s: ReadonlySet<A>): ReadonlyArray<A> =>
-  Array.from(s) as ReadonlyArray<A>
-
-export const mapSet = <A, B>(
-  s: ReadonlySet<A>,
-  f: (a: A) => B
-): ReadonlySet<B> => {
-  const out = new Set<B>()
-  for (const a of s) out.add(f(a))
-  return out as ReadonlySet<B>
-}
-
-export const filterSet = <A>(
-  s: ReadonlySet<A>,
-  pred: (a: A) => boolean
-): ReadonlySet<A> => {
-  const out = new Set<A>()
-  for (const a of s) if (pred(a)) out.add(a)
-  return out as ReadonlySet<A>
-}
-
-export const unionSet = <A>(
-  a: ReadonlySet<A>,
-  b: ReadonlySet<A>
-): ReadonlySet<A> => {
-  const out = new Set<A>(a as Set<A>)
-  for (const x of b) out.add(x)
-  return out as ReadonlySet<A>
-}
-
-export const intersectSet = <A>(
-  a: ReadonlySet<A>,
-  b: ReadonlySet<A>
-): ReadonlySet<A> => {
-  const out = new Set<A>()
-  const [small, big] = a.size <= b.size ? [a, b] : [b, a]
-  for (const x of small) if (big.has(x)) out.add(x)
-  return out as ReadonlySet<A>
-}
-
-export const differenceSet = <A>(
-  a: ReadonlySet<A>,
-  b: ReadonlySet<A>
-): ReadonlySet<A> => {
-  const out = new Set<A>()
-  for (const x of a) if (!b.has(x)) out.add(x)
-  return out as ReadonlySet<A>
-}
-
-export const isSubsetOf = <A>(
-  a: ReadonlySet<A>,
-  b: ReadonlySet<A>
-): boolean => {
-  for (const x of a) if (!b.has(x)) return false
-  return true
-}
-
-type PartitionSetResult<A, B extends A> = readonly [
-  ReadonlySet<B>,
-  ReadonlySet<Exclude<A, B>>
-]
-
-export function partitionSet<A>(
-  s: ReadonlySet<A>,
-  pred: (a: A) => boolean
-): readonly [ReadonlySet<A>, ReadonlySet<A>]
-export function partitionSet<A, B extends A>(
-  s: ReadonlySet<A>,
-  pred: (a: A) => a is B
-): PartitionSetResult<A, B>
-export function partitionSet<A>(
-  s: ReadonlySet<A>,
-  pred: (a: A) => boolean
-): readonly [ReadonlySet<A>, ReadonlySet<A>] {
-  const yes = new Set<A>()
-  const no = new Set<A>()
-  for (const a of s) (pred(a) ? yes : no).add(a)
-  return [yes as ReadonlySet<A>, no as ReadonlySet<A>]
-}
-
-export const partitionSetWith = <A, L, R>(
-  s: ReadonlySet<A>,
-  f: (a: A) => Result<L, R>
-): readonly [ReadonlySet<L>, ReadonlySet<R>] => {
-  const left = new Set<L>()
-  const right = new Set<R>()
-  for (const a of s) {
-    const r = f(a)
-    if (isErr(r)) left.add(r.error)
-    else right.add(r.value)
-  }
-  return [left as ReadonlySet<L>, right as ReadonlySet<R>]
-}
 
 export const filterMapArray =
   <A, B>(as: ReadonlyArray<A>, f: (a: A, i: number) => Option<B>): ReadonlyArray<B> => {
@@ -285,16 +216,3 @@ export const collectMapEntries =
   <K, A, L, B>(m: ReadonlyMap<K, A>, pf: PartialFn<readonly [K, A], readonly [L, B]>): ReadonlyMap<L, B> =>
     filterMapMapEntries(m, (k, a) => (pf.isDefinedAt([k, a] as const) ? Some(pf.apply([k, a] as const)) : None))
 
-export const filterMapSet =
-  <A, B>(s: ReadonlySet<A>, f: (a: A) => Option<B>): ReadonlySet<B> => {
-    const out = new Set<B>()
-    for (const a of s) {
-      const ob = f(a)
-      if (isSome(ob)) out.add(ob.value)
-    }
-    return out
-  }
-
-export const collectSet =
-  <A, B>(s: ReadonlySet<A>, pf: PartialFn<A, B>): ReadonlySet<B> =>
-    filterMapSet(s, (a) => (pf.isDefinedAt(a) ? Some(pf.apply(a)) : None))
