@@ -34,7 +34,7 @@ import {
   union,
   wither,
   wilt,
-} from "../stdlib/set"
+} from "../src/collections/set"
 import { eqStrict } from "../stdlib/eq"
 import { ordNumber } from "../stdlib/ord"
 import type { Option } from "../option"
