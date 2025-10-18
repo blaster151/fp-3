@@ -14,6 +14,17 @@
 
 This PDI folder contains **TWO DISTINCT SYSTEMS**:
 
+## Core typeclasses
+
+The shared `typeclasses.ts` module now surfaces the familiar `Foldable`,
+`Traversable`, `Compactable`, `Filterable`, and `Witherable` abstractions (and
+their indexed variants) together with constructor helpers.  Downstream
+call-sites can import the ready-made instances for `ReadonlyArray`, `Option`,
+or `Result`, or build customised variants—e.g. `getResultWitherable`—to supply
+domain-specific error semantics.  The same helpers are re-exported from
+`src/all/monad-transformers.ts`, so existing barrel imports keep working while
+the new fold/filter/wither capabilities stay easy to discover.
+
 ## Running runnable examples and tests
 
 - `npm run examples:runnable` executes every runnable example in ascending
