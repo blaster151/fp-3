@@ -4,6 +4,8 @@ import {
   coconeLeg,
   makeMediator,
   makeUniversalPropertyReport,
+  type LegCheckResult,
+  type MediatorCheckResult,
   type UniversalPropertyReport,
 } from "./limits";
 
@@ -45,7 +47,7 @@ export interface CoproductMediatorMetadata {
 
 export interface CheckCoproductUPResult<X, Y, Z>
   extends UniversalPropertyReport<
-    (value: X | Y) => Sum<X, Y>,
+    unknown,
     (point: Sum<X, Y>) => Z,
     CoproductLegMetadata,
     CoproductMediatorMetadata
@@ -84,26 +86,26 @@ export function checkCoproductUP<X, Y, Z>(
   const leftTriangles = TX.carrier.every((x) => eqZ(copaired(injL(x)), f(x)));
   const rightTriangles = TY.carrier.every((y) => eqZ(copaired(injR(y)), g(y)));
 
-  const legs = [
+  const legs: ReadonlyArray<LegCheckResult<unknown, CoproductLegMetadata>> = [
     {
-      leg: coconeLeg<(value: X) => Sum<X, Y>, CoproductLegMetadata>("inl", injL, {
+      leg: coconeLeg<unknown, CoproductLegMetadata>("inl", injL as unknown, {
         continuous: cInl,
       }),
       holds: cInl,
-      failure: cInl ? undefined : "Injection inl is not continuous.",
+      ...(cInl ? {} : { failure: "Injection inl is not continuous." }),
       metadata: { continuous: cInl },
     },
     {
-      leg: coconeLeg<(value: Y) => Sum<X, Y>, CoproductLegMetadata>("inr", injR, {
+      leg: coconeLeg<unknown, CoproductLegMetadata>("inr", injR as unknown, {
         continuous: cInr,
       }),
       holds: cInr,
-      failure: cInr ? undefined : "Injection inr is not continuous.",
+      ...(cInr ? {} : { failure: "Injection inr is not continuous." }),
       metadata: { continuous: cInr },
     },
   ];
 
-  const mediatorEntry = {
+  const mediatorEntry: MediatorCheckResult<(point: Sum<X, Y>) => Z, CoproductMediatorMetadata> = {
     mediator: makeMediator<(point: Sum<X, Y>) => Z, CoproductMediatorMetadata>(
       "copairing",
       copaired,
@@ -113,11 +115,11 @@ export function checkCoproductUP<X, Y, Z>(
       },
     ),
     holds: cCopair && leftTriangles && rightTriangles,
-    failure: !cCopair
-      ? "Copairing map is not continuous."
+    ...(!cCopair
+      ? { failure: "Copairing map is not continuous." }
       : !(leftTriangles && rightTriangles)
-      ? "Copairing map does not respect the supplied legs."
-      : undefined,
+      ? { failure: "Copairing map does not respect the supplied legs." }
+      : {}),
     metadata: {
       continuous: cCopair,
       triangles: leftTriangles && rightTriangles,
@@ -125,7 +127,7 @@ export function checkCoproductUP<X, Y, Z>(
   };
 
   const report = makeUniversalPropertyReport<
-    (value: X | Y) => Sum<X, Y>,
+    unknown,
     (point: Sum<X, Y>) => Z,
     CoproductLegMetadata,
     CoproductMediatorMetadata

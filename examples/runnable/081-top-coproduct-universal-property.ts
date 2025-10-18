@@ -1,5 +1,10 @@
 import type { RunnableExample } from "./types";
 import type { CoproductPoint, Top } from "../../src/top/Topology";
+import type {
+  ContinuousMap as TopContinuousMap,
+  CoproductStructure,
+} from "../../src/top/ContinuousMap";
+import type { CheckCoproductUPResult } from "../../src/top/CoproductUP";
 
 declare function require(id: string): any;
 

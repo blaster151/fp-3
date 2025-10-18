@@ -200,7 +200,7 @@ export function topFactorThroughEqualizer<W, X, Y>(
       mediators: [mediatorEntry],
     });
 
-    return { ...report, mediator: undefined } satisfies EqualizerFactorizationResult<W, X, Y>;
+    return report satisfies EqualizerFactorizationResult<W, X, Y>;
   }
 }
 
@@ -268,9 +268,3 @@ export function topEqualizerComparison<X, Y>(
   return { forward, backward };
 }
 
-export type {
-  EqualizerFactorizationResult,
-  EqualizerMediatorMetadata,
-  TopEqualizerComparison,
-  TopEqualizerWitness,
-};

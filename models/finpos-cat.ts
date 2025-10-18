@@ -1,4 +1,5 @@
 import type { FiniteCategory } from "../finite-cat"
+import { pushUnique } from "../finite-cat"
 
 export interface FinPosObj {
   readonly name: string
@@ -92,6 +93,27 @@ export interface FinPosCategory extends FiniteCategory<string, MonoMap> {
   readonly globals: (object: string) => MonoMap[]
   readonly generalizedElements: (shape: string, target: string) => MonoMap[]
   readonly lookup: (name: string) => FinPosObj
+  readonly product: (left: string, right: string) => FinPosProduct
+  readonly exponential: (base: string, codomain: string) => FinPosExponential
+}
+
+export interface FinPosProduct {
+  readonly object: FinPosObj
+  readonly projections: { readonly fst: MonoMap; readonly snd: MonoMap }
+  readonly pair: (left: string, right: string) => string
+  readonly decompose: (element: string) => readonly [string, string]
+}
+
+export interface FinPosExponential {
+  readonly object: FinPosObj
+  readonly product: FinPosProduct
+  readonly evaluation: MonoMap
+  readonly curry: (domain: FinPosObj, arrow: MonoMap) => MonoMap
+}
+
+export interface FinPosExponentialComparison {
+  readonly leftToRight: MonoMap
+  readonly rightToLeft: MonoMap
 }
 
 const INITIAL_NAME = "0"
@@ -238,6 +260,22 @@ export function FinPosCat(objects: readonly FinPosObj[]): FinPosCategory {
     f.cod === g.cod &&
     ensureObject(byName, f.dom).elems.every((x) => f.map(x) === g.map(x))
 
+  const registerObject = (object: FinPosObj) => {
+    const existing = byName[object.name]
+    byName[object.name] = object
+    if (!existing) {
+      objectList.push(object.name)
+    }
+  }
+
+  const registerArrow = (arrow: MonoMap) => {
+    const dom = ensureObject(byName, arrow.dom)
+    const cod = ensureObject(byName, arrow.cod)
+    registerObject(dom)
+    registerObject(cod)
+    pushUnique(arrows, arrow, eq)
+  }
+
   const id = (A: string): MonoMap => ({
     name: `id_${A}`,
     dom: A,
@@ -282,6 +320,32 @@ export function FinPosCat(objects: readonly FinPosObj[]): FinPosCategory {
     generalizedElements: (shape, target) =>
       FinPos.generalizedElements(ensureObject(byName, shape), ensureObject(byName, target)),
     lookup: (name) => ensureObject(byName, name),
+    product: (left, right) => {
+      const result = FinPos.product(ensureObject(byName, left), ensureObject(byName, right))
+      registerObject(result.object)
+      registerArrow(result.projections.fst)
+      registerArrow(result.projections.snd)
+      return result
+    },
+    exponential: (base, codomain) => {
+      const result = FinPos.exponential(
+        ensureObject(byName, base),
+        ensureObject(byName, codomain),
+      )
+      registerObject(result.object)
+      registerObject(result.product.object)
+      registerArrow(result.product.projections.fst)
+      registerArrow(result.product.projections.snd)
+      registerArrow(result.evaluation)
+      return {
+        ...result,
+        curry: (domain, arrow) => {
+          const curried = result.curry(domain, arrow)
+          registerArrow(curried)
+          return curried
+        },
+      }
+    },
   }
 
   return category
@@ -334,6 +398,297 @@ export const FinPos = {
   },
   generalizedElements(shape: FinPosObj, target: FinPosObj): MonoMap[] {
     return enumerateMonotoneMaps(shape, target)
+  },
+  product(left: FinPosObj, right: FinPosObj): FinPosProduct {
+    const pairLookup = new Map<string, readonly [string, string]>()
+    const elements: string[] = []
+
+    for (const a of left.elems) {
+      for (const b of right.elems) {
+        const label = `⟨${a},${b}⟩`
+        pairLookup.set(label, [a, b])
+        elements.push(label)
+      }
+    }
+
+    const object: FinPosObj = {
+      name: `${left.name}×${right.name}`,
+      elems: elements,
+      leq: (x, y) => {
+        const leftPair = pairLookup.get(x)
+        const rightPair = pairLookup.get(y)
+        if (!leftPair || !rightPair) {
+          throw new Error(`FinPos.product: ${x} or ${y} not recognised in ${object.name}`)
+        }
+        const [xLeft, xRight] = leftPair
+        const [yLeft, yRight] = rightPair
+        return left.leq(xLeft, yLeft) && right.leq(xRight, yRight)
+      },
+    }
+
+    const fst: MonoMap = {
+      name: `π₁_${object.name}`,
+      dom: object.name,
+      cod: left.name,
+      map: (value) => {
+        const pair = pairLookup.get(value)
+        if (!pair) {
+          throw new Error(`FinPos.product: ${value} not recognised in ${object.name}`)
+        }
+        return pair[0]
+      },
+    }
+
+    const snd: MonoMap = {
+      name: `π₂_${object.name}`,
+      dom: object.name,
+      cod: right.name,
+      map: (value) => {
+        const pair = pairLookup.get(value)
+        if (!pair) {
+          throw new Error(`FinPos.product: ${value} not recognised in ${object.name}`)
+        }
+        return pair[1]
+      },
+    }
+
+    const pair = (leftValue: string, rightValue: string) => {
+      if (!left.elems.includes(leftValue)) {
+        throw new Error(`FinPos.product: ${leftValue} is not in ${left.name}`)
+      }
+      if (!right.elems.includes(rightValue)) {
+        throw new Error(`FinPos.product: ${rightValue} is not in ${right.name}`)
+      }
+      const label = `⟨${leftValue},${rightValue}⟩`
+      if (!pairLookup.has(label)) {
+        throw new Error(`FinPos.product: pair ${label} missing from ${object.name}`)
+      }
+      return label
+    }
+
+    const decompose = (value: string): readonly [string, string] => {
+      const pair = pairLookup.get(value)
+      if (!pair) {
+        throw new Error(`FinPos.product: ${value} not recognised in ${object.name}`)
+      }
+      return pair
+    }
+
+    return {
+      object,
+      projections: { fst, snd },
+      pair,
+      decompose,
+    }
+  },
+  exponential(base: FinPosObj, codomain: FinPosObj): FinPosExponential {
+    const monotoneMaps = FinPos.generalizedElements(base, codomain)
+    const mapLookup = new Map<string, MonoMap>()
+    const signatureLookup = new Map<string, string>()
+
+    const signature = (map: MonoMap) =>
+      base.elems.map((element) => `${element}↦${map.map(element)}`).join("|")
+
+    const elements = monotoneMaps.map((map) => {
+      const name = map.name || `λ_${base.name}→${codomain.name}`
+      mapLookup.set(name, map)
+      signatureLookup.set(signature(map), name)
+      return name
+    })
+
+    const object: FinPosObj = {
+      name: `${codomain.name}^${base.name}`,
+      elems: elements,
+      leq: (fName, gName) => {
+        const f = mapLookup.get(fName)
+        const g = mapLookup.get(gName)
+        if (!f || !g) {
+          throw new Error(`FinPos.exponential: unknown function ${fName} or ${gName}`)
+        }
+        for (const element of base.elems) {
+          if (!codomain.leq(f.map(element), g.map(element))) {
+            return false
+          }
+        }
+        return true
+      },
+    }
+
+    const product = FinPos.product(object, base)
+
+    const evaluation: MonoMap = {
+      name: `eval_${codomain.name}^${base.name}`,
+      dom: product.object.name,
+      cod: codomain.name,
+      map: (value) => {
+        const [funcName, argument] = product.decompose(value)
+        const func = mapLookup.get(funcName)
+        if (!func) {
+          throw new Error(`FinPos.exponential: unknown function element ${funcName}`)
+        }
+        return func.map(argument)
+      },
+    }
+
+    const curry = (domain: FinPosObj, arrow: MonoMap): MonoMap => {
+      const expected = FinPos.product(domain, base)
+      if (arrow.dom !== expected.object.name) {
+        throw new Error(
+          `FinPos.exponential.curry: arrow ${arrow.name} does not originate at ${expected.object.name}`,
+        )
+      }
+      if (arrow.cod !== codomain.name) {
+        throw new Error(
+          `FinPos.exponential.curry: arrow ${arrow.name} does not land in ${codomain.name}`,
+        )
+      }
+
+      const assignment = new Map<string, string>()
+      for (const element of domain.elems) {
+        const outputs: Record<string, string> = {}
+        for (const argument of base.elems) {
+          const pairValue = expected.pair(element, argument)
+          const image = arrow.map(pairValue)
+          if (!codomain.elems.includes(image)) {
+            throw new Error(
+              `FinPos.exponential.curry: image ${image} is not in ${codomain.name}`,
+            )
+          }
+          outputs[argument] = image
+        }
+        const signatureKey = base.elems.map((arg) => `${arg}↦${outputs[arg] ?? ""}`).join("|")
+        const elementName = signatureLookup.get(signatureKey)
+        if (!elementName) {
+          throw new Error(
+            `FinPos.exponential.curry: assignment for ${element} is not monotone into ${codomain.name}`,
+          )
+        }
+        assignment.set(element, elementName)
+      }
+
+      return {
+        name: `λ(${arrow.name})`,
+        dom: domain.name,
+        cod: object.name,
+        map: (value: string) => {
+          const image = assignment.get(value)
+          if (!image) {
+            throw new Error(
+              `FinPos.exponential.curry: ${value} is not recognised as an element of ${domain.name}`,
+            )
+          }
+          return image
+        },
+      }
+    }
+
+    return { object, product, evaluation, curry }
+  },
+  exponentialComparison(
+    base: FinPosObj,
+    codomain: FinPosObj,
+    left: FinPosExponential,
+    right: FinPosExponential,
+  ): FinPosExponentialComparison {
+    const ensureWitness = (label: string, witness: FinPosExponential) => {
+      if (witness.product.projections.snd.cod !== base.name) {
+        throw new Error(
+          `FinPos.exponentialComparison: ${label} witness is not parameterised by ${base.name}`,
+        )
+      }
+      if (witness.evaluation.cod !== codomain.name) {
+        throw new Error(
+          `FinPos.exponentialComparison: ${label} witness does not evaluate into ${codomain.name}`,
+        )
+      }
+      if (witness.evaluation.dom !== witness.product.object.name) {
+        throw new Error(
+          `FinPos.exponentialComparison: ${label} witness has mismatched evaluation domain`,
+        )
+      }
+      if (witness.product.projections.fst.cod !== witness.object.name) {
+        throw new Error(
+          `FinPos.exponentialComparison: ${label} witness exposes an unexpected function object`,
+        )
+      }
+    }
+
+    ensureWitness("left", left)
+    ensureWitness("right", right)
+
+    const leftToRight = right.curry(left.object, left.evaluation)
+    const rightToLeft = left.curry(right.object, right.evaluation)
+
+    if (!FinPos.isMonotone(left.object, right.object, leftToRight)) {
+      throw new Error(
+        "FinPos.exponentialComparison: mediator from left to right fails monotonicity",
+      )
+    }
+    if (!FinPos.isMonotone(right.object, left.object, rightToLeft)) {
+      throw new Error(
+        "FinPos.exponentialComparison: mediator from right to left fails monotonicity",
+      )
+    }
+
+    for (const element of left.object.elems) {
+      const image = leftToRight.map(element)
+      if (!right.object.elems.includes(image)) {
+        throw new Error(
+          `FinPos.exponentialComparison: mediator from left to right leaves ${right.object.name}`,
+        )
+      }
+      for (const argument of base.elems) {
+        const leftPair = left.product.pair(element, argument)
+        const rightPair = right.product.pair(image, argument)
+        const leftValue = left.evaluation.map(leftPair)
+        const rightValue = right.evaluation.map(rightPair)
+        if (leftValue !== rightValue) {
+          throw new Error(
+            `FinPos.exponentialComparison: factoring ${left.evaluation.name} through the right witness failed`,
+          )
+        }
+      }
+    }
+
+    for (const element of right.object.elems) {
+      const image = rightToLeft.map(element)
+      if (!left.object.elems.includes(image)) {
+        throw new Error(
+          `FinPos.exponentialComparison: mediator from right to left leaves ${left.object.name}`,
+        )
+      }
+      for (const argument of base.elems) {
+        const rightPair = right.product.pair(element, argument)
+        const leftPair = left.product.pair(image, argument)
+        const rightValue = right.evaluation.map(rightPair)
+        const leftValue = left.evaluation.map(leftPair)
+        if (leftValue !== rightValue) {
+          throw new Error(
+            `FinPos.exponentialComparison: factoring ${right.evaluation.name} through the left witness failed`,
+          )
+        }
+      }
+    }
+
+    for (const element of left.object.elems) {
+      const roundTrip = rightToLeft.map(leftToRight.map(element))
+      if (roundTrip !== element) {
+        throw new Error(
+          "FinPos.exponentialComparison: mediators do not reduce to id on the left witness",
+        )
+      }
+    }
+
+    for (const element of right.object.elems) {
+      const roundTrip = leftToRight.map(rightToLeft.map(element))
+      if (roundTrip !== element) {
+        throw new Error(
+          "FinPos.exponentialComparison: mediators do not reduce to id on the right witness",
+        )
+      }
+    }
+
+    return { leftToRight, rightToLeft }
   },
   initialArrowFrom(initial: FinPosObj, target: FinPosObj): MonoMap {
     if (initial.elems.length !== 0) {

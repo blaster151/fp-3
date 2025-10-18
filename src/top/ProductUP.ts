@@ -4,6 +4,8 @@ import {
   coneLeg,
   makeMediator,
   makeUniversalPropertyReport,
+  type LegCheckResult,
+  type MediatorCheckResult,
   type UniversalPropertyReport,
 } from "./limits";
 
@@ -38,7 +40,7 @@ export interface ProductMediatorMetadata {
 
 export interface CheckProductUPResult<Z, X, Y>
   extends UniversalPropertyReport<
-    (pair: Pair<X, Y>) => unknown,
+    unknown,
     (z: Z) => Pair<X, Y>,
     ProductLegMetadata,
     ProductMediatorMetadata
@@ -86,26 +88,26 @@ export function checkProductUP<Z, X, Y>(
     return eqX(proj1(paired), f(z)) && eqY(proj2(paired), g(z));
   });
 
-  const legs = [
+  const legs: ReadonlyArray<LegCheckResult<unknown, ProductLegMetadata>> = [
     {
-      leg: coneLeg<(pair: Pair<X, Y>) => X, ProductLegMetadata>("π₁", pi1, {
+      leg: coneLeg<unknown, ProductLegMetadata>("π₁", pi1 as unknown, {
         continuous: cProj1,
       }),
       holds: cProj1,
-      failure: cProj1 ? undefined : "Projection π₁ is not continuous.",
+      ...(cProj1 ? {} : { failure: "Projection π₁ is not continuous." }),
       metadata: { continuous: cProj1 },
     },
     {
-      leg: coneLeg<(pair: Pair<X, Y>) => Y, ProductLegMetadata>("π₂", pi2, {
+      leg: coneLeg<unknown, ProductLegMetadata>("π₂", pi2 as unknown, {
         continuous: cProj2,
       }),
       holds: cProj2,
-      failure: cProj2 ? undefined : "Projection π₂ is not continuous.",
+      ...(cProj2 ? {} : { failure: "Projection π₂ is not continuous." }),
       metadata: { continuous: cProj2 },
     },
   ];
 
-  const mediatorEntry = {
+  const mediatorEntry: MediatorCheckResult<(z: Z) => Pair<X, Y>, ProductMediatorMetadata> = {
     mediator: makeMediator<(z: Z) => Pair<X, Y>, ProductMediatorMetadata>(
       "pairing",
       p,
@@ -115,16 +117,16 @@ export function checkProductUP<Z, X, Y>(
       },
     ),
     holds: cPair && uniqueHolds,
-    failure: !cPair
-      ? "Pairing map is not continuous."
+    ...(!cPair
+      ? { failure: "Pairing map is not continuous." }
       : !uniqueHolds
-      ? "Pairing map does not reproduce the supplied legs."
-      : undefined,
+      ? { failure: "Pairing map does not reproduce the supplied legs." }
+      : {}),
     metadata: { continuous: cPair, triangles: uniqueHolds },
   };
 
   const report = makeUniversalPropertyReport<
-    (pair: Pair<X, Y>) => unknown,
+    unknown,
     (z: Z) => Pair<X, Y>,
     ProductLegMetadata,
     ProductMediatorMetadata

@@ -42,7 +42,8 @@ describe("Foldable", () => {
     const foldable = getFoldableArray()
     const values = [1, 2, 3, 4]
     const manual = values.reduce((acc, n) => acc + n, 0)
-    expect(foldable.foldMap(MonoidSum)((n) => n)(values)).toBe(manual)
+      const aggregated = foldable.foldMap(MonoidSum)((n: number) => n)(values) as number
+      expect(aggregated).toBe(manual)
   })
 
   it("foldMap on Option respects presence", () => {
@@ -52,7 +53,7 @@ describe("Foldable", () => {
 
   it("foldMap on Result ignores errors", () => {
     expect(ResultFoldable.foldMap(MonoidSum)((n: number) => n)(Ok(7))).toBe(7)
-    expect(ResultFoldable.foldMap(MonoidSum)((n: number) => n)(Err("boom"))).toBe(0)
+    expect(ResultFoldable.foldMap(MonoidSum)((n: number) => n)(Err("boom") as Result<unknown, number>)).toBe(0)
   })
 
   it("foldMapWithIndex annotates indexes for arrays", () => {

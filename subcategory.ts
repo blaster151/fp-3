@@ -1,12 +1,11 @@
-import type { Morph } from "./diagram";
 import type { SimpleCat } from "./simple-cat";
 
-export interface SmallCategory<Obj, Arr extends Morph> extends SimpleCat<Obj, Arr> {
+export interface SmallCategory<Obj, Arr> extends SimpleCat<Obj, Arr> {
   readonly objects: ReadonlySet<Obj>;
   readonly arrows: ReadonlySet<Arr>;
 }
 
-const addIdentity = <Obj, Arr extends Morph>(
+const addIdentity = <Obj, Arr>(
   C: SmallCategory<Obj, Arr>,
   objects: Set<Obj>,
   arrows: Set<Arr>,
@@ -19,13 +18,13 @@ const addIdentity = <Obj, Arr extends Morph>(
   }
 };
 
-const validateArrowEndpoints = <Obj, Arr extends Morph>(
+const validateArrowEndpoints = <Obj, Arr>(
   C: SmallCategory<Obj, Arr>,
   arrow: Arr,
   objects: Set<Obj>,
 ): void => {
-  const src = arrow.src as Obj;
-  const dst = arrow.dst as Obj;
+  const src = C.src(arrow);
+  const dst = C.dst(arrow);
   if (!C.objects.has(src) || !C.objects.has(dst)) {
     throw new Error("makeSubcategory: arrow endpoints must lie in the ambient objects");
   }
@@ -33,7 +32,7 @@ const validateArrowEndpoints = <Obj, Arr extends Morph>(
   objects.add(dst);
 };
 
-export function makeSubcategory<Obj, Arr extends Morph>(
+export function makeSubcategory<Obj, Arr>(
   C: SmallCategory<Obj, Arr>,
   seedObjects: Iterable<Obj>,
   seedArrows: Iterable<Arr>,
@@ -61,9 +60,9 @@ export function makeSubcategory<Obj, Arr extends Morph>(
     changed = false;
     const current = Array.from(arrows);
     for (const f of current) {
-      const fDst = f.dst as Obj;
+      const fDst = C.dst(f);
       for (const g of current) {
-        const gSrc = g.src as Obj;
+        const gSrc = C.src(g);
         if (!Object.is(fDst, gSrc)) {
           continue;
         }
@@ -93,7 +92,7 @@ export function makeSubcategory<Obj, Arr extends Morph>(
   };
 }
 
-export function makeFullSubcategory<Obj, Arr extends Morph>(
+export function makeFullSubcategory<Obj, Arr>(
   C: SmallCategory<Obj, Arr>,
   seedObjects: Iterable<Obj>,
 ): SmallCategory<Obj, Arr> {
@@ -106,8 +105,8 @@ export function makeFullSubcategory<Obj, Arr extends Morph>(
   const arrows = new Set<Arr>();
 
   for (const arrow of C.arrows) {
-    const src = arrow.src as Obj;
-    const dst = arrow.dst as Obj;
+    const src = C.src(arrow);
+    const dst = C.dst(arrow);
     if (objects.has(src) && objects.has(dst)) {
       arrows.add(arrow);
     }
@@ -125,13 +124,13 @@ export function makeFullSubcategory<Obj, Arr extends Morph>(
   };
 }
 
-export function isFullSubcategory<Obj, Arr extends Morph>(
+export function isFullSubcategory<Obj, Arr>(
   S: SmallCategory<Obj, Arr>,
   C: SmallCategory<Obj, Arr>,
 ): boolean {
   for (const arrow of C.arrows) {
-    const src = arrow.src as Obj;
-    const dst = arrow.dst as Obj;
+    const src = C.src(arrow);
+    const dst = C.dst(arrow);
     if (S.objects.has(src) && S.objects.has(dst) && !S.arrows.has(arrow)) {
       return false;
     }

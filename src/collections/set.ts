@@ -273,18 +273,18 @@ export const partitionSet =
 export const partitionSetWith =
   <A, L, R>(ELeft: Eq<L>, ERight: Eq<R>) =>
   (set: ReadonlySet<A>, f: (a: A) => Result<L, R>): readonly [ReadonlySet<L>, ReadonlySet<R>] => {
-    const separated = partitionMap(ELeft, ERight)(f)(set)
+    const separated = partitionMap<A, L, R>(ELeft, ERight)(f)(set)
     return [separated.left, separated.right]
   }
 
 export const filterMapSet =
   <A, B>(E: Eq<B>) =>
-  (set: ReadonlySet<A>, f: (a: A) => Option<B>): ReadonlySet<B> => filterMap(E)(f)(set)
+  (set: ReadonlySet<A>, f: (a: A) => Option<B>): ReadonlySet<B> => filterMap<A, B>(E)(f)(set)
 
 export const collectSet =
   <A, B>(E: Eq<B>) =>
   (set: ReadonlySet<A>, pf: PartialFn<A, B>): ReadonlySet<B> =>
-    filterMap(E)((a: A) => (pf.isDefinedAt(a) ? Some(pf.apply(a)) : None))(set)
+    filterMap<A, B>(E)((a: A) => (pf.isDefinedAt(a) ? Some(pf.apply(a)) : None))(set)
 
 export const getUnionMonoid = <A>(E: Eq<A>): Monoid<ReadonlySet<A>> => ({
   concat: (x, y) => union(E)(y)(x),
@@ -338,15 +338,21 @@ export const traverseWithIndex =
 
 export const sequence =
   <G>(G: Applicative<G>) =>
-  <A>(options: { readonly ord?: Ord<A>; readonly eq: Eq<A> }) =>
-  (set: ReadonlySet<FunctorValue<G, A>>): FunctorValue<G, ReadonlySet<A>> =>
-    traverse(G)<FunctorValue<G, A>, A>({ ord: options.ord, eq: options.eq })((ga) => ga)(set)
+  <A>(options: { readonly ord?: Ord<FunctorValue<G, A>>; readonly eq: Eq<A> }) =>
+  (set: ReadonlySet<FunctorValue<G, A>>): FunctorValue<G, ReadonlySet<A>> => {
+    const traverseOptions: { readonly eq: Eq<A>; readonly ord?: Ord<FunctorValue<G, A>> } =
+      options.ord === undefined ? { eq: options.eq } : { ord: options.ord, eq: options.eq }
+    return traverse(G)<FunctorValue<G, A>, A>(traverseOptions)((ga) => ga)(set)
+  }
 
 export const sequenceWithIndex =
   <G>(G: Applicative<G>) =>
-  <A>(options: { readonly ord?: Ord<A>; readonly eq: Eq<A> }) =>
-  (set: ReadonlySet<FunctorValue<G, A>>): FunctorValue<G, ReadonlySet<A>> =>
-    traverseWithIndex(G)<FunctorValue<G, A>, A>({ ord: options.ord, eq: options.eq })((_, ga) => ga)(set)
+  <A>(options: { readonly ord?: Ord<FunctorValue<G, A>>; readonly eq: Eq<A> }) =>
+  (set: ReadonlySet<FunctorValue<G, A>>): FunctorValue<G, ReadonlySet<A>> => {
+    const traverseOptions: { readonly eq: Eq<A>; readonly ord?: Ord<FunctorValue<G, A>> } =
+      options.ord === undefined ? { eq: options.eq } : { ord: options.ord, eq: options.eq }
+    return traverseWithIndex(G)<FunctorValue<G, A>, A>(traverseOptions)((_, ga) => ga)(set)
+  }
 
 export const wither =
   <G>(G: Applicative<G>) =>
@@ -355,7 +361,9 @@ export const wither =
   (set: ReadonlySet<A>): FunctorValue<G, ReadonlySet<B>> => {
     const eqOption: Eq<Option<B>> = (x, y) =>
       (isSome(x) && isSome(y) && options.eq(x.value, y.value)) || (!isSome(x) && !isSome(y))
-    return G.map(compact(options.eq))(traverse(G)<A, Option<B>>({ ord: options.ord, eq: eqOption })(f)(set))
+    const traverseOptions: { readonly eq: Eq<Option<B>>; readonly ord?: Ord<A> } =
+      options.ord === undefined ? { eq: eqOption } : { ord: options.ord, eq: eqOption }
+    return G.map(compact(options.eq))(traverse(G)<A, Option<B>>(traverseOptions)(f)(set))
   }
 
 export const wilt =
@@ -368,8 +376,10 @@ export const wilt =
       if (!isErr(x) && !isErr(y)) return options.right(x.value, y.value)
       return false
     }
+    const traverseOptions: { readonly eq: Eq<Result<B, C>>; readonly ord?: Ord<A> } =
+      options.ord === undefined ? { eq: eqResult } : { ord: options.ord, eq: eqResult }
     return G.map(separate(options.left, options.right))(
-      traverse(G)<A, Result<B, C>>({ ord: options.ord, eq: eqResult })(f)(set),
+      traverse(G)<A, Result<B, C>>(traverseOptions)(f)(set),
     )
   }
 

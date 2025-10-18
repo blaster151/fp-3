@@ -83,6 +83,7 @@ function runCoequalizerStory(): readonly string[] {
   });
   const mediatorReport = topFactorThroughCoequalizer(f, g, coeq.coequalize, categorize);
   const mediator = mediatorReport.mediator;
+  const mediatorWitness = mediatorReport.mediators[0];
   const recomposed = mediator ? compose(mediator, coeq.coequalize) : undefined;
   return [
     "== Coequalizer via identification ==",
@@ -92,7 +93,7 @@ function runCoequalizerStory(): readonly string[] {
       coeq.obj,
       (cls) => describeClass(cls as ReadonlyArray<string>),
     ),
-    `  Mediator witness: ${mediatorReport.holds ? "✓" : `✗ (${mediatorReport.failures.join("; ")})`}`,
+    `  Mediator witness: ${mediatorWitness?.holds ? "✓" : `✗ (${mediatorReport.failures.join("; ")})`}`,
     mediator
       ? `  Mediator targets: ${coeq.obj.carrier
           .map((cls) => `${describeClass(cls)} ↦ ${mediator.map(cls)}`)

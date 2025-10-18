@@ -181,13 +181,30 @@ const separateArray = <A, B>(fa: ReadonlyArray<Result<A, B>>): Separated<'Array'
   return { left, right }
 }
 
-const filterableArray: FilterableWithIndex<number, 'Array'> = {
+const filterRefinementArrayImpl = <A, B extends A>(refinement: Refinement<A, B>) =>
+  (fa: readonly A[]): readonly B[] => fa.filter((value): value is B => refinement(value))
+
+const partitionRefinementArrayImpl = <A, B extends A>(refinement: Refinement<A, B>) =>
+  (fa: readonly A[]): Separated<'Array', Exclude<A, B>, B> => {
+    const left: Array<Exclude<A, B>> = []
+    const right: Array<B> = []
+    for (const a of fa) {
+      if (refinement(a)) {
+        right.push(a)
+      } else {
+        left.push(a as Exclude<A, B>)
+      }
+    }
+    return { left, right }
+  }
+
+const filterableArray = {
   ...traversableWithIndexArray,
   compact: compactArray,
   separate: separateArray,
   filterMap: <A, B>(f: (a: A) => Option<B>) => (fa: ReadonlyArray<A>): ReadonlyArray<B> => compactArray(fa.map(f)),
   filter: <A>(predicate: Predicate<A>) => (fa: ReadonlyArray<A>): ReadonlyArray<A> => fa.filter(predicate),
-  filterRefinement: <A, B extends A>(refinement: Refinement<A, B>) => (fa: ReadonlyArray<A>): ReadonlyArray<B> => fa.filter(refinement as Predicate<A>) as ReadonlyArray<B>,
+  filterRefinement: filterRefinementArrayImpl as FilterableWithIndex<number, 'Array'>['filterRefinement'],
   partitionMap:
     <A, B, C>(f: (a: A) => Result<B, C>) =>
     (fa: ReadonlyArray<A>): Separated<'Array', B, C> => separateArray(fa.map(f)),
@@ -205,20 +222,7 @@ const filterableArray: FilterableWithIndex<number, 'Array'> = {
       }
       return { left, right }
     },
-  partitionRefinement:
-    <A, B extends A>(refinement: Refinement<A, B>) =>
-    (fa: ReadonlyArray<A>): Separated<'Array', Exclude<A, B>, B> => {
-      const left: Array<Exclude<A, B>> = []
-      const right: Array<B> = []
-      for (const a of fa) {
-        if (refinement(a)) {
-          right.push(a)
-        } else {
-          left.push(a as Exclude<A, B>)
-        }
-      }
-      return { left, right }
-    },
+    partitionRefinement: partitionRefinementArrayImpl as FilterableWithIndex<number, 'Array'>['partitionRefinement'],
   filterMapWithIndex:
     <A, B>(f: (i: number, a: A) => Option<B>) =>
     (fa: ReadonlyArray<A>): ReadonlyArray<B> => compactArray(fa.map((a, i) => f(i, a))),
@@ -227,14 +231,14 @@ const filterableArray: FilterableWithIndex<number, 'Array'> = {
     (fa: ReadonlyArray<A>): ReadonlyArray<A> => fa.filter((a, i) => predicate(i, a)),
   partitionMapWithIndex:
     <A, B, C>(f: (i: number, a: A) => Result<B, C>) =>
-    (fa: ReadonlyArray<A>): Separated<'Array', B, C> => separateArray(fa.map((a, i) => f(i, a))),
+    (fa: readonly A[]): Separated<'Array', B, C> => separateArray(fa.map((a, i) => f(i, a))),
   partitionWithIndex:
     <A>(predicate: (i: number, a: A) => boolean) =>
-    (fa: ReadonlyArray<A>): Separated<'Array', A, A> => {
+    (fa: readonly A[]): Separated<'Array', A, A> => {
       const left: Array<A> = []
       const right: Array<A> = []
       for (let i = 0; i < fa.length; i += 1) {
-        const a = fa[i]
+        const a = fa[i]!
         if (predicate(i, a)) {
           right.push(a)
         } else {
@@ -243,7 +247,7 @@ const filterableArray: FilterableWithIndex<number, 'Array'> = {
       }
       return { left, right }
     },
-}
+} satisfies FilterableWithIndex<number, 'Array'>
 
 const witherableArray: Witherable<'Array'> = {
   ...filterableArray,
@@ -267,7 +271,7 @@ const foldableOption: Foldable<'Option'> = {
   reduceRight: <A, B>(b: B, f: (a: A, acc: B) => B) => (fa: Option<A>): B => (isSome(fa) ? f(fa.value, b) : b),
 }
 
-const traversableOption: TraversableWithIndex<void, 'Option'> = {
+const traversableOption = {
   ...foldableOption,
   reduceWithIndex: <A, B>(b: B, f: (_: void, acc: B, a: A) => B) => (fa: Option<A>): B => (isSome(fa) ? f(undefined, b, fa.value) : b),
   foldMapWithIndex:
@@ -299,8 +303,8 @@ const traversableOption: TraversableWithIndex<void, 'Option'> = {
   },
   filterMap: <A, B>(f: (a: A) => Option<B>) => (fa: Option<A>): Option<B> => (isSome(fa) ? f(fa.value) : None),
   filter: <A>(predicate: Predicate<A>) => (fa: Option<A>): Option<A> => (isSome(fa) && predicate(fa.value) ? fa : None),
-  filterRefinement: <A, B extends A>(refinement: Refinement<A, B>) => (fa: Option<A>): Option<B> =>
-    (isSome(fa) && refinement(fa.value) ? Some(fa.value) : None),
+  filterRefinement: (<A, B extends A>(refinement: Refinement<A, B>) =>
+    (fa: Option<A>): Option<B> => (isSome(fa) && refinement(fa.value) ? Some(fa.value) : None)) as FilterableWithIndex<void, 'Option'>['filterRefinement'],
   partitionMap: <A, B, C>(f: (a: A) => Result<B, C>) => (fa: Option<A>): Separated<'Option', B, C> => {
     if (isSome(fa)) {
       const result = f(fa.value)
@@ -314,14 +318,15 @@ const traversableOption: TraversableWithIndex<void, 'Option'> = {
     }
     return { left: None, right: None }
   },
-  partitionRefinement: <A, B extends A>(refinement: Refinement<A, B>) => (fa: Option<A>): Separated<'Option', Exclude<A, B>, B> => {
-    if (isSome(fa)) {
-      return refinement(fa.value)
-        ? { left: None, right: Some(fa.value) }
-        : { left: Some(fa.value as Exclude<A, B>), right: None }
-    }
-    return { left: None, right: None }
-  },
+  partitionRefinement: (<A, B extends A>(refinement: Refinement<A, B>) =>
+    (fa: Option<A>): Separated<'Option', Exclude<A, B>, B> => {
+      if (isSome(fa)) {
+        return refinement(fa.value)
+          ? { left: None, right: Some(fa.value) }
+          : { left: Some(fa.value as Exclude<A, B>), right: None }
+      }
+      return { left: None, right: None }
+    }) as FilterableWithIndex<void, 'Option'>['partitionRefinement'],
   filterMapWithIndex: <A, B>(f: (_: void, a: A) => Option<B>) => (fa: Option<A>): Option<B> => (isSome(fa) ? f(undefined, fa.value) : None),
   filterWithIndex: <A>(predicate: (_: void, a: A) => boolean) => (fa: Option<A>): Option<A> =>
     (isSome(fa) && predicate(undefined, fa.value) ? fa : None),
@@ -356,7 +361,7 @@ const traversableOption: TraversableWithIndex<void, 'Option'> = {
       }
       return G.of({ left: None, right: None } as Separated<'Option', B, C>)
     },
-}
+} satisfies TraversableWithIndex<void, 'Option'> & FilterableWithIndex<void, 'Option'> & Witherable<'Option'>
 
 export type ResultCompactableConfig<E> = {
   readonly onNone: Lazy<E>
@@ -420,7 +425,7 @@ const getResultCompactableInternal = <E>(config: ResultCompactableConfig<E>): Co
 
 const getResultFilterableInternal = <E>(config: ResultFilterableConfig<E>): Filterable<ResultTag<E>> => {
   const compactable = getResultCompactableInternal(config)
-  return {
+  const filterable = {
     ...getResultTraversableInternal<E>(),
     compact: compactable.compact,
     separate: compactable.separate,
@@ -442,13 +447,13 @@ const getResultFilterableInternal = <E>(config: ResultFilterableConfig<E>): Filt
         return fa
       },
     filterRefinement:
-      <A, B extends A>(refinement: Refinement<A, B>) =>
+      (<A, B extends A>(refinement: Refinement<A, B>) =>
       (fa: Result<E, A>): Result<E, B> => {
         if (isOk(fa)) {
           return refinement(fa.value) ? Ok(fa.value) : Err(config.onFalse(fa.value))
         }
         return fa as Result<E, B>
-      },
+      }) as Filterable<ResultTag<E>>['filterRefinement'],
     partitionMap:
       <A, B, C>(f: (a: A) => Result<B, C>) =>
       (fa: Result<E, A>): Separated<ResultTag<E>, B, C> => {
@@ -483,7 +488,7 @@ const getResultFilterableInternal = <E>(config: ResultFilterableConfig<E>): Filt
         return { left: fa as Result<E, A>, right: fa as Result<E, A> }
       },
     partitionRefinement:
-      <A, B extends A>(refinement: Refinement<A, B>) =>
+      (<A, B extends A>(refinement: Refinement<A, B>) =>
       (fa: Result<E, A>): Separated<ResultTag<E>, Exclude<A, B>, B> => {
         if (isOk(fa)) {
           return refinement(fa.value)
@@ -497,13 +502,16 @@ const getResultFilterableInternal = <E>(config: ResultFilterableConfig<E>): Filt
               }
         }
         return { left: fa as Result<E, Exclude<A, B>>, right: fa as Result<E, B> }
-      },
-  }
+      }) as Filterable<ResultTag<E>>['partitionRefinement'],
+  } satisfies Filterable<ResultTag<E>>
+  return filterable
 }
 
 const getResultWitherableInternal = <E>(config: ResultFilterableConfig<E>): Witherable<ResultTag<E>> => {
+  const traversable = getResultTraversableInternal<E>()
   const filterable = getResultFilterableInternal(config)
-  return {
+  const witherable = {
+    ...traversable,
     ...filterable,
     wither:
       <G>(G: Applicative<G>) =>
@@ -531,7 +539,8 @@ const getResultWitherableInternal = <E>(config: ResultFilterableConfig<E>): With
         }
         return G.of({ left: ta as Result<E, B>, right: ta as Result<E, C> })
       },
-  }
+  } satisfies Witherable<ResultTag<E>>
+  return witherable
 }
 
 export const getFoldableArray = (): Foldable<'Array'> => foldableArray
@@ -558,11 +567,11 @@ const defaultResultConfig: ResultFilterableConfig<unknown> = {
   onFalse: () => undefined,
 }
 
-export const ResultFoldable: Foldable<'Result'> = getResultFoldableInternal<unknown>()
-export const ResultTraversable: Traversable<'Result'> = getResultTraversableInternal<unknown>()
-export const ResultCompactable: Compactable<'Result'> = getResultCompactableInternal(defaultResultConfig)
-export const ResultFilterable: Filterable<'Result'> = getResultFilterableInternal(defaultResultConfig)
-export const ResultWitherable: Witherable<'Result'> = getResultWitherableInternal(defaultResultConfig)
+export const ResultFoldable: Foldable<ResultTag<unknown>> = getResultFoldableInternal<unknown>()
+export const ResultTraversable: Traversable<ResultTag<unknown>> = getResultTraversableInternal<unknown>()
+export const ResultCompactable: Compactable<ResultTag<unknown>> = getResultCompactableInternal(defaultResultConfig)
+export const ResultFilterable: Filterable<ResultTag<unknown>> = getResultFilterableInternal(defaultResultConfig)
+export const ResultWitherable: Witherable<ResultTag<unknown>> = getResultWitherableInternal(defaultResultConfig)
 
 export const OptionI: Monad<'Option'> = {
   map: mapO,

@@ -85,7 +85,21 @@ type PullbackData<Obj, Arr> = {
 
 type PullbackCalculator<Obj, Arr> = {
   readonly pullback: (f: Arr, h: Arr) => PullbackData<Obj, Arr>;
+  readonly certify: (
+    f: Arr,
+    h: Arr,
+    candidate: PullbackData<Obj, Arr>,
+  ) => { readonly valid: boolean; readonly reason?: string; readonly conesChecked: ReadonlyArray<PullbackData<Obj, Arr>> };
   readonly induce: (j: Arr, pf: PullbackData<Obj, Arr>, pg: PullbackData<Obj, Arr>) => Arr;
+  readonly comparison: (
+    f: Arr,
+    h: Arr,
+    left: PullbackData<Obj, Arr>,
+    right: PullbackData<Obj, Arr>
+  ) => {
+    readonly leftToRight: Arr;
+    readonly rightToLeft: Arr;
+  };
 };
 
 type ReindexingFunctor<Obj, Arr> = {
