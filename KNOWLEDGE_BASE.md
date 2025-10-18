@@ -211,7 +211,7 @@ const result = safeDiv.andThen(optionFromPartial)
 
 ## Filter/Collect Helpers
 
-**What**: `filterMapArraySimple`, `collectArray`, `filterMapMapValues`, etc.
+**What**: `filterMapArraySimple`, `collectArray`, `filterMapMapValues`, `fromFoldable`, `union`, `difference`, etc. (see `src/collections/map`)
 
 **When to use**:
 - ✅ **Collection Processing**: When processing collections with Option/Result
@@ -226,6 +226,9 @@ const clean = collectArray(data.map(parseAndValidate))
 
 // Process map values
 const processed = collectMapValues(map, transform)
+
+// Build and reconcile maps with structural equality
+const merged = union(eqStrict<string>())(left, right, (oldValue, newValue) => oldValue.concat(newValue))
 ```
 
 ---

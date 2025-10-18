@@ -15,6 +15,15 @@ This document provides a quick reference for finding the right tool for your pro
 | Filter an Option | `OptionFilterable.filter(predicate)(option)` | Returns `None` when the predicate fails |
 | Wither a Result | `getResultWitherable({ onNone, onFalse }).wither(Applicative)(f)(result)` | Supply fallback errors via the config; use `getResultFilterable`/`getResultTraversable` for the other operations |
 
+### **Work with maps**
+| **Goal** | **Use This** | **Notes** |
+|----------|--------------|-----------|
+| Build a `ReadonlyMap` from foldable data with duplicate keys | `fromFoldable(getFoldableArray())(eqStrict<string>())<number>((old, next) => old + next)(pairs)` | Structural equality chooses which entries collide, and you supply the resolver |
+| Project while folding | `fromFoldableMap(getFoldableArray())(eqStrict<string>())(toEntry, resolver)(values)` | `toEntry` returns `[key, value]` pairs on the fly |
+| Query + traverse safely | `lookup(eqStrict<string>())(key, map)` · `traverseWithIndex(Applicative)(ordString)(f)(map)` | All lookups honour custom equality; traversal keeps keys in `Ord` order |
+| Combine maps with custom conflict policies | `union(eqStrict<string>())(left, right, resolver)` · `intersection(eqStrict<string>())(left, right, resolver)` | `difference`, `differenceKeys`, `keys(ordString)` and `values(ordString)` round out set-like operations |
+| Filter/partition with indexes | `filter((key, value) => predicate)(map)` · `partitionMapWith(map, f)` | Outputs new maps (or `[left, right]` tuples) preserving `Ord`-sorted iteration |
+
 ### **Solve Graph Problems**
 | **Problem** | **Use This** | **Semiring** |
 |-------------|--------------|--------------|
