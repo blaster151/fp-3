@@ -6,12 +6,17 @@ import {
   checkM2BinaryProduct,
   dynHomToM2,
   dynToM2,
+  equalM2Morphisms,
   makeM2Morphism,
   makeM2Object,
+  type M2Morphism,
   type M2Object,
   M2SetCat,
   m2HomToDyn,
   m2ToDyn,
+  exponentialM2,
+  composeM2,
+  isM2Morphism,
   productM2,
 } from '../m2-set';
 
@@ -145,5 +150,124 @@ describe('M2 binary products', () => {
     });
     expect(check.holds).toBe(false);
     expect(check.issues.some((issue) => issue.includes('preserve the chosen subset'))).toBe(true);
+  });
+});
+
+describe('M2 exponentials', () => {
+  const eq = <T>(a: T, b: T) => Object.is(a, b);
+
+  const B = makeM2Object({
+    carrier: ['stable', 'unstable'] as const,
+    endo: (value: 'stable' | 'unstable') => (value === 'unstable' ? 'stable' : value),
+    eq,
+  });
+
+  const C = makeM2Object({
+    carrier: ['base', 'shift', 'fixed'] as const,
+    endo: (value: 'base' | 'shift' | 'fixed') => (value === 'shift' ? 'base' : value),
+    eq,
+  });
+
+  const exponential = exponentialM2({ base: B, codomain: C });
+
+  it('enumerates equivariant maps and provides a monotone evaluation arrow', () => {
+    const carrier = exponential.object.carrier;
+    expect(carrier.length).toBeGreaterThan(0);
+    for (const func of carrier) {
+      expect(isM2Morphism(func)).toBe(true);
+    }
+    expect(isM2Morphism(exponential.evaluation)).toBe(true);
+  });
+
+  const A = makeM2Object({
+    carrier: ['left', 'right'] as const,
+    endo: (value: 'left' | 'right') => (value === 'right' ? 'left' : value),
+    eq,
+  });
+
+  const productAB = productM2({ left: A, right: B });
+
+  const arrow = makeM2Morphism({
+    dom: productAB.object,
+    cod: C,
+    map: ([a, b]: readonly ['left' | 'right', 'stable' | 'unstable']) => {
+      if (a === 'left') {
+        return b === 'stable' ? 'base' : 'shift';
+      }
+      return b === 'stable' ? 'base' : 'shift';
+    },
+  });
+
+  it('curries equivariant arrows and recovers them via evaluation', () => {
+    const lambda = exponential.curry({ domain: A, product: productAB, arrow });
+    expect(isM2Morphism(lambda)).toBe(true);
+
+    const leftProjection = productAB.projections[0];
+    const rightProjection = productAB.projections[1];
+    const lambdaTimesId = exponential.product.tuple(productAB.object, [
+      composeM2(lambda, leftProjection),
+      rightProjection,
+    ]);
+
+    const mediated = composeM2(exponential.evaluation, lambdaTimesId);
+    expect(equalM2Morphisms(mediated, arrow)).toBe(true);
+
+    const candidates: M2Morphism<'left' | 'right', typeof exponential.object.carrier[number]>[] = [];
+    const selection: typeof exponential.object.carrier[number][] = new Array(A.carrier.length);
+
+    const enumerate = (index: number) => {
+      if (index === A.carrier.length) {
+        const table = selection.slice();
+        try {
+          const candidate = makeM2Morphism({
+            dom: A,
+            cod: exponential.object,
+            map: (value: 'left' | 'right') => {
+              const position = A.carrier.findIndex((candidate) => A.eq(candidate, value));
+              if (position < 0) {
+                throw new Error('enumeration: unexpected element');
+              }
+              return table[position]!;
+            },
+          });
+          candidates.push(candidate);
+        } catch {
+          // Skip non-equivariant assignments
+        }
+        return;
+      }
+
+      for (const func of exponential.object.carrier) {
+        selection[index] = func;
+        enumerate(index + 1);
+      }
+    };
+
+    enumerate(0);
+
+    const factors = candidates.filter((candidate) => {
+      const candidateTimesId = exponential.product.tuple(productAB.object, [
+        composeM2(candidate, leftProjection),
+        rightProjection,
+      ]);
+      const comparison = composeM2(exponential.evaluation, candidateTimesId);
+      return equalM2Morphisms(comparison, arrow);
+    });
+
+    expect(factors).toHaveLength(1);
+    expect(equalM2Morphisms(factors[0]!, lambda)).toBe(true);
+  });
+
+  it('rejects non-equivariant factoring attempts', () => {
+    const distorted = {
+      dom: productAB.object,
+      cod: C,
+      map: ([a, b]: readonly ['left' | 'right', 'stable' | 'unstable']) =>
+        a === 'right' && b === 'unstable' ? 'fixed' : arrow.map([a, b]),
+    } as unknown as typeof arrow;
+
+    expect(() => exponential.curry({ domain: A, product: productAB, arrow: distorted })).toThrow(
+      /equivariant/,
+    );
   });
 });

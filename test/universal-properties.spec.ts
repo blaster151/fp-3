@@ -5,6 +5,8 @@ import {
   IndexedFamilies
 } from '../allTS'
 
+const emptyDiagram: CategoryLimits.Diagram<number, EnhancedVect.VectMor> = { arrows: [] }
+
 // helper to make a random matrix of shape (rows x cols)
 function randMat(rows: number, cols: number): number[][] {
   return Array.from({ length: rows }, () => 
@@ -34,7 +36,8 @@ describe('Universal property — Product in Vect', () => {
     // Build the cone and check triangles
     const cone: CategoryLimits.Cone<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
       tip: X,
-      legs: (i: number) => (i === 0 ? f0 : f1)
+      legs: (i: number) => (i === 0 ? f0 : f1),
+      diagram: emptyDiagram,
     }
 
     const ok = CategoryLimits.productMediates(
@@ -86,7 +89,8 @@ describe('Universal property — Coproduct in Vect', () => {
     // Build the cocone and check triangles
     const cocone: CategoryLimits.Cocone<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
       coTip: Y,
-      legs: (i: number) => (i === 0 ? g0 : g1)
+      legs: (i: number) => (i === 0 ? g0 : g1),
+      diagram: emptyDiagram,
     }
 
     const ok = CategoryLimits.coproductMediates(

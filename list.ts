@@ -31,7 +31,7 @@ export const of = <A>(a: A): List<A> => cons(a)(nil())
 export const fromArray = <A>(as: ReadonlyArray<A>): List<A> => {
   let out: List<A> = nil()
   for (let i = as.length - 1; i >= 0; i -= 1) {
-    out = cons(as[i]!)(out)
+    out = cons<A>(as[i]!)(out)
   }
   return out
 }
@@ -87,7 +87,8 @@ export const ap =
   (list: List<A>): List<B> =>
     chain<(a: A) => B, B>((f) => map(f)(list))(fs)
 
-export const flatten = <A>(lists: List<List<A>>): List<A> => chain((xs) => xs)(lists)
+export const flatten = <A>(lists: List<List<A>>): List<A> =>
+  chain<List<A>, A>((xs: List<A>) => xs)(lists)
 
 export const foldl =
   <A, B>(f: (acc: B, a: A) => B) =>

@@ -154,6 +154,8 @@ export { ordNumber, ordString, sortBy } from "./stdlib/ord"
 export type { DeepReadonly } from "./stdlib/deep-freeze"
 export { deepFreeze } from "./stdlib/deep-freeze"
 
+export * from "./stdlib/category-limits"
+
 export * from "./stdlib/expr"
 export * from "./stdlib/rwst"
 export { _exhaustive } from "./stdlib/exhaustive"
@@ -247,15 +249,35 @@ export {
   makeM2Object,
   makeM2Morphism,
   productM2,
+  exponentialM2,
+  m2ExponentialComparison,
   checkM2BinaryProduct,
 } from "./m2-set"
-export type { M2Object, M2Morphism, M2ProductWitness } from "./m2-set"
+export type {
+  M2Object,
+  M2Morphism,
+  M2ProductWitness,
+  M2ExponentialWitness,
+  M2ExponentialComparison,
+} from "./m2-set"
 export type { M2InternalGroupWitness } from "./internal-group-m2"
 export type { SimpleCat } from "./simple-cat"
 export {
   makeFinitePullbackCalculator,
   type PullbackCalculator,
   type PullbackData,
+  type PullbackCertification,
+  type PullbackComparison,
+  productAsPullback,
+  type ProductAsPullbackWitness,
+  type ProductAsPullbackFactorResult,
+  productFromPullbacks,
+  type ProductFromPullbackWitness,
+  type ProductFromPullbackInput,
+  equalizerFromPullback,
+  type EqualizerFromPullbackWitness,
+  type EqualizerFromPullbackFactorResult,
+  type EqualizerFromPullbackInput,
 } from "./pullback"
 export {
   makeReindexingFunctor,
@@ -398,6 +420,8 @@ export {
   FinPos,
   type FinPosCategory,
   type FinPosObj,
+  type FinPosProduct,
+  type FinPosExponential,
   type MonoMap,
 } from "./models/finpos-cat"
 export {

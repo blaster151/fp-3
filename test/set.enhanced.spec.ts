@@ -41,7 +41,7 @@ import type { Option } from "../option"
 import { None, Some, isSome } from "../option"
 import type { Result } from "../result"
 import { Err, Ok } from "../result"
-import type { Foldable } from "../typeclasses"
+import type { Applicative, Foldable } from "../typeclasses"
 import type { Monoid } from "../stdlib/monoid"
 
 const numberEq = eqStrict<number>()
@@ -58,6 +58,16 @@ const arrayFoldable: Foldable<'Array'> = {
   reduceRight:
     <A, B>(b: B, f: (a: A, acc: B) => B) =>
     (fa: ReadonlyArray<A>): B => fa.reduceRight((acc, a) => f(a, acc), b),
+}
+
+const optionApplicative: Applicative<'Option'> = {
+  of: Some,
+  map:
+    <A, B>(f: (a: A) => B) =>
+    (oa: Option<A>): Option<B> => (isSome(oa) ? Some(f(oa.value)) : None),
+  ap:
+    <A, B>(ofab: Option<(a: A) => B>) =>
+    (oa: Option<A>): Option<B> => (isSome(ofab) && isSome(oa) ? Some(ofab.value(oa.value)) : None),
 }
 
 describe("ReadonlySet helpers", () => {
@@ -169,20 +179,12 @@ describe("ReadonlySet helpers", () => {
     expect(Array.from(viaFilterable).sort()).toEqual([1, 2])
 
     const visited: Array<number> = []
-    const optionApplicative = {
-      of: Some,
-      map: <A, B>(f: (a: A) => B) => (oa: Option<A>): Option<B> => (isSome(oa) ? Some(f(oa.value)) : None),
-      ap:
-        <A, B>(ofab: Option<(a: A) => B>) =>
-        (oa: Option<A>): Option<B> => (isSome(ofab) && isSome(oa) ? Some(ofab.value(oa.value)) : None),
-    }
-
-    const traversed = ReadonlySetTraversableWithIndex.traverse(optionApplicative)<number, number>({
-      ord: ordNumber,
-      eq: numberEq,
-    })((n) => {
-      visited.push(n)
-      return Some(n * 3)
+      const traversed = ReadonlySetTraversableWithIndex.traverse(optionApplicative)<number, number>({
+        ord: ordNumber,
+        eq: numberEq,
+      })((n) => {
+        visited.push(n)
+        return Some(n * 3)
     })(setFrom([3, 1, 2]))
 
     expect(visited).toEqual([1, 2, 3])
@@ -193,15 +195,7 @@ describe("ReadonlySet helpers", () => {
   })
 
   it("supports wither and wilt respecting order", () => {
-    const optionApplicative = {
-      of: Some,
-      map: <A, B>(f: (a: A) => B) => (oa: Option<A>): Option<B> => (isSome(oa) ? Some(f(oa.value)) : None),
-      ap:
-        <A, B>(ofab: Option<(a: A) => B>) =>
-        (oa: Option<A>): Option<B> => (isSome(ofab) && isSome(oa) ? Some(ofab.value(oa.value)) : None),
-    }
-
-    const wiltApplicative = optionApplicative
+      const wiltApplicative: Applicative<'Option'> = optionApplicative
 
     const visitedWither: Array<number> = []
     const withered = wither(optionApplicative)<number, number>({ ord: ordNumber, eq: numberEq })((n) => {

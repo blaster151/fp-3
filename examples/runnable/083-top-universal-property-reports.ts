@@ -1,5 +1,6 @@
 import type { ContinuityWitnessEntry } from "../../src/top/ContinuousMap";
 import type {
+  LegCheckResult,
   MediatorCheckResult,
   UniversalPropertyReport,
 } from "../../src/top/limits";
@@ -65,9 +66,9 @@ function buildProductReport(): UniversalPropertyReport<string, string, LegDescri
   });
   const pair = pairing(f, g, { topology: structure.topology, eq: structure.eq });
 
-  const legs = [
-    { leg: coneLeg("π₁", "Top/cont/proj1"), holds: true, metadata: { tag: "Top/cont/proj1" } satisfies LegDescriptor },
-    { leg: coneLeg("π₂", "Top/cont/proj2"), holds: true, metadata: { tag: "Top/cont/proj2" } satisfies LegDescriptor },
+  const legs: ReadonlyArray<LegCheckResult<string, LegDescriptor>> = [
+    { leg: coneLeg("π₁", "Top/cont/proj1"), holds: true, metadata: { tag: "Top/cont/proj1" } },
+    { leg: coneLeg("π₂", "Top/cont/proj2"), holds: true, metadata: { tag: "Top/cont/proj2" } },
   ];
   const mediators: ReadonlyArray<MediatorCheckResult<string, { readonly witnessNote: string }>> = [
     {
@@ -76,11 +77,16 @@ function buildProductReport(): UniversalPropertyReport<string, string, LegDescri
       metadata: { witnessNote: pair.witness.witness?.note ?? "" },
     },
   ];
-  return makeUniversalPropertyReport({ legs, mediators });
+  return makeUniversalPropertyReport<string, string, LegDescriptor, { readonly witnessNote: string }>({
+    legs,
+    mediators,
+  });
 }
 
-function buildFailureReport(taggedFailure: TaggedFailure | undefined): UniversalPropertyReport<string, string, TaggedFailure, TaggedFailure> {
-  const legs = [
+function buildFailureReport(
+  taggedFailure: TaggedFailure | undefined,
+): UniversalPropertyReport<string, string, LegDescriptor | TaggedFailure, TaggedFailure | undefined> {
+  const legs: ReadonlyArray<LegCheckResult<string, LegDescriptor | TaggedFailure>> = [
     taggedFailure
       ? {
           leg: coconeLeg("π₂", taggedFailure.tag),
@@ -90,7 +96,7 @@ function buildFailureReport(taggedFailure: TaggedFailure | undefined): Universal
         }
       : { leg: coconeLeg("π₂", "missing"), holds: false, failure: "Continuity witness unavailable." },
   ];
-  const mediators = [
+  const mediators: ReadonlyArray<MediatorCheckResult<string, TaggedFailure | undefined>> = [
     {
       mediator: makeMediator("κ", "Top/cont/copair"),
       holds: false,
@@ -98,7 +104,10 @@ function buildFailureReport(taggedFailure: TaggedFailure | undefined): Universal
       metadata: taggedFailure,
     },
   ];
-  return makeUniversalPropertyReport({ legs, mediators });
+  return makeUniversalPropertyReport<string, string, LegDescriptor | TaggedFailure, TaggedFailure | undefined>({
+    legs,
+    mediators,
+  });
 }
 
 function describeLeg(entry: {

@@ -50,19 +50,39 @@ export const coneLeg = <Arrow, Metadata = unknown>(
   name: string,
   arrow?: Arrow,
   metadata?: Metadata,
-): LimitLeg<Arrow, Metadata> => ({ kind: "cone", name, arrow, metadata });
+): LimitLeg<Arrow, Metadata> => {
+  return {
+    kind: "cone",
+    name,
+    ...(arrow === undefined ? {} : { arrow }),
+    ...(metadata === undefined ? {} : { metadata }),
+  } as LimitLeg<Arrow, Metadata>;
+};
 
 export const coconeLeg = <Arrow, Metadata = unknown>(
   name: string,
   arrow?: Arrow,
   metadata?: Metadata,
-): LimitLeg<Arrow, Metadata> => ({ kind: "cocone", name, arrow, metadata });
+): LimitLeg<Arrow, Metadata> => {
+  return {
+    kind: "cocone",
+    name,
+    ...(arrow === undefined ? {} : { arrow }),
+    ...(metadata === undefined ? {} : { metadata }),
+  } as LimitLeg<Arrow, Metadata>;
+};
 
 export const makeMediator = <Arrow, Metadata = unknown>(
   name: string,
   arrow?: Arrow,
   metadata?: Metadata,
-): Mediator<Arrow, Metadata> => ({ name, arrow, metadata });
+): Mediator<Arrow, Metadata> => {
+  return {
+    name,
+    ...(arrow === undefined ? {} : { arrow }),
+    ...(metadata === undefined ? {} : { metadata }),
+  } as Mediator<Arrow, Metadata>;
+};
 
 export const makeUniversalPropertyReport = <
   LegArrow,

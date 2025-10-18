@@ -39,7 +39,8 @@ describe("Product universal property on finite spaces", () => {
     expect(mediatorEntry?.holds).toBe(true);
     expect(mediatorEntry?.mediator.name).toBe("pairing");
     const pairingMap = mediatorEntry?.mediator.arrow;
-    expect(pairingMap).toBeTypeOf("function");
+    expect(pairingMap).not.toBeUndefined();
+    expect(typeof pairingMap).toBe("function");
 
     const projected = result.productTopology.carrier.map((pt) => ({
       x: proj1(pt),

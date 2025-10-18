@@ -2790,7 +2790,9 @@ export const analyzeRelativeOpalgebraRightActionFromMonoid = <
       ? "Monoid-induced Street action coherence verified via Street comparisons."
       : `Monoid-induced Street action issues: ${issues.join("; ")}`,
     witness: witnessWithComparisons,
-    comparisons: actionReport.comparisons,
+    ...(actionReport.comparisons === undefined
+      ? {}
+      : { comparisons: actionReport.comparisons }),
   };
 };
 
@@ -2823,7 +2825,9 @@ export const analyzeRelativeStreetCanonicalAction = <
       ? "Canonical Street action coherence verified via Street comparisons."
       : `Canonical Street action issues: ${issues.join("; ")}`,
     witness: witnessWithComparisons,
-    comparisons: actionReport.comparisons,
+    ...(actionReport.comparisons === undefined
+      ? {}
+      : { comparisons: actionReport.comparisons }),
   };
 };
 
@@ -4939,6 +4943,9 @@ export const describeRelativeStreetActionCategory = <
   action?: RelativeStreetActionWitness<Obj, Arr, Payload, Evidence>,
 ): RelativeStreetActionCategoryWitness<Obj, Arr, Payload, Evidence> => {
   const baseAction = action ?? describeRelativeStreetAction(monad);
+  const singletonPasting = [
+    [baseAction.action] as ReadonlyArray<Equipment2Cell<Obj, Arr, Payload, Evidence>>,
+  ] as const;
   return {
     action: baseAction,
     identity: baseAction.action,

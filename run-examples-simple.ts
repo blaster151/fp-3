@@ -437,12 +437,16 @@ async function runExamples() {
   
   // Partial function: parseInt on int-like strings
   const intLike = (s: string) => /^-?\d+$/.test(s)
-  const parseIntPF: PartialFn<string, number> = pf(intLike, s => Number(s))
+  const parseIntPF: PartialFn<string, number> = pf(intLike, (s) => Number(s))
+  const parseUnknownPF: PartialFn<unknown, number> = {
+    isDefinedAt: (value) => typeof value === "string" && intLike(value),
+    apply: (value) => Number(value as string),
+  }
   
   // Arrays: filterMap / collect
   const raw = ["10", "x", "-3", "7.5", "0"]
   const ints1 = filterMapArray(raw, (s) => intLike(s) ? Some(Number(s)) : None)
-  const ints2 = collectArray(raw, parseIntPF)
+  const ints2 = collectArray(raw, parseUnknownPF)
   console.log('Array filterMap/collect:', ints1, '=', ints2)
   
   // Maps: value collect (keep keys)
@@ -452,7 +456,7 @@ async function runExamples() {
   
   // Sets: filterMap / collect
   const setRaw = new Set(["1", "2", "two", "3"])
-  const setInts = collectSet(eqStrict<number>())(setRaw, parseIntPF)
+  const setInts = collectSet(eqStrict<number>())(setRaw, parseUnknownPF)
   console.log('Set collect:', setInts)
   
   console.log('\n=== READER APPLICATIVE EVALUATORS ===')

@@ -51,6 +51,15 @@ type Equality<A> = (left: A, right: A) => boolean;
 const includesWith = <A>(values: readonly A[], value: A, eq: Equality<A>): boolean =>
   values.some((candidate) => eq(candidate, value));
 
+const findIndexWith = <A>(values: readonly A[], value: A, eq: Equality<A>): number => {
+  for (let index = 0; index < values.length; index++) {
+    if (eq(values[index]!, value)) {
+      return index;
+    }
+  }
+  return -1;
+};
+
 export interface M2Object<A> {
   readonly carrier: readonly A[];
   readonly endo: (a: A) => A;
@@ -81,6 +90,15 @@ export const makeM2Object = <A>(input: {
     eq,
     contains,
   };
+};
+
+const normaliseElement = <A>(object: M2Object<A>, value: A): A => {
+  for (const candidate of object.carrier) {
+    if (object.eq(candidate, value)) {
+      return candidate;
+    }
+  }
+  throw new Error('M2.exponential: encountered value outside the declared carrier');
 };
 
 export interface M2Morphism<A, B> {
@@ -154,6 +172,17 @@ export interface M2ProductInput<A, B> {
   readonly right: M2Object<B>;
   readonly equaliser?: (pair: M2Pair<A, B>) => boolean;
 }
+
+const signatureFromOutputs = <B>(codomain: M2Object<B>, outputs: readonly B[]): string =>
+  outputs
+    .map((value) => {
+      const index = findIndexWith(codomain.carrier, value, codomain.eq);
+      if (index < 0) {
+        throw new Error('M2.exponential: output not recognised in the codomain carrier');
+      }
+      return String(index);
+    })
+    .join('|');
 
 const buildSubset = <A, B>(
   left: M2Object<A>,
@@ -241,6 +270,272 @@ export const productM2 = <A, B>(input: M2ProductInput<A, B>): M2ProductWitness<A
     projections,
     tuple,
   };
+};
+
+interface M2FunctionRecord<B, C> {
+  readonly morphism: M2Morphism<B, C>;
+  readonly table: readonly C[];
+  readonly signature: string;
+}
+
+export interface M2ExponentialWitness<B, C> {
+  readonly object: M2Object<M2Morphism<B, C>>;
+  readonly product: M2ProductWitness<M2Morphism<B, C>, B>;
+  readonly evaluation: M2Morphism<M2Pair<M2Morphism<B, C>, B>, C>;
+  readonly curry: <A>(input: {
+    readonly domain: M2Object<A>;
+    readonly product: M2ProductWitness<A, B>;
+    readonly arrow: M2Morphism<M2Pair<A, B>, C>;
+  }) => M2Morphism<A, M2Morphism<B, C>>;
+}
+
+export interface M2ExponentialComparison<B, C> {
+  readonly leftToRight: M2Morphism<M2Morphism<B, C>, M2Morphism<B, C>>;
+  readonly rightToLeft: M2Morphism<M2Morphism<B, C>, M2Morphism<B, C>>;
+}
+
+const enumerateEquivariantMaps = <B, C>(
+  base: M2Object<B>,
+  codomain: M2Object<C>,
+): M2FunctionRecord<B, C>[] => {
+  const records: M2FunctionRecord<B, C>[] = [];
+  const buffer: C[] = new Array(base.carrier.length);
+
+  const explore = (index: number) => {
+    if (index === base.carrier.length) {
+      const table = buffer.slice();
+      const map = (value: B): C => {
+        const position = findIndexWith(base.carrier, value, base.eq);
+        if (position < 0) {
+          throw new Error('M2.exponential: unrecognised argument in the base carrier');
+        }
+        return table[position]!;
+      };
+
+      try {
+        const morphism = makeM2Morphism({ dom: base, cod: codomain, map });
+        const signature = signatureFromOutputs(codomain, table);
+        if (!records.some((record) => equalM2Morphisms(record.morphism, morphism))) {
+          records.push({ morphism, table, signature });
+        }
+      } catch {
+        // Ignore non-equivariant assignments
+      }
+      return;
+    }
+
+    for (const candidate of codomain.carrier) {
+      buffer[index] = candidate;
+      explore(index + 1);
+    }
+  };
+
+  explore(0);
+  return records;
+};
+
+export const exponentialM2 = <B, C>(input: {
+  readonly base: M2Object<B>;
+  readonly codomain: M2Object<C>;
+}): M2ExponentialWitness<B, C> => {
+  const { base, codomain } = input;
+
+  const records = enumerateEquivariantMaps(base, codomain);
+  if (records.length === 0) {
+    throw new Error('M2.exponential: no equivariant maps exist between the supplied objects');
+  }
+  const lookupBySignature = new Map<string, M2Morphism<B, C>>();
+  const tableByMorphism = new Map<M2Morphism<B, C>, readonly C[]>();
+
+  for (const record of records) {
+    lookupBySignature.set(record.signature, record.morphism);
+    tableByMorphism.set(record.morphism, record.table);
+  }
+
+  const object = makeM2Object<M2Morphism<B, C>>({
+    carrier: records.map((record) => record.morphism),
+    endo: (func) => {
+      const table = tableByMorphism.get(func);
+      if (!table) {
+        throw new Error('M2.exponential: encountered an untracked function element');
+      }
+      const transported = table.map((value) => normaliseElement(codomain, codomain.endo(value)));
+      const signature = signatureFromOutputs(codomain, transported);
+      const image = lookupBySignature.get(signature);
+      if (!image) {
+        throw new Error('M2.exponential: endomorphism does not preserve the exponential carrier');
+      }
+      return image;
+    },
+    eq: equalM2Morphisms,
+  });
+
+  const product = productM2({ left: object, right: base });
+
+  const evaluation = makeM2Morphism({
+    dom: product.object,
+    cod: codomain,
+    map: ([func, argument]) => func.map(argument),
+  });
+
+  const curry = <A>(inputCurry: {
+    readonly domain: M2Object<A>;
+    readonly product: M2ProductWitness<A, B>;
+    readonly arrow: M2Morphism<M2Pair<A, B>, C>;
+  }): M2Morphism<A, M2Morphism<B, C>> => {
+    const { domain, product: domainProduct, arrow } = inputCurry;
+    if (arrow.dom !== domainProduct.object) {
+      throw new Error('M2.exponential.curry: arrow domain must be the supplied product');
+    }
+    if (arrow.cod !== codomain) {
+      throw new Error('M2.exponential.curry: arrow codomain must be the exponential codomain');
+    }
+    if (!isM2Morphism(arrow)) {
+      throw new Error('M2.exponential.curry: arrow must be an equivariant morphism');
+    }
+
+    const assignments = new Map<A, M2Morphism<B, C>>();
+
+    for (const rawElement of domain.carrier) {
+      const element = normaliseElement(domain, rawElement);
+      const outputs = base.carrier.map((argument) => {
+        const pair: M2Pair<A, B> = [element, argument];
+        if (!domainProduct.object.contains(pair)) {
+          throw new Error('M2.exponential.curry: product carrier missing expected pair');
+        }
+        const image = arrow.map(pair);
+        return normaliseElement(codomain, image);
+      });
+
+      const signature = signatureFromOutputs(codomain, outputs);
+      const witness = lookupBySignature.get(signature);
+      if (!witness) {
+        throw new Error('M2.exponential.curry: assignment does not yield an equivariant map');
+      }
+      assignments.set(element, witness);
+    }
+
+    return makeM2Morphism({
+      dom: domain,
+      cod: object,
+      map: (value) => {
+        const canonical = normaliseElement(domain, value);
+        const func = assignments.get(canonical);
+        if (!func) {
+          throw new Error('M2.exponential.curry: mediator undefined on the provided element');
+        }
+        return func;
+      },
+    });
+  };
+
+  return { object, product, evaluation, curry };
+};
+
+export const m2ExponentialComparison = <B, C>(input: {
+  readonly base: M2Object<B>;
+  readonly codomain: M2Object<C>;
+  readonly left: M2ExponentialWitness<B, C>;
+  readonly right: M2ExponentialWitness<B, C>;
+}): M2ExponentialComparison<B, C> => {
+  const { base, codomain, left, right } = input;
+
+  const ensureWitness = (label: string, witness: M2ExponentialWitness<B, C>) => {
+    const [projectionToFunctions, projectionToBase] = witness.product.projections;
+    if (projectionToBase.cod !== base) {
+      throw new Error(`M2.exponentialComparison: ${label} witness is not parameterised by the supplied base object`);
+    }
+    if (projectionToFunctions.cod !== witness.object) {
+      throw new Error(`M2.exponentialComparison: ${label} witness exposes an unexpected function object`);
+    }
+    if (witness.evaluation.dom !== witness.product.object) {
+      throw new Error(`M2.exponentialComparison: ${label} witness has an evaluation arrow with a mismatched domain`);
+    }
+    if (witness.evaluation.cod !== codomain) {
+      throw new Error(`M2.exponentialComparison: ${label} witness does not evaluate into the supplied codomain`);
+    }
+  };
+
+  ensureWitness('left', left);
+  ensureWitness('right', right);
+
+  const leftToRight = right.curry({
+    domain: left.object,
+    product: left.product,
+    arrow: left.evaluation,
+  });
+  const rightToLeft = left.curry({
+    domain: right.object,
+    product: right.product,
+    arrow: right.evaluation,
+  });
+
+  if (!isM2Morphism(leftToRight)) {
+    throw new Error('M2.exponentialComparison: mediator from left to right fails equivariance');
+  }
+  if (!isM2Morphism(rightToLeft)) {
+    throw new Error('M2.exponentialComparison: mediator from right to left fails equivariance');
+  }
+
+  for (const func of left.object.carrier) {
+    const image = leftToRight.map(func);
+    if (!right.object.contains(image)) {
+      throw new Error('M2.exponentialComparison: mediator from left to right leaves the right function object');
+    }
+    for (const argument of base.carrier) {
+      const leftPair: M2Pair<M2Morphism<B, C>, B> = [func, argument];
+      if (!left.product.object.contains(leftPair)) {
+        throw new Error('M2.exponentialComparison: encountered a pair outside the left evaluation domain');
+      }
+      const rightPair: M2Pair<M2Morphism<B, C>, B> = [image, argument];
+      if (!right.product.object.contains(rightPair)) {
+        throw new Error('M2.exponentialComparison: encountered a pair outside the right evaluation domain');
+      }
+      const leftValue = left.evaluation.map(leftPair);
+      const rightValue = right.evaluation.map(rightPair);
+      if (!codomain.eq(leftValue, rightValue)) {
+        throw new Error('M2.exponentialComparison: factoring the left evaluation through the right witness failed');
+      }
+    }
+  }
+
+  for (const func of right.object.carrier) {
+    const image = rightToLeft.map(func);
+    if (!left.object.contains(image)) {
+      throw new Error('M2.exponentialComparison: mediator from right to left leaves the left function object');
+    }
+    for (const argument of base.carrier) {
+      const rightPair: M2Pair<M2Morphism<B, C>, B> = [func, argument];
+      if (!right.product.object.contains(rightPair)) {
+        throw new Error('M2.exponentialComparison: encountered a pair outside the right evaluation domain');
+      }
+      const leftPair: M2Pair<M2Morphism<B, C>, B> = [image, argument];
+      if (!left.product.object.contains(leftPair)) {
+        throw new Error('M2.exponentialComparison: encountered a pair outside the left evaluation domain');
+      }
+      const rightValue = right.evaluation.map(rightPair);
+      const leftValue = left.evaluation.map(leftPair);
+      if (!codomain.eq(rightValue, leftValue)) {
+        throw new Error('M2.exponentialComparison: factoring the right evaluation through the left witness failed');
+      }
+    }
+  }
+
+  for (const func of left.object.carrier) {
+    const roundTrip = rightToLeft.map(leftToRight.map(func));
+    if (!left.object.eq(roundTrip, func)) {
+      throw new Error('M2.exponentialComparison: mediators do not reduce to the identity on the left witness');
+    }
+  }
+
+  for (const func of right.object.carrier) {
+    const roundTrip = leftToRight.map(rightToLeft.map(func));
+    if (!right.object.eq(roundTrip, func)) {
+      throw new Error('M2.exponentialComparison: mediators do not reduce to the identity on the right witness');
+    }
+  }
+
+  return { leftToRight, rightToLeft };
 };
 
 export interface M2BinaryProductCheckInput<A, B, Z> {

@@ -53,15 +53,22 @@ import { None, Some, isSome, mapO } from "../option"
 import { Err, Ok } from "../result"
 import type { Option } from "../option"
 import type { Result } from "../result"
+import type { ApplicativeLike, List } from "../list"
 
 const eqNumberList = getEq<number>((x, y) => x === y)
 
-const optionApplicative = {
+const optionApplicative: ApplicativeLike<'Option'> = {
   of: Some,
-  map: mapO,
+  map: mapO as ApplicativeLike<'Option'>['map'],
   ap:
-    <A, B>(ofab: Option<(a: A) => B>) =>
-    (oa: Option<A>): Option<B> => (isSome(ofab) && isSome(oa) ? Some(ofab.value(oa.value)) : None),
+    ((ff) => (fa) => {
+      const ofab = ff as Option<(a: unknown) => unknown>
+      const oa = fa as Option<unknown>
+      if (isSome(ofab) && isSome(oa)) {
+        return Some(ofab.value(oa.value))
+      }
+      return None
+    }) as ApplicativeLike<'Option'>['ap'],
 }
 
 describe("List", () => {
@@ -215,14 +222,14 @@ describe("List", () => {
 
   it("traverses and sequences with Option applicative", () => {
     const list = fromArray([1, 2, 3])
-    const traversed = traverse(optionApplicative)((n: number) => (n < 3 ? Some(n * 2) : None))(list)
+    const traversed = traverse(optionApplicative)((n: number) => (n < 3 ? Some(n * 2) : None))(list) as Option<List<number>>
     expect(traversed).toBe(None)
-    const okTraverse = traverse(optionApplicative)((n: number) => Some(n * 2))(list)
+    const okTraverse = traverse(optionApplicative)((n: number) => Some(n * 2))(list) as Option<List<number>>
     expect(isSome(okTraverse)).toBe(true)
     if (isSome(okTraverse)) {
       expect(toArray(okTraverse.value)).toEqual([2, 4, 6])
     }
-    const sequenced = sequence(optionApplicative)(fromArray([Some(1), Some(2)]))
+    const sequenced = sequence(optionApplicative)(fromArray([Some(1), Some(2)])) as Option<List<number>>
     expect(isSome(sequenced)).toBe(true)
     if (isSome(sequenced)) {
       expect(toArray(sequenced.value)).toEqual([1, 2])
@@ -233,19 +240,19 @@ describe("List", () => {
     const list = fromArray([1, 2, 3, 4])
     const result = wither(optionApplicative)((n: number) =>
       Some(n % 2 === 0 ? Some(n * 10) : None),
-    )(list)
+    )(list) as Option<List<number>>
     expect(isSome(result)).toBe(true)
     if (isSome(result)) {
       expect(toArray(result.value)).toEqual([20, 40])
     }
   })
 
-  it("supports do-notation style comprehensions", () => {
-    const outcomes = listDo(function* () {
-      const a = yield fromArray([1, 2])
-      const b = yield fromArray([10, 20])
-      return a + b
-    })
+    it("supports do-notation style comprehensions", () => {
+      const outcomes = listDo(function* () {
+        const a = (yield fromArray([1, 2])) as number
+        const b = (yield fromArray([10, 20])) as number
+        return a + b
+      })
     expect(toArray(outcomes)).toEqual([11, 21, 12, 22])
   })
 

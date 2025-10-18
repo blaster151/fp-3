@@ -6,12 +6,12 @@ import { makeMediator, makeUniversalPropertyReport, type UniversalPropertyReport
 
 type Eq<X> = (a: X, b: X) => boolean;
 
-type TopCoequalizerWitness<X, Y> = {
+export type TopCoequalizerWitness<X, Y> = {
   readonly obj: Top<ReadonlyArray<Y>>;
   readonly coequalize: ContinuousMap<Y, ReadonlyArray<Y>>;
 };
 
-type TopCoequalizerComparison<Y> = {
+export type TopCoequalizerComparison<Y> = {
   readonly forward: ContinuousMap<ReadonlyArray<Y>, ReadonlyArray<Y>>;
   readonly backward: ContinuousMap<ReadonlyArray<Y>, ReadonlyArray<Y>>;
 };
@@ -260,7 +260,7 @@ export function topFactorThroughCoequalizer<X, Y, Z>(
     >({
       mediators: [mediatorEntry],
     });
-    return { ...report, mediator: undefined } satisfies CoequalizerFactorizationResult<X, Y, Z>;
+    return report satisfies CoequalizerFactorizationResult<X, Y, Z>;
   }
 }
 
@@ -309,9 +309,3 @@ export function topCoequalizerComparison<X, Y>(
   return { forward, backward };
 }
 
-export type {
-  CoequalizerFactorizationResult,
-  CoequalizerMediatorMetadata,
-  TopCoequalizerComparison,
-  TopCoequalizerWitness,
-};

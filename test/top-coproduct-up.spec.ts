@@ -40,7 +40,7 @@ describe("Coproduct universal property on finite spaces", () => {
     const mediatorEntry = result.mediators[0];
     expect(mediatorEntry?.holds).toBe(true);
     expect(mediatorEntry?.mediator.name).toBe("copairing");
-    expect(mediatorEntry?.mediator.arrow).toBeTypeOf("function");
+    expect(typeof mediatorEntry?.mediator.arrow).toBe("function");
 
     const leftImage = X.map((x) => ({ tag: "inl" as const, value: x }));
     const rightImage = Y.map((y) => ({ tag: "inr" as const, value: y }));
