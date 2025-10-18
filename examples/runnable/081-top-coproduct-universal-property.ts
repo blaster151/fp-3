@@ -12,8 +12,6 @@ type TopologyModule = typeof import("../../src/top/Topology");
 type CoproductUPModule = typeof import("../../src/top/CoproductUP");
 type ContinuousMapModule = typeof import("../../src/top/ContinuousMap");
 
-type ContinuousMap<X, Y> = TopContinuousMap<X, Y>;
-
 const { discrete, continuous } = require("../../src/top/Topology") as TopologyModule;
 const { checkCoproductUP } = require("../../src/top/CoproductUP") as CoproductUPModule;
 const {

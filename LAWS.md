@@ -1239,6 +1239,14 @@ so failures can be traced to sub-lemmas.
 - **Rationale**: Executes the textbook construction of `G × H` so the Awodey product examples become runnable—coordinatewise multiplication and inversion are implemented directly and stitched into our universal-property checker.
 - **Oracles**: `test/laws/law.FinGrpProduct.spec.ts` confirms the projections are homomorphisms, composes them with the canonical pairing to recover the supplied legs, checks the swap isomorphism collapses back to the identity, verifies the diagonal composes to both identities and matches the pairing of identity legs, uses `checkProductUP` to certify uniqueness while rejecting a deliberately collapsed leg, exercises the new unit witnesses to show `1×G ≅ G ≅ G×1` whereas the projections into the trivial factor fail the `isIso` test (demonstrating that \(0 × G \ncong 0\)), and now drives `CategoryLimits.checkBinaryProductComponentwiseCollapse`, `CategoryLimits.checkBinaryProductSwapCompatibility`, and `CategoryLimits.checkBinaryProductNaturality` to prove componentwise mediators collapse correctly, swap symmetry commutes with componentwise arrows, and precomposition agrees with the canonical pairing while perturbed data triggers the expected failures.
 
+### Finite-set cartesian closure
+
+- **Domain**: Finite-set objects produced by `makeFinSetObj(...)` and arrows assembled with the cartesian-closed witness `FinSetCCC`, pairing legs via `binaryProduct`, collapsing to the singleton through `terminal.terminate`, and routing function spaces through `exponential`.
+- **Statement**: `FinSetCCC.binaryProduct` packages the canonical projections and mediator builder so the right and left unit composites `π₁ ∘ ⟨id, !⟩` and `π₂ ∘ ⟨!, id⟩` reduce to the corresponding identities/terminal arrows, while `FinSetCCC.exponential` exposes evaluation together with `curry`/`uncurry` mediators whose composites recover any `h : X × A → B` and reproduce the supplied transpose `λh : X → B^A`.
+- **Rationale**: Links the reusable product/exponential helpers into an explicit cartesian-closed witness for `FinSet`, making the universal properties executable rather than relying on hand-waved tuple reasoning.
+- **Oracles**: `test/laws/law.FinSetCCC.spec.ts` proves the unit laws for products with `1`, demonstrates that evaluation composed with the canonical pairing reproduces `h`, and confirms that curry/uncurry form inverse bijections on transposes.
+- **Witness Builder**: `FinSetCCC` (re-exported via `src/all/triangulated.ts`) surfaces `{ terminal, binaryProduct, exponential }`, while `FinSet.compose` and `FinSet.id` support the comparison checks in the law suite.
+
 ### Finite-set equalizer schemes
 
 - **Domain**: Parallel finite-set arrows `f, g : X → Y` together with the inclusion `e : E → X` returned by `FinSet.equalizer(f, g)` and commuting forks into `X`.

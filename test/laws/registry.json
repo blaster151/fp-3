@@ -66,6 +66,7 @@
     "ArrowCategory.InitialTerminal": "implemented|witnessed",
     "Slice.InitialTerminal": "implemented|witnessed",
     "FinGrp.Product": "implemented|witnessed",
+    "FinSet.CartesianClosed": "implemented|witnessed",
     "Slice.FiberProduct": "implemented|witnessed",
     "Slice.FiniteProduct": "implemented|witnessed",
     "ProductProjection.NonEpic": "implemented|witnessed",

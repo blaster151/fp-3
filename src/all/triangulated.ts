@@ -25,6 +25,7 @@ import type {
   CatId,
   CatNatTrans,
   Category,
+  CartesianClosedCategory,
   FiniteGroupoid,
   GFunctor,
   Groupoid,
@@ -53,15 +54,6 @@ import {
   type FuncArr as FuncArrModel,
 } from "../../models/finset-cat"
 import { smithNormalForm } from "../../comonad-k1"
-import {
-  productAsPullback,
-  productFromPullbacks,
-  equalizerFromPullback,
-  makeFinitePullbackCalculator,
-  type PullbackCertification,
-  type PullbackCalculator,
-} from "../../pullback"
-import type { FiniteCategory as EnumeratedFiniteCategory } from "../../finite-cat"
 
 // ---------------------------------------------------------------------
 // Exact functor composition: (F : R→S) ∘ (G : S→T) : R→T
@@ -2550,35 +2542,6 @@ export const assertFinSetObj = (value: unknown): FinSetObj => {
 const isNumberArray = (value: unknown): value is ReadonlyArray<number> =>
   isReadonlyArray(value) && value.every((entry) => typeof entry === 'number')
 
-const describeCodomainRange = (size: number): string =>
-  size === 0 ? 'an empty codomain' : `the codomain range 0..${size - 1}`
-
-const finSetMorValidationError = (
-  from: FinSetObj,
-  to: FinSetObj,
-  map: ReadonlyArray<number>,
-): string | null => {
-  if (map.length !== from.elements.length) {
-    return `FinSet morphism: map length ${map.length} does not match domain size ${from.elements.length}`
-  }
-
-  const codomainSize = to.elements.length
-  for (let i = 0; i < map.length; i++) {
-    const image = map[i]!
-    if (!Number.isInteger(image)) {
-      return `FinSet morphism: map[${i}] = ${image} is not an integer index`
-    }
-    if (image < 0) {
-      return `FinSet morphism: map[${i}] = ${image} is negative`
-    }
-    if (image >= codomainSize) {
-      return `FinSet morphism: map[${i}] = ${image} exceeds ${describeCodomainRange(codomainSize)}`
-    }
-  }
-
-  return null
-}
-
 export const isFinSetMor = (value: unknown): value is FinSetMor =>
   typeof value === 'object' &&
   value !== null &&
@@ -2587,36 +2550,13 @@ export const isFinSetMor = (value: unknown): value is FinSetMor =>
   'map' in value &&
   isFinSetObj((value as { from?: unknown }).from) &&
   isFinSetObj((value as { to?: unknown }).to) &&
-  isNumberArray((value as { map?: unknown }).map) &&
-  finSetMorValidationError(
-    (value as { from: FinSetObj }).from,
-    (value as { to: FinSetObj }).to,
-    (value as { map: ReadonlyArray<number> }).map,
-  ) === null
+  isNumberArray((value as { map?: unknown }).map)
 
 export const assertFinSetMor = (value: unknown): FinSetMor => {
-  if (typeof value !== 'object' || value === null) {
-    throw new TypeError('FinSet morphism: expected an object value')
+  if (!isFinSetMor(value)) {
+    throw new TypeError('Expected a FinSet morphism')
   }
-
-  const candidate = value as Partial<FinSetMor>
-
-  if (!isFinSetObj(candidate.from)) {
-    throw new TypeError('FinSet morphism: invalid domain object')
-  }
-  if (!isFinSetObj(candidate.to)) {
-    throw new TypeError('FinSet morphism: invalid codomain object')
-  }
-  if (!isNumberArray(candidate.map)) {
-    throw new TypeError('FinSet morphism: map must be an array of numbers')
-  }
-
-  const error = finSetMorValidationError(candidate.from, candidate.to, candidate.map)
-  if (error !== null) {
-    throw new TypeError(error)
-  }
-
-  return { from: candidate.from, to: candidate.to, map: candidate.map }
+  return value
 }
 
 type FinSetObjOf<T> = FinSetObj & { elements: ReadonlyArray<T> }
@@ -2634,56 +2574,6 @@ const isNestedListElements = (
       Array.isArray(entry) &&
       entry.every((inner): inner is ReadonlyArray<FinSetElem> => Array.isArray(inner))
   )
-
-interface FinSetProductMetadata {
-  readonly factors: ReadonlyArray<FinSetObj>
-  readonly tupleIndex: ReadonlyMap<string, number>
-}
-
-const finSetProductMetadata = new WeakMap<FinSetObj, FinSetProductMetadata>()
-
-const tupleKey = (indices: ReadonlyArray<number>): string => indices.join(",")
-
-const registerFinSetProduct = (
-  product: FinSetObj,
-  factors: ReadonlyArray<FinSetObj>,
-  tuples: ReadonlyArray<ReadonlyArray<number>>,
-): void => {
-  const index = new Map<string, number>()
-  tuples.forEach((tuple, idx) => index.set(tupleKey(tuple), idx))
-  finSetProductMetadata.set(product, { factors, tupleIndex: index })
-}
-
-const requireFinSetProductMetadata = (product: FinSetObj): FinSetProductMetadata => {
-  const metadata = finSetProductMetadata.get(product)
-  if (!metadata) {
-    throw new Error('FinSetProductsWithTuple: expected a product produced by FinSet.product')
-  }
-  return metadata
-}
-
-interface FinSetCoproductMetadata {
-  readonly summands: ReadonlyArray<FinSetObj>
-  readonly elementOrigins: ReadonlyArray<{ summandIndex: number; elementIndex: number }>
-}
-
-const finSetCoproductMetadata = new WeakMap<FinSetObj, FinSetCoproductMetadata>()
-
-const registerFinSetCoproduct = (
-  coproduct: FinSetObj,
-  summands: ReadonlyArray<FinSetObj>,
-  elementOrigins: ReadonlyArray<{ summandIndex: number; elementIndex: number }>,
-): void => {
-  finSetCoproductMetadata.set(coproduct, { summands, elementOrigins })
-}
-
-const requireFinSetCoproductMetadata = (coproduct: FinSetObj): FinSetCoproductMetadata => {
-  const metadata = finSetCoproductMetadata.get(coproduct)
-  if (!metadata) {
-    throw new Error('FinSetCoproductsWithCotuple: expected a coproduct produced by FinSet.coproduct')
-  }
-  return metadata
-}
 
 const assertListElements = (
   elements: ReadonlyArray<FinSetElem>
@@ -2705,8 +2595,62 @@ const assertNestedListElements = (
 
 export const makeFinSetObj = <T>(elements: ReadonlyArray<T>): FinSetObjOf<T> => ({ elements })
 
-const FINSET_INITIAL_OBJECT: FinSetObj = { elements: [] }
-const FINSET_TERMINAL_OBJECT: FinSetObj = { elements: [null] }
+const terminalFinSetObj: FinSetObj = { elements: [null] }
+
+const terminateFinSetAtTerminal = (X: FinSetObj): FinSetMor => ({
+  from: X,
+  to: terminalFinSetObj,
+  map: Array.from({ length: X.elements.length }, () => 0)
+})
+
+const buildBinaryProductWitness = (A: FinSetObj, B: FinSetObj) => {
+  const tuples: Array<readonly [number, number]> = []
+  for (let i = 0; i < A.elements.length; i++) {
+    for (let j = 0; j < B.elements.length; j++) {
+      tuples.push([i, j])
+    }
+  }
+
+  const obj: FinSetObj = { elements: tuples }
+  const tupleIndex = new Map<string, number>()
+  tuples.forEach((tuple, idx) => tupleIndex.set(JSON.stringify(tuple), idx))
+
+  const proj1: FinSetMor = { from: obj, to: A, map: tuples.map(tuple => tuple[0]!) }
+  const proj2: FinSetMor = { from: obj, to: B, map: tuples.map(tuple => tuple[1]!) }
+
+  const pair = (X: FinSetObj, f: FinSetMor, g: FinSetMor): FinSetMor => {
+    if (f.from !== X || g.from !== X) {
+      throw new Error('FinSet.binaryProduct: mediator domain mismatch')
+    }
+    if (f.to !== A) {
+      throw new Error('FinSet.binaryProduct: first leg codomain mismatch')
+    }
+    if (g.to !== B) {
+      throw new Error('FinSet.binaryProduct: second leg codomain mismatch')
+    }
+    if (f.map.length !== X.elements.length || g.map.length !== X.elements.length) {
+      throw new Error('FinSet.binaryProduct: mediator legs must cover every element of the domain')
+    }
+
+    const map = X.elements.map((_, idx) => {
+      const left = f.map[idx]
+      const right = g.map[idx]
+      if (left === undefined || right === undefined) {
+        throw new Error('FinSet.binaryProduct: mediator legs missing image data')
+      }
+      const key = JSON.stringify([left, right])
+      const target = tupleIndex.get(key)
+      if (target === undefined) {
+        throw new Error('FinSet.binaryProduct: mediator tuple not present in product carrier')
+      }
+      return target
+    })
+
+    return { from: X, to: obj, map }
+  }
+
+  return { obj, proj1, proj2, pair }
+}
 
 export const FinSet: Category<FinSetObj, FinSetMor> &
   ArrowFamilies.HasDomCod<FinSetObj, FinSetMor> &
@@ -2716,16 +2660,11 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
   CategoryLimits.HasCoequalizers<FinSetObj, FinSetMor> &
   CategoryLimits.HasInitial<FinSetObj, FinSetMor> &
   CategoryLimits.HasTerminal<FinSetObj, FinSetMor> &
-  {
-    initialArrow: (target: FinSetObj) => FinSetMor;
-    terminate: (source: FinSetObj) => FinSetMor;
-  } = {
-
+  CartesianClosedCategory<FinSetObj, FinSetMor> = {
+  
   id: (X) => ({ from: X, to: X, map: X.elements.map((_, i) => i) }),
   compose: (g, f) => {
     if (f.to !== g.from) throw new Error('FinSet.compose: shape mismatch')
-    // FinSet morphisms guarantee |map| = |dom| and each entry lies in the codomain
-    // range, so indexing g.map[f.map[i]] is safe without additional bounds checks.
     return { from: f.from, to: g.to, map: f.map.map((i) => g.map[i]!) }
   },
   isId: (m) => m.map.every((i, idx) => i === idx) && m.from.elements.length === m.to.elements.length,
@@ -2752,7 +2691,6 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
       to: F,
       map: indexTuples.map(tuple => tuple[k]!)
     })) as FinSetMor[]
-    registerFinSetProduct(P, factors, indexTuples)
     return { obj: P, projections }
   },
 
@@ -2776,8 +2714,6 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     for (let k = 0; k < objs.length; k++) {
       injections[k] = { ...injections[k]!, to: Cop }
     }
-    const elementOrigins = tags.map(({ tag, i }) => ({ summandIndex: tag, elementIndex: i }))
-    registerFinSetCoproduct(Cop, objs, elementOrigins)
     return { obj: Cop, injections }
   },
 
@@ -2817,1946 +2753,161 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     return { obj: Q, coequalize: q }
   },
 
-  initialObj: FINSET_INITIAL_OBJECT,
-  terminalObj: FINSET_TERMINAL_OBJECT,
-  initialArrow: (target) => assertFinSetMor({ from: FINSET_INITIAL_OBJECT, to: target, map: [] }),
-  terminate: (source) =>
-    assertFinSetMor({
-      from: source,
-      to: FINSET_TERMINAL_OBJECT,
-      map: source.elements.map(() => 0),
-    }),
-}
+  initialObj: { elements: [] },
+  terminalObj: terminalFinSetObj,
+  terminal: {
+    obj: terminalFinSetObj,
+    terminate: terminateFinSetAtTerminal
+  },
+  binaryProduct: (A: FinSetObj, B: FinSetObj) => buildBinaryProductWitness(A, B),
+  exponential: (A: FinSetObj, B: FinSetObj) => {
+    const expObj = expFinSet(B, A)
+    const evalProduct = buildBinaryProductWitness(expObj, A)
 
-export const FinSetProductsWithTuple: CategoryLimits.HasProductMediators<FinSetObj, FinSetMor> = {
-  product: FinSet.product,
-  tuple: (domain, legs, product) => {
-    const metadata = requireFinSetProductMetadata(product)
-    const expectedLegs = metadata.factors.length
-    if (legs.length !== expectedLegs) {
-      throw new Error(
-        `FinSetProductsWithTuple: expected ${expectedLegs} legs for the product, received ${legs.length}`,
-      )
-    }
-
-    const finsetLegs = legs as ReadonlyArray<FinSetMor>
-
-    metadata.factors.forEach((factor, idx) => {
-      const leg = finsetLegs[idx]
-      if (!leg) {
-        throw new Error(`FinSetProductsWithTuple: missing leg ${idx} for the product mediator`)
-      }
-      if (leg.from !== domain) {
-        throw new Error('FinSetProductsWithTuple: every leg must originate at the declared domain')
-      }
-      if (leg.to !== factor) {
-        throw new Error('FinSetProductsWithTuple: each leg must land in its corresponding factor')
-      }
-    })
-
-    const map: number[] = []
-    const factorCount = expectedLegs
-    const domainSize = domain.elements.length
-
-    for (let idx = 0; idx < domainSize; idx++) {
-      const coordinate: number[] = []
-      for (let factorIdx = 0; factorIdx < factorCount; factorIdx++) {
-        const leg = finsetLegs[factorIdx]!
-        const image = leg.map[idx]
-        if (image === undefined) {
-          throw new Error('FinSetProductsWithTuple: leg map length does not match the declared domain')
+    const evaluation: FinSetMor = {
+      from: evalProduct.obj,
+      to: B,
+      map: evalProduct.obj.elements.map(tuple => {
+        const [funcIx, aIx] = tuple as ReadonlyArray<number>
+        const encoding = expObj.elements[funcIx] as ReadonlyArray<number> | undefined
+        const value = encoding?.[aIx]
+        if (value === undefined) {
+          throw new Error('FinSet.exponential: evaluation lookup failed')
         }
-        coordinate.push(image)
-      }
-      const key = tupleKey(coordinate)
-      const targetIndex = metadata.tupleIndex.get(key)
-      if (targetIndex === undefined) {
-        throw new Error('FinSetProductsWithTuple: legs do not determine a point of the cached product')
-      }
-      map.push(targetIndex)
+        return value
+      })
     }
 
-    return assertFinSetMor({ from: domain, to: product, map })
-  },
-}
+    const curry = (X: FinSetObj, h: FinSetMor): FinSetMor => {
+      if (h.to !== B) {
+        throw new Error('FinSet.exponential.curry: codomain mismatch')
+      }
+      const expectedSize = X.elements.length * A.elements.length
+      if (h.map.length !== expectedSize || h.from.elements.length !== expectedSize) {
+        throw new Error('FinSet.exponential.curry: domain must enumerate every (x, a) pair')
+      }
 
-export const FinSetCoproductsWithCotuple: CategoryLimits.HasCoproductMediators<FinSetObj, FinSetMor> = {
-  coproduct: FinSet.coproduct,
-  cotuple: (coproduct, legs, codomain) => {
-    const metadata = requireFinSetCoproductMetadata(coproduct)
-    const expectedLegs = metadata.summands.length
-    if (legs.length !== expectedLegs) {
-      throw new Error(
-        `FinSetCoproductsWithCotuple: expected ${expectedLegs} legs for the coproduct, received ${legs.length}`,
-      )
+      const domainIndex = new Map<string, number>()
+      h.from.elements.forEach((tuple, idx) => {
+        domainIndex.set(JSON.stringify(tuple), idx)
+      })
+
+      const expIndex = new Map<string, number>()
+      expObj.elements.forEach((tuple, idx) => {
+        expIndex.set(JSON.stringify(tuple), idx)
+      })
+
+      const map = X.elements.map((_x, xIx) => {
+        const values: number[] = []
+        for (let aIx = 0; aIx < A.elements.length; aIx++) {
+          const key = JSON.stringify([xIx, aIx])
+          const position = domainIndex.get(key)
+          if (position === undefined) {
+            throw new Error('FinSet.exponential.curry: missing tuple in domain carrier')
+          }
+          const image = h.map[position]
+          if (image === undefined) {
+            throw new Error('FinSet.exponential.curry: missing map entry for tuple')
+          }
+          values.push(image)
+        }
+        const encoded = JSON.stringify(values)
+        const target = expIndex.get(encoded)
+        if (target === undefined) {
+          throw new Error('FinSet.exponential.curry: resulting function not present in exponential carrier')
+        }
+        return target
+      })
+
+      return { from: X, to: expObj, map }
     }
 
-    const finsetLegs = legs.map((leg) => assertFinSetMor(leg))
+    const uncurry = (X: FinSetObj, k: FinSetMor): FinSetMor => {
+      if (k.from !== X) {
+        throw new Error('FinSet.exponential.uncurry: domain mismatch')
+      }
+      if (k.to !== expObj) {
+        throw new Error('FinSet.exponential.uncurry: codomain mismatch')
+      }
+      if (k.map.length !== X.elements.length) {
+        throw new Error('FinSet.exponential.uncurry: arrow must assign a function to each element')
+      }
 
-    metadata.summands.forEach((summand, idx) => {
-      const leg = finsetLegs[idx]
-      if (!leg) {
-        throw new Error(`FinSetCoproductsWithCotuple: missing leg ${idx} for the coproduct mediator`)
-      }
-      if (leg.from !== summand) {
-        throw new Error('FinSetCoproductsWithCotuple: each leg must originate at its declared summand')
-      }
-      if (leg.to !== codomain) {
-        throw new Error('FinSetCoproductsWithCotuple: every leg must land in the declared codomain')
-      }
-    })
+      const productXA = buildBinaryProductWitness(X, A)
+      const map = productXA.obj.elements.map(tuple => {
+        const [xIx, aIx] = tuple as ReadonlyArray<number>
+        const funcIx = k.map[xIx]
+        if (funcIx === undefined) {
+          throw new Error('FinSet.exponential.uncurry: missing exponential component')
+        }
+        const encoding = expObj.elements[funcIx] as ReadonlyArray<number> | undefined
+        const value = encoding?.[aIx]
+        if (value === undefined) {
+          throw new Error('FinSet.exponential.uncurry: evaluation outside exponential carrier')
+        }
+        return value
+      })
 
-    const map = metadata.elementOrigins.map(({ summandIndex, elementIndex }) => {
-      const leg = finsetLegs[summandIndex]!
-      const image = leg.map[elementIndex]
-      if (image === undefined) {
-        throw new Error('FinSetCoproductsWithCotuple: leg map length does not match the declared summand')
-      }
-      return image
-    })
+      return { from: productXA.obj, to: B, map }
+    }
 
-    return assertFinSetMor({ from: coproduct, to: codomain, map })
-  },
+    return { obj: expObj, evaluation, product: evalProduct, curry, uncurry }
+  }
 }
+
+export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
 
 /** FinSet bijection helper */
 export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): FinSetMor => {
-  const morphism = assertFinSetMor({ from, to, map })
-
-  const domainSize = from.elements.length
-  const codomainSize = to.elements.length
-  if (codomainSize !== domainSize) {
-    throw new TypeError(
-      `FinSet bijection: expected codomain size ${codomainSize} to equal domain size ${domainSize}`,
-    )
-  }
-
-  const seen = new Set<number>()
-  for (let i = 0; i < morphism.map.length; i++) {
-    const image = morphism.map[i]!
-    if (seen.has(image)) {
-      throw new TypeError(
-        `FinSet bijection: map is not injective; codomain index ${image} has multiple preimages`,
-      )
-    }
-    seen.add(image)
-  }
-
-  if (seen.size !== domainSize) {
-    const missing: number[] = []
-    for (let idx = 0; idx < codomainSize; idx++) {
-      if (!seen.has(idx)) missing.push(idx)
-    }
-    throw new TypeError(
-      `FinSet bijection: map is not surjective; missing codomain indices ${missing.join(', ')}`,
-    )
-  }
-
-  return morphism
+  if (map.length !== from.elements.length) throw new Error('finsetBij: length mismatch')
+  return { from, to, map }
 }
 
-/**
- * FinSet inverse helper.
- *
- * Expects a bijective FinSet morphism and throws an informative error when the
- * supplied arrow fails to be a bijection (mismatched cardinalities, duplicated
- * images, or missing codomain preimages).
- */
+/** FinSet inverse helper */
 export const finsetInverse = (bij: FinSetMor): FinSetMor => {
-  const morphism = assertFinSetMor(bij)
-
-  const domainSize = morphism.from.elements.length
-  const codomainSize = morphism.to.elements.length
-  if (domainSize !== codomainSize) {
-    throw new TypeError(
-      `FinSet inverse: expected domain size ${domainSize} to equal codomain size ${codomainSize}`,
-    )
-  }
-
-  const inverseMap: number[] = Array.from({ length: codomainSize }, () => -1)
-  for (let i = 0; i < morphism.map.length; i++) {
-    const image = morphism.map[i]!
-    if (inverseMap[image] !== -1) {
-      throw new TypeError(
-        `FinSet inverse: codomain index ${image} has multiple preimages`,
-      )
-    }
-    inverseMap[image] = i
-  }
-
-  const missing: number[] = []
-  for (let idx = 0; idx < inverseMap.length; idx++) {
-    if (inverseMap[idx] === -1) missing.push(idx)
-  }
-  if (missing.length > 0) {
-    throw new TypeError(
-      `FinSet inverse: missing preimages for codomain indices ${missing.join(', ')}`,
-    )
-  }
-
-  return assertFinSetMor({ from: morphism.to, to: morphism.from, map: inverseMap })
+  const inv: number[] = Array.from({ length: bij.to.elements.length }, () => -1)
+  for (let i = 0; i < bij.map.length; i++) inv[bij.map[i]!] = i
+  return { from: bij.to, to: bij.from, map: inv }
 }
 
 /** FinSet exponential: X^S (all functions S -> X) */
-const encodeIndices = (indices: ReadonlyArray<number>): string => indices.join(",")
-
-export interface FinSetExponentialData {
-  readonly object: FinSetObj
-  readonly product: FinSetObj
-  readonly evaluation: FinSetMor
-  readonly curry: (domain: FinSetObj, arrow: FinSetMor) => FinSetMor
-  readonly uncurry: (domain: FinSetObj, arrow: FinSetMor) => FinSetMor
-  readonly indexOfFunction: (values: ReadonlyArray<number>) => number
-  readonly functionAt: (index: number) => ReadonlyArray<number>
-}
-
-interface FinSetExponentialMetadata {
-  readonly base: FinSetObj
-  readonly exponent: FinSetObj
-  readonly data: FinSetExponentialData
-}
-
-const finSetExponentialMetadata = new WeakMap<FinSetObj, FinSetExponentialMetadata>()
-
-const registerFinSetExponentialMetadata = (
-  base: FinSetObj,
-  exponent: FinSetObj,
-  data: FinSetExponentialData,
-): void => {
-  finSetExponentialMetadata.set(data.object, { base, exponent, data })
-}
-
-const requireFinSetExponentialMetadata = (object: FinSetObj): FinSetExponentialMetadata => {
-  const metadata = finSetExponentialMetadata.get(object)
-  if (!metadata) {
-    throw new Error('FinSet exponential metadata: expected object produced by finSetExponential')
-  }
-  return metadata
-}
-
-export interface FinSetExponentialTranspose {
-  readonly leftExponential: FinSetExponentialData
-  readonly rightExponential: FinSetExponentialData
-  readonly toRight: (arrow: FinSetMor) => FinSetMor
-  readonly toLeft: (arrow: FinSetMor) => FinSetMor
-}
-
-const buildFinSetExponential = (X: FinSetObj, S: FinSetObj): FinSetExponentialData => {
-  const nS = S.elements.length
-  const nX = X.elements.length
+export function expFinSet(X: FinSetObj, S: FinSetObj): FinSetObj {
+  // elements = all functions S -> X (represented as arrays of indices in X of length |S|)
+  const nS = S.elements.length, nX = X.elements.length
   const funcs: number[][] = []
   const rec = (acc: number[], k: number) => {
-    if (k === nS) {
-      funcs.push(acc.slice())
-      return
-    }
+    if (k === nS) { funcs.push(acc.slice()); return }
     for (let i = 0; i < nX; i++) rec([...acc, i], k + 1)
   }
   rec([], 0)
-
-  const object: FinSetObj = { elements: funcs }
-  const signatureIndex = new Map<string, number>()
-  funcs.forEach((values, idx) => signatureIndex.set(encodeIndices(values), idx))
-
-  const { obj: product } = FinSet.product([object, S])
-  const productTuples = ensureBinaryTuples(
-    assertListElements(product.elements) as ReadonlyArray<ReadonlyArray<number>>,
-    'FinSet exponential',
-  )
-  const evaluation: FinSetMor = {
-    from: product,
-    to: X,
-    map: productTuples.map(([funcIdx, argIdx]) => {
-      const func = funcs[funcIdx]
-      if (!func) {
-        throw new Error('FinSet exponential: evaluation referenced missing function index')
-      }
-      const value = func[argIdx]
-      if (value === undefined) {
-        throw new Error('FinSet exponential: evaluation referenced missing argument index')
-      }
-      return value
-    }),
-  }
-
-  const indexOfFunction = (values: ReadonlyArray<number>): number => {
-    const key = encodeIndices(values)
-    const idx = signatureIndex.get(key)
-    if (idx === undefined) {
-      throw new Error('FinSet exponential: attempted to reference a non-existent function')
-    }
-    return idx
-  }
-
-  const functionAt = (index: number): ReadonlyArray<number> => {
-    const func = funcs[index]
-    if (!func) {
-      throw new Error(`FinSet exponential: function index ${index} out of range`)
-    }
-    return func
-  }
-
-  const curry = (domain: FinSetObj, arrow: FinSetMor): FinSetMor => {
-    if (arrow.to !== X) {
-      throw new Error('FinSet exponential curry: arrow must land in the codomain object')
-    }
-    const tuples = assertListElements(arrow.from.elements) as ReadonlyArray<ReadonlyArray<number>>
-    const tupleIndex = new Map<string, number>()
-    tuples.forEach((tuple, idx) => tupleIndex.set(encodeIndices(tuple as ReadonlyArray<number>), idx))
-
-    const map = domain.elements.map((_value, domIdx) => {
-      const outputs = S.elements.map((_arg, argIdx) => {
-        const key = encodeIndices([domIdx, argIdx])
-        const idx = tupleIndex.get(key)
-        if (idx === undefined) {
-          throw new Error('FinSet exponential curry: missing tuple in product domain')
-        }
-        return arrow.map[idx]!
-      })
-      return indexOfFunction(outputs)
-    })
-
-    return { from: domain, to: object, map }
-  }
-
-  const uncurry = (domain: FinSetObj, arrow: FinSetMor): FinSetMor => {
-    if (arrow.to !== object) {
-      throw new Error('FinSet exponential uncurry: arrow must land in the exponential object')
-    }
-    const { obj: productDomain } = FinSet.product([domain, S])
-    const tuples = ensureBinaryTuples(
-      assertListElements(productDomain.elements) as ReadonlyArray<ReadonlyArray<number>>,
-      'FinSet exponential uncurry',
-    )
-    const map = tuples.map(([domIdx, argIdx]) => {
-      const funcIdx = arrow.map[domIdx]
-      if (funcIdx === undefined) {
-        throw new Error('FinSet exponential uncurry: missing function value for domain index')
-      }
-      const func = functionAt(funcIdx)
-      const value = func[argIdx]
-      if (value === undefined) {
-        throw new Error('FinSet exponential uncurry: missing evaluation for argument index')
-      }
-      return value
-    })
-    return { from: productDomain, to: X, map }
-  }
-
-  const data: FinSetExponentialData = {
-    object,
-    product,
-    evaluation,
-    curry,
-    uncurry,
-    indexOfFunction,
-    functionAt,
-  }
-
-  registerFinSetExponentialMetadata(X, S, data)
-
-  return data
-}
-
-export const expFinSet = (X: FinSetObj, S: FinSetObj): FinSetObj => buildFinSetExponential(X, S).object
-export const finSetExponential = (X: FinSetObj, S: FinSetObj): FinSetExponentialData => buildFinSetExponential(X, S)
-
-const makeTupleIndex = (tuples: ReadonlyArray<ReadonlyArray<number>>): Map<string, number> => {
-  const index = new Map<string, number>()
-  tuples.forEach((tuple, idx) => index.set(encodeIndices(tuple as ReadonlyArray<number>), idx))
-  return index
-}
-
-const ensureBinaryTuples = (
-  tuples: ReadonlyArray<ReadonlyArray<number>>,
-  context: string,
-): ReadonlyArray<readonly [number, number]> =>
-  tuples.map((tuple) => {
-    if (tuple.length !== 2) {
-      throw new Error(`${context}: expected tuple of length two`)
-    }
-    const [first, second] = tuple
-    if (first === undefined || second === undefined) {
-      throw new Error(`${context}: encountered incomplete tuple entry`)
-    }
-    return [first, second] as const
-  })
-
-export const finsetExponentialTranspose = (input: {
-  readonly left: FinSetObj
-  readonly right: FinSetObj
-  readonly codomain: FinSetObj
-}): FinSetExponentialTranspose => {
-  const { left, right, codomain } = input
-  const rightExponential = finSetExponential(codomain, right)
-  const leftExponential = finSetExponential(codomain, left)
-
-  const toRight = (arrow: FinSetMor): FinSetMor => {
-    if (arrow.from !== left) {
-      throw new Error('finsetExponentialTranspose: arrow domain must be the declared left object')
-    }
-    if (arrow.to !== rightExponential.object) {
-      throw new Error('finsetExponentialTranspose: arrow must land in C^right')
-    }
-
-    const uncurried = rightExponential.uncurry(left, arrow)
-    const { obj: swappedDomain } = FinSet.product([right, left])
-    const swappedTuples = ensureBinaryTuples(
-      assertListElements(swappedDomain.elements) as ReadonlyArray<ReadonlyArray<number>>,
-      'finsetExponentialTranspose',
-    )
-    const targetIndex = makeTupleIndex(assertListElements(uncurried.from.elements) as ReadonlyArray<ReadonlyArray<number>>)
-    const map = swappedTuples.map(
-      ([rightIdx, leftIdx]) => {
-        const key = encodeIndices([leftIdx, rightIdx])
-        const idx = targetIndex.get(key)
-        if (idx === undefined) {
-          throw new Error('finsetExponentialTranspose: missing swapped tuple in A×B domain')
-        }
-        return idx
-      },
-    )
-    const swap: FinSetMor = { from: swappedDomain, to: uncurried.from, map }
-    return leftExponential.curry(right, FinSet.compose(uncurried, swap))
-  }
-
-  const toLeft = (arrow: FinSetMor): FinSetMor => {
-    if (arrow.from !== right) {
-      throw new Error('finsetExponentialTranspose: arrow domain must be the declared right object')
-    }
-    if (arrow.to !== leftExponential.object) {
-      throw new Error('finsetExponentialTranspose: arrow must land in C^left')
-    }
-
-    const uncurried = leftExponential.uncurry(right, arrow)
-    const { obj: swappedDomain } = FinSet.product([left, right])
-    const swappedTuples = ensureBinaryTuples(
-      assertListElements(swappedDomain.elements) as ReadonlyArray<ReadonlyArray<number>>,
-      'finsetExponentialTranspose',
-    )
-    const targetIndex = makeTupleIndex(assertListElements(uncurried.from.elements) as ReadonlyArray<ReadonlyArray<number>>)
-    const map = swappedTuples.map(
-      ([leftIdx, rightIdx]) => {
-        const key = encodeIndices([rightIdx, leftIdx])
-        const idx = targetIndex.get(key)
-        if (idx === undefined) {
-          throw new Error('finsetExponentialTranspose: missing swapped tuple in B×A domain')
-        }
-        return idx
-      },
-    )
-    const swap: FinSetMor = { from: swappedDomain, to: uncurried.from, map }
-    return rightExponential.curry(left, FinSet.compose(uncurried, swap))
-  }
-
-  return { leftExponential, rightExponential, toRight, toLeft }
-}
-
-export const finsetPointElement = (object: FinSetObj, elementIndex: number): FinSetMor => {
-  if (!Number.isInteger(elementIndex)) {
-    throw new Error('finsetPointElement: elementIndex must be an integer index')
-  }
-  if (elementIndex < 0 || elementIndex >= object.elements.length) {
-    throw new Error('finsetPointElement: elementIndex out of range for the provided object')
-  }
-
-  return assertFinSetMor({
-    from: FinSet.terminalObj,
-    to: object,
-    map: [elementIndex],
-  })
-}
-
-export const finsetPointFromArrow = (object: FinSetObj, arrow: FinSetMor): number => {
-  const point = assertFinSetMor(arrow)
-
-  if (point.from !== FinSet.terminalObj) {
-    throw new Error('finsetPointFromArrow: arrow must originate at the terminal object')
-  }
-  if (point.to !== object) {
-    throw new Error('finsetPointFromArrow: arrow codomain must match the provided object')
-  }
-  if (point.map.length !== FinSet.terminalObj.elements.length) {
-    throw new Error('finsetPointFromArrow: point arrow must have exactly one coordinate')
-  }
-
-  const [elementIndex] = point.map
-  if (elementIndex === undefined) {
-    throw new Error('finsetPointFromArrow: missing terminal coordinate image')
-  }
-
-  return elementIndex
-}
-
-export interface FinSetPointSurjectivityWitness {
-  readonly base: FinSetObj
-  readonly exponent: FinSetObj
-  readonly pointPreimages: ReadonlyMap<number, number>
-}
-
-export interface FinSetPointSurjectivityResult {
-  readonly holds: boolean
-  readonly witness?: FinSetPointSurjectivityWitness
-  readonly missingPoints?: ReadonlyArray<number>
-}
-
-export const finsetPointSurjective = (candidate: FinSetMor): FinSetPointSurjectivityResult => {
-  const arrow = assertFinSetMor(candidate)
-  const metadata = requireFinSetExponentialMetadata(arrow.to)
-
-  if (arrow.from !== metadata.exponent) {
-    throw new Error('finsetPointSurjective: arrow domain must match the exponential exponent')
-  }
-
-  const pointPreimages = new Map<number, number>()
-  for (let idx = 0; idx < arrow.from.elements.length; idx++) {
-    const point = finsetPointElement(arrow.from, idx)
-    const image = FinSet.compose(arrow, point).map[0]
-    if (image === undefined) {
-      throw new Error('finsetPointSurjective: composed point must have a single coordinate')
-    }
-    if (!pointPreimages.has(image)) {
-      pointPreimages.set(image, idx)
-    }
-  }
-
-  const missing: number[] = []
-  const total = metadata.data.object.elements.length
-  for (let idx = 0; idx < total; idx++) {
-    if (!pointPreimages.has(idx)) {
-      missing.push(idx)
-    }
-  }
-
-  if (missing.length > 0) {
-    return { holds: false, missingPoints: missing }
-  }
-
-  return {
-    holds: true,
-    witness: {
-      base: metadata.base,
-      exponent: metadata.exponent,
-      pointPreimages,
-    },
-  }
-}
-
-export interface FinSetArrowNaming {
-  readonly name: FinSetMor
-  readonly evaluationMediator: FinSetMor
-}
-
-export const finsetNameFromArrow = (input: {
-  readonly domain: FinSetObj
-  readonly codomain: FinSetObj
-  readonly arrow: FinSetMor
-}): FinSetArrowNaming => {
-  const { domain, codomain, arrow } = input
-
-  if (arrow.from !== domain) {
-    throw new Error('finsetNameFromArrow: arrow domain mismatch')
-  }
-  if (arrow.to !== codomain) {
-    throw new Error('finsetNameFromArrow: arrow codomain mismatch')
-  }
-
-  const exponential = finSetExponential(codomain, domain)
-  const leftUnit = finsetProductLeftUnitWitness(domain)
-
-  const productArrow = FinSet.compose(arrow, leftUnit.forward)
-  const name = exponential.curry(FinSet.terminalObj, productArrow)
-
-  if (name.from !== FinSet.terminalObj) {
-    throw new Error('finsetNameFromArrow: curry must produce an arrow from the terminal object')
-  }
-
-  const terminalLift = FinSet.compose(name, leftUnit.terminalProjection)
-  const tuples = assertListElements(leftUnit.product.elements) as ReadonlyArray<ReadonlyArray<number>>
-  const evaluationIndex = makeTupleIndex(
-    assertListElements(exponential.product.elements) as ReadonlyArray<ReadonlyArray<number>>,
-  )
-
-  const evaluationMediator: FinSetMor = {
-    from: leftUnit.product,
-    to: exponential.product,
-    map: tuples.map((_tuple, idx) => {
-      const funcIdx = terminalLift.map[idx]!
-      const argIdx = leftUnit.forward.map[idx]!
-      const key = encodeIndices([funcIdx, argIdx])
-      const image = evaluationIndex.get(key)
-      if (image === undefined) {
-        throw new Error('finsetNameFromArrow: missing tuple in exponential product')
-      }
-      return image
-    }),
-  }
-
-  assertEqualArrows(
-    FinSet.compose(exponential.evaluation, evaluationMediator),
-    productArrow,
-    'finsetNameFromArrow: evaluation must recover the original arrow on 1×A',
-  )
-
-  return { name, evaluationMediator }
-}
-
-export const finsetArrowFromName = (input: {
-  readonly domain: FinSetObj
-  readonly codomain: FinSetObj
-  readonly name: FinSetMor
-}): FinSetMor => {
-  const { domain, codomain, name } = input
-  const exponential = finSetExponential(codomain, domain)
-
-  if (name.from !== FinSet.terminalObj) {
-    throw new Error('finsetArrowFromName: name must originate at the terminal object')
-  }
-  if (name.to !== exponential.object) {
-    throw new Error('finsetArrowFromName: name must land in the expected exponential object')
-  }
-  if (name.map.length !== FinSet.terminalObj.elements.length) {
-    throw new Error('finsetArrowFromName: terminal morphism must have exactly one coordinate')
-  }
-
-  const functionIndex = name.map[0]
-  if (functionIndex === undefined) {
-    throw new Error('finsetArrowFromName: expected a function index at the terminal coordinate')
-  }
-
-  const outputs = exponential.functionAt(functionIndex)
-  if (outputs.length !== domain.elements.length) {
-    throw new Error('finsetArrowFromName: function arity does not match the declared domain')
-  }
-
-  return assertFinSetMor({ from: domain, to: codomain, map: outputs.slice() })
+  return { elements: funcs }
 }
 
 /** Postcompose on exponentials: given h: X -> Y, map X^S -> Y^S by (h ∘ -) */
 export const expPostcompose = (h: FinSetMor, S: FinSetObj): FinSetMor => {
-  const source = finSetExponential(h.from, S)
-  const target = finSetExponential(h.to, S)
-
-  const map = (source.object.elements as ReadonlyArray<ReadonlyArray<number>>).map((arr) => {
-    const out = arr.map((ix) => {
-      const value = h.map[ix]
-      if (value === undefined) {
-        throw new Error('FinSet expPostcompose: encountered out-of-bounds postcomposition index')
-      }
-      return value
-    })
-    return target.indexOfFunction(out)
+  const XtoY = h.map
+  const YpowS = expFinSet(h.to, S)
+  const indexMap = new Map<string, number>()
+  YpowS.elements.forEach((arr, idx) => indexMap.set(JSON.stringify(arr), idx))
+  const XpowS = expFinSet(h.from, S)
+  const map = XpowS.elements.map(arr => {
+    const out = (arr as number[]).map((ix) => XtoY[ix]!)
+    return indexMap.get(JSON.stringify(out))!
   })
-
-  const morphism: FinSetMor = { from: source.object, to: target.object, map }
-
-  const targetIndex = new Map<string, number>()
-  const targetTuples = ensureBinaryTuples(
-    assertListElements(target.product.elements) as ReadonlyArray<ReadonlyArray<number>>,
-    'FinSet expPostcompose target',
-  )
-  targetTuples.forEach((tuple, idx) => targetIndex.set(encodeIndices(tuple), idx))
-
-  const cross: FinSetMor = {
-    from: source.product,
-    to: target.product,
-    map: ensureBinaryTuples(
-      assertListElements(source.product.elements) as ReadonlyArray<ReadonlyArray<number>>,
-      'FinSet expPostcompose source',
-    ).map(([funcIdx, argIdx]) => {
-      const tgtFuncIdx = morphism.map[funcIdx]
-      if (tgtFuncIdx === undefined) {
-        throw new Error('FinSet expPostcompose: missing mapped function index for source tuple')
-      }
-      const key = encodeIndices([tgtFuncIdx, argIdx])
-      const idx = targetIndex.get(key)
-      if (idx === undefined) {
-        throw new Error('FinSet expPostcompose: missing tuple in target product')
-      }
-      return idx
-    }),
-  }
-
-  const lhs = FinSet.compose(h, source.evaluation)
-  const rhs = FinSet.compose(target.evaluation, cross)
-  const equal = FinSet.equalMor?.(lhs, rhs) ?? lhs.map.every((value, idx) => value === rhs.map[idx])
-  if (!equal) {
-    throw new Error('FinSet expPostcompose: evaluation square failed to commute')
-  }
-
-  return morphism
+  return { from: XpowS, to: YpowS, map }
 }
 
 /** Precompose on exponentials: given r: S' -> S, map X^S -> X^{S'} by (- ∘ r) */
-export const expPrecompose = (
-  X: FinSetObj,
-  r: FinSetMor,
-  S: FinSetObj,
-  Sprime: FinSetObj,
-): FinSetMor => {
-  const source = finSetExponential(X, S)
-  const target = finSetExponential(X, Sprime)
-
-  const map = (source.object.elements as ReadonlyArray<ReadonlyArray<number>>).map((arr) => {
-    const out = Sprime.elements.map((_arg, idx) => {
-      const preIdx = r.map[idx]
-      if (preIdx === undefined) {
-        throw new Error('FinSet expPrecompose: precomposition arrow missing coordinate index')
-      }
-      const value = arr[preIdx]
-      if (value === undefined) {
-        throw new Error('FinSet expPrecompose: function missing value for pulled-back index')
-      }
-      return value
-    })
-    return target.indexOfFunction(out)
+export const expPrecompose = (X: FinSetObj, r: FinSetMor, S: FinSetObj, Sprime: FinSetObj): FinSetMor => {
+  const XpowS = expFinSet(X, S)
+  const XpowSprim = expFinSet(X, Sprime)
+  const indexMap = new Map<string, number>()
+  XpowSprim.elements.forEach((arr, idx) => indexMap.set(JSON.stringify(arr), idx))
+  const map = XpowS.elements.map(arr => {
+    const out = r.map.map((j) => (arr as number[])[j]!) // g[s'] = f[r(s')]
+    return indexMap.get(JSON.stringify(out))!
   })
-
-  const morphism: FinSetMor = { from: source.object, to: target.object, map }
-
-  const targetIndex = new Map<string, number>()
-  const targetTuples = ensureBinaryTuples(
-    assertListElements(target.product.elements) as ReadonlyArray<ReadonlyArray<number>>,
-    'FinSet expPrecompose target',
-  )
-  targetTuples.forEach((tuple, idx) => targetIndex.set(encodeIndices(tuple), idx))
-
-  const domainProduct = FinSet.product([source.object, Sprime]).obj
-  const domainTuples = ensureBinaryTuples(
-    assertListElements(domainProduct.elements) as ReadonlyArray<ReadonlyArray<number>>,
-    'FinSet expPrecompose domain',
-  )
-
-  const left: FinSetMor = {
-    from: domainProduct,
-    to: target.product,
-    map: domainTuples.map(([funcIdx, argIdx]) => {
-      const tgtFuncIdx = morphism.map[funcIdx]
-      if (tgtFuncIdx === undefined) {
-        throw new Error('FinSet expPrecompose: missing mapped function index for domain tuple')
-      }
-      const key = encodeIndices([tgtFuncIdx, argIdx])
-      const idx = targetIndex.get(key)
-      if (idx === undefined) {
-        throw new Error('FinSet expPrecompose: missing tuple in target product')
-      }
-      return idx
-    }),
-  }
-
-  const sourceIndex = new Map<string, number>()
-  const sourceTuples = ensureBinaryTuples(
-    assertListElements(source.product.elements) as ReadonlyArray<ReadonlyArray<number>>,
-    'FinSet expPrecompose source',
-  )
-  sourceTuples.forEach((tuple, idx) => sourceIndex.set(encodeIndices(tuple), idx))
-
-  const right: FinSetMor = {
-    from: domainProduct,
-    to: source.product,
-    map: domainTuples.map(([funcIdx, argIdx]) => {
-      const pulledIdx = r.map[argIdx]
-      if (pulledIdx === undefined) {
-        throw new Error('FinSet expPrecompose: precomposition arrow missing target coordinate')
-      }
-      const key = encodeIndices([funcIdx, pulledIdx])
-      const idx = sourceIndex.get(key)
-      if (idx === undefined) {
-        throw new Error('FinSet expPrecompose: missing tuple in source product')
-      }
-      return idx
-    }),
-  }
-
-  const lhs = FinSet.compose(target.evaluation, left)
-  const rhs = FinSet.compose(source.evaluation, right)
-  const equal = FinSet.equalMor?.(lhs, rhs) ?? lhs.map.every((value, idx) => value === rhs.map[idx])
-  if (!equal) {
-    throw new Error('FinSet expPrecompose: evaluation square failed to commute')
-  }
-
-  return morphism
-}
-
-export interface FinSetIsoWitness {
-  readonly forward: FinSetMor
-  readonly backward: FinSetMor
-}
-
-const finsetArrowsEqual = (left: FinSetMor, right: FinSetMor): boolean =>
-  (FinSet.equalMor?.(left, right) ??
-    (left.from === right.from &&
-      left.to === right.to &&
-      left.map.length === right.map.length &&
-      left.map.every((value, idx) => value === right.map[idx]))) === true
-
-const assertEqualArrows = (left: FinSetMor, right: FinSetMor, context: string): void => {
-  if (!finsetArrowsEqual(left, right)) {
-    throw new Error(context)
-  }
-}
-
-const enumerateFinSetMorphisms = (from: FinSetObj, to: FinSetObj): FinSetMor[] => {
-  const domainSize = from.elements.length
-  const codomainSize = to.elements.length
-  if (domainSize === 0) {
-    return [assertFinSetMor({ from, to, map: [] })]
-  }
-  const map: number[] = new Array(domainSize)
-  const morphisms: FinSetMor[] = []
-  const build = (position: number) => {
-    if (position === domainSize) {
-      morphisms.push(assertFinSetMor({ from, to, map: map.slice() }))
-      return
-    }
-    for (let idx = 0; idx < codomainSize; idx++) {
-      map[position] = idx
-      build(position + 1)
-    }
-  }
-  build(0)
-  return morphisms
-}
-
-const makeFiniteCategoryForFinSetProduct = (
-  objects: ReadonlyArray<FinSetObj>,
-): EnumeratedFiniteCategory<FinSetObj, FinSetMor> => {
-  const uniqueObjects: FinSetObj[] = []
-  objects.forEach((object) => {
-    if (!uniqueObjects.includes(object)) {
-      uniqueObjects.push(object)
-    }
-  })
-
-  const arrows: FinSetMor[] = []
-  const seen = new Set<string>()
-  const keyFor = (arrow: FinSetMor): string => {
-    const fromIndex = uniqueObjects.indexOf(arrow.from)
-    const toIndex = uniqueObjects.indexOf(arrow.to)
-    return `${fromIndex}->${toIndex}:${arrow.map.join(',')}`
-  }
-
-  const pushArrow = (arrow: FinSetMor) => {
-    const key = keyFor(arrow)
-    if (!seen.has(key)) {
-      seen.add(key)
-      arrows.push(arrow)
-    }
-  }
-
-  uniqueObjects.forEach((object) => {
-    pushArrow(FinSet.id(object))
-  })
-
-  uniqueObjects.forEach((from) => {
-    uniqueObjects.forEach((to) => {
-      enumerateFinSetMorphisms(from, to).forEach(pushArrow)
-    })
-  })
-
-  return {
-    objects: uniqueObjects,
-    arrows,
-    id: (object) => FinSet.id(object),
-    compose: (g, f) => FinSet.compose(g, f),
-    src: (arrow) => arrow.from,
-    dst: (arrow) => arrow.to,
-    eq: finsetArrowsEqual,
-  }
-}
-
-export interface FinSetProductFromPullbackResult {
-  readonly calculator: PullbackCalculator<FinSetObj, FinSetMor>
-  readonly product: CategoryLimits.BinaryProductTuple<FinSetObj, FinSetMor>
-  readonly native: CategoryLimits.BinaryProductTuple<FinSetObj, FinSetMor>
-  readonly span: { readonly left: FinSetMor; readonly right: FinSetMor }
-}
-
-export const finsetProductFromPullback = (
-  leftObj: FinSetObj,
-  rightObj: FinSetObj,
-): FinSetProductFromPullbackResult => {
-  const terminal = FinSet.terminalObj
-  const leftTerminate = FinSet.terminate(leftObj)
-  const rightTerminate = FinSet.terminate(rightObj)
-  const native = FinSet.product([leftObj, rightObj])
-
-  const category = makeFiniteCategoryForFinSetProduct([
-    leftObj,
-    rightObj,
-    terminal,
-    native.obj,
-  ])
-  const calculator = makeFinitePullbackCalculator(category)
-
-  const witness = productFromPullbacks({
-    category: FinSet,
-    eq: finsetArrowsEqual,
-    calculator,
-    terminalObj: terminal,
-    leftObj,
-    rightObj,
-    leftTerminate,
-    rightTerminate,
-  })
-
-  const [projLeft, projRight] = native.projections as readonly [FinSetMor | undefined, FinSetMor | undefined]
-  if (!projLeft || !projRight) {
-    throw new Error('finsetProductFromPullback: FinSet.product must supply binary projections')
-  }
-
-  if (witness.product.object !== native.obj) {
-    throw new Error('finsetProductFromPullback: reconstructed product carrier differs from FinSet.product')
-  }
-
-  assertEqualArrows(
-    witness.product.projections[0],
-    projLeft,
-    'finsetProductFromPullback: left projection mismatch between pullback and FinSet.product',
-  )
-  assertEqualArrows(
-    witness.product.projections[1],
-    projRight,
-    'finsetProductFromPullback: right projection mismatch between pullback and FinSet.product',
-  )
-
-  const identityTuple = witness.product.tuple(native.obj, [projLeft, projRight])
-  assertEqualArrows(
-    identityTuple,
-    FinSet.id(native.obj),
-    'finsetProductFromPullback: tuple must recover the identity on the native product',
-  )
-
-  const canonicalTuple = FinSetProductsWithTuple.tuple(native.obj, [projLeft, projRight], native.obj)
-  assertEqualArrows(
-    witness.product.tuple(native.obj, [projLeft, projRight]),
-    canonicalTuple,
-    'finsetProductFromPullback: tuple disagrees with FinSetProductsWithTuple on the product object',
-  )
-
-  const nativeTuple: CategoryLimits.BinaryProductTuple<FinSetObj, FinSetMor> = {
-    object: native.obj,
-    projections: [projLeft, projRight],
-    tuple: (domain, legs) => FinSetProductsWithTuple.tuple(domain, legs, native.obj),
-  }
-
-  return { calculator, product: witness.product, native: nativeTuple, span: witness.span }
-}
-
-export interface FinSetProductPullbackWitness {
-  readonly product: FinSetObj
-  readonly projectionIntoLeft: FinSetMor
-  readonly projectionIntoRight: FinSetMor
-  readonly leftTerminate: FinSetMor
-  readonly rightTerminate: FinSetMor
-  readonly factorCone: (input: {
-    readonly object: FinSetObj
-    readonly intoLeft: FinSetMor
-    readonly intoRight: FinSetMor
-  }) => FinSetMor
-}
-
-export const finsetProductPullback = (
-  leftObj: FinSetObj,
-  rightObj: FinSetObj,
-): FinSetProductPullbackWitness => {
-  const witness = productAsPullback({
-    category: FinSet,
-    eq: finsetArrowsEqual,
-    products: FinSetProductsWithTuple,
-    terminalObj: FinSet.terminalObj,
-    terminate: FinSet.terminate,
-    left: leftObj,
-    right: rightObj,
-  })
-
-  const factorCone = (input: {
-    readonly object: FinSetObj
-    readonly intoLeft: FinSetMor
-    readonly intoRight: FinSetMor
-  }): FinSetMor => {
-    const { object, intoLeft, intoRight } = input
-    const leftLeg = assertFinSetMor(intoLeft)
-    const rightLeg = assertFinSetMor(intoRight)
-
-    if (leftLeg.from !== object) {
-      throw new Error('finsetProductPullback: left leg must originate at the cone tip')
-    }
-    if (rightLeg.from !== object) {
-      throw new Error('finsetProductPullback: right leg must originate at the cone tip')
-    }
-    if (leftLeg.to !== leftObj) {
-      throw new Error('finsetProductPullback: left leg must land in the left factor')
-    }
-    if (rightLeg.to !== rightObj) {
-      throw new Error('finsetProductPullback: right leg must land in the right factor')
-    }
-
-    const result = witness.factorCone({ apex: object, toDomain: leftLeg, toAnchor: rightLeg })
-    if (!result.factored || !result.mediator) {
-      throw new Error(
-        result.reason ?? 'finsetProductPullback: cone does not factor through the product',
-      )
-    }
-
-    return result.mediator
-  }
-
-  return {
-    product: witness.pullback.apex,
-    projectionIntoLeft: witness.pullback.toDomain,
-    projectionIntoRight: witness.pullback.toAnchor,
-    leftTerminate: witness.span.left,
-    rightTerminate: witness.span.right,
-    factorCone,
-  }
-}
-
-export interface FinSetPullbackWitness {
-  readonly object: FinSetObj
-  readonly inclusionIntoLeft: FinSetMor
-  readonly inclusionIntoRight: FinSetMor
-  readonly toCodomain: FinSetMor
-  readonly factorCone: (input: {
-    readonly object: FinSetObj
-    readonly intoLeft: FinSetMor
-    readonly intoRight: FinSetMor
-  }) => FinSetMor
-}
-
-export const finsetPullback = (leftInclusion: FinSetMor, rightInclusion: FinSetMor): FinSetPullbackWitness => {
-  const left = assertFinSetMor(leftInclusion)
-  const right = assertFinSetMor(rightInclusion)
-
-  if (left.to !== right.to) {
-    throw new Error('finsetPullback: inclusions must share a codomain')
-  }
-
-  const ensureInclusion = (label: string, inclusion: FinSetMor): Map<number, number> => {
-    const indexByCodomain = new Map<number, number>()
-    const { from, to, map } = inclusion
-
-    for (let idx = 0; idx < map.length; idx++) {
-      const codomainIndex = map[idx]
-      if (codomainIndex === undefined) {
-        throw new Error(`finsetPullback: ${label} map is shorter than its domain`)
-      }
-      if (indexByCodomain.has(codomainIndex)) {
-        throw new Error(`finsetPullback: ${label} must be injective to represent an inclusion`)
-      }
-
-      const subsetElement = from.elements[idx]
-      const ambientElement = to.elements[codomainIndex]
-      if (ambientElement === undefined) {
-        throw new Error(`finsetPullback: ${label} references an out-of-range codomain index ${codomainIndex}`)
-      }
-      if (!Object.is(subsetElement, ambientElement)) {
-        throw new Error(
-          `finsetPullback: ${label} must embed its domain element into the ambient codomain`,
-        )
-      }
-
-      indexByCodomain.set(codomainIndex, idx)
-    }
-
-    return indexByCodomain
-  }
-
-  const leftIndex = ensureInclusion('left inclusion', left)
-  const rightIndex = ensureInclusion('right inclusion', right)
-
-  const intersectionCodomainIndices: number[] = []
-  leftIndex.forEach((_domainIndex, codomainIndex) => {
-    if (rightIndex.has(codomainIndex)) {
-      intersectionCodomainIndices.push(codomainIndex)
-    }
-  })
-  intersectionCodomainIndices.sort((a, b) => a - b)
-
-  const codomain = left.to
-  const intersectionElements = intersectionCodomainIndices.map((codomainIndex) => {
-    const element = codomain.elements[codomainIndex]
-    if (element === undefined) {
-      throw new Error('finsetPullback: intersection index out of codomain range')
-    }
-    return element
-  })
-
-  const intersection: FinSetObj = { elements: intersectionElements }
-  const intersectionIndex = new Map<number, number>()
-  intersectionCodomainIndices.forEach((codomainIndex, idx) => {
-    intersectionIndex.set(codomainIndex, idx)
-  })
-
-  const inclusionIntoLeft = assertFinSetMor({
-    from: intersection,
-    to: left.from,
-    map: intersectionCodomainIndices.map((codomainIndex) => {
-      const domainIndex = leftIndex.get(codomainIndex)
-      if (domainIndex === undefined) {
-        throw new Error('finsetPullback: missing left index for intersection element')
-      }
-      return domainIndex
-    }),
-  })
-
-  const inclusionIntoRight = assertFinSetMor({
-    from: intersection,
-    to: right.from,
-    map: intersectionCodomainIndices.map((codomainIndex) => {
-      const domainIndex = rightIndex.get(codomainIndex)
-      if (domainIndex === undefined) {
-        throw new Error('finsetPullback: missing right index for intersection element')
-      }
-      return domainIndex
-    }),
-  })
-
-  const toCodomain = assertFinSetMor({
-    from: intersection,
-    to: codomain,
-    map: intersectionCodomainIndices,
-  })
-
-  assertEqualArrows(
-    FinSet.compose(left, inclusionIntoLeft),
-    toCodomain,
-    'finsetPullback: left composite must land in the shared codomain',
-  )
-  assertEqualArrows(
-    FinSet.compose(right, inclusionIntoRight),
-    toCodomain,
-    'finsetPullback: right composite must land in the shared codomain',
-  )
-
-  const factorCone = (input: {
-    readonly object: FinSetObj
-    readonly intoLeft: FinSetMor
-    readonly intoRight: FinSetMor
-  }): FinSetMor => {
-    const { object, intoLeft, intoRight } = input
-    const leftLeg = assertFinSetMor(intoLeft)
-    const rightLeg = assertFinSetMor(intoRight)
-
-    if (leftLeg.from !== object) {
-      throw new Error('finsetPullback.factorCone: left leg must originate at the cone tip')
-    }
-    if (rightLeg.from !== object) {
-      throw new Error('finsetPullback.factorCone: right leg must originate at the cone tip')
-    }
-    if (leftLeg.to !== left.from) {
-      throw new Error('finsetPullback.factorCone: left leg must land in the left inclusion domain')
-    }
-    if (rightLeg.to !== right.from) {
-      throw new Error('finsetPullback.factorCone: right leg must land in the right inclusion domain')
-    }
-
-    const leftComposite = FinSet.compose(left, leftLeg)
-    const rightComposite = FinSet.compose(right, rightLeg)
-    assertEqualArrows(
-      leftComposite,
-      rightComposite,
-      'finsetPullback.factorCone: supplied legs must commute in the codomain',
-    )
-
-    const mediatorMap = leftComposite.map.map((codomainIndex) => {
-      const intersectionIdx = intersectionIndex.get(codomainIndex)
-      if (intersectionIdx === undefined) {
-        throw new Error('finsetPullback.factorCone: cone does not factor through the intersection')
-      }
-      return intersectionIdx
-    })
-
-    const mediator = assertFinSetMor({ from: object, to: intersection, map: mediatorMap })
-
-    assertEqualArrows(
-      FinSet.compose(inclusionIntoLeft, mediator),
-      leftLeg,
-      'finsetPullback.factorCone: factoring through the left inclusion failed',
-    )
-    assertEqualArrows(
-      FinSet.compose(inclusionIntoRight, mediator),
-      rightLeg,
-      'finsetPullback.factorCone: factoring through the right inclusion failed',
-    )
-
-    return mediator
-  }
-
-  return { object: intersection, inclusionIntoLeft, inclusionIntoRight, toCodomain, factorCone }
-}
-
-export interface FinSetEqualizerPullbackWitness {
-  readonly object: FinSetObj
-  readonly inclusion: FinSetMor
-  readonly toCodomain: FinSetMor
-  readonly pair: FinSetMor
-  readonly diagonal: FinSetMor
-  readonly certification: PullbackCertification<FinSetObj, FinSetMor>
-  readonly factor: (arrow: FinSetMor) => FinSetMor
-}
-
-export const finsetEqualizerPullback = (leftInput: FinSetMor, rightInput: FinSetMor): FinSetEqualizerPullbackWitness => {
-  const left = assertFinSetMor(leftInput)
-  const right = assertFinSetMor(rightInput)
-
-  if (left.from !== right.from || left.to !== right.to) {
-    throw new Error('finsetEqualizerPullback: arrows must share a domain and codomain')
-  }
-
-  const equalisingIndices: number[] = []
-  for (let idx = 0; idx < left.map.length; idx++) {
-    const leftImage = left.map[idx]
-    const rightImage = right.map[idx]
-    if (leftImage === undefined || rightImage === undefined) {
-      throw new Error('finsetEqualizerPullback: arrow maps must match the declared domain size')
-    }
-    if (leftImage === rightImage) {
-      equalisingIndices.push(idx)
-    }
-  }
-
-  const domain = left.from
-  const codomain = left.to
-  const equaliserElements = equalisingIndices.map((idx) => {
-    const element = domain.elements[idx]
-    if (element === undefined) {
-      throw new Error('finsetEqualizerPullback: equaliser index out of range for the domain')
-    }
-    return element
-  })
-
-  const equaliser: FinSetObj = { elements: equaliserElements }
-  const inclusion = assertFinSetMor({
-    from: equaliser,
-    to: domain,
-    map: equalisingIndices,
-  })
-
-  const toCodomain = FinSet.compose(left, inclusion)
-
-  const product = FinSet.product([codomain, codomain])
-  const objectsForCalculator = [domain, codomain, product.obj, equaliser]
-  const category = makeFiniteCategoryForFinSetProduct(objectsForCalculator)
-  const calculator = makeFinitePullbackCalculator(category)
-
-  const witness = equalizerFromPullback({
-    category: FinSet,
-    eq: finsetArrowsEqual,
-    calculator,
-    products: FinSetProductsWithTuple,
-    left,
-    right,
-  })
-
-  assertEqualArrows(
-    witness.equalizer.arrow,
-    inclusion,
-    'finsetEqualizerPullback: pullback inclusion must match the computed equaliser inclusion',
-  )
-
-  assertEqualArrows(
-    witness.pullback.toAnchor,
-    toCodomain,
-    'finsetEqualizerPullback: pullback anchor must match the restricted arrow into the codomain',
-  )
-
-  const certification = calculator.certify(witness.span.pair, witness.span.diagonal, witness.pullback)
-  if (!certification.valid) {
-    throw new Error(
-      certification.reason ?? 'finsetEqualizerPullback: calculator failed to certify the equaliser pullback',
-    )
-  }
-
-  const factor = (arrowInput: FinSetMor): FinSetMor => {
-    const arrow = assertFinSetMor(arrowInput)
-    if (arrow.to !== domain) {
-      throw new Error('finsetEqualizerPullback.factor: arrow must land in the shared domain')
-    }
-
-    const result = witness.factor(arrow)
-    if (!result.factored || !result.mediator) {
-      throw new Error(
-        result.reason ?? 'finsetEqualizerPullback.factor: supplied arrow does not factor through the equaliser',
-      )
-    }
-
-    const mediator = assertFinSetMor(result.mediator)
-    assertEqualArrows(
-      FinSet.compose(inclusion, mediator),
-      arrow,
-      'finsetEqualizerPullback.factor: mediator must reproduce the supplied arrow',
-    )
-    assertEqualArrows(
-      FinSet.compose(toCodomain, mediator),
-      FinSet.compose(left, arrow),
-      'finsetEqualizerPullback.factor: mediator must respect the induced codomain map',
-    )
-
-    return mediator
-  }
-
-  return {
-    object: equaliser,
-    inclusion,
-    toCodomain,
-    pair: witness.span.pair,
-    diagonal: witness.span.diagonal,
-    certification,
-    factor,
-  }
-}
-
-export interface FinSetLawvereFixedPointWitness {
-  readonly fixedPoint: FinSetMor
-  readonly fixedPointElement: FinSetElem
-  readonly elementIndex: number
-  readonly preimagePoint: FinSetMor
-  readonly diagonal: FinSetMor
-  readonly diagonalName: FinSetMor
-}
-
-export const finsetLawvereFixedPoint = (g: FinSetMor, j: FinSetMor): FinSetLawvereFixedPointWitness => {
-  const pointSurjection = finsetPointSurjective(g)
-  if (!pointSurjection.holds || !pointSurjection.witness) {
-    throw new Error('finsetLawvereFixedPoint: g must be point-surjective')
-  }
-
-  const arrow = assertFinSetMor(g)
-  const selfMap = assertFinSetMor(j)
-
-  const metadata = requireFinSetExponentialMetadata(arrow.to)
-
-  if (arrow.from !== metadata.exponent) {
-    throw new Error('finsetLawvereFixedPoint: g must land in C^A with domain A')
-  }
-  if (selfMap.from !== metadata.base || selfMap.to !== metadata.base) {
-    throw new Error('finsetLawvereFixedPoint: j must be an endomorphism of C')
-  }
-
-  const domain = arrow.from
-  const tuple = FinSetProductsWithTuple.tuple(domain, [arrow, FinSet.id(domain)], metadata.data.product)
-  const evaluationOnDiagonal = FinSet.compose(metadata.data.evaluation, tuple)
-  const diagonal = FinSet.compose(selfMap, evaluationOnDiagonal)
-
-  const { name: diagonalName } = finsetNameFromArrow({ domain, codomain: metadata.base, arrow: diagonal })
-  const diagonalIndex = diagonalName.map[0]
-  if (diagonalIndex === undefined) {
-    throw new Error('finsetLawvereFixedPoint: diagonal name must have exactly one coordinate')
-  }
-
-  const preimageIndex = pointSurjection.witness.pointPreimages.get(diagonalIndex)
-  if (preimageIndex === undefined) {
-    throw new Error('finsetLawvereFixedPoint: missing point witnessing the diagonal name')
-  }
-
-  const preimagePoint = finsetPointElement(domain, preimageIndex)
-  const composedName = FinSet.compose(arrow, preimagePoint)
-  assertEqualArrows(
-    composedName,
-    diagonalName,
-    'finsetLawvereFixedPoint: g ∘ chosen point must recover the diagonal name',
-  )
-
-  const fixedPoint = FinSet.compose(diagonal, preimagePoint)
-  assertEqualArrows(
-    FinSet.compose(selfMap, fixedPoint),
-    fixedPoint,
-    'finsetLawvereFixedPoint: constructed point must be fixed by j',
-  )
-
-  const elementIndex = fixedPoint.map[0]
-  if (elementIndex === undefined) {
-    throw new Error('finsetLawvereFixedPoint: fixed-point arrow must have exactly one coordinate')
-  }
-
-  const fixedPointElement = metadata.base.elements[elementIndex]
-  if (fixedPointElement === undefined) {
-    throw new Error('finsetLawvereFixedPoint: fixed-point element index out of range')
-  }
-
-  return {
-    fixedPoint,
-    fixedPointElement,
-    elementIndex,
-    preimagePoint,
-    diagonal,
-    diagonalName,
-  }
-}
-
-export const finsetProductRightUnitWitness = (object: FinSetObj): FinSetIsoWitness & {
-  readonly product: FinSetObj
-} => {
-  const { obj: product, projections } = FinSet.product([object, FinSet.terminalObj])
-  const tuples = assertListElements(product.elements) as ReadonlyArray<ReadonlyArray<number>>
-  const tupleIndex = new Map<string, number>()
-  tuples.forEach((tuple, idx) => tupleIndex.set(encodeIndices(tuple as number[]), idx))
-
-  const forward = projections[0]!
-  const backward: FinSetMor = {
-    from: object,
-    to: product,
-    map: object.elements.map((_value, idx) => {
-      const key = encodeIndices([idx, 0])
-      const image = tupleIndex.get(key)
-      if (image === undefined) {
-        throw new Error('finsetProductRightUnitWitness: missing tuple in product object')
-      }
-      return image
-    }),
-  }
-
-  assertEqualArrows(FinSet.compose(forward, backward), FinSet.id(object), 'finsetProductRightUnitWitness: forward ∘ backward must be id')
-  assertEqualArrows(
-    FinSet.compose(backward, forward),
-    FinSet.id(product),
-    'finsetProductRightUnitWitness: backward ∘ forward must be id',
-  )
-
-  return { product, forward, backward }
-}
-
-export const finsetProductLeftUnitWitness = (object: FinSetObj): FinSetIsoWitness & {
-  readonly product: FinSetObj
-  readonly terminalProjection: FinSetMor
-} => {
-  const { obj: product, projections } = FinSet.product([FinSet.terminalObj, object])
-  const tuples = assertListElements(product.elements) as ReadonlyArray<ReadonlyArray<number>>
-  const tupleIndex = new Map<string, number>()
-  tuples.forEach((tuple, idx) => tupleIndex.set(encodeIndices(tuple as number[]), idx))
-
-  const forward = projections[1]!
-  const backward: FinSetMor = {
-    from: object,
-    to: product,
-    map: object.elements.map((_value, idx) => {
-      const key = encodeIndices([0, idx])
-      const image = tupleIndex.get(key)
-      if (image === undefined) {
-        throw new Error('finsetProductLeftUnitWitness: missing tuple in product object')
-      }
-      return image
-    }),
-  }
-
-  assertEqualArrows(FinSet.compose(forward, backward), FinSet.id(object), 'finsetProductLeftUnitWitness: forward ∘ backward must be id')
-  assertEqualArrows(
-    FinSet.compose(backward, forward),
-    FinSet.id(product),
-    'finsetProductLeftUnitWitness: backward ∘ forward must be id',
-  )
-
-  return { product, forward, backward, terminalProjection: projections[0]! }
-}
-
-export const finsetProductInitialIso = (object: FinSetObj): FinSetIsoWitness & {
-  readonly product: FinSetObj
-  readonly projections: readonly [FinSetMor, FinSetMor]
-} => {
-  const { obj: product, projections } = FinSet.product([object, FinSet.initialObj])
-  const tuples = assertListElements(product.elements) as ReadonlyArray<ReadonlyArray<number>>
-  if (tuples.length !== 0) {
-    throw new Error('finsetProductInitialIso: product with the initial object must be empty')
-  }
-
-  const forward = finsetBijection(product, FinSet.initialObj, [])
-  const backward = finsetInverse(forward)
-
-  assertEqualArrows(
-    FinSet.compose(forward, backward),
-    FinSet.id(FinSet.initialObj),
-    'finsetProductInitialIso: forward ∘ backward must be id₀',
-  )
-  assertEqualArrows(
-    FinSet.compose(backward, forward),
-    FinSet.id(product),
-    'finsetProductInitialIso: backward ∘ forward must be id_{A×0}',
-  )
-
-  return {
-    product,
-    projections: projections as readonly [FinSetMor, FinSetMor],
-    forward,
-    backward,
-  }
-}
-
-export const finsetInitialProductIso = (object: FinSetObj): FinSetIsoWitness & {
-  readonly product: FinSetObj
-  readonly projections: readonly [FinSetMor, FinSetMor]
-} => {
-  const { obj: product, projections } = FinSet.product([FinSet.initialObj, object])
-  const tuples = assertListElements(product.elements) as ReadonlyArray<ReadonlyArray<number>>
-  if (tuples.length !== 0) {
-    throw new Error('finsetInitialProductIso: product with the initial object must be empty')
-  }
-
-  const forward = finsetBijection(product, FinSet.initialObj, [])
-  const backward = finsetInverse(forward)
-
-  assertEqualArrows(
-    FinSet.compose(forward, backward),
-    FinSet.id(FinSet.initialObj),
-    'finsetInitialProductIso: forward ∘ backward must be id₀',
-  )
-  assertEqualArrows(
-    FinSet.compose(backward, forward),
-    FinSet.id(product),
-    'finsetInitialProductIso: backward ∘ forward must be id_{0×A}',
-  )
-
-  return {
-    product,
-    projections: projections as readonly [FinSetMor, FinSetMor],
-    forward,
-    backward,
-  }
-}
-
-export interface FinSetTerminalExponentialIso extends FinSetIsoWitness {
-  readonly exponential: FinSetExponentialData
-}
-
-export const finsetExpFromTerminalIso = (input: {
-  readonly codomain: FinSetObj
-  readonly exponential: FinSetExponentialData
-}): FinSetTerminalExponentialIso => {
-  const { codomain, exponential } = input
-
-  if (exponential.evaluation.to !== codomain) {
-    throw new Error('finsetExpFromTerminalIso: codomain mismatch')
-  }
-
-  const productTuples = assertListElements(exponential.product.elements) as ReadonlyArray<ReadonlyArray<number>>
-  const argumentIndices = new Set<number>()
-  productTuples.forEach((tuple) => {
-    if (tuple.length !== 2) {
-      throw new Error('finsetExpFromTerminalIso: exponential product must be binary')
-    }
-    if (tuple[1] !== 0) {
-      throw new Error('finsetExpFromTerminalIso: product coordinate is not the unique terminal index')
-    }
-    argumentIndices.add(tuple[1]!)
-  })
-  if (argumentIndices.size !== 1) {
-    throw new Error('finsetExpFromTerminalIso: exponential is not parameterised by the terminal object')
-  }
-
-  exponential.object.elements.forEach((_func, idx) => {
-    const values = exponential.functionAt(idx)
-    if (values.length !== 1) {
-      throw new Error('finsetExpFromTerminalIso: functions must evaluate on the unique terminal point')
-    }
-    const value = values[0]
-    if (value === undefined) {
-      throw new Error('finsetExpFromTerminalIso: missing evaluation value for terminal base')
-    }
-    if (value < 0 || value >= codomain.elements.length) {
-      throw new Error('finsetExpFromTerminalIso: function leaves the declared codomain')
-    }
-  })
-
-  const forward: FinSetMor = {
-    from: codomain,
-    to: exponential.object,
-    map: codomain.elements.map((_value, idx) => exponential.indexOfFunction([idx])),
-  }
-
-  const backward: FinSetMor = {
-    from: exponential.object,
-    to: codomain,
-    map: exponential.object.elements.map((_func, idx) => exponential.functionAt(idx)[0]!),
-  }
-
-  assertEqualArrows(
-    FinSet.compose(backward, forward),
-    FinSet.id(codomain),
-    'finsetExpFromTerminalIso: backward ∘ forward must be id',
-  )
-  assertEqualArrows(
-    FinSet.compose(forward, backward),
-    FinSet.id(exponential.object),
-    'finsetExpFromTerminalIso: forward ∘ backward must be id',
-  )
-
-  const { product: rightUnitProduct, forward: projection } = finsetProductRightUnitWitness(codomain)
-  const witnessIndex = new Map<string, number>()
-  productTuples.forEach((tuple, idx) => witnessIndex.set(encodeIndices(tuple as number[]), idx))
-  const triangle: FinSetMor = {
-    from: rightUnitProduct,
-    to: exponential.product,
-    map: (assertListElements(rightUnitProduct.elements) as ReadonlyArray<ReadonlyArray<number>>).map(
-      ([codIdx, termIdx]) => {
-        if (codIdx === undefined || termIdx === undefined) {
-          throw new Error('finsetExpFromTerminalIso: product coordinate missing when embedding triangle')
-        }
-        const funcIdx = forward.map[codIdx]
-        if (funcIdx === undefined) {
-          throw new Error('finsetExpFromTerminalIso: forward mediator missing image for codomain element')
-        }
-        const key = encodeIndices([funcIdx, termIdx])
-        const image = witnessIndex.get(key)
-        if (image === undefined) {
-          throw new Error('finsetExpFromTerminalIso: failed to embed product into exponential domain')
-        }
-        return image
-      },
-    ),
-  }
-
-  assertEqualArrows(
-    FinSet.compose(exponential.evaluation, triangle),
-    projection,
-    'finsetExpFromTerminalIso: evaluation triangle must commute',
-  )
-
-  return { exponential, forward, backward }
-}
-
-export const finsetExpToTerminalIso = (input: {
-  readonly base: FinSetObj
-  readonly exponential: FinSetExponentialData
-}): FinSetTerminalExponentialIso => {
-  const { base, exponential } = input
-
-  if (exponential.evaluation.to !== FinSet.terminalObj) {
-    throw new Error('finsetExpToTerminalIso: exponential does not land in the terminal object')
-  }
-
-  const productTuples = ensureBinaryTuples(
-    assertListElements(exponential.product.elements) as ReadonlyArray<ReadonlyArray<number>>,
-    'finsetExpToTerminalIso',
-  )
-  const argumentIndices = new Set<number>()
-  productTuples.forEach((tuple) => {
-    const argumentIndex = tuple[1]
-    if (argumentIndex < 0 || argumentIndex >= base.elements.length) {
-      throw new Error('finsetExpToTerminalIso: product coordinate leaves the declared base')
-    }
-    argumentIndices.add(argumentIndex)
-  })
-  if (argumentIndices.size !== base.elements.length) {
-    throw new Error('finsetExpToTerminalIso: base object mismatch')
-  }
-
-  exponential.object.elements.forEach((_func, idx) => {
-    const values = exponential.functionAt(idx)
-    if (values.length !== base.elements.length) {
-      throw new Error('finsetExpToTerminalIso: functions must evaluate over the declared base')
-    }
-    values.forEach((value) => {
-      if (value !== 0) {
-        throw new Error('finsetExpToTerminalIso: functions must land in the terminal point')
-      }
-    })
-  })
-
-  const forward: FinSetMor = {
-    from: exponential.object,
-    to: FinSet.terminalObj,
-    map: exponential.object.elements.map(() => 0),
-  }
-
-  const backward: FinSetMor = {
-    from: FinSet.terminalObj,
-    to: exponential.object,
-    map: [exponential.indexOfFunction(Array.from({ length: base.elements.length }, () => 0))],
-  }
-
-  assertEqualArrows(
-    FinSet.compose(forward, backward),
-    FinSet.id(FinSet.terminalObj),
-    'finsetExpToTerminalIso: forward ∘ backward must be id',
-  )
-  assertEqualArrows(
-    FinSet.compose(backward, forward),
-    FinSet.id(exponential.object),
-    'finsetExpToTerminalIso: backward ∘ forward must be id',
-  )
-
-    const { product: leftUnitProduct, terminalProjection } = finsetProductLeftUnitWitness(base)
-    const witnessIndex = new Map<string, number>()
-    productTuples.forEach((tuple, idx) => witnessIndex.set(encodeIndices(tuple), idx))
-    const triangle: FinSetMor = {
-      from: leftUnitProduct,
-      to: exponential.product,
-      map: ensureBinaryTuples(
-        assertListElements(leftUnitProduct.elements) as ReadonlyArray<ReadonlyArray<number>>,
-        'finsetExpToTerminalIso triangle',
-      ).map(([termIdx, baseIdx]) => {
-        const funcIdx = backward.map[termIdx]
-        if (funcIdx === undefined) {
-          throw new Error('finsetExpToTerminalIso: backward arrow missing function index for terminal element')
-        }
-        const key = encodeIndices([funcIdx, baseIdx])
-        const image = witnessIndex.get(key)
-        if (image === undefined) {
-          throw new Error('finsetExpToTerminalIso: failed to embed product into exponential domain')
-        }
-        return image
-      }),
-    }
-
-  assertEqualArrows(
-    FinSet.compose(exponential.evaluation, triangle),
-    terminalProjection,
-    'finsetExpToTerminalIso: evaluation triangle must commute',
-  )
-
-  return { exponential, forward, backward }
-}
-
-export interface FinSetExponentialBaseIso extends FinSetIsoWitness {
-  readonly source: FinSetExponentialData
-  readonly target: FinSetExponentialData
-}
-
-export const finsetExpIsoFromBaseIso = (input: {
-  readonly codomain: FinSetObj
-  readonly left: FinSetObj
-  readonly right: FinSetObj
-  readonly forward: FinSetMor
-  readonly backward: FinSetMor
-}): FinSetExponentialBaseIso => {
-  const { codomain, left, right, forward, backward } = input
-
-  if (forward.from !== left) {
-    throw new Error('finsetExpIsoFromBaseIso: forward base map must originate at the left exponent')
-  }
-  if (forward.to !== right) {
-    throw new Error('finsetExpIsoFromBaseIso: forward base map must land in the right exponent')
-  }
-  if (backward.from !== right) {
-    throw new Error('finsetExpIsoFromBaseIso: backward base map must originate at the right exponent')
-  }
-  if (backward.to !== left) {
-    throw new Error('finsetExpIsoFromBaseIso: backward base map must land in the left exponent')
-  }
-
-  assertEqualArrows(
-    FinSet.compose(backward, forward),
-    FinSet.id(left),
-    'finsetExpIsoFromBaseIso: backward ∘ forward must be id on the left exponent',
-  )
-  assertEqualArrows(
-    FinSet.compose(forward, backward),
-    FinSet.id(right),
-    'finsetExpIsoFromBaseIso: forward ∘ backward must be id on the right exponent',
-  )
-
-  const source = finSetExponential(codomain, right)
-  const target = finSetExponential(codomain, left)
-
-  const forwardMediator = expPrecompose(codomain, forward, right, left)
-  const backwardMediator = expPrecompose(codomain, backward, left, right)
-
-  assertEqualArrows(
-    FinSet.compose(backwardMediator, forwardMediator),
-    FinSet.id(source.object),
-    'finsetExpIsoFromBaseIso: backward mediator ∘ forward mediator must be id',
-  )
-  assertEqualArrows(
-    FinSet.compose(forwardMediator, backwardMediator),
-    FinSet.id(target.object),
-    'finsetExpIsoFromBaseIso: forward mediator ∘ backward mediator must be id',
-  )
-
-  return {
-    source,
-    target,
-    forward: forwardMediator,
-    backward: backwardMediator,
-  }
-}
-
-export interface FinSetCurryingProductIso extends FinSetIsoWitness {
-  readonly source: FinSetExponentialData
-  readonly target: FinSetExponentialData
-  readonly inner: FinSetExponentialData
-  readonly product: FinSetObj
-}
-
-export const finsetCurryingProductIso = (input: {
-  readonly codomain: FinSetObj
-  readonly left: FinSetObj
-  readonly right: FinSetObj
-}): FinSetCurryingProductIso => {
-  const { codomain, left, right } = input
-
-  const inner = finSetExponential(codomain, right)
-  const source = finSetExponential(inner.object, left)
-  const { obj: product } = FinSet.product([left, right])
-  const target = finSetExponential(codomain, product)
-
-  const productTuples = assertListElements(product.elements) as ReadonlyArray<ReadonlyArray<number>>
-  const productIndex = makeTupleIndex(productTuples)
-
-  const forwardMap = source.object.elements.map((_value, idx) => {
-    const component: FinSetMor = {
-      from: left,
-      to: inner.object,
-      map: [...source.functionAt(idx)],
-    }
-    const uncurried = inner.uncurry(left, component)
-    const uncurriedTuples = assertListElements(uncurried.from.elements) as ReadonlyArray<ReadonlyArray<number>>
-    const uncurriedIndex = makeTupleIndex(uncurriedTuples)
-    const outputs = productTuples.map((tuple) => {
-      const key = encodeIndices(tuple as ReadonlyArray<number>)
-      const image = uncurriedIndex.get(key)
-      if (image === undefined) {
-        throw new Error('finsetCurryingProductIso: missing tuple in B×C domain during uncurry step')
-      }
-      return uncurried.map[image]!
-    })
-    return target.indexOfFunction(outputs)
-  })
-
-  const forward: FinSetMor = { from: source.object, to: target.object, map: forwardMap }
-
-  const backwardMap = target.object.elements.map((_value, idx) => {
-    const arrow: FinSetMor = {
-      from: product,
-      to: codomain,
-      map: [...target.functionAt(idx)],
-    }
-    const curried = inner.curry(left, arrow)
-    if (curried.from !== left) {
-      throw new Error('finsetCurryingProductIso: curry result must have the left object as its domain')
-    }
-    return source.indexOfFunction([...curried.map])
-  })
-
-  const backward: FinSetMor = { from: target.object, to: source.object, map: backwardMap }
-
-  assertEqualArrows(
-    FinSet.compose(backward, forward),
-    FinSet.id(source.object),
-    'finsetCurryingProductIso: backward ∘ forward must be id',
-  )
-  assertEqualArrows(
-    FinSet.compose(forward, backward),
-    FinSet.id(target.object),
-    'finsetCurryingProductIso: forward ∘ backward must be id',
-  )
-
-  return { source, target, inner, product, forward, backward }
-}
-
-export interface FinSetProductExponentIso extends FinSetIsoWitness {
-  readonly exponential: FinSetExponentialData
-  readonly factors: readonly [FinSetExponentialData, FinSetExponentialData]
-  readonly product: FinSetObj
-  readonly projections: readonly [FinSetMor, FinSetMor]
-}
-
-export const finsetProductExponentIso = (input: {
-  readonly left: FinSetObj
-  readonly right: FinSetObj
-  readonly exponent: FinSetObj
-}): FinSetProductExponentIso => {
-  const { left, right, exponent } = input
-
-  const { obj: product } = FinSet.product([left, right])
-  const exponential = finSetExponential(product, exponent)
-  const leftFactor = finSetExponential(left, exponent)
-  const rightFactor = finSetExponential(right, exponent)
-  const { obj: targetProduct, projections: rawProjections } = FinSet.product([
-    leftFactor.object,
-    rightFactor.object,
-  ])
-  if (rawProjections.length !== 2) {
-    throw new Error('finsetProductExponentIso: expected binary projections for exponential factors')
-  }
-  const projections: readonly [FinSetMor, FinSetMor] = [rawProjections[0]!, rawProjections[1]!]
-
-  const productTuples = assertListElements(product.elements) as ReadonlyArray<ReadonlyArray<number>>
-  const productIndex = makeTupleIndex(productTuples)
-  const targetTuples = assertListElements(targetProduct.elements) as ReadonlyArray<ReadonlyArray<number>>
-  const targetIndex = makeTupleIndex(targetTuples)
-
-  const forwardMap = exponential.object.elements.map((_value, idx) => {
-    const outputs = exponential.functionAt(idx)
-    const aOutputs = outputs.map((pairIdx) => {
-      const tuple = productTuples[pairIdx]
-      if (!tuple) {
-        throw new Error('finsetProductExponentIso: missing tuple when projecting to the left factor')
-      }
-      const leftValue = tuple[0]
-      if (leftValue === undefined) {
-        throw new Error('finsetProductExponentIso: tuple missing left coordinate during factor projection')
-      }
-      return leftValue
-    })
-    const bOutputs = outputs.map((pairIdx) => {
-      const tuple = productTuples[pairIdx]
-      if (!tuple) {
-        throw new Error('finsetProductExponentIso: missing tuple when projecting to the right factor')
-      }
-      const rightValue = tuple[1]
-      if (rightValue === undefined) {
-        throw new Error('finsetProductExponentIso: tuple missing right coordinate during factor projection')
-      }
-      return rightValue
-    })
-    const leftIdx = leftFactor.indexOfFunction(aOutputs)
-    const rightIdx = rightFactor.indexOfFunction(bOutputs)
-    const key = encodeIndices([leftIdx, rightIdx])
-    const image = targetIndex.get(key)
-    if (image === undefined) {
-      throw new Error('finsetProductExponentIso: failed to embed factor indices into the product carrier')
-    }
-    return image
-  })
-
-  const forward: FinSetMor = { from: exponential.object, to: targetProduct, map: forwardMap }
-
-  const backwardTuples = assertListElements(targetProduct.elements) as ReadonlyArray<ReadonlyArray<number>>
-  const backwardMap = backwardTuples.map((tuple) => {
-    if (tuple.length !== 2) {
-      throw new Error('finsetProductExponentIso: product carrier must consist of binary tuples')
-    }
-    const leftIdx = tuple[0]
-    const rightIdx = tuple[1]
-    if (leftIdx === undefined || rightIdx === undefined) {
-      throw new Error('finsetProductExponentIso: tuple missing coordinates when reconstructing the product arrow')
-    }
-    const leftValues = leftFactor.functionAt(leftIdx)
-    const rightValues = rightFactor.functionAt(rightIdx)
-    if (leftValues.length !== rightValues.length) {
-      throw new Error('finsetProductExponentIso: factor evaluations must share the exponent cardinality')
-    }
-    const outputs = leftValues.map((leftValue, pos) => {
-      const pairIdx = productIndex.get(encodeIndices([leftValue, rightValues[pos]!] as ReadonlyArray<number>))
-      if (pairIdx === undefined) {
-        throw new Error('finsetProductExponentIso: missing tuple when reconstructing the product arrow')
-      }
-      return pairIdx
-    })
-    return exponential.indexOfFunction(outputs)
-  })
-
-  const backward: FinSetMor = { from: targetProduct, to: exponential.object, map: backwardMap }
-
-  assertEqualArrows(
-    FinSet.compose(backward, forward),
-    FinSet.id(exponential.object),
-    'finsetProductExponentIso: backward ∘ forward must be id',
-  )
-  assertEqualArrows(
-    FinSet.compose(forward, backward),
-    FinSet.id(targetProduct),
-    'finsetProductExponentIso: forward ∘ backward must be id',
-  )
-
-  return {
-    exponential,
-    factors: [leftFactor, rightFactor],
-    product,
-    projections,
-    forward,
-    backward,
-  }
+  return { from: XpowS, to: XpowSprim, map }
 }
 
 /** All FinSet morphisms A -> X as a FinSet object (the Hom-set object) */
