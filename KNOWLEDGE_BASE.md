@@ -38,6 +38,61 @@ items.forEach(item => groups.add(item.key, item))
 
 **Already used in**:
 - `canonicalizeJson` JSet case (replaced manual dedup with CanonicalJsonSet)
+
+## Persistent List Toolkit
+
+**What**: `List` tagged union (`Nil`/`Cons`) plus helpers such as `listFromArray`, `mapList`, `concatList`, and law-backed typeclass instances (`ListFunctor`, `ListFoldable`, `ListTraversable`, `ListWitherable`).
+
+**When to use**:
+- ✅ **Streaming-style builds**: accumulate results one element at a time with `consList`, then reverse once.
+- ✅ **Lawful traversals**: rely on `traverseList`, `sequenceList`, or `witherList` to integrate with applicatives (`Option`, validation, etc.).
+- ✅ **Interop with proofs**: translate to `NonEmptyArray` via `listToNonEmptyOption` when you need totality witnesses.
+- ⚠️ **Random access**: keep `ReadonlyArray` if you index heavily; linked lists are linear lookup.
+
+**Example patterns**:
+```typescript
+import {
+  Some,
+  None,
+  mapO,
+  listFromArray,
+  listToArray,
+  traverseList,
+  zipList,
+  listDo,
+} from "fp-3"
+
+const OptionApp = {
+  of: Some,
+  map: mapO,
+  ap: (ofab: ReturnType<typeof Some>) => (oa: ReturnType<typeof Some>) =>
+    ofab._tag === "Some" && oa._tag === "Some"
+      ? Some(ofab.value(oa.value))
+      : None,
+}
+
+// Applicative traversal
+const filtered = traverseList(OptionApp)((n: number) =>
+  n % 2 === 0 ? Some(n * 10) : None,
+)(listFromArray([1, 2, 3, 4]))
+
+// Zipping truncates to shortest input
+const zipped = zipList(listFromArray(["x", "y"]))(
+  listFromArray([1, 2, 3]),
+)
+
+// Generator-based comprehension
+const combos = listDo(function* () {
+  const letter = yield listFromArray(["a", "b"])
+  const digit = yield listFromArray([1, 2])
+  return `${letter}${digit}`
+})
+
+console.log(filtered, listToArray(zipped), listToArray(combos))
+```
+
+**Already used in**:
+- `list.spec.ts` ensures algebraic laws and Option traversals behave as expected.
 - `CanonicalJsonMultiMap` for grouping operations
 
 ## Hash-Consing

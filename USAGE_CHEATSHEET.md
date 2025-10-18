@@ -654,6 +654,68 @@ console.log('Reachable:', reachableWithin(adj_bool, 2)[0]?.[2])     // true
 
 ---
 
+## 🧱 **Persistent Lists vs Arrays**
+
+Use the new immutable `List` helpers when you want structural sharing, predictable recursion, or algebraic tooling; stick with `ReadonlyArray` when you need random access or rely on existing JS ecosystem utilities.
+
+| If you need... | Reach for `List` | Reach for `ReadonlyArray` |
+| --- | --- | --- |
+| Prepend/append frequently | ✅ O(1) `consList`/`appendList` | ⚠️ Requires copying |
+| Lawful folds/traversals | ✅ `ListFoldable`, `ListTraversable`, `ListWitherable` | ⚠️ Write ad-hoc loops |
+| Interop with non-empty proofs | ✅ `listToNonEmptyOption` | ⚠️ Manual checks |
+| Random index lookups | ⚠️ Linear scan | ✅ Constant-time `array[i]` |
+
+**Idiomatic snippets**
+
+```ts
+import {
+  Some,
+  None,
+  mapO,
+  listFromArray,
+  listToArray,
+  traverseList,
+  zipList,
+  listDo,
+  listToNonEmptyOption,
+} from "fp-3"
+
+const numbers = listFromArray([1, 2, 3, 4])
+
+// Traversal with Option applicative
+const OptionApp = {
+  of: Some,
+  map: mapO,
+  ap: (ofab: ReturnType<typeof Some>) => (oa: ReturnType<typeof Some>) =>
+    ofab._tag === "Some" && oa._tag === "Some"
+      ? Some(ofab.value(oa.value))
+      : None,
+}
+
+const evenSquares = traverseList(OptionApp)((n: number) =>
+  n % 2 === 0 ? Some(n * n) : None,
+)(numbers)
+
+// Zipping preserves the shorter length
+const zipped = zipList(listFromArray(["a", "b"]))(
+  listFromArray([10, 20, 30]),
+)
+
+// Comprehension-style sequencing
+const combos = listDo(function* () {
+  const letter = yield listFromArray(["a", "b"])
+  const digit = yield listFromArray([1, 2])
+  return `${letter}${digit}`
+})
+
+// Recover a NonEmptyArray witness when it exists
+const maybeNonEmpty = listToNonEmptyOption(numbers)
+
+console.log(listToArray(combos)) // ["a1", "a2", "b1", "b2"]
+```
+
+---
+
 ## 💡 **Pro Tips**
 
 1. **Same Algorithm, Different Semiring:** Most graph/DP problems can be solved by changing just the semiring, not the algorithm.
