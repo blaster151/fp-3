@@ -85,4 +85,16 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 78. **Pushout fixture shared across workflows** – Reuse the canonical finite pushout fixture to recover coslice reindexing mediators and certify that pushout legs preserve epimorphisms. (examples/runnable/078-pushout-shared-machinery.ts, pushout.ts, kinds/mono-epi.ts, test/pushout-fixture.ts)
 
+79. **Topology constructors and initial/final structures** – Build finite topologies from bases and subbases, then push them through initial and final constructions for sensor/indicator maps. (examples/runnable/079-top-initial-final.ts)
+
+80. **Quotient topologies and coequalizers** – Collapse walkway segments via an equivalence relation, inspect the induced quotient topology, and recover the same identification as a Top coequalizer. (examples/runnable/080-top-quotient.ts)
+
+81. **Topological coproduct universal property** – Verify that disjoint unions of finite spaces satisfy the coproduct universal property and examine the induced copairing maps. (examples/runnable/081-top-coproduct-universal-property.ts)
+
+82. **Continuity diagnostics and registry summaries** – Package enriched continuity witnesses, detect non-continuous maps, and surface aggregate registry diagnostics that reuse shared descriptors. (examples/runnable/082-top-continuity-diagnostics.ts)
+
+83. **Universal-property reporting for Top** – Assemble product legs and mediators into reusable universal-property reports while contrasting a successful witness with a continuity failure. (examples/runnable/083-top-universal-property-reports.ts)
+
+84. **MNNE powerset relative monad diagnostics** – Replay Example 8’s powerset relative monad on cofinite subsets, enumerate sampled images, and summarise the Street-style comparison reports. (examples/runnable/084-mnne-powerset-relative-monad.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.

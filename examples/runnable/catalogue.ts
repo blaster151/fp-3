@@ -84,6 +84,7 @@ import { stage080TopQuotient } from "./080-top-quotient";
 import { stage081TopCoproductUniversalProperty } from "./081-top-coproduct-universal-property";
 import { stage082TopContinuityDiagnostics } from "./082-top-continuity-diagnostics";
 import { stage083TopUniversalPropertyReports } from "./083-top-universal-property-reports";
+import { stage084MnnePowersetRelativeMonad } from "./084-mnne-powerset-relative-monad";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -171,4 +172,5 @@ export const registry: RunnableRegistry = [
   stage081TopCoproductUniversalProperty,
   stage082TopContinuityDiagnostics,
   stage083TopUniversalPropertyReports,
+  stage084MnnePowersetRelativeMonad,
 ];

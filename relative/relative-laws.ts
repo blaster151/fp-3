@@ -89,6 +89,12 @@ export const RelativeMonadLawRegistry = {
     summary:
       "Example 4 of *Monads Need Not Be Endofunctors* realises indexed containers as relative monads; the analyzer enumerates finite families, checks the Example 4 unit and substitution data, and verifies the relative monad laws hold for every sample.",
   },
+  powersetRelativeMonad: {
+    name: "Powerset relative monad diagnostics",
+    registryPath: "relativeMonad.mnne.powerset",
+    summary:
+      "Example 8 of *Monads Need Not Be Endofunctors* highlights the powerset relative monad; the analyzer enumerates lazy subsets, replayable arrows, and checks the unit/right-unit/associativity laws under the new approximation guards.",
+  },
   vectorKleisliSplitting: {
     name: "Finite vector Kleisli splitting diagnostics",
     registryPath: "relativeMonad.mnne.vectorKleisli",

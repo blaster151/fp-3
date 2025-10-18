@@ -20,6 +20,15 @@ describe("Finite vector relative monad Example 1", () => {
     expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
     expect(report.spaceSummary).toContainEqual({ dimension: 2, vectorCount: 4, arrowCount: 16 });
+    expect(report.enumeration.indexSlice.truncated).toBe(false);
+    expect(report.enumeration.indices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          index: 2,
+          slice: expect.objectContaining({ truncated: false }),
+        }),
+      ]),
+    );
   });
 
   it("detects a broken unit component", () => {

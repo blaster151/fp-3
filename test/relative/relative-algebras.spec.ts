@@ -357,8 +357,11 @@ describe("Street action coherence analyzer", () => {
     const { monad } = makeTrivialPresentations();
     const streetAction = describeRelativeStreetAction(monad);
     const report = analyzeRelativeStreetActionCoherence(monad, streetAction);
-    expect(report.pending).toBe(true);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
+    expect(report.comparisons?.identity.holds).toBe(true);
+    expect(report.witness.coherence.identity.comparison?.holds).toBe(true);
   });
 
   it("flags mismatched identity boundary", () => {
@@ -373,6 +376,30 @@ describe("Street action coherence analyzer", () => {
           left: monad.carrier,
         },
       },
+      coherence: {
+        ...streetAction.coherence,
+        identity: {
+          ...streetAction.coherence.identity,
+          redPasting: [[
+            {
+              ...streetAction.identity,
+              boundaries: {
+                ...streetAction.identity.boundaries,
+                left: monad.carrier,
+              },
+            },
+          ]] as const,
+          greenPasting: [[
+            {
+              ...streetAction.identity,
+              boundaries: {
+                ...streetAction.identity.boundaries,
+                left: monad.carrier,
+              },
+            },
+          ]] as const,
+        },
+      },
     };
     const report = analyzeRelativeStreetActionCoherence(monad, broken);
     expect(report.pending).toBe(false);
@@ -380,16 +407,53 @@ describe("Street action coherence analyzer", () => {
       "Street action identity left boundary must reuse the specified tight boundary.",
     );
   });
+
+  it("detects disagreeing Street action coherence composites", () => {
+    const { monad } = makeTrivialPresentations();
+    const streetAction = describeRelativeStreetAction(monad);
+    const identityGreen =
+      streetAction.coherence.identity.greenPasting[0]?.[0];
+    if (!identityGreen) {
+      throw new Error("Street action identity pasting must be available for the trivial witness.");
+    }
+    const mismatchedGreen = {
+      ...identityGreen,
+      target: {
+        ...identityGreen.target,
+        arrows: [] as typeof identityGreen.target.arrows,
+      },
+    };
+    const disagreement = {
+      ...streetAction,
+      coherence: {
+        ...streetAction.coherence,
+        identity: {
+          ...streetAction.coherence.identity,
+          greenPasting: [[mismatchedGreen]] as const,
+        },
+      },
+    };
+    const report = analyzeRelativeStreetActionCoherence(monad, disagreement);
+    expect(report.holds).toBe(false);
+    expect(report.pending).toBe(false);
+    expect(
+      report.comparisons?.identity.issues.some((issue) =>
+        issue.includes("Street action identity target frame arrow count mismatch"),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("Street action homomorphism analyzer", () => {
-  it("records the identity homomorphism", () => {
+  it("accepts the identity homomorphism", () => {
     const { monad } = makeTrivialPresentations();
     const action = describeRelativeStreetAction(monad);
     const witness = describeRelativeStreetActionHomomorphism(monad, action);
     const report = analyzeRelativeStreetActionHomomorphism(monad, witness);
-    expect(report.pending).toBe(true);
+    expect(report.holds).toBe(true);
+    expect(report.pending).toBe(false);
     expect(report.issues).toHaveLength(0);
+    expect(report.comparison?.holds).toBe(true);
   });
 
   it("detects mismatched comparison boundary", () => {
@@ -411,17 +475,48 @@ describe("Street action homomorphism analyzer", () => {
     expect(report.issues).toContain(
       "Street action homomorphism right boundary must reuse the specified tight boundary.",
     );
+    expect(report.holds).toBe(false);
+  });
+
+  it("detects unequal Street composites", () => {
+    const { monad } = makeTrivialPresentations();
+    const action = describeRelativeStreetAction(monad);
+    const witness = describeRelativeStreetActionHomomorphism(monad, action);
+    const mismatchedGreen = {
+      ...witness.greenComposite,
+      target: {
+        ...witness.greenComposite.target,
+        arrows: [] as typeof witness.greenComposite.target.arrows,
+      },
+    };
+    const disagreement = {
+      ...witness,
+      greenComposite: mismatchedGreen,
+    };
+    const report = analyzeRelativeStreetActionHomomorphism(monad, disagreement);
+    expect(report.holds).toBe(false);
+    expect(report.pending).toBe(false);
+    expect(
+      report.issues.some((issue) =>
+        issue.includes(
+          "Street action homomorphism green composite must coincide with the recorded street action homomorphism green composite witness.",
+        ),
+      ),
+    ).toBe(true);
   });
 });
 
 describe("Street action hom-category analyzer", () => {
-  it("records default identity and composition", () => {
+  it("accepts default identity and composition", () => {
     const { monad } = makeTrivialPresentations();
     const action = describeRelativeStreetAction(monad);
     const witness = describeRelativeStreetActionCategory(monad, action);
     const report = analyzeRelativeStreetActionHomCategory(monad, witness);
-    expect(report.pending).toBe(true);
+    expect(report.holds).toBe(true);
+    expect(report.pending).toBe(false);
     expect(report.issues).toHaveLength(0);
+    expect(report.comparisons?.identity.holds).toBe(true);
+    expect(report.comparisons?.composition.holds).toBe(true);
   });
 
   it("flags incorrect identity boundary", () => {
@@ -443,6 +538,34 @@ describe("Street action hom-category analyzer", () => {
     expect(report.issues).toContain(
       "Street action hom-category identity left boundary must reuse the specified tight boundary.",
     );
+    expect(report.holds).toBe(false);
+  });
+
+  it("detects non-matching identity composite", () => {
+    const { monad } = makeTrivialPresentations();
+    const action = describeRelativeStreetAction(monad);
+    const witness = describeRelativeStreetActionCategory(monad, action);
+    const mismatchedIdentity = {
+      ...witness.identity,
+      target: {
+        ...witness.identity.target,
+        arrows: [] as typeof witness.identity.target.arrows,
+      },
+    };
+    const disagreement = {
+      ...witness,
+      identity: mismatchedIdentity,
+    };
+    const report = analyzeRelativeStreetActionHomCategory(monad, disagreement);
+    expect(report.holds).toBe(false);
+    expect(report.pending).toBe(false);
+    expect(
+      report.issues.some((issue) =>
+        issue.includes(
+          "Street action hom-category identity green composite must coincide with the recorded street action hom-category identity witness.",
+        ),
+      ),
+    ).toBe(true);
   });
 });
 
@@ -484,7 +607,8 @@ describe("Monoid-induced Street action analyzer", () => {
       monad,
       witness,
     );
-    expect(report.pending).toBe(true);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
   });
 
@@ -508,7 +632,8 @@ describe("Canonical Street action analyzer", () => {
     const { monad } = makeTrivialPresentations();
     const witness = describeRelativeStreetCanonicalAction(monad);
     const report = analyzeRelativeStreetCanonicalAction(monad, witness);
-    expect(report.pending).toBe(true);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
   });
 
@@ -535,8 +660,11 @@ describe("Loose adjunction Street action analyzers", () => {
       describeRelativeStreetAction(monad),
     );
     const report = analyzeRelativeStreetLooseAdjunctionAction(monad, witness);
-    expect(report.pending).toBe(true);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
+    expect(report.actionReport.holds).toBe(true);
+    expect(report.actionReport.pending).toBe(false);
   });
 
   it("detects incorrect unit boundary", () => {
@@ -572,8 +700,11 @@ describe("Loose adjunction Street action analyzers", () => {
       monad,
       witness,
     );
-    expect(report.pending).toBe(true);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
+    expect(report.actionReport.holds).toBe(true);
+    expect(report.actionReport.pending).toBe(false);
   });
 
   it("flags loose adjunction right-action mismatches", () => {
@@ -608,8 +739,11 @@ describe("Representable Street restriction analyzer", () => {
       describeRelativeStreetAction(monad),
     );
     const report = analyzeRelativeStreetRepresentableRestriction(monad, witness);
-    expect(report.pending).toBe(true);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
+    expect(report.actionReport.holds).toBe(true);
+    expect(report.actionReport.pending).toBe(false);
   });
 
   it("flags missing representable carrier", () => {
@@ -657,9 +791,11 @@ describe("Relative algebra Street action bridge analyzer", () => {
       algebraPresentation,
       streetAction,
     );
-    expect(report.pending).toBe(true);
-    expect(report.holds).toBe(false);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
+    expect(report.actionReport.holds).toBe(true);
+    expect(report.actionReport.pending).toBe(false);
   });
 
   it("flags mismatched Street action carrier", () => {
@@ -693,11 +829,15 @@ describe("Relative algebra/Street action equivalence analyzer", () => {
       algebraPresentation,
       witness,
     );
-    expect(report.pending).toBe(true);
-    expect(report.holds).toBe(false);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
-    expect(report.bridge.pending).toBe(true);
-    expect(report.recovery.pending).toBe(true);
+    expect(report.bridge.pending).toBe(false);
+    expect(report.recovery.pending).toBe(false);
+    expect(report.bridge.actionReport.holds).toBe(true);
+    expect(report.bridge.actionReport.pending).toBe(false);
+    expect(report.recovery.actionReport.holds).toBe(true);
+    expect(report.recovery.actionReport.pending).toBe(false);
   });
 
   it("detects Street action mismatches", () => {
@@ -731,9 +871,13 @@ describe("Street representability upgrade analyzer", () => {
     const { monad } = makeTrivialPresentations();
     const witness = describeRelativeStreetRepresentabilityUpgrade(monad);
     const report = analyzeRelativeStreetRepresentabilityUpgrade(monad, witness);
-    expect(report.pending).toBe(true);
-    expect(report.holds).toBe(false);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
+    expect(report.actionReport.holds).toBe(true);
+    expect(report.actionReport.pending).toBe(false);
+    expect(report.representabilityReport.actionReport.holds).toBe(true);
+    expect(report.representabilityReport.actionReport.pending).toBe(false);
   });
 
   it("flags mismatched Street action references", () => {
@@ -1188,8 +1332,11 @@ describe("Representable Street sub-multicategory analyzer", () => {
       kleisli.monad,
       witness,
     );
-    expect(report.pending).toBe(true);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
+    expect(report.restrictionReport.actionReport.holds).toBe(true);
+    expect(report.restrictionReport.actionReport.pending).toBe(false);
   });
 
   it("flags representable cells with mismatched boundaries", () => {
@@ -1219,15 +1366,18 @@ describe("Representable Street sub-multicategory analyzer", () => {
 });
 
 describe("Representable Street/opalgebra equivalence analyzer", () => {
-  it("records the canonical witnesses as pending", () => {
+  it("records the canonical witnesses as successful", () => {
     const { kleisli } = makeTrivialPresentations();
     const witness = describeRelativeOpalgebraStreetActionEquivalence(kleisli);
     const report = analyzeRelativeOpalgebraStreetActionEquivalence(
       kleisli,
       witness,
     );
-    expect(report.pending).toBe(true);
+    expect(report.pending).toBe(false);
+    expect(report.holds).toBe(true);
     expect(report.issues).toHaveLength(0);
+    expect(report.bridge.actionReport.holds).toBe(true);
+    expect(report.bridge.actionReport.pending).toBe(false);
   });
 
   it("detects carrier mismatches", () => {

@@ -40,6 +40,11 @@ import {
   type IndexedContainerRelativeMonadWitness,
 } from "./mnne-indexed-container-monads";
 import {
+  analyzePowersetRelativeMonad,
+  describeCofinitePowersetWitness,
+  type PowersetRelativeMonadWitness,
+} from "./mnne-powerset-monads";
+import {
   analyzeFiniteVectorArrowCorrespondence,
   analyzeFiniteVectorKleisliSplitting,
   describeBooleanVectorArrowCorrespondenceWitness,
@@ -204,6 +209,20 @@ export const RelativeMonadOracles = {
   ): RelativeMonadOracleResult => {
     const descriptor = RelativeMonadLawRegistry.indexedContainerCompatibility;
     const report = analyzeIndexedContainerRelativeMonad(witness);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+    };
+  },
+  powersetRelativeMonad: <Element>(
+    witness: PowersetRelativeMonadWitness<Element> =
+      describeCofinitePowersetWitness() as unknown as PowersetRelativeMonadWitness<Element>,
+  ): RelativeMonadOracleResult => {
+    const descriptor = RelativeMonadLawRegistry.powersetRelativeMonad;
+    const report = analyzePowersetRelativeMonad(witness);
     return {
       holds: report.holds,
       pending: false,
