@@ -136,19 +136,18 @@ export interface TopVietorisAdapters {
   ) => FinMarkov<XJ, T>;
 }
 
-let topVietorisAdapters: TopVietorisAdapters | undefined;
+export function createMarkovOracleRegistry() {
+  let topVietorisAdapters: TopVietorisAdapters | undefined;
 
-export function registerTopVietorisAdapters(adapters: TopVietorisAdapters): void {
-  topVietorisAdapters = adapters;
-}
+  const registerTopVietorisAdapters = (adapters: TopVietorisAdapters): void => {
+    topVietorisAdapters = adapters;
+  };
 
-export function getTopVietorisAdapters(): TopVietorisAdapters | undefined {
-  return topVietorisAdapters;
-}
+  const getTopVietorisAdapters = (): TopVietorisAdapters | undefined => topVietorisAdapters;
 
-// ===== Domain-Specific Oracle Registry =====
+  // ===== Domain-Specific Oracle Registry =====
 
-export const MarkovOracles = {
+  const MarkovOracles = {
   // ===== Foundational Theory =====
 
   // Faithfulness via monomorphisms
@@ -281,7 +280,7 @@ export const MarkovOracles = {
     vietoris: {
       status:
         "Kolmogorov adapters and constant-function law helpers available; Hewitt–Savage unavailable because Kl(H) is not causal.",
-      adapters: () => topVietorisAdapters,
+      adapters: () => getTopVietorisAdapters(),
       kolmogorov: {
         witness: buildTopVietorisKolmogorovWitnessProxy,
         check: checkTopVietorisKolmogorovProxy,
@@ -313,7 +312,116 @@ export const MarkovOracles = {
     detailed: testBSSDetailed,
   },
   
-} as const;
+  } as const;
+
+  // ===== Meta-Oracles =====
+
+  /**
+   * Quick oracle lookup by name
+   */
+  const getMarkovOracle = (path: string): Function | undefined => {
+    const parts = path.split(".");
+    let current: unknown = MarkovOracles;
+
+    for (const part of parts) {
+      if (typeof current !== "object" || current === null) return undefined;
+      const next = (current as Record<string, unknown>)[part];
+      if (next === undefined) return undefined;
+      current = next;
+    }
+
+    return typeof current === "function" ? current : undefined;
+  };
+
+  /**
+   * List all available oracles
+   */
+  const listMarkovOracles = (): Array<{
+    path: string;
+    name: string;
+    domain: string;
+  }> => {
+    const oracles: Array<{ path: string; name: string; domain: string }> = [];
+
+    const traverse = (obj: Record<string, unknown>, prefix: string, domain: string) => {
+      for (const [key, value] of Object.entries(obj)) {
+        const path = prefix ? `${prefix}.${key}` : key;
+
+        if (typeof value === "function") {
+          oracles.push({ path, name: key, domain });
+        } else if (value && typeof value === "object") {
+          traverse(value as Record<string, unknown>, path, domain);
+        }
+      }
+    };
+
+    traverse(MarkovOracles as Record<string, unknown>, "", "markov");
+    return oracles;
+  };
+
+  // ===== Oracle Metadata =====
+
+  const MarkovOracleMetadata = {
+    totalOracles: listMarkovOracles().length,
+    domains: [
+      "foundational",
+      "dominance",
+      "information"
+    ],
+    coverage: {
+      laws: "3.4-3.26, Section 4, Section 5",
+      tests: 244,
+      semirings: ["Prob", "MaxPlus", "BoolRig", "GhostRig"],
+    },
+    version: "1.0.0",
+    lastUpdated: new Date().toISOString(),
+  } as const;
+
+  // ===== Integration Helpers =====
+
+  /**
+   * Verify that all oracles are properly integrated
+   */
+  const verifyOracleIntegration = () => {
+    const oracles = listMarkovOracles();
+    const registered = oracles.length > 0;
+
+    // Would check that all oracles have corresponding tests
+    const tested = true; // Simplified for now
+
+    // Would check that all oracles are documented in LAWS.md
+    const documented = true; // Simplified for now
+
+    return {
+      registered,
+      tested,
+      documented,
+      details: `${oracles.length} oracles registered across ${MarkovOracleMetadata.domains.length} domains`
+    };
+  };
+
+  return {
+    MarkovOracles,
+    registerTopVietorisAdapters,
+    getTopVietorisAdapters,
+    getMarkovOracle,
+    listMarkovOracles,
+    MarkovOracleMetadata,
+    verifyOracleIntegration,
+  } as const;
+}
+
+export type MarkovOracleRegistry = ReturnType<typeof createMarkovOracleRegistry>;
+
+export const defaultMarkovOracleRegistry = createMarkovOracleRegistry();
+
+export const MarkovOracles = defaultMarkovOracleRegistry.MarkovOracles;
+export const registerTopVietorisAdapters = defaultMarkovOracleRegistry.registerTopVietorisAdapters;
+export const getTopVietorisAdapters = defaultMarkovOracleRegistry.getTopVietorisAdapters;
+export const getMarkovOracle = defaultMarkovOracleRegistry.getMarkovOracle;
+export const listMarkovOracles = defaultMarkovOracleRegistry.listMarkovOracles;
+export const MarkovOracleMetadata = defaultMarkovOracleRegistry.MarkovOracleMetadata;
+export const verifyOracleIntegration = defaultMarkovOracleRegistry.verifyOracleIntegration;
 
 // ===== Meta-Oracles =====
 
@@ -421,95 +529,6 @@ export function checkAllMarkovLaws<R>(
     overall,
     details,
     failures
-  };
-}
-
-/**
- * Quick oracle lookup by name
- */
-export function getMarkovOracle(path: string): Function | undefined {
-  const parts = path.split('.');
-  let current: unknown = MarkovOracles;
-
-  for (const part of parts) {
-    if (typeof current !== 'object' || current === null) return undefined;
-    const next = (current as Record<string, unknown>)[part];
-    if (next === undefined) return undefined;
-    current = next;
-  }
-
-  return typeof current === 'function' ? current : undefined;
-}
-
-/**
- * List all available oracles
- */
-export function listMarkovOracles(): Array<{
-  path: string;
-  name: string;
-  domain: string;
-}> {
-  const oracles: Array<{ path: string; name: string; domain: string }> = [];
-
-  const traverse = (obj: Record<string, unknown>, prefix: string, domain: string) => {
-    for (const [key, value] of Object.entries(obj)) {
-      const path = prefix ? `${prefix}.${key}` : key;
-
-      if (typeof value === 'function') {
-        oracles.push({ path, name: key, domain });
-      } else if (value && typeof value === 'object') {
-        traverse(value as Record<string, unknown>, path, domain);
-      }
-    }
-  };
-
-  traverse(MarkovOracles as Record<string, unknown>, '', 'markov');
-  return oracles;
-}
-
-// ===== Oracle Metadata =====
-
-export const MarkovOracleMetadata = {
-  totalOracles: listMarkovOracles().length,
-  domains: [
-    'foundational',
-    'dominance', 
-    'information'
-  ],
-  coverage: {
-    laws: '3.4-3.26, Section 4, Section 5',
-    tests: 244,
-    semirings: ['Prob', 'MaxPlus', 'BoolRig', 'GhostRig'],
-  },
-  version: '1.0.0',
-  lastUpdated: new Date().toISOString(),
-} as const;
-
-// ===== Integration Helpers =====
-
-/**
- * Verify that all oracles are properly integrated
- */
-export function verifyOracleIntegration(): {
-  registered: boolean;
-  tested: boolean;
-  documented: boolean;
-  details: string;
-} {
-  const oracles = listMarkovOracles();
-  const registered = oracles.length > 0;
-  
-  // Would check that all oracles have corresponding tests
-  const tested = true; // Simplified for now
-  
-  // Would check that all oracles are documented in LAWS.md
-  const documented = true; // Simplified for now
-  
-  return {
-    registered,
-    tested,
-    documented,
-    details: `${oracles.length} oracles registered across ${MarkovOracleMetadata.domains.length} domains`
   };
 }
 

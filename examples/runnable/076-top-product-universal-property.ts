@@ -3,49 +3,9 @@ import type { Top } from "../../src/top/Topology";
 
 declare function require(id: string): any;
 
-type TopologyModule = {
-  readonly discrete: <X>(carrier: ReadonlyArray<X>) => Top<X>;
-  readonly continuous: <X, Y>(
-    eqX: (a: X, b: X) => boolean,
-    TX: Top<X>,
-    TY: Top<Y>,
-    f: (x: X) => Y,
-    eqY?: (a: Y, b: Y) => boolean,
-  ) => boolean;
-};
-
-type ProductUPModule = {
-  readonly proj1: <X, Y>(p: { readonly x: X; readonly y: Y }) => X;
-  readonly proj2: <X, Y>(p: { readonly x: X; readonly y: Y }) => Y;
-  readonly pair: <Z, X, Y>(f: (z: Z) => X, g: (z: Z) => Y) => (z: Z) => { readonly x: X; readonly y: Y };
-  readonly checkProductUP: <Z, X, Y>(
-    eqZ: (a: Z, b: Z) => boolean,
-    eqX: (a: X, b: X) => boolean,
-    eqY: (a: Y, b: Y) => boolean,
-    TZ: Top<Z>,
-    TX: Top<X>,
-    TY: Top<Y>,
-    f: (z: Z) => X,
-    g: (z: Z) => Y,
-    continuous: <A, B>(
-      eqA: (a: A, b: A) => boolean,
-      TA: Top<A>,
-      TB: Top<B>,
-      h: (a: A) => B,
-      eqB?: (a: B, b: B) => boolean,
-    ) => boolean,
-  ) => {
-    readonly cProj1: boolean;
-    readonly cProj2: boolean;
-    readonly cPair: boolean;
-    readonly uniqueHolds: boolean;
-    readonly productTopology: Top<{ readonly x: X; readonly y: Y }>;
-  };
-};
-
-type SubspaceModule = {
-  readonly subspace: <X>(eqX: (a: X, b: X) => boolean, T: Top<X>, S: ReadonlyArray<X>) => Top<X>;
-};
+type TopologyModule = typeof import("../../src/top/Topology");
+type ProductUPModule = typeof import("../../src/top/ProductUP");
+type SubspaceModule = typeof import("../../src/top/Subspace");
 
 const { discrete, continuous } = require("../../src/top/Topology") as TopologyModule;
 const { proj1, proj2, pair, checkProductUP } = require("../../src/top/ProductUP") as ProductUPModule;

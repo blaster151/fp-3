@@ -4,44 +4,10 @@ import type { Top } from "../../src/top/Topology";
 
 declare function require(id: string): any;
 
-type TopologyModule = {
-  readonly discrete: <X>(carrier: ReadonlyArray<X>) => Top<X>;
-  readonly isTopology: <X>(eq: (a: X, b: X) => boolean, T: Top<X>) => boolean;
-};
-
-type QuotientModule = {
-  readonly quotientByRelation: <X>(spec: {
-    readonly source: Top<X>;
-    readonly eqSource: (a: X, b: X) => boolean;
-    readonly relation: (a: X, b: X) => boolean;
-    readonly showClass?: (cls: ReadonlyArray<X>) => string;
-  }) => {
-    readonly topology: Top<ReadonlyArray<X>>;
-    readonly projection: ContinuousMap<X, ReadonlyArray<X>>;
-    readonly eqClass: (A: ReadonlyArray<X>, B: ReadonlyArray<X>) => boolean;
-  };
-};
-
-type CoequalizerModule = {
-  readonly topCoequalizer: <X, Y>(
-    f: ContinuousMap<X, Y>,
-    g: ContinuousMap<X, Y>,
-  ) => {
-    readonly obj: Top<ReadonlyArray<Y>>;
-    readonly coequalize: ContinuousMap<Y, ReadonlyArray<Y>>;
-  };
-  readonly topFactorThroughCoequalizer: <X, Y, Z>(
-    f: ContinuousMap<X, Y>,
-    g: ContinuousMap<X, Y>,
-    coequalize: ContinuousMap<Y, ReadonlyArray<Y>>,
-    cocone: ContinuousMap<Y, Z>,
-  ) => ContinuousMap<ReadonlyArray<Y>, Z>;
-};
-
-type ContinuousModule = {
-  readonly makeContinuousMap: typeof import("../../src/top/ContinuousMap").makeContinuousMap;
-  readonly compose: typeof import("../../src/top/ContinuousMap").compose;
-};
+type TopologyModule = typeof import("../../src/top/Topology");
+type QuotientModule = typeof import("../../src/top/Quotient");
+type CoequalizerModule = typeof import("../../src/top/coequalizers");
+type ContinuousModule = typeof import("../../src/top/ContinuousMap");
 
 const { discrete, isTopology } = require("../../src/top/Topology") as TopologyModule;
 const { quotientByRelation } = require("../../src/top/Quotient") as QuotientModule;
