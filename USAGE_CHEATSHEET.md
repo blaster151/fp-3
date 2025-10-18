@@ -16,18 +16,19 @@ This document provides a quick reference for finding the right tool for your pro
 | Wither a Result | `getResultWitherable({ onNone, onFalse }).wither(Applicative)(f)(result)` | Supply fallback errors via the config; use `getResultFilterable`/`getResultTraversable` for the other operations |
 
 ### **Manipulate finite sets**
+*Module:* `src/collections/set`
 | **Goal** | **Use This** | **Notes** |
 |----------|--------------|-----------|
-| Build sets from iterables/foldables | `fromIterable(items)` or `fromFoldable(F)(Eq)(structure)` | `Eq` eliminates duplicates; legacy helpers moved from `stdlib/collections` |
+| Build sets from iterables/foldables | `fromIterable(items)` or `fromFoldable(F)(Eq)(structure)` | `Eq` eliminates duplicates and `Ord` sorts traversal when supplied |
 | Show or compare sets | `getShow(showElem, ord)` / `getEq(eqElem)` | Optional `Ord` sorts the presentation before rendering |
 | Map/filter/partition with dedup | `map(EqB)(f)(set)`, `filter(pred)(set)`, `partitionMap(eqLeft, eqRight)(f)(set)` | All element-changing operations require an `Eq` for the result type |
-| Option/Result pipelines | `filterMap(EqB)(f)(set)`, `compact(EqA)(setOfOptions)`, `separate(eqLeft, eqRight)(setOfResults)` | Mirrors the Array helpers but keeps set semantics |
+| Option/Result pipelines | `filterMap(EqB)(f)(set)`, `compact(EqA)(setOfOptions)`, `separate(eqLeft, eqRight)(setOfResults)` | Mirrors the Array helpers, enabling Option/Result pipelines without losing dedup |
 | Traverse/sequence with effects | `ReadonlySetTraversableWithIndex.traverse(Applicative)({ ord, eq })(f)(set)` | Supply an `Ord` to guarantee deterministic effect order |
 | Wither/wilt sets | `wither(Applicative)({ ord, eq })(f)(set)`, `wilt(Applicative)({ ord, left, right })(f)(set)` | Generalises filterMap/partitionMap into effectful settings |
 | Combine sets algebraically | `union(Eq)(other)(base)`, `intersection(Eq)(other)(base)`, `difference(Eq)(other)(base)`, `symmetricDifference(Eq)(other)(base)` | `getUnionMonoid`, `getIntersectionSemigroup`, `getDifferenceMagma`, `getSymmetricDifferenceMagma` expose ready-made instances |
 | Cartesian product | `cartesianProduct(eqA, eqB)(bs)(as)` | Produces a deduplicated set of tuples respecting both equalities |
 
-> **Migration tip:** older helpers like `mapSet`, `filterSet`, and `collectSet` now live in `stdlib/set` and require an explicit `Eq` for any new element type. Update imports from `stdlib/collections` accordingly.
+> **Migration tip:** legacy call sites importing from `stdlib/collections` still work, but the richer helpers now live in `src/collections/set`. Prefer importing from the new module so the Eq/Ord-aware APIs are available in one place.
 
 ### **Solve Graph Problems**
 | **Problem** | **Use This** | **Semiring** |

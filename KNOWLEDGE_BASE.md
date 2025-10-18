@@ -256,9 +256,10 @@ const processed = collectMapValues(map, transform)
 - "Consider PartialFn with explicit domain predicates"
 - "Use liftOptionPF or liftResultPF for safe composition"
 
-**When processing collections**: 
+**When processing collections**:
 - "Check filterMap/collect helpers for Option/Result processing"
-- "Consider collectArray, collectMapValues, collectSet (via `stdlib/set` with explicit Eq) patterns"
+- "Prefer the Ord-aware helpers in `src/collections/set` for deduped map/filter/partition/compact flows"
+- "Consider collectArray, collectMapValues, collectSet (via `src/collections/set` with explicit Eq) patterns"
 - "Use ReadonlySetFilterable/TraversableWithIndex when you need effectful set pipelines"
 
 ## How to Use This Knowledge Base
