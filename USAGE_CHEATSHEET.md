@@ -6,6 +6,15 @@ This document provides a quick reference for finding the right tool for your pro
 
 ## 🎯 **If You Need To...**
 
+### **Work with core typeclasses**
+| **Goal** | **Use This** | **Notes** |
+|----------|--------------|-----------|
+| Fold over arrays | `getFoldableArray().foldMap(Monoid)(f)(values)` | Mirrors `Array.prototype.reduce` while reusing monoids from `stdlib/monoid` |
+| Traverse arrays with effects | `getTraversableArray().traverse(Applicative)(f)(values)` | Works with `OptionI`, `ResultI`, or any exported `Applicative` |
+| Filter/partition arrays | `getFilterableArray().partition(predicate)(values)` | Indexed helpers (`filterWithIndex`, `partitionMapWithIndex`) expose element positions |
+| Filter an Option | `OptionFilterable.filter(predicate)(option)` | Returns `None` when the predicate fails |
+| Wither a Result | `getResultWitherable({ onNone, onFalse }).wither(Applicative)(f)(result)` | Supply fallback errors via the config; use `getResultFilterable`/`getResultTraversable` for the other operations |
+
 ### **Solve Graph Problems**
 | **Problem** | **Use This** | **Semiring** |
 |-------------|--------------|--------------|
