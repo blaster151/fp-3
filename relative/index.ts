@@ -17,3 +17,5 @@ export * from "./mnne-indexed-container-monads";
 export * from "./mnne-lax-monoidal";
 export * from "./mnne-well-behaved";
 export * from "./mnne-monad-extensions";
+export * from "./mnne-infinite-support";
+export * from "./mnne-powerset-monads";

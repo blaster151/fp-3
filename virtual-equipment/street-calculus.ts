@@ -2,7 +2,11 @@ import type {
   Equipment2Cell,
   VirtualEquipment,
 } from "./virtual-equipment";
-import { horizontalComposeCells, verticalComposeCells } from "./virtual-equipment";
+import {
+  defaultObjectEquality,
+  horizontalComposeCells,
+  verticalComposeCells,
+} from "./virtual-equipment";
 
 export interface StreetCompositeEvaluation<
   Obj,
@@ -15,6 +19,37 @@ export interface StreetCompositeEvaluation<
   readonly details: string;
   readonly composite?: Equipment2Cell<Obj, Arr, Payload, Evidence>;
 }
+
+const finalizeCompositeEvaluation = <Obj, Arr, Payload, Evidence>(
+  label: string,
+  issues: ReadonlyArray<string>,
+  composite: Equipment2Cell<Obj, Arr, Payload, Evidence> | undefined,
+  successDetails: string,
+  missingDetails: string,
+): StreetCompositeEvaluation<Obj, Arr, Payload, Evidence> => {
+  if (issues.length > 0) {
+    return {
+      holds: false,
+      issues,
+      details: `${label} issues: ${issues.join("; ")}`,
+    };
+  }
+
+  if (!composite) {
+    return {
+      holds: false,
+      issues,
+      details: `${label} ${missingDetails}`,
+    };
+  }
+
+  return {
+    holds: true,
+    issues,
+    details: successDetails,
+    composite,
+  };
+};
 
 export const composeVerticalChain = <Obj, Arr, Payload, Evidence>(
   equipment: VirtualEquipment<Obj, Arr, Payload, Evidence>,
@@ -53,15 +88,13 @@ export const composeVerticalChain = <Obj, Arr, Payload, Evidence>(
     composite = next;
   }
 
-  const holds = issues.length === 0;
-  return {
-    holds,
+  return finalizeCompositeEvaluation(
+    label,
     issues,
-    details: holds
-      ? `${label} vertical composite evaluated successfully.`
-      : `${label} vertical composite failed: ${issues.join("; ")}`,
-    ...(holds && { composite }),
-  };
+    issues.length === 0 ? composite : undefined,
+    `${label} vertical composite evaluated successfully.`,
+    "vertical composite was unavailable; Street pasting could not be evaluated.",
+  );
 };
 
 export const composeHorizontalChain = <Obj, Arr, Payload, Evidence>(
@@ -101,15 +134,13 @@ export const composeHorizontalChain = <Obj, Arr, Payload, Evidence>(
     composite = next;
   }
 
-  const holds = issues.length === 0;
-  return {
-    holds,
+  return finalizeCompositeEvaluation(
+    label,
     issues,
-    details: holds
-      ? `${label} horizontal composite evaluated successfully.`
-      : `${label} horizontal composite failed: ${issues.join("; ")}`,
-    ...(holds && { composite }),
-  };
+    issues.length === 0 ? composite : undefined,
+    `${label} horizontal composite evaluated successfully.`,
+    "horizontal composite was unavailable; Street pasting could not be evaluated.",
+  );
 };
 
 const evaluatePastingSide = <Obj, Arr, Payload, Evidence>(
@@ -136,14 +167,13 @@ const evaluatePastingSide = <Obj, Arr, Payload, Evidence>(
 
   if (composites.length !== pasting.length) {
     return {
-      evaluation: {
-        holds: false,
+      evaluation: finalizeCompositeEvaluation(
+        label,
         issues,
-        details:
-          issues.length === 0
-            ? `${label} horizontal composites were unavailable; Street pasting could not be evaluated.`
-            : `${label} horizontal composites failed: ${issues.join("; ")}`,
-      },
+        undefined,
+        `${label} pasting evaluated successfully.`,
+        "pasting composite was unavailable; Street pasting could not be evaluated.",
+      ),
       composites,
     };
   }
@@ -154,17 +184,130 @@ const evaluatePastingSide = <Obj, Arr, Payload, Evidence>(
     label,
   );
 
+  const combinedIssues = [...issues, ...vertical.issues];
   return {
-    evaluation: {
-      holds: vertical.holds && issues.length === 0,
-      issues: [...issues, ...vertical.issues],
-      details:
-        vertical.holds && issues.length === 0
-          ? `${label} pasting evaluated successfully.`
-          : `${label} pasting issues: ${[...issues, ...vertical.issues].join("; ")}`,
-      ...(vertical.composite && { composite: vertical.composite }),
-    },
+    evaluation: finalizeCompositeEvaluation(
+      label,
+      combinedIssues,
+      combinedIssues.length === 0 ? vertical.composite : undefined,
+      `${label} pasting evaluated successfully.`,
+      "pasting composite was unavailable; Street pasting could not be evaluated.",
+    ),
     composites,
+  };
+};
+
+const compareFrames = <Obj, Arr, Payload, Evidence>(
+  equipment: VirtualEquipment<Obj, Arr, Payload, Evidence>,
+  label: string,
+  frameLabel: string,
+  red: Equipment2Cell<Obj, Arr, Payload, Evidence>["source"],
+  green: Equipment2Cell<Obj, Arr, Payload, Evidence>["source"],
+): string[] => {
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const differences: string[] = [];
+
+  if (!equality(red.leftBoundary, green.leftBoundary)) {
+    differences.push(
+      `${label} ${frameLabel} frame left boundary mismatch: red=${String(
+        red.leftBoundary,
+      )}, green=${String(green.leftBoundary)}.`,
+    );
+  }
+
+  if (!equality(red.rightBoundary, green.rightBoundary)) {
+    differences.push(
+      `${label} ${frameLabel} frame right boundary mismatch: red=${String(
+        red.rightBoundary,
+      )}, green=${String(green.rightBoundary)}.`,
+    );
+  }
+
+  if (red.arrows.length !== green.arrows.length) {
+    differences.push(
+      `${label} ${frameLabel} frame arrow count mismatch: red=${red.arrows.length}, green=${green.arrows.length}.`,
+    );
+    return differences;
+  }
+
+  red.arrows.forEach((arrow, index) => {
+    const counterpart = green.arrows[index];
+    if (!counterpart) {
+      differences.push(
+        `${label} ${frameLabel} frame is missing the arrow at position ${index}.`,
+      );
+      return;
+    }
+    if (!equality(arrow.from, counterpart.from)) {
+      differences.push(
+        `${label} ${frameLabel} frame arrow #${index + 1} domain mismatch: red=${String(
+          arrow.from,
+        )}, green=${String(counterpart.from)}.`,
+      );
+    }
+    if (!equality(arrow.to, counterpart.to)) {
+      differences.push(
+        `${label} ${frameLabel} frame arrow #${index + 1} codomain mismatch: red=${String(
+          arrow.to,
+        )}, green=${String(counterpart.to)}.`,
+      );
+    }
+  });
+
+  return differences;
+};
+
+const compareVerticalBoundaries = <Obj, Arr, Payload, Evidence>(
+  equipment: VirtualEquipment<Obj, Arr, Payload, Evidence>,
+  label: string,
+  side: "left" | "right",
+  red: Equipment2Cell<Obj, Arr, Payload, Evidence>["boundaries"]["left"],
+  green: Equipment2Cell<Obj, Arr, Payload, Evidence>["boundaries"]["left"],
+): string[] => {
+  const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const differences: string[] = [];
+
+  if (!equality(red.from, green.from)) {
+    differences.push(
+      `${label} ${side} boundary source mismatch: red=${String(red.from)}, green=${String(green.from)}.`,
+    );
+  }
+
+  if (!equality(red.to, green.to)) {
+    differences.push(
+      `${label} ${side} boundary target mismatch: red=${String(red.to)}, green=${String(green.to)}.`,
+    );
+  }
+
+  if (red.tight !== green.tight) {
+    differences.push(`${label} ${side} boundary tight witnesses differ.`);
+  }
+
+  return differences;
+};
+
+const compareStreetComposites = <Obj, Arr, Payload, Evidence>(
+  equipment: VirtualEquipment<Obj, Arr, Payload, Evidence>,
+  label: string,
+  red: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  green: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+): { readonly holds: boolean; readonly issues: ReadonlyArray<string> } => {
+  const issues = [
+    ...compareFrames(equipment, label, "source", red.source, green.source),
+    ...compareFrames(equipment, label, "target", red.target, green.target),
+    ...compareVerticalBoundaries(equipment, label, "left", red.boundaries.left, green.boundaries.left),
+    ...compareVerticalBoundaries(
+      equipment,
+      label,
+      "right",
+      red.boundaries.right,
+      green.boundaries.right,
+    ),
+  ];
+
+  return {
+    holds: issues.length === 0,
+    issues,
   };
 };
 
@@ -211,14 +354,35 @@ export const evaluateStreetPastingComparison = <Obj, Arr, Payload, Evidence>(
     `${label} (green)`,
   );
   const issues = [...red.evaluation.issues, ...green.evaluation.issues];
+  const redComposite = red.evaluation.composite;
+  const greenComposite = green.evaluation.composite;
+
+  if (!redComposite) {
+    issues.push(`${label} (red) composite was unavailable.`);
+  }
+
+  if (!greenComposite) {
+    issues.push(`${label} (green) composite was unavailable.`);
+  }
+
+  if (redComposite && greenComposite) {
+    const comparison = compareStreetComposites(
+      equipment,
+      label,
+      redComposite,
+      greenComposite,
+    );
+    issues.push(...comparison.issues);
+  }
+
   const holds = issues.length === 0;
   return {
     holds,
     issues,
     details: holds
-      ? `${label} red/green pastings evaluated successfully.`
+      ? `${label} red/green pastings coincide.`
       : `${label} comparison issues: ${issues.join("; ")}`,
-    ...(red.evaluation.composite && { red: red.evaluation.composite }),
-    ...(green.evaluation.composite && { green: green.evaluation.composite }),
+    ...(redComposite && { red: redComposite }),
+    ...(greenComposite && { green: greenComposite }),
   };
 };

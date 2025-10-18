@@ -1,4 +1,9 @@
 import type { Semiring } from "../allTS";
+import {
+  createFiniteIndexedFamily,
+  materializeIndexedFamily,
+  type MaterializeIndexedFamilyResult,
+} from "./mnne-infinite-support";
 
 const boolOrAndSemiring: Semiring<boolean> = {
   add: (left, right) => left || right,
@@ -171,6 +176,7 @@ export interface FiniteVectorRelativeMonadReport<R> {
     readonly vectorCount: number;
     readonly arrowCount: number;
   }>;
+  readonly enumeration: MaterializeIndexedFamilyResult<number, Vector<R>>;
 }
 
 export interface FiniteVectorKleisliSplittingReport<R> {
@@ -506,6 +512,20 @@ export const analyzeFiniteVectorRelativeMonad = <R>(
     ? `Verified relative monad laws for ${uniqueDimensions.length} dimensions over a semiring with ${semiring.elements.length} elements.`
     : "Relative monad verification uncovered issues; inspect the recorded diagnostics.";
 
+  const enumeratedDimensions = Array.from(vectorsByDimension.keys()).toSorted(
+    (a, b) => a - b,
+  );
+  const enumeration = materializeIndexedFamily(
+    createFiniteIndexedFamily<number, Vector<R>>({
+      description: "Finite vector relative monad carrier",
+      indices: enumeratedDimensions,
+      fibre: (dimension) => vectorsByDimension.get(dimension) ?? [],
+    }),
+    {
+      indexLimit: enumeratedDimensions.length,
+    },
+  );
+
   return {
     holds,
     issues,
@@ -513,6 +533,7 @@ export const analyzeFiniteVectorRelativeMonad = <R>(
     semiring,
     dimensions: uniqueDimensions,
     spaceSummary,
+    enumeration,
   };
 };
 

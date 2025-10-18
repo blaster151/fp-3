@@ -146,6 +146,11 @@ This document catalogs the algebraic laws that our functional programming constr
   `analyzeIndexedContainerRelativeMonad` replays the Example 4
   unit/extraction data and checks the relative monad laws via the induced
   substitution operator.
+- `relative/mnne-powerset-monads.ts` captures Example 8’s powerset relative
+  monad using lazy/replayable subsets.  `describeCofinitePowersetWitness`
+  supplies the cofinite ℕ witness, and `analyzePowersetRelativeMonad`
+  verifies the unit/right-unit/associativity laws while reporting the
+  approximation slices used for each comparison.
 - The same module also exposes `analyzeFiniteVectorLeftKanExtension` and
   `describeBooleanVectorLeftKanExtensionWitness`, which reconstruct the Example 1
   left Kan extension along FinSet → Set.  They enumerate the cocone data,
@@ -352,42 +357,38 @@ This document catalogs the algebraic laws that our functional programming constr
 - Section 6.2 reframes relative (op)algebras as Street-style actions and spells
   out concrete witnesses for Definitions 6.9–6.14.  The analyzers behind
   `relativeMonad.actions.rightLeftCoherence`,
-  `relativeMonad.actions.streetActionData`,
   `relativeMonad.actions.streetActionHomomorphism`,
   `relativeMonad.actions.homomorphismCategory`,
   `relativeMonad.actions.canonicalSelfAction`,
   `relativeMonad.actions.looseAdjunctionAction`,
   `relativeMonad.actions.looseAdjunctionRightAction`, and
-  `relativeMonad.actions.representableRestriction` now run today: each records
-  the supplied Street witnesses, checks they reuse the expected root/carrier
-  boundaries, and returns a pending diagnostic for the unresolved Street
-  equalities so contributors see structural issues immediately.
+  `relativeMonad.actions.representableRestriction` now evaluate the Street
+  comparisons directly, recording the red/green composites and flagging
+  disagreements immediately.  `relativeMonad.actions.streetActionData` continues
+  to enforce boundary reuse while tracking the remaining comparison work.
   The remaining registry paths continue to track future analyzers:
   - `relativeMonad.actions.representableStreetSubmulticategory` captures
     Definition 6.21’s passage to \(\mathsf{X}[j, B]_\iota\) and its
-    representable sub-multicategory, keeping the tight cell and representability
-    diagnostics visible.
-  - `relativeMonad.actions.representableStreetActionDiagrams` records the
+    representable sub-multicategory, reusing the executed restriction report to
+    validate the representable cells.
+  - `relativeMonad.actions.representableStreetActionDiagrams` evaluates the
     Definition 6.21 string-diagram equalities that identify Street actions with
-    the Definition 6.4 opalgebra pastings, ensuring future analyzers request the
-    displayed \(\rho\), \(\lambda\), and \(\mu\) composites.
+    the Definition 6.4 opalgebra pastings, exposing the computed
+    \(\rho\), \(\lambda\), and \(\mu\) composites.
   - `relativeMonad.actions.representableStreetActionHomomorphism` mirrors the
-    Definition 6.21 action homomorphism equation, demanding witnesses that both
-    composites of \(\mathsf{B}(1, \alpha)\) agree inside the representable
-    sub-multicategory.
+    Definition 6.21 action homomorphism equation, comparing both composites of
+    \(\mathsf{B}(1, \alpha)\) inside the representable sub-multicategory.
   - `relativeMonad.actions.relativeAlgebraBridge` now records the Street action
-    extracted from Definition 6.1 \(T\)-algebra data, checking that the carrier
-    and multiplication 2-cell reuse the algebra witnesses while flagging the
-    remaining Street equalities as pending.
+    extracted from Definition 6.1 \(T\)-algebra data, attaching the executed
+    Street comparison report instead of a pending placeholder.
   - `relativeMonad.actions.algebraActionIsomorphism` packages Theorem 6.15’s
     comparison, bundling the algebra-to-action bridge, the action-to-algebra
-    recovery, and the identity witnesses on both sides so downstream tooling can
-    inspect the pending equivalence data.
+    recovery, and the identity witnesses on both sides while threading the
+    evaluated Street comparisons (optional inverse data remain future work).
   - `relativeMonad.actions.representabilityUpgrade` threads Remark 6.16’s
     representability witnesses through the Street action analyzer, verifying
-    that the upgrade reuses the recorded action and keeping the representable
-    restriction diagnostics visible while the comparison equalities remain
-    pending.
+    that the upgrade reuses the recorded action with the same executed Street
+    diagnostics.
   - `relativeMonad.actions.representabilityGeneralisation` extends this outlook
     to Remark 6.23’s Street action multicategories \(\mathsf{X}[j, B]\),
     signalling that future analyzers must gather the loose-extension witnesses
@@ -396,8 +397,9 @@ This document catalogs the algebraic laws that our functional programming constr
   - `relativeMonad.actions.representableActionIsomorphism` runs Theorem 6.22’s
     natural isomorphism \(\mathrm{Act}(\mathsf{X}[j,B]_\iota^{B}, T) \cong
     T\text{-Opalg}_B\) through `analyzeRelativeOpalgebraStreetActionEquivalence`,
-    recording the Street/opalgebra bridge, recovery homomorphism, and structural
-    comparison while leaving the inverse functor witnesses pending.
+    recording the Street/opalgebra bridge, recovery homomorphism, and opalgebra
+    comparison built from the executed Street evaluations (the explicit inverse
+    functor witnesses remain future work).
 - `relativeMonad.opalgebra.representableActionBridge` extends the Street bridge
   to the representable setting, ensuring the analyzer requests the Definition 6.4
   opalgebra data, the representability witnesses, and the resulting action in

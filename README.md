@@ -73,7 +73,7 @@ you can inspect the combined reports or archive them for later analysis.
   `analyzeRelativeMonadRepresentability`,
   `analyzeRelativeMonadIdentityReduction`, the Theorem 4.29 skew-monoid
   bridge, composition/representation analyzers, loose-monoid conversion
-  helpers, and the Street action scaffolding from Definition 6.9 onwards)
+  helpers, and the Street action calculators from Definition 6.9 onwards)
   together with Definition 5.1 relative-adjunction scaffolding
   (`RelativeAdjunctionData`, framing/hom-isomorphism analyzers, composition
   checks, and oracles), the new Definition 5.14/5.18/5.23 morphism analyzers
@@ -92,9 +92,9 @@ you can inspect the combined reports or archive them for later analysis.
   along fully faithful roots, and shared colimit preservation) now sit beside
   the left/right/strict morphism checks to keep these operational insights
   executable alongside the existing framing checks.  Street action analyzers
-  and `enumerateRelativeAlgebraOracles` surface the Definition 6.9–6.14
-  witnesses alongside canonical (op)algebra diagnostics so downstream tooling
-  can observe the still-pending comparisons.
+  and `enumerateRelativeAlgebraOracles` now surface the executed
+  Definition 6.9–6.14 comparisons alongside canonical (op)algebra diagnostics,
+  exposing the evaluated red/green composites to downstream tooling.
 
 #### Relative monads at a glance
 
@@ -165,6 +165,11 @@ Recent Section 6 additions:
   container presentation, enumerating finite families over two indices,
   replaying the Example 4 unit/extraction data, and certifying the relative
   monad laws using the induced substitution operator.
+- `analyzePowersetRelativeMonad` +
+  `describeCofinitePowersetWitness` encode Example 8’s powerset relative monad,
+  leveraging replayable subsets to approximate infinite carriers while
+  reporting unit/right-unit/associativity comparisons together with truncation
+  metadata.
 - `analyzeFiniteVectorLeftKanExtension` +
   `describeBooleanVectorLeftKanExtensionWitness` reconstruct the Example 1 left
   Kan extension along the inclusion FinSet → Set, confirming the induced

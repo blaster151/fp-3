@@ -11,6 +11,7 @@ import {
 } from "../virtual-equipment";
 import {
   evaluateStreetComparison,
+  evaluateStreetPastingComparison,
   type StreetComparisonEvaluation,
 } from "../virtual-equipment/street-calculus";
 import type {
@@ -97,6 +98,59 @@ export interface RelativeOpalgebraExtraordinaryTransformationWitness<
   readonly details?: string;
 }
 
+export interface RelativeStreetActionCoherenceDiagramWitness<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly redPasting: ReadonlyArray<
+    ReadonlyArray<Equipment2Cell<Obj, Arr, Payload, Evidence>>
+  >;
+  readonly greenPasting: ReadonlyArray<
+    ReadonlyArray<Equipment2Cell<Obj, Arr, Payload, Evidence>>
+  >;
+  readonly comparison?: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeStreetActionCoherenceWitnesses<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly identity: RelativeStreetActionCoherenceDiagramWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly leftUnitor: RelativeStreetActionCoherenceDiagramWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly rightUnitor: RelativeStreetActionCoherenceDiagramWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly associator: RelativeStreetActionCoherenceDiagramWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly rightAction: RelativeStreetActionCoherenceDiagramWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
 export interface RelativeStreetActionWitness<Obj, Arr, Payload, Evidence> {
   readonly carrier: EquipmentVerticalBoundary<Obj, Arr>;
   readonly action: Equipment2Cell<Obj, Arr, Payload, Evidence>;
@@ -105,6 +159,12 @@ export interface RelativeStreetActionWitness<Obj, Arr, Payload, Evidence> {
   readonly rightUnitor: Equipment2Cell<Obj, Arr, Payload, Evidence>;
   readonly associator: Equipment2Cell<Obj, Arr, Payload, Evidence>;
   readonly rightAction: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly coherence: RelativeStreetActionCoherenceWitnesses<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
   readonly details?: string;
 }
 
@@ -114,6 +174,12 @@ export interface RelativeStreetActionReport<Obj, Arr, Payload, Evidence> {
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly witness: RelativeStreetActionWitness<Obj, Arr, Payload, Evidence>;
+  readonly comparisons?: RelativeStreetActionCoherenceComparisons<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
 }
 
 export interface RelativeStreetActionHomomorphismWitness<
@@ -125,9 +191,29 @@ export interface RelativeStreetActionHomomorphismWitness<
   readonly source: RelativeStreetActionWitness<Obj, Arr, Payload, Evidence>;
   readonly target: RelativeStreetActionWitness<Obj, Arr, Payload, Evidence>;
   readonly morphism: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly redPasting: ReadonlyArray<
+    ReadonlyArray<Equipment2Cell<Obj, Arr, Payload, Evidence>>
+  >;
+  readonly greenPasting: ReadonlyArray<
+    ReadonlyArray<Equipment2Cell<Obj, Arr, Payload, Evidence>>
+  >;
   readonly redComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
   readonly greenComposite: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly comparison?: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
   readonly details?: string;
+}
+
+export interface RelativeStreetActionCoherenceComparisons<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly identity: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
+  readonly leftUnitor: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
+  readonly rightUnitor: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
+  readonly associator: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
+  readonly rightAction: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
 }
 
 export interface RelativeStreetActionHomomorphismReport<
@@ -146,6 +232,7 @@ export interface RelativeStreetActionHomomorphismReport<
     Payload,
     Evidence
   >;
+  readonly comparison?: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
 }
 
 export interface RelativeStreetActionCategoryWitness<
@@ -157,6 +244,18 @@ export interface RelativeStreetActionCategoryWitness<
   readonly action: RelativeStreetActionWitness<Obj, Arr, Payload, Evidence>;
   readonly identity: Equipment2Cell<Obj, Arr, Payload, Evidence>;
   readonly composition: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly identityDiagram: RelativeStreetActionCoherenceDiagramWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly compositionDiagram: RelativeStreetActionCoherenceDiagramWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
   readonly details?: string;
 }
 
@@ -176,6 +275,22 @@ export interface RelativeStreetActionCategoryReport<
     Payload,
     Evidence
   >;
+  readonly comparisons?: RelativeStreetActionCategoryComparisons<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+}
+
+export interface RelativeStreetActionCategoryComparisons<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly identity: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
+  readonly composition: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>;
 }
 
 export interface RelativeStreetLooseAdjunctionWitness<
@@ -201,6 +316,12 @@ export interface RelativeStreetLooseAdjunctionReport<
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly witness: RelativeStreetLooseAdjunctionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly actionReport: RelativeStreetActionReport<
     Obj,
     Arr,
     Payload,
@@ -232,6 +353,12 @@ export interface RelativeStreetRepresentableRestrictionReport<
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly witness: RelativeStreetRepresentableRestrictionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly actionReport: RelativeStreetActionReport<
     Obj,
     Arr,
     Payload,
@@ -304,6 +431,12 @@ export interface RelativeStreetRepresentableActionDiagramsReport<
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly witness: RelativeStreetRepresentableActionDiagramsWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly actionReport: RelativeStreetActionReport<
     Obj,
     Arr,
     Payload,
@@ -444,6 +577,7 @@ export interface RelativeOpalgebraStreetActionEquivalenceReport<
     Payload,
     Evidence
   >;
+  readonly opalgebraReport: RelativeMorphismCompatibilityReport;
 }
 
 export interface RelativeStreetRepresentabilityGeneralisationWitness<
@@ -752,6 +886,12 @@ export interface RelativeAlgebraStreetActionBridgeReport<
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly witness: RelativeStreetActionWitness<Obj, Arr, Payload, Evidence>;
+  readonly actionReport: RelativeStreetActionReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
 }
 
 export interface RelativeStreetActionAlgebraBridgeReport<
@@ -765,6 +905,12 @@ export interface RelativeStreetActionAlgebraBridgeReport<
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly algebra: RelativeAlgebraData<Obj, Arr, Payload, Evidence>;
+  readonly actionReport: RelativeStreetActionReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
 }
 
 export interface RelativeAlgebraStreetActionEquivalenceReport<
@@ -2058,6 +2204,7 @@ export const analyzeRelativeStreetActionCoherence = <
   const equality =
     monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
   const issues: string[] = [];
+  let pending = false;
 
   const checkCoherence = (
     cell: Equipment2Cell<Obj, Arr, Payload, Evidence>,
@@ -2085,15 +2232,170 @@ export const analyzeRelativeStreetActionCoherence = <
   checkCoherence(witness.associator, "Street action associator");
   checkCoherence(witness.rightAction, "Street action right-action composite");
 
-  const pending = issues.length === 0;
+  const ensureCompositeAlignment = (
+    label: string,
+    comparison: StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>,
+    expected: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  ) => {
+    if (comparison.red) {
+      ensureBoundary(
+        equality,
+        comparison.red.boundaries.left,
+        witness.action.boundaries.left,
+        `${label} red composite left boundary`,
+        issues,
+      );
+      ensureBoundary(
+        equality,
+        comparison.red.boundaries.right,
+        witness.action.boundaries.right,
+        `${label} red composite right boundary`,
+        issues,
+      );
+
+      if (!cellsStructurallyEqual(equality, comparison.red, expected)) {
+        issues.push(
+          `${label} red composite must coincide with the recorded ${label.toLowerCase()} 2-cell.`,
+        );
+      }
+    } else {
+      pending = true;
+    }
+
+    if (comparison.green) {
+      ensureBoundary(
+        equality,
+        comparison.green.boundaries.left,
+        witness.action.boundaries.left,
+        `${label} green composite left boundary`,
+        issues,
+      );
+      ensureBoundary(
+        equality,
+        comparison.green.boundaries.right,
+        witness.action.boundaries.right,
+        `${label} green composite right boundary`,
+        issues,
+      );
+
+      if (!cellsStructurallyEqual(equality, comparison.green, expected)) {
+        issues.push(
+          `${label} green composite must coincide with the recorded ${label.toLowerCase()} 2-cell.`,
+        );
+      }
+    } else {
+      pending = true;
+    }
+  };
+
+  const evaluateDiagram = (
+    diagram: RelativeStreetActionCoherenceDiagramWitness<
+      Obj,
+      Arr,
+      Payload,
+      Evidence
+    >,
+    label: string,
+    expected: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  ) => {
+    const comparison = evaluateStreetPastingComparison(
+      monad.equipment,
+      diagram.redPasting,
+      diagram.greenPasting,
+      label,
+    );
+    issues.push(...comparison.issues);
+    ensureCompositeAlignment(label, comparison, expected);
+    return comparison;
+  };
+
+  const identityComparison = evaluateDiagram(
+    witness.coherence.identity,
+    "Street action identity",
+    witness.identity,
+  );
+  const leftUnitorComparison = evaluateDiagram(
+    witness.coherence.leftUnitor,
+    "Street action left unitor",
+    witness.leftUnitor,
+  );
+  const rightUnitorComparison = evaluateDiagram(
+    witness.coherence.rightUnitor,
+    "Street action right unitor",
+    witness.rightUnitor,
+  );
+  const associatorComparison = evaluateDiagram(
+    witness.coherence.associator,
+    "Street action associator",
+    witness.associator,
+  );
+  const rightActionComparison = evaluateDiagram(
+    witness.coherence.rightAction,
+    "Street action right-action composite",
+    witness.rightAction,
+  );
+
+  const comparisons: RelativeStreetActionCoherenceComparisons<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    identity: identityComparison,
+    leftUnitor: leftUnitorComparison,
+    rightUnitor: rightUnitorComparison,
+    associator: associatorComparison,
+    rightAction: rightActionComparison,
+  };
+
+  const witnessWithComparisons: RelativeStreetActionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    ...witness,
+    coherence: {
+      identity: {
+        ...witness.coherence.identity,
+        comparison: identityComparison,
+      },
+      leftUnitor: {
+        ...witness.coherence.leftUnitor,
+        comparison: leftUnitorComparison,
+      },
+      rightUnitor: {
+        ...witness.coherence.rightUnitor,
+        comparison: rightUnitorComparison,
+      },
+      associator: {
+        ...witness.coherence.associator,
+        comparison: associatorComparison,
+      },
+      rightAction: {
+        ...witness.coherence.rightAction,
+        comparison: rightActionComparison,
+      },
+    },
+  };
+
+  const holds =
+    issues.length === 0 &&
+    identityComparison.holds &&
+    leftUnitorComparison.holds &&
+    rightUnitorComparison.holds &&
+    associatorComparison.holds &&
+    rightActionComparison.holds;
+
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Street action coherence recorded; Street comparison witnesses pending."
+    details: holds
+      ? "Street action coherence diagrams commute via Street evaluation."
       : `Street action coherence issues: ${issues.join("; ")}`,
-    witness,
+    witness: witnessWithComparisons,
+    comparisons,
   };
 };
 
@@ -2114,6 +2416,7 @@ export const analyzeRelativeStreetActionHomomorphism = <
   const equality =
     monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
   const issues: string[] = [];
+  let pending = false;
 
   ensureBoundary(
     equality,
@@ -2156,21 +2459,77 @@ export const analyzeRelativeStreetActionHomomorphism = <
     "Street action homomorphism green composite",
   );
 
-  if (witness.redComposite !== witness.greenComposite) {
-    issues.push(
-      "Street action homomorphism composites should coincide until Street calculus witnesses land.",
-    );
-  }
+  const comparison = evaluateStreetPastingComparison(
+    monad.equipment,
+    witness.redPasting,
+    witness.greenPasting,
+    "Street action homomorphism",
+  );
+  issues.push(...comparison.issues);
 
-  const pending = issues.length === 0;
+  const ensureEvaluatedComposite = (
+    label: string,
+    evaluated: Equipment2Cell<Obj, Arr, Payload, Evidence> | undefined,
+    expected: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  ) => {
+    if (!evaluated) {
+      pending = true;
+      return;
+    }
+
+    ensureBoundary(
+      equality,
+      evaluated.boundaries.left,
+      witness.source.action.boundaries.left,
+      `${label} left boundary`,
+      issues,
+    );
+    ensureBoundary(
+      equality,
+      evaluated.boundaries.right,
+      witness.target.action.boundaries.right,
+      `${label} right boundary`,
+      issues,
+    );
+
+    if (!cellsStructurallyEqual(equality, evaluated, expected)) {
+      issues.push(
+        `${label} must coincide with the recorded ${label.toLowerCase()} witness.`,
+      );
+    }
+  };
+
+  ensureEvaluatedComposite(
+    "Street action homomorphism red composite",
+    comparison.red,
+    witness.redComposite,
+  );
+  ensureEvaluatedComposite(
+    "Street action homomorphism green composite",
+    comparison.green,
+    witness.greenComposite,
+  );
+
+  pending ||= !comparison.red || !comparison.green;
+  const holds = issues.length === 0 && comparison.holds;
+  const witnessWithComparison: RelativeStreetActionHomomorphismWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    ...witness,
+    comparison,
+  };
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Street action homomorphism recorded; Street comparison witnesses pending."
+    details: holds
+      ? "Street action homomorphism square commutes via Street evaluation."
       : `Street action homomorphism issues: ${issues.join("; ")}`,
-    witness,
+    witness: witnessWithComparison,
+    comparison,
   };
 };
 
@@ -2225,15 +2584,119 @@ export const analyzeRelativeStreetActionHomCategory = <
     issues,
   );
 
-  const pending = issues.length === 0;
+  let pending = actionReport.pending;
+  const evaluateDiagram = (
+    diagram: RelativeStreetActionCoherenceDiagramWitness<
+      Obj,
+      Arr,
+      Payload,
+      Evidence
+    >,
+    label: string,
+    expected: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  ) => {
+    const comparison = evaluateStreetPastingComparison(
+      monad.equipment,
+      diagram.redPasting,
+      diagram.greenPasting,
+      label,
+    );
+    issues.push(...comparison.issues);
+
+    const ensureCompositeAlignment = (
+      colourLabel: string,
+      candidate:
+        | Equipment2Cell<Obj, Arr, Payload, Evidence>
+        | undefined,
+    ) => {
+      if (!candidate) {
+        pending = true;
+        return;
+      }
+
+      ensureBoundary(
+        equality,
+        candidate.boundaries.left,
+        expectedLeft,
+        `${colourLabel} left boundary`,
+        issues,
+      );
+      ensureBoundary(
+        equality,
+        candidate.boundaries.right,
+        expectedRight,
+        `${colourLabel} right boundary`,
+        issues,
+      );
+
+      if (!cellsStructurallyEqual(equality, candidate, expected)) {
+        issues.push(
+          `${colourLabel} must coincide with the recorded ${label.toLowerCase()} witness.`,
+        );
+      }
+    };
+
+    ensureCompositeAlignment(`${label} red composite`, comparison.red);
+    ensureCompositeAlignment(`${label} green composite`, comparison.green);
+    return comparison;
+  };
+
+  const identityComparison = evaluateDiagram(
+    witness.identityDiagram,
+    "Street action hom-category identity",
+    witness.identity,
+  );
+  const compositionComparison = evaluateDiagram(
+    witness.compositionDiagram,
+    "Street action hom-category composition",
+    witness.composition,
+  );
+
+  pending ||= !identityComparison.red || !identityComparison.green;
+  pending ||= !compositionComparison.red || !compositionComparison.green;
+
+  const comparisons: RelativeStreetActionCategoryComparisons<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    identity: identityComparison,
+    composition: compositionComparison,
+  };
+
+  const witnessWithComparisons: RelativeStreetActionCategoryWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    ...witness,
+    identityDiagram: {
+      ...witness.identityDiagram,
+      comparison: identityComparison,
+    },
+    compositionDiagram: {
+      ...witness.compositionDiagram,
+      comparison: compositionComparison,
+    },
+  };
+
+  const holds =
+    issues.length === 0 &&
+    actionReport.holds &&
+    identityComparison.holds &&
+    compositionComparison.holds;
+
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Street action hom-category recorded; Street comparison witnesses pending."
+    details: holds
+      ? "Street action hom-category identities and composition commute via Street evaluation."
       : `Street action hom-category issues: ${issues.join("; ")}`,
-    witness,
+    witness: witnessWithComparisons,
+    comparisons,
   };
 };
 
@@ -2300,31 +2763,34 @@ export const analyzeRelativeOpalgebraRightActionFromMonoid = <
   witness: RelativeStreetActionWitness<Obj, Arr, Payload, Evidence>,
 ): RelativeStreetActionReport<Obj, Arr, Payload, Evidence> => {
   const actionReport = analyzeRelativeStreetActionCoherence(monad, witness);
+  const witnessWithComparisons = actionReport.witness;
   const issues = [...actionReport.issues];
 
   ensureBoundary(
     monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>,
-    witness.carrier,
+    witnessWithComparisons.carrier,
     monad.carrier,
     "Street action carrier boundary",
     issues,
   );
 
-  if (witness.action !== monad.extension) {
+  if (witnessWithComparisons.action !== monad.extension) {
     issues.push(
       "Monoid-induced Street action must reuse the relative monad extension 2-cell.",
     );
   }
 
-  const pending = issues.length === 0;
+  const holds = issues.length === 0 && actionReport.holds;
+  const pending = actionReport.pending;
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Monoid-induced Street action recorded; Street comparison witnesses pending."
+    details: holds
+      ? "Monoid-induced Street action coherence verified via Street comparisons."
       : `Monoid-induced Street action issues: ${issues.join("; ")}`,
-    witness,
+    witness: witnessWithComparisons,
+    comparisons: actionReport.comparisons,
   };
 };
 
@@ -2338,23 +2804,26 @@ export const analyzeRelativeStreetCanonicalAction = <
   witness: RelativeStreetActionWitness<Obj, Arr, Payload, Evidence>,
 ): RelativeStreetActionReport<Obj, Arr, Payload, Evidence> => {
   const actionReport = analyzeRelativeStreetActionCoherence(monad, witness);
+  const witnessWithComparisons = actionReport.witness;
   const issues = [...actionReport.issues];
 
-  if (witness.action !== monad.extension) {
+  if (witnessWithComparisons.action !== monad.extension) {
     issues.push(
       "Canonical Street action must reuse the relative monad extension 2-cell.",
     );
   }
 
-  const pending = issues.length === 0;
+  const holds = issues.length === 0 && actionReport.holds;
+  const pending = actionReport.pending;
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Canonical Street action recorded; Proposition 6.12 witnesses pending."
+    details: holds
+      ? "Canonical Street action coherence verified via Street comparisons."
       : `Canonical Street action issues: ${issues.join("; ")}`,
-    witness,
+    witness: witnessWithComparisons,
+    comparisons: actionReport.comparisons,
   };
 };
 
@@ -2381,45 +2850,56 @@ export const analyzeRelativeStreetLooseAdjunctionAction = <
     witness.streetAction,
   );
   issues.push(...actionReport.issues);
+  const witnessWithComparisons: RelativeStreetLooseAdjunctionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    ...witness,
+    streetAction: actionReport.witness,
+  };
 
   ensureBoundary(
     equality,
-    witness.unit.boundaries.left,
+    witnessWithComparisons.unit.boundaries.left,
     monad.root,
     "Loose adjunction unit left boundary",
     issues,
   );
   ensureBoundary(
     equality,
-    witness.unit.boundaries.right,
-    witness.streetAction.carrier,
+    witnessWithComparisons.unit.boundaries.right,
+    witnessWithComparisons.streetAction.carrier,
     "Loose adjunction unit right boundary",
     issues,
   );
   ensureBoundary(
     equality,
-    witness.counit.boundaries.left,
+    witnessWithComparisons.counit.boundaries.left,
     monad.root,
     "Loose adjunction counit left boundary",
     issues,
   );
   ensureBoundary(
     equality,
-    witness.counit.boundaries.right,
-    witness.streetAction.carrier,
+    witnessWithComparisons.counit.boundaries.right,
+    witnessWithComparisons.streetAction.carrier,
     "Loose adjunction counit right boundary",
     issues,
   );
 
-  const pending = issues.length === 0;
+  const holds = issues.length === 0 && actionReport.holds;
+  const pending = actionReport.pending;
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Loose adjunction Street action recorded; Proposition 6.13 witnesses pending."
+    details: holds
+      ? "Loose adjunction Street action coherence verified via Street comparisons."
       : `Loose adjunction Street action issues: ${issues.join("; ")}`,
-    witness,
+    witness: witnessWithComparisons,
+    actionReport,
   };
 };
 
@@ -2438,23 +2918,26 @@ export const analyzeRelativeStreetLooseAdjunctionRightAction = <
   >,
 ): RelativeStreetLooseAdjunctionReport<Obj, Arr, Payload, Evidence> => {
   const baseReport = analyzeRelativeStreetLooseAdjunctionAction(monad, witness);
+  const witnessWithComparisons = baseReport.witness;
   const issues = [...baseReport.issues];
 
-  if (witness.streetAction.action !== monad.extension) {
+  if (witnessWithComparisons.streetAction.action !== monad.extension) {
     issues.push(
       "Loose adjunction Street right action must reuse the relative monad extension 2-cell.",
     );
   }
 
-  const pending = issues.length === 0;
+  const holds = issues.length === 0 && baseReport.holds;
+  const pending = baseReport.pending;
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Loose adjunction Street right action recorded; Proposition 6.20 witnesses pending."
+    details: holds
+      ? "Loose adjunction Street right action coherence verified via Street comparisons."
       : `Loose adjunction Street right action issues: ${issues.join("; ")}`,
-    witness,
+    witness: witnessWithComparisons,
+    actionReport: baseReport.actionReport,
   };
 };
 
@@ -2486,9 +2969,23 @@ export const analyzeRelativeStreetRepresentableRestriction = <
     witness.streetAction,
   );
   issues.push(...actionReport.issues);
+  const witnessWithComparisons: RelativeStreetRepresentableRestrictionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    ...witness,
+    streetAction: actionReport.witness,
+  };
 
-  const representsCarrier = witness.representableCarriers.some((candidate) =>
-    verticalBoundariesEqual(equality, candidate, witness.streetAction.carrier),
+  const representsCarrier = witnessWithComparisons.representableCarriers.some(
+    (candidate) =>
+      verticalBoundariesEqual(
+        equality,
+        candidate,
+        witnessWithComparisons.streetAction.carrier,
+      ),
   );
 
   if (!representsCarrier) {
@@ -2497,15 +2994,17 @@ export const analyzeRelativeStreetRepresentableRestriction = <
     );
   }
 
-  const pending = issues.length === 0;
+  const holds = issues.length === 0 && actionReport.holds;
+  const pending = actionReport.pending;
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Representable Street restriction recorded; Definition 6.14 witnesses pending."
+    details: holds
+      ? "Representable Street restriction verified via Street comparisons."
       : `Representable Street restriction issues: ${issues.join("; ")}`,
-    witness,
+    witness: witnessWithComparisons,
+    actionReport,
   };
 };
 
@@ -2534,36 +3033,47 @@ export const analyzeRelativeStreetRepresentableSubmulticategory = <
   );
   const equality =
     monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const restrictionWithComparisons = restrictionReport.witness;
   const issues = [...restrictionReport.issues];
+  const witnessWithComparisons: RelativeStreetRepresentableSubmulticategoryWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    ...witness,
+    restriction: restrictionWithComparisons,
+  };
 
-  witness.representableCells.forEach((cell, index) => {
+  witnessWithComparisons.representableCells.forEach((cell, index) => {
     const label = `Representable Street cell #${index + 1}`;
     ensureBoundary(
       equality,
       cell.boundaries.left,
-      witness.restriction.streetAction.carrier,
+      restrictionWithComparisons.streetAction.carrier,
       `${label} left boundary`,
       issues,
     );
     ensureBoundary(
       equality,
       cell.boundaries.right,
-      witness.restriction.streetAction.carrier,
+      restrictionWithComparisons.streetAction.carrier,
       `${label} right boundary`,
       issues,
     );
   });
 
-  const pending = issues.length === 0;
+  const holds = issues.length === 0 && restrictionReport.holds;
+  const pending = restrictionReport.pending;
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Representable Street sub-multicategory recorded; Definition 6.21 witnesses pending."
+    details: holds
+      ? "Representable Street sub-multicategory verified via Street comparisons."
       : `Representable Street sub-multicategory issues: ${issues.join("; ")}`,
     restrictionReport,
-    witness,
+    witness: witnessWithComparisons,
   };
 };
 
@@ -2593,16 +3103,25 @@ export const analyzeRelativeStreetRepresentableActionDiagrams = <
   const equality =
     presentation.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
   const issues = [...actionReport.issues];
+  const witnessWithComparisons: RelativeStreetRepresentableActionDiagramsWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    ...witness,
+    streetAction: actionReport.witness,
+  };
 
   ensureBoundary(
     equality,
-    witness.streetAction.carrier,
+    witnessWithComparisons.streetAction.carrier,
     presentation.opalgebra.carrier,
     "Representable Street action carrier",
     issues,
   );
 
-  if (witness.streetAction.action !== presentation.opalgebra.action) {
+  if (witnessWithComparisons.streetAction.action !== presentation.opalgebra.action) {
     issues.push(
       "Representable Street action must reuse the opalgebra action 2-cell.",
     );
@@ -2615,14 +3134,14 @@ export const analyzeRelativeStreetRepresentableActionDiagrams = <
     ensureBoundary(
       equality,
       cell.boundaries.left,
-      witness.streetAction.action.boundaries.left,
+      witnessWithComparisons.streetAction.action.boundaries.left,
       `${label} left boundary`,
       issues,
     );
     ensureBoundary(
       equality,
       cell.boundaries.right,
-      witness.streetAction.action.boundaries.right,
+      witnessWithComparisons.streetAction.action.boundaries.right,
       `${label} right boundary`,
       issues,
     );
@@ -2632,15 +3151,17 @@ export const analyzeRelativeStreetRepresentableActionDiagrams = <
   checkDiagram(witness.lambdaComposite, "Representable Street diagram λ");
   checkDiagram(witness.muComposite, "Representable Street diagram μ");
 
-  const pending = issues.length === 0;
+  const holds = issues.length === 0 && actionReport.holds;
+  const pending = actionReport.pending;
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Representable Street action diagrams recorded; Definition 6.21 witnesses pending."
+    details: holds
+      ? "Representable Street action diagrams verified via Street comparisons."
       : `Representable Street action diagram issues: ${issues.join("; ")}`,
-    witness,
+    witness: witnessWithComparisons,
+    actionReport,
   };
 };
 
@@ -2677,26 +3198,41 @@ export const analyzeRelativeStreetRepresentableActionHomomorphism = <
     ...restrictionReport.issues,
     ...homomorphismReport.issues,
   ];
+  const witnessWithComparisons: RelativeStreetRepresentableActionHomomorphismWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    ...witness,
+    homomorphism: homomorphismReport.witness,
+    restriction: restrictionReport.witness,
+  };
 
   ensureBoundary(
     equality,
-    witness.homomorphism.target.carrier,
-    witness.restriction.streetAction.carrier,
+    witnessWithComparisons.homomorphism.target.carrier,
+    witnessWithComparisons.restriction.streetAction.carrier,
     "Representable Street homomorphism target",
     issues,
   );
 
-  const pending = issues.length === 0;
+  const pending =
+    restrictionReport.pending || homomorphismReport.pending;
+  const holds =
+    issues.length === 0 &&
+    restrictionReport.holds &&
+    homomorphismReport.holds;
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Representable Street homomorphism recorded; Definition 6.21 witnesses pending."
+    details: holds
+      ? "Representable Street homomorphism commutes via Street comparisons."
       : `Representable Street homomorphism issues: ${issues.join("; ")}`,
     homomorphismReport,
     restrictionReport,
-    witness,
+    witness: witnessWithComparisons,
   };
 };
 
@@ -2733,16 +3269,26 @@ export const analyzeRelativeOpalgebraRepresentableActionBridge = <
     ...actionReport.issues,
     ...restrictionReport.issues,
   ];
+  const restrictionWithComparisons = restrictionReport.witness;
+  const witnessWithComparisons: RelativeStreetRepresentableRestrictionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = restrictionWithComparisons;
 
   ensureBoundary(
     equality,
-    witness.streetAction.carrier,
+    restrictionWithComparisons.streetAction.carrier,
     presentation.opalgebra.carrier,
     "Representable Street action carrier",
     issues,
   );
 
-  if (witness.streetAction.action !== presentation.opalgebra.action) {
+  if (
+    restrictionWithComparisons.streetAction.action !==
+    presentation.opalgebra.action
+  ) {
     issues.push(
       "Representable Street action bridge must reuse the opalgebra action 2-cell.",
     );
@@ -2809,17 +3355,27 @@ export const analyzeRelativeOpalgebraRepresentableActionBridge = <
     }
   }
 
-  const holds = issues.length === 0;
+  const structuralAlignment = issues.length === 0;
+  const holds =
+    structuralAlignment &&
+    actionReport.holds &&
+    restrictionReport.holds &&
+    comparison.holds;
+  const pending =
+    actionReport.pending ||
+    restrictionReport.pending ||
+    !comparison.red ||
+    !comparison.green;
   return {
     holds,
-    pending: false,
+    pending,
     issues,
     details: holds
       ? "Representable Street bridge comparisons succeed; Street and opalgebra presentations coincide."
       : `Representable Street bridge issues: ${issues.join("; ")}`,
     actionReport,
     restrictionReport,
-    witness,
+    witness: witnessWithComparisons,
     comparison,
   };
 };
@@ -2865,10 +3421,19 @@ export const analyzeRelativeOpalgebraStreetActionEquivalence = <
     ...bridge.issues,
     ...recovery.issues,
   ];
+  const witnessWithComparisons: RelativeOpalgebraStreetActionEquivalenceWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    ...witness,
+    streetAction: bridge.witness,
+  };
 
   ensureBoundary(
     equality,
-    witness.recoveredOpalgebra.carrier,
+    witnessWithComparisons.recoveredOpalgebra.carrier,
     presentation.opalgebra.carrier,
     "Recovered opalgebra carrier",
     issues,
@@ -2885,17 +3450,26 @@ export const analyzeRelativeOpalgebraStreetActionEquivalence = <
   );
   issues.push(...opalgebraReport.issues);
 
-  const pending = issues.length === 0;
+  const holds =
+    issues.length === 0 &&
+    bridge.holds &&
+    recovery.holds &&
+    opalgebraReport.holds;
+  const pending =
+    bridge.pending || recovery.pending || opalgebraReport.pending;
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Representable Street/opalgebra equivalence recorded; Theorem 6.22 witnesses pending."
-      : `Representable Street/opalgebra equivalence issues: ${issues.join("; ")}`,
+    details: holds
+      ? "Representable Street/opalgebra equivalence verified via Street comparisons."
+      : pending
+        ? "Representable Street/opalgebra equivalence recorded; Theorem 6.22 witnesses pending."
+        : `Representable Street/opalgebra equivalence issues: ${issues.join("; ")}`,
     bridge,
     recovery,
-    witness,
+    witness: witnessWithComparisons,
+    opalgebraReport,
   };
 };
 
@@ -3648,17 +4222,18 @@ export const analyzeRelativeAlgebraStreetActionBridge = <
   );
   const equality =
     presentation.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const witnessWithComparisons = actionReport.witness;
   const issues = [...actionReport.issues];
 
   ensureBoundary(
     equality,
-    witness.carrier,
+    witnessWithComparisons.carrier,
     presentation.algebra.carrier,
     "Relative algebra Street action carrier",
     issues,
   );
 
-  if (witness.action !== presentation.algebra.action) {
+  if (witnessWithComparisons.action !== presentation.algebra.action) {
     issues.push(
       "Relative algebra Street action must reuse the algebra multiplication 2-cell.",
     );
@@ -3679,15 +4254,17 @@ export const analyzeRelativeAlgebraStreetActionBridge = <
     issues,
   );
 
-  const pending = issues.length === 0;
+  const holds = issues.length === 0 && actionReport.holds;
+  const pending = actionReport.pending;
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Relative algebra Street action recorded; Theorem 6.15 witnesses pending."
+    details: holds
+      ? "Relative algebra Street action verified via Street comparisons."
       : `Relative algebra Street action bridge issues: ${issues.join("; ")}`,
-    witness,
+    witness: witnessWithComparisons,
+    actionReport,
   };
 };
 
@@ -3701,13 +4278,15 @@ export const analyzeRelativeStreetActionAlgebraBridge = <
   witness: RelativeStreetActionWitness<Obj, Arr, Payload, Evidence>,
   algebra: RelativeAlgebraData<Obj, Arr, Payload, Evidence>,
 ): RelativeStreetActionAlgebraBridgeReport<Obj, Arr, Payload, Evidence> => {
+  const actionReport = analyzeRelativeStreetActionCoherence(monad, witness);
   const equality = monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
-  const issues: string[] = [];
+  const witnessWithComparisons = actionReport.witness;
+  const issues = [...actionReport.issues];
 
   ensureBoundary(
     equality,
     algebra.carrier,
-    witness.carrier,
+    witnessWithComparisons.carrier,
     "Street action recovered algebra carrier",
     issues,
   );
@@ -3726,21 +4305,23 @@ export const analyzeRelativeStreetActionAlgebraBridge = <
     issues,
   );
 
-  if (algebra.action !== witness.action) {
+  if (algebra.action !== witnessWithComparisons.action) {
     issues.push(
       "Recovered algebra action must coincide with the Street action 2-cell.",
     );
   }
 
-  const pending = issues.length === 0;
+  const holds = issues.length === 0 && actionReport.holds;
+  const pending = actionReport.pending;
   return {
-    holds: false,
+    holds,
     pending,
     issues,
-    details: pending
-      ? "Street action recovered algebra recorded; Theorem 6.15 comparisons pending."
+    details: holds
+      ? "Street action recovers the algebra via Street comparisons."
       : `Street action recovered algebra issues: ${issues.join("; ")}`,
     algebra,
+    actionReport,
   };
 };
 
@@ -3791,22 +4372,29 @@ export const analyzeRelativeAlgebraStreetActionEquivalence = <
     issues.push(...algebraComparison.issues);
   }
 
-  const pending =
+  const holds =
     issues.length === 0 &&
-    bridge.pending &&
-    recovery.pending &&
-    (streetComparison ? streetComparison.pending : true) &&
-    (algebraComparison ? algebraComparison.pending : true);
+    bridge.holds &&
+    recovery.holds &&
+    (streetComparison ? streetComparison.holds : true) &&
+    (algebraComparison ? algebraComparison.holds : true);
+  const pending =
+    bridge.pending ||
+    recovery.pending ||
+    (streetComparison ? streetComparison.pending : false) ||
+    (algebraComparison ? algebraComparison.pending : false);
 
   return {
-    holds: false,
+    holds,
     pending,
     issues,
     details:
       witness.details ??
-      (pending
-        ? "Relative algebra and Street action recorded as mutually inverse up to pending Street comparisons."
-        : `Relative algebra/Street action equivalence issues: ${issues.join("; ")}`),
+      (holds
+        ? "Relative algebra and Street action comparison succeeds via Street evaluations."
+        : pending
+          ? "Relative algebra and Street action recorded as mutually inverse up to pending Street comparisons."
+          : `Relative algebra/Street action equivalence issues: ${issues.join("; ")}`),
     bridge,
     recovery,
     ...(streetComparison && { streetComparison }),
@@ -3844,20 +4432,24 @@ export const analyzeRelativeStreetRepresentabilityUpgrade = <
     );
   }
 
-  const pending =
+  const holds =
     issues.length === 0 &&
-    actionReport.pending &&
-    representabilityReport.pending;
+    actionReport.holds &&
+    representabilityReport.holds;
+  const pending =
+    actionReport.pending || representabilityReport.pending;
 
   return {
-    holds: false,
+    holds,
     pending,
     issues,
     details:
       witness.details ??
-      (pending
-        ? "Street action representability witnesses recorded; Remark 6.16 comparisons pending."
-        : `Street action representability upgrade issues: ${issues.join("; ")}`),
+      (holds
+        ? "Street action representability witnesses verified via Street comparisons."
+        : pending
+          ? "Street action representability witnesses recorded; Remark 6.16 comparisons pending."
+          : `Street action representability upgrade issues: ${issues.join("; ")}`),
     actionReport,
     representabilityReport,
   };
@@ -4242,16 +4834,51 @@ const duplicateStreetActionWitness = <Obj, Arr, Payload, Evidence>(
   carrier: EquipmentVerticalBoundary<Obj, Arr>,
   action: Equipment2Cell<Obj, Arr, Payload, Evidence>,
   details: string,
-): RelativeStreetActionWitness<Obj, Arr, Payload, Evidence> => ({
-  carrier,
-  action,
-  identity: action,
-  leftUnitor: action,
-  rightUnitor: action,
-  associator: action,
-  rightAction: action,
-  details,
-});
+): RelativeStreetActionWitness<Obj, Arr, Payload, Evidence> => {
+  const identity = action;
+  const leftUnitor = action;
+  const rightUnitor = action;
+  const associator = action;
+  const rightAction = action;
+  const singletonPasting = (
+    cell: Equipment2Cell<Obj, Arr, Payload, Evidence>,
+  ): ReadonlyArray<ReadonlyArray<Equipment2Cell<Obj, Arr, Payload, Evidence>>> => [
+    [cell],
+  ];
+
+  return {
+    carrier,
+    action,
+    identity,
+    leftUnitor,
+    rightUnitor,
+    associator,
+    rightAction,
+    coherence: {
+      identity: {
+        redPasting: singletonPasting(identity),
+        greenPasting: singletonPasting(identity),
+      },
+      leftUnitor: {
+        redPasting: singletonPasting(leftUnitor),
+        greenPasting: singletonPasting(leftUnitor),
+      },
+      rightUnitor: {
+        redPasting: singletonPasting(rightUnitor),
+        greenPasting: singletonPasting(rightUnitor),
+      },
+      associator: {
+        redPasting: singletonPasting(associator),
+        greenPasting: singletonPasting(associator),
+      },
+      rightAction: {
+        redPasting: singletonPasting(rightAction),
+        greenPasting: singletonPasting(rightAction),
+      },
+    },
+    details,
+  };
+};
 
 export const describeRelativeStreetAction = <Obj, Arr, Payload, Evidence>(
   monad: RelativeMonadData<Obj, Arr, Payload, Evidence>,
@@ -4286,10 +4913,15 @@ export const describeRelativeStreetActionHomomorphism = <
   action?: RelativeStreetActionWitness<Obj, Arr, Payload, Evidence>,
 ): RelativeStreetActionHomomorphismWitness<Obj, Arr, Payload, Evidence> => {
   const baseAction = action ?? describeRelativeStreetAction(monad);
+  const singletonPasting = [
+    [baseAction.action] as ReadonlyArray<Equipment2Cell<Obj, Arr, Payload, Evidence>>,
+  ] as const;
   return {
     source: baseAction,
     target: baseAction,
     morphism: baseAction.action,
+    redPasting: singletonPasting,
+    greenPasting: singletonPasting,
     redComposite: baseAction.action,
     greenComposite: baseAction.action,
     details:
@@ -4311,6 +4943,14 @@ export const describeRelativeStreetActionCategory = <
     action: baseAction,
     identity: baseAction.action,
     composition: baseAction.action,
+    identityDiagram: {
+      redPasting: singletonPasting,
+      greenPasting: singletonPasting,
+    },
+    compositionDiagram: {
+      redPasting: singletonPasting,
+      greenPasting: singletonPasting,
+    },
     details:
       "Street action hom-category witnesses default to the action 2-cell for identity and composition.",
   };

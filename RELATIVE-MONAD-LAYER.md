@@ -311,45 +311,58 @@
     expanding the skew-multicategory placeholder into dedicated tasks:
     - ✅ Definition 6.9’s right/left action coherence now has an executable
       analyzer under `relativeMonad.actions.rightLeftCoherence`, recording the
-      identity/unitor/associator/right-action witnesses and verifying their
-      boundaries while keeping the Street equalities pending.
+      identity/unitor/associator/right-action witnesses, checking their
+      boundaries, and evaluating the Street red/green pastings so composite
+      disagreements surface immediately.
     - ✅ Definition 6.11’s homomorphism and Act-category structure runs through
       `relativeMonad.actions.streetActionHomomorphism` and
-      `relativeMonad.actions.homomorphismCategory`, which check the comparison
-      composites reuse the Street action boundaries and expose pending
-      diagnostics for the remaining diagrams.
+      `relativeMonad.actions.homomorphismCategory`, which compute both
+      composites, compare them via the equipment equality hooks, and propagate
+      the resulting diagnostics.
     - ✅ Proposition 6.12’s canonical self-action is implemented via
       `relativeMonad.actions.canonicalSelfAction`, ensuring the induced action
-      reuses the relative monad extension and coherence witnesses.
-    - ✅ Proposition 6.13’s loose-adjunction-induced action now flows through
-      `relativeMonad.actions.looseAdjunctionAction`, threading the unit/counit
-      data into the Street action analyzer and surfacing framing failures
-      immediately.
+      reuses the relative monad extension while inheriting the full Street
+      comparison report.
+    - ✅ Proposition 6.13’s loose-adjunction-induced actions now flow through
+      `relativeMonad.actions.looseAdjunctionAction` and
+      `relativeMonad.actions.looseAdjunctionRightAction`, threading the
+      unit/counit data into the Street calculator and returning the executed
+      comparison evidence alongside boundary checks.
     - ✅ Definition 6.14’s representable-tight-cell restriction is enforced by
-      `relativeMonad.actions.representableRestriction`, which checks that the
-      recorded Street action carrier appears among the representable tight
-      cells supplied by the equipment.
+      `relativeMonad.actions.representableRestriction`, which confirms the
+      Street action carrier appears among the representable tight cells and
+      forwards the evaluated Street comparisons.
     - ✅ The unpacking of an action in \(\mathsf{X}[D, j]_i\) is captured by
       `relativeMonad.actions.streetActionData`, recording the tight-cell/action
-      pair and validating that they reuse the relative monad loose frames while
-      leaving the string-diagram equalities pending.
+      pair and validating boundary reuse while still flagging the outstanding
+      string-diagram work.
+    - ✅ `relativeMonad.actions.representableStreetSubmulticategory` and
+      `relativeMonad.actions.representableStreetActionDiagrams` reuse the
+      executed restriction and coherence reports to check representable cells
+      and the \(\rho/\lambda/\mu\) composites with the same Street evidence.
+    - ✅ `relativeMonad.actions.representableStreetActionHomomorphism` mirrors
+      the Definition 6.21 action homomorphism equation, comparing the pastings
+      inside the representable sub-multicategory and surfacing mismatches
+      directly.
     - ✅ The concluding paragraph (“We may now exhibit the \(T\)-algebras … as
       actions in \(\mathsf{X}[D, j]\)”) now flows through
-      `relativeMonad.actions.relativeAlgebraBridge`, which converts a Definition 6.1
-      algebra into Street action witnesses, checks the carrier/multiplication
-      reuse the recorded data, and surfaces pending Street equalities.
+      `relativeMonad.actions.relativeAlgebraBridge`, which converts a
+      Definition 6.1 algebra into Street action witnesses, attaches the Street
+      action report, and reports equality failures without a pending stub.
     - ✅ Theorem 6.15’s categorical equivalence is implemented via
-      `relativeMonad.actions.algebraActionIsomorphism`, bundling the algebra-to-action
-      bridge, action-to-algebra recovery, and identity witnesses so downstream
-      tooling can inspect the pending equivalence diagnostics.
+      `relativeMonad.actions.algebraActionIsomorphism`, bundling the
+      algebra-to-action bridge, action-to-algebra recovery, and identity
+      witnesses while threading the executed Street comparisons through both
+      directions (optional inverse data remain future work).
     - ✅ Remark 6.16’s representability upgrade now lives in
       `relativeMonad.actions.representabilityUpgrade`, threading the Street
-      representability witnesses through the analyzer while flagging any
-      mismatches between the upgrade data and the recorded action.
+      representability witnesses through the analyzer and reusing the executed
+      comparison reports to detect mismatches between the upgrade data and the
+      recorded action.
     - ✅ Corollary 6.17’s identity-root specialisation is covered by
       `relativeMonad.algebra.identityRootEquivalence`, which checks that the
       relative algebra collapses to the ordinary one when the root is an
-      identity and reports the remaining Street comparisons as pending.
+      identity while the Street comparisons for Definition 6.18 remain queued.
     - ✅ Definition 6.18’s Street-action viewpoint is implemented via
       `relativeMonad.opalgebra.rightActionPresentation`, whose analyzer records
       the Street action witness and checks it reuses the opalgebra action, root,
@@ -357,7 +370,7 @@
     - ✅ Proposition 6.19’s canonical actions land in
       `relativeMonad.opalgebra.rightActionFromMonoid`, verifying that the Street
       action is framed by the relative monad’s root/carrier and reuses the
-      extension data, with the Street composites still marked pending.
+      extension data while now exposing the evaluated Street composites.
     - ✅ Proposition 6.20’s loose-adjunction transport now executes via
       `analyzeRelativeStreetLooseAdjunctionRightAction`, threading unit/counit
       witnesses, representable carriers, and induced Street actions while the
@@ -454,6 +467,10 @@
     `describeBooleanVectorLeftKanExtensionWitness`, checking that the colimit
     presentations collapse to the ordinary Boolean vector functor for small
     sets and highlighting when the witness dimension bound is insufficient.
+  - ✅ Encoded Example 8’s powerset relative monad in
+    `relative/mnne-powerset-monads.ts`, supplying lazy/replayable subsets,
+    approximation diagnostics, and an analyzer that reports the unit/right-unit/
+    associativity comparisons together with truncation metadata.
   - ✅ Bridged Example 1’s arrow semantics with
     `analyzeFiniteVectorArrowCorrespondence` and
     `describeBooleanVectorArrowCorrespondenceWitness`, confirming that any

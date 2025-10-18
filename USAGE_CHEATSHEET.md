@@ -181,6 +181,14 @@ data, and verifies the relative monad laws via the induced substitution
 operator. `RelativeMonadExamples.indexedContainerRelativeMonadDemo()` prints the
 summary alongside the other MNNE diagnostics in `examples.ts`.
 
+To explore Example 8’s powerset relative monad, call
+`describeCofinitePowersetWitness()` and feed it to
+`analyzePowersetRelativeMonad`. The analyzer replays subset closure on lazy
+cofinite/arithmetical families, checks the unit/right-unit/associativity
+comparisons, and records truncation metadata when enumeration limits are
+reached. `RelativeMonadOracles.powersetRelativeMonad()` surfaces the same
+diagnostics through the registry interface.
+
 To witness the associated left Kan extension along the inclusion FinSet → Set,
 call `describeBooleanVectorLeftKanExtensionWitness(targetSizes, dimensionLimit)`
 and pass it to `analyzeFiniteVectorLeftKanExtension`. The analyzer assembles the
