@@ -22,7 +22,7 @@ export function lawfulKleisliCategory(): Lawful<number, { kid: typeof kid; kcomp
   const laws: Law<number>[] = [
     {
       name: "identity (left/right)",
-      check: () => {
+      check: (_context: number) => {
         const idA = kid<number>();
         return A.every(
           (a) =>
@@ -33,7 +33,7 @@ export function lawfulKleisliCategory(): Lawful<number, { kid: typeof kid; kcomp
     },
     {
       name: "associativity",
-      check: () => {
+      check: (_context: number) => {
         const lhs = kcomp(kcomp(incK, dblK), stepK);
         const rhs = kcomp(incK, kcomp(dblK, stepK));
         return A.every((a) => eqDist(eqNum, lhs(a), rhs(a)));
@@ -41,7 +41,7 @@ export function lawfulKleisliCategory(): Lawful<number, { kid: typeof kid; kcomp
     },
     {
       name: "naturality of kmap along precomposition",
-      check: () => {
+      check: (_context: number) => {
         const g = (b: number) => b % 2;
         const h = (z: { n: number }) => z.n;
         const Z = [{ n: 0 }, { n: 1 }, { n: 2 }];

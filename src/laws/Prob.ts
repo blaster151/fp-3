@@ -9,18 +9,18 @@ export function lawfulDistNumber(): Lawful<number, typeof DistMonad> {
   const laws: Law<number>[] = [
     {
       name: "left identity",
-      check: ()=> [0,1,2].every(a => {
+      check: (_context: number) => [0,1,2].every(a => {
         const f = (x:number)=> [{x:x+1,p:0.4},{x:x+2,p:0.6}];
         return eqDist(eq, ch(of(a), f), f(a));
       })
     },
     {
       name: "right identity",
-      check: ()=> [[{x:1,p:1}], [{x:1,p:0.3},{x:2,p:0.7}]].every(m => eqDist(eq, ch(m, of), m))
+      check: (_context: number) => [[{x:1,p:1}], [{x:1,p:0.3},{x:2,p:0.7}]].every(m => eqDist(eq, ch(m, of), m))
     },
     {
       name: "associativity",
-      check: ()=> {
+      check: (_context: number) => {
         const f = (a:number)=> [{x:a+1,p:0.5},{x:a*2,p:0.5}];
         const g = (b:number)=> [{x:b-1,p:0.3},{x:b+3,p:0.7}];
         const ms = [[{x:1,p:1}], [{x:2,p:0.4},{x:3,p:0.6}]];

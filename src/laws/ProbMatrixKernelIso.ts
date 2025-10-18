@@ -18,7 +18,7 @@ export function lawfulKernelMatrixIso(): Lawful<unknown, { to: typeof kernelToMa
   const laws: Law<unknown>[] = [
     {
       name: "to ∘ from = id (matrices)",
-      check: () => {
+      check: (_context: unknown) => {
         const P = [
           [0.3, 0.7],
           [1.0, 0.0],
@@ -30,7 +30,7 @@ export function lawfulKernelMatrixIso(): Lawful<unknown, { to: typeof kernelToMa
     },
     {
       name: "from ∘ to = id (kernels) on representatives",
-      check: () => {
+      check: (_context: unknown) => {
         const ks = [
           Samples.pointFirst<number, number>(B),
           Samples.uniform<number, number>(B),

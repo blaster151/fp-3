@@ -29,7 +29,7 @@ export function lawfulTopContinuity(): Lawful<unknown, { tag: "Top/Continuity" }
   const laws: Law<unknown>[] = [
     {
       name: "subspace inclusion is continuous",
-      check: () => {
+      check: (_context: unknown) => {
         const S = [0, 2];
         const TS = subspace(eqNum, TXd, S);
         const i = inclusion(eqNum, S, TXd.carrier);
@@ -38,7 +38,7 @@ export function lawfulTopContinuity(): Lawful<unknown, { tag: "Top/Continuity" }
     },
     {
       name: "continuity closed under composition",
-      check: () => {
+      check: (_context: unknown) => {
         const f = (s: number) => (s === 1 ? 0 : 1);
         const g = (_: number) => 2;
         const composed = (s: number) => g(f(s));
@@ -50,7 +50,7 @@ export function lawfulTopContinuity(): Lawful<unknown, { tag: "Top/Continuity" }
     },
     {
       name: "product projections continuous; pairing satisfies equations (discrete example)",
-      check: () => {
+      check: (_context: unknown) => {
         const Xs = [0, 1];
         const Ys = [10, 20, 30];
         const Zs = [42, 99];

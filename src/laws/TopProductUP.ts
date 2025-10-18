@@ -18,7 +18,7 @@ export function lawfulTopProductUP(): Lawful<number, { readonly tag: string }> {
   const laws: Law<number>[] = [
     {
       name: "projections and pairing satisfy the universal property",
-      check: () => {
+      check: (_context: number) => {
         const result = checkProductUP(eqNum, eqNum, eqNum, TZ, TX, TY, f, g, continuous);
         return result.holds;
       },
