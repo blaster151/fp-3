@@ -258,7 +258,8 @@ const processed = collectMapValues(map, transform)
 
 **When processing collections**: 
 - "Check filterMap/collect helpers for Option/Result processing"
-- "Consider collectArray, collectMapValues, collectSet patterns"
+- "Consider collectArray, collectMapValues, collectSet (via `stdlib/set` with explicit Eq) patterns"
+- "Use ReadonlySetFilterable/TraversableWithIndex when you need effectful set pipelines"
 
 ## How to Use This Knowledge Base
 

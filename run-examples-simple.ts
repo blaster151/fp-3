@@ -6,6 +6,7 @@ import {
   sequenceArrayValidation, sequenceArrayResult, sequenceStructValidation, sequenceSRTResult,
   partitionSet, partitionSetWith, productTR, zipWithTR, sequenceState, traverseSRT,
   filterMapArray, collectArray, filterMapMapValues, collectMapValues, filterMapMapEntries, collectMapEntries, filterMapSet, collectSet,
+  eqStrict,
   pf,
   sumRange_FUSED, prettyRange_FUSED, statsFullBinary_FUSED, prettyAndSize_FUSED,
   lit, add, mul, neg, abs, addN, mulN, vvar, lett, divE, evalExpr, showExpr, normalizeExprToNary,
@@ -451,7 +452,7 @@ async function runExamples() {
   
   // Sets: filterMap / collect
   const setRaw = new Set(["1", "2", "two", "3"])
-  const setInts = collectSet(setRaw, parseIntPF)
+  const setInts = collectSet(eqStrict<number>())(setRaw, parseIntPF)
   console.log('Set collect:', setInts)
   
   console.log('\n=== READER APPLICATIVE EVALUATORS ===')
