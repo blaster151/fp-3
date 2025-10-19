@@ -44,8 +44,7 @@ export function createContRegistry(): ContRegistry {
   const all = (): ReadonlyArray<ContEntry<any, any>> => entries.slice();
 
   const runAll = (): ReadonlyArray<ContReportEntry> => {
-    const snapshot = entries.slice();
-    return snapshot.map((entry) => {
+    return all().map((entry) => {
       const certificate = entry.morphism.witness;
       const verified = certificate.verify();
       return {

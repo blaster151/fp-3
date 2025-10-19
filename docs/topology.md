@@ -26,7 +26,7 @@ stable even when several constructions share the same underlying witnesses.【F:
 methods (`register`, `runAll`, `summarize`, plus Markdown/JSON renderers) so demos can
 surface the same continuity evidence that our tests assert on. Each registry entry
 stores the raw witness (including any enriched payload) so downstream tooling can
-inspect open-set failures or human-authored notes without re-running the check.【F:src/top/ContRegistry.ts†L33-L98】
+inspect open-set failures or human-authored notes without re-running the check.【F:src/top/ContRegistry.ts†L33-L96】
 
 The catalogue in `cont_packs.ts` populates a registry instance with the continuity
 demos showcased in the runnable examples. Because every entry is constructed with
