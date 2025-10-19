@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   FieldQ, FieldReal, Qof, Qeq, Qadd, Qneg, Qsub, Qmul, Qinv, Qdiv, QfromInt, QfromRatio, QtoString,
-  rref, nullspace, colspace, solveLinear, rrefQPivot, qAbsCmp, isQZero,
+  rref, nullspace, colspace, solveLinear, rrefQPivot, createRrefResolver, qAbsCmp, isQZero,
   runLesConeProps, randomTwoTermComplex, makeHomologyShiftIso,
   imageComplex, coimageComplex, coimToIm, isIsoChainMap, smoke_coim_im_iso,
   idChainMapN, zeroChainMapN,
@@ -127,17 +127,38 @@ describe('Linear algebra over rationals', () => {
       [Qof(3), Qof(1)]
     ]
     const b = [Qof(5), Qof(4)]
-    
+
     const x = solveLinear(F)(A, b)
     expect(x.length).toBe(2)
-    
+
     // Verify solution: Ax = b
     const check0 = F.add(F.mul(A[0]![0]!, x[0]!), F.mul(A[0]![1]!, x[1]!))
     const check1 = F.add(F.mul(A[1]![0]!, x[0]!), F.mul(A[1]![1]!, x[1]!))
-    
+
     const eq = requireEq(F.eq)
     expect(eq(check0, b[0]!)).toBe(true)
     expect(eq(check1, b[1]!)).toBe(true)
+  })
+
+  it('scopes RREF overrides via resolver instances', () => {
+    const resolver = createRrefResolver()
+    let overrideUsed = false
+    resolver.register(FieldQ, (A) => {
+      overrideUsed = true
+      return rrefQPivot(A)
+    })
+
+    const matrix = [
+      [Qof(1), Qof(2), Qof(3)],
+      [Qof(2), Qof(4), Qof(6)]
+    ]
+
+    nullspace(FieldQ, resolver)(matrix)
+    expect(overrideUsed).toBe(true)
+
+    overrideUsed = false
+    nullspace(FieldQ)(matrix)
+    expect(overrideUsed).toBe(false)
   })
 })
 

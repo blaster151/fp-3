@@ -496,10 +496,10 @@ export const rref =
 
 // Nullspace basis of A (m×n): columns n×k
 export const nullspace =
-  <R>(F: Field<R>) =>
+  <R>(F: Field<R>, resolver: RrefResolver = createRrefResolver()) =>
   (A: MatF<R>): R[][] => {
     const n = (A[0]?.length ?? 0)
-    const { R, pivots } = rref(F)(A)
+    const { R, pivots } = resolver.get(F)(A)
     const pivotSet = new Set(pivots)
     const free = [] as number[]
     for (let j = 0; j < n; j++) if (!pivotSet.has(j)) free.push(j)
@@ -528,10 +528,10 @@ export const nullspace =
 
 // Column space basis (return columns of A forming a basis, as matrix n×r)
 export const colspace =
-  <R>(F: Field<R>) =>
+  <R>(F: Field<R>, resolver: RrefResolver = createRrefResolver()) =>
   (A: MatF<R>): R[][] => {
     const AT = transpose(A)
-    const { pivots } = rref(F)(AT)
+    const { pivots } = resolver.get(F)(AT)
     const cols: R[][] = []
     for (const j of pivots) cols.push(A.map(row => row[j]!))
     // pack as n×r
@@ -796,23 +796,33 @@ export const makeHomologyShiftIso =
 // === RREF selection + linear helpers ========================================
 type RrefFn<R> = (A: ReadonlyArray<ReadonlyArray<R>>) => { R: R[][]; pivots: number[] }
 
-/** Optional registry: lets you override the RREF used for a specific Field instance. */
-const RREF_REGISTRY = new WeakMap<Field<unknown>, RrefFn<unknown>>()
-export const registerRref = <R>(F: Field<R>, rr: RrefFn<R>) => {
-  RREF_REGISTRY.set(F as Field<unknown>, rr as RrefFn<unknown>)
+export type RrefResolver = {
+  register<R>(F: Field<R>, rr: RrefFn<R>): void
+  get<R>(F: Field<R>): RrefFn<R>
 }
 
-const getRref =
-  <R>(F: Field<R>): RrefFn<R> => {
-    const override = RREF_REGISTRY.get(F as Field<unknown>) as RrefFn<R> | undefined
+/** Create an isolated resolver that can override the RREF used for specific Field instances. */
+export const createRrefResolver = (): RrefResolver => {
+  const registry = new WeakMap<Field<unknown>, RrefFn<unknown>>()
+
+  const resolve = <R>(F: Field<R>): RrefFn<R> => {
+    const override = registry.get(F as Field<unknown>) as RrefFn<R> | undefined
     return override ?? ((A: ReadonlyArray<ReadonlyArray<R>>) => rref(F)(A))
   }
 
+  return {
+    register<R>(F: Field<R>, rr: RrefFn<R>) {
+      registry.set(F as Field<unknown>, rr as RrefFn<unknown>)
+    },
+    get: resolve,
+  }
+}
+
 /** Column-space basis via RREF(A): take pivot columns from original A. */
 const colspaceByRref =
-  <R>(F: Field<R>) =>
+  <R>(F: Field<R>, resolver: RrefResolver = createRrefResolver()) =>
   (A: R[][]): R[][] => {
-    const { pivots } = getRref(F)(A)
+    const { pivots } = resolver.get(F)(A)
     if (!A.length) return []
     const m = A.length
     const B: R[][] = Array.from({ length: m }, () => [])
@@ -822,9 +832,9 @@ const colspaceByRref =
 
 /** Nullspace basis of A x = 0 using its RREF. Returns an n×k matrix whose columns form a basis. */
 const nullspaceByRref =
-  <R>(F: Field<R>) =>
+  <R>(F: Field<R>, resolver: RrefResolver = createRrefResolver()) =>
   (A: R[][]): R[][] => {
-    const { R: U, pivots } = getRref(F)(A) // U is RREF(A), size m×n
+    const { R: U, pivots } = resolver.get(F)(A) // U is RREF(A), size m×n
     const m = U.length
     const n = (U[0]?.length ?? 0)
     const pivotSet = new Set(pivots)
@@ -901,7 +911,7 @@ const coordsInHelper =
     solveVecHelper(F)(J, v)
 
 export const imageComplex =
-  <R>(F: Field<R>) =>
+  <R>(F: Field<R>, resolver: RrefResolver = createRrefResolver()) =>
   (f: ChainMap<R>): { Im: Complex<R>; incl: ChainMap<R>; basis: Record<number, R[][]> } => {
     const Y = f.Y
     const degrees = Y.degrees.slice()
@@ -910,11 +920,12 @@ export const imageComplex =
     const jMat: Record<number, R[][]> = {} // inclusions j_n : Im_n ↪ Y_n (columns = basis)
     const mul = matMulHelper(F)
     const crd = coordsInHelper(F)
+    const imCols = colspaceByRref(F, resolver)
 
     // basis for im(f_n), store as columns J_n
     for (const n of degrees) {
       const fn = f.f[n] ?? ([] as R[][])          // Y_n × X_n
-      const Jn = colspaceByRref(F)(fn)            // Y_n × r_n (auto-select RREF)
+      const Jn = imCols(fn)                       // Y_n × r_n (auto-select RREF)
       jMat[n]  = Jn
       dim[n]   = Jn[0]?.length ?? 0
     }
@@ -943,7 +954,7 @@ export const imageComplex =
   }
 
 export const coimageComplex =
-  <R>(F: Field<R>) =>
+  <R>(F: Field<R>, resolver: RrefResolver = createRrefResolver()) =>
   (f: ChainMap<R>): { Coim: Complex<R>; proj: ChainMap<R>; Lbasis: Record<number, R[][]> } => {
     const X = f.X
     const degrees = X.degrees.slice()
@@ -951,12 +962,11 @@ export const coimageComplex =
     const dC: Record<number, R[][]> = {}
     const qMat: Record<number, R[][]> = {} // projections q_n : X_n ↠ Coim_n   (rows = coordinates)
     const Lb:  Record<number, R[][]> = {} // inclusions L_n ↪ X_n (columns = complement basis)
-    const rr = rref(F)
-    const rank = (A: R[][]) => rr(tposeHelper(A)).pivots.length
+    const rank = (A: R[][]) => resolver.get(F)(tposeHelper(A)).pivots.length
     const mul = matMulHelper(F)
     const crd = coordsInHelper(F)
 
-    const kernelBasis = (A: R[][]): R[][] => nullspaceByRref(F)(A)
+    const kernelBasis = (A: R[][]): R[][] => nullspaceByRref(F, resolver)(A)
 
     const chooseComplement = (K: R[][]): R[][] => {
       // greedily extend columns of K to a basis of X_n using standard basis
@@ -1384,14 +1394,14 @@ const tpose = <R>(A: ReadonlyArray<ReadonlyArray<R>>): R[][] => (A[0]?.map((_, j
 
 /** Left Kan along u: J→I with REAL universal arr(a,b). */
 export const LanPoset =
-  <R>(F: Field<R>) =>
+  <R>(F: Field<R>, resolver: RrefResolver = createRrefResolver()) =>
   (u: (j: ObjId) => ObjId, J: FinitePoset, I: FinitePoset) =>
   (DJ: PosetDiagram<R>): PosetDiagram<R> => {
     const coprod = coproductComplex(F)
     const inc = inclusionIntoCoproduct(F)
     const mul = matMul(F)
     const coords = (A: R[][], b: R[]) => solveLinear(F)(tpose(A), b)
-    const imCols = colspaceByRref(F)
+    const imCols = colspaceByRref(F, resolver)
 
     type SliceMeta = {
       Js: ObjId[]
@@ -1408,7 +1418,7 @@ export const LanPoset =
 
     // choose complement to a set of columns U (span in P) by greedy rank extension with std basis
     const chooseComplementCols = (U: R[][], dimP: number): R[][] => {
-      const rank = (A: R[][]) => getRref(F)(A).pivots.length
+      const rank = (A: R[][]) => resolver.get(F)(A).pivots.length
       const Istd: R[][] = Array.from({ length: dimP }, (_, j) =>
         Array.from({ length: dimP }, (_, i) => (i === j ? F.one : F.zero)))
       let cur = U.map(col => col.slice()), picked: R[][] = []
@@ -1558,13 +1568,13 @@ export const LanPoset =
 
 /** Right Kan along u: J→I with REAL universal arr(a,b). */
 export const RanPoset =
-  <R>(F: Field<R>) =>
+  <R>(F: Field<R>, resolver: RrefResolver = createRrefResolver()) =>
   (u: (j: ObjId) => ObjId, J: FinitePoset, I: FinitePoset) =>
   (DJ: PosetDiagram<R>): PosetDiagram<R> => {
     const prod = productComplex(F)
     const prj = projectionFromProduct(F)
     const mul = matMul(F)
-    const kerCols = nullspaceByRref(F)
+    const kerCols = nullspaceByRref(F, resolver)
     const coords = (A: R[][], b: R[]) => solveLinear(F)(tpose(A), b)
 
     type SliceMeta = {
@@ -3336,8 +3346,8 @@ export const Diagram = {
   makeFinitePoset, prettyPoset, makePosetDiagramCompat, idChainMapCompat
 }
 
-export const Lin = { 
-  registerRref, rrefQPivot, FieldQ, solveLinear, nullspace, colspace
+export const Lin = {
+  createRrefResolver, rrefQPivot, FieldQ, solveLinear, nullspace, colspace
 }
 
 export const Vect = {

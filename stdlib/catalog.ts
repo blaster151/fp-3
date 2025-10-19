@@ -72,7 +72,7 @@ export const FP_CATALOG = {
   checkBeckChevalleyDiscrete: 'Lan∘reindex ≅ reindex∘Lan on pullback squares (discrete)',
 
   // Backend selection
-  registerRref: 'Override RREF for a Field (e.g., registerRref(FieldQ, rrefQPivot))',
+  createRrefResolver: 'Create scoped RREF overrides (e.g., resolver.register(FieldQ, rrefQPivot))',
 
   // Poset diagrams and Kan extensions
   makePosetDiagram: 'Build diagram over finite poset with transitive composition',
