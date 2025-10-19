@@ -2909,6 +2909,183 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
 
 export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
 
+const equalFinSetArrows = (left: FinSetMor, right: FinSetMor): boolean => {
+  const verdict = FinSet.equalMor?.(left, right)
+  if (typeof verdict === "boolean") {
+    return verdict
+  }
+
+  if (left.from !== right.from || left.to !== right.to) return false
+  if (left.map.length !== right.map.length) return false
+  for (let idx = 0; idx < left.map.length; idx++) {
+    if (left.map[idx] !== right.map[idx]) return false
+  }
+  return true
+}
+
+export interface FinSetPullbackWitness {
+  readonly object: FinSetObj
+  readonly inclusionIntoLeft: FinSetMor
+  readonly inclusionIntoRight: FinSetMor
+  readonly toCodomain: FinSetMor
+  readonly factorCone: (input: {
+    readonly object: FinSetObj
+    readonly intoLeft: FinSetMor
+    readonly intoRight: FinSetMor
+  }) => FinSetMor
+}
+
+export const finsetPullback = (left: FinSetMor, right: FinSetMor): FinSetPullbackWitness => {
+  if (left.to !== right.to) {
+    throw new Error("finsetPullback: arrows must share a codomain")
+  }
+
+  if (!FinSet.isInjective(left) || !FinSet.isInjective(right)) {
+    throw new Error("finsetPullback: inputs must be inclusions (injective maps)")
+  }
+
+  const codomain = left.to
+  const codomainSize = codomain.elements.length
+
+  if (left.map.length !== left.from.elements.length) {
+    throw new Error("finsetPullback: left inclusion must provide an image for every element")
+  }
+  if (right.map.length !== right.from.elements.length) {
+    throw new Error("finsetPullback: right inclusion must provide an image for every element")
+  }
+
+  const validateImageBounds = (arrow: FinSetMor, side: "left" | "right") => {
+    for (let idx = 0; idx < arrow.map.length; idx++) {
+      const image = arrow.map[idx]
+      if (!Number.isInteger(image) || image < 0 || image >= codomainSize) {
+        throw new Error(`finsetPullback: ${side} inclusion maps outside the codomain`)
+      }
+    }
+  }
+
+  validateImageBounds(left, "left")
+  validateImageBounds(right, "right")
+
+  const indexFromImage = (arrow: FinSetMor): Map<number, number> => {
+    const result = new Map<number, number>()
+    arrow.map.forEach((value, position) => {
+      if (!result.has(value)) {
+        result.set(value, position)
+      }
+    })
+    return result
+  }
+
+  const leftImage = indexFromImage(left)
+  const rightImage = indexFromImage(right)
+
+  const intersectionIndices = [...leftImage.keys()]
+    .filter((idx) => rightImage.has(idx))
+    .sort((a, b) => a - b)
+
+  const intersectionPosition = new Map<number, number>()
+  intersectionIndices.forEach((value, position) => {
+    intersectionPosition.set(value, position)
+  })
+
+  const object: FinSetObj = {
+    elements: intersectionIndices.map((idx) => codomain.elements[idx]!)
+  }
+
+  const inclusionIntoLeft: FinSetMor = {
+    from: object,
+    to: left.from,
+    map: intersectionIndices.map((idx) => {
+      const position = leftImage.get(idx)
+      if (position === undefined) {
+        throw new Error("finsetPullback: intersection element lacks a preimage in the left inclusion")
+      }
+      return position
+    })
+  }
+
+  const inclusionIntoRight: FinSetMor = {
+    from: object,
+    to: right.from,
+    map: intersectionIndices.map((idx) => {
+      const position = rightImage.get(idx)
+      if (position === undefined) {
+        throw new Error("finsetPullback: intersection element lacks a preimage in the right inclusion")
+      }
+      return position
+    })
+  }
+
+  const toCodomain: FinSetMor = {
+    from: object,
+    to: codomain,
+    map: intersectionIndices.slice()
+  }
+
+  const leftComposite = FinSet.compose(left, inclusionIntoLeft)
+  const rightComposite = FinSet.compose(right, inclusionIntoRight)
+
+  if (!equalFinSetArrows(leftComposite, toCodomain)) {
+    throw new Error("finsetPullback: left inclusion does not recover the codomain map")
+  }
+  if (!equalFinSetArrows(rightComposite, toCodomain)) {
+    throw new Error("finsetPullback: right inclusion does not recover the codomain map")
+  }
+
+  const factorCone = ({
+    object: W,
+    intoLeft,
+    intoRight,
+  }: {
+    readonly object: FinSetObj
+    readonly intoLeft: FinSetMor
+    readonly intoRight: FinSetMor
+  }): FinSetMor => {
+    if (intoLeft.from !== W || intoRight.from !== W) {
+      throw new Error("finsetPullback: cone tip mismatch")
+    }
+    if (intoLeft.to !== left.from) {
+      throw new Error("finsetPullback: left leg codomain mismatch")
+    }
+    if (intoRight.to !== right.from) {
+      throw new Error("finsetPullback: right leg codomain mismatch")
+    }
+
+    const leftConeComposite = FinSet.compose(left, intoLeft)
+    const rightConeComposite = FinSet.compose(right, intoRight)
+    if (!equalFinSetArrows(leftConeComposite, rightConeComposite)) {
+      throw new Error("finsetPullback: cone must commute with the inclusions")
+    }
+
+    const map = W.elements.map((_value, position) => {
+      const codomainIndex = leftConeComposite.map[position]
+      if (codomainIndex === undefined) {
+        throw new Error("finsetPullback: cone legs must specify codomain images")
+      }
+      const intersectionPositionIndex = intersectionPosition.get(codomainIndex)
+      if (intersectionPositionIndex === undefined) {
+        throw new Error("finsetPullback: cone lands outside the intersection")
+      }
+      return intersectionPositionIndex
+    })
+
+    const mediator: FinSetMor = { from: W, to: object, map }
+
+    const leftCheck = FinSet.compose(inclusionIntoLeft, mediator)
+    const rightCheck = FinSet.compose(inclusionIntoRight, mediator)
+    if (!equalFinSetArrows(leftCheck, intoLeft)) {
+      throw new Error("finsetPullback: mediator does not recover the left leg")
+    }
+    if (!equalFinSetArrows(rightCheck, intoRight)) {
+      throw new Error("finsetPullback: mediator does not recover the right leg")
+    }
+
+    return mediator
+  }
+
+  return { object, inclusionIntoLeft, inclusionIntoRight, toCodomain, factorCone }
+}
+
 /** FinSet bijection helper */
 export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): FinSetMor => {
   const domainSize = from.elements.length

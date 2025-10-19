@@ -1,6 +1,12 @@
 import { CategoryLimits } from "../../stdlib/category-limits"
 import { FinSet, type FinSetMor, type FinSetObj } from "./triangulated"
-export { FinSetInitialProductIso, finsetProductInitialIso, finsetInitialProductIso } from "./triangulated"
+export {
+  FinSetInitialProductIso,
+  finsetProductInitialIso,
+  finsetInitialProductIso,
+  finsetPullback,
+} from "./triangulated"
+export type { FinSetPullbackWitness } from "./triangulated"
 
 const arrowsEqual = (left: FinSetMor, right: FinSetMor): boolean => {
   if (FinSet.equalMor) {
@@ -671,104 +677,6 @@ export const finsetProductExponentIso = ({
 export interface FinSetNamedArrow {
   readonly name: FinSetMor
   readonly evaluationMediator: FinSetMor
-}
-
-export interface FinSetPullbackWitness {
-  readonly object: FinSetObj
-  readonly inclusionIntoLeft: FinSetMor
-  readonly inclusionIntoRight: FinSetMor
-  readonly toCodomain: FinSetMor
-  readonly factorCone: (input: {
-    readonly object: FinSetObj
-    readonly intoLeft: FinSetMor
-    readonly intoRight: FinSetMor
-  }) => FinSetMor
-}
-
-export const finsetPullback = (left: FinSetMor, right: FinSetMor): FinSetPullbackWitness => {
-  if (left.to !== right.to) {
-    throw new Error('finsetPullback: arrows must share a codomain')
-  }
-  const codomain = left.to
-  const leftImage = new Map<number, number>()
-  left.map.forEach((value, index) => {
-    if (value !== undefined && !leftImage.has(value)) leftImage.set(value, index)
-  })
-  const rightImage = new Map<number, number>()
-  right.map.forEach((value, index) => {
-    if (value !== undefined && !rightImage.has(value)) rightImage.set(value, index)
-  })
-
-  const intersectionIndices: number[] = []
-  for (const [value] of leftImage) {
-    if (rightImage.has(value)) intersectionIndices.push(value)
-  }
-
-  const object: FinSetObj = { elements: intersectionIndices.map((idx) => codomain.elements[idx]!) }
-  const inclusionIntoLeft: FinSetMor = {
-    from: object,
-    to: left.from,
-    map: intersectionIndices.map((idx) => {
-      const position = leftImage.get(idx)
-      if (position === undefined) {
-        throw new Error('finsetPullback: missing preimage in left inclusion')
-      }
-      return position
-    }),
-  }
-  const inclusionIntoRight: FinSetMor = {
-    from: object,
-    to: right.from,
-    map: intersectionIndices.map((idx) => {
-      const position = rightImage.get(idx)
-      if (position === undefined) {
-        throw new Error('finsetPullback: missing preimage in right inclusion')
-      }
-      return position
-    }),
-  }
-  const toCodomain: FinSetMor = {
-    from: object,
-    to: codomain,
-    map: intersectionIndices.slice(),
-  }
-
-  const factorCone = ({ object: W, intoLeft, intoRight }: {
-    readonly object: FinSetObj
-    readonly intoLeft: FinSetMor
-    readonly intoRight: FinSetMor
-  }): FinSetMor => {
-    if (intoLeft.from !== W || intoRight.from !== W) {
-      throw new Error('finsetPullback: cone tip mismatch')
-    }
-    if (intoLeft.to !== left.from) {
-      throw new Error('finsetPullback: left leg codomain mismatch')
-    }
-    if (intoRight.to !== right.from) {
-      throw new Error('finsetPullback: right leg codomain mismatch')
-    }
-    const leftComposite = FinSet.compose(left, intoLeft)
-    const rightComposite = FinSet.compose(right, intoRight)
-    if (!arrowsEqual(leftComposite, rightComposite)) {
-      throw new Error('finsetPullback: cone must commute with the inclusions')
-    }
-
-    const map = W.elements.map((_value, idx) => {
-      const codomainIndex = leftComposite.map[idx]
-      if (codomainIndex === undefined) {
-        throw new Error('finsetPullback: cone legs must provide codomain images')
-      }
-      const position = intersectionIndices.indexOf(codomainIndex)
-      if (position < 0) {
-        throw new Error('finsetPullback: cone lands outside the intersection')
-      }
-      return position
-    })
-
-    return { from: W, to: object, map }
-  }
-
-  return { object, inclusionIntoLeft, inclusionIntoRight, toCodomain, factorCone }
 }
 
 export const finsetNameFromArrow = ({

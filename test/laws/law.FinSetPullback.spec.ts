@@ -28,7 +28,11 @@ describe('FinSet pullback/intersection helper', () => {
 
     const pullback = finsetPullback(inclusionX, inclusionY)
 
-    expect(pullback.object.elements).toEqual([Z.elements[2]])
+    const expectedIntersection = Z.elements.filter((_value, idx) =>
+      inclusionX.map.includes(idx) && inclusionY.map.includes(idx),
+    )
+
+    expect(pullback.object.elements).toEqual(expectedIntersection)
 
     expect(pullback.inclusionIntoLeft.to).toBe(X)
     expect(pullback.inclusionIntoRight.to).toBe(Y)
@@ -40,6 +44,10 @@ describe('FinSet pullback/intersection helper', () => {
     expectEqualArrows(
       FinSet.compose(inclusionY, pullback.inclusionIntoRight),
       pullback.toCodomain,
+    )
+    expectEqualArrows(
+      FinSet.compose(inclusionX, pullback.inclusionIntoLeft),
+      FinSet.compose(inclusionY, pullback.inclusionIntoRight),
     )
   })
 
