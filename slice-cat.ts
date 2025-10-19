@@ -5,7 +5,9 @@ import {
   makeBinaryProductDiagonal,
   makeBinaryProductSwap,
 } from "./category-limits-helpers";
+import type { BinaryProductTuple } from "./category-limits-helpers";
 import type { FinSetCategory, FinSetName, FuncArr } from "./models/finset-cat";
+import type { PullbackCalculator } from "./pullback";
 
 export interface SliceObject<Obj, Arr> {
   readonly domain: Obj;
@@ -34,87 +36,103 @@ export interface SlicePostcomposeFunctor<Obj, Arr> {
   readonly F1: (arrow: SliceArrow<Obj, Arr>) => SliceArrow<Obj, Arr>;
 }
 
-export interface SliceProductWitness {
-  readonly object: SliceObject<FinSetName, FuncArr>;
-  readonly projectionLeft: SliceArrow<FinSetName, FuncArr>;
-  readonly projectionRight: SliceArrow<FinSetName, FuncArr>;
-  readonly decode: (value: string) => readonly [string, string];
+export interface SliceFiniteProductWitnessBase<Obj, Arr> {
+  readonly object: SliceObject<Obj, Arr>;
+  readonly projections: readonly SliceArrow<Obj, Arr>[];
+  readonly tuple: (
+    domain: SliceObject<Obj, Arr>,
+    legs: ReadonlyArray<SliceArrow<Obj, Arr>>,
+  ) => SliceArrow<Obj, Arr>;
+  readonly factors: ReadonlyArray<SliceObject<Obj, Arr>>;
+  readonly componentwise?: (
+    target: SliceFiniteProductWitnessBase<Obj, Arr>,
+    components: ReadonlyArray<SliceArrow<Obj, Arr>>,
+  ) => SliceArrow<Obj, Arr>;
+  readonly swap?: () => SliceProductSwap<Obj, Arr>;
+  readonly diagonal?: () => SliceProductDiagonal<Obj, Arr>;
+  readonly leftUnit?: () => SliceProductUnit<Obj, Arr>;
+  readonly rightUnit?: () => SliceProductUnit<Obj, Arr>;
+}
+
+export interface SliceProductSwap<Obj, Arr> {
+  readonly target: SliceFiniteProductWitnessBase<Obj, Arr>;
+  readonly forward: SliceArrow<Obj, Arr>;
+  readonly backward: SliceArrow<Obj, Arr>;
+}
+
+export interface SliceProductDiagonal<Obj, Arr> {
+  readonly source: SliceObject<Obj, Arr>;
+  readonly arrow: SliceArrow<Obj, Arr>;
+}
+
+export interface SliceProductUnit<Obj, Arr> {
+  readonly factor: SliceObject<Obj, Arr>;
+  readonly forward: SliceArrow<Obj, Arr>;
+  readonly backward: SliceArrow<Obj, Arr>;
+}
+
+export interface SliceProductWitnessBase<Obj, Arr> {
+  readonly object: SliceObject<Obj, Arr>;
+  readonly projectionLeft: SliceArrow<Obj, Arr>;
+  readonly projectionRight: SliceArrow<Obj, Arr>;
+  readonly tuple: (
+    domain: SliceObject<Obj, Arr>,
+    legs: readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+  ) => SliceArrow<Obj, Arr>;
   readonly pair: (
-    leftLeg: SliceArrow<FinSetName, FuncArr>,
-    rightLeg: SliceArrow<FinSetName, FuncArr>,
-  ) => SliceArrow<FinSetName, FuncArr>;
-  readonly factors: readonly [SliceObject<FinSetName, FuncArr>, SliceObject<FinSetName, FuncArr>];
+    leftLeg: SliceArrow<Obj, Arr>,
+    rightLeg: SliceArrow<Obj, Arr>,
+  ) => SliceArrow<Obj, Arr>;
+  readonly factors: readonly [SliceObject<Obj, Arr>, SliceObject<Obj, Arr>];
   readonly componentwise?: (
-    target: SliceProductWitness,
-    components: readonly [SliceArrow<FinSetName, FuncArr>, SliceArrow<FinSetName, FuncArr>],
-  ) => SliceArrow<FinSetName, FuncArr>;
-  readonly swap?: () => SliceProductSwap;
-  readonly diagonal?: () => SliceProductDiagonal;
-  readonly leftUnit?: () => SliceProductUnit;
-  readonly rightUnit?: () => SliceProductUnit;
+    target: SliceProductWitnessBase<Obj, Arr>,
+    components: readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+  ) => SliceArrow<Obj, Arr>;
+  readonly swap?: () => SliceProductSwap<Obj, Arr>;
+  readonly diagonal?: () => SliceProductDiagonal<Obj, Arr>;
+  readonly leftUnit?: () => SliceProductUnit<Obj, Arr>;
+  readonly rightUnit?: () => SliceProductUnit<Obj, Arr>;
 }
 
-export interface SliceFiniteProductWitness {
-  readonly object: SliceObject<FinSetName, FuncArr>;
-  readonly projections: readonly SliceArrow<FinSetName, FuncArr>[];
+export type SliceProductWitness = SliceProductWitnessBase<FinSetName, FuncArr> & {
+  readonly decode: (value: string) => readonly [string, string];
+};
+
+export type SliceFiniteProductWitness = SliceFiniteProductWitnessBase<FinSetName, FuncArr> & {
   readonly decode: (value: string) => ReadonlyArray<string>;
-  readonly tuple: (
-    domain: SliceObject<FinSetName, FuncArr>,
-    legs: ReadonlyArray<SliceArrow<FinSetName, FuncArr>>,
-  ) => SliceArrow<FinSetName, FuncArr>;
-  readonly factors: ReadonlyArray<SliceObject<FinSetName, FuncArr>>;
-  readonly componentwise?: (
-    target: SliceFiniteProductWitness,
-    components: ReadonlyArray<SliceArrow<FinSetName, FuncArr>>,
-  ) => SliceArrow<FinSetName, FuncArr>;
-  readonly swap?: () => SliceProductSwap;
-  readonly diagonal?: () => SliceProductDiagonal;
-  readonly leftUnit?: () => SliceProductUnit;
-  readonly rightUnit?: () => SliceProductUnit;
-}
+};
 
-export interface SliceProductSwap {
-  readonly target: SliceFiniteProductWitness;
-  readonly forward: SliceArrow<FinSetName, FuncArr>;
-  readonly backward: SliceArrow<FinSetName, FuncArr>;
-}
-
-export interface SliceProductDiagonal {
-  readonly source: SliceObject<FinSetName, FuncArr>;
-  readonly arrow: SliceArrow<FinSetName, FuncArr>;
-}
-
-export interface SliceProductUnit {
-  readonly factor: SliceObject<FinSetName, FuncArr>;
-  readonly forward: SliceArrow<FinSetName, FuncArr>;
-  readonly backward: SliceArrow<FinSetName, FuncArr>;
-}
-
-interface SliceProductMetadata {
+interface SliceProductMetadata<Obj, Arr> {
   readonly arity: number;
-  readonly factors: ReadonlyArray<SliceObject<FinSetName, FuncArr>>;
+  readonly factors: ReadonlyArray<SliceObject<Obj, Arr>>;
   readonly tuple: (
-    domain: SliceObject<FinSetName, FuncArr>,
-    legs: ReadonlyArray<SliceArrow<FinSetName, FuncArr>>,
-  ) => SliceArrow<FinSetName, FuncArr>;
+    domain: SliceObject<Obj, Arr>,
+    legs: ReadonlyArray<SliceArrow<Obj, Arr>>,
+  ) => SliceArrow<Obj, Arr>;
 }
 
 const sliceProductMetadata = new WeakMap<
-  SliceObject<FinSetName, FuncArr>,
-  SliceProductMetadata
+  SliceObject<unknown, unknown>,
+  SliceProductMetadata<unknown, unknown>
 >();
 
-const registerSliceProductMetadata = (
-  object: SliceObject<FinSetName, FuncArr>,
-  metadata: SliceProductMetadata,
+const registerSliceProductMetadata = <Obj, Arr>(
+  object: SliceObject<Obj, Arr>,
+  metadata: SliceProductMetadata<Obj, Arr>,
 ) => {
-  sliceProductMetadata.set(object, metadata);
+  sliceProductMetadata.set(
+    object as SliceObject<unknown, unknown>,
+    metadata as SliceProductMetadata<unknown, unknown>,
+  );
   return metadata;
 };
 
-export const lookupSliceProductMetadata = (
-  object: SliceObject<FinSetName, FuncArr>,
-): SliceProductMetadata | undefined => sliceProductMetadata.get(object);
+export const lookupSliceProductMetadata = <Obj, Arr>(
+  object: SliceObject<Obj, Arr>,
+): SliceProductMetadata<Obj, Arr> | undefined =>
+  sliceProductMetadata.get(object as SliceObject<unknown, unknown>) as
+    | SliceProductMetadata<Obj, Arr>
+    | undefined;
 
 function sliceEq<Obj, Arr>(baseEq: (x: Arr, y: Arr) => boolean) {
   return (a: SliceArrow<Obj, Arr>, b: SliceArrow<Obj, Arr>) =>
@@ -289,27 +307,28 @@ const decodePair = (value: string): readonly [string, string] => {
   return [first, second] as const;
 };
 
-const sliceObjectsEqual = (
-  base: FinSetCategory,
-  left: SliceObject<FinSetName, FuncArr>,
-  right: SliceObject<FinSetName, FuncArr>,
+const sliceObjectsEqual = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  left: SliceObject<Obj, Arr>,
+  right: SliceObject<Obj, Arr>,
 ) => left.domain === right.domain && base.eq(left.arrowToAnchor, right.arrowToAnchor);
 
-const ensureSliceObjectLandsInAnchor = (
-  anchor: FinSetName,
-  object: SliceObject<FinSetName, FuncArr>,
+const ensureSliceObjectLandsInAnchor = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  anchor: Obj,
+  object: SliceObject<Obj, Arr>,
 ) => {
-  if (object.arrowToAnchor.cod !== anchor) {
+  if (base.dst(object.arrowToAnchor) !== anchor) {
     throw new Error(
-      `makeFiniteSliceProduct: object ${object.domain} does not map into anchor ${anchor}`,
+      `makeFiniteSliceProduct: object ${String(object.domain)} does not map into anchor ${String(anchor)}`,
     );
   }
 };
 
-const ensureSliceObjectsShareSource = (
-  base: FinSetCategory,
-  left: SliceObject<FinSetName, FuncArr>,
-  right: SliceObject<FinSetName, FuncArr>,
+const ensureSliceObjectsShareSource = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  left: SliceObject<Obj, Arr>,
+  right: SliceObject<Obj, Arr>,
 ) => {
   if (!sliceObjectsEqual(base, left, right)) {
     throw new Error("makeFiniteSliceProduct: legs must share a common source");
@@ -329,27 +348,27 @@ const ensureSliceElement = (
   }
 };
 
-const makeIdentityProjection = (
-  base: FinSetCategory,
-  object: SliceObject<FinSetName, FuncArr>,
-): SliceArrow<FinSetName, FuncArr> => ({
+const makeIdentityProjection = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  object: SliceObject<Obj, Arr>,
+): SliceArrow<Obj, Arr> => ({
   src: object,
   dst: object,
   mediating: base.id(object.domain),
 });
 
-const makeTerminalSliceObject = (
-  base: FinSetCategory,
-  anchor: FinSetName,
-): SliceObject<FinSetName, FuncArr> => ({
+const makeTerminalSliceObject = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  anchor: Obj,
+): SliceObject<Obj, Arr> => ({
   domain: anchor,
   arrowToAnchor: base.id(anchor),
 });
 
-const isTerminalSliceObject = (
-  base: FinSetCategory,
-  anchor: FinSetName,
-  object: SliceObject<FinSetName, FuncArr>,
+const isTerminalSliceObject = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  anchor: Obj,
+  object: SliceObject<Obj, Arr>,
 ) => object.domain === anchor && base.eq(object.arrowToAnchor, base.id(anchor));
 
 export function makeFiniteSliceProduct(
@@ -358,7 +377,7 @@ export function makeFiniteSliceProduct(
   inputs: ReadonlyArray<SliceObject<FinSetName, FuncArr>>,
   options: { readonly name?: string; readonly disableSwap?: boolean } = {},
 ): SliceFiniteProductWitness {
-  inputs.forEach((object) => ensureSliceObjectLandsInAnchor(anchor, object));
+  inputs.forEach((object) => ensureSliceObjectLandsInAnchor(base, anchor, object));
 
   const factors = [...inputs];
   const arity = factors.length;
@@ -374,7 +393,7 @@ export function makeFiniteSliceProduct(
           `makeFiniteSliceProduct: expected 0 legs for the empty product, received ${legs.length}`,
         );
       }
-      ensureSliceObjectLandsInAnchor(anchor, domain);
+      ensureSliceObjectLandsInAnchor(base, anchor, domain);
       return {
         src: domain,
         dst: terminal,
@@ -417,7 +436,7 @@ export function makeFiniteSliceProduct(
           `makeFiniteSliceProduct: leg ${leg.mediating.name ?? "?"} does not target ${factor.domain}`,
         );
       }
-      ensureSliceObjectLandsInAnchor(anchor, domain);
+      ensureSliceObjectLandsInAnchor(base, anchor, domain);
       ensureSliceObjectsShareSource(base, leg.src, domain);
       return leg;
     };
@@ -535,7 +554,7 @@ export function makeFiniteSliceProduct(
         `makeFiniteSliceProduct: expected ${arity} legs, received ${legs.length}`,
       );
     }
-    ensureSliceObjectLandsInAnchor(anchor, domain);
+    ensureSliceObjectLandsInAnchor(base, anchor, domain);
     for (let index = 0; index < legs.length; index += 1) {
       const leg = legs[index]!;
       const factor = factors[index]!;
@@ -559,13 +578,13 @@ export function makeFiniteSliceProduct(
     tuple,
     factors,
   };
-  let swapAccessor: (() => SliceProductSwap) | undefined;
-  let diagonalAccessor: (() => SliceProductDiagonal) | undefined;
-  let leftUnitAccessor: (() => SliceProductUnit) | undefined;
-  let rightUnitAccessor: (() => SliceProductUnit) | undefined;
+  let swapAccessor: (() => SliceProductSwap<FinSetName, FuncArr>) | undefined;
+  let diagonalAccessor: (() => SliceProductDiagonal<FinSetName, FuncArr>) | undefined;
+  let leftUnitAccessor: (() => SliceProductUnit<FinSetName, FuncArr>) | undefined;
+  let rightUnitAccessor: (() => SliceProductUnit<FinSetName, FuncArr>) | undefined;
   let componentwiseAccessor:
     | ((
-        target: SliceFiniteProductWitness,
+        target: SliceFiniteProductWitnessBase<FinSetName, FuncArr>,
         components: ReadonlyArray<SliceArrow<FinSetName, FuncArr>>,
       ) => SliceArrow<FinSetName, FuncArr>)
     | undefined;
@@ -926,13 +945,13 @@ export function makeSliceProduct(
     return pair(leftCandidate, rightCandidate);
   };
 
-  let swapAccessor: (() => SliceProductSwap) | undefined;
-  let diagonalAccessor: (() => SliceProductDiagonal) | undefined;
-  let leftUnitAccessor: (() => SliceProductUnit) | undefined;
-  let rightUnitAccessor: (() => SliceProductUnit) | undefined;
+  let swapAccessor: (() => SliceProductSwap<FinSetName, FuncArr>) | undefined;
+  let diagonalAccessor: (() => SliceProductDiagonal<FinSetName, FuncArr>) | undefined;
+  let leftUnitAccessor: (() => SliceProductUnit<FinSetName, FuncArr>) | undefined;
+  let rightUnitAccessor: (() => SliceProductUnit<FinSetName, FuncArr>) | undefined;
   let componentwiseAccessor:
     | ((
-        target: SliceProductWitness,
+        target: SliceProductWitnessBase<FinSetName, FuncArr>,
         components: readonly [
           SliceArrow<FinSetName, FuncArr>,
           SliceArrow<FinSetName, FuncArr>,
@@ -1047,8 +1066,11 @@ export function makeSliceProduct(
   };
 
   componentwiseAccessor = (
-    target: SliceProductWitness,
-    components: readonly [SliceArrow<FinSetName, FuncArr>, SliceArrow<FinSetName, FuncArr>],
+    target: SliceProductWitnessBase<FinSetName, FuncArr>,
+    components: readonly [
+      SliceArrow<FinSetName, FuncArr>,
+      SliceArrow<FinSetName, FuncArr>,
+    ],
   ) => {
     if (components.length !== 2) {
       throw new Error(
@@ -1128,6 +1150,16 @@ export function makeSliceProduct(
     projectionLeft,
     projectionRight,
     decode,
+    tuple: (domain, legs) => {
+      if (legs.length !== 2) {
+        throw new Error("makeSliceProduct.tuple: expected 2 legs");
+      }
+      const [candidateLeft, candidateRight] = legs as readonly [
+        SliceArrow<FinSetName, FuncArr>,
+        SliceArrow<FinSetName, FuncArr>,
+      ];
+      return pair(candidateLeft, candidateRight);
+    },
     pair,
     factors: [left, right],
   };
@@ -1147,5 +1179,620 @@ export function makeSliceProduct(
   if (rightUnitAccessor) {
     extended = { ...extended, rightUnit: rightUnitAccessor };
   }
+  registerSliceProductMetadata(product, {
+    arity: 2,
+    factors: [left, right],
+    tuple: (domain, legs) => {
+      if (legs.length !== 2) {
+        throw new Error("makeSliceProduct.tuple: expected 2 legs");
+      }
+      const [candidateLeft, candidateRight] = legs as readonly [
+        SliceArrow<FinSetName, FuncArr>,
+        SliceArrow<FinSetName, FuncArr>,
+      ];
+      return pair(candidateLeft, candidateRight);
+    },
+  });
   return extended;
 }
+
+export interface SliceProductFromPullbackOptions {
+  readonly disableSwap?: boolean;
+}
+
+const composeSliceArrowsGeneric = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  g: SliceArrow<Obj, Arr>,
+  f: SliceArrow<Obj, Arr>,
+): SliceArrow<Obj, Arr> => {
+  if (!sliceObjectsEqual(base, f.dst, g.src)) {
+    throw new Error("composeSliceArrows: attempted to compose incompatible slice arrows");
+  }
+  const mediating = base.compose(g.mediating, f.mediating);
+  return { src: f.src, dst: g.dst, mediating };
+};
+
+export const makeSliceProductFromPullback = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  anchor: Obj,
+  pullbacks: PullbackCalculator<Obj, Arr>,
+  left: SliceObject<Obj, Arr>,
+  right: SliceObject<Obj, Arr>,
+  options: SliceProductFromPullbackOptions = {},
+): SliceProductWitnessBase<Obj, Arr> => {
+  ensureSliceObjectLandsInAnchor(base, anchor, left);
+  ensureSliceObjectLandsInAnchor(base, anchor, right);
+
+  const pullback = pullbacks.pullback(left.arrowToAnchor, right.arrowToAnchor);
+
+  const canonicalFactor = pullbacks.factorCone(pullback, {
+    apex: pullback.apex,
+    toDomain: pullback.toDomain,
+    toAnchor: pullback.toAnchor,
+  });
+  if (!canonicalFactor.factored || !canonicalFactor.mediator) {
+    throw new Error(
+      "makeSliceProductFromPullback: supplied pullback candidate does not factor through itself.",
+    );
+  }
+  const identity = base.id(pullback.apex);
+  if (!base.eq(canonicalFactor.mediator, identity)) {
+    throw new Error(
+      "makeSliceProductFromPullback: canonical mediator is not the identity on the apex.",
+    );
+  }
+
+  const viaLeft = base.compose(left.arrowToAnchor, pullback.toDomain);
+  const viaRight = base.compose(right.arrowToAnchor, pullback.toAnchor);
+  if (!base.eq(viaLeft, viaRight)) {
+    throw new Error("makeSliceProductFromPullback: pullback legs do not agree over the anchor.");
+  }
+
+  const product: SliceObject<Obj, Arr> = {
+    domain: pullback.apex,
+    arrowToAnchor: viaLeft,
+  };
+
+  const projectionLeft: SliceArrow<Obj, Arr> = {
+    src: product,
+    dst: left,
+    mediating: pullback.toDomain,
+  };
+
+  const projectionRight: SliceArrow<Obj, Arr> = {
+    src: product,
+    dst: right,
+    mediating: pullback.toAnchor,
+  };
+
+  const pair = (
+    leftLeg: SliceArrow<Obj, Arr>,
+    rightLeg: SliceArrow<Obj, Arr>,
+  ): SliceArrow<Obj, Arr> => {
+    if (!sliceObjectsEqual(base, leftLeg.dst, left)) {
+      throw new Error("makeSliceProductFromPullback.pair: left leg does not target the left factor");
+    }
+    if (!sliceObjectsEqual(base, rightLeg.dst, right)) {
+      throw new Error("makeSliceProductFromPullback.pair: right leg does not target the right factor");
+    }
+    if (!sliceObjectsEqual(base, leftLeg.src, rightLeg.src)) {
+      throw new Error("makeSliceProductFromPullback.pair: legs must share a common source");
+    }
+
+    const apex = leftLeg.src;
+    const leftComposite = base.compose(left.arrowToAnchor, leftLeg.mediating);
+    const rightComposite = base.compose(right.arrowToAnchor, rightLeg.mediating);
+    if (!base.eq(leftComposite, apex.arrowToAnchor) || !base.eq(rightComposite, apex.arrowToAnchor)) {
+      throw new Error("makeSliceProductFromPullback.pair: supplied legs do not agree over the anchor");
+    }
+
+    const result = pullbacks.factorCone(pullback, {
+      apex: apex.domain,
+      toDomain: leftLeg.mediating,
+      toAnchor: rightLeg.mediating,
+    });
+    if (!result.factored || !result.mediator) {
+      throw new Error("makeSliceProductFromPullback.pair: universal mediator is missing");
+    }
+
+    return { src: apex, dst: product, mediating: result.mediator };
+  };
+
+  const tuple = (
+    domain: SliceObject<Obj, Arr>,
+    legs: readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+  ): SliceArrow<Obj, Arr> => pair(legs[0]!, legs[1]!);
+
+  registerSliceProductMetadata(product, {
+    arity: 2,
+    factors: [left, right],
+    tuple: (domain, legs) => {
+      if (legs.length !== 2) {
+        throw new Error(
+          `makeSliceProductFromPullback.tuple: expected 2 legs, received ${legs.length}`,
+        );
+      }
+      const [candidateLeft, candidateRight] = legs as readonly [
+        SliceArrow<Obj, Arr>,
+        SliceArrow<Obj, Arr>,
+      ];
+      return tuple(
+        domain,
+        [candidateLeft, candidateRight] as readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+      );
+    },
+  });
+
+  let swapAccessor: (() => SliceProductSwap<Obj, Arr>) | undefined;
+  let diagonalAccessor: (() => SliceProductDiagonal<Obj, Arr>) | undefined;
+  let leftUnitAccessor: (() => SliceProductUnit<Obj, Arr>) | undefined;
+  let rightUnitAccessor: (() => SliceProductUnit<Obj, Arr>) | undefined;
+  let componentwiseAccessor:
+    | ((
+        target: SliceProductWitnessBase<Obj, Arr>,
+        components: readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+      ) => SliceArrow<Obj, Arr>)
+    | undefined;
+
+  if (!options.disableSwap) {
+    const swappedWitness = makeSliceProductFromPullback(
+      base,
+      anchor,
+      pullbacks,
+      right,
+      left,
+      { disableSwap: true },
+    );
+
+    const swapData = makeBinaryProductSwap<
+      SliceObject<Obj, Arr>,
+      SliceArrow<Obj, Arr>
+    >(
+      {
+        object: product,
+        projections: [projectionLeft, projectionRight],
+        tuple,
+      },
+      {
+        object: swappedWitness.object,
+        projections: [swappedWitness.projectionLeft, swappedWitness.projectionRight],
+        tuple: swappedWitness.tuple,
+      },
+    );
+
+    const swappedFinite: SliceFiniteProductWitnessBase<Obj, Arr> = {
+      object: swappedWitness.object,
+      projections: [swappedWitness.projectionLeft, swappedWitness.projectionRight],
+      tuple: (domain, legs) => {
+        if (legs.length !== 2) {
+          throw new Error("makeSliceProductFromPullback.swap: expected 2 legs");
+        }
+        const [candidateLeft, candidateRight] = legs as readonly [
+          SliceArrow<Obj, Arr>,
+          SliceArrow<Obj, Arr>,
+        ];
+        return swappedWitness.tuple(
+          domain,
+          [
+            candidateLeft,
+            candidateRight,
+          ] as readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+        );
+      },
+      factors: swappedWitness.factors,
+    };
+
+    swapAccessor = () => ({
+      target: swappedFinite,
+      forward: swapData.forward,
+      backward: swapData.backward,
+    });
+  }
+
+  if (sliceObjectsEqual(base, left, right)) {
+    const identityProjection = makeIdentityProjection(base, left);
+    const diagonalArrow = makeBinaryProductDiagonal<
+      SliceObject<Obj, Arr>,
+      SliceArrow<Obj, Arr>
+    >(
+      {
+        object: product,
+        projections: [
+          projectionLeft,
+          projectionRight,
+        ] as readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+        tuple,
+      },
+      { object: left, identity: identityProjection },
+    );
+    diagonalAccessor = () => ({ source: left, arrow: diagonalArrow });
+  }
+
+  if (isTerminalSliceObject(base, anchor, left)) {
+    const identityRight = makeIdentityProjection(base, right);
+    const toTerminal: SliceArrow<Obj, Arr> = {
+      src: right,
+      dst: left,
+      mediating: right.arrowToAnchor,
+    };
+    const backward = tuple(right, [toTerminal, identityRight]);
+    leftUnitAccessor = () => ({
+      factor: right,
+      forward: projectionRight,
+      backward,
+    });
+  }
+
+  if (isTerminalSliceObject(base, anchor, right)) {
+    const identityLeft = makeIdentityProjection(base, left);
+    const toTerminal: SliceArrow<Obj, Arr> = {
+      src: left,
+      dst: right,
+      mediating: left.arrowToAnchor,
+    };
+    const backward = tuple(left, [identityLeft, toTerminal]);
+    rightUnitAccessor = () => ({
+      factor: left,
+      forward: projectionLeft,
+      backward,
+    });
+  }
+
+  componentwiseAccessor = (target, components) => {
+    const [leftComponent, rightComponent] = components;
+    if (target.factors.length !== 2) {
+      throw new Error(
+        "makeSliceProductFromPullback.componentwise: target witness must describe a binary product",
+      );
+    }
+    const [targetLeft, targetRight] = target.factors as readonly [
+      SliceObject<Obj, Arr>,
+      SliceObject<Obj, Arr>,
+    ];
+
+    if (!sliceObjectsEqual(base, leftComponent.src, left)) {
+      throw new Error(
+        "makeSliceProductFromPullback.componentwise: left component must originate at the left factor",
+      );
+    }
+    if (!sliceObjectsEqual(base, rightComponent.src, right)) {
+      throw new Error(
+        "makeSliceProductFromPullback.componentwise: right component must originate at the right factor",
+      );
+    }
+    if (!sliceObjectsEqual(base, leftComponent.dst, targetLeft)) {
+      throw new Error(
+        "makeSliceProductFromPullback.componentwise: left component must target the left factor of the destination product",
+      );
+    }
+    if (!sliceObjectsEqual(base, rightComponent.dst, targetRight)) {
+      throw new Error(
+        "makeSliceProductFromPullback.componentwise: right component must target the right factor of the destination product",
+      );
+    }
+
+    const sourceTuple = {
+      object: product,
+      projections: [
+        projectionLeft,
+        projectionRight,
+      ] as readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+      tuple,
+    } satisfies BinaryProductTuple<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>>;
+
+    const targetTuple = {
+      object: target.object,
+      projections: [
+        target.projectionLeft,
+        target.projectionRight,
+      ] as readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+      tuple: target.tuple,
+    } satisfies BinaryProductTuple<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>>;
+
+    return makeBinaryProductComponentwise<
+      SliceObject<Obj, Arr>,
+      SliceArrow<Obj, Arr>
+    >({
+      category: {
+        compose: (g, f) => composeSliceArrowsGeneric(base, g, f),
+      },
+      source: sourceTuple,
+      target: targetTuple,
+      components,
+    });
+  };
+
+  let witness: SliceProductWitnessBase<Obj, Arr> = {
+    object: product,
+    projectionLeft,
+    projectionRight,
+    tuple,
+    pair,
+    factors: [left, right],
+  };
+
+  if (componentwiseAccessor) {
+    witness = { ...witness, componentwise: componentwiseAccessor };
+  }
+  if (swapAccessor) {
+    witness = { ...witness, swap: swapAccessor };
+  }
+  if (diagonalAccessor) {
+    witness = { ...witness, diagonal: diagonalAccessor };
+  }
+  if (leftUnitAccessor) {
+    witness = { ...witness, leftUnit: leftUnitAccessor };
+  }
+  if (rightUnitAccessor) {
+    witness = { ...witness, rightUnit: rightUnitAccessor };
+  }
+
+  return witness;
+};
+
+export interface SliceFiniteProductFromPullbackOptions {
+  readonly disableSwap?: boolean;
+}
+
+export const makeSliceFiniteProductFromPullback = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  anchor: Obj,
+  pullbacks: PullbackCalculator<Obj, Arr>,
+  factors: ReadonlyArray<SliceObject<Obj, Arr>>,
+  options: SliceFiniteProductFromPullbackOptions = {},
+): SliceFiniteProductWitnessBase<Obj, Arr> => {
+  factors.forEach((factor) => ensureSliceObjectLandsInAnchor(base, anchor, factor));
+
+  const arity = factors.length;
+  if (arity === 0) {
+    const terminal = makeTerminalSliceObject(base, anchor);
+    const tuple = (
+      domain: SliceObject<Obj, Arr>,
+      legs: ReadonlyArray<SliceArrow<Obj, Arr>>,
+    ): SliceArrow<Obj, Arr> => {
+      if (legs.length !== 0) {
+        throw new Error(
+          `makeSliceFiniteProductFromPullback: expected 0 legs, received ${legs.length}`,
+        );
+      }
+      ensureSliceObjectLandsInAnchor(base, anchor, domain);
+      return { src: domain, dst: terminal, mediating: domain.arrowToAnchor };
+    };
+    const witness: SliceFiniteProductWitnessBase<Obj, Arr> = {
+      object: terminal,
+      projections: [],
+      tuple,
+      factors: [],
+    };
+    registerSliceProductMetadata(terminal, { arity, factors, tuple });
+    return witness;
+  }
+
+  if (arity === 1) {
+    const [factor] = factors;
+    if (!factor) {
+      throw new Error("makeSliceFiniteProductFromPullback: missing unary factor");
+    }
+    const tuple = (
+      _domain: SliceObject<Obj, Arr>,
+      legs: ReadonlyArray<SliceArrow<Obj, Arr>>,
+    ): SliceArrow<Obj, Arr> => {
+      if (legs.length !== 1) {
+        throw new Error(
+          `makeSliceFiniteProductFromPullback: expected 1 leg, received ${legs.length}`,
+        );
+      }
+      const [leg] = legs;
+      if (!leg) {
+        throw new Error("makeSliceFiniteProductFromPullback: unary leg is missing");
+      }
+      return leg;
+    };
+    const projection = makeIdentityProjection(base, factor);
+    const witness: SliceFiniteProductWitnessBase<Obj, Arr> = {
+      object: factor,
+      projections: [projection],
+      tuple,
+      factors,
+    };
+    registerSliceProductMetadata(factor, { arity, factors, tuple });
+    return witness;
+  }
+
+  if (arity === 2) {
+    const [left, right] = factors as readonly [SliceObject<Obj, Arr>, SliceObject<Obj, Arr>];
+    const binary = makeSliceProductFromPullback(
+      base,
+      anchor,
+      pullbacks,
+      left,
+      right,
+      options,
+    );
+    const tuple = (
+      domain: SliceObject<Obj, Arr>,
+      legs: ReadonlyArray<SliceArrow<Obj, Arr>>,
+    ): SliceArrow<Obj, Arr> => {
+      if (legs.length !== 2) {
+        throw new Error(
+          `makeSliceFiniteProductFromPullback: expected 2 legs, received ${legs.length}`,
+        );
+      }
+      const [leftLeg, rightLeg] = legs as readonly [
+        SliceArrow<Obj, Arr>,
+        SliceArrow<Obj, Arr>,
+      ];
+      return binary.tuple(
+        domain,
+        [leftLeg, rightLeg] as readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+      );
+    };
+
+    let witness: SliceFiniteProductWitnessBase<Obj, Arr> = {
+      object: binary.object,
+      projections: [
+        binary.projectionLeft,
+        binary.projectionRight,
+      ] as readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+      tuple,
+      factors,
+    };
+
+    if (binary.componentwise) {
+      const componentwise = (
+        target: SliceFiniteProductWitnessBase<Obj, Arr>,
+        components: ReadonlyArray<SliceArrow<Obj, Arr>>,
+      ): SliceArrow<Obj, Arr> => {
+        if (components.length !== 2) {
+          throw new Error(
+            `makeSliceFiniteProductFromPullback.componentwise: expected 2 components, received ${components.length}`,
+          );
+        }
+        if (target.projections.length !== 2) {
+          throw new Error(
+            "makeSliceFiniteProductFromPullback.componentwise: target witness must describe a binary product",
+          );
+        }
+        const [leftComponent, rightComponent] = components as readonly [
+          SliceArrow<Obj, Arr>,
+          SliceArrow<Obj, Arr>,
+        ];
+        const [targetLeft, targetRight] = target.factors;
+        if (!targetLeft || !targetRight) {
+          throw new Error(
+            "makeSliceFiniteProductFromPullback.componentwise: target factors missing",
+          );
+        }
+        const targetBinary: SliceProductWitnessBase<Obj, Arr> = {
+          object: target.object,
+          projectionLeft: target.projections[0]!,
+          projectionRight: target.projections[1]!,
+          tuple: (domain, legs) => {
+            if (legs.length !== 2) {
+              throw new Error(
+                "makeSliceFiniteProductFromPullback.componentwise: target tuple expects 2 legs",
+              );
+            }
+            const [candidateLeft, candidateRight] = legs as readonly [
+              SliceArrow<Obj, Arr>,
+              SliceArrow<Obj, Arr>,
+            ];
+            return target.tuple(
+              domain,
+              [
+                candidateLeft,
+                candidateRight,
+              ] as readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+            );
+          },
+          pair: (leftLeg, rightLeg) =>
+            target.tuple(
+              leftLeg.src,
+              [leftLeg, rightLeg] as readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+            ),
+          factors: [targetLeft, targetRight],
+        };
+        return binary.componentwise!(
+          targetBinary,
+          [
+            leftComponent,
+            rightComponent,
+          ] as readonly [SliceArrow<Obj, Arr>, SliceArrow<Obj, Arr>],
+        );
+      };
+      witness = { ...witness, componentwise };
+    }
+
+    if (binary.swap) {
+      witness = { ...witness, swap: binary.swap };
+    }
+    if (binary.diagonal) {
+      witness = { ...witness, diagonal: binary.diagonal };
+    }
+    if (binary.leftUnit) {
+      witness = { ...witness, leftUnit: binary.leftUnit };
+    }
+    if (binary.rightUnit) {
+      witness = { ...witness, rightUnit: binary.rightUnit };
+    }
+
+    registerSliceProductMetadata(binary.object, { arity, factors, tuple });
+    return witness;
+  }
+
+  let currentFactors = factors.slice(0, 2);
+  let currentWitness = makeSliceProductFromPullback(
+    base,
+    anchor,
+    pullbacks,
+    currentFactors[0]!,
+    currentFactors[1]!,
+    { disableSwap: true },
+  );
+  let projections: SliceArrow<Obj, Arr>[] = [
+    currentWitness.projectionLeft,
+    currentWitness.projectionRight,
+  ];
+  let tuple = (
+    domain: SliceObject<Obj, Arr>,
+    legs: ReadonlyArray<SliceArrow<Obj, Arr>>,
+  ): SliceArrow<Obj, Arr> => {
+    if (legs.length !== 2) {
+      throw new Error(
+        `makeSliceFiniteProductFromPullback: expected 2 legs, received ${legs.length}`,
+      );
+    }
+    const [leftLeg, rightLeg] = legs as readonly [
+      SliceArrow<Obj, Arr>,
+      SliceArrow<Obj, Arr>,
+    ];
+    return currentWitness.tuple(domain, [leftLeg, rightLeg]);
+  };
+
+  for (let index = 2; index < arity; index += 1) {
+    const nextFactor = factors[index]!;
+    const binary = makeSliceProductFromPullback(
+      base,
+      anchor,
+      pullbacks,
+      currentWitness.object,
+      nextFactor,
+      { disableSwap: true },
+    );
+
+    projections = [
+      ...projections.map((projection) =>
+        composeSliceArrowsGeneric(base, projection, binary.projectionLeft),
+      ),
+      binary.projectionRight,
+    ];
+
+    const previousTuple = tuple;
+    tuple = (domain, legs) => {
+      if (legs.length !== index + 1) {
+        throw new Error(
+          `makeSliceFiniteProductFromPullback: expected ${index + 1} legs, received ${legs.length}`,
+        );
+      }
+      const prefix = legs
+        .slice(0, index)
+        .map((leg) => leg) as ReadonlyArray<SliceArrow<Obj, Arr>>;
+      const toCurrent = previousTuple(domain, prefix);
+      const lastLeg = legs[index]!;
+      return binary.pair(toCurrent, lastLeg);
+    };
+
+    currentWitness = binary;
+    currentFactors = [...currentFactors, nextFactor];
+  }
+
+  const finalWitness: SliceFiniteProductWitnessBase<Obj, Arr> = {
+    object: currentWitness.object,
+    projections,
+    tuple,
+    factors,
+  };
+
+  registerSliceProductMetadata(currentWitness.object, { arity, factors, tuple });
+  return finalWitness;
+};
