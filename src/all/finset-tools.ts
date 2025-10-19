@@ -1,5 +1,6 @@
 import { CategoryLimits } from "../../stdlib/category-limits"
 import { FinSet, type FinSetMor, type FinSetObj } from "./triangulated"
+export { FinSetInitialProductIso, finsetProductInitialIso, finsetInitialProductIso } from "./triangulated"
 
 const arrowsEqual = (left: FinSetMor, right: FinSetMor): boolean => {
   if (FinSet.equalMor) {
@@ -347,31 +348,6 @@ export const finsetProductLeftUnitWitness = (object: FinSetObj): FinSetProductLe
     backward,
     terminalProjection: projectionToTerminal,
   }
-}
-
-export interface FinSetInitialProductIso {
-  readonly product: FinSetObj
-  readonly projections: readonly [FinSetMor, FinSetMor]
-  readonly forward: FinSetMor
-  readonly backward: FinSetMor
-}
-
-export const finsetProductInitialIso = (object: FinSetObj): FinSetInitialProductIso => {
-  const initial = FinSet.initialObj
-  const witness = FinSet.product([object, initial])
-  const projections = witness.projections as readonly [FinSetMor, FinSetMor]
-  const forward = projections[1]!
-  const backward: FinSetMor = { from: initial, to: witness.obj, map: [] }
-  return { product: witness.obj, projections, forward, backward }
-}
-
-export const finsetInitialProductIso = (object: FinSetObj): FinSetInitialProductIso => {
-  const initial = FinSet.initialObj
-  const witness = FinSet.product([initial, object])
-  const projections = witness.projections as readonly [FinSetMor, FinSetMor]
-  const forward = projections[0]!
-  const backward: FinSetMor = { from: initial, to: witness.obj, map: [] }
-  return { product: witness.obj, projections, forward, backward }
 }
 
 export interface FinSetExponentialTranspose {

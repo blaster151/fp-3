@@ -2686,8 +2686,10 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
   CartesianClosedCategory<FinSetObj, FinSetMor> & {
     readonly terminate: (X: FinSetObj) => FinSetMor
     readonly initialArrow: (X: FinSetObj) => FinSetMor
+    readonly traits: { readonly functionalArrows: true }
+    readonly isInjective: (arrow: FinSetMor) => boolean
   } = {
-  
+
   id: (X) => ({ from: X, to: X, map: X.elements.map((_, i) => i) }),
   compose: (g, f) => {
     if (f.to !== g.from) throw new Error('FinSet.compose: shape mismatch')
@@ -2701,6 +2703,18 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     f.to === g.to &&
     f.map.length === g.map.length &&
     f.map.every((v, i) => v === g.map[i]),
+  traits: { functionalArrows: true },
+  isInjective: (arrow) => {
+    if (arrow.map.length !== arrow.from.elements.length) return false
+    const seen = new Set<number>()
+    for (let idx = 0; idx < arrow.map.length; idx++) {
+      const image = arrow.map[idx]
+      if (image === undefined) return false
+      if (seen.has(image)) return false
+      seen.add(image)
+    }
+    return true
+  },
 
   // products: cartesian product
   product: (objs) => {
@@ -2906,6 +2920,62 @@ export const finsetInverse = (bij: FinSetMor): FinSetMor => {
   const inv: number[] = Array.from({ length: bij.to.elements.length }, () => -1)
   for (let i = 0; i < bij.map.length; i++) inv[bij.map[i]!] = i
   return { from: bij.to, to: bij.from, map: inv }
+}
+
+const finsetArrowsEqual = (left: FinSetMor, right: FinSetMor): boolean => {
+  const verdict = FinSet.equalMor?.(left, right)
+  if (typeof verdict === "boolean") return verdict
+  if (left.from !== right.from || left.to !== right.to) return false
+  if (left.map.length !== right.map.length) return false
+  return left.map.every((value, index) => value === right.map[index])
+}
+
+const verifyInitialProductIso = (
+  product: FinSetObj,
+  forward: FinSetMor,
+  backward: FinSetMor,
+): void => {
+  const forwardBackward = FinSet.compose(forward, backward)
+  const backwardForward = FinSet.compose(backward, forward)
+  const idInitial = FinSet.id(FinSet.initialObj)
+  const idProduct = FinSet.id(product)
+
+  if (!finsetArrowsEqual(forwardBackward, idInitial)) {
+    throw new Error("FinSet.initial-product iso: forward ∘ backward must equal id_0")
+  }
+  if (!finsetArrowsEqual(backwardForward, idProduct)) {
+    throw new Error("FinSet.initial-product iso: backward ∘ forward must equal id_{A×0}")
+  }
+}
+
+export interface FinSetInitialProductIso {
+  readonly product: FinSetObj
+  readonly projections: readonly [FinSetMor, FinSetMor]
+  readonly forward: FinSetMor
+  readonly backward: FinSetMor
+}
+
+const finsetInitialIso = (
+  projections: readonly [FinSetMor, FinSetMor],
+  product: FinSetObj,
+): FinSetInitialProductIso => {
+  if (product.elements.length !== 0) {
+    throw new Error("FinSet.initial-product iso: product with 0 must have an empty carrier")
+  }
+  const forward = finsetBijection(product, FinSet.initialObj, [])
+  const backward = finsetInverse(forward)
+  verifyInitialProductIso(product, forward, backward)
+  return { product, projections, forward, backward }
+}
+
+export const finsetProductInitialIso = (object: FinSetObj): FinSetInitialProductIso => {
+  const { obj: product, projections } = FinSet.product([object, FinSet.initialObj])
+  return finsetInitialIso(projections as readonly [FinSetMor, FinSetMor], product)
+}
+
+export const finsetInitialProductIso = (object: FinSetObj): FinSetInitialProductIso => {
+  const { obj: product, projections } = FinSet.product([FinSet.initialObj, object])
+  return finsetInitialIso(projections as readonly [FinSetMor, FinSetMor], product)
 }
 
 /** FinSet exponential: X^S (all functions S -> X) */
