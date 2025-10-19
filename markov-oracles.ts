@@ -31,8 +31,13 @@ const checkTopVietorisKolmogorovProxy: TopVietorisModule["checkTopVietorisKolmog
 const buildTopVietorisConstantFunctionWitnessProxy: TopVietorisModule["buildTopVietorisConstantFunctionWitness"] = (mkInput) =>
   loadTopVietorisModule().buildTopVietorisConstantFunctionWitness(mkInput);
 
-const checkTopVietorisConstantFunctionProxy: TopVietorisModule["checkTopVietorisConstantFunction"] = (witness) =>
-  loadTopVietorisModule().checkTopVietorisConstantFunction(witness);
+const checkTopVietorisConstantFunctionProxy: TopVietorisModule["checkTopVietorisConstantFunction"] = (
+  witness,
+  options?,
+) => loadTopVietorisModule().checkTopVietorisConstantFunction(witness, options);
+
+const createSpaceStructureCacheProxy: TopVietorisModule["createSpaceStructureCache"] = () =>
+  loadTopVietorisModule().createSpaceStructureCache();
 
 // Import all oracle functions
 import { isEntire } from "./semiring-utils";
@@ -281,6 +286,7 @@ const createMarkovOracles = ({
         check: checkTopVietorisKolmogorovProxy,
       },
       constantFunction: {
+        createSpaceStructureCache: createSpaceStructureCacheProxy,
         witness: buildTopVietorisConstantFunctionWitnessProxy,
         check: checkTopVietorisConstantFunctionProxy,
       },
