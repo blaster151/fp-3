@@ -8,7 +8,7 @@
 //   3. Use the generic semicartesian oracle to certify the initial-object semicartesian witness.
 
 import type { Ring } from "./ring";
-import { RingInteger } from "./ring";
+import { RingInteger, createModuloRing, normalizeMod } from "./ring";
 import {
   type InitialArrowSample,
   type InitialObjectWitness,
@@ -38,22 +38,6 @@ export type CRingPlusMor = CRingPlusHom<any, any>;
 
 type HomCheck = { description: string };
 
-const normalizeMod = (value: bigint, modulus: bigint): bigint => {
-  if (modulus === 0n) return value;
-  const mod = value % modulus;
-  return mod >= 0n ? mod : mod + modulus;
-};
-
-const ringMod = (modulus: bigint): Ring<bigint> => ({
-  add: (a, b) => normalizeMod(a + b, modulus),
-  zero: normalizeMod(0n, modulus),
-  mul: (a, b) => normalizeMod(a * b, modulus),
-  one: normalizeMod(1n, modulus),
-  eq: (a, b) => normalizeMod(a, modulus) === normalizeMod(b, modulus),
-  neg: (a) => normalizeMod(-a, modulus),
-  sub: (a, b) => normalizeMod(a - b, modulus),
-});
-
 const integerSamples: readonly bigint[] = Object.freeze([-2n, -1n, 0n, 1n, 2n]);
 
 export const IntegersObject: CRingPlusObject<bigint> = {
@@ -65,7 +49,7 @@ export const IntegersObject: CRingPlusObject<bigint> = {
 
 export const createModObject = (modulus: bigint): CRingPlusObject<bigint> => {
   if (modulus <= 1n) throw new Error("Modulus must exceed 1 to form a nontrivial ring");
-  const ring = ringMod(modulus);
+  const ring = createModuloRing(modulus);
   const baseline = [0n, 1n, -1n, 2n, modulus - 1n];
   const sample = Array.from(
     new Set(baseline.map((value) => normalizeMod(value, modulus)))

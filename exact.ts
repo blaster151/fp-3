@@ -10,7 +10,8 @@
 import type { Mat } from './allTS'
 import { matMul } from './allTS'
 
-import type { Ring } from './ring'
+import type { Ring, RingHomomorphism } from './ring'
+import { checkRingHomomorphism } from './ring'
 
 import type { Complex } from './complex'
 import { shift1 } from './complex'
@@ -55,32 +56,13 @@ const eqComplex =
     return true
   }
 
-// ---------- ring hom ----------
-export interface RingHom<R, S> {
-  readonly src: Ring<R>
-  readonly dst: Ring<S>
-  readonly phi: (r: R) => S
-}
+export type RingHom<R, S> = RingHomomorphism<R, S>
 
 // optional: quick (finite) law sanity for φ on a few samples
 export const ringHomRespectsOps =
-  <R, S>(h: RingHom<R, S>) =>
-  (samples: ReadonlyArray<R>): boolean => {
-    const { src: Rng, dst: Sng, phi } = h
-    const eq = Sng.eq ?? ((a: S, b: S) => Object.is(a, b))
-    // zero/one
-    if (!eq(phi(Rng.zero), Sng.zero)) return false
-    if (!eq(phi(Rng.one),  Sng.one))  return false
-    // add/mul (sampled)
-    for (let i = 0; i < samples.length; i++) {
-      for (let j = 0; j < samples.length; j++) {
-        const a = samples[i]!, b = samples[j]!
-        if (!eq(phi(Rng.add(a,b)), Sng.add(phi(a), phi(b)))) return false
-        if (!eq(phi(Rng.mul(a,b)), Sng.mul(phi(a), phi(b)))) return false
-      }
-    }
-    return true
-  }
+  <R, S>(hom: RingHom<R, S>) =>
+  (samples: ReadonlyArray<R>): boolean =>
+    checkRingHomomorphism(hom, { samples }).holds
 
 // ---------- the functor ----------
 
@@ -99,7 +81,7 @@ export interface ExactFunctor<R, S> extends AdditiveFunctor<R, S> {
 // Build the scalar-pushforward exact functor F_φ
 export const makeScalarExactFunctor =
   <R, S>(h: RingHom<R, S>): ExactFunctor<R, S> => {
-    const { phi, dst: S } = h
+    const { map: phi, target: S } = h
 
     const onComplex = (X: Complex<R>): Complex<S> => {
       const dim: Record<number, number> = {}
