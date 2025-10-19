@@ -14,7 +14,8 @@ import {
   projection2,
 } from "./ContinuousMap";
 import { topCoequalizer, topFactorThroughCoequalizer } from "./coequalizers";
-import { quotientByRelation } from "./Quotient";
+import { topPullback, topFactorThroughPullback } from "./pullbacks";
+import { topPushout, topFactorThroughPushout } from "./pushouts";
 
 export function registerContinuityPacks(registry: ContRegistry): void {
   const { register } = registry;
@@ -156,54 +157,103 @@ export function registerContinuityPacks(registry: ContRegistry): void {
     morphism: mediatorReport.mediator,
   });
 
-  const quotientSource = discrete([0, 1, 2, 3]);
-  const quotientResult = quotientByRelation({
-    source: quotientSource,
-    eqSource: eqNum,
-    relation: (a: number, b: number) => a % 2 === b % 2,
-  });
-  register({
-    tag: "Top/cont/quotient:projection",
-    morphism: quotientResult.projection,
-  });
-  const quotientClassifier = makeContinuousMap({
-    source: quotientResult.topology,
-    target: discrete([0, 1]),
-    eqSource: quotientResult.eqClass,
-    eqTarget: eqNum,
-    map: (cls: ReadonlyArray<number>) => (cls.some((n) => n % 2 === 0) ? 0 : 1),
-  });
-  register({
-    tag: "Top/cont/quotient:classify-parity",
-    morphism: quotientClassifier,
-  });
-
   const pullA = discrete([0, 1, 2]);
   const pullB = discrete([10, 11, 12]);
-  const pullProduct = productStructure(eqNum, eqNum, pullA, pullB);
-  const fiberPoints = pullProduct.topology.carrier.filter((pair) => (pair.x % 2) === ((pair.y - 10) % 2));
-  const fiberTopology = subspace(pullProduct.eq, pullProduct.topology, fiberPoints);
-  const pullbackProjA = makeContinuousMap({
-    source: fiberTopology,
-    target: pullA,
-    eqSource: pullProduct.eq,
+  const pullTarget = discrete([0, 1]);
+  const pullToTargetA = makeContinuousMap({
+    source: pullA,
+    target: pullTarget,
+    eqSource: eqNum,
     eqTarget: eqNum,
-    map: (pair) => pair.x,
+    map: (x: number) => x % 2,
   });
+  const pullToTargetB = makeContinuousMap({
+    source: pullB,
+    target: pullTarget,
+    eqSource: eqNum,
+    eqTarget: eqNum,
+    map: (y: number) => (y - 10) % 2,
+  });
+  const pullbackWitness = topPullback(pullToTargetA, pullToTargetB);
   register({
     tag: "Top/cont/pullback:π₁",
-    morphism: pullbackProjA,
-  });
-  const pullbackProjB = makeContinuousMap({
-    source: fiberTopology,
-    target: pullB,
-    eqSource: pullProduct.eq,
-    eqTarget: eqNum,
-    map: (pair) => pair.y,
+    morphism: pullbackWitness.proj1,
   });
   register({
     tag: "Top/cont/pullback:π₂",
-    morphism: pullbackProjB,
+    morphism: pullbackWitness.proj2,
+  });
+  const pullConeDomain = discrete([0, 1, 2]);
+  const pullConeLeft = makeContinuousMap({
+    source: pullConeDomain,
+    target: pullA,
+    eqSource: eqNum,
+    eqTarget: eqNum,
+    map: (w: number) => w,
+  });
+  const pullConeRight = makeContinuousMap({
+    source: pullConeDomain,
+    target: pullB,
+    eqSource: eqNum,
+    eqTarget: eqNum,
+    map: (w: number) => (w === 0 ? 10 : w === 1 ? 11 : 12),
+  });
+  const pullMediatorReport = topFactorThroughPullback(
+    pullToTargetA,
+    pullToTargetB,
+    pullbackWitness,
+    pullConeLeft,
+    pullConeRight,
+  );
+  if (!pullMediatorReport.mediator) {
+    throw new Error(
+      `Failed to build pullback mediator: ${pullMediatorReport.failures.join("; ") || "unknown reason"}`,
+    );
+  }
+  register({
+    tag: "Top/cont/pullback-mediator:W→PB",
+    morphism: pullMediatorReport.mediator,
+  });
+
+  const spanSource = discrete([0, 1]);
+  const spanLeft = makeContinuousMap({
+    source: spanSource,
+    target: TXd,
+    eqSource: eqNum,
+    eqTarget: eqNum,
+    map: (s: number) => (s === 0 ? 0 : 1),
+  });
+  const spanRight = makeContinuousMap({
+    source: spanSource,
+    target: TYd,
+    eqSource: eqNum,
+    eqTarget: eqNum,
+    map: (s: number) => (s === 0 ? 10 : 30),
+  });
+  const pushoutWitness = topPushout(spanLeft, spanRight);
+  register({
+    tag: "Top/cont/pushout:inl",
+    morphism: pushoutWitness.inl,
+  });
+  register({
+    tag: "Top/cont/pushout:inr",
+    morphism: pushoutWitness.inr,
+  });
+  const pushMediatorReport = topFactorThroughPushout(
+    spanLeft,
+    spanRight,
+    pushoutWitness,
+    leftFold,
+    rightFold,
+  );
+  if (!pushMediatorReport.mediator) {
+    throw new Error(
+      `Failed to build pushout mediator: ${pushMediatorReport.failures.join("; ") || "unknown reason"}`,
+    );
+  }
+  register({
+    tag: "Top/cont/pushout-mediator:P→Z",
+    morphism: pushMediatorReport.mediator,
   });
 
   const componentCarrier = [0, 1, 2, 3];
