@@ -20,12 +20,39 @@ export interface Hom {
   readonly map: (x: string) => string
 }
 
+export interface FinGrpProductMetadata {
+  readonly arity: number
+  readonly tuple: (domain: FinGrpObj, legs: ReadonlyArray<Hom>) => Hom
+  readonly factorNames: ReadonlyArray<string>
+  readonly factors: ReadonlyArray<FinGrpObj>
+}
+
+export interface FinGrpProductMetadataStore {
+  readonly register: (
+    object: FinGrpObj,
+    metadata: FinGrpProductMetadata,
+  ) => FinGrpProductMetadata
+  readonly lookup: (product: FinGrpObj) => FinGrpProductMetadata | undefined
+}
+
+export const createFinGrpProductMetadataStore = (): FinGrpProductMetadataStore => {
+  const cache = new WeakMap<FinGrpObj, FinGrpProductMetadata>()
+  return {
+    register: (object, metadata) => {
+      cache.set(object, metadata)
+      return metadata
+    },
+    lookup: (product) => cache.get(product),
+  }
+}
+
 export interface FinGrpCategory extends FiniteCategory<string, Hom> {
   readonly traits: { readonly functionalArrows: true; readonly balanced: true }
   readonly isHom: (arrow: Hom) => boolean
   readonly isInjective: (arrow: Hom) => boolean
   readonly isSurjective: (arrow: Hom) => boolean
   readonly lookup: (name: string) => FinGrpObj
+  readonly productMetadataStore: FinGrpProductMetadataStore
 }
 
 export interface FinGrpProductWitness {
@@ -80,20 +107,6 @@ export interface FinGrpProductUnit {
   readonly backward: Hom
 }
 
-interface FinGrpProductMetadata {
-  readonly arity: number
-  readonly tuple: (domain: FinGrpObj, legs: ReadonlyArray<Hom>) => Hom
-  readonly factorNames: ReadonlyArray<string>
-  readonly factors: ReadonlyArray<FinGrpObj>
-}
-
-const productMetadata = new WeakMap<FinGrpObj, FinGrpProductMetadata>()
-
-const registerProductMetadata = (object: FinGrpObj, metadata: FinGrpProductMetadata) => {
-  productMetadata.set(object, metadata)
-  return metadata
-}
-
 const TRIVIAL_GROUP_NAME = "1"
 const TRIVIAL_ELEMENT = "e"
 
@@ -137,6 +150,8 @@ export function FinGrpCat(objects: readonly FinGrpObj[]): FinGrpCategory {
   const objectList = Object.keys(byName)
   const arrows: Hom[] = []
 
+  const productMetadataStore = createFinGrpProductMetadataStore()
+
   const eq = (f: Hom, g: Hom) =>
     f.dom === g.dom &&
     f.cod === g.cod &&
@@ -177,6 +192,7 @@ export function FinGrpCat(objects: readonly FinGrpObj[]): FinGrpCategory {
     isInjective: (arrow) => FinGrp.injective(ensureObject(byName, arrow.dom), ensureObject(byName, arrow.cod), arrow),
     isSurjective: (arrow) => FinGrp.surjective(ensureObject(byName, arrow.dom), ensureObject(byName, arrow.cod), arrow),
     lookup: (name) => ensureObject(byName, name),
+    productMetadataStore,
   }
 
   return category
@@ -264,6 +280,7 @@ export const FinGrp = {
   },
   productMany(
     factors: ReadonlyArray<FinGrpObj>,
+    store: FinGrpProductMetadataStore,
     options: { readonly name?: string; readonly disableSwap?: boolean } = {},
   ): FinGrpFiniteProductWitness {
     if (factors.length === 0) {
@@ -281,7 +298,7 @@ export const FinGrp = {
         return FinGrp.terminateAt(domain, object)
       }
 
-      registerProductMetadata(object, { arity: 0, factorNames: [], factors: [], tuple: pair })
+      store.register(object, { arity: 0, factorNames: [], factors: [], tuple: pair })
 
       const element = (components: ReadonlyArray<string>) => {
         if (components.length !== 0) {
@@ -353,7 +370,7 @@ export const FinGrp = {
         return leg
       }
 
-      registerProductMetadata(object, {
+      store.register(object, {
         arity: 1,
         factorNames: [factor.name],
         factors: [factor],
@@ -562,7 +579,7 @@ export const FinGrp = {
       return mediator
     }
 
-    registerProductMetadata(object, {
+    store.register(object, {
       arity,
       factorNames: factors.map((factor) => factor.name),
       factors: [...factors],
@@ -591,7 +608,7 @@ export const FinGrp = {
       }
 
       if (!options.disableSwap) {
-        const swappedWitness = FinGrp.productMany([rightFactor, leftFactor], {
+        const swappedWitness = FinGrp.productMany([rightFactor, leftFactor], store, {
           disableSwap: true,
         })
 
@@ -784,8 +801,13 @@ export const FinGrp = {
     }
     return extended
   },
-  product(left: FinGrpObj, right: FinGrpObj, options: { readonly name?: string } = {}): FinGrpProductWitness {
-    const witness = FinGrp.productMany([left, right], options)
+  product(
+    left: FinGrpObj,
+    right: FinGrpObj,
+    store: FinGrpProductMetadataStore,
+    options: { readonly name?: string } = {},
+  ): FinGrpProductWitness {
+    const witness = FinGrp.productMany([left, right], store, options)
     const [projection1, projection2] = witness.projections
     if (!projection1 || !projection2) {
       throw new Error("FinGrp.product: failed to obtain binary projections from productMany")
@@ -857,8 +879,13 @@ export const FinGrp = {
     }
     return extended
   },
-  tupleMany(domain: FinGrpObj, legs: ReadonlyArray<Hom>, product: FinGrpObj): Hom {
-    const metadata = productMetadata.get(product)
+  tupleMany(
+    store: FinGrpProductMetadataStore,
+    domain: FinGrpObj,
+    legs: ReadonlyArray<Hom>,
+    product: FinGrpObj,
+  ): Hom {
+    const metadata = store.lookup(product)
     if (!metadata) {
       throw new Error(
         `FinGrp.tupleMany: unrecognised product object ${product.name}; build it via FinGrp.productMany first`,

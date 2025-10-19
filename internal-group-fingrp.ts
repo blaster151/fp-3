@@ -16,6 +16,7 @@ import type { BinaryProductTuple } from './category-limits-helpers'
 import {
   FinGrp,
   FinGrpCat,
+  createFinGrpProductMetadataStore,
   type FinGrpCategory,
   type FinGrpObj,
   type Hom,
@@ -207,11 +208,12 @@ export interface FinGrpInternalGroupWitness {
 }
 
 export const makeFinGrpInternalGroupWitness = (group: FinGrpObj): FinGrpInternalGroupWitness => {
-  const product = FinGrp.product(group, group, { name: `${group.name}×${group.name}` })
-  const productLeft = FinGrp.product(product.object, group, {
+  const store = createFinGrpProductMetadataStore()
+  const product = FinGrp.product(group, group, store, { name: `${group.name}×${group.name}` })
+  const productLeft = FinGrp.product(product.object, group, store, {
     name: `(${product.object.name})×${group.name}`,
   })
-  const productRight = FinGrp.product(group, product.object, {
+  const productRight = FinGrp.product(group, product.object, store, {
     name: `${group.name}×(${product.object.name})`,
   })
 
@@ -273,11 +275,12 @@ export interface FinGrpInternalMonoidWitness {
 }
 
 export const makeFinGrpInternalMonoidWitness = (group: FinGrpObj): FinGrpInternalMonoidWitness => {
-  const product = FinGrp.product(group, group, { name: `${group.name}×${group.name}` })
-  const productLeft = FinGrp.product(product.object, group, {
+  const store = createFinGrpProductMetadataStore()
+  const product = FinGrp.product(group, group, store, { name: `${group.name}×${group.name}` })
+  const productLeft = FinGrp.product(product.object, group, store, {
     name: `(${product.object.name})×${group.name}`,
   })
-  const productRight = FinGrp.product(group, product.object, {
+  const productRight = FinGrp.product(group, product.object, store, {
     name: `${group.name}×(${product.object.name})`,
   })
 
