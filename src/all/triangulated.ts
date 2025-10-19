@@ -2620,6 +2620,33 @@ export const makeFinSetObj = <T>(elements: ReadonlyArray<T>): FinSetObjOf<T> => 
 const terminalFinSetObj: FinSetObj = { elements: [null] }
 const initialFinSetObj: FinSetObj = { elements: [] }
 
+type FinSetMapCheckMessages = {
+  readonly lengthMismatch: string
+  readonly missingValue: string
+  readonly outOfBounds: string
+}
+
+const ensureFinSetTotalMap = (
+  from: FinSetObj,
+  to: FinSetObj,
+  map: ReadonlyArray<number>,
+  messages: FinSetMapCheckMessages,
+): void => {
+  if (map.length !== from.elements.length) {
+    throw new Error(messages.lengthMismatch)
+  }
+
+  for (let idx = 0; idx < map.length; idx++) {
+    const value = map[idx]
+    if (value === undefined) {
+      throw new Error(messages.missingValue)
+    }
+    if (!Number.isInteger(value) || value < 0 || value >= to.elements.length) {
+      throw new Error(messages.outOfBounds)
+    }
+  }
+}
+
 const terminateFinSetAtTerminal = (X: FinSetObj): FinSetMor => ({
   from: X,
   to: terminalFinSetObj,
@@ -2894,6 +2921,38 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
 }
 
 export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
+
+export const finsetPointElement = (object: FinSetObj, elementIndex: number): FinSetMor => {
+  if (!Number.isInteger(elementIndex) || elementIndex < 0 || elementIndex >= object.elements.length) {
+    throw new Error('finsetPointElement: elementIndex out of range for the provided object')
+  }
+
+  const map: ReadonlyArray<number> = [elementIndex]
+  ensureFinSetTotalMap(terminalFinSetObj, object, map, {
+    lengthMismatch: 'finsetPointElement: point arrow must map the unique terminal element',
+    missingValue: 'finsetPointElement: point arrow must map the unique terminal element',
+    outOfBounds: 'finsetPointElement: elementIndex out of range for the provided object',
+  })
+
+  return { from: terminalFinSetObj, to: object, map }
+}
+
+export const finsetPointFromArrow = (object: FinSetObj, arrow: FinSetMor): number => {
+  if (arrow.from !== terminalFinSetObj) {
+    throw new Error('finsetPointFromArrow: arrow must originate at the terminal object')
+  }
+  if (arrow.to !== object) {
+    throw new Error('finsetPointFromArrow: arrow codomain must match the provided object')
+  }
+
+  ensureFinSetTotalMap(terminalFinSetObj, object, arrow.map, {
+    lengthMismatch: 'finsetPointFromArrow: arrow must map the unique terminal element',
+    missingValue: 'finsetPointFromArrow: arrow must map the unique terminal element',
+    outOfBounds: 'finsetPointFromArrow: arrow references an out-of-range element',
+  })
+
+  return arrow.map[0]!
+}
 
 /** FinSet bijection helper */
 export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): FinSetMor => {

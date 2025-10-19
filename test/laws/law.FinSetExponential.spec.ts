@@ -14,11 +14,8 @@ import {
   finsetArrowFromName,
   finsetPointElement,
   finsetPointFromArrow,
-  assertFinSetMor,
 } from '../../allTS'
 import type { FinSetMor, FinSetObj } from '../../allTS'
-
-const encodeIndices = (indices: ReadonlyArray<number>): string => indices.join(',')
 
 const asProductMap = (morphism: FinSetMor): Map<string, number> => {
   const tuples = morphism.from.elements as ReadonlyArray<ReadonlyArray<number>>
@@ -244,36 +241,15 @@ describe('FinSet exponential structure', () => {
 
     const { name } = finsetNameFromArrow({ domain: A, codomain, arrow })
     const exponential = finSetExponential(codomain, A)
-
-    const tupleIndex = new Map<string, number>()
-    ;(exponential.product.elements as ReadonlyArray<ReadonlyArray<number>>).forEach((tuple, idx) => {
-      tupleIndex.set(encodeIndices(tuple), idx)
-    })
-
-    const functionIndex = name.map[0]
-    if (functionIndex === undefined) {
-      throw new Error('expected a function index for the named arrow')
-    }
+    const { product } = exponential
 
     A.elements.forEach((_value, idx) => {
       const point = finsetPointElement(A, idx)
       expect(finsetPointFromArrow(A, point)).toBe(idx)
 
       const composite = FinSet.compose(arrow, point)
-
-      const key = encodeIndices([functionIndex, idx])
-      const productIndex = tupleIndex.get(key)
-      if (productIndex === undefined) {
-        throw new Error('expected tuple in exponential product for ⟨name(f), x⟩')
-      }
-
-      const pair = assertFinSetMor({
-        from: FinSet.terminalObj,
-        to: exponential.product,
-        map: [productIndex],
-      })
-
-      const evaluated = FinSet.compose(exponential.evaluation, pair)
+      const pairing = product.pair(FinSet.terminalObj, name, point)
+      const evaluated = FinSet.compose(exponential.evaluation, pairing)
       expectIdenticalArrow(evaluated, composite)
     })
   })

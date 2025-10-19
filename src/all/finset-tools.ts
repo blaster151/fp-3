@@ -1,5 +1,5 @@
 import { CategoryLimits } from "../../stdlib/category-limits"
-import { FinSet, type FinSetMor, type FinSetObj } from "./triangulated"
+import { FinSet, finsetPointElement, type FinSetMor, type FinSetObj } from "./triangulated"
 
 const arrowsEqual = (left: FinSetMor, right: FinSetMor): boolean => {
   if (FinSet.equalMor) {
@@ -298,11 +298,7 @@ export const finsetExpToTerminalIso = ({
     Array.from({ length: base.elements.length }, () => 0),
   )
 
-  const backward: FinSetMor = {
-    from: FinSet.terminalObj,
-    to: exponential.object,
-    map: [constantZero],
-  }
+  const backward = finsetPointElement(exponential.object, constantZero)
 
   return { forward, backward }
 }
@@ -823,7 +819,7 @@ export const finsetNameFromArrow = ({
   const functionValues = domain.elements.map((_value, idx) => arrow.map[idx]!)
   const functionIndex = exponential.indexOfFunction(functionValues)
 
-  const name: FinSetMor = { from: FinSet.terminalObj, to: exponential.object, map: [functionIndex] }
+  const name = finsetPointElement(exponential.object, functionIndex)
 
   const product1A = FinSet.product([FinSet.terminalObj, domain])
   const productIndex = tupleIndex(exponential.product)
@@ -882,30 +878,6 @@ export const finsetArrowFromName = ({
     }
   })
   return { from: domain, to: codomain, map: values.slice() }
-}
-
-export const finsetPointElement = (object: FinSetObj, elementIndex: number): FinSetMor => {
-  if (elementIndex < 0 || elementIndex >= object.elements.length) {
-    throw new Error("finsetPointElement: elementIndex out of range for the provided object")
-  }
-  return { from: FinSet.terminalObj, to: object, map: [elementIndex] }
-}
-
-export const finsetPointFromArrow = (object: FinSetObj, arrow: FinSetMor): number => {
-  if (arrow.from !== FinSet.terminalObj) {
-    throw new Error("finsetPointFromArrow: arrow must originate at the terminal object")
-  }
-  if (arrow.to !== object) {
-    throw new Error("finsetPointFromArrow: arrow codomain must match the provided object")
-  }
-  const [index] = arrow.map
-  if (index === undefined) {
-    throw new Error("finsetPointFromArrow: arrow must map the unique terminal element")
-  }
-  if (index < 0 || index >= object.elements.length) {
-    throw new Error("finsetPointFromArrow: arrow references an out-of-range element")
-  }
-  return index
 }
 
 export interface FinSetPointSurjectivityWitness {
@@ -996,9 +968,9 @@ export const finsetLawvereFixedPoint = (g: FinSetMor, j: FinSetMor): FinSetLawve
     throw new Error("finsetLawvereFixedPoint: diagonal evaluation out of range")
   }
 
-  const fixedPoint: FinSetMor = { from: FinSet.terminalObj, to: metadata.codomain, map: [fixedValue] }
-  const preimagePoint: FinSetMor = { from: FinSet.terminalObj, to: metadata.base, map: [preimageIndex] }
-  const diagonalName: FinSetMor = { from: FinSet.terminalObj, to: g.to, map: [phiIndex] }
+  const fixedPoint = finsetPointElement(metadata.codomain, fixedValue)
+  const preimagePoint = finsetPointElement(metadata.base, preimageIndex)
+  const diagonalName = finsetPointElement(g.to, phiIndex)
   const fixedPointElement = metadata.codomain.elements[fixedValue]
 
   return { elementIndex: fixedValue, fixedPoint, fixedPointElement, preimagePoint, diagonalName }
