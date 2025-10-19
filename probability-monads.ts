@@ -7,6 +7,7 @@ import {
   kernelToMatrix,
   prettyMatrix,
 } from "./markov-category";
+import { GiryMonad, makeGiryKleisli } from "./giry";
 import type {
   Dist,
   Fin,
@@ -108,3 +109,5 @@ export const WeightedMonad: DistLikeMonadSpec = {
 export const KleisliProb: KleisliFactory     = makeKleisli(DistMonad);
 export const KleisliSubProb: KleisliFactory  = makeKleisli(SubProbMonad);
 export const KleisliWeighted: KleisliFactory = makeKleisli(WeightedMonad);
+export const GiryKleisli = makeGiryKleisli();
+export const GiryMonadSpec = GiryMonad;
