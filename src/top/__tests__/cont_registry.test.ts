@@ -2,11 +2,15 @@ import { describe, it, expect } from "vitest";
 import { createContRegistry } from "../ContRegistry";
 import { registerContinuityPacks } from "../cont_packs";
 
-const registry = createContRegistry();
-registerContinuityPacks(registry);
+function buildRegistry() {
+  const registry = createContRegistry();
+  registerContinuityPacks(registry);
+  return registry;
+}
 
 describe("Continuous-map registry", () => {
   it("all registered maps are continuous", () => {
+    const registry = buildRegistry();
     const report = registry.runAll();
     const summary = registry.summarize(report);
     if (summary.failures > 0) {
@@ -23,10 +27,12 @@ describe("Continuous-map registry", () => {
   });
 
   it("sanity: registry has entries", () => {
+    const registry = buildRegistry();
     expect(registry.all().length).toBeGreaterThan(0);
   });
 
   it("exposes witness metadata for featured maps", () => {
+    const registry = buildRegistry();
     const report = registry.runAll();
     const quotientClassifier = report.find((entry) => entry.tag === "Top/cont/quotient:classify-parity");
     expect(quotientClassifier?.witness?.preimages.length).toBeGreaterThan(0);
