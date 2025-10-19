@@ -1260,6 +1260,13 @@ so failures can be traced to sub-lemmas.
 - **Oracles**: `test/laws/law.FinSetCCC.spec.ts` proves the unit laws for products with `1`, demonstrates that evaluation composed with the canonical pairing reproduces `h`, and confirms that curry/uncurry form inverse bijections on transposes.
 - **Witness Builder**: `FinSetCCC` (re-exported via `src/all/triangulated.ts`) surfaces `{ terminal, binaryProduct, exponential }`, while `FinSet.compose` and `FinSet.id` support the comparison checks in the law suite.
 
+### Finite-set strict initial products
+
+- **Domain**: Finite-set objects created with `makeFinSetObj(...)`, the canonical initial object `FinSet.initialObj`, and the product witness returned by `FinSet.product([_, FinSet.initialObj])` or its left-handed variant.
+- **Statement**: `finsetProductInitialIso` and `finsetInitialProductIso` now synthesise mutually inverse maps between \(A×0\) (or \(0×A\)) and `0` via `finsetBijection`/`finsetInverse`, explicitly checking that both composites reduce to the appropriate identities and that the product projections factor through the unique arrow into the initial object.
+- **Rationale**: Certifies that `0` is a strict initial object in `FinSet`: pairing with it collapses to `0`, and every arrow landing in `0` is forced to be injective—hence monic—by the helper’s internal verification.
+- **Oracles**: `test/laws/law.FinSetInitialProduct.spec.ts` composes the extracted mediators to observe both identities, confirms the projections factor through `FinSet.initialArrow`, and applies `isMono(FinSet, …)` to show that every realised map into `0` is a monomorphism.
+
 ### Finite-set equalizer schemes
 
 - **Domain**: Parallel finite-set arrows `f, g : X → Y` together with the inclusion `e : E → X` returned by `FinSet.equalizer(f, g)` and commuting forks into `X`.

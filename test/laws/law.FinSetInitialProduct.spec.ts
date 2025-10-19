@@ -1,25 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   FinSet,
-  makeFinSetObj,
-  finsetProductInitialIso,
   finsetInitialProductIso,
+  finsetProductInitialIso,
+  isMono,
+  makeFinSetObj,
 } from '../../allTS'
 import type { FinSetMor } from '../../allTS'
-const isInjectiveMap = (arrow: FinSetMor): boolean => {
-  const seen = new Set<number>()
-  for (let idx = 0; idx < arrow.map.length; idx++) {
-    const image = arrow.map[idx]
-    if (image === undefined) {
-      return false
-    }
-    if (seen.has(image)) {
-      return false
-    }
-    seen.add(image)
-  }
-  return true
-}
 
 const expectEqualArrows = (left: FinSetMor, right: FinSetMor) => {
   const equal =
@@ -33,7 +20,7 @@ const expectEqualArrows = (left: FinSetMor, right: FinSetMor) => {
 
 describe('FinSet products with the initial object', () => {
   const A = makeFinSetObj(['a0', 'a1'])
-  const arrowFromZeroToA: FinSetMor = { from: FinSet.initialObj, to: A, map: [] }
+  const arrowFromZeroToA = FinSet.initialArrow(A)
 
   it('builds an isomorphism A×0 ≅ 0 whose projections factor through 0', () => {
     const witness = finsetProductInitialIso(A)
@@ -81,7 +68,7 @@ describe('FinSet products with the initial object', () => {
     ]
 
     for (const arrow of arrows) {
-      expect(isInjectiveMap(arrow)).toBe(true)
+      expect(isMono(FinSet as Parameters<typeof isMono>[0], arrow)).toBe(true)
     }
   })
 })
