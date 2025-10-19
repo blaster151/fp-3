@@ -28,6 +28,7 @@ export interface PullbackCertification<Obj, Arr> {
   readonly valid: boolean;
   readonly reason?: string;
   readonly conesChecked: ReadonlyArray<PullbackData<Obj, Arr>>;
+  readonly mediators?: ReadonlyArray<Arr>;
 }
 
 export interface PullbackCalculator<Obj, Arr> {
@@ -251,9 +252,10 @@ export function makeFinitePullbackCalculator<Obj, Arr>(
       };
     }
 
+    const mediators: Arr[] = [];
     for (const cone of cones) {
       const result = factorPullbackCone(base, candidate, cone);
-      if (!result.factored) {
+      if (!result.factored || result.mediator === undefined) {
         return {
           valid: false,
           reason:
@@ -262,9 +264,10 @@ export function makeFinitePullbackCalculator<Obj, Arr>(
           conesChecked: cones,
         };
       }
+      mediators.push(result.mediator);
     }
 
-    return { valid: true, conesChecked: cones };
+    return { valid: true, conesChecked: cones, mediators };
   };
 
   const pullback = (f: Arr, h: Arr): PullbackData<Obj, Arr> => {
@@ -272,7 +275,7 @@ export function makeFinitePullbackCalculator<Obj, Arr>(
 
     for (const candidate of cones) {
       const certification = certifyInternal(f, h, candidate, cones);
-      if (certification.valid) {
+      if (certification.valid && certification.mediators !== undefined) {
         return candidate;
       }
     }

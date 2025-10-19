@@ -1,61 +1,61 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from "vitest";
 
 import {
   factorPullbackCone,
   makeFinitePullbackCalculator,
   type PullbackData,
-} from '../../pullback'
-import type { FiniteCategory } from '../../finite-cat'
+} from "../../pullback";
+import type { FiniteCategory } from "../../finite-cat";
 
-type Obj = 'A' | 'B' | 'C' | 'P' | 'X' | 'R'
+type Obj = "A" | "B" | "C" | "P" | "X" | "R";
 
-type Arrow = {
-  readonly name: string
-  readonly src: Obj
-  readonly dst: Obj
+interface Arrow {
+  readonly name: string;
+  readonly src: Obj;
+  readonly dst: Obj;
 }
 
 const id = (object: Obj): Arrow => ({
   name: `id_${object}`,
   src: object,
   dst: object,
-})
+});
 
 const makeCompose = (table: Record<string, Arrow>) =>
   (g: Arrow, f: Arrow): Arrow => {
     if (f.dst !== g.src) {
-      throw new Error('compose: mismatched endpoints')
+      throw new Error("compose: mismatched endpoints");
     }
-    if (g.name === `id_${g.src}`) return f
-    if (f.name === `id_${f.src}`) return g
-    const key = `${g.name}∘${f.name}`
-    const arrow = table[key]
+    if (g.name === `id_${g.src}`) return f;
+    if (f.name === `id_${f.src}`) return g;
+    const key = `${g.name}∘${f.name}`;
+    const arrow = table[key];
     if (!arrow) {
-      throw new Error(`compose: missing case ${key}`)
+      throw new Error(`compose: missing case ${key}`);
     }
-    return arrow
-  }
+    return arrow;
+  };
 
 const makeGoodFixture = () => {
-  type GoodObj = Exclude<Obj, 'R'>
-  const objects: ReadonlyArray<GoodObj> = ['A', 'B', 'C', 'P', 'X']
+  type GoodObj = Exclude<Obj, "R">;
+  const objects: ReadonlyArray<GoodObj> = ["A", "B", "C", "P", "X"];
 
-  const f: Arrow = { name: 'f', src: 'A', dst: 'C' }
-  const h: Arrow = { name: 'h', src: 'B', dst: 'C' }
-  const pA: Arrow = { name: 'pA', src: 'P', dst: 'A' }
-  const pB: Arrow = { name: 'pB', src: 'P', dst: 'B' }
-  const cP: Arrow = { name: 'cP', src: 'P', dst: 'C' }
-  const xA: Arrow = { name: 'xA', src: 'X', dst: 'A' }
-  const xB: Arrow = { name: 'xB', src: 'X', dst: 'B' }
-  const xC: Arrow = { name: 'xC', src: 'X', dst: 'C' }
-  const u: Arrow = { name: 'u', src: 'X', dst: 'P' }
+  const f: Arrow = { name: "f", src: "A", dst: "C" };
+  const h: Arrow = { name: "h", src: "B", dst: "C" };
+  const pA: Arrow = { name: "pA", src: "P", dst: "A" };
+  const pB: Arrow = { name: "pB", src: "P", dst: "B" };
+  const cP: Arrow = { name: "cP", src: "P", dst: "C" };
+  const xA: Arrow = { name: "xA", src: "X", dst: "A" };
+  const xB: Arrow = { name: "xB", src: "X", dst: "B" };
+  const xC: Arrow = { name: "xC", src: "X", dst: "C" };
+  const u: Arrow = { name: "u", src: "X", dst: "P" };
 
   const arrows: ReadonlyArray<Arrow> = [
-    id('A'),
-    id('B'),
-    id('C'),
-    id('P'),
-    id('X'),
+    id("A"),
+    id("B"),
+    id("C"),
+    id("P"),
+    id("X"),
     f,
     h,
     pA,
@@ -65,16 +65,16 @@ const makeGoodFixture = () => {
     xB,
     xC,
     u,
-  ]
+  ];
 
   const compose = makeCompose({
-    'f∘pA': cP,
-    'h∘pB': cP,
-    'pA∘u': xA,
-    'pB∘u': xB,
-    'f∘xA': xC,
-    'h∘xB': xC,
-  })
+    "f∘pA": cP,
+    "h∘pB": cP,
+    "pA∘u": xA,
+    "pB∘u": xB,
+    "f∘xA": xC,
+    "h∘xB": xC,
+  });
 
   const category: FiniteCategory<GoodObj, Arrow> = {
     objects,
@@ -84,45 +84,45 @@ const makeGoodFixture = () => {
     src: (arrow) => arrow.src as GoodObj,
     dst: (arrow) => arrow.dst as GoodObj,
     eq: (left, right) => left.name === right.name,
-  }
+  };
 
   const pullback: PullbackData<GoodObj, Arrow> = {
-    apex: 'P',
+    apex: "P",
     toDomain: pA,
     toAnchor: pB,
-  }
+  };
 
   const cone: PullbackData<GoodObj, Arrow> = {
-    apex: 'X',
+    apex: "X",
     toDomain: xA,
     toAnchor: xB,
-  }
+  };
 
-  return { category, f, h, pullback, cone, mediator: u }
-}
+  return { category, f, h, pullback, cone, mediator: u };
+};
 
 const makeNonTerminalFixture = () => {
-  const objects: ReadonlyArray<Obj> = ['A', 'B', 'C', 'P', 'X', 'R']
+  const objects: ReadonlyArray<Obj> = ["A", "B", "C", "P", "X", "R"];
 
-  const f: Arrow = { name: 'f', src: 'A', dst: 'C' }
-  const h: Arrow = { name: 'h', src: 'B', dst: 'C' }
-  const pA: Arrow = { name: 'pA', src: 'P', dst: 'A' }
-  const pB: Arrow = { name: 'pB', src: 'P', dst: 'B' }
-  const cP: Arrow = { name: 'cP', src: 'P', dst: 'C' }
-  const xA: Arrow = { name: 'xA', src: 'X', dst: 'A' }
-  const xB: Arrow = { name: 'xB', src: 'X', dst: 'B' }
-  const xC: Arrow = { name: 'xC', src: 'X', dst: 'C' }
-  const rA: Arrow = { name: 'rA', src: 'R', dst: 'A' }
-  const rB: Arrow = { name: 'rB', src: 'R', dst: 'B' }
-  const rC: Arrow = { name: 'rC', src: 'R', dst: 'C' }
+  const f: Arrow = { name: "f", src: "A", dst: "C" };
+  const h: Arrow = { name: "h", src: "B", dst: "C" };
+  const pA: Arrow = { name: "pA", src: "P", dst: "A" };
+  const pB: Arrow = { name: "pB", src: "P", dst: "B" };
+  const cP: Arrow = { name: "cP", src: "P", dst: "C" };
+  const xA: Arrow = { name: "xA", src: "X", dst: "A" };
+  const xB: Arrow = { name: "xB", src: "X", dst: "B" };
+  const xC: Arrow = { name: "xC", src: "X", dst: "C" };
+  const rA: Arrow = { name: "rA", src: "R", dst: "A" };
+  const rB: Arrow = { name: "rB", src: "R", dst: "B" };
+  const rC: Arrow = { name: "rC", src: "R", dst: "C" };
 
   const arrows: ReadonlyArray<Arrow> = [
-    id('A'),
-    id('B'),
-    id('C'),
-    id('P'),
-    id('X'),
-    id('R'),
+    id("A"),
+    id("B"),
+    id("C"),
+    id("P"),
+    id("X"),
+    id("R"),
     f,
     h,
     pA,
@@ -134,16 +134,16 @@ const makeNonTerminalFixture = () => {
     rA,
     rB,
     rC,
-  ]
+  ];
 
   const compose = makeCompose({
-    'f∘pA': cP,
-    'h∘pB': cP,
-    'f∘xA': xC,
-    'h∘xB': xC,
-    'f∘rA': rC,
-    'h∘rB': rC,
-  })
+    "f∘pA": cP,
+    "h∘pB": cP,
+    "f∘xA": xC,
+    "h∘xB": xC,
+    "f∘rA": rC,
+    "h∘rB": rC,
+  });
 
   const category: FiniteCategory<Obj, Arrow> = {
     objects,
@@ -153,40 +153,46 @@ const makeNonTerminalFixture = () => {
     src: (arrow) => arrow.src,
     dst: (arrow) => arrow.dst,
     eq: (left, right) => left.name === right.name,
-  }
+  };
 
-  return { category, f, h }
-}
+  const commutingCone: PullbackData<Obj, Arrow> = {
+    apex: "R",
+    toDomain: rA,
+    toAnchor: rB,
+  };
+
+  return { category, f, h, commutingCone };
+};
 
 const makeMultipleMediatorFixture = () => {
-  const objects: ReadonlyArray<Obj> = ['A', 'B', 'X', 'P']
+  const objects: ReadonlyArray<Obj> = ["A", "B", "X", "P"];
 
-  const pA: Arrow = { name: 'pA', src: 'P', dst: 'A' }
-  const pB: Arrow = { name: 'pB', src: 'P', dst: 'B' }
-  const xA: Arrow = { name: 'xA', src: 'X', dst: 'A' }
-  const xB: Arrow = { name: 'xB', src: 'X', dst: 'B' }
-  const u1: Arrow = { name: 'u1', src: 'X', dst: 'P' }
-  const u2: Arrow = { name: 'u2', src: 'X', dst: 'P' }
+  const pA: Arrow = { name: "pA", src: "P", dst: "A" };
+  const pB: Arrow = { name: "pB", src: "P", dst: "B" };
+  const xA: Arrow = { name: "xA", src: "X", dst: "A" };
+  const xB: Arrow = { name: "xB", src: "X", dst: "B" };
+  const u1: Arrow = { name: "u1", src: "X", dst: "P" };
+  const u2: Arrow = { name: "u2", src: "X", dst: "P" };
 
   const arrows: ReadonlyArray<Arrow> = [
-    id('A'),
-    id('B'),
-    id('P'),
-    id('X'),
+    id("A"),
+    id("B"),
+    id("P"),
+    id("X"),
     pA,
     pB,
     xA,
     xB,
     u1,
     u2,
-  ]
+  ];
 
   const compose = makeCompose({
-    'pA∘u1': xA,
-    'pA∘u2': xA,
-    'pB∘u1': xB,
-    'pB∘u2': xB,
-  })
+    "pA∘u1": xA,
+    "pA∘u2": xA,
+    "pB∘u1": xB,
+    "pB∘u2": xB,
+  });
 
   const category: FiniteCategory<Obj, Arrow> = {
     objects,
@@ -196,61 +202,86 @@ const makeMultipleMediatorFixture = () => {
     src: (arrow) => arrow.src,
     dst: (arrow) => arrow.dst,
     eq: (left, right) => left.name === right.name,
-  }
+  };
 
   const target: PullbackData<Obj, Arrow> = {
-    apex: 'P',
+    apex: "P",
     toDomain: pA,
     toAnchor: pB,
-  }
+  };
 
   const cone: PullbackData<Obj, Arrow> = {
-    apex: 'X',
+    apex: "X",
     toDomain: xA,
     toAnchor: xB,
-  }
+  };
 
-  return { category, target, cone }
-}
+  return { category, target, cone };
+};
 
-describe('Pullback universal property factoring', () => {
-  it('exposes the mediator for a true pullback cone', () => {
-    const { category, f, h, pullback, cone, mediator } = makeGoodFixture()
-    const calculator = makeFinitePullbackCalculator(category)
+describe("Pullback universal property factoring", () => {
+  it("exposes the mediator for a true pullback cone", () => {
+    const { category, f, h, pullback, cone, mediator } = makeGoodFixture();
+    const calculator = makeFinitePullbackCalculator(category);
 
-    const witness = calculator.pullback(f, h)
-    expect(category.eq(witness.toDomain, pullback.toDomain)).toBe(true)
-    expect(category.eq(witness.toAnchor, pullback.toAnchor)).toBe(true)
+    const witness = calculator.pullback(f, h);
+    expect(category.eq(witness.toDomain, pullback.toDomain)).toBe(true);
+    expect(category.eq(witness.toAnchor, pullback.toAnchor)).toBe(true);
 
-    const factored = factorPullbackCone(category, witness, cone)
-    expect(factored.factored).toBe(true)
-    expect(factored.mediator).toBeDefined()
-    expect(category.eq(factored.mediator!, mediator)).toBe(true)
-  })
+    const factored = factorPullbackCone(category, witness, cone);
+    expect(factored.factored).toBe(true);
+    expect(factored.mediator).toBeDefined();
+    expect(category.eq(factored.mediator!, mediator)).toBe(true);
+  });
 
-  it('shares the factoring logic through the calculator surface', () => {
-    const { category, f, h, pullback, cone, mediator } = makeGoodFixture()
-    const calculator = makeFinitePullbackCalculator(category)
+  it("shares the factoring logic through the calculator surface", () => {
+    const { category, f, h, pullback, cone, mediator } = makeGoodFixture();
+    const calculator = makeFinitePullbackCalculator(category);
 
-    const witness = calculator.pullback(f, h)
-    const factored = calculator.factorCone(witness, cone)
-    expect(factored.factored).toBe(true)
-    expect(factored.mediator).toBeDefined()
-    expect(category.eq(factored.mediator!, mediator)).toBe(true)
-  })
+    const witness = calculator.pullback(f, h);
+    const factored = calculator.factorCone(witness, cone);
+    expect(factored.factored).toBe(true);
+    expect(factored.mediator).toBeDefined();
+    expect(category.eq(factored.mediator!, mediator)).toBe(true);
+  });
 
-  it('rejects commuting squares without a terminal apex', () => {
-    const { category, f, h } = makeNonTerminalFixture()
-    const calculator = makeFinitePullbackCalculator(category)
+  it("certifies the universal property and surfaces mediators", () => {
+    const { category, f, h, pullback, cone, mediator } = makeGoodFixture();
+    const calculator = makeFinitePullbackCalculator(category);
 
-    expect(() => calculator.pullback(f, h)).toThrow(/No pullback found/)
-  })
+    const certification = calculator.certify(f, h, pullback);
+    expect(certification.valid).toBe(true);
+    expect(certification.mediators).toBeDefined();
+    expect(certification.mediators?.some((arrow) => category.eq(arrow, mediator))).toBe(true);
 
-  it('signals failure when multiple mediators satisfy the cone equations', () => {
-    const { category, target, cone } = makeMultipleMediatorFixture()
+    const factoring = calculator.factorCone(pullback, cone);
+    expect(factoring.factored).toBe(true);
+    expect(factoring.mediator).toBeDefined();
+    expect(category.eq(factoring.mediator!, mediator)).toBe(true);
+  });
 
-    const result = factorPullbackCone(category, target, cone)
-    expect(result.factored).toBe(false)
-    expect(result.reason).toMatch(/multiple mediating arrows/i)
-  })
-})
+  it("rejects commuting squares without a terminal apex", () => {
+    const { category, f, h } = makeNonTerminalFixture();
+    const calculator = makeFinitePullbackCalculator(category);
+
+    expect(() => calculator.pullback(f, h)).toThrow(/No pullback found/);
+  });
+
+  it("rejects certification for merely commuting cones", () => {
+    const { category, f, h, commutingCone } = makeNonTerminalFixture();
+    const calculator = makeFinitePullbackCalculator(category);
+
+    const certification = calculator.certify(f, h, commutingCone);
+    expect(certification.valid).toBe(false);
+    expect(certification.reason).toMatch(/does not factor uniquely/i);
+  });
+
+  it("signals failure when multiple mediators satisfy the cone equations", () => {
+    const { category, target, cone } = makeMultipleMediatorFixture();
+
+    const result = factorPullbackCone(category, target, cone);
+    expect(result.factored).toBe(false);
+    expect(result.reason).toMatch(/multiple mediating arrows/i);
+  });
+});
+
