@@ -47,6 +47,21 @@ carries failures forward with descriptive labels, giving runnable scripts a sing
 reporting surface for limits, colimits, and any custom diagram that needs the same
 shape of feedback.【F:src/top/limits.ts†L1-L84】
 
+## Pullback and pushout reporters
+
+The topology toolkit now includes constructors for finite pullbacks and pushouts that
+mirror the equalizer/coequalizer reporters. `topPullback` realises a pullback as the
+appropriate subspace of a finite product and packages the canonical projections along
+with a mediator checker that certifies whether a commuting cone factors through the
+pullback object.【F:src/top/pullbacks.ts†L27-L262】 Dual to this, `topPushout` builds the
+pushout as a quotient of a coproduct and provides a mediator oracle that verifies when
+a cocone descends to the colimit.【F:src/top/pushouts.ts†L38-L368】 The continuity packs
+now register the resulting projections, injections, and mediator recoveries so runnable
+demos can surface the universal-property diagnostics directly in the registry
+output.【F:src/top/cont_packs.ts†L160-L257】 Dedicated tests exercise both reporters by
+constructing explicit spans/cospans, checking that the witness objects commute, and
+ensuring the mediator reports recover the supplied cones and cocones.【F:test/top-pullback.spec.ts†L9-L91】【F:test/top-pushout.spec.ts†L9-L96】
+
 ## Putting it together
 
 The new runnable stages `082` and `083` demonstrate these features in practice: the
