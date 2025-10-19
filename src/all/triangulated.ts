@@ -2765,6 +2765,325 @@ export const finsetSubobjectFromCharacteristic = (characteristic: FinSetMor): Fi
   }
 }
 
+const finsetArrowEquals = (left: FinSetMor, right: FinSetMor): boolean => {
+  const verdict = FinSet.equalMor?.(left, right)
+  if (typeof verdict === 'boolean') {
+    return verdict
+  }
+
+  if (left.from !== right.from || left.to !== right.to) {
+    return false
+  }
+  if (left.map.length !== right.map.length) {
+    return false
+  }
+  return left.map.every((value, index) => value === right.map[index])
+}
+
+export interface FinSetMonomorphismEqualizerWitness {
+  readonly monomorphism: FinSetMor
+  readonly characteristic: FinSetMor
+  readonly truthComposite: FinSetMor
+  readonly canonical: FinSetSubobjectWitness
+  readonly canonicalCharacteristicComposite: FinSetMor
+  readonly canonicalTruthComposite: FinSetMor
+  readonly domainCharacteristicComposite: FinSetMor
+  readonly domainTruthComposite: FinSetMor
+  readonly isoToCanonical: { readonly forward: FinSetMor; readonly backward: FinSetMor }
+  readonly equalizer: { readonly obj: FinSetObj; readonly equalize: FinSetMor }
+  readonly factorCanonical: CategoryLimits.EqualizerFactorizer<FinSetMor>
+  readonly factorMonomorphism: CategoryLimits.EqualizerFactorizer<FinSetMor>
+}
+
+export const finsetMonomorphismEqualizer = (
+  monomorphism: FinSetMor,
+): FinSetMonomorphismEqualizerWitness => {
+  if (!FinSet.isInjective(monomorphism)) {
+    throw new Error('finsetMonomorphismEqualizer: arrow must be a monomorphism (injective).')
+  }
+
+  const codomain = monomorphism.to
+  const characteristic = finsetCharacteristic(monomorphism)
+  const truthComposite = FinSet.compose(FinSetTruthArrow, FinSet.terminate(codomain))
+
+  const canonical = finsetSubobjectFromCharacteristic(characteristic)
+
+  const canonicalIndex = new Map<number, number>()
+  canonical.inclusion.map.forEach((codomainIndex, index) => {
+    if (!Number.isInteger(codomainIndex)) {
+      throw new Error('finsetMonomorphismEqualizer: canonical inclusion map must enumerate codomain indices.')
+    }
+    canonicalIndex.set(codomainIndex, index)
+  })
+
+  const domainIndex = new Map<number, number>()
+  monomorphism.map.forEach((codomainIndex, index) => {
+    if (!Number.isInteger(codomainIndex)) {
+      throw new Error('finsetMonomorphismEqualizer: monomorphism map must enumerate codomain indices.')
+    }
+    if (domainIndex.has(codomainIndex)) {
+      throw new Error('finsetMonomorphismEqualizer: monomorphism repeats a codomain index and is not injective.')
+    }
+    domainIndex.set(codomainIndex, index)
+  })
+
+  const forwardMap = canonical.inclusion.map.map((codomainIndex) => {
+    const target = domainIndex.get(codomainIndex)
+    if (target === undefined) {
+      throw new Error('finsetMonomorphismEqualizer: monomorphism image misses a canonical fibre index.')
+    }
+    return target
+  })
+
+  const backwardMap = monomorphism.map.map((codomainIndex) => {
+    const target = canonicalIndex.get(codomainIndex)
+    if (target === undefined) {
+      throw new Error('finsetMonomorphismEqualizer: canonical subobject misses a monomorphism image.')
+    }
+    return target
+  })
+
+  const isoForward: FinSetMor = {
+    from: canonical.subobject,
+    to: monomorphism.from,
+    map: forwardMap,
+  }
+  const isoBackward: FinSetMor = {
+    from: monomorphism.from,
+    to: canonical.subobject,
+    map: backwardMap,
+  }
+
+  const canonicalComposite = FinSet.compose(isoBackward, isoForward)
+  const canonicalId = FinSet.id(canonical.subobject)
+  if (!finsetArrowEquals(canonicalComposite, canonicalId)) {
+    throw new Error('finsetMonomorphismEqualizer: canonical/domain comparison iso must square to the identity on the canonical subobject.')
+  }
+
+  const domainComposite = FinSet.compose(isoForward, isoBackward)
+  const domainId = FinSet.id(monomorphism.from)
+  if (!finsetArrowEquals(domainComposite, domainId)) {
+    throw new Error('finsetMonomorphismEqualizer: canonical/domain comparison iso must square to the identity on the domain.')
+  }
+
+  const transportedCanonical = FinSet.compose(monomorphism, isoForward)
+  if (!finsetArrowEquals(transportedCanonical, canonical.inclusion)) {
+    throw new Error('finsetMonomorphismEqualizer: comparison iso must transport the canonical inclusion onto the supplied monomorphism.')
+  }
+
+  const transportedMono = FinSet.compose(canonical.inclusion, isoBackward)
+  if (!finsetArrowEquals(transportedMono, monomorphism)) {
+    throw new Error('finsetMonomorphismEqualizer: comparison iso must transport the monomorphism onto the canonical inclusion.')
+  }
+
+  const canonicalCharacteristicComposite = FinSet.compose(characteristic, canonical.inclusion)
+  const canonicalTruthComposite = FinSet.compose(FinSetTruthArrow, FinSet.terminate(canonical.subobject))
+  if (!finsetArrowEquals(canonicalCharacteristicComposite, canonicalTruthComposite)) {
+    throw new Error('finsetMonomorphismEqualizer: canonical inclusion must equalize the characteristic and the truth composite.')
+  }
+
+  const domainCharacteristicComposite = FinSet.compose(characteristic, monomorphism)
+  const domainTruthComposite = FinSet.compose(FinSetTruthArrow, FinSet.terminate(monomorphism.from))
+  if (!finsetArrowEquals(domainCharacteristicComposite, domainTruthComposite)) {
+    throw new Error('finsetMonomorphismEqualizer: supplied monomorphism must equalize the characteristic and the truth composite.')
+  }
+
+  const factorCanonical: CategoryLimits.EqualizerFactorizer<FinSetMor> = ({
+    left,
+    right,
+    inclusion,
+    fork,
+  }) => {
+    try {
+      if (!finsetArrowEquals(left, characteristic)) {
+        return {
+          factored: false,
+          reason: 'finsetMonomorphismEqualizer: left arrow does not match the characteristic map.',
+        }
+      }
+      if (!finsetArrowEquals(right, truthComposite)) {
+        return {
+          factored: false,
+          reason: 'finsetMonomorphismEqualizer: right arrow does not match the ambient truth composite.',
+        }
+      }
+      if (!finsetArrowEquals(inclusion, canonical.inclusion)) {
+        return {
+          factored: false,
+          reason: 'finsetMonomorphismEqualizer: inclusion must be the canonical one returned by the helper.',
+        }
+      }
+      if (fork.to !== codomain) {
+        return {
+          factored: false,
+          reason: 'finsetMonomorphismEqualizer: fork codomain must match the monomorphism codomain.',
+        }
+      }
+      if (fork.map.length !== fork.from.elements.length) {
+        return {
+          factored: false,
+          reason: 'finsetMonomorphismEqualizer: fork must enumerate every domain element.',
+        }
+      }
+
+      const mediatorMap = fork.map.map((codomainIndex, index) => {
+        if (!Number.isInteger(codomainIndex)) {
+          throw new Error(`finsetMonomorphismEqualizer: fork image at index ${index} is not a codomain index.`)
+        }
+        const target = canonicalIndex.get(codomainIndex)
+        if (target === undefined) {
+          throw new Error('finsetMonomorphismEqualizer: fork lands outside the canonical subobject.')
+        }
+        return target
+      })
+
+      const mediator: FinSetMor = { from: fork.from, to: canonical.subobject, map: mediatorMap }
+      const recomposed = FinSet.compose(canonical.inclusion, mediator)
+      if (!finsetArrowEquals(recomposed, fork)) {
+        return {
+          factored: false,
+          reason: 'finsetMonomorphismEqualizer: mediator does not reproduce the supplied fork.',
+        }
+      }
+
+      return { factored: true, mediator }
+    } catch (error) {
+      return {
+        factored: false,
+        reason:
+          error instanceof Error
+            ? error.message
+            : 'finsetMonomorphismEqualizer: unexpected error while factoring the fork through the canonical equalizer.',
+      }
+    }
+  }
+
+  const factorMonomorphism: CategoryLimits.EqualizerFactorizer<FinSetMor> = ({
+    left,
+    right,
+    inclusion,
+    fork,
+  }) => {
+    try {
+      if (!finsetArrowEquals(inclusion, monomorphism)) {
+        return {
+          factored: false,
+          reason: 'finsetMonomorphismEqualizer: inclusion must be the supplied monomorphism.',
+        }
+      }
+      const canonicalAttempt = factorCanonical({ left, right, inclusion: canonical.inclusion, fork })
+      if (!canonicalAttempt.factored || !canonicalAttempt.mediator) {
+        return canonicalAttempt
+      }
+
+      const mediator = FinSet.compose(isoForward, canonicalAttempt.mediator)
+      const recomposed = FinSet.compose(monomorphism, mediator)
+      if (!finsetArrowEquals(recomposed, fork)) {
+        return {
+          factored: false,
+          reason: 'finsetMonomorphismEqualizer: lifted mediator does not reproduce the supplied fork.',
+        }
+      }
+
+      return { factored: true, mediator }
+    } catch (error) {
+      return {
+        factored: false,
+        reason:
+          error instanceof Error
+            ? error.message
+            : 'finsetMonomorphismEqualizer: unexpected error while factoring through the supplied monomorphism.',
+      }
+    }
+  }
+
+  return {
+    monomorphism,
+    characteristic,
+    truthComposite,
+    canonical,
+    canonicalCharacteristicComposite,
+    canonicalTruthComposite,
+    domainCharacteristicComposite,
+    domainTruthComposite,
+    isoToCanonical: { forward: isoForward, backward: isoBackward },
+    equalizer: { obj: canonical.subobject, equalize: canonical.inclusion },
+    factorCanonical,
+    factorMonomorphism,
+  }
+}
+
+export interface FinSetMonicEpicIsoWitness {
+  readonly forward: FinSetMor
+  readonly backward: FinSetMor
+  readonly equalizer: FinSetMonomorphismEqualizerWitness
+}
+
+export interface FinSetMonicEpicIsoResult {
+  readonly found: boolean
+  readonly witness?: FinSetMonicEpicIsoWitness
+  readonly reason?: string
+}
+
+export const finsetMonicEpicIso = (arrow: FinSetMor): FinSetMonicEpicIsoResult => {
+  if (!FinSet.isInjective(arrow)) {
+    return { found: false, reason: 'finsetMonicEpicIso: arrow must be monic (injective).' }
+  }
+
+  let equalizer: FinSetMonomorphismEqualizerWitness
+  try {
+    equalizer = finsetMonomorphismEqualizer(arrow)
+  } catch (error) {
+    return {
+      found: false,
+      reason:
+        error instanceof Error
+          ? error.message
+          : 'finsetMonicEpicIso: equalizer construction failed for the supplied monomorphism.',
+    }
+  }
+
+  if (!finsetArrowEquals(equalizer.characteristic, equalizer.truthComposite)) {
+    return {
+      found: false,
+      reason: 'finsetMonicEpicIso: characteristic does not coincide with the ambient truth composite, so the arrow is not epic.',
+    }
+  }
+
+  let backward: FinSetMor
+  try {
+    backward = finsetInverse(arrow)
+  } catch (error) {
+    return {
+      found: false,
+      reason:
+        error instanceof Error
+          ? `finsetMonicEpicIso: unable to construct inverse: ${error.message}`
+          : 'finsetMonicEpicIso: unable to construct inverse for the supplied arrow.',
+    }
+  }
+
+  const leftComposite = FinSet.compose(backward, arrow)
+  const leftId = FinSet.id(arrow.from)
+  if (!finsetArrowEquals(leftComposite, leftId)) {
+    return {
+      found: false,
+      reason: 'finsetMonicEpicIso: constructed inverse failed the source identity check.',
+    }
+  }
+
+  const rightComposite = FinSet.compose(arrow, backward)
+  const rightId = FinSet.id(arrow.to)
+  if (!finsetArrowEquals(rightComposite, rightId)) {
+    return {
+      found: false,
+      reason: 'finsetMonicEpicIso: constructed inverse failed the target identity check.',
+    }
+  }
+
+  return { found: true, witness: { forward: arrow, backward, equalizer } }
+}
+
 export interface FinSetSubobjectEnumerationEntry {
   readonly witness: FinSetSubobjectWitness
   readonly characteristic: FinSetMor
@@ -3361,7 +3680,7 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     f.to === g.to &&
     f.map.length === g.map.length &&
     f.map.every((v, i) => v === g.map[i]),
-  traits: { functionalArrows: true },
+  traits: { functionalArrows: true, balanced: true },
   isInjective: (arrow) => {
     if (arrow.map.length !== arrow.from.elements.length) return false
     const seen = new Set<number>()
@@ -3372,6 +3691,20 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
       seen.add(image)
     }
     return true
+  },
+  isSurjective: (arrow) => {
+    if (arrow.map.length !== arrow.from.elements.length) return false
+    const codomainSize = arrow.to.elements.length
+    if (codomainSize === 0) return true
+    const hits = new Set<number>()
+    for (const image of arrow.map) {
+      if (image === undefined) return false
+      if (!Number.isInteger(image) || image < 0 || image >= codomainSize) {
+        return false
+      }
+      hits.add(image)
+    }
+    return hits.size === codomainSize
   },
 
   // products: cartesian product
