@@ -269,13 +269,14 @@ export type TraversableRegistryK1 = WeakMap<EndofunctorK1<unknown>, TraversableK
 
 export const makeTraversableRegistryK1 = () => {
   const reg: TraversableRegistryK1 = new WeakMap()
+  const metadata = createEndoMetadataStore()
   const register = <F>(F: EndofunctorK1<F>, T: TraversableK1<F>): EndofunctorK1<F> => {
     reg.set(F as EndofunctorK1<unknown>, T as TraversableK1<unknown>)
     return F
   }
   const get = <F>(F: EndofunctorK1<F>): TraversableK1<F> | null =>
     (reg.get(F as EndofunctorK1<unknown>) as TraversableK1<F> | undefined) ?? null
-  return { reg, register, get }
+  return { reg, register, get, metadata }
 }
 
 export const TraversableOptionK1: TraversableK1<"Option"> = {
@@ -387,7 +388,7 @@ export const registerSumDerived =
     if (!TF || !TG) {
       throw new Error("registerSumDerived: missing component traversables")
     }
-    const FE = SumEndo(FEndo, GEndo)
+    const FE = SumEndoM(R.metadata)(FEndo, GEndo)
     const TT = deriveTraversableSumK1(TF, TG)
     return R.register(FE, TT)
   }
@@ -399,7 +400,7 @@ export const registerProdDerived =
     if (!TF || !TG) {
       throw new Error("registerProdDerived: missing component traversables")
     }
-    const FE = ProdEndo(FEndo, GEndo)
+    const FE = ProdEndoM(R.metadata)(FEndo, GEndo)
     const TT = deriveTraversableProdK1(TF, TG)
     return R.register(FE, TT)
   }
@@ -411,7 +412,7 @@ export const registerCompDerived =
     if (!TF || !TG) {
       throw new Error("registerCompDerived: missing component traversables")
     }
-    const FE = composeEndoK1(FEndo, GEndo)
+    const FE = CompEndoM(R.metadata)(FEndo, GEndo)
     const TT = deriveTraversableCompK1(TF, TG)
     return R.register(FE, TT)
   }
@@ -429,24 +430,44 @@ type EndoMeta =
   | { tag: "Pair"; C: unknown }
   | { tag: "Const"; C: unknown }
 
-const __endoMeta = new WeakMap<EndofunctorK1<unknown>, EndoMeta>()
-const withMeta = <F>(e: EndofunctorK1<F>, m: EndoMeta): EndofunctorK1<F> => {
-  __endoMeta.set(e as EndofunctorK1<unknown>, m)
-  return e
+export type EndoMetadataStore = {
+  readonly withMeta: <F>(e: EndofunctorK1<F>, m: EndoMeta) => EndofunctorK1<F>
+  readonly lookup: <F>(e: EndofunctorK1<F>) => EndoMeta | undefined
+}
+
+export const createEndoMetadataStore = (): EndoMetadataStore => {
+  const meta = new WeakMap<EndofunctorK1<unknown>, EndoMeta>()
+  const withMeta = <F>(e: EndofunctorK1<F>, m: EndoMeta): EndofunctorK1<F> => {
+    meta.set(e as EndofunctorK1<unknown>, m)
+    return e
+  }
+  const lookup = <F>(e: EndofunctorK1<F>): EndoMeta | undefined =>
+    meta.get(e as EndofunctorK1<unknown>)
+  return { withMeta, lookup }
 }
 
 export const SumEndoM =
-  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) => withMeta(SumEndo(F, G), { tag: "Sum", left: F, right: G })
+  (store: EndoMetadataStore) =>
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) =>
+    store.withMeta(SumEndo(F, G), { tag: "Sum", left: F, right: G })
 
 export const ProdEndoM =
-  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) => withMeta(ProdEndo(F, G), { tag: "Prod", left: F, right: G })
+  (store: EndoMetadataStore) =>
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) =>
+    store.withMeta(ProdEndo(F, G), { tag: "Prod", left: F, right: G })
 
 export const CompEndoM =
-  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) => withMeta(composeEndoK1(F, G), { tag: "Comp", left: F, right: G })
+  (store: EndoMetadataStore) =>
+  <F, G>(F: EndofunctorK1<F>, G: EndofunctorK1<G>) =>
+    store.withMeta(composeEndoK1(F, G), { tag: "Comp", left: F, right: G })
 
-export const PairEndoM = <C>(c: C) => withMeta(PairEndo<C>(), { tag: "Pair", C: c })
+export const PairEndoM =
+  (store: EndoMetadataStore) =>
+  <C>(c: C) => store.withMeta(PairEndo<C>(), { tag: "Pair", C: c })
 
-export const ConstEndoM = <C>(c: C) => withMeta(ConstEndo<C>(), { tag: "Const", C: c })
+export const ConstEndoM =
+  (store: EndoMetadataStore) =>
+  <C>(c: C) => store.withMeta(ConstEndo<C>(), { tag: "Const", C: c })
 
 export const makeSmartGetTraversableK1 =
   (R: ReturnType<typeof makeTraversableRegistryK1>) =>
@@ -455,7 +476,7 @@ export const makeSmartGetTraversableK1 =
     if (hit) {
       return hit as TraversableK1<F>
     }
-    const m = __endoMeta.get(FEndo as EndofunctorK1<unknown>)
+    const m = R.metadata.lookup(FEndo)
     if (!m) {
       return null
     }
