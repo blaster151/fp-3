@@ -28,6 +28,11 @@ This document catalogs the algebraic laws that our functional programming constr
 - Code: `ProductCat(C, D)` returns the product category; projections `Pi1`, `Pi2` pick out components, and `Pairing(F, G, C, D)` builds the functor induced by two components.
 - Universal property: `checkProductUP(C, D, F, G, H, objects, arrows)` confirms that a candidate mediator \(H\) satisfies \(\pi_1 \circ H = F\), \(\pi_2 \circ H = G\), and \(H = \langle F, G \rangle\) on supplied samples.
 
+### Finite poset exponentials
+
+- `FinPos.monotoneFunctionPoset(B, C)` enumerates the pointwise ordered poset `Mono(B, C)` of monotone functions and packages the evaluation arrow together with a currying helper; `FinPosCat.exponential` registers the resulting function object so equality/composition operate on the enriched homs without additional plumbing.
+- **Witness:** `test/laws/law.FinPosExponential.spec.ts` confirms the executable universal property by checking the pointwise order is monotone, that evaluation preserves the order on `Mono(B, C) × B`, and that every monotone arrow `A × B → C` factors uniquely through the exponential via currying.
+
 ### Duals and contravariant functors
 
 - The **opposite category** \(C^{\mathrm{op}}\) reverses all arrows while preserving identities. Construct via `Dual(C)`; `isInvolutive(C, arrows, objs)` sanity-checks that \((C^{\mathrm{op}})^{\mathrm{op}} = C` on samples.

@@ -55,13 +55,16 @@ describe("Finite poset exponentials", () => {
     ]),
   }
 
+  const monotoneSpace = FinPos.monotoneFunctionPoset(B, C)
   const category = FinPosCat([A, B, C])
   const exponential = category.exponential(B.name, C.name)
-  const monotoneFunctions = FinPos.generalizedElements(B, C)
-  const functionByName = new Map(monotoneFunctions.map((map) => [map.name, map] as const))
+  const functionByName = new Map(
+    monotoneSpace.functions.map((map) => [map.name, map] as const),
+  )
 
   it("orders monotone maps pointwise", () => {
-    const expObj = exponential.object
+    const expObj = monotoneSpace.object
+    expect(exponential.object.elems).toEqual(expObj.elems)
     expect(expObj.elems.length).toBeGreaterThan(0)
 
     for (const fn of expObj.elems) {
@@ -106,9 +109,9 @@ describe("Finite poset exponentials", () => {
   })
 
   it("provides a monotone evaluation arrow", () => {
-    expect(
-      FinPos.isMonotone(exponential.product.object, C, exponential.evaluation),
-    ).toBe(true)
+    expect(FinPos.isMonotone(monotoneSpace.product.object, C, monotoneSpace.evaluation)).toBe(
+      true,
+    )
   })
 
   it("curries monotone maps uniquely", () => {
