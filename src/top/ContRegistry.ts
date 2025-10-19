@@ -5,20 +5,6 @@ export type ContEntry<A, B> = {
   readonly morphism: ContinuousMap<A, B>;
 };
 
-const entries: ContEntry<any, any>[] = [];
-
-export function registerCont<A, B>(entry: ContEntry<A, B>): void {
-  entries.push(entry);
-}
-
-export function clearCont(): void {
-  entries.length = 0;
-}
-
-export function allCont(): ReadonlyArray<ContEntry<any, any>> {
-  return entries.slice();
-}
-
 export type ContReportEntry = {
   readonly tag: string;
   readonly holds: boolean;
@@ -34,44 +20,81 @@ export type ContSummary = {
   readonly failingTags: ReadonlyArray<string>;
 };
 
-export function runContAll(): ReadonlyArray<ContReportEntry> {
-  return entries.map((entry) => {
-    const certificate = entry.morphism.witness;
-    const verified = certificate.verify();
-    return {
-      tag: entry.tag,
-      holds: certificate.holds,
-      verified,
-      failures: certificate.failures,
-      ...(certificate.witness ? { witness: certificate.witness } : {}),
-    };
-  });
-}
+export type ContRegistry = {
+  readonly register: <A, B>(entry: ContEntry<A, B>) => void;
+  readonly clear: () => void;
+  readonly all: () => ReadonlyArray<ContEntry<any, any>>;
+  readonly runAll: () => ReadonlyArray<ContReportEntry>;
+  readonly summarize: (report?: ReadonlyArray<ContReportEntry>) => ContSummary;
+  readonly toJson: (report?: ReadonlyArray<ContReportEntry>) => string;
+  readonly toMarkdown: (report?: ReadonlyArray<ContReportEntry>) => string;
+};
 
-export function summarizeCont(report: ReadonlyArray<ContReportEntry> = runContAll()): ContSummary {
-  const failing = report.filter((entry) => !entry.holds || !entry.verified);
+export function createContRegistry(): ContRegistry {
+  const entries: ContEntry<any, any>[] = [];
+
+  const register = <A, B>(entry: ContEntry<A, B>): void => {
+    entries.push(entry);
+  };
+
+  const clear = (): void => {
+    entries.length = 0;
+  };
+
+  const all = (): ReadonlyArray<ContEntry<any, any>> => entries.slice();
+
+  const runAll = (): ReadonlyArray<ContReportEntry> => {
+    const snapshot = entries.slice();
+    return snapshot.map((entry) => {
+      const certificate = entry.morphism.witness;
+      const verified = certificate.verify();
+      return {
+        tag: entry.tag,
+        holds: certificate.holds,
+        verified,
+        failures: certificate.failures,
+        ...(certificate.witness ? { witness: certificate.witness } : {}),
+      };
+    });
+  };
+
+  const summarize = (report: ReadonlyArray<ContReportEntry> = runAll()): ContSummary => {
+    const failing = report.filter((entry) => !entry.holds || !entry.verified);
+    return {
+      total: report.length,
+      passes: report.length - failing.length,
+      failures: failing.length,
+      failingTags: failing.map((entry) => entry.tag),
+    };
+  };
+
+  const toJson = (report: ReadonlyArray<ContReportEntry> = runAll()): string => {
+    const summary = summarize(report);
+    return JSON.stringify({ summary, report }, null, 2);
+  };
+
+  const toMarkdown = (report: ReadonlyArray<ContReportEntry> = runAll()): string => {
+    const header = "| Tag | Holds | Verified | Failures | Witness note |";
+    const separator = "| --- | --- | --- | --- | --- |";
+    const rows = report.map((entry) => {
+      const failureCount = entry.failures.length;
+      const note = entry.witness?.note ?? "";
+      return `| ${entry.tag} | ${entry.holds ? "✅" : "❌"} | ${entry.verified ? "✅" : "❌"} | ${failureCount} | ${note} |`;
+    });
+    const summary = summarize(report);
+    const footer = `\nTotal: ${summary.total}, Passes: ${summary.passes}, Failures: ${summary.failures}`;
+    return [header, separator, ...rows].join("\n") + footer;
+  };
+
   return {
-    total: report.length,
-    passes: report.length - failing.length,
-    failures: failing.length,
-    failingTags: failing.map((entry) => entry.tag),
+    register,
+    clear,
+    all,
+    runAll,
+    summarize,
+    toJson,
+    toMarkdown,
   };
 }
 
-export function contReportToJson(report: ReadonlyArray<ContReportEntry> = runContAll()): string {
-  const summary = summarizeCont(report);
-  return JSON.stringify({ summary, report }, null, 2);
-}
-
-export function contReportToMarkdown(report: ReadonlyArray<ContReportEntry> = runContAll()): string {
-  const header = "| Tag | Holds | Verified | Failures | Witness note |";
-  const separator = "| --- | --- | --- | --- | --- |";
-  const rows = report.map((entry) => {
-    const failureCount = entry.failures.length;
-    const note = entry.witness?.note ?? "";
-    return `| ${entry.tag} | ${entry.holds ? "✅" : "❌"} | ${entry.verified ? "✅" : "❌"} | ${failureCount} | ${note} |`;
-  });
-  const summary = summarizeCont(report);
-  const footer = `\nTotal: ${summary.total}, Passes: ${summary.passes}, Failures: ${summary.failures}`;
-  return [header, separator, ...rows].join("\n") + footer;
-}
+export type { ContReportEntry as ContRegistryEntry, ContSummary as ContRegistrySummary };
