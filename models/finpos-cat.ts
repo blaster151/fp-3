@@ -106,6 +106,7 @@ export interface FinPosProduct {
 
 export interface FinPosExponential {
   readonly object: FinPosObj
+  readonly functions: readonly MonoMap[]
   readonly product: FinPosProduct
   readonly evaluation: MonoMap
   readonly curry: (domain: FinPosObj, arrow: MonoMap) => MonoMap
@@ -481,29 +482,29 @@ export const FinPos = {
       decompose,
     }
   },
-  exponential(base: FinPosObj, codomain: FinPosObj): FinPosExponential {
-    const monotoneMaps = FinPos.generalizedElements(base, codomain)
-    const mapLookup = new Map<string, MonoMap>()
+  monotoneFunctionPoset(base: FinPosObj, codomain: FinPosObj): FinPosExponential {
+    const monotoneMaps = enumerateMonotoneMaps(base, codomain)
+    const functions: readonly MonoMap[] = [...monotoneMaps]
+    const mapLookup = new Map(functions.map((map) => [map.name, map] as const))
     const signatureLookup = new Map<string, string>()
 
     const signature = (map: MonoMap) =>
       base.elems.map((element) => `${element}↦${map.map(element)}`).join("|")
 
-    const elements = monotoneMaps.map((map) => {
-      const name = map.name || `λ_${base.name}→${codomain.name}`
-      mapLookup.set(name, map)
-      signatureLookup.set(signature(map), name)
-      return name
-    })
+    for (const map of functions) {
+      signatureLookup.set(signature(map), map.name)
+    }
 
     const object: FinPosObj = {
       name: `${codomain.name}^${base.name}`,
-      elems: elements,
+      elems: functions.map((map) => map.name),
       leq: (fName, gName) => {
         const f = mapLookup.get(fName)
         const g = mapLookup.get(gName)
         if (!f || !g) {
-          throw new Error(`FinPos.exponential: unknown function ${fName} or ${gName}`)
+          throw new Error(
+            `FinPos.monotoneFunctionPoset: unknown function ${fName} or ${gName}`,
+          )
         }
         for (const element of base.elems) {
           if (!codomain.leq(f.map(element), g.map(element))) {
@@ -524,7 +525,9 @@ export const FinPos = {
         const [funcName, argument] = product.decompose(value)
         const func = mapLookup.get(funcName)
         if (!func) {
-          throw new Error(`FinPos.exponential: unknown function element ${funcName}`)
+          throw new Error(
+            `FinPos.monotoneFunctionPoset: unknown function element ${funcName}`,
+          )
         }
         return func.map(argument)
       },
@@ -534,12 +537,12 @@ export const FinPos = {
       const expected = FinPos.product(domain, base)
       if (arrow.dom !== expected.object.name) {
         throw new Error(
-          `FinPos.exponential.curry: arrow ${arrow.name} does not originate at ${expected.object.name}`,
+          `FinPos.monotoneFunctionPoset.curry: arrow ${arrow.name} does not originate at ${expected.object.name}`,
         )
       }
       if (arrow.cod !== codomain.name) {
         throw new Error(
-          `FinPos.exponential.curry: arrow ${arrow.name} does not land in ${codomain.name}`,
+          `FinPos.monotoneFunctionPoset.curry: arrow ${arrow.name} does not land in ${codomain.name}`,
         )
       }
 
@@ -551,22 +554,24 @@ export const FinPos = {
           const image = arrow.map(pairValue)
           if (!codomain.elems.includes(image)) {
             throw new Error(
-              `FinPos.exponential.curry: image ${image} is not in ${codomain.name}`,
+              `FinPos.monotoneFunctionPoset.curry: image ${image} is not in ${codomain.name}`,
             )
           }
           outputs[argument] = image
         }
-        const signatureKey = base.elems.map((arg) => `${arg}↦${outputs[arg] ?? ""}`).join("|")
+        const signatureKey = base.elems
+          .map((arg) => `${arg}↦${outputs[arg] ?? ""}`)
+          .join("|")
         const elementName = signatureLookup.get(signatureKey)
         if (!elementName) {
           throw new Error(
-            `FinPos.exponential.curry: assignment for ${element} is not monotone into ${codomain.name}`,
+            `FinPos.monotoneFunctionPoset.curry: assignment for ${element} is not monotone into ${codomain.name}`,
           )
         }
         assignment.set(element, elementName)
       }
 
-      return {
+      const curried: MonoMap = {
         name: `λ(${arrow.name})`,
         dom: domain.name,
         cod: object.name,
@@ -574,15 +579,26 @@ export const FinPos = {
           const image = assignment.get(value)
           if (!image) {
             throw new Error(
-              `FinPos.exponential.curry: ${value} is not recognised as an element of ${domain.name}`,
+              `FinPos.monotoneFunctionPoset.curry: ${value} is not recognised as an element of ${domain.name}`,
             )
           }
           return image
         },
       }
+
+      if (!FinPos.isMonotone(domain, object, curried)) {
+        throw new Error(
+          "FinPos.monotoneFunctionPoset.curry: resulting mediator fails monotonicity",
+        )
+      }
+
+      return curried
     }
 
-    return { object, product, evaluation, curry }
+    return { object, functions, product, evaluation, curry }
+  },
+  exponential(base: FinPosObj, codomain: FinPosObj): FinPosExponential {
+    return FinPos.monotoneFunctionPoset(base, codomain)
   },
   exponentialComparison(
     base: FinPosObj,
