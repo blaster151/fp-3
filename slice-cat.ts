@@ -150,6 +150,10 @@ export interface CosliceCategory<Obj, Arr>
   readonly sliceProductToolkit: SliceProductToolkit<Obj, Arr>;
 }
 
+export interface SliceCategoryOptions<Obj, Arr> {
+  readonly toolkit?: SliceProductToolkit<Obj, Arr>;
+}
+
 const ensureSliceProductToolkit = <Obj, Arr>(
   toolkit?: SliceProductToolkit<Obj, Arr>,
 ) => toolkit ?? createSliceProductToolkit<Obj, Arr>();
@@ -181,7 +185,7 @@ function cosliceEq<Obj, Arr>(baseEq: (x: Arr, y: Arr) => boolean) {
 export function makeSlice<Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
   anchor: Obj,
-  options: { readonly toolkit?: SliceProductToolkit<Obj, Arr> } = {},
+  options: SliceCategoryOptions<Obj, Arr> = {},
 ): SliceCategory<Obj, Arr> {
   const toolkit = ensureSliceProductToolkit(options.toolkit);
   const objects = base.arrows
@@ -242,7 +246,7 @@ export function makeSlice<Obj, Arr>(
 export function makeCoslice<Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
   anchor: Obj,
-  options: { readonly toolkit?: SliceProductToolkit<Obj, Arr> } = {},
+  options: SliceCategoryOptions<Obj, Arr> = {},
 ): CosliceCategory<Obj, Arr> {
   const toolkit = ensureSliceProductToolkit(options.toolkit);
   const objects = base.arrows

@@ -98,6 +98,7 @@ describe("Set/X slice products via fiber products", () => {
   registry.push(idX, idA, idB, idC, f, g, h, u, v, vAlt, stabilize, squeezeB)
 
   const slice = makeSlice(category, "X")
+  const { sliceProductToolkit: toolkit } = slice
 
   const left = slice.objects.find((object) => object.domain === "A")
   const right = slice.objects.find((object) => object.domain === "B")
@@ -107,7 +108,10 @@ describe("Set/X slice products via fiber products", () => {
     throw new Error("Expected the slice objects for A, B, and C to be present")
   }
 
-  const product = makeSliceProduct(category, "X", left, right, { name: "A×_X B" })
+  const product = makeSliceProduct(category, "X", left, right, {
+    name: "A×_X B",
+    toolkit,
+  })
 
   const fiberCarrier = category.carrier(product.object.domain)
 
@@ -378,7 +382,10 @@ describe("Set/X slice products via fiber products", () => {
     ).toBe(true)
   })
 
-  const selfProduct = makeSliceProduct(category, "X", left, left, { name: "A×_X A" })
+  const selfProduct = makeSliceProduct(category, "X", left, left, {
+    name: "A×_X A",
+    toolkit,
+  })
   const diagonalWitness = selfProduct.diagonal?.()
   if (!diagonalWitness) {
     throw new Error("makeSliceProduct should expose a diagonal when both legs coincide")
@@ -408,8 +415,14 @@ describe("Set/X slice products via fiber products", () => {
     throw new Error("Expected the terminal slice object over X to be present")
   }
 
-  const leftUnitProduct = makeSliceProduct(category, "X", terminal, left, { name: "X×_X A" })
-  const rightUnitProduct = makeSliceProduct(category, "X", left, terminal, { name: "A×_X X" })
+  const leftUnitProduct = makeSliceProduct(category, "X", terminal, left, {
+    name: "X×_X A",
+    toolkit,
+  })
+  const rightUnitProduct = makeSliceProduct(category, "X", left, terminal, {
+    name: "A×_X X",
+    toolkit,
+  })
 
   const idLeftUnitProduct = slice.id(leftUnitProduct.object)
   const idRightUnitProduct = slice.id(rightUnitProduct.object)
@@ -503,7 +516,10 @@ describe("Set/X slice products via fiber products", () => {
     expect(slice.eq(composedBackward, slice.id(rightUnitProduct.object))).toBe(true)
   })
 
-  const targetProduct = makeSliceProduct(category, "X", left, right, { name: "A×_X B'" })
+  const targetProduct = makeSliceProduct(category, "X", left, right, {
+    name: "A×_X B'",
+    toolkit,
+  })
   const componentwiseBuilder = product.componentwise
   if (!componentwiseBuilder) {
     throw new Error("makeSliceProduct should expose componentwise constructors for binary products")
@@ -534,9 +550,13 @@ describe("Set/X slice products via fiber products", () => {
   })
 
   it("threads componentwise constructors through makeFiniteSliceProduct", () => {
-    const finite = makeFiniteSliceProduct(category, "X", [left, right], { name: "A×_X B (finite)" })
+    const finite = makeFiniteSliceProduct(category, "X", [left, right], {
+      name: "A×_X B (finite)",
+      toolkit,
+    })
     const finiteTarget = makeFiniteSliceProduct(category, "X", [left, right], {
       name: "A×_X B (finite target)",
+      toolkit,
     })
     const finiteBuilder = finite.componentwise
     if (!finiteBuilder) {
