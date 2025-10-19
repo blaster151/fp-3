@@ -164,6 +164,32 @@ describe("LAW: Recursion Scheme laws", () => {
     })
   })
 
+  describe("Paramorphism stack safety", () => {
+    const paraEval = paraExpr((fb: ExprF<readonly [Expr, number]>) => {
+      const evaluated = mapExprF(([, value]: readonly [Expr, number]) => value)(fb)
+      return Alg_Expr_evalF(evaluated)
+    })
+
+    it("handles deeply nested right-associated addition", () => {
+      const depth = 5000
+      let expr = lit(0)
+      for (let i = 0; i < depth; i += 1) {
+        expr = add(lit(1), expr)
+      }
+
+      const result = paraEval(expr)
+      expect(result).toBe(cataExpr(Alg_Expr_evalF)(expr))
+    })
+
+    it("handles wide AddN nodes with thousands of children", () => {
+      const width = 4000
+      const expr = addN(Array.from({ length: width }, () => lit(1)))
+
+      const result = paraEval(expr)
+      expect(result).toBe(cataExpr(Alg_Expr_evalF)(expr))
+    })
+  })
+
   describe("Apomorphism laws", () => {
     it("Apo identity: apo(id) = id", () => {
       fc.assert(

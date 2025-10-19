@@ -1,5 +1,13 @@
 import { makeRecursionK1 } from "../array-recursion"
 import type { Fix1 } from "../array-recursion"
+import {
+  evalDefer,
+  evalFlatMap,
+  evalMap,
+  evalNow,
+  evaluate,
+} from "../array-recursion-trampoline"
+import type { Eval } from "../array-recursion-trampoline"
 import type { FunctorK1 } from "../allTS"
 import { Err, Ok, isErr, mapR } from "../result"
 import type { Result } from "../result"
@@ -57,13 +65,132 @@ const clampNatural = (n: number): number => {
   return m < 0 ? 0 : m
 };
 
+// The paramorphism now threads through the shared Eval trampoline used by the
+// array recursion schemes.  Instead of relying on the JavaScript call stack, we
+// build a small instruction graph of `Eval` nodes that `evaluate` executes with
+// an explicit loop, ensuring stack safety even for enormously deep `Expr`
+// values.
 export const paraExpr =
   <B>(alg: (fb: ExprF<readonly [Expr, B]>) => B) => {
-    const go = (expr: Expr): B => {
-      const decorated = mapExprF((child: Expr) => [child, go(child)] as const)(expr.un)
-      return alg(decorated)
-    }
-    return go
+    const go = (expr: Expr): Eval<B> =>
+      evalDefer(() => {
+        const node = expr.un
+
+        const unary = (tag: 'Neg' | 'Abs', child: Expr) =>
+          evalMap(go(child), (value) =>
+            alg({ _tag: tag, value: [child, value] as const })
+          )
+
+        const binary = (
+          tag: 'Add' | 'Mul' | 'Div' | 'Pow',
+          left: Expr,
+          right: Expr
+        ): Eval<B> =>
+          evalFlatMap(go(left), (leftValue) =>
+            evalMap(go(right), (rightValue) => {
+              switch (tag) {
+                case 'Add':
+                  return alg({
+                    _tag: 'Add',
+                    left: [left, leftValue] as const,
+                    right: [right, rightValue] as const,
+                  })
+                case 'Mul':
+                  return alg({
+                    _tag: 'Mul',
+                    left: [left, leftValue] as const,
+                    right: [right, rightValue] as const,
+                  })
+                case 'Div':
+                  return alg({
+                    _tag: 'Div',
+                    left: [left, leftValue] as const,
+                    right: [right, rightValue] as const,
+                  })
+                case 'Pow':
+                  return alg({
+                    _tag: 'Pow',
+                    base: [left, leftValue] as const,
+                    exp: [right, rightValue] as const,
+                  })
+              }
+            })
+          )
+
+        const accumulatePairs = (
+          items: ReadonlyArray<Expr>
+        ): Eval<ReadonlyArray<readonly [Expr, B]>> => {
+          const loop = (
+            index: number,
+            acc: Array<readonly [Expr, B]>
+          ): Eval<ReadonlyArray<readonly [Expr, B]>> => {
+            if (index >= items.length) {
+              return evalNow(acc as ReadonlyArray<readonly [Expr, B]>)
+            }
+            const child = items[index]!
+            return evalFlatMap(go(child), (value) =>
+              evalDefer(() => {
+                acc.push([child, value] as const)
+                return loop(index + 1, acc)
+              })
+            )
+          }
+
+          return loop(0, [])
+        }
+
+        switch (node._tag) {
+          case 'Lit':
+            return evalNow(alg({ _tag: 'Lit', value: node.value }))
+          case 'Var':
+            return evalNow(alg({ _tag: 'Var', name: node.name }))
+          case 'Neg':
+            return unary('Neg', node.value)
+          case 'Abs':
+            return unary('Abs', node.value)
+          case 'Add':
+            return binary('Add', node.left, node.right)
+          case 'Mul':
+            return binary('Mul', node.left, node.right)
+          case 'Div':
+            return binary('Div', node.left, node.right)
+          case 'Pow':
+            return binary('Pow', node.base, node.exp)
+          case 'Let':
+            return evalFlatMap(go(node.value), (valueResult) =>
+              evalMap(go(node.body), (bodyResult) =>
+                alg({
+                  _tag: 'Let',
+                  name: node.name,
+                  value: [node.value, valueResult] as const,
+                  body: [node.body, bodyResult] as const,
+                })
+              )
+            )
+          case 'AddN':
+            return evalFlatMap(accumulatePairs(node.items), (items) =>
+              evalNow(
+                alg({
+                  _tag: 'AddN',
+                  items,
+                })
+              )
+            )
+          case 'MulN':
+            return evalFlatMap(accumulatePairs(node.items), (items) =>
+              evalNow(
+                alg({
+                  _tag: 'MulN',
+                  items,
+                })
+              )
+            )
+          default:
+            return _exhaustive(node)
+        }
+      })
+
+    return (expr: Expr): B => evaluate(go(expr))
   };
 
 export const apoExpr =
