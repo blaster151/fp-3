@@ -111,28 +111,58 @@ interface SliceProductMetadata<Obj, Arr> {
   ) => SliceArrow<Obj, Arr>;
 }
 
-const sliceProductMetadata = new WeakMap<
-  SliceObject<unknown, unknown>,
-  SliceProductMetadata<unknown, unknown>
->();
+export interface SliceProductToolkit<Obj, Arr> {
+  readonly registerSliceProductMetadata: (
+    object: SliceObject<Obj, Arr>,
+    metadata: SliceProductMetadata<Obj, Arr>,
+  ) => SliceProductMetadata<Obj, Arr>;
+  readonly lookupSliceProductMetadata: (
+    object: SliceObject<Obj, Arr>,
+  ) => SliceProductMetadata<Obj, Arr> | undefined;
+}
 
-const registerSliceProductMetadata = <Obj, Arr>(
-  object: SliceObject<Obj, Arr>,
-  metadata: SliceProductMetadata<Obj, Arr>,
-) => {
-  sliceProductMetadata.set(
-    object as SliceObject<unknown, unknown>,
-    metadata as SliceProductMetadata<unknown, unknown>,
-  );
-  return metadata;
+export const createSliceProductToolkit = <Obj, Arr>(): SliceProductToolkit<Obj, Arr> => {
+  const metadata = new WeakMap<
+    SliceObject<Obj, Arr>,
+    SliceProductMetadata<Obj, Arr>
+  >();
+
+  const registerSliceProductMetadata = (
+    object: SliceObject<Obj, Arr>,
+    entry: SliceProductMetadata<Obj, Arr>,
+  ) => {
+    metadata.set(object, entry);
+    return entry;
+  };
+
+  const lookupSliceProductMetadata = (object: SliceObject<Obj, Arr>) => metadata.get(object);
+
+  return { registerSliceProductMetadata, lookupSliceProductMetadata };
 };
 
-export const lookupSliceProductMetadata = <Obj, Arr>(
-  object: SliceObject<Obj, Arr>,
-): SliceProductMetadata<Obj, Arr> | undefined =>
-  sliceProductMetadata.get(object as SliceObject<unknown, unknown>) as
-    | SliceProductMetadata<Obj, Arr>
-    | undefined;
+export interface SliceCategory<Obj, Arr>
+  extends FiniteCategory<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>> {
+  readonly sliceProductToolkit: SliceProductToolkit<Obj, Arr>;
+}
+
+export interface CosliceCategory<Obj, Arr>
+  extends FiniteCategory<CosliceObject<Obj, Arr>, CosliceArrow<Obj, Arr>> {
+  readonly sliceProductToolkit: SliceProductToolkit<Obj, Arr>;
+}
+
+const ensureSliceProductToolkit = <Obj, Arr>(
+  toolkit?: SliceProductToolkit<Obj, Arr>,
+) => toolkit ?? createSliceProductToolkit<Obj, Arr>();
+
+export interface SliceProductOptions<Obj, Arr> {
+  readonly disableSwap?: boolean;
+  readonly toolkit?: SliceProductToolkit<Obj, Arr>;
+}
+
+export interface FiniteSliceProductOptions
+  extends SliceProductOptions<FinSetName, FuncArr> {
+  readonly name?: string;
+}
 
 function sliceEq<Obj, Arr>(baseEq: (x: Arr, y: Arr) => boolean) {
   return (a: SliceArrow<Obj, Arr>, b: SliceArrow<Obj, Arr>) =>
@@ -150,8 +180,10 @@ function cosliceEq<Obj, Arr>(baseEq: (x: Arr, y: Arr) => boolean) {
 
 export function makeSlice<Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
-  anchor: Obj
-): FiniteCategory<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>> {
+  anchor: Obj,
+  options: { readonly toolkit?: SliceProductToolkit<Obj, Arr> } = {},
+): SliceCategory<Obj, Arr> {
+  const toolkit = ensureSliceProductToolkit(options.toolkit);
   const objects = base.arrows
     .filter((arrow) => base.dst(arrow) === anchor)
     .map((arrow) => ({ domain: base.src(arrow), arrowToAnchor: arrow }));
@@ -203,13 +235,16 @@ export function makeSlice<Obj, Arr>(
     src,
     dst,
     eq,
+    sliceProductToolkit: toolkit,
   };
 }
 
 export function makeCoslice<Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
-  anchor: Obj
-): FiniteCategory<CosliceObject<Obj, Arr>, CosliceArrow<Obj, Arr>> {
+  anchor: Obj,
+  options: { readonly toolkit?: SliceProductToolkit<Obj, Arr> } = {},
+): CosliceCategory<Obj, Arr> {
+  const toolkit = ensureSliceProductToolkit(options.toolkit);
   const objects = base.arrows
     .filter((arrow) => base.src(arrow) === anchor)
     .map((arrow) => ({ codomain: base.dst(arrow), arrowFromAnchor: arrow }));
@@ -261,6 +296,7 @@ export function makeCoslice<Obj, Arr>(
     src,
     dst,
     eq,
+    sliceProductToolkit: toolkit,
   };
 }
 
@@ -375,8 +411,16 @@ export function makeFiniteSliceProduct(
   base: FinSetCategory,
   anchor: FinSetName,
   inputs: ReadonlyArray<SliceObject<FinSetName, FuncArr>>,
-  options: { readonly name?: string; readonly disableSwap?: boolean } = {},
+  options: FiniteSliceProductOptions = {},
 ): SliceFiniteProductWitness {
+  const toolkit = ensureSliceProductToolkit(options.toolkit);
+  const { registerSliceProductMetadata } = toolkit;
+  const { name, disableSwap } = options;
+  const sharedBinaryOptions: FiniteSliceProductOptions =
+    disableSwap !== undefined ? { toolkit, disableSwap } : { toolkit };
+  const finalBinaryOptions: FiniteSliceProductOptions =
+    name !== undefined ? { ...sharedBinaryOptions, name } : sharedBinaryOptions;
+
   inputs.forEach((object) => ensureSliceObjectLandsInAnchor(base, anchor, object));
 
   const factors = [...inputs];
@@ -467,7 +511,7 @@ export function makeFiniteSliceProduct(
     anchor,
     first,
     second,
-    rest.length === 0 ? options : undefined,
+    rest.length === 0 ? finalBinaryOptions : sharedBinaryOptions,
   );
 
   let currentObject = initial.object;
@@ -503,7 +547,7 @@ export function makeFiniteSliceProduct(
       anchor,
       currentObject,
       factor,
-      index === rest.length - 1 ? options : undefined,
+      index === rest.length - 1 ? finalBinaryOptions : sharedBinaryOptions,
     );
 
     const decodeStep = (value: string): ReadonlyArray<string> => {
@@ -602,9 +646,10 @@ export function makeFiniteSliceProduct(
       throw new Error("makeFiniteSliceProduct: binary product expects two projections");
     }
 
-    if (!options.disableSwap) {
+    if (!disableSwap) {
       const swappedWitness = makeFiniteSliceProduct(base, anchor, [rightFactor, leftFactor], {
         disableSwap: true,
+        toolkit,
       });
 
       const swappedProjectionFirst = swappedWitness.projections[0];
@@ -801,8 +846,12 @@ export function makeSliceProduct(
   anchor: FinSetName,
   left: SliceObject<FinSetName, FuncArr>,
   right: SliceObject<FinSetName, FuncArr>,
-  options: { readonly name?: string; readonly disableSwap?: boolean } = {},
+  options: FiniteSliceProductOptions = {},
 ): SliceProductWitness {
+  const toolkit = ensureSliceProductToolkit(options.toolkit);
+  const { registerSliceProductMetadata } = toolkit;
+  const { name, disableSwap } = options;
+
   if (left.arrowToAnchor.cod !== anchor || right.arrowToAnchor.cod !== anchor) {
     throw new Error("makeSliceProduct: both legs must land in the supplied anchor");
   }
@@ -828,12 +877,12 @@ export function makeSliceProduct(
     }
   };
 
-  const name = options.name ?? `(${left.domain}×_${anchor}${right.domain})`;
-  base.registerObject(name, support);
+  const productName = name ?? `(${left.domain}×_${anchor}${right.domain})`;
+  base.registerObject(productName, support);
 
   const arrowToAnchor: FuncArr = {
-    name: `${name}→${anchor}`,
-    dom: name,
+    name: `${productName}→${anchor}`,
+    dom: productName,
     cod: anchor,
     map: (value) => {
       ensureElement(value);
@@ -843,7 +892,7 @@ export function makeSliceProduct(
   };
 
   const product: SliceObject<FinSetName, FuncArr> = {
-    domain: name,
+    domain: productName,
     arrowToAnchor,
   };
 
@@ -851,8 +900,8 @@ export function makeSliceProduct(
     src: product,
     dst: left,
     mediating: {
-      name: `π₁_${name}`,
-      dom: name,
+      name: `π₁_${productName}`,
+      dom: productName,
       cod: left.domain,
       map: (value) => {
         ensureElement(value);
@@ -866,8 +915,8 @@ export function makeSliceProduct(
     src: product,
     dst: right,
     mediating: {
-      name: `π₂_${name}`,
-      dom: name,
+      name: `π₂_${productName}`,
+      dom: productName,
       cod: right.domain,
       map: (value) => {
         ensureElement(value);
@@ -902,7 +951,7 @@ export function makeSliceProduct(
     const mediating: FuncArr = {
       name: `⟨${leftLeg.mediating.name ?? "?"},${rightLeg.mediating.name ?? "?"}⟩`,
       dom: leftLeg.src.domain,
-      cod: name,
+      cod: productName,
       map: (value) => {
         if (!domainSet.has(value)) {
           throw new Error(
@@ -959,9 +1008,10 @@ export function makeSliceProduct(
       ) => SliceArrow<FinSetName, FuncArr>)
     | undefined;
 
-  if (!options.disableSwap) {
+  if (!disableSwap) {
     const swappedFinite = makeFiniteSliceProduct(base, anchor, [right, left], {
       disableSwap: true,
+      toolkit,
     });
 
     const swapData = makeBinaryProductSwap<
@@ -1196,9 +1246,8 @@ export function makeSliceProduct(
   return extended;
 }
 
-export interface SliceProductFromPullbackOptions {
-  readonly disableSwap?: boolean;
-}
+export interface SliceProductFromPullbackOptions<Obj, Arr>
+  extends SliceProductOptions<Obj, Arr> {}
 
 const composeSliceArrowsGeneric = <Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
@@ -1218,8 +1267,14 @@ export const makeSliceProductFromPullback = <Obj, Arr>(
   pullbacks: PullbackCalculator<Obj, Arr>,
   left: SliceObject<Obj, Arr>,
   right: SliceObject<Obj, Arr>,
-  options: SliceProductFromPullbackOptions = {},
+  options: SliceProductFromPullbackOptions<Obj, Arr> = {},
 ): SliceProductWitnessBase<Obj, Arr> => {
+  const toolkit = ensureSliceProductToolkit(options.toolkit);
+  const { registerSliceProductMetadata } = toolkit;
+  const { disableSwap } = options;
+  const sharedPullbackOptions: SliceProductFromPullbackOptions<Obj, Arr> =
+    disableSwap !== undefined ? { toolkit, disableSwap } : { toolkit };
+
   ensureSliceObjectLandsInAnchor(base, anchor, left);
   ensureSliceObjectLandsInAnchor(base, anchor, right);
 
@@ -1334,14 +1389,14 @@ export const makeSliceProductFromPullback = <Obj, Arr>(
       ) => SliceArrow<Obj, Arr>)
     | undefined;
 
-  if (!options.disableSwap) {
+  if (!disableSwap) {
     const swappedWitness = makeSliceProductFromPullback(
       base,
       anchor,
       pullbacks,
       right,
       left,
-      { disableSwap: true },
+      { disableSwap: true, toolkit },
     );
 
     const swapData = makeBinaryProductSwap<
@@ -1530,17 +1585,20 @@ export const makeSliceProductFromPullback = <Obj, Arr>(
   return witness;
 };
 
-export interface SliceFiniteProductFromPullbackOptions {
-  readonly disableSwap?: boolean;
-}
+export interface SliceFiniteProductFromPullbackOptions<Obj, Arr>
+  extends SliceProductOptions<Obj, Arr> {}
 
 export const makeSliceFiniteProductFromPullback = <Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
   anchor: Obj,
   pullbacks: PullbackCalculator<Obj, Arr>,
   factors: ReadonlyArray<SliceObject<Obj, Arr>>,
-  options: SliceFiniteProductFromPullbackOptions = {},
+  options: SliceFiniteProductFromPullbackOptions<Obj, Arr> = {},
 ): SliceFiniteProductWitnessBase<Obj, Arr> => {
+  const toolkit = ensureSliceProductToolkit(options.toolkit);
+  const { registerSliceProductMetadata } = toolkit;
+  const { disableSwap } = options;
+
   factors.forEach((factor) => ensureSliceObjectLandsInAnchor(base, anchor, factor));
 
   const arity = factors.length;
@@ -1607,7 +1665,7 @@ export const makeSliceFiniteProductFromPullback = <Obj, Arr>(
       pullbacks,
       left,
       right,
-      options,
+      disableSwap !== undefined ? { toolkit, disableSwap } : { toolkit },
     );
     const tuple = (
       domain: SliceObject<Obj, Arr>,
@@ -1727,7 +1785,7 @@ export const makeSliceFiniteProductFromPullback = <Obj, Arr>(
     pullbacks,
     currentFactors[0]!,
     currentFactors[1]!,
-    { disableSwap: true },
+    { disableSwap: true, toolkit },
   );
   let projections: SliceArrow<Obj, Arr>[] = [
     currentWitness.projectionLeft,
@@ -1757,7 +1815,7 @@ export const makeSliceFiniteProductFromPullback = <Obj, Arr>(
       pullbacks,
       currentWitness.object,
       nextFactor,
-      { disableSwap: true },
+      { disableSwap: true, toolkit },
     );
 
     projections = [
