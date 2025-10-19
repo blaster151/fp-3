@@ -97,4 +97,6 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 84. **MNNE powerset relative monad diagnostics** – Replay Example 8’s powerset relative monad on cofinite subsets, enumerate sampled images, and summarise the Street-style comparison reports. (examples/runnable/084-mnne-powerset-relative-monad.ts)
 
+85. **Comonad coalgebra and relative comodule diagnostics** – Check Pair-comonad coalgebra samples with the reusable oracle, certify the trivial relative comodule, and report targeted boundary failures from the analyzer. (examples/runnable/085-comonad-coalgebra-and-relative-comodule-diagnostics.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.

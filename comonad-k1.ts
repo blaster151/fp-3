@@ -104,6 +104,83 @@ export const isCoalgebraMorphism =
   (a: A): boolean =>
     eq(W.map(f)(alpha(a)), beta(f(a)))
 
+type CoalgebraLaw = "counit" | "coassociativity"
+
+export interface CoalgebraLawCounterexample<A> {
+  readonly law: CoalgebraLaw
+  readonly sample: A
+  readonly actual: unknown
+  readonly expected: unknown
+}
+
+export interface CoalgebraLawReport<A> {
+  readonly holds: boolean
+  readonly counitHolds: boolean
+  readonly coassociativityHolds: boolean
+  readonly issues: ReadonlyArray<string>
+  readonly counterexamples: ReadonlyArray<CoalgebraLawCounterexample<A>>
+  readonly details: string
+}
+
+export const checkCoalgebraLaws =
+  <W>(W: ComonadK1<W>) =>
+  <A>(
+    alpha: Coalgebra<W, A>,
+    eq: (left: unknown, right: unknown) => boolean,
+    samples: ReadonlyArray<A>,
+  ): CoalgebraLawReport<A> => {
+    const counterexamples: CoalgebraLawCounterexample<A>[] = []
+
+    for (const sample of samples) {
+      const coaction = alpha(sample)
+      const counitActual = W.extract(coaction)
+      if (!eq(counitActual, sample)) {
+        counterexamples.push({
+          law: "counit",
+          sample,
+          actual: counitActual,
+          expected: sample,
+        })
+      }
+
+      const coassocActual = W.duplicate(coaction)
+      const coassocExpected = W.map(alpha)(coaction)
+      if (!eq(coassocActual, coassocExpected)) {
+        counterexamples.push({
+          law: "coassociativity",
+          sample,
+          actual: coassocActual,
+          expected: coassocExpected,
+        })
+      }
+    }
+
+    const counitHolds = counterexamples.every((issue) => issue.law !== "counit")
+    const coassociativityHolds = counterexamples.every((issue) => issue.law !== "coassociativity")
+
+    const issues: string[] = []
+    if (!counitHolds) {
+      issues.push("Counit law failed for at least one sample.")
+    }
+    if (!coassociativityHolds) {
+      issues.push("Coassociativity law failed for at least one sample.")
+    }
+
+    const holds = counterexamples.length === 0
+    const details = holds
+      ? "Coalgebra samples satisfy counit and coassociativity."
+      : `Coalgebra law issues: ${issues.join(" ")}`
+
+    return {
+      holds,
+      counitHolds,
+      coassociativityHolds,
+      issues,
+      counterexamples,
+      details,
+    }
+  }
+
 // =============== Forgetful functor U : Coalg(W) -> Set ===============
 // U "forgets" the coaction: on objects, (A,α) |-> A; on morphisms, f |-> f.
 // In TS we model it as identity at runtime; the meaning is in the types.

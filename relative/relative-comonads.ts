@@ -529,3 +529,166 @@ export const describeRelativeComonadCoopAlgebraWitness = <
   details:
     "Relative comonad coopalgebra witness defaults to the carrier, coextension, and counit comparisons highlighted in Theorem 8.24.",
 });
+
+export interface RelativeComoduleDiagrams<Obj, Arr, Payload, Evidence> {
+  readonly coassociativity: {
+    readonly viaCoaction: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+    readonly viaComonad: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  };
+  readonly counit: {
+    readonly viaCoaction: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+    readonly viaCounit: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  };
+}
+
+export interface RelativeComoduleWitness<Obj, Arr, Payload, Evidence> {
+  readonly comonad: RelativeComonadData<Obj, Arr, Payload, Evidence>;
+  readonly carrier: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly coaction: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly diagrams: RelativeComoduleDiagrams<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
+}
+
+export interface RelativeComoduleReport<Obj, Arr, Payload, Evidence> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly witness: RelativeComoduleWitness<Obj, Arr, Payload, Evidence>;
+}
+
+export const analyzeRelativeComodule = <Obj, Arr, Payload, Evidence>(
+  witness: RelativeComoduleWitness<Obj, Arr, Payload, Evidence>,
+): RelativeComoduleReport<Obj, Arr, Payload, Evidence> => {
+  const { comonad, carrier, coaction, diagrams } = witness;
+  const equality = comonad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const issues: string[] = [];
+
+  ensureBoundary(
+    equality,
+    carrier,
+    comonad.carrier,
+    "Comodule carrier boundary",
+    issues,
+  );
+
+  ensureBoundary(
+    equality,
+    coaction.boundaries.left,
+    carrier,
+    "Comodule coaction left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    coaction.boundaries.right,
+    comonad.root,
+    "Comodule coaction right boundary",
+    issues,
+  );
+
+  const { coassociativity, counit } = diagrams;
+
+  ensureBoundary(
+    equality,
+    coassociativity.viaCoaction.boundaries.left,
+    carrier,
+    "Comodule coassociativity via coaction left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    coassociativity.viaCoaction.boundaries.right,
+    comonad.root,
+    "Comodule coassociativity via coaction right boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    coassociativity.viaComonad.boundaries.left,
+    carrier,
+    "Comodule coassociativity via comonad left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    coassociativity.viaComonad.boundaries.right,
+    comonad.root,
+    "Comodule coassociativity via comonad right boundary",
+    issues,
+  );
+
+  if (coassociativity.viaComonad !== comonad.coextension) {
+    issues.push(
+      "Comodule coassociativity comparison must reuse the relative comonad coextension witness.",
+    );
+  }
+  if (coassociativity.viaCoaction !== coassociativity.viaComonad) {
+    issues.push("Comodule coassociativity diagram must commute.");
+  }
+
+  ensureBoundary(
+    equality,
+    counit.viaCoaction.boundaries.left,
+    carrier,
+    "Comodule counit via coaction left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    counit.viaCoaction.boundaries.right,
+    comonad.root,
+    "Comodule counit via coaction right boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    counit.viaCounit.boundaries.left,
+    carrier,
+    "Comodule counit via counit left boundary",
+    issues,
+  );
+  ensureBoundary(
+    equality,
+    counit.viaCounit.boundaries.right,
+    comonad.root,
+    "Comodule counit via counit right boundary",
+    issues,
+  );
+
+  if (counit.viaCounit !== comonad.counit) {
+    issues.push("Comodule counit comparison must reuse the relative comonad counit witness.");
+  }
+  if (counit.viaCoaction !== counit.viaCounit) {
+    issues.push("Comodule counit diagram must commute.");
+  }
+
+  const holds = issues.length === 0;
+  return {
+    holds,
+    issues: holds ? [] : issues,
+    details: holds
+      ? witness.details ??
+        "Relative comodule coaction reuses the comonad coextension and counit witnesses."
+      : `Relative comodule issues: ${issues.join("; ")}`,
+    witness,
+  };
+};
+
+export const describeTrivialRelativeComoduleWitness = <Obj, Arr, Payload, Evidence>(
+  comonad: RelativeComonadData<Obj, Arr, Payload, Evidence>,
+): RelativeComoduleWitness<Obj, Arr, Payload, Evidence> => ({
+  comonad,
+  carrier: comonad.carrier,
+  coaction: comonad.counit,
+  diagrams: {
+    coassociativity: {
+      viaCoaction: comonad.coextension,
+      viaComonad: comonad.coextension,
+    },
+    counit: {
+      viaCoaction: comonad.counit,
+      viaCounit: comonad.counit,
+    },
+  },
+  details: "Trivial relative comodule induced by the identity-root relative comonad.",
+});
