@@ -2620,6 +2620,34 @@ export const makeFinSetObj = <T>(elements: ReadonlyArray<T>): FinSetObjOf<T> => 
 const terminalFinSetObj: FinSetObj = { elements: [null] }
 const initialFinSetObj: FinSetObj = { elements: [] }
 
+type FinSetProductMetadata = {
+  readonly factors: ReadonlyArray<FinSetObj>
+  readonly tupleIndex: Map<string, number>
+}
+
+const finSetProductMetadata = new WeakMap<FinSetObj, FinSetProductMetadata>()
+
+const registerFinSetProduct = (
+  product: FinSetObj,
+  factors: ReadonlyArray<FinSetObj>,
+  tuples: ReadonlyArray<ReadonlyArray<number>>,
+): Map<string, number> => {
+  const tupleIndex = new Map<string, number>()
+  tuples.forEach((tuple, index) => {
+    tupleIndex.set(JSON.stringify(tuple), index)
+  })
+  finSetProductMetadata.set(product, { factors, tupleIndex })
+  return tupleIndex
+}
+
+const getRegisteredFinSetProduct = (product: FinSetObj): FinSetProductMetadata => {
+  const metadata = finSetProductMetadata.get(product)
+  if (!metadata) {
+    throw new Error('FinSetProductsWithTuple: expected a product built via FinSet.product')
+  }
+  return metadata
+}
+
 const terminateFinSetAtTerminal = (X: FinSetObj): FinSetMor => ({
   from: X,
   to: terminalFinSetObj,
@@ -2635,8 +2663,11 @@ const buildBinaryProductWitness = (A: FinSetObj, B: FinSetObj) => {
   }
 
   const obj: FinSetObj = { elements: tuples }
-  const tupleIndex = new Map<string, number>()
-  tuples.forEach((tuple, idx) => tupleIndex.set(JSON.stringify(tuple), idx))
+  const tupleIndex = registerFinSetProduct(
+    obj,
+    [A, B],
+    tuples.map((tuple) => tuple as ReadonlyArray<number>),
+  )
 
   const proj1: FinSetMor = { from: obj, to: A, map: tuples.map(tuple => tuple[0]!) }
   const proj2: FinSetMor = { from: obj, to: B, map: tuples.map(tuple => tuple[1]!) }
@@ -2712,6 +2743,7 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     }
     rec([], 0)
     const P: FinSetObj = { elements: indexTuples }
+    registerFinSetProduct(P, factors, indexTuples)
     const projections = factors.map((F, k) => ({
       from: P,
       to: F,
@@ -2894,6 +2926,67 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
 }
 
 export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
+
+export const FinSetProductsWithTuple: CategoryLimits.HasProductMediators<FinSetObj, FinSetMor> = {
+  product: (objects) => FinSet.product(objects),
+  tuple: (domain, legs, product) => {
+    const { factors, tupleIndex } = getRegisteredFinSetProduct(product)
+
+    if (legs.length !== factors.length) {
+      throw new Error(
+        `FinSetProductsWithTuple: expected ${factors.length} legs for the supplied product but received ${legs.length}`,
+      )
+    }
+
+    if (factors.length === 0) {
+      if (product.elements.length === 0) {
+        throw new Error(
+          'FinSetProductsWithTuple: terminal product carrier must contain the empty tuple',
+        )
+      }
+      return {
+        from: domain,
+        to: product,
+        map: Array.from({ length: domain.elements.length }, () => 0),
+      }
+    }
+
+    const map = domain.elements.map((_, position) => {
+      const coordinates = legs.map((leg, legIndex) => {
+        const factor = factors[legIndex]
+        if (!factor) {
+          throw new Error(`FinSetProductsWithTuple: missing factor metadata for leg ${legIndex}`)
+        }
+        if (leg.from !== domain) {
+          throw new Error(`FinSetProductsWithTuple: leg ${legIndex} domain mismatch`)
+        }
+        if (leg.to !== factor) {
+          throw new Error(`FinSetProductsWithTuple: leg ${legIndex} codomain mismatch`)
+        }
+        const image = leg.map[position]
+        if (image === undefined) {
+          throw new Error(
+            `FinSetProductsWithTuple: leg ${legIndex} missing image for domain index ${position}`,
+          )
+        }
+        if (image < 0 || image >= factor.elements.length) {
+          throw new Error(
+            `FinSetProductsWithTuple: leg ${legIndex} image ${image} out of bounds for its codomain`,
+          )
+        }
+        return image
+      })
+      const key = JSON.stringify(coordinates)
+      const target = tupleIndex.get(key)
+      if (target === undefined) {
+        throw new Error('FinSetProductsWithTuple: tuple legs do not land in the supplied product carrier')
+      }
+      return target
+    })
+
+    return { from: domain, to: product, map }
+  },
+}
 
 /** FinSet bijection helper */
 export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): FinSetMor => {

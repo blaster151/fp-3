@@ -1,55 +1,63 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from "vitest"
+
 import {
   CategoryLimits,
   FinSet,
   FinSetProductsWithTuple,
-  finsetProductInitialIso,
   makeFinSetObj,
-} from '../../allTS'
-import type { FinSetMor, FinSetObj } from '../../allTS'
+} from "../../allTS"
+import type { FinSetMor, FinSetObj } from "../../allTS"
 
 const arrowEquals = (left: FinSetMor, right: FinSetMor): boolean => {
   const eq = FinSet.equalMor
-  if (eq) {
-    return eq(left, right)
-  }
-  if (left.from !== right.from || left.to !== right.to || left.map.length !== right.map.length) {
-    return false
-  }
-  for (let idx = 0; idx < left.map.length; idx++) {
-    if (left.map[idx] !== right.map[idx]) {
-      return false
-    }
-  }
-  return true
+  if (eq) return eq(left, right)
+  if (left.from !== right.from || left.to !== right.to) return false
+  if (left.map.length !== right.map.length) return false
+  return left.map.every((value, index) => value === right.map[index])
 }
 
 const expectEqualArrows = (left: FinSetMor, right: FinSetMor) => {
   expect(arrowEquals(left, right)).toBe(true)
 }
 
-describe('FinSet product mediators', () => {
-  it('reconstructs the diagonal on A×A via tuple', () => {
-    const A = makeFinSetObj(['a0', 'a1', 'a2'])
-    const { obj: product, projections } = FinSet.product([A, A])
+describe("FinSet product mediators", () => {
+  it("rebuilds the diagonal on A×A", () => {
+    const A = makeFinSetObj(["a₀", "a₁", "a₂"])
+    const { obj: product, projections } = FinSetProductsWithTuple.product([A, A])
     const diagonal = FinSetProductsWithTuple.tuple(
       A,
       [FinSet.id(A), FinSet.id(A)],
       product,
     )
 
+    const tupleIndex = new Map<string, number>()
+    product.elements.forEach((tuple, index) => {
+      tupleIndex.set(JSON.stringify(tuple), index)
+    })
+
+    const expectedMap = A.elements.map((_, index) => {
+      const key = JSON.stringify([index, index])
+      const match = tupleIndex.get(key)
+      if (match === undefined) {
+        throw new Error("Missing diagonal tuple in product carrier")
+      }
+      return match
+    })
+
+    expect(diagonal.map).toEqual(expectedMap)
+
     const [pi1, pi2] = projections as readonly [FinSetMor, FinSetMor]
     expectEqualArrows(FinSet.compose(pi1, diagonal), FinSet.id(A))
     expectEqualArrows(FinSet.compose(pi2, diagonal), FinSet.id(A))
   })
 
-  it('matches componentwise pairings assembled from projections', () => {
-    const A = makeFinSetObj(['a0', 'a1'])
-    const B = makeFinSetObj(['b0', 'b1', 'b2'])
-    const C = makeFinSetObj(['c0', 'c1'])
+  it("aligns componentwise pairings with projection composition", () => {
+    const A = makeFinSetObj(["a₀", "a₁"])
+    const B = makeFinSetObj(["b₀", "b₁", "b₂"])
+    const C = makeFinSetObj(["c₀", "c₁"])
 
-    const source = FinSet.product([A, B])
-    const target = FinSet.product([B, C])
+    const source = FinSetProductsWithTuple.product([A, B])
+    const target = FinSetProductsWithTuple.product([B, C])
 
     const [sourceLeft, sourceRight] = source.projections as readonly [FinSetMor, FinSetMor]
     const [targetLeft, targetRight] = target.projections as readonly [FinSetMor, FinSetMor]
@@ -81,28 +89,33 @@ describe('FinSet product mediators', () => {
     expectEqualArrows(actual, expected)
   })
 
-  it('recovers the strict-initial unit isomorphism for A×0', () => {
-    const A = makeFinSetObj(['a0', 'a1'])
-    const iso = finsetProductInitialIso(A)
-    const [projectionToA, projectionToZero] = iso.projections
+  it("recovers the strict-initial unit on A×0", () => {
+    const A = makeFinSetObj(["a₀", "a₁"])
+    const zero = FinSet.initialObj
+    const product = FinSetProductsWithTuple.product([A, zero])
 
-    const arrowFromZeroToA: FinSetMor = { from: FinSet.initialObj, to: A, map: [] }
-    const idInitial = FinSet.id(FinSet.initialObj)
-    const idProduct = FinSet.id(iso.product)
+    const binaryProduct: CategoryLimits.BinaryProductTuple<FinSetObj, FinSetMor> = {
+      object: product.obj,
+      projections: [product.projections[0]!, product.projections[1]!] as const,
+      tuple: (domain, legs) => {
+        if (legs.length !== 2) {
+          throw new Error(`Expected 2 legs for binary tuple, received ${legs.length}`)
+        }
+        return FinSetProductsWithTuple.tuple(domain, legs, product.obj)
+      },
+    }
 
-    const registry: FinSetMor[] = [
+    const arrows: FinSetMor[] = [
       FinSet.id(A),
-      idInitial,
-      idProduct,
-      projectionToA,
-      projectionToZero,
-      iso.forward,
-      iso.backward,
+      FinSet.id(zero),
+      FinSet.id(product.obj),
+      product.projections[0]!,
+      product.projections[1]!,
     ]
 
     const category: CategoryLimits.BinaryProductUnitCategory<FinSetObj, FinSetMor> = {
-      objects: [A, FinSet.initialObj, iso.product],
-      arrows: registry,
+      objects: [A, zero, product.obj],
+      arrows,
       eq: (left, right) => arrowEquals(left, right),
       compose: FinSet.compose,
       id: (object) => FinSet.id(object),
@@ -110,20 +123,32 @@ describe('FinSet product mediators', () => {
       dst: (arrow) => arrow.to,
     }
 
+    const legs: readonly [FinSetMor, FinSetMor] = [
+      FinSet.initialArrow(A),
+      FinSet.id(zero),
+    ]
+
     const canonical = CategoryLimits.unitBinaryProduct<FinSetObj, FinSetObj, FinSetMor>({
       category,
-      product: {
-        object: iso.product,
-        projections: [projectionToA, projectionToZero],
-        tuple: (domain, legs) => FinSetProductsWithTuple.tuple(domain, legs, iso.product),
+      product: binaryProduct,
+      factor: {
+        object: zero,
+        identity: FinSet.id(zero),
       },
-      factor: { object: FinSet.initialObj, identity: idInitial },
-      projection: projectionToZero,
-      legs: [arrowFromZeroToA, idInitial],
-      productIdentity: idProduct,
+      projection: product.projections[1]!,
+      legs,
+      productIdentity: FinSet.id(product.obj),
     })
 
-    expectEqualArrows(canonical.forward, iso.forward)
-    expectEqualArrows(canonical.backward, iso.backward)
+    expectEqualArrows(canonical.forward, product.projections[1]!)
+
+    const expectedBackward = FinSetProductsWithTuple.tuple(zero, legs, product.obj)
+    expectEqualArrows(canonical.backward, expectedBackward)
+
+    const forwardThenBackward = FinSet.compose(canonical.forward, canonical.backward)
+    expectEqualArrows(forwardThenBackward, FinSet.id(zero))
+
+    const backwardThenForward = FinSet.compose(canonical.backward, canonical.forward)
+    expectEqualArrows(backwardThenForward, FinSet.id(product.obj))
   })
 })

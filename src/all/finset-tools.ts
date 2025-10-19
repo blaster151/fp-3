@@ -1,5 +1,14 @@
 import { CategoryLimits } from "../../stdlib/category-limits"
-import { FinSet, type FinSetMor, type FinSetObj } from "./triangulated"
+import {
+  FinSet,
+  FinSetProductsWithTuple as FinSetProductsWithTupleWitness,
+  type FinSetMor,
+  type FinSetObj,
+} from "./triangulated"
+
+const FinSetProductsWithTuple = FinSetProductsWithTupleWitness
+
+export { FinSetProductsWithTuple }
 
 const arrowsEqual = (left: FinSetMor, right: FinSetMor): boolean => {
   if (FinSet.equalMor) {
@@ -45,55 +54,6 @@ const buildExistingExponential = (object: FinSetObj) => {
     return index
   }
   return { metadata, functionAt, indexOfFunction }
-}
-
-export const FinSetProductsWithTuple: CategoryLimits.HasProductMediators<FinSetObj, FinSetMor> = {
-  product: (objects) => FinSet.product(objects),
-  tuple: (domain, legs, product) => {
-    if (legs.length === 0) {
-      if (product.elements.length === 0) {
-        throw new Error("FinSetProductsWithTuple: terminal product carrier must contain the empty tuple")
-      }
-      return {
-        from: domain,
-        to: product,
-        map: Array.from({ length: domain.elements.length }, () => 0),
-      }
-    }
-
-    const index = tupleIndex(product)
-    const sampleTuple = product.elements[0] as ReadonlyArray<number> | undefined
-    const arity = sampleTuple?.length ?? legs.length
-    if (legs.length !== arity) {
-      throw new Error(
-        `FinSetProductsWithTuple: expected ${arity} legs for the supplied product but received ${legs.length}`,
-      )
-    }
-
-    const map = domain.elements.map((_, position) => {
-      const coordinates = legs.map((leg, legIx) => {
-        if (leg.from !== domain) {
-          throw new Error(`FinSetProductsWithTuple: leg ${legIx} domain mismatch`)
-        }
-        const image = leg.map[position]
-        if (image === undefined) {
-          throw new Error(`FinSetProductsWithTuple: leg ${legIx} missing image for domain index ${position}`)
-        }
-        if (image < 0 || image >= leg.to.elements.length) {
-          throw new Error(`FinSetProductsWithTuple: leg ${legIx} image ${image} out of bounds for its codomain`)
-        }
-        return image
-      })
-      const key = JSON.stringify(coordinates)
-      const target = index.get(key)
-      if (target === undefined) {
-        throw new Error("FinSetProductsWithTuple: tuple legs do not land in the supplied product carrier")
-      }
-      return target
-    })
-
-    return { from: domain, to: product, map }
-  },
 }
 
 export const FinSetCoproductsWithCotuple: CategoryLimits.HasFiniteCoproducts<FinSetObj, FinSetMor> & {

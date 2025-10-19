@@ -1260,6 +1260,13 @@ so failures can be traced to sub-lemmas.
 - **Oracles**: `test/laws/law.FinSetCCC.spec.ts` proves the unit laws for products with `1`, demonstrates that evaluation composed with the canonical pairing reproduces `h`, and confirms that curry/uncurry form inverse bijections on transposes.
 - **Witness Builder**: `FinSetCCC` (re-exported via `src/all/triangulated.ts`) surfaces `{ terminal, binaryProduct, exponential }`, while `FinSet.compose` and `FinSet.id` support the comparison checks in the law suite.
 
+### Finite-set product mediators
+
+- **Domain**: Finite-set objects and arrows paired via `FinSetProductsWithTuple`, which now augments `FinSet.product` with cached coordinate data so mediator searches can reuse the advertised carrier.
+- **Statement**: `FinSetProductsWithTuple.tuple(domain, legs, product)` verifies each leg lands in the cached product factors, reconstructs the corresponding coordinate tuple, and recovers the unique mediator whenever the legs commute; the helper also makes wedges such as `⟨1ₐ, f⟩` executable and supplies the factor required for `CategoryLimits.unitBinaryProduct` to observe the strict-initial comparison `A × 0 ≅ 0` from Theorem 78.
+- **Rationale**: Ensures that tuples are rebuilt from the recorded cartesian carrier rather than relying on ad-hoc JSON scans, so diagonal and unit witnesses become reusable inputs for downstream law-checkers.
+- **Oracles**: `test/laws/law.FinSetProductMediators.spec.ts` rebuilds the diagonal `⟨id, id⟩` on `A × A`, confirms that composing the projections with `⟨f, g⟩` returns the supplied legs, and feeds the cached witness into `CategoryLimits.unitBinaryProduct` to recover the strict-initial isomorphism for `A × 0`.
+
 ### Finite-set equalizer schemes
 
 - **Domain**: Parallel finite-set arrows `f, g : X → Y` together with the inclusion `e : E → X` returned by `FinSet.equalizer(f, g)` and commuting forks into `X`.
