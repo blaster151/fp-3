@@ -1,4 +1,5 @@
 import type { RunnableExample } from "./types";
+import type { MarkovOracleRegistry } from "../../markov-oracles";
 
 declare function require(id: string): any;
 
@@ -113,6 +114,7 @@ type TopVietorisModule = {
   ) => KolmogorovProductSpace<any>;
   readonly makeProductPrior: <A, XJ>(mkInput: () => ProductPriorInput<A, XJ>) => FinMarkov<A, XJ>;
   readonly makeDeterministicStatistic: <XJ, T = 0 | 1>(mkInput: () => DeterministicStatisticInput<XJ, T>) => FinMarkov<XJ, T>;
+  readonly installTopVietorisAdapters: (registry: MarkovOracleRegistry) => void;
 };
 
 type MarkovCategoryModule = {
@@ -120,21 +122,7 @@ type MarkovCategoryModule = {
 };
 
 type MarkovOraclesModule = {
-  readonly MarkovOracles: {
-    readonly top: {
-      readonly vietoris: {
-        readonly status: string;
-        readonly kolmogorov: {
-          readonly witness: (...args: any[]) => unknown;
-          readonly check: (...args: any[]) => unknown;
-        };
-        readonly constantFunction: {
-          readonly witness: (...args: any[]) => unknown;
-          readonly check: (...args: any[]) => unknown;
-        };
-      };
-    };
-  };
+  readonly createMarkovOracleRegistry: () => MarkovOracleRegistry;
 };
 
 type FiniteSymmetryModule = unknown;
@@ -155,8 +143,11 @@ const {
   makeKolmogorovProductSpace,
   makeProductPrior,
   makeDeterministicStatistic,
+  installTopVietorisAdapters,
 } = topVietoris;
-const { MarkovOracles } = markovOraclesModule;
+const markovOracleRegistry = markovOraclesModule.createMarkovOracleRegistry();
+installTopVietorisAdapters(markovOracleRegistry);
+const { MarkovOracles } = markovOracleRegistry;
 const { mkFin } = markovCategory;
 
 type Bit = 0 | 1;

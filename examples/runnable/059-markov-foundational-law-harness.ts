@@ -1,4 +1,5 @@
 import type { RunnableExample } from "./types";
+import type { MarkovOracleRegistry } from "../../markov-oracles";
 
 declare function require(id: string): any;
 
@@ -59,20 +60,7 @@ type SemiringModule = {
 };
 
 type MarkovOracleModule = {
-  readonly MarkovOracleMetadata: {
-    readonly totalOracles: number;
-    readonly domains: readonly string[];
-    readonly coverage: { readonly laws: string; readonly tests: number; readonly semirings: readonly string[] };
-    readonly version: string;
-    readonly lastUpdated: string;
-  };
-  readonly listMarkovOracles: () => ReadonlyArray<{ readonly path: string; readonly domain: string }>;
-  readonly verifyOracleIntegration: () => {
-    readonly registered: boolean;
-    readonly tested: boolean;
-    readonly documented: boolean;
-    readonly details: string;
-  };
+  readonly createMarkovOracleRegistry: () => MarkovOracleRegistry;
 };
 
 const semiringUtils = require("../../semiring-utils") as SemiringModule;
@@ -80,6 +68,12 @@ const entirety = require("../../entirety-check") as EntiretyModule;
 const faithfulness = require("../../pullback-check") as PullbackFaithfulnessModule;
 const pullbackSquare = require("../../pullback-square") as PullbackSquareModule;
 const markovOracles = require("../../markov-oracles") as MarkovOracleModule;
+const markovOracleRegistry = markovOracles.createMarkovOracleRegistry();
+const {
+  MarkovOracleMetadata,
+  listMarkovOracles,
+  verifyOracleIntegration,
+} = markovOracleRegistry;
 
 const { Prob, LogProb, BoolRig, directSum } = semiringUtils;
 
@@ -168,7 +162,7 @@ function summarizePullbackSquare(): readonly string[] {
 }
 
 function summarizeRegistry(): readonly string[] {
-  const oracleList = markovOracles.listMarkovOracles();
+  const oracleList = listMarkovOracles();
   const perDomain = new Map<string, number>();
   for (const oracle of oracleList) {
     perDomain.set(oracle.domain, (perDomain.get(oracle.domain) ?? 0) + 1);
@@ -178,8 +172,8 @@ function summarizeRegistry(): readonly string[] {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([domain, count]) => `  - ${domain}: ${count} oracle${count === 1 ? "" : "s"}`);
 
-  const integration = markovOracles.verifyOracleIntegration();
-  const metadata = markovOracles.MarkovOracleMetadata;
+  const integration = verifyOracleIntegration();
+  const metadata = MarkovOracleMetadata;
 
   return [
     "== Markov oracle registry overview ==",

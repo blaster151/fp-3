@@ -12,7 +12,9 @@ const fileUrlToPath = (input: URL): string => {
   }
   return decoded;
 };
-import { MarkovOracles } from "../../markov-oracles";
+import { createMarkovOracleRegistry } from "../../markov-oracles";
+
+const { MarkovOracles } = createMarkovOracleRegistry();
 
 const lawsPath = fileUrlToPath(new URL("../../LAWS.md", import.meta.url));
 const guidelinesPath = fileUrlToPath(new URL("../../AI_MATHEMATICAL_IMPL_GUIDELINES.md", import.meta.url));

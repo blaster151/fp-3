@@ -3,12 +3,13 @@
 
 import type { CSRig } from "./semiring-utils";
 import type { Dist } from "./dist";
-import type {
-  ClosedSubset as TopVietorisClosedSubset,
-  DeterministicStatisticInput,
-  KolmogorovProductSpace,
-  ProductPriorInput,
-  TopSpace as TopVietorisTopSpace,
+import {
+  TOP_VIETORIS_STATUS,
+  type ClosedSubset as TopVietorisClosedSubset,
+  type DeterministicStatisticInput,
+  type KolmogorovProductSpace,
+  type ProductPriorInput,
+  type TopSpace as TopVietorisTopSpace,
 } from "./top-vietoris-examples";
 import type { Eq, Fin, FinMarkov } from "./markov-category";
 
@@ -136,18 +137,13 @@ export interface TopVietorisAdapters {
   ) => FinMarkov<XJ, T>;
 }
 
-export function createMarkovOracleRegistry() {
-  let topVietorisAdapters: TopVietorisAdapters | undefined;
+type MarkovOraclesDependencies = {
+  readonly getTopVietorisAdapters: () => TopVietorisAdapters | undefined;
+};
 
-  const registerTopVietorisAdapters = (adapters: TopVietorisAdapters): void => {
-    topVietorisAdapters = adapters;
-  };
-
-  const getTopVietorisAdapters = (): TopVietorisAdapters | undefined => topVietorisAdapters;
-
-  // ===== Domain-Specific Oracle Registry =====
-
-  const MarkovOracles = {
+const createMarkovOracles = ({
+  getTopVietorisAdapters,
+}: MarkovOraclesDependencies) => ({
   // ===== Foundational Theory =====
 
   // Faithfulness via monomorphisms
@@ -156,19 +152,19 @@ export function createMarkovOracleRegistry() {
     deltaMonic: checkDeltaMonic,
     combined: checkFaithfulness,
   },
-  
+
   // Entirety implies representability
   entirety: {
     basic: checkEntirety,
     detailed: checkEntiretyDetailed,
     semiring: isEntire,
   },
-  
+
   // Pullback square uniqueness
   pullbackSquare: {
     basic: checkPullbackSquare,
   },
-  
+
   // Thunkability ⇔ determinism
   determinism: {
     recognizer: isDeterministic,
@@ -180,7 +176,7 @@ export function createMarkovOracleRegistry() {
     lemma: checkDeterminismLemma,
     detailedLemma: checkStructuredDeterminismLemma,
   },
-  
+
   // Monoidal structure
   monoidal: {
     diracMonoidal: checkDiracMonoidal,
@@ -228,7 +224,7 @@ export function createMarkovOracleRegistry() {
     deterministicUniversalProperty: checkDeterministicProductUniversalProperty,
     finstochObstruction: analyzeFinStochInfiniteTensor,
   },
-  
+
   // Almost-sure equality and sampling cancellation
   almostSure: {
     witness: buildMarkovAlmostSureWitness,
@@ -242,9 +238,9 @@ export function createMarkovOracleRegistry() {
     oracle: checkAlmostSureEquality,
     predicate: pAlmostSureEqual,
   },
-  
+
   // ===== Dominance Theory =====
-  
+
   // SOSD via dilation witnesses
   dominance: {
     sosd: sosdFromWitness,
@@ -278,8 +274,7 @@ export function createMarkovOracleRegistry() {
 
   top: {
     vietoris: {
-      status:
-        "Kolmogorov adapters and constant-function law helpers available; Hewitt–Savage unavailable because Kl(H) is not causal.",
+      status: TOP_VIETORIS_STATUS,
       adapters: () => getTopVietorisAdapters(),
       kolmogorov: {
         witness: buildTopVietorisKolmogorovWitnessProxy,
@@ -291,28 +286,40 @@ export function createMarkovOracleRegistry() {
       },
     },
   },
-  
+
   // ===== Information Theory =====
-  
+
   // Blackwell sufficiency and garbling
   informativeness: {
     classic: moreInformativeClassic,
     detailed: testInformativenessDetailed,
   },
-  
+
   // Standard experiments and Bayesian decision theory
   experiments: {
     standardMeasure: standardMeasure,
     posterior: posterior,
   },
-  
+
   // BSS equivalence (connecting all frameworks)
   bss: {
     compare: bssCompare,
     detailed: testBSSDetailed,
   },
-  
-  } as const;
+} as const);
+
+export function createMarkovOracleRegistry() {
+  let topVietorisAdapters: TopVietorisAdapters | undefined;
+
+  const registerTopVietorisAdapters = (adapters: TopVietorisAdapters): void => {
+    topVietorisAdapters = adapters;
+  };
+
+  const getTopVietorisAdapters = (): TopVietorisAdapters | undefined => topVietorisAdapters;
+
+  // ===== Domain-Specific Oracle Registry =====
+
+  const MarkovOracles = createMarkovOracles({ getTopVietorisAdapters });
 
   // ===== Meta-Oracles =====
 
@@ -412,16 +419,6 @@ export function createMarkovOracleRegistry() {
 }
 
 export type MarkovOracleRegistry = ReturnType<typeof createMarkovOracleRegistry>;
-
-export const defaultMarkovOracleRegistry = createMarkovOracleRegistry();
-
-export const MarkovOracles = defaultMarkovOracleRegistry.MarkovOracles;
-export const registerTopVietorisAdapters = defaultMarkovOracleRegistry.registerTopVietorisAdapters;
-export const getTopVietorisAdapters = defaultMarkovOracleRegistry.getTopVietorisAdapters;
-export const getMarkovOracle = defaultMarkovOracleRegistry.getMarkovOracle;
-export const listMarkovOracles = defaultMarkovOracleRegistry.listMarkovOracles;
-export const MarkovOracleMetadata = defaultMarkovOracleRegistry.MarkovOracleMetadata;
-export const verifyOracleIntegration = defaultMarkovOracleRegistry.verifyOracleIntegration;
 
 // ===== Meta-Oracles =====
 

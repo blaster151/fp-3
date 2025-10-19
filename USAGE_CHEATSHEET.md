@@ -406,7 +406,9 @@ console.log('accepts "abcd":', waAcceptsBool(regex)(['a','b','c','d'])) // true
 
 ### **Markov Zero–One Oracles at a Glance**
 ```typescript
-import { MarkovOracles } from "./markov-oracles";
+import { createMarkovOracleRegistry } from "./markov-oracles";
+
+const { MarkovOracles } = createMarkovOracleRegistry();
 
 // p-almost-sure equality with deterministic left leg
 const asWit = MarkovOracles.almostSure.witness(p, f, g, { label: "AlmostSureEquality" });
