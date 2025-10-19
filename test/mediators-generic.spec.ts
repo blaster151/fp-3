@@ -19,18 +19,29 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
 
     const f0: EnhancedVect.VectMor = { matrix: randMat(X.dim, V1.dim), from: X, to: V1 }
     const f1: EnhancedVect.VectMor = { matrix: randMat(X.dim, V2.dim), from: X, to: V2 }
+    const diagram = emptyDiagramFor<number>()
+
     const cone: CategoryLimits.Cone<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
       tip: X,
       legs: (i: number) => (i === 0 ? f0 : f1),
-      diagram: emptyDiagramFor<number>(),
+      diagram,
     }
 
     // generic mediate
     const { product: P, projections, mediator } =
       CategoryLimits.mediateProduct(Ifin, F, EnhancedVect.VectProductsWithTuple, X, cone.legs)
 
+    const witness: CategoryLimits.ProductLimitWitness<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
+      limitCone: {
+        tip: P,
+        legs: (i: number) => projections(i),
+        diagram,
+      },
+      tuple: EnhancedVect.VectProductsWithTuple.tuple,
+    }
+
     // triangles via generic predicate
-    const { triangles, unique } =
+    const { triangles, unique, mediator: checkMediator } =
       CategoryLimits.isProductForCone(
         EnhancedVect.Vect,
         EnhancedVect.Vect.equalMor!,
@@ -44,16 +55,15 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
 
     expect(triangles).toBe(true)
     expect(unique).toBe(true)
+    expect(EnhancedVect.Vect.equalMor!(checkMediator!, mediator)).toBe(true)
 
     const arrowLift = CategoryLimits.arrowFromCone(
       EnhancedVect.Vect,
       EnhancedVect.Vect.equalMor!,
       Ifin,
       F,
-      P,
-      projections,
+      witness,
       cone,
-      EnhancedVect.VectProductsWithTuple.tuple,
     )
 
     expect(arrowLift.success).toBe(true)
@@ -65,10 +75,8 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
       EnhancedVect.Vect.equalMor!,
       Ifin,
       F,
-      P,
-      projections,
+      witness,
       arrowLift.arrow,
-      cone.diagram,
     )
 
     expect(liftedCone.constructed).toBe(true)
@@ -85,10 +93,8 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
       EnhancedVect.Vect.equalMor!,
       Ifin,
       F,
-      P,
-      projections,
+      witness,
       reconstructed,
-      EnhancedVect.VectProductsWithTuple.tuple,
     )
 
     expect(roundTrip.success).toBe(true)
@@ -128,6 +134,116 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
     
     // Should be identical
     expect(EnhancedVect.Vect.equalMor!(generic, specialized)).toBe(true)
+  })
+
+  test('arrowFromCone rejects cones that fail validation', () => {
+    const X: EnhancedVect.VectObj = { dim: 1 }
+    const V1: EnhancedVect.VectObj = { dim: 1 }
+    const V2: EnhancedVect.VectObj = { dim: 1 }
+    const Ifin = { carrier: [0, 1] }
+    const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (i) => (i === 0 ? V1 : V2)
+
+    const diagram = emptyDiagramFor<number>()
+    const goodCone: CategoryLimits.Cone<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
+      tip: X,
+      legs: (i: number) => ({
+        matrix: [[i === 0 ? 1 : 2]],
+        from: X,
+        to: i === 0 ? V1 : V2,
+      }),
+      diagram,
+    }
+
+    const { product: P, projections } = CategoryLimits.finiteProduct(Ifin, F, EnhancedVect.VectHasFiniteProducts)
+    const witness: CategoryLimits.ProductLimitWitness<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
+      limitCone: {
+        tip: P,
+        legs: (i: number) => projections(i),
+        diagram,
+      },
+      tuple: EnhancedVect.VectProductsWithTuple.tuple,
+    }
+
+    const malformedCone: CategoryLimits.Cone<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
+      tip: X,
+      legs: (i: number) =>
+        i === 0
+          ? { matrix: [[3]], from: X, to: V1 }
+          : { matrix: [[4]], from: { dim: 2 }, to: V2 },
+      diagram,
+    }
+
+    const okLift = CategoryLimits.arrowFromCone(
+      EnhancedVect.Vect,
+      EnhancedVect.Vect.equalMor!,
+      Ifin,
+      F,
+      witness,
+      goodCone,
+    )
+
+    expect(okLift.success).toBe(true)
+
+    const badLift = CategoryLimits.arrowFromCone(
+      EnhancedVect.Vect,
+      EnhancedVect.Vect.equalMor!,
+      Ifin,
+      F,
+      witness,
+      malformedCone,
+    )
+
+    expect(badLift.success).toBe(false)
+    if (badLift.success) throw new Error('expected malformed cone to be rejected')
+    expect(badLift.reason).toMatch(/has domain/i)
+  })
+
+  test('arrowFromCone rejects cones with mismatched diagrams', () => {
+    const X: EnhancedVect.VectObj = { dim: 1 }
+    const V1: EnhancedVect.VectObj = { dim: 1 }
+    const V2: EnhancedVect.VectObj = { dim: 1 }
+    const Ifin = { carrier: [0, 1] }
+    const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (i) => (i === 0 ? V1 : V2)
+
+    const baseDiagram = emptyDiagramFor<number>()
+    const twistedDiagram: CategoryLimits.Diagram<number, EnhancedVect.VectMor> = {
+      arrows: [
+        {
+          source: 0,
+          target: 1,
+          morphism: { matrix: [[1]], from: V1, to: V2 },
+        },
+      ],
+    }
+
+    const cone: CategoryLimits.Cone<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
+      tip: X,
+      legs: (i: number) => ({ matrix: [[1]], from: X, to: i === 0 ? V1 : V2 }),
+      diagram: twistedDiagram,
+    }
+
+    const { product: P, projections } = CategoryLimits.finiteProduct(Ifin, F, EnhancedVect.VectHasFiniteProducts)
+    const witness: CategoryLimits.ProductLimitWitness<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
+      limitCone: {
+        tip: P,
+        legs: (i: number) => projections(i),
+        diagram: baseDiagram,
+      },
+      tuple: EnhancedVect.VectProductsWithTuple.tuple,
+    }
+
+    const lift = CategoryLimits.arrowFromCone(
+      EnhancedVect.Vect,
+      EnhancedVect.Vect.equalMor!,
+      Ifin,
+      F,
+      witness,
+      cone,
+    )
+
+    expect(lift.success).toBe(false)
+    if (lift.success) throw new Error('expected mismatched diagram to be rejected')
+    expect(lift.reason).toMatch(/does not match the fixed limit diagram/)
   })
 
   test('uniqueness flag detects competing mediator', () => {
@@ -436,6 +552,15 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
     const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (i) => (i === 0 ? V1 : V2)
 
     const { product: P, projections } = CategoryLimits.finiteProduct(Ifin, F, EnhancedVect.VectHasFiniteProducts)
+    const diagram = emptyDiagramFor<number>()
+    const witness: CategoryLimits.ProductLimitWitness<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
+      limitCone: {
+        tip: P,
+        legs: (i: number) => projections(i),
+        diagram,
+      },
+      tuple: EnhancedVect.VectProductsWithTuple.tuple,
+    }
     const wrongTarget: EnhancedVect.VectObj = { dim: 2 }
     const arrow: EnhancedVect.VectMor = { matrix: [[1, 0]], from: X, to: wrongTarget }
 
@@ -444,10 +569,8 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
       EnhancedVect.Vect.equalMor!,
       Ifin,
       F,
-      P,
-      projections,
+      witness,
       arrow,
-      emptyDiagramFor<number>(),
     )
 
     expect(lift.constructed).toBe(false)
@@ -476,7 +599,7 @@ describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
     const { coproduct: C, injections, mediator } =
       CategoryLimits.mediateCoproduct(Ifin, F, EnhancedVect.VectCoproductsWithCotuple, Y, cocone.legs)
 
-    const { triangles, unique } =
+    const { triangles, unique, mediator: coprodMediator } =
       CategoryLimits.isCoproductForCocone(
         EnhancedVect.Vect,
         EnhancedVect.Vect.equalMor!,
@@ -490,6 +613,7 @@ describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
 
     expect(triangles).toBe(true)
     expect(unique).toBe(true)
+    expect(EnhancedVect.Vect.equalMor!(coprodMediator!, mediator)).toBe(true)
 
     const arrowLift = CategoryLimits.arrowFromCocone(
       EnhancedVect.Vect,

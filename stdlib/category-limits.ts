@@ -1823,20 +1823,20 @@ export namespace CategoryLimits {
       F: IndexedFamilies.Family<I, O>,
       productObj: O,
       projections: IndexedFamilies.Family<I, M>,
-      cone: Cone<I, O, M>,                         // f_i : X -> F(i)
+      cone: Cone<I, O, M>, // f_i : X -> F(i)
       tuple: (X: O, legs: ReadonlyArray<M>, P: O) => M,
       options?: { competitor?: M }
     ): { triangles: boolean; unique: boolean; mediator?: M; reason?: string } => {
       const indices = Ifin.carrier
 
-    const validation = validateConeAgainstDiagram({ category: C, eq, indices: Ifin, onObjects: F, cone })
-    if (!validation.valid) {
-      return {
-        triangles: false,
-        unique: false,
-        reason: validation.reason ?? 'isProductForCone: cone legs do not respect the diagram',
+      const validation = validateConeAgainstDiagram({ category: C, eq, indices: Ifin, onObjects: F, cone })
+      if (!validation.valid) {
+        return {
+          triangles: false,
+          unique: false,
+          reason: validation.reason ?? 'isProductForCone: cone legs do not respect the diagram',
+        }
       }
-    }
 
       const legsArr = indices.map((i) => cone.legs(i))
       const mediator = tuple(cone.tip, legsArr, productObj)
@@ -1902,25 +1902,54 @@ export namespace CategoryLimits {
     return { factored: true, mediator: verdict.mediator, unique: verdict.unique }
   }
 
+  export interface ProductLimitWitness<I, O, M> {
+    readonly limitCone: Cone<I, O, M>
+    readonly tuple: (domain: O, legs: ReadonlyArray<M>, product: O) => M
+  }
+
+  const diagramsAgree = <I, O, M>(
+    eq: (a: M, b: M) => boolean,
+    expected: DiagramLike<I, O, M>,
+    actual: DiagramLike<I, O, M>,
+  ): boolean => {
+    const advertised = enumerateDiagramArrows(expected)
+    const provided = enumerateDiagramArrows(actual)
+    if (advertised.length !== provided.length) return false
+    return advertised.every((entry, index) => {
+      const comparison = provided[index]
+      if (!comparison) return false
+      if (!Object.is(entry.source, comparison.source)) return false
+      if (!Object.is(entry.target, comparison.target)) return false
+      return eq(entry.morphism, comparison.morphism)
+    })
+  }
+
   export const arrowFromCone =
     <I, O, M>(
       C: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
       eq: (a: M, b: M) => boolean,
       Ifin: IndexedFamilies.FiniteIndex<I>,
       F: IndexedFamilies.Family<I, O>,
-      productObj: O,
-      projections: IndexedFamilies.Family<I, M>,
+      witness: ProductLimitWitness<I, O, M>,
       cone: Cone<I, O, M>,
-      tuple: (X: O, legs: ReadonlyArray<M>, P: O) => M,
       options?: { competitor?: M }
     ): { success: true; arrow: M; unique: boolean | undefined } | { success: false; reason: string } => {
+      const { limitCone, tuple } = witness
+
+      if (!diagramsAgree(eq, limitCone.diagram, cone.diagram)) {
+        return {
+          success: false,
+          reason: 'arrowFromCone: cone diagram does not match the fixed limit diagram',
+        }
+      }
+
       const factoring = factorConeThroughProduct(
         C,
         eq,
         Ifin,
         F,
-        productObj,
-        projections,
+        limitCone.tip,
+        limitCone.legs,
         cone,
         tuple,
         options,
@@ -1943,12 +1972,12 @@ export namespace CategoryLimits {
       eq: (a: M, b: M) => boolean,
       Ifin: IndexedFamilies.FiniteIndex<I>,
       F: IndexedFamilies.Family<I, O>,
-      productObj: O,
-      projections: IndexedFamilies.Family<I, M>,
+      witness: ProductLimitWitness<I, O, M>,
       arrow: M,
-      diagram: DiagramLike<I, O, M>,
     ): { constructed: true; cone: Cone<I, O, M> } | { constructed: false; reason: string } => {
-      if (C.cod(arrow) !== productObj) {
+      const { limitCone } = witness
+
+      if (C.cod(arrow) !== limitCone.tip) {
         return {
           constructed: false,
           reason: 'coneFromArrow: arrow must target the advertised product object',
@@ -1957,13 +1986,13 @@ export namespace CategoryLimits {
 
       const indices = Ifin.carrier
       for (const index of indices) {
-        const projection = projections(index)
-        if (C.dom(projection) !== productObj) {
+        const projection = limitCone.legs(index)
+        if (C.dom(projection) !== limitCone.tip) {
           return {
             constructed: false,
             reason: `coneFromArrow: projection ${String(index)} has domain ${String(
               C.dom(projection),
-            )} instead of the product object`,
+            )} instead of the limit object`,
           }
         }
         const expectedCodomain = F(index)
@@ -1980,7 +2009,7 @@ export namespace CategoryLimits {
       const cache = new Map<I, M>()
       const legs: IndexedFamilies.Family<I, M> = (i) => {
         if (!cache.has(i)) {
-          cache.set(i, C.compose(projections(i), arrow))
+          cache.set(i, C.compose(limitCone.legs(i), arrow))
         }
         return cache.get(i)!
       }
@@ -1988,13 +2017,14 @@ export namespace CategoryLimits {
       const cone: Cone<I, O, M> = {
         tip: C.dom(arrow),
         legs,
-        diagram,
+        diagram: limitCone.diagram,
       }
 
-      if (!coneRespectsDiagram(C, eq, cone)) {
+      const validation = validateConeAgainstDiagram({ category: C, eq, indices: Ifin, onObjects: F, cone })
+      if (!validation.valid) {
         return {
           constructed: false,
-          reason: 'coneFromArrow: derived cone does not respect the diagram',
+          reason: validation.reason ?? 'coneFromArrow: derived cone does not respect the diagram',
         }
       }
 
@@ -2010,20 +2040,20 @@ export namespace CategoryLimits {
       F: IndexedFamilies.Family<I, O>,
       coproductObj: O,
       injections: IndexedFamilies.Family<I, M>,
-      cocone: Cocone<I, O, M>,                     // g_i : F(i) -> Y
+      cocone: Cocone<I, O, M>, // g_i : F(i) -> Y
       cotuple: (Cop: O, legs: ReadonlyArray<M>, Y: O) => M,
       options?: { competitor?: M }
     ): { triangles: boolean; unique: boolean; mediator?: M; reason?: string } => {
       const indices = Ifin.carrier
 
-    const validation = validateCoconeAgainstDiagram({ category: C, eq, indices: Ifin, onObjects: F, cocone })
-    if (!validation.valid) {
-      return {
-        triangles: false,
-        unique: false,
-        reason: validation.reason ?? 'isCoproductForCocone: cocone legs do not respect the diagram',
+      const validation = validateCoconeAgainstDiagram({ category: C, eq, indices: Ifin, onObjects: F, cocone })
+      if (!validation.valid) {
+        return {
+          triangles: false,
+          unique: false,
+          reason: validation.reason ?? 'isCoproductForCocone: cocone legs do not respect the diagram',
+        }
       }
-    }
 
       const legsArr = indices.map((i) => cocone.legs(i))
       const mediator = cotuple(coproductObj, legsArr, cocone.coTip)
