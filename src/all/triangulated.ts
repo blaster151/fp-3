@@ -3344,8 +3344,10 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     readonly terminate: (X: FinSetObj) => FinSetMor
     readonly initialArrow: (X: FinSetObj) => FinSetMor
     readonly pushout: (f: FinSetMor, g: FinSetMor) => FinSetPushoutWitness
+    readonly traits: { readonly functionalArrows: true }
+    readonly isInjective: (arrow: FinSetMor) => boolean
   } = {
-  
+
   id: (X) => ({ from: X, to: X, map: X.elements.map((_, i) => i) }),
   compose: (g, f) => {
     if (f.to !== g.from) throw new Error('FinSet.compose: shape mismatch')
@@ -3359,6 +3361,18 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     f.to === g.to &&
     f.map.length === g.map.length &&
     f.map.every((v, i) => v === g.map[i]),
+  traits: { functionalArrows: true },
+  isInjective: (arrow) => {
+    if (arrow.map.length !== arrow.from.elements.length) return false
+    const seen = new Set<number>()
+    for (let idx = 0; idx < arrow.map.length; idx++) {
+      const image = arrow.map[idx]
+      if (image === undefined) return false
+      if (seen.has(image)) return false
+      seen.add(image)
+    }
+    return true
+  },
 
   // products: cartesian product
   product: (objs) => {
@@ -3732,15 +3746,142 @@ export const finsetFiniteColimitFromCoproductsAndCoequalizers = <I, A>(
 
 /** FinSet bijection helper */
 export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): FinSetMor => {
-  if (map.length !== from.elements.length) throw new Error('finsetBij: length mismatch')
+  const domainSize = from.elements.length
+  const codomainSize = to.elements.length
+
+  if (map.length !== domainSize) {
+    throw new Error(
+      `FinSet bijection: expected map length ${map.length} to equal domain size ${domainSize}`
+    )
+  }
+  if (codomainSize !== domainSize) {
+    throw new Error(
+      `FinSet bijection: expected codomain size ${codomainSize} to equal domain size ${domainSize}`
+    )
+  }
+
+  const seen = new Set<number>()
+  for (let i = 0; i < map.length; i++) {
+    const target = map[i]
+    if (!Number.isInteger(target) || target < 0 || target >= codomainSize) {
+      if (codomainSize === 0) {
+        throw new Error(`FinSet bijection: map[${i}] = ${target} exceeds an empty codomain`)
+      }
+      throw new Error(
+        `FinSet bijection: map[${i}] = ${target} is outside the codomain range 0..${codomainSize - 1}`
+      )
+    }
+    if (seen.has(target)) {
+      throw new Error(
+        `FinSet bijection: map is not injective; codomain index ${target} has multiple preimages`
+      )
+    }
+    seen.add(target)
+  }
+
   return { from, to, map }
 }
 
-/** FinSet inverse helper */
+/**
+ * FinSet inverse helper.
+ *
+ * The input morphism must be a bijection (total, injective, and surjective). Any
+ * deviation is reported with a descriptive error before attempting to produce the inverse.
+ */
 export const finsetInverse = (bij: FinSetMor): FinSetMor => {
-  const inv: number[] = Array.from({ length: bij.to.elements.length }, () => -1)
-  for (let i = 0; i < bij.map.length; i++) inv[bij.map[i]!] = i
+  const domainSize = bij.from.elements.length
+  const codomainSize = bij.to.elements.length
+
+  if (bij.map.length !== domainSize) {
+    throw new Error(
+      `FinSet inverse: expected map length ${bij.map.length} to equal domain size ${domainSize}`
+    )
+  }
+  if (domainSize !== codomainSize) {
+    throw new Error(
+      `FinSet inverse: expected domain size ${domainSize} to equal codomain size ${codomainSize}`
+    )
+  }
+
+  const inv: number[] = Array.from({ length: codomainSize }, () => -1)
+  for (let i = 0; i < bij.map.length; i++) {
+    const target = bij.map[i]
+    if (!Number.isInteger(target) || target < 0 || target >= codomainSize) {
+      if (codomainSize === 0) {
+        throw new Error(`FinSet inverse: map[${i}] = ${target} exceeds an empty codomain`)
+      }
+      throw new Error(
+        `FinSet inverse: map[${i}] = ${target} is outside the codomain range 0..${codomainSize - 1}`
+      )
+    }
+    if (inv[target] !== -1) {
+      throw new Error(`FinSet inverse: codomain index ${target} has multiple preimages`)
+    }
+    inv[target] = i
+  }
+
+  const missing = inv.indexOf(-1)
+  if (missing !== -1) {
+    throw new Error(`FinSet inverse: codomain index ${missing} is not hit by the map`)
+  }
+
   return { from: bij.to, to: bij.from, map: inv }
+}
+
+const finsetArrowsEqual = (left: FinSetMor, right: FinSetMor): boolean => {
+  const verdict = FinSet.equalMor?.(left, right)
+  if (typeof verdict === "boolean") return verdict
+  if (left.from !== right.from || left.to !== right.to) return false
+  if (left.map.length !== right.map.length) return false
+  return left.map.every((value, index) => value === right.map[index])
+}
+
+const verifyInitialProductIso = (
+  product: FinSetObj,
+  forward: FinSetMor,
+  backward: FinSetMor,
+): void => {
+  const forwardBackward = FinSet.compose(forward, backward)
+  const backwardForward = FinSet.compose(backward, forward)
+  const idInitial = FinSet.id(FinSet.initialObj)
+  const idProduct = FinSet.id(product)
+
+  if (!finsetArrowsEqual(forwardBackward, idInitial)) {
+    throw new Error("FinSet.initial-product iso: forward ∘ backward must equal id_0")
+  }
+  if (!finsetArrowsEqual(backwardForward, idProduct)) {
+    throw new Error("FinSet.initial-product iso: backward ∘ forward must equal id_{A×0}")
+  }
+}
+
+export interface FinSetInitialProductIso {
+  readonly product: FinSetObj
+  readonly projections: readonly [FinSetMor, FinSetMor]
+  readonly forward: FinSetMor
+  readonly backward: FinSetMor
+}
+
+const finsetInitialIso = (
+  projections: readonly [FinSetMor, FinSetMor],
+  product: FinSetObj,
+): FinSetInitialProductIso => {
+  if (product.elements.length !== 0) {
+    throw new Error("FinSet.initial-product iso: product with 0 must have an empty carrier")
+  }
+  const forward = finsetBijection(product, FinSet.initialObj, [])
+  const backward = finsetInverse(forward)
+  verifyInitialProductIso(product, forward, backward)
+  return { product, projections, forward, backward }
+}
+
+export const finsetProductInitialIso = (object: FinSetObj): FinSetInitialProductIso => {
+  const { obj: product, projections } = FinSet.product([object, FinSet.initialObj])
+  return finsetInitialIso(projections as readonly [FinSetMor, FinSetMor], product)
+}
+
+export const finsetInitialProductIso = (object: FinSetObj): FinSetInitialProductIso => {
+  const { obj: product, projections } = FinSet.product([FinSet.initialObj, object])
+  return finsetInitialIso(projections as readonly [FinSetMor, FinSetMor], product)
 }
 
 /** FinSet exponential: X^S (all functions S -> X) */
