@@ -108,6 +108,18 @@ This document catalogs the algebraic laws that our functional programming constr
   1-cells admit identity restrictions with representability witnesses, that
   pointwise left extensions and left lifts share their framing data, and that
   left extensions along fully faithful cells carry invertible counits.
+- **Bicategory coherence hooks:** registry paths
+  `virtualEquipment.bicategory.pentagon` and
+  `virtualEquipment.bicategory.triangle` record the Mac Lane coherence laws for
+  weak composition.  The accompanying oracles in
+  `virtual-equipment/equipment-oracles.ts` call
+  `analyzeBicategoryPentagon`/`analyzeBicategoryTriangle`, comparing the red and
+  green Street pastings derived from the bicategory’s associator and unitors.
+- **Pseudofunctor/biadjunction hooks:** the new `virtualEquipment.pseudofunctor`
+  and `virtualEquipment.biadjunction` registry paths acknowledge the unit and
+  biadjunction triangle coherence requirements.  Oracles currently report
+  pending diagnostics until concrete pseudofunctor/biadjunction data is wired
+  into the equipment context.
 
 ### Relative monad scaffolding
 

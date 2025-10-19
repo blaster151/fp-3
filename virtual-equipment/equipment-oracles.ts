@@ -87,6 +87,14 @@ import {
   type PointwiseLeftExtensionLiftAnalysis,
   type PointwiseLeftExtensionLiftInput,
 } from "./faithfulness";
+import {
+  analyzeBicategoryPentagon,
+  analyzeBicategoryTriangle,
+  type Bicategory,
+  type BicategoryPentagonData,
+  type BicategoryTriangleData,
+} from "./bicategory";
+import type { StreetComparisonEvaluation } from "./street-calculus";
 import type { Tight1Cell, TightCategory } from "./tight-primitives";
 import { TwoObjectCategory } from "../two-object-cat";
 
@@ -222,6 +230,11 @@ export interface EquipmentOracleContext<Obj, Arr, Payload, Evidence> {
       Payload,
       Evidence
     >;
+  };
+  readonly bicategory?: {
+    readonly instance: Bicategory<Obj, Arr, Payload, Evidence>;
+    readonly pentagon: BicategoryPentagonData<Obj, Payload>;
+    readonly triangle: BicategoryTriangleData<Obj, Payload>;
   };
 }
 
@@ -1096,6 +1109,66 @@ export const EquipmentOracles = {
       );
     },
   },
+  bicategory: {
+    pentagon: <Obj, Arr, Payload, Evidence>(
+      context?: EquipmentOracleContext<Obj, Arr, Payload, Evidence>,
+    ): OracleResult<StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>> => {
+      const resolved = resolveContext(context);
+      if (!resolved.bicategory) {
+        return createPendingResult(
+          "bicategoryPentagon",
+          "Bicategory pentagon check requires explicit bicategory data in the oracle context.",
+        );
+      }
+      const evaluation = analyzeBicategoryPentagon(
+        resolved.bicategory.instance,
+        resolved.bicategory.pentagon,
+      );
+      return createOracleResult(
+        "bicategoryPentagon",
+        { holds: evaluation.holds, details: evaluation.details },
+        evaluation,
+      );
+    },
+    triangle: <Obj, Arr, Payload, Evidence>(
+      context?: EquipmentOracleContext<Obj, Arr, Payload, Evidence>,
+    ): OracleResult<StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>> => {
+      const resolved = resolveContext(context);
+      if (!resolved.bicategory) {
+        return createPendingResult(
+          "bicategoryTriangle",
+          "Bicategory triangle check requires explicit bicategory data in the oracle context.",
+        );
+      }
+      const evaluation = analyzeBicategoryTriangle(
+        resolved.bicategory.instance,
+        resolved.bicategory.triangle,
+      );
+      return createOracleResult(
+        "bicategoryTriangle",
+        { holds: evaluation.holds, details: evaluation.details },
+        evaluation,
+      );
+    },
+  },
+  pseudofunctor: {
+    coherence: <Obj, Arr, Payload, Evidence>(
+      context?: EquipmentOracleContext<Obj, Arr, Payload, Evidence>,
+    ): OracleResult =>
+      createPendingResult(
+        "pseudofunctorCoherence",
+        "Pseudofunctor coherence data was not supplied to the oracle context.",
+      ),
+  },
+  biadjunction: {
+    triangle: <Obj, Arr, Payload, Evidence>(
+      context?: EquipmentOracleContext<Obj, Arr, Payload, Evidence>,
+    ): OracleResult =>
+      createPendingResult(
+        "biadjunctionTriangle",
+        "Biadjunction data was not supplied to the oracle context.",
+      ),
+  },
 } as const;
 
 export const enumerateEquipmentOracles = <Obj, Arr, Payload, Evidence>(
@@ -1124,6 +1197,10 @@ export const enumerateEquipmentOracles = <Obj, Arr, Payload, Evidence>(
   EquipmentOracles.absolute.colimit(context),
   EquipmentOracles.absolute.leftExtension(context),
   EquipmentOracles.absolute.pointwiseLeftLift(context),
+  EquipmentOracles.bicategory.pentagon(context),
+  EquipmentOracles.bicategory.triangle(context),
+  EquipmentOracles.pseudofunctor.coherence(context),
+  EquipmentOracles.biadjunction.triangle(context),
 ];
 
 export { enumerateEquipmentOracles as enumeratePendingEquipmentOracles };
@@ -1172,6 +1249,16 @@ export interface EquipmentOracleSummary<Obj, Arr, Payload, Evidence> {
     readonly leftExtension: OracleResult<AbsoluteColimitAnalysis>;
     readonly pointwiseLeftLift: OracleResult<PointwiseLeftLiftAnalysis>;
   };
+  readonly bicategory: {
+    readonly pentagon: OracleResult<StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>>;
+    readonly triangle: OracleResult<StreetComparisonEvaluation<Obj, Arr, Payload, Evidence>>;
+  };
+  readonly pseudofunctor: {
+    readonly coherence: OracleResult;
+  };
+  readonly biadjunction: {
+    readonly triangle: OracleResult;
+  };
   readonly overall: boolean;
 }
 
@@ -1201,6 +1288,10 @@ export const summarizeEquipmentOracles = <Obj, Arr, Payload, Evidence>(
   const absoluteColimit = EquipmentOracles.absolute.colimit(context);
   const absoluteLeftExtension = EquipmentOracles.absolute.leftExtension(context);
   const absolutePointwiseLeftLift = EquipmentOracles.absolute.pointwiseLeftLift(context);
+  const bicategoryPentagon = EquipmentOracles.bicategory.pentagon(context);
+  const bicategoryTriangle = EquipmentOracles.bicategory.triangle(context);
+  const pseudofunctorCoherence = EquipmentOracles.pseudofunctor.coherence(context);
+  const biadjunctionTriangle = EquipmentOracles.biadjunction.triangle(context);
 
   const all = [
     companionUnit,
@@ -1226,6 +1317,10 @@ export const summarizeEquipmentOracles = <Obj, Arr, Payload, Evidence>(
     absoluteColimit,
     absoluteLeftExtension,
     absolutePointwiseLeftLift,
+    bicategoryPentagon,
+    bicategoryTriangle,
+    pseudofunctorCoherence,
+    biadjunctionTriangle,
   ];
 
   return {
@@ -1272,6 +1367,16 @@ export const summarizeEquipmentOracles = <Obj, Arr, Payload, Evidence>(
       leftExtension: absoluteLeftExtension,
       pointwiseLeftLift: absolutePointwiseLeftLift,
     },
-    overall: all.every((entry) => entry.holds && !entry.pending),
+    bicategory: {
+      pentagon: bicategoryPentagon,
+      triangle: bicategoryTriangle,
+    },
+    pseudofunctor: {
+      coherence: pseudofunctorCoherence,
+    },
+    biadjunction: {
+      triangle: biadjunctionTriangle,
+    },
+    overall: all.every((entry) => entry.pending || entry.holds),
   };
 };

@@ -14,3 +14,5 @@ export * from "./faithfulness";
 export * from "./skew-multicategory";
 export * from "../relative/relative-monad";
 export * from "./street-calculus";
+export * from "./bicategory";
+export * from "./bicategory-adapters";
