@@ -27,6 +27,7 @@ import {
 import type { MarkovConditionalReport, MarkovConditionalWitness } from "./markov-conditional-independence";
 import { checkConditionalIndependence, conditionalMarginals } from "./markov-conditional-independence";
 import type { SetObj } from "./set-cat";
+import { isLazySet } from "./set-cat";
 
 export interface MarkovDeterministicWitness<X, Y> {
   readonly domain: MarkovComonoidWitness<X>;
@@ -554,7 +555,8 @@ export interface SetMultDeterminismReport<X, Y> {
   readonly details: string;
 }
 
-const isFinCarrier = <T>(carrier: Fin<T> | SetObj<T>): carrier is Fin<T> => !(carrier instanceof Set);
+const isFinCarrier = <T>(carrier: Fin<T> | SetObj<T>): carrier is Fin<T> =>
+  !(carrier instanceof Set) && !isLazySet(carrier);
 
 const enumerateCarrier = <T>(carrier: Fin<T> | SetObj<T>): ReadonlyArray<T> =>
   isFinCarrier(carrier) ? carrier.elems : Array.from(carrier);
