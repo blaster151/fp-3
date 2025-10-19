@@ -1,7 +1,13 @@
-import type { CSRig } from "./semiring-utils";
+import { type CSRig, isNumericRig } from "./semiring-utils";
 import type { Dist } from "./dist";
 import { bind, dirac, map } from "./dist";
-import type { FinMarkov } from "./markov-category";
+import type { FinMarkov, Dist as FiniteDist } from "./markov-category";
+import {
+  type MeasurableSpace,
+  type ProbabilityMeasure,
+  discreteMeasurableSpace,
+  probabilityFromFinite,
+} from "./giry";
 import type { MarkovComonoidWitness } from "./markov-comonoid-structure";
 import type { MarkovConditionalWitness } from "./markov-conditional-independence";
 import type { DeterminismLemmaWitness } from "./markov-deterministic-structure";
@@ -80,6 +86,32 @@ export interface PositivityWitness<J> {
   readonly reason?: string;
 }
 
+export interface GiryProjectiveFamilyData<J, X> {
+  readonly coordinateSpace: (index: J) => MeasurableSpace<X>;
+  readonly coordinate: (index: J) => ProbabilityMeasure<X>;
+  readonly cylinderSpace: (finite: FiniteSubset<J>) => MeasurableSpace<CylinderSection<J, X>>;
+  readonly marginal: (finite: FiniteSubset<J>) => ProbabilityMeasure<CylinderSection<J, X>>;
+}
+
+export interface ProbabilityProjectiveFamily<J, X, Carrier = ProjectiveLimitSection<J, X>> {
+  readonly index: Iterable<J>;
+  readonly coordinateSpace: (index: J) => MeasurableSpace<X>;
+  readonly coordinate: (index: J) => ProbabilityMeasure<X>;
+  readonly cylinderSpace: (finite: FiniteSubset<J>) => MeasurableSpace<CylinderSection<J, X>>;
+  readonly marginal: (finite: FiniteSubset<J>) => ProbabilityMeasure<CylinderSection<J, X>>;
+  readonly project: (carrier: Carrier, finite: FiniteSubset<J>) => CylinderSection<J, X>;
+  readonly extend?:
+    | ((finite: FiniteSubset<J>, section: CylinderSection<J, X>) => Carrier)
+    | undefined;
+  readonly update?:
+    | ((carrier: Carrier, section: CylinderSection<J, X>) => Carrier)
+    | undefined;
+  readonly kolmogorov?: KolmogorovWitness<J> | undefined;
+  readonly countability?: CountabilityWitness<J> | undefined;
+  readonly measurability?: MeasurabilityWitness<J> | undefined;
+  readonly positivity?: PositivityWitness<J> | undefined;
+}
+
 export interface ProjectiveFamily<R, J, X, Carrier = ProjectiveLimitSection<J, X>> {
   readonly semiring: CSRig<R>;
   readonly index: Iterable<J>;
@@ -96,7 +128,44 @@ export interface ProjectiveFamily<R, J, X, Carrier = ProjectiveLimitSection<J, X
   readonly countability?: CountabilityWitness<J> | undefined;
   readonly measurability?: MeasurabilityWitness<J> | undefined;
   readonly positivity?: PositivityWitness<J> | undefined;
+  readonly giry?: GiryProjectiveFamilyData<J, X> | undefined;
 }
+
+const numericDistToFinite = <Y>(dist: Dist<number, Y>): FiniteDist<Y> => {
+  const result: FiniteDist<Y> = new Map();
+  dist.w.forEach((weight, value) => {
+    result.set(value, weight);
+  });
+  return result;
+};
+
+const probabilityFromNumericDist = <Y>(space: MeasurableSpace<Y>, dist: Dist<number, Y>): ProbabilityMeasure<Y> =>
+  probabilityFromFinite(space, numericDistToFinite(dist));
+
+export const discreteCylinderMeasurableSpace = <J, X>(
+  label?: string
+): MeasurableSpace<CylinderSection<J, X>> => discreteMeasurableSpace<CylinderSection<J, X>>(label);
+
+export const asProbabilityProjectiveFamily = <R, J, X, Carrier>(
+  family: ProjectiveFamily<R, J, X, Carrier>
+): ProbabilityProjectiveFamily<J, X, Carrier> | undefined => {
+  if (!family.giry) return undefined;
+  const { giry } = family;
+  return {
+    index: family.index,
+    coordinateSpace: giry.coordinateSpace,
+    coordinate: giry.coordinate,
+    cylinderSpace: giry.cylinderSpace,
+    marginal: giry.marginal,
+    project: family.project,
+    ...(family.extend === undefined ? {} : { extend: family.extend }),
+    ...(family.update === undefined ? {} : { update: family.update }),
+    ...(family.kolmogorov === undefined ? {} : { kolmogorov: family.kolmogorov }),
+    ...(family.countability === undefined ? {} : { countability: family.countability }),
+    ...(family.measurability === undefined ? {} : { measurability: family.measurability }),
+    ...(family.positivity === undefined ? {} : { positivity: family.positivity }),
+  };
+};
 
 export const enumerateDoubleIndex = <K, J>(
   outer: Iterable<K>,
@@ -239,6 +308,31 @@ export const restrictProjectiveFamily = <R, J, X, Carrier>(
     family.measurability !== undefined ? restrictMeasurabilityWitness(allowed, family.measurability) : undefined;
   const positivity =
     family.positivity !== undefined ? restrictPositivityWitness(allowed, family.positivity) : undefined;
+  const giry =
+    family.giry === undefined
+      ? undefined
+      : {
+          coordinateSpace: (index: J) => {
+            if (!allowed.has(index)) {
+              throw new Error(`Coordinate ${String(index)} is outside the restricted subset.`);
+            }
+            return family.giry.coordinateSpace(index);
+          },
+          coordinate: (index: J) => {
+            if (!allowed.has(index)) {
+              throw new Error(`Coordinate ${String(index)} is outside the restricted subset.`);
+            }
+            return family.giry.coordinate(index);
+          },
+          cylinderSpace: (finite: FiniteSubset<J>) => {
+            ensureSubset(finite);
+            return family.giry.cylinderSpace(finite);
+          },
+          marginal: (finite: FiniteSubset<J>) => {
+            ensureSubset(finite);
+            return family.giry.marginal(finite);
+          },
+        } satisfies GiryProjectiveFamilyData<J, X>;
 
   return {
     semiring: family.semiring,
@@ -282,6 +376,7 @@ export const restrictProjectiveFamily = <R, J, X, Carrier>(
     ...(countability === undefined ? {} : { countability }),
     ...(measurability === undefined ? {} : { measurability }),
     ...(positivity === undefined ? {} : { positivity }),
+    ...(giry === undefined ? {} : { giry }),
   };
 };
 
@@ -694,6 +789,30 @@ export function independentIndexedProduct<R, J, X>(
     explanation: "Independent family Kolmogorov consistency",
   };
 
+  const giry: GiryProjectiveFamilyData<J, X> | undefined = isNumericRig(R)
+    ? (() => {
+        const coordinateSpace = (() => {
+          const space = discreteMeasurableSpace<X>();
+          return (_index: J) => space;
+        })();
+        const cylinderSpace = (() => {
+          const space = discreteCylinderMeasurableSpace<J, X>();
+          return (_finite: FiniteSubset<J>) => space;
+        })();
+        return {
+          coordinateSpace,
+          coordinate: (index: J) =>
+            probabilityFromNumericDist(coordinateSpace(index), coordinate(index) as Dist<number, X>),
+          cylinderSpace,
+          marginal: (finite: FiniteSubset<J>) =>
+            probabilityFromNumericDist(
+              cylinderSpace(finite),
+              marginal(finite) as Dist<number, CylinderSection<J, X>>
+            ),
+        } satisfies GiryProjectiveFamilyData<J, X>;
+      })()
+    : undefined;
+
   return {
     semiring: R,
     index,
@@ -706,6 +825,7 @@ export function independentIndexedProduct<R, J, X>(
     countability,
     ...(measurability === undefined ? {} : { measurability }),
     ...(positivity === undefined ? {} : { positivity }),
+    ...(giry === undefined ? {} : { giry }),
   };
 }
 
@@ -1067,13 +1187,39 @@ export function tensorKolmogorovProducts<R, JL, XL, CL, JR, XR, CR>(
   const countabilityWitness = combineCountability();
   const measurabilityWitness = combineMeasurability();
 
+  const coordinateFn = (index: TensorIndex<JL, JR>): Dist<R, XL | XR> =>
+    (isLeftIndex(index)
+      ? (left.family.coordinate(index.inner) as Dist<R, XL | XR>)
+      : (right.family.coordinate((index as RightIndex<JR>).inner) as Dist<R, XL | XR>));
+
+  const giry: GiryProjectiveFamilyData<TensorIndex<JL, JR>, XL | XR> | undefined = isNumericRig(R)
+    ? (() => {
+        const coordinateSpace = (() => {
+          const space = discreteMeasurableSpace<XL | XR>();
+          return (_index: TensorIndex<JL, JR>) => space;
+        })();
+        const cylinderSpace = (() => {
+          const space = discreteCylinderMeasurableSpace<TensorIndex<JL, JR>, XL | XR>();
+          return (_finite: FiniteSubset<TensorIndex<JL, JR>>) => space;
+        })();
+        return {
+          coordinateSpace,
+          coordinate: (index: TensorIndex<JL, JR>) =>
+            probabilityFromNumericDist(coordinateSpace(index), coordinateFn(index) as Dist<number, XL | XR>),
+          cylinderSpace,
+          marginal: (finite: FiniteSubset<TensorIndex<JL, JR>>) =>
+            probabilityFromNumericDist(
+              cylinderSpace(finite),
+              marginal(finite) as Dist<number, CylinderSection<TensorIndex<JL, JR>, XL | XR>>
+            ),
+        } satisfies GiryProjectiveFamilyData<TensorIndex<JL, JR>, XL | XR>;
+      })()
+    : undefined;
+
   const family: ProjectiveFamily<R, TensorIndex<JL, JR>, XL | XR, TensorCarrier<CL, CR>> = {
     semiring: R,
     index,
-    coordinate: (index) =>
-      (isLeftIndex(index)
-        ? (left.family.coordinate(index.inner) as Dist<R, XL | XR>)
-        : (right.family.coordinate((index as RightIndex<JR>).inner) as Dist<R, XL | XR>)),
+    coordinate: coordinateFn,
     marginal,
     project,
     ...(extend === undefined ? {} : { extend }),
@@ -1082,6 +1228,7 @@ export function tensorKolmogorovProducts<R, JL, XL, CL, JR, XR, CR>(
     ...(countabilityWitness === undefined ? {} : { countability: countabilityWitness }),
     ...(measurabilityWitness === undefined ? {} : { measurability: measurabilityWitness }),
     ...(positivity === undefined ? {} : { positivity }),
+    ...(giry === undefined ? {} : { giry }),
   };
 
   const infObj = createInfObj(family);

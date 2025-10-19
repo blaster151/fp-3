@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { mkFin, FinMarkov, IFin } from "../../markov-category";
+import { makeProbabilityMeasure } from "../../giry";
 import { createMarkovOracleRegistry } from "../../markov-oracles";
 import {
   buildBorelKolmogorovWitness,
@@ -49,6 +50,41 @@ describe("Kolmogorov zero–one witness adapters for BorelStoch", () => {
     (omega) => omega[0],
     (omega) => omega[1],
     (omega) => omega[2],
+  ];
+
+  const realSegments = tripleFin.elems.map((tuple, index) => ({
+    tuple,
+    midpoint: (index + 0.5) / tripleFin.elems.length,
+  }));
+
+  const realMeasure = makeProbabilityMeasure<number>(
+    {
+      label: "unit interval (simple σ-algebra)",
+      isMeasurable: () => true,
+    },
+    (f) => {
+      const weight = 1 / realSegments.length;
+      return realSegments.reduce((acc, { midpoint }) => acc + weight * f(midpoint), 0);
+    },
+    (set) => {
+      const weight = 1 / realSegments.length;
+      return realSegments.reduce((acc, { midpoint }) => acc + (set(midpoint) ? weight : 0), 0);
+    },
+  );
+
+  const tupleFromReal = (omega: number): Triple => {
+    const index = Math.min(realSegments.length - 1, Math.floor(omega * realSegments.length));
+    const found = realSegments[index]?.tuple;
+    if (!found) {
+      throw new Error("Real-to-triple adapter encountered an out-of-range segment");
+    }
+    return found;
+  };
+
+  const realCoords: ReadonlyArray<MeasurableMap<number, Bit>> = [
+    (omega) => tupleFromReal(omega)[0],
+    (omega) => tupleFromReal(omega)[1],
+    (omega) => tupleFromReal(omega)[2],
   ];
 
   const sampler: Sampler<Triple> = () => {
@@ -120,5 +156,33 @@ describe("Kolmogorov zero–one witness adapters for BorelStoch", () => {
     expect(report.holds).toBe(false);
     expect(report.ciFamilyVerified).toBe(false);
     expect(report.failures.some((entry) => entry.F === "first" || entry.F === "second")).toBe(true);
+  });
+
+  it("accepts Giry-style omega measures alongside finite outputs", () => {
+    const constantTail: Indicator<Triple> = () => 1;
+    const witness = buildBorelKolmogorovWitness(
+      () => realSegments[0]?.midpoint ?? 0,
+      realCoords,
+      product,
+      finiteMarginals,
+      constantTail,
+      {
+        label: "Borel tail (ω-measure)",
+        omegaMeasure: realMeasure,
+        productSpace: tripleFin,
+      },
+    );
+
+    const report = checkBorelKolmogorovZeroOne(witness);
+    expect(report.holds).toBe(true);
+    expect(report.deterministic).toBe(true);
+    const unit = IFin.elems[0];
+    if (!unit) {
+      throw new Error("Expected IFin to contain a terminal element");
+    }
+    const composite = report.composite.k(unit);
+    expect(composite.size).toBe(1);
+    const deterministicValue = [...composite.values()][0] ?? 0;
+    expect(deterministicValue).toBeCloseTo(1, 10);
   });
 });

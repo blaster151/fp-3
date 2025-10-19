@@ -18,6 +18,23 @@
 
 import type { Dist as Dist2Param, Samp } from "./dist";
 import type { CSRig } from "./semiring-utils";
+import {
+  type MeasurableSpace,
+  type MeasurableSet,
+  type ProbabilityMeasure,
+  type ProbabilityKernel,
+  GiryMonad,
+  giryBind,
+  giryMap,
+  giryProduct,
+  giryOf,
+  giryJoin,
+  makeGiryKleisli,
+  probabilityFromFinite,
+  discreteMeasurableSpace,
+  productMeasurableSpace,
+  IMeasurable,
+} from "./giry";
 
 // Single-parameter Dist type for probability distributions (numeric weights)
 export type Dist<T> = Map<T, number>;
@@ -177,6 +194,69 @@ export function tensor<X1, Y1, X2, Y2>(f: Kernel<X1, Y1>, g: Kernel<X2, Y2>): Ke
     return prune(out);
   };
 }
+
+// --------------------------------------------------------------------------------
+// Measure-valued kernels (Giry monad façade)
+// --------------------------------------------------------------------------------
+
+export type MeasureKernel<X, Y> = ProbabilityKernel<X, Y>;
+
+export function composeMeasure<X, Y, Z>(
+  targetSpace: MeasurableSpace<Z>,
+  f: MeasureKernel<X, Y>,
+  g: MeasureKernel<Y, Z>,
+): MeasureKernel<X, Z> {
+  return (x: X) => giryBind(f(x), targetSpace, g);
+}
+
+export function deterministicMeasure<X, Y>(
+  targetSpace: MeasurableSpace<Y>,
+  f: (x: X) => Y,
+): MeasureKernel<X, Y> {
+  return (x: X) => giryOf(targetSpace, f(x));
+}
+
+export function tensorMeasure<X1, Y1, X2, Y2>(
+  productSpace: MeasurableSpace<Pair<Y1, Y2>>,
+  f: MeasureKernel<X1, Y1>,
+  g: MeasureKernel<X2, Y2>,
+): MeasureKernel<Pair<X1, X2>, Pair<Y1, Y2>> {
+  return ([x1, x2]) => giryProduct(f(x1), g(x2), productSpace);
+}
+
+export function copyMeasure<X>(
+  space: MeasurableSpace<X>,
+  productSpace: MeasurableSpace<Pair<X, X>>,
+): MeasureKernel<X, Pair<X, X>> {
+  return (x: X) => giryOf(productSpace, [x, x] as const);
+}
+
+export function discardMeasure<X>(
+  unitSpace: MeasurableSpace<I>,
+): MeasureKernel<X, I> {
+  return () => giryOf(unitSpace, {});
+}
+
+export function swapMeasure<X, Y>(
+  swappedSpace: MeasurableSpace<Pair<Y, X>>,
+): MeasureKernel<Pair<X, Y>, Pair<Y, X>> {
+  return ([x, y]) => giryOf(swappedSpace, [y, x] as const);
+}
+
+export function embedFiniteDistribution<X>(
+  space: MeasurableSpace<X>,
+  dist: Dist<X>,
+): ProbabilityMeasure<X> {
+  return probabilityFromFinite(space, dist);
+}
+
+export function measurableFromFin<X>(
+  _fin: Fin<X>,
+  label = "discrete",
+): MeasurableSpace<X> {
+  return discreteMeasurableSpace(label);
+}
+
 
 // Symmetry (braiding): swap : X ⊗ Y -> Y ⊗ X
 export function swap<X, Y>(): Kernel<Pair<X, Y>, Pair<Y, X>> {
@@ -906,6 +986,10 @@ export function monadIsAffine1(M: DistLikeMonadSpec): boolean { return M.isAffin
 export function assertMarkov(M: DistLikeMonadSpec) {
   if (!M.isAffine1) throw new Error("This Kleisli category is not Markov (monad is not affine: T(1) ≄ 1)");
 }
+
+// Re-export measurable/Giry utilities for external consumers
+export { GiryMonad, giryMap, giryJoin, makeGiryKleisli, probabilityFromFinite, discreteMeasurableSpace, productMeasurableSpace, IMeasurable };
+export type { MeasurableSpace, MeasurableSet, ProbabilityMeasure, ProbabilityKernel };
 
 // ===============================================================================================
 // (E) Named types & morphism/law predicates (developer-facing API)
