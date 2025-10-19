@@ -1829,6 +1829,29 @@ export namespace CategoryLimits {
     ): { triangles: boolean; unique: boolean; mediator?: M; reason?: string } => {
       const indices = Ifin.carrier
 
+      for (const index of indices) {
+        const leg = cone.legs(index)
+        if (!Object.is(C.dom(leg), cone.tip)) {
+          return {
+            triangles: false,
+            unique: false,
+            reason: `isProductForCone: leg ${String(index)} has domain ${String(
+              C.dom(leg),
+            )} instead of the cone tip`,
+          }
+        }
+        const expectedCodomain = F(index)
+        if (!Object.is(C.cod(leg), expectedCodomain)) {
+          return {
+            triangles: false,
+            unique: false,
+            reason: `isProductForCone: leg ${String(index)} targets ${String(
+              C.cod(leg),
+            )} rather than ${String(expectedCodomain)}`,
+          }
+        }
+      }
+
     const validation = validateConeAgainstDiagram({ category: C, eq, indices: Ifin, onObjects: F, cone })
     if (!validation.valid) {
       return {
@@ -2015,6 +2038,29 @@ export namespace CategoryLimits {
       options?: { competitor?: M }
     ): { triangles: boolean; unique: boolean; mediator?: M; reason?: string } => {
       const indices = Ifin.carrier
+
+      for (const index of indices) {
+        const leg = cocone.legs(index)
+        const expectedDomain = F(index)
+        if (!Object.is(C.dom(leg), expectedDomain)) {
+          return {
+            triangles: false,
+            unique: false,
+            reason: `isCoproductForCocone: leg ${String(index)} has domain ${String(
+              C.dom(leg),
+            )} instead of ${String(expectedDomain)}`,
+          }
+        }
+        if (!Object.is(C.cod(leg), cocone.coTip)) {
+          return {
+            triangles: false,
+            unique: false,
+            reason: `isCoproductForCocone: leg ${String(index)} targets ${String(
+              C.cod(leg),
+            )} instead of the cocone cotip`,
+          }
+        }
+      }
 
     const validation = validateCoconeAgainstDiagram({ category: C, eq, indices: Ifin, onObjects: F, cocone })
     if (!validation.valid) {
