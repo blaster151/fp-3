@@ -5,17 +5,21 @@ declare function require(id: string): any;
 
 type ContinuousMapModule = typeof import("../../src/top/ContinuousMap");
 type ContRegistryModule = typeof import("../../src/top/ContRegistry");
+type ContPacksModule = typeof import("../../src/top/cont_packs");
 type SpacesModule = typeof import("../../src/top/Spaces");
 type TopologyModule = typeof import("../../src/top/Topology");
 
 type ContinuityError<X, Y> = Error & { readonly witness?: ContinuityWitness<X, Y> };
 
 const { makeContinuousMap, compose, identity } = require("../../src/top/ContinuousMap") as ContinuousMapModule;
-const { summarizeCont, runContAll } = require("../../src/top/ContRegistry") as ContRegistryModule;
+const { createContRegistry } = require("../../src/top/ContRegistry") as ContRegistryModule;
+const { registerContinuityPacks } = require("../../src/top/cont_packs") as ContPacksModule;
 const { sierpinskiStructure, discreteSpace, coSierpinskiStructure } = require("../../src/top/Spaces") as SpacesModule;
 const { indiscrete } = require("../../src/top/Topology") as TopologyModule;
 
-require("../../src/top/cont_packs");
+const registry = createContRegistry();
+registerContinuityPacks(registry);
+const { summarize: summarizeCont, runAll: runContAll } = registry;
 
 const eqNum = (a: number, b: number) => a === b;
 

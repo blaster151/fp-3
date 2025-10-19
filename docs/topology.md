@@ -12,7 +12,7 @@ resulting morphism with a `ContinuityWitness`. The witness exposes whether conti
 holds, a `verify` callback that recomputes the check, and the precise open-set
 preimages that failed so diagnostics can surface counterexamples. Successful
 certificates include an enriched payload (currently a note plus every preimage) so
-compositions can inherit human-readable explanations.【F:src/top/ContinuousMap.ts†L24-L205】【F:src/top/ContinuousMap.ts†L206-L322】
+compositions can inherit human-readable explanations.【F:src/top/ContinuousMap.ts†L24-L205】【F:src/top/ContinuousMap.ts†L206-L323】
 
 The `compose` helper reuses those enriched payloads: when both components carry witness
 notes the composite aggregates them and appends a `"composition witness"` marker so any
@@ -22,15 +22,17 @@ stable even when several constructions share the same underlying witnesses.【F:
 ## Registry reporters and descriptors
 
 `ContRegistry` records featured continuous maps under stable descriptor tags. The
-registry exposes `runContAll`, `summarizeCont`, and Markdown/JSON renderers so demos
-can surface the same continuity evidence that our tests assert on. Each registry entry
+`createContRegistry` factory hides the registry entries inside a closure and returns
+methods (`register`, `runAll`, `summarize`, plus Markdown/JSON renderers) so demos can
+surface the same continuity evidence that our tests assert on. Each registry entry
 stores the raw witness (including any enriched payload) so downstream tooling can
-inspect open-set failures or human-authored notes without re-running the check.【F:src/top/ContRegistry.ts†L1-L68】【F:src/top/ContRegistry.ts†L69-L104】
+inspect open-set failures or human-authored notes without re-running the check.【F:src/top/ContRegistry.ts†L33-L98】
 
-The catalogue in `cont_packs.ts` pre-registers the continuity demos showcased in the
-runnable examples. Because every entry is constructed with `makeContinuousMap`, the
-registry reports inherit the enriched witnesses described above, and the tags double as
-human-readable descriptors for documentation and diagnostics.【F:src/top/cont_packs.ts†L1-L220】
+The catalogue in `cont_packs.ts` populates a registry instance with the continuity
+demos showcased in the runnable examples. Because every entry is constructed with
+`makeContinuousMap`, the registry reports inherit the enriched witnesses described
+above, and the tags double as human-readable descriptors for documentation and
+diagnostics.【F:src/top/cont_packs.ts†L19-L224】
 
 ## Sample spaces and limit reporters
 
