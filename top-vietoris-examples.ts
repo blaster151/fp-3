@@ -195,7 +195,11 @@ function enumerateFiniteSubsets(arity: number): Array<ReadonlyArray<number>> {
   };
 
   dfs(0);
-  return results.map((subset) => subset.toSorted((a, b) => a - b));
+  return results.map((subset) => {
+    const ordered = [...subset];
+    ordered.sort((a, b) => a - b);
+    return ordered;
+  });
 }
 
 function normalizeFiniteSubsets(
@@ -205,7 +209,7 @@ function normalizeFiniteSubsets(
   const pool = subsets ? [...subsets] : enumerateFiniteSubsets(arity);
   const normalized: Array<ReadonlyArray<number>> = [];
   for (const subset of pool) {
-    const ordered = subset.toSorted((a, b) => a - b);
+    const ordered = [...subset].sort((a, b) => a - b);
     if (ordered.some((index) => index < 0 || index >= arity)) {
       throw new Error(`Top/Vietoris constant law: subset ${ordered.join(",")} exceeds factor range [0, ${arity}).`);
     }

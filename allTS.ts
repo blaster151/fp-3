@@ -436,6 +436,7 @@ export {
   type WellPointednessAnalysis,
 } from "./traits/well-pointedness"
 export { nonEpiWitnessInSet, type NonEpiWitness } from "./kinds/epi-witness-set"
+export * from "./src/all/finset-tools"
 export {
   FinSetCat,
   type FinSetName,

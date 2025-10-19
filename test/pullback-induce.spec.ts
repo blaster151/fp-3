@@ -132,7 +132,8 @@ const makeInduceFixture = (mode: FixtureMode): InduceFixture => {
     toAnchor: p2Anc,
   }
 
-  return { category, f, g, h, j, pullbackOfF, pullbackOfG, mediator }
+  const fixture = { category, f, g, h, j, pullbackOfF, pullbackOfG }
+  return mediator ? { ...fixture, mediator } : fixture
 }
 
 describe('PullbackCalculator.induce', () => {

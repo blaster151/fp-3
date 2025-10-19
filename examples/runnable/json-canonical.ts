@@ -110,7 +110,7 @@ function canonicalizeInternal(
     const canonicalItems = processed.map((entry) => entry.canonical);
     const collisions = processed.flatMap((entry) => entry.collisions);
     const sortedItems = policy.sortArrays
-      ? canonicalItems.toSorted((left, right) =>
+      ? [...canonicalItems].sort((left, right) =>
           stringifyCanonical(left).localeCompare(stringifyCanonical(right)),
         )
       : canonicalItems;
@@ -163,7 +163,7 @@ function canonicalizeInternal(
     });
   }, []);
 
-  const sorted = grouped.toSorted((left, right) => left.canonicalKey.localeCompare(right.canonicalKey));
+  const sorted = [...grouped].sort((left, right) => left.canonicalKey.localeCompare(right.canonicalKey));
 
   const collisions = sorted.flatMap((entry) => {
     if (entry.originalKeys.length > 1) {
@@ -192,7 +192,7 @@ function mergeDuplicateValues(values: ReadonlyArray<JsonValue>): JsonValue {
   if (values.length <= 1) {
     return values[0] ?? null;
   }
-  const ordered = values.toSorted((left, right) =>
+  const ordered = [...values].sort((left, right) =>
     stringifyCanonical(left).localeCompare(stringifyCanonical(right)),
   );
   return ordered;
@@ -215,7 +215,7 @@ function toEJson(value: JsonValue): EJson {
     return { type: "array", items: value.map(toEJson) };
   }
   const entries = Object.entries(value).map(([key, child]) => ({ key, value: toEJson(child) }));
-  const sorted = entries.toSorted((left, right) => left.key.localeCompare(right.key));
+  const sorted = [...entries].sort((left, right) => left.key.localeCompare(right.key));
   return { type: "object", entries: sorted };
 }
 

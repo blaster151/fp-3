@@ -48,7 +48,12 @@ describe('FinSet cartesian closed structure', () => {
       from: productXA.obj,
       to: B,
       map: productXA.obj.elements.map(tuple => {
-        const [xIx, aIx] = tuple as ReadonlyArray<number>
+        const coords = tuple as ReadonlyArray<number>
+        const xIx = coords[0]
+        const aIx = coords[1]
+        if (xIx === undefined || aIx === undefined) {
+          throw new Error('FinSet CCC: expected binary product tuple')
+        }
         return (xIx * 2 + aIx) % B.elements.length
       })
     }
@@ -73,7 +78,12 @@ describe('FinSet cartesian closed structure', () => {
       from: productXA.obj,
       to: B,
       map: productXA.obj.elements.map(tuple => {
-        const [xIx, aIx] = tuple as ReadonlyArray<number>
+        const coords = tuple as ReadonlyArray<number>
+        const xIx = coords[0]
+        const aIx = coords[1]
+        if (xIx === undefined || aIx === undefined) {
+          throw new Error('FinSet CCC: expected binary product tuple')
+        }
         return (xIx + aIx * 2) % B.elements.length
       })
     }

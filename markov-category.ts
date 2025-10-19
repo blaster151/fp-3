@@ -879,8 +879,16 @@ export function checkFubini<A, B>(M: DistLikeMonadSpec, da: Dist<A>, db: Dist<B>
   const lhs = M.product(da, db);
   // Right: bind/map route
   const rhs = M.bind(da, (a) => M.map(db, (b) => [a, b] as const));
-  const L = Array.from(lhs.entries()).toSorted();
-  const R = Array.from(rhs.entries()).toSorted();
+  const L = Array.from(lhs.entries());
+  const R = Array.from(rhs.entries());
+  const entryKey = ([[a, b]]: [readonly [A, B], number]) => `${String(a)}::${String(b)}`;
+  const compareEntries = (left: [readonly [A, B], number], right: [readonly [A, B], number]) => {
+    const lk = entryKey(left);
+    const rk = entryKey(right);
+    return lk < rk ? -1 : lk > rk ? 1 : 0;
+  };
+  L.sort(compareEntries);
+  R.sort(compareEntries);
   if (L.length !== R.length) return false;
   for (let i = 0; i < L.length; i++) {
     const [kl, vl] = L[i] as unknown as [[A, B], number];

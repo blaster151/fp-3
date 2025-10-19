@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   FinSet,
+  FinSetProductsWithTuple,
   makeFinSetObj,
   makeFinitePullbackCalculator,
   monoByPullbackSquare,
@@ -32,6 +33,9 @@ const makeIsoFixture = () => {
 
   const pullbackPairs = A.elements.map((_, index) => {
     const target = f.map[index]
+    if (target === undefined) {
+      throw new Error('iso fixture: forward arrow must cover every domain element')
+    }
     const partner = gInv.map[target]
     if (partner === undefined) {
       throw new Error('iso fixture: expected inverse to supply a matching index')
@@ -303,7 +307,7 @@ describe('Pullback iso and mono preservation', () => {
     const monoResult = monoByPullbackSquare({
       category: FinSet,
       calculator: fixture.calculator,
-      products: FinSet,
+      products: FinSetProductsWithTuple,
       arrow: fixture.span.right,
     })
 
@@ -312,7 +316,7 @@ describe('Pullback iso and mono preservation', () => {
     const nonMonoResult = monoByPullbackSquare({
       category: FinSet,
       calculator: fixture.calculator,
-      products: FinSet,
+      products: FinSetProductsWithTuple,
       arrow: fixture.nonMono,
     })
 

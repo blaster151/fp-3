@@ -25,7 +25,9 @@ const uniqueSortedKeys = (keys: ReadonlyArray<string>): ReadonlyArray<string> =>
       unique.push(key);
     }
   }
-  return unique.toSorted();
+  const sorted = [...unique];
+  sorted.sort();
+  return sorted;
 };
 
 const formatElements = <Element>(

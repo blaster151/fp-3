@@ -3,7 +3,8 @@ import { registry as generatedRegistry } from "./catalogue";
 
 const registry: RunnableRegistry = [...generatedRegistry];
 
-const sortedRegistry = registry.toSorted((a, b) => a.id.localeCompare(b.id));
+const sortedRegistry = [...registry];
+sortedRegistry.sort((a, b) => a.id.localeCompare(b.id));
 
 for (let index = 0; index < sortedRegistry.length; index += 1) {
   const expected = sortedRegistry[index];

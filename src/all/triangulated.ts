@@ -2606,6 +2606,7 @@ const assertNestedListElements = (
 export const makeFinSetObj = <T>(elements: ReadonlyArray<T>): FinSetObjOf<T> => ({ elements })
 
 const terminalFinSetObj: FinSetObj = { elements: [null] }
+const initialFinSetObj: FinSetObj = { elements: [] }
 
 const terminateFinSetAtTerminal = (X: FinSetObj): FinSetMor => ({
   from: X,
@@ -2670,7 +2671,10 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
   CategoryLimits.HasCoequalizers<FinSetObj, FinSetMor> &
   CategoryLimits.HasInitial<FinSetObj, FinSetMor> &
   CategoryLimits.HasTerminal<FinSetObj, FinSetMor> &
-  CartesianClosedCategory<FinSetObj, FinSetMor> = {
+  CartesianClosedCategory<FinSetObj, FinSetMor> & {
+    readonly terminate: (X: FinSetObj) => FinSetMor
+    readonly initialArrow: (X: FinSetObj) => FinSetMor
+  } = {
   
   id: (X) => ({ from: X, to: X, map: X.elements.map((_, i) => i) }),
   compose: (g, f) => {
@@ -2763,12 +2767,14 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     return { obj: Q, coequalize: q }
   },
 
-  initialObj: { elements: [] },
+  initialObj: initialFinSetObj,
   terminalObj: terminalFinSetObj,
   terminal: {
     obj: terminalFinSetObj,
     terminate: terminateFinSetAtTerminal
   },
+  terminate: terminateFinSetAtTerminal,
+  initialArrow: (target: FinSetObj): FinSetMor => ({ from: initialFinSetObj, to: target, map: [] }),
   binaryProduct: (A: FinSetObj, B: FinSetObj) => buildBinaryProductWitness(A, B),
   exponential: (A: FinSetObj, B: FinSetObj) => {
     const expObj = expFinSet(B, A)
@@ -3254,18 +3260,19 @@ type SliceArrModel = SliceArrowModel<FinSetNameModel, FuncArrModel>
 export function makeSliceProductsWithTuple(
   base: FinSetCategoryModel,
   anchor: FinSetNameModel,
+  options?: { pullbacks?: PullbackCalculator<FinSetNameModel, FuncArrModel> },
 ): CategoryLimits.HasProductMediators<SliceObjModel, SliceArrModel>
 export function makeSliceProductsWithTuple<Obj, Arr>(
-  base: ToolkitFiniteCategory<Obj, Arr>,
+  base: ToolkitFiniteCategory<Obj, Arr> | BaseFiniteCategory<Obj, Arr>,
   anchor: Obj,
-  options: { pullbacks: PullbackCalculator<Obj, Arr> },
+  options?: { pullbacks?: PullbackCalculator<Obj, Arr> },
 ): CategoryLimits.HasProductMediators<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>>
 export function makeSliceProductsWithTuple<Obj, Arr>(
-  base: ToolkitFiniteCategory<Obj, Arr>,
+  base: ToolkitFiniteCategory<Obj, Arr> | BaseFiniteCategory<Obj, Arr>,
   anchor: Obj,
-  options: { pullbacks?: PullbackCalculator<Obj, Arr> } = {},
+  options?: { pullbacks?: PullbackCalculator<Obj, Arr> },
 ): CategoryLimits.HasProductMediators<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>> {
-  const { pullbacks } = options
+  const { pullbacks } = options ?? {}
   return {
     product: (objs) => {
       const baseCategory = base as unknown as BaseFiniteCategory<Obj, Arr>
