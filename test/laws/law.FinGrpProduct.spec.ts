@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest"
 
 import { CategoryLimits, FinGrpProductsWithTuple, isIsoByInverseSearch } from "../../allTS"
-import { FinGrp, FinGrpCat, type FinGrpObj, type Hom as FinGrpHom } from "../../models/fingroup-cat"
+import {
+  FinGrp,
+  FinGrpCat,
+  createFinGrpProductMetadataStore,
+  type FinGrpObj,
+  type Hom as FinGrpHom,
+} from "../../models/fingroup-cat"
 import type { Functor } from "../../functor"
 import { checkProductUP } from "../../product-up"
 
@@ -23,7 +29,8 @@ describe("Finite group direct products", () => {
   const Z3 = cyclicGroup(3, "Z₃")
   const domain = cyclicGroup(6, "Z₆")
 
-  const product = FinGrp.product(Z2, Z3, { name: "Z₂×Z₃" })
+  const productStore = createFinGrpProductMetadataStore()
+  const product = FinGrp.product(Z2, Z3, productStore, { name: "Z₂×Z₃" })
   const swapWitness = product.swap?.()
   if (!swapWitness) {
     throw new Error("FinGrp.product should expose a swap isomorphism")
@@ -220,7 +227,8 @@ describe("Finite group direct products", () => {
 
 describe("Finite group diagonals", () => {
   const Z2 = cyclicGroup(2, "Z₂")
-  const product = FinGrp.product(Z2, Z2, { name: "Z₂×Z₂" })
+  const store = createFinGrpProductMetadataStore()
+  const product = FinGrp.product(Z2, Z2, store, { name: "Z₂×Z₂" })
   const diagonalWitness = product.diagonal?.()
   if (!diagonalWitness) {
     throw new Error("FinGrp.product should expose a diagonal when factors coincide")
@@ -248,8 +256,9 @@ describe("Finite group unit isomorphisms", () => {
   const terminal = FinGrp.trivial()
   const Z2 = cyclicGroup(2, "Z₂")
 
-  const leftProduct = FinGrp.product(terminal, Z2, { name: "1×Z₂" })
-  const rightProduct = FinGrp.product(Z2, terminal, { name: "Z₂×1" })
+  const unitStore = createFinGrpProductMetadataStore()
+  const leftProduct = FinGrp.product(terminal, Z2, unitStore, { name: "1×Z₂" })
+  const rightProduct = FinGrp.product(Z2, terminal, unitStore, { name: "Z₂×1" })
 
   const leftUnit = leftProduct.leftUnit?.()
   if (!leftUnit) {
@@ -367,8 +376,9 @@ describe("Finite group componentwise arrows", () => {
   const Z3 = cyclicGroup(3, "Z₃")
   const domain = cyclicGroup(6, "Z₆")
 
-  const source = FinGrp.product(Z2, Z3, { name: "Z₂×Z₃" })
-  const target = FinGrp.product(Z2, Z3, { name: "Z₂×Z₃'" })
+  const componentStore = createFinGrpProductMetadataStore()
+  const source = FinGrp.product(Z2, Z3, componentStore, { name: "Z₂×Z₃" })
+  const target = FinGrp.product(Z2, Z3, componentStore, { name: "Z₂×Z₃'" })
 
   const builder = source.componentwise
   if (!builder) {
@@ -475,8 +485,9 @@ describe("Finite group componentwise arrows", () => {
   })
 
   it("threads through FinGrp.productMany via CategoryLimits", () => {
-    const finite = FinGrp.productMany([Z2, Z3], { name: "Z₂×Z₃ (finite)" })
-    const finiteTarget = FinGrp.productMany([Z2, Z3], { name: "Z₂×Z₃ (finite target)" })
+    const finiteStore = createFinGrpProductMetadataStore()
+    const finite = FinGrp.productMany([Z2, Z3], finiteStore, { name: "Z₂×Z₃ (finite)" })
+    const finiteTarget = FinGrp.productMany([Z2, Z3], finiteStore, { name: "Z₂×Z₃ (finite target)" })
     const finiteBuilder = finite.componentwise
     if (!finiteBuilder) {
       throw new Error("FinGrp.productMany should expose componentwise constructors for binary arity")
@@ -584,7 +595,8 @@ describe("Finite group pairing naturality", () => {
   const Z3 = cyclicGroup(3, "Z₃")
   const domain = cyclicGroup(6, "Z₆")
 
-  const product = FinGrp.product(Z2, Z3, { name: "Z₂×Z₃" })
+  const store = createFinGrpProductMetadataStore()
+  const product = FinGrp.product(Z2, Z3, store, { name: "Z₂×Z₃" })
 
   const category = FinGrpCat([Z2, Z3, domain, product.object])
   const compose = category.compose
@@ -665,8 +677,9 @@ describe("Finite group triple products", () => {
   const Z3 = cyclicGroup(3, "Z₃")
   const domain = cyclicGroup(6, "Z₆")
 
-  const tripleWitness = FinGrp.productMany([Z2, Z2Alt, Z3])
-  const pairWitness = FinGrp.product(Z2Alt, Z3)
+  const tripleStore = createFinGrpProductMetadataStore()
+  const tripleWitness = FinGrp.productMany([Z2, Z2Alt, Z3], tripleStore)
+  const pairWitness = FinGrp.product(Z2Alt, Z3, tripleStore)
 
   const indices = { carrier: [0, 1, 2] as const }
   const factors = [Z2, Z2Alt, Z3] as const

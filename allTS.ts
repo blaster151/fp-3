@@ -471,6 +471,7 @@ export {
 export {
   FinGrpCat,
   FinGrp,
+  createFinGrpProductMetadataStore,
   type FinGrpCategory,
   type FinGrpObj,
   type Hom as FinGrpHom,
@@ -478,6 +479,7 @@ export {
   type FinGrpFiniteProductWitness,
   type FinGrpProductDiagonal,
   type FinGrpProductUnit,
+  type FinGrpProductMetadataStore,
 } from "./models/fingroup-cat"
 export {
   makeToyNonEpicProductCategory,

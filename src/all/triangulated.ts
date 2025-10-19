@@ -44,6 +44,7 @@ import type {
 import type { FiniteCategory as BaseFiniteCategory } from "../../finite-cat"
 import {
   FinGrp as FinGrpModel,
+  createFinGrpProductMetadataStore,
   type FinGrpObj as FinGrpObjModel,
   type Hom as FinGrpHomModel,
 } from "../../models/fingroup-cat"
@@ -3257,12 +3258,15 @@ export const codensityMapFinSet = <BO, BM>(
 
 
 /** Mediator-enabled FinGrp adapters */
+const finGrpProductsStore = createFinGrpProductMetadataStore()
+
 export const FinGrpProductsWithTuple: CategoryLimits.HasProductMediators<FinGrpObjModel, FinGrpHomModel> = {
   product: (objs) => {
-    const witness = FinGrpModel.productMany(objs)
+    const witness = FinGrpModel.productMany(objs, finGrpProductsStore)
     return { obj: witness.object, projections: witness.projections }
   },
-  tuple: (domain, legs, product) => FinGrpModel.tupleMany(domain, legs, product)
+  tuple: (domain, legs, product) =>
+    FinGrpModel.tupleMany(finGrpProductsStore, domain, legs, product),
 }
 
 type SliceObjModel = SliceObjectModel<FinSetNameModel, FuncArrModel>
