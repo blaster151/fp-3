@@ -131,6 +131,35 @@ export interface EquipmentRestrictionResult<Obj, Arr, Payload, Evidence> {
  * helpers expose the natural-transformation calculus so equipment-level
  * constructions can reuse the same implementations.
  */
+export type Tight1CellEquality<Obj, Arr> = (
+  left: Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>,
+  right: Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>,
+) => boolean;
+
+export type Tight2CellEquality<Obj, Arr> = <
+  F extends Tight1Cell<unknown, unknown>,
+  G extends Tight1Cell<unknown, unknown>,
+>(
+  left: Tight2Cell<F, G>,
+  right: Tight2Cell<F, G>,
+) => boolean;
+
+export const defaultTight1CellEquality = <Obj, Arr>(
+  left: Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>,
+  right: Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>,
+): boolean => left === right;
+
+export const defaultTight2CellEquality = <Obj, Arr>(
+  left: Tight2Cell<
+    Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>,
+    Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>
+  >,
+  right: Tight2Cell<
+    Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>,
+    Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>
+  >,
+): boolean => left === right;
+
 export interface EquipmentTightLayer<Obj, Arr> {
   readonly category: TightCategory<Obj, Arr>;
   readonly identity: TightIdentity<TightCategory<Obj, Arr>>;
@@ -175,6 +204,33 @@ export interface EquipmentTightLayer<Obj, Arr> {
     cell: Tight2Cell<G, H>,
     functor: F,
   ) => Tight2Cell<TightComposition<G, F>, TightComposition<H, F>>;
+  readonly equals1Cell?: Tight1CellEquality<Obj, Arr>;
+  readonly equals2Cell?: Tight2CellEquality<Obj, Arr>;
+}
+
+export interface EquipmentWeakComposition<Obj, Arr, Payload, Evidence> {
+  readonly associator: (
+    h: EquipmentProarrow<Obj, Payload>,
+    g: EquipmentProarrow<Obj, Payload>,
+    f: EquipmentProarrow<Obj, Payload>,
+  ) => Equipment2Cell<Obj, Arr, Payload, Evidence> | undefined;
+  readonly associatorInverse?: (
+    h: EquipmentProarrow<Obj, Payload>,
+    g: EquipmentProarrow<Obj, Payload>,
+    f: EquipmentProarrow<Obj, Payload>,
+  ) => Equipment2Cell<Obj, Arr, Payload, Evidence> | undefined;
+  readonly leftUnitor: (
+    f: EquipmentProarrow<Obj, Payload>,
+  ) => Equipment2Cell<Obj, Arr, Payload, Evidence> | undefined;
+  readonly leftUnitorInverse?: (
+    f: EquipmentProarrow<Obj, Payload>,
+  ) => Equipment2Cell<Obj, Arr, Payload, Evidence> | undefined;
+  readonly rightUnitor: (
+    f: EquipmentProarrow<Obj, Payload>,
+  ) => Equipment2Cell<Obj, Arr, Payload, Evidence> | undefined;
+  readonly rightUnitorInverse?: (
+    f: EquipmentProarrow<Obj, Payload>,
+  ) => Equipment2Cell<Obj, Arr, Payload, Evidence> | undefined;
 }
 
 /**
@@ -186,6 +242,7 @@ export interface VirtualEquipment<Obj, Arr, Payload, Evidence> {
   readonly objects: ReadonlyArray<Obj>;
   readonly equalsObjects?: ObjectEquality<Obj>;
   readonly tight: EquipmentTightLayer<Obj, Arr>;
+  readonly weakComposition?: EquipmentWeakComposition<Obj, Arr, Payload, Evidence>;
   readonly proarrows: {
     readonly identity: (object: Obj) => EquipmentProarrow<Obj, Payload>;
     readonly horizontalCompose: (
@@ -311,10 +368,11 @@ export const verticalBoundariesEqual = <Obj, Arr>(
   equality: ObjectEquality<Obj>,
   left: EquipmentVerticalBoundary<Obj, Arr>,
   right: EquipmentVerticalBoundary<Obj, Arr>,
+  equalsTight: Tight1CellEquality<Obj, Arr> = defaultTight1CellEquality,
 ): boolean =>
   equality(left.from, right.from) &&
   equality(left.to, right.to) &&
-  left.tight === right.tight;
+  equalsTight(left.tight, right.tight);
 
 export const isIdentityVerticalBoundary = <Obj, Arr, Payload, Evidence>(
   equipment: VirtualEquipment<Obj, Arr, Payload, Evidence>,
@@ -322,10 +380,11 @@ export const isIdentityVerticalBoundary = <Obj, Arr, Payload, Evidence>(
   boundary: EquipmentVerticalBoundary<Obj, Arr>,
 ): boolean => {
   const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const equalsTight = equipment.tight.equals1Cell ?? defaultTight1CellEquality<Obj, Arr>;
   return (
     equality(boundary.from, object) &&
     equality(boundary.to, object) &&
-    boundary.tight === equipment.tight.identity
+    equalsTight(boundary.tight, equipment.tight.identity)
   );
 };
 
@@ -510,6 +569,7 @@ export const horizontalComposeCells = <Obj, Arr, Payload, Evidence>(
   alpha: Equipment2Cell<Obj, Arr, Payload, Evidence>,
 ): Equipment2Cell<Obj, Arr, Payload, Evidence> | undefined => {
   const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const equalsTight = equipment.tight.equals1Cell ?? defaultTight1CellEquality<Obj, Arr>;
   if (
     !framesComposableHorizontally(equality, alpha.source, beta.source) ||
     !framesComposableHorizontally(equality, alpha.target, beta.target)
@@ -521,6 +581,7 @@ export const horizontalComposeCells = <Obj, Arr, Payload, Evidence>(
       equality,
       alpha.boundaries.right,
       beta.boundaries.left,
+      equalsTight,
     )
   ) {
     return undefined;
@@ -956,6 +1017,8 @@ export const defaultTightLayer = <Obj, Arr>(
   horizontalCompose2: tightHorizontalCompose2,
   whiskerLeft: tightWhiskerLeft,
   whiskerRight: tightWhiskerRight,
+  equals1Cell: defaultTight1CellEquality,
+  equals2Cell: defaultTight2CellEquality,
 });
 
 export interface VirtualizeCategoryOptions<Obj> {

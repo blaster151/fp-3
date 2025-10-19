@@ -98,6 +98,20 @@ machinery into the equipment setting.
   faithful tight cells have invertible counits.  Together with the weighted
   colimit and density modules, these reports feed the Theorem 4.29 summaries
   consumed by the relative layer’s skew-monoid bridge.
+- `bicategory.ts` packages a bicategory-facing façade for any virtual
+  equipment that provides weak composition data.  It exposes
+  `bicategoryFromEquipment` to surface associators/unitors, and ships
+  executable analyzers `analyzeBicategoryPentagon` and
+  `analyzeBicategoryTriangle` that reuse the Street pasting calculus to compare
+  red/green composites.
+- `bicategory-adapters.ts` realises a canonical weak example by turning finite
+  sets and spans into a bicategory.  The module implements the span 2-cell
+  calculus, wires weak composition through to the bicategory façade, and exports
+  `makeFiniteSpanBicategory` together with `createFiniteSpan` for constructing
+  concrete spans in tests and examples.  The coherence analyzers power the
+  Vitest suite in `test/virtual-equipment/bicategory-span.spec.ts`, which checks
+  that the pentagon and triangle oracles succeed on representative finite-span
+  composites.
 - `equipment-laws.ts` and `equipment-oracles.ts` sketch the coherence laws we
   intend to check and provide pending-oracle stubs that follow the existing
   oracle conventions in the repository.  A `summarizeEquipmentOracles` helper

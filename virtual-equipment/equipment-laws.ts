@@ -10,6 +10,30 @@ export interface EquipmentLawDescriptor {
 }
 
 export const EquipmentLawRegistry = {
+  bicategoryPentagon: {
+    name: "Bicategory pentagon coherence",
+    registryPath: "virtualEquipment.bicategory.pentagon",
+    summary:
+      "Associator 2-cells for any quadruple of composable 1-cells satisfy Mac Lane's pentagon coherence diagram.",
+  },
+  bicategoryTriangle: {
+    name: "Bicategory triangle coherence",
+    registryPath: "virtualEquipment.bicategory.triangle",
+    summary:
+      "The left and right unitors intertwine with the associator to satisfy the triangle identity for each composable pair.",
+  },
+  pseudofunctorCoherence: {
+    name: "Pseudofunctor coherence",
+    registryPath: "virtualEquipment.pseudofunctor.coherence",
+    summary:
+      "Composition and unit comparators of a pseudofunctor obey the standard associativity and unital coherence constraints.",
+  },
+  biadjunctionTriangle: {
+    name: "Biadjunction triangle laws",
+    registryPath: "virtualEquipment.biadjunction.triangle",
+    summary:
+      "Units and counits of a biadjunction satisfy the left and right triangle identities up to the specified adjoint equivalences.",
+  },
   companionUnit: {
     name: "Companion unit coherence",
     registryPath: "virtualEquipment.companion.unit",

@@ -4,6 +4,7 @@ import type {
 } from "./virtual-equipment";
 import {
   defaultObjectEquality,
+  defaultTight1CellEquality,
   horizontalComposeCells,
   verticalComposeCells,
 } from "./virtual-equipment";
@@ -265,6 +266,7 @@ const compareVerticalBoundaries = <Obj, Arr, Payload, Evidence>(
   green: Equipment2Cell<Obj, Arr, Payload, Evidence>["boundaries"]["left"],
 ): string[] => {
   const equality = equipment.equalsObjects ?? defaultObjectEquality<Obj>;
+  const equalsTight = equipment.tight.equals1Cell ?? defaultTight1CellEquality<Obj, Arr>;
   const differences: string[] = [];
 
   if (!equality(red.from, green.from)) {
@@ -279,7 +281,7 @@ const compareVerticalBoundaries = <Obj, Arr, Payload, Evidence>(
     );
   }
 
-  if (red.tight !== green.tight) {
+  if (!equalsTight(red.tight, green.tight)) {
     differences.push(`${label} ${side} boundary tight witnesses differ.`);
   }
 
