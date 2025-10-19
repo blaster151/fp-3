@@ -119,6 +119,7 @@ describe('Traversable laws', () => {
   it('Smart registry: auto-derive Sum/Prod/Comp traversables', async () => {
     const R = makeTraversableRegistryK1()
     const getTrav = makeSmartGetTraversableK1(R)
+    const meta = R.metadata
     
     // Register base traversables
     const OptionF: EndofunctorK1<'Option'> = { map: mapO }
@@ -127,9 +128,9 @@ describe('Traversable laws', () => {
     R.register(ResultF, TraversableEitherK1<string>())
     
     // Build composite with meta (auto-derivable)
-    const SumM = SumEndoM(OptionF, ResultF)
-    const ProdM = ProdEndoM(OptionF, ResultF)
-    const CompM = CompEndoM(OptionF, ResultF) // Option ∘ Result
+    const SumM = SumEndoM(meta)(OptionF, ResultF)
+    const ProdM = ProdEndoM(meta)(OptionF, ResultF)
+    const CompM = CompEndoM(meta)(OptionF, ResultF) // Option ∘ Result
     
     // Smart lookup should derive and cache
     const TSumM = getTrav(SumM)
@@ -162,10 +163,11 @@ describe('Traversable laws', () => {
   it('Smart registry: Pair and Const auto-derivation', () => {
     const R = makeTraversableRegistryK1()
     const getTrav = makeSmartGetTraversableK1(R)
-    
+    const meta = R.metadata
+
     // Build with meta
-    const PairM = PairEndoM<'tag'>('tag')
-    const ConstM = ConstEndoM<'value'>('value')
+    const PairM = PairEndoM(meta)<'tag'>('tag')
+    const ConstM = ConstEndoM(meta)<'value'>('value')
     
     // Should auto-derive
     const TPairM = getTrav(PairM)
