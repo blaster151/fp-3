@@ -249,7 +249,9 @@ export {
   makeM2Object,
   makeM2Morphism,
   productM2,
+  makeM2Exponential,
   exponentialM2,
+  curryM2Exponential,
   m2ExponentialComparison,
   checkM2BinaryProduct,
 } from "./m2-set"
