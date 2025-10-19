@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  CategoryLimits,
   FinSetSubobjectClassifier,
+  FinSetTruthArrow,
+  FinSetTruthValues,
   finsetCharacteristicPullback,
+  finsetMonicEpicIso,
+  finsetMonomorphismEqualizer,
   finsetSubobjectLeq,
   finsetSubobjectPartialOrder,
   makeFinSetObj,
@@ -227,6 +232,170 @@ describe('FinSetSubobjectClassifier', () => {
       FinSetSubobjectClassifier.compose(forward, backward),
       FinSetSubobjectClassifier.id(right),
     )
+  })
+
+  it('builds the canonical iso between equivalent subobject classifiers', () => {
+    const swappedTruthValues = makeFinSetObj([true, false])
+
+    const swappedTruthArrow: FinSetMor = {
+      from: FinSetSubobjectClassifier.terminalObj,
+      to: swappedTruthValues,
+      map: [0],
+    }
+
+    const swappedCharacteristic = (mono: FinSetMor): FinSetMor => {
+      const canonical = FinSetSubobjectClassifier.characteristic(mono)
+      const map = canonical.map.map((value) => {
+        if (value === 0) return 1
+        if (value === 1) return 0
+        throw new Error('alternate classifier: characteristic map must be truth-valued.')
+      })
+      return { from: canonical.from, to: swappedTruthValues, map }
+    }
+
+    const swappedSubobjectFromCharacteristic = (chi: FinSetMor) => {
+      if (chi.to !== swappedTruthValues) {
+        throw new Error('alternate classifier: characteristic must land in the swapped truth object.')
+      }
+      const canonical = {
+        from: chi.from,
+        to: FinSetTruthValues,
+        map: chi.map.map((value) => {
+          if (value === 0) return 1
+          if (value === 1) return 0
+          throw new Error('alternate classifier: characteristic map must be truth-valued.')
+        }),
+      }
+      return FinSetSubobjectClassifier.subobjectFromCharacteristic(canonical)
+    }
+
+    const alternate: CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor> = {
+      ...FinSetSubobjectClassifier,
+      truthValues: swappedTruthValues,
+      truthArrow: swappedTruthArrow,
+      characteristic: swappedCharacteristic,
+      subobjectFromCharacteristic: swappedSubobjectFromCharacteristic,
+    }
+
+    const iso = CategoryLimits.buildSubobjectClassifierIso(
+      FinSetSubobjectClassifier,
+      alternate,
+    )
+
+    expect(iso.forward.from).toBe(alternate.truthValues)
+    expect(iso.forward.to).toBe(FinSetSubobjectClassifier.truthValues)
+
+    expectEqualArrows(
+      FinSetSubobjectClassifier.compose(iso.forward, iso.backward),
+      FinSetSubobjectClassifier.id(FinSetSubobjectClassifier.truthValues),
+    )
+    expectEqualArrows(
+      alternate.compose(iso.backward, iso.forward),
+      alternate.id(alternate.truthValues),
+    )
+
+    const transportedTruth = FinSetSubobjectClassifier.compose(
+      iso.forward,
+      swappedTruthArrow,
+    )
+    expectEqualArrows(transportedTruth, FinSetTruthArrow)
+
+    const roundTripTruth = alternate.compose(iso.backward, FinSetTruthArrow)
+    expectEqualArrows(roundTripTruth, swappedTruthArrow)
+  })
+
+  it('exhibits monomorphisms as equalizers via the FinSet classifier', () => {
+    const ambient = makeFinSetObj(['a0', 'a1', 'a2', 'a3'])
+    const subobject = makeFinSetObj(['s0', 's1'])
+    const inclusion: FinSetMor = { from: subobject, to: ambient, map: [1, 3] }
+
+    const witness = finsetMonomorphismEqualizer(inclusion)
+
+    expectEqualArrows(witness.equalizer.equalize, witness.canonical.inclusion)
+    expect(sameObject(witness.equalizer.obj, witness.canonical.subobject)).toBe(true)
+
+    expectEqualArrows(
+      witness.canonicalCharacteristicComposite,
+      witness.canonicalTruthComposite,
+    )
+    expectEqualArrows(
+      witness.domainCharacteristicComposite,
+      witness.domainTruthComposite,
+    )
+
+    const wedge = makeFinSetObj(['w0', 'w1'])
+    const wedgeToAmbient: FinSetMor = { from: wedge, to: ambient, map: [1, 3] }
+
+    const canonicalFactoring = witness.factorCanonical({
+      left: witness.characteristic,
+      right: witness.truthComposite,
+      inclusion: witness.canonical.inclusion,
+      fork: wedgeToAmbient,
+    })
+    expect(canonicalFactoring.factored).toBe(true)
+    expect(canonicalFactoring.mediator).toBeDefined()
+    const canonicalMediator = canonicalFactoring.mediator!
+    wedge.elements.forEach((_value, index) => {
+      const mediatorIndex = canonicalMediator.map[index]
+      expect(mediatorIndex).toBeDefined()
+      expect(witness.canonical.inclusion.map[mediatorIndex!]).toBe(
+        wedgeToAmbient.map[index],
+      )
+    })
+
+    const monoFactoring = witness.factorMonomorphism({
+      left: witness.characteristic,
+      right: witness.truthComposite,
+      inclusion,
+      fork: wedgeToAmbient,
+    })
+    expect(monoFactoring.factored).toBe(true)
+    expect(monoFactoring.mediator).toBeDefined()
+    const monoMediator = monoFactoring.mediator!
+    expectEqualArrows(
+      FinSetSubobjectClassifier.compose(inclusion, monoMediator),
+      wedgeToAmbient,
+    )
+
+    const skewFork: FinSetMor = { from: wedge, to: ambient, map: [1, 2] }
+    const skewVerdict = witness.factorCanonical({
+      left: witness.characteristic,
+      right: witness.truthComposite,
+      inclusion: witness.canonical.inclusion,
+      fork: skewFork,
+    })
+    expect(skewVerdict.factored).toBe(false)
+    expect(skewVerdict.reason).toMatch(/canonical|fork|subobject/i)
+  })
+
+  it('constructs balanced inverses for bijective FinSet arrows', () => {
+    const domain = makeFinSetObj(['d0', 'd1'])
+    const codomain = makeFinSetObj(['c0', 'c1'])
+
+    const bijection: FinSetMor = { from: domain, to: codomain, map: [1, 0] }
+    const isoVerdict = finsetMonicEpicIso(bijection)
+
+    expect(isoVerdict.found).toBe(true)
+    expect(isoVerdict.witness).toBeDefined()
+    const witness = isoVerdict.witness!
+
+    expectEqualArrows(
+      FinSetSubobjectClassifier.compose(witness.backward, witness.forward),
+      FinSetSubobjectClassifier.id(domain),
+    )
+    expectEqualArrows(
+      FinSetSubobjectClassifier.compose(witness.forward, witness.backward),
+      FinSetSubobjectClassifier.id(codomain),
+    )
+    expectEqualArrows(
+      witness.equalizer.characteristic,
+      witness.equalizer.truthComposite,
+    )
+
+    const nonEpic: FinSetMor = { from: domain, to: codomain, map: [0, 0] }
+    const failure = finsetMonicEpicIso(nonEpic)
+    expect(failure.found).toBe(false)
+    expect(failure.reason).toMatch(/epic|inverse|monic/i)
   })
 
   it('rejects malformed characteristic maps through the pullback helper', () => {

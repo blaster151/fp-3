@@ -149,6 +149,73 @@ export namespace CategoryLimits {
     ) => { readonly subobject: O; readonly inclusion: M }
   }
 
+  export interface SubobjectClassifierIsoWitness<M> {
+    readonly forward: M
+    readonly backward: M
+  }
+
+  export interface BuildSubobjectClassifierIsoOptions<M> {
+    readonly equalMor?: (left: M, right: M) => boolean
+  }
+
+  export const buildSubobjectClassifierIso = <O, M>(
+    first: SubobjectClassifierCategory<O, M>,
+    second: SubobjectClassifierCategory<O, M>,
+    options?: BuildSubobjectClassifierIsoOptions<M>,
+  ): SubobjectClassifierIsoWitness<M> => {
+    const eq =
+      options?.equalMor ??
+      first.equalMor ??
+      first.eq ??
+      second.equalMor ??
+      second.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    const forward = first.characteristic(second.truthArrow)
+
+    if (first.dom(forward) !== second.truthValues) {
+      throw new Error(
+        'CategoryLimits.buildSubobjectClassifierIso: forward arrow must originate at the alternate truth object.',
+      )
+    }
+    if (first.cod(forward) !== first.truthValues) {
+      throw new Error(
+        'CategoryLimits.buildSubobjectClassifierIso: forward arrow must land in the primary truth object.',
+      )
+    }
+
+    const backward = second.characteristic(first.truthArrow)
+
+    if (second.dom(backward) !== first.truthValues) {
+      throw new Error(
+        'CategoryLimits.buildSubobjectClassifierIso: backward arrow must originate at the primary truth object.',
+      )
+    }
+    if (second.cod(backward) !== second.truthValues) {
+      throw new Error(
+        'CategoryLimits.buildSubobjectClassifierIso: backward arrow must land in the alternate truth object.',
+      )
+    }
+
+    const firstComposite = first.compose(forward, backward)
+    const firstId = first.id(first.truthValues)
+    if (!eq(firstComposite, firstId)) {
+      throw new Error(
+        'CategoryLimits.buildSubobjectClassifierIso: forward ∘ backward must equal the identity on the primary truth object.',
+      )
+    }
+
+    const secondComposite = second.compose(backward, forward)
+    const secondId = second.id(second.truthValues)
+    if (!eq(secondComposite, secondId)) {
+      throw new Error(
+        'CategoryLimits.buildSubobjectClassifierIso: backward ∘ forward must equal the identity on the alternate truth object.',
+      )
+    }
+
+    return { forward, backward }
+  }
+
   /** Category with finite colimits */
   export interface FinitelyCocompleteCategory<O, M>
     extends Category<O, M>,
