@@ -28,6 +28,12 @@ This document catalogs the algebraic laws that our functional programming constr
 - Code: `ProductCat(C, D)` returns the product category; projections `Pi1`, `Pi2` pick out components, and `Pairing(F, G, C, D)` builds the functor induced by two components.
 - Universal property: `checkProductUP(C, D, F, G, H, objects, arrows)` confirms that a candidate mediator \(H\) satisfies \(\pi_1 \circ H = F\), \(\pi_2 \circ H = G\), and \(H = \langle F, G \rangle\) on supplied samples.
 
+### M₂ exponentials
+
+- **Witness builder**: `exponentialM2({ base, codomain })` enumerates every equivariant map \(B \\to C\) in the idempotent-split category, packages them as the carrier of \(C^B\), and verifies the pointwise idempotent induced by `codomain.endo` preserves the subset.
+- **Currying helper**: `curryM2({ product, morphism, exponential })` produces the unique mediator \(\lambda f : A \\to C^B\) whose composite with the evaluation morphism recovers \(f : A \times B \\to C\), rejecting attempts that escape the enumerated exponential carrier.
+- **Tests**: `test/m2-set.spec.ts` covers the exponential universal property by curried reconstruction, detection of non-equivariant mediators, and the uniqueness check for evaluative factorisations.
+
 ### Duals and contravariant functors
 
 - The **opposite category** \(C^{\mathrm{op}}\) reverses all arrows while preserving identities. Construct via `Dual(C)`; `isInvolutive(C, arrows, objs)` sanity-checks that \((C^{\mathrm{op}})^{\mathrm{op}} = C` on samples.

@@ -4,10 +4,17 @@ import type { DynSys } from '../dynsys';
 import { checkAction, isMSetHom } from '../mset';
 import {
   checkM2BinaryProduct,
+  composeM2,
+  curryM2,
   dynHomToM2,
   dynToM2,
+  equalM2Morphisms,
+  exponentialM2,
+  isM2Morphism,
   makeM2Morphism,
   makeM2Object,
+  type M2EquivariantFunction,
+  type M2ExponentialWitness,
   type M2Object,
   M2SetCat,
   m2HomToDyn,
@@ -145,5 +152,103 @@ describe('M2 binary products', () => {
     });
     expect(check.holds).toBe(false);
     expect(check.issues.some((issue) => issue.includes('preserve the chosen subset'))).toBe(true);
+  });
+});
+
+describe('M2 exponentials', () => {
+  const eqNumber = (a: number, b: number) => a === b;
+
+  const A = makeM2Object({
+    carrier: ['idle', 'pulse'] as const,
+    endo: (value: 'idle' | 'pulse') => (value === 'pulse' ? 'idle' : value),
+  });
+
+  const B = makeM2Object({
+    carrier: ['quiet', 'ring'] as const,
+    endo: (value: 'quiet' | 'ring') => (value === 'ring' ? 'quiet' : value),
+  });
+
+  const C = makeM2Object({
+    carrier: [0, 1] as const,
+    endo: (value: number) => (value === 1 ? 0 : value),
+    eq: eqNumber,
+  });
+
+  const product = productM2({
+    left: A,
+    right: B,
+  });
+
+  const f = makeM2Morphism({
+    dom: product.object,
+    cod: C,
+    map: ([a, b]: readonly ['idle' | 'pulse', 'quiet' | 'ring']) =>
+      a === 'pulse' || b === 'ring' ? 1 : 0,
+  });
+
+  const exponential: M2ExponentialWitness<'quiet' | 'ring', number> = exponentialM2({
+    base: B,
+    codomain: C,
+  });
+
+  it('enumerates equivariant maps and provides an evaluation morphism', () => {
+    expect(exponential.object.carrier.length).toBe(2);
+    const nonEquivariant: M2EquivariantFunction<'quiet' | 'ring', number> = {
+      table: [1, 0] as const,
+      apply: (value) => (value === 'ring' ? 0 : 1),
+    };
+    expect(exponential.object.contains(nonEquivariant)).toBe(false);
+
+    const attemptBadMediator = () =>
+      makeM2Morphism({
+        dom: A,
+        cod: exponential.object,
+        map: (value: 'idle' | 'pulse') =>
+          value === 'pulse' ? nonEquivariant : exponential.locate([0, 0]),
+      });
+    expect(attemptBadMediator).toThrowError(/makeM2Morphism/);
+  });
+
+  it('curries morphisms and evaluation recovers the original map', () => {
+    const lambda = curryM2({
+      product,
+      morphism: f,
+      exponential,
+    });
+    expect(isM2Morphism(lambda)).toBe(true);
+
+    const [piA, piB] = product.projections;
+    const mediator = exponential.product.tuple(product.object, [composeM2(lambda, piA), piB]);
+    const recovered = composeM2(exponential.evaluation, mediator);
+
+    expect(equalM2Morphisms(recovered, f)).toBe(true);
+  });
+
+  it('detects alternative mediators and enforces uniqueness', () => {
+    const lambda = curryM2({
+      product,
+      morphism: f,
+      exponential,
+    });
+
+    const duplicate = makeM2Morphism({
+      dom: lambda.dom,
+      cod: lambda.cod,
+      map: lambda.map,
+    });
+    expect(equalM2Morphisms(duplicate, lambda)).toBe(true);
+
+    const [piA, piB] = product.projections;
+    const zeroFunction = exponential.locate(exponential.base.carrier.map(() => 0));
+    const skewLambda = makeM2Morphism({
+      dom: lambda.dom,
+      cod: lambda.cod,
+      map: (value: 'idle' | 'pulse') => (value === 'pulse' ? zeroFunction : lambda.map(value)),
+    });
+
+    const skewMediator = exponential.product.tuple(product.object, [composeM2(skewLambda, piA), piB]);
+    const skewRecovered = composeM2(exponential.evaluation, skewMediator);
+
+    expect(equalM2Morphisms(skewRecovered, f)).toBe(false);
   });
 });

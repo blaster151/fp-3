@@ -51,6 +51,15 @@ type Equality<A> = (left: A, right: A) => boolean;
 const includesWith = <A>(values: readonly A[], value: A, eq: Equality<A>): boolean =>
   values.some((candidate) => eq(candidate, value));
 
+const findIndexWith = <A>(values: readonly A[], value: A, eq: Equality<A>): number => {
+  for (let i = 0; i < values.length; i++) {
+    if (eq(values[i], value)) {
+      return i;
+    }
+  }
+  return -1;
+};
+
 export interface M2Object<A> {
   readonly carrier: readonly A[];
   readonly endo: (a: A) => A;
@@ -345,3 +354,199 @@ export const checkM2BinaryProduct = <A, B, Z>(
 };
 
 export const M2SetCat = MSetCat(M2Monoid);
+
+export interface M2EquivariantFunction<B, C> {
+  readonly table: readonly C[];
+  readonly apply: (value: B) => C;
+}
+
+export interface M2ExponentialWitness<B, C> {
+  readonly base: M2Object<B>;
+  readonly codomain: M2Object<C>;
+  readonly object: M2Object<M2EquivariantFunction<B, C>>;
+  readonly product: M2ProductWitness<M2EquivariantFunction<B, C>, B>;
+  readonly evaluation: M2Morphism<readonly [M2EquivariantFunction<B, C>, B], C>;
+  readonly eqFunction: Equality<M2EquivariantFunction<B, C>>;
+  readonly locate: (table: readonly C[]) => M2EquivariantFunction<B, C>;
+}
+
+const enumerateTables = <C>(length: number, values: readonly C[]): C[][] => {
+  if (length === 0) {
+    return [[]];
+  }
+  const shorter = enumerateTables(length - 1, values);
+  const result: C[][] = [];
+  for (const candidate of values) {
+    for (const tail of shorter) {
+      result.push([candidate, ...tail]);
+    }
+  }
+  return result;
+};
+
+const makeEquivariantFunction = <B, C>(
+  base: M2Object<B>,
+  table: readonly C[],
+): M2EquivariantFunction<B, C> => {
+  const frozenTable = Object.freeze([...table]) as readonly C[];
+  const apply = (value: B): C => {
+    const index = findIndexWith(base.carrier, value, base.eq);
+    if (index < 0) {
+      throw new Error('M2 exponential: attempted to evaluate outside the base carrier');
+    }
+    return frozenTable[index];
+  };
+  return {
+    table: frozenTable,
+    apply,
+  };
+};
+
+export const exponentialM2 = <B, C>(input: {
+  readonly base: M2Object<B>;
+  readonly codomain: M2Object<C>;
+}): M2ExponentialWitness<B, C> => {
+  const { base, codomain } = input;
+
+  const eqFunction: Equality<M2EquivariantFunction<B, C>> = (left, right) => {
+    if (left.table.length !== right.table.length) {
+      return false;
+    }
+    for (let i = 0; i < left.table.length; i++) {
+      if (!codomain.eq(left.table[i], right.table[i])) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const baseEndoIndices = base.carrier.map((value) => {
+    const image = base.endo(value);
+    const index = findIndexWith(base.carrier, image, base.eq);
+    if (index < 0) {
+      throw new Error('M2 exponential: base idempotent must preserve the carrier');
+    }
+    return index;
+  });
+
+  const carrier: M2EquivariantFunction<B, C>[] = [];
+  const tables = enumerateTables(base.carrier.length, codomain.carrier);
+
+  for (const table of tables) {
+    let respectsEquivariance = true;
+    for (let i = 0; i < table.length; i++) {
+      const transported = codomain.endo(table[i]);
+      const image = table[baseEndoIndices[i]];
+      if (!codomain.eq(image, transported)) {
+        respectsEquivariance = false;
+        break;
+      }
+    }
+    if (!respectsEquivariance) {
+      continue;
+    }
+    const element = makeEquivariantFunction(base, table);
+    if (!includesWith(carrier, element, eqFunction)) {
+      carrier.push(element);
+    }
+  }
+
+  const object = makeM2Object<M2EquivariantFunction<B, C>>({
+    carrier,
+    endo: (func) => makeEquivariantFunction(
+      base,
+      func.table.map((value) => codomain.endo(value)),
+    ),
+    eq: eqFunction,
+  });
+
+  const locate = (table: readonly C[]): M2EquivariantFunction<B, C> => {
+    for (const candidate of object.carrier) {
+      if (table.length !== candidate.table.length) {
+        continue;
+      }
+      let matches = true;
+      for (let i = 0; i < table.length; i++) {
+        if (!codomain.eq(table[i], candidate.table[i])) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) {
+        return candidate;
+      }
+    }
+    throw new Error('M2 exponential: table does not describe an equivariant function');
+  };
+
+  const product = productM2({
+    left: object,
+    right: base,
+  });
+
+  const evaluation = makeM2Morphism({
+    dom: product.object,
+    cod: codomain,
+    map: ([func, value]: readonly [M2EquivariantFunction<B, C>, B]) => func.apply(value),
+  });
+
+  return {
+    base,
+    codomain,
+    object,
+    product,
+    evaluation,
+    eqFunction,
+    locate,
+  };
+};
+
+export const curryM2 = <A, B, C>(input: {
+  readonly product: M2ProductWitness<A, B>;
+  readonly morphism: M2Morphism<readonly [A, B], C>;
+  readonly exponential: M2ExponentialWitness<B, C>;
+}): M2Morphism<A, M2EquivariantFunction<B, C>> => {
+  const { product, morphism, exponential } = input;
+
+  if (morphism.dom !== product.object) {
+    throw new Error('curryM2: morphism domain must match the supplied product');
+  }
+  if (morphism.cod !== exponential.codomain) {
+    throw new Error('curryM2: morphism codomain must match the exponential codomain');
+  }
+  if (product.projections[1].cod !== exponential.base) {
+    throw new Error('curryM2: product right factor must be the exponential base');
+  }
+
+  const left = product.projections[0].cod;
+  const baseValues = exponential.base.carrier;
+
+  const lambda = makeM2Morphism({
+    dom: left,
+    cod: exponential.object,
+    map: (value: A) => {
+      if (!left.contains(value)) {
+        throw new Error('curryM2: value must lie in the product left factor');
+      }
+      const table = baseValues.map((b) => {
+        const pair: readonly [A, B] = [value, b];
+        if (!product.object.contains(pair)) {
+          throw new Error('curryM2: attempted to evaluate outside the product carrier');
+        }
+        return morphism.map(pair);
+      });
+      return exponential.locate(table);
+    },
+  });
+
+  const [piLeft, piRight] = product.projections;
+  const lambdaOverProduct = composeM2(lambda, piLeft);
+  const mediator = exponential.product.tuple(product.object, [lambdaOverProduct, piRight]);
+  const recovered = composeM2(exponential.evaluation, mediator);
+
+  if (!equalM2Morphisms(recovered, morphism)) {
+    throw new Error('curryM2: evaluation composed with the mediator must recover the morphism');
+  }
+
+  return lambda;
+};
