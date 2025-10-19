@@ -2,8 +2,17 @@
 // Step 13c: Enhanced BSS with actual dilation search, not just equality checking
 
 import type { Dist } from "./dist";
-import { standardMeasure, equalDistNum } from "./standard-experiment";
+import { toLegacy } from "./dist";
+import { standardMeasure, equalDistNum, type StandardMeasure } from "./standard-experiment";
 import { sosdFromWitness, type Dilation } from "./sosd";
+import { mkFin } from "./markov-category";
+import { blackwellMeasure } from "./experiments";
+import {
+  dominatesInConvexOrder_viaGarbling,
+  dominatesInConvexOrder_grid,
+  type ConvexOrderGridEvidence,
+  type ConvexOrderWitness,
+} from "./dominance";
 
 // ===== Helpers to turn posteriors into vectors over Θ =====
 
@@ -320,6 +329,44 @@ export function bssCompare<
 
 // ===== Enhanced BSS Testing Framework =====
 
+type ConvexOrderEvidence<X, Y> = {
+  viaGarbling: ConvexOrderWitness<X, Y>;
+  gridEvidence: ConvexOrderGridEvidence;
+};
+
+function computeConvexOrderEvidence<
+  Θ extends string | number,
+  X extends string | number,
+  Y extends string | number
+>(
+  m: Dist<number, Θ>,
+  f: (θ: Θ) => Dist<number, X>,
+  g: (θ: Θ) => Dist<number, Y>,
+  xVals: readonly X[],
+  yVals: readonly Y[],
+): ConvexOrderEvidence<X, Y> {
+  const thetaVals = thetaOrder(m);
+  const ThetaFin = mkFin(thetaVals);
+  const XFin = mkFin(xVals);
+  const YFin = mkFin(yVals);
+  const prior = toLegacy(m);
+  const experimentF = (θ: Θ) => toLegacy(f(θ));
+  const experimentG = (θ: Θ) => toLegacy(g(θ));
+
+  const viaGarbling = dominatesInConvexOrder_viaGarbling(
+    ThetaFin,
+    XFin,
+    YFin,
+    experimentF,
+    experimentG,
+  );
+  const muF = blackwellMeasure(ThetaFin, XFin, prior, experimentF);
+  const muG = blackwellMeasure(ThetaFin, YFin, prior, experimentG);
+  const gridEvidence = dominatesInConvexOrder_grid(ThetaFin, muG, muF);
+
+  return { viaGarbling, gridEvidence };
+}
+
 /**
  * Test BSS equivalence with detailed dilation analysis
  */
@@ -339,27 +386,39 @@ export function testBSSDetailed<
   equivalent: boolean;
   dilationFound: boolean;
   details: string;
+  dominance: ConvexOrderEvidence<X, Y>;
 } {
   const fToG = bssCompare(m, f, g, xVals, yVals);
   const gToF = bssCompare(m, g, f, yVals, xVals);
-  
+
   const equivalent = fToG && gToF;
   const dilationFound = fToG || gToF;
-  
-  const details = equivalent 
+
+  const dominance = computeConvexOrderEvidence(m, f, g, xVals, yVals);
+  const dominanceSummary = dominance.viaGarbling.ok
+    ? "convex-order witness found"
+    : "no convex-order witness";
+  const gridSummary = dominance.gridEvidence.probably
+    ? "grid evidence supports dominance"
+    : "grid evidence inconclusive";
+
+  const baseDetails = equivalent
     ? "Experiments are BSS-equivalent (dilations found in both directions)"
-    : fToG 
+    : fToG
     ? "f is more informative than g (dilation found: f ⪰ g)"
     : gToF
     ? "g is more informative than f (dilation found: g ⪰ f)"
     : "Experiments are BSS-incomparable (no dilations found)";
-  
+
+  const details = `${baseDetails} [${dominanceSummary}; ${gridSummary}]`;
+
   return {
     fMoreInformative: fToG,
     gMoreInformative: gToF,
     equivalent,
     dilationFound,
-    details
+    details,
+    dominance,
   };
 }
 
@@ -382,6 +441,7 @@ export function analyzeBSS<
     gHat: StandardMeasure<Θ>;
   };
   bssResult: ReturnType<typeof testBSSDetailed>;
+  dominance: ConvexOrderEvidence<X, Y>;
   dilationAnalysis: {
     fHatSupport: number;
     gHatSupport: number;
@@ -391,10 +451,12 @@ export function analyzeBSS<
   const fHat = standardMeasure(m, f, xVals);
   const gHat = standardMeasure(m, g, yVals);
   const bssResult = testBSSDetailed(m, f, g, xVals, yVals);
-  
+  const dominance = bssResult.dominance;
+
   return {
     standardMeasures: { fHat, gHat },
     bssResult,
+    dominance,
     dilationAnalysis: {
       fHatSupport: fHat.w.size,
       gHatSupport: gHat.w.size,

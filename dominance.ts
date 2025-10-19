@@ -3,6 +3,17 @@ import type { Fin } from "./markov-category";
 import type { Experiment, BlackwellMeasure } from "./experiments";
 import { generateAllFunctions } from "./garbling";
 
+export type ConvexOrderWitness<X, Y> = {
+  ok: boolean;
+  reason: "garbling-equivalence";
+  witness?: (x: X) => Y;
+};
+
+export type ConvexOrderGridEvidence = {
+  probably: boolean;
+  gaps: number[];
+};
+
 // Primary (exact in finite case) via the theorem's equivalence:
 // ĝ_m second-order dominates f̂_m  iff  ∃ C with G = C ∘ F.
 // We use the garbling witness as the test.
@@ -42,12 +53,10 @@ export function dominatesInConvexOrder_viaGarbling<Theta, X, Y>(
   ThetaFin: Fin<Theta>,
   XFin: Fin<X>,
   YFin: Fin<Y>,
-  prior: Map<Theta,number>,
   F: Experiment<Theta,X>,
   G: Experiment<Theta,Y>,
   opts?: { tolEq?: number; tolRow?: number }
-): { ok: boolean; reason: "garbling-equivalence"; } {
-  void prior;
+): ConvexOrderWitness<X, Y> {
   const { tolEq = 1e-9, tolRow = 1e-9 } = opts ?? {};
   const candidates = generateAllFunctions(XFin.elems, YFin.elems);
 
@@ -61,7 +70,7 @@ export function dominatesInConvexOrder_viaGarbling<Theta, X, Y>(
       }
     }
     if (matches) {
-      return { ok: true, reason: "garbling-equivalence" };
+      return { ok: true, reason: "garbling-equivalence", witness: candidate };
     }
   }
 
@@ -73,11 +82,10 @@ export function dominatesInConvexOrder_viaGarbling<Theta, X, Y>(
 // Here φ_v(π) = (⟨v, π⟩)^2 which is convex for every vector v.
 export function dominatesInConvexOrder_grid<Theta, X>(
   ThetaFin: Fin<Theta>,
-  prior: Map<Theta,number>,
   muG: BlackwellMeasure<Theta>,
   muF: BlackwellMeasure<Theta>,
   numTests = 64
-): { probably: boolean; gaps: number[] } {
+): ConvexOrderGridEvidence {
   const thetas = ThetaFin.elems;
   const dim = thetas.length;
   const rng = (seed = 7) => () => (seed = (seed*48271)%0x7fffffff)/0x7fffffff;

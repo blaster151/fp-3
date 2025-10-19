@@ -49,6 +49,7 @@ import { isThunkable, checkThunkabilityRobust } from "./markov-thunkable";
 import { checkDiracMonoidal, checkStrengthNaturality, checkSamplingMonoidal } from "./markov-monoidal";
 import { samplingCancellation, equalDistAS } from "./as-equality";
 import { sosdFromWitness, isDilation } from "./sosd";
+import { dominatesInConvexOrder_viaGarbling, dominatesInConvexOrder_grid } from "./dominance";
 import { moreInformativeClassic, testInformativenessDetailed } from "./garbling";
 import { standardMeasure, posterior } from "./standard-experiment";
 import { bssCompare, testBSSDetailed } from "./bss";
@@ -250,6 +251,10 @@ const createMarkovOracles = ({
   dominance: {
     sosd: sosdFromWitness,
     dilation: isDilation,
+    convexOrder: {
+      viaGarbling: dominatesInConvexOrder_viaGarbling,
+      gridEvidence: dominatesInConvexOrder_grid,
+    },
   },
 
   zeroOne: {
@@ -497,8 +502,9 @@ export function checkAllMarkovLaws<R>(
   };
   
   const dominance = {
-    sosd: true,      // Would need specific test data
-    dilations: true, // Would need specific test data
+    sosd: true,         // Would need specific test data
+    dilations: true,    // Would need specific test data
+    convexOrder: true,  // Would need specific test data
   };
   
   const information = {

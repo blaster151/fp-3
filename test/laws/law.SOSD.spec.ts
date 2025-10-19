@@ -22,6 +22,10 @@ import {
   push
 } from "../../sosd";
 import type { Dilation } from "../../sosd";
+import { dominatesInConvexOrder_viaGarbling, dominatesInConvexOrder_grid } from "../../dominance";
+import { mkFin } from "../../markov-category";
+import { blackwellMeasure } from "../../experiments";
+import type { Experiment } from "../../experiments";
 
 // Helper to create distributions
 const d = (pairs: [number, number][]): Dist<number, number> =>
@@ -406,6 +410,77 @@ describe("SOSD via dilation witness", () => {
       // SOSD relationships should respect products (conceptually)
       const tId = identityProbDilation();
       expect(isDilation(Prob, tId, e, [1, 2])).toBe(true);
+    });
+  });
+
+  describe("Convex-order dominance via garbling", () => {
+    it("confirms coarse experiments dominate their refinements", () => {
+      type Θ = "calm" | "storm";
+      type Raw = "sun" | "cloud" | "rain";
+      type Coarse = "ok" | "alert";
+
+      const ThetaFin = mkFin<Θ>(["calm", "storm"]);
+      const RawFin = mkFin<Raw>(["sun", "cloud", "rain"]);
+      const CoarseFin = mkFin<Coarse>(["ok", "alert"]);
+
+      const prior = new Map<Θ, number>([
+        ["calm", 0.6],
+        ["storm", 0.4],
+      ]);
+
+      const fine: Experiment<Θ, Raw> = (θ) =>
+        θ === "calm"
+          ? new Map<Raw, number>([
+              ["sun", 0.7],
+              ["cloud", 0.2],
+              ["rain", 0.1],
+            ])
+          : new Map<Raw, number>([
+              ["sun", 0.05],
+              ["cloud", 0.35],
+              ["rain", 0.6],
+            ]);
+
+      const coarse: Experiment<Θ, Coarse> = (θ) =>
+        θ === "calm"
+          ? new Map<Coarse, number>([
+              ["ok", 0.9],
+              ["alert", 0.1],
+            ])
+          : new Map<Coarse, number>([
+              ["ok", 0.2],
+              ["alert", 0.8],
+            ]);
+
+      const garblingWitness = dominatesInConvexOrder_viaGarbling(
+        ThetaFin,
+        RawFin,
+        CoarseFin,
+        fine,
+        coarse,
+      );
+      expect(garblingWitness.ok).toBe(true);
+      expect(garblingWitness.witness).toBeDefined();
+      const witness = garblingWitness.witness!;
+      expect(witness("sun")).toBe("ok");
+      expect(witness("cloud")).toBe("alert");
+      expect(witness("rain")).toBe("alert");
+
+      const muFine = blackwellMeasure(ThetaFin, RawFin, prior, fine);
+      const muCoarse = blackwellMeasure(ThetaFin, CoarseFin, prior, coarse);
+      const gridEvidence = dominatesInConvexOrder_grid(ThetaFin, muCoarse, muFine);
+      expect(gridEvidence.probably).toBe(true);
+      const minGap = Math.min(...gridEvidence.gaps);
+      expect(minGap).toBeGreaterThanOrEqual(-1e-9);
+
+      const reversed = dominatesInConvexOrder_viaGarbling(
+        ThetaFin,
+        CoarseFin,
+        RawFin,
+        coarse,
+        fine,
+      );
+      expect(reversed.ok).toBe(false);
     });
   });
 

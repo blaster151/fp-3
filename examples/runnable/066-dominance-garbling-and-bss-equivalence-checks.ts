@@ -68,6 +68,14 @@ type BSSModule = {
       readonly dilationFound: boolean;
       readonly details: string;
     };
+    readonly dominance: {
+      readonly viaGarbling: {
+        readonly ok: boolean;
+        readonly reason: "garbling-equivalence";
+        readonly witness?: (x: X) => Y;
+      };
+      readonly gridEvidence: { readonly probably: boolean; readonly gaps: ReadonlyArray<number> };
+    };
     readonly dilationAnalysis: {
       readonly fHatSupport: number;
       readonly gHatSupport: number;
@@ -230,6 +238,11 @@ function bssSection(): Transcript {
   });
 
   const analysis = analyzeBSS(prior, fineSensor, coarseSensor, ["sun", "cloud", "rain"], ["ok", "alert"]);
+  const minGap = Math.min(...analysis.dominance.gridEvidence.gaps);
+  const garblingWitness = analysis.dominance.viaGarbling.witness;
+  const witnessLine = garblingWitness
+    ? `Convex-order witness (sun→${garblingWitness("sun")}, cloud→${garblingWitness("cloud")}, rain→${garblingWitness("rain")})`
+    : "Convex-order witness unavailable";
 
   return [
     "== Blackwell–Sherman–Stein diagnostics for fine vs coarse sensors ==",
@@ -239,6 +252,9 @@ function bssSection(): Transcript {
     )}`,
     `Dilations considered: ${analysis.dilationAnalysis.searchSpace}`,
     `Support sizes: |f̂|=${analysis.dilationAnalysis.fHatSupport}, |ĝ|=${analysis.dilationAnalysis.gHatSupport}`,
+    `Convex-order via garbling: ${describeBoolean(analysis.dominance.viaGarbling.ok)}`,
+    witnessLine,
+    `Grid dominance evidence: ${describeBoolean(analysis.dominance.gridEvidence.probably)} (min gap ${minGap.toFixed(4)})`,
   ];
 }
 
