@@ -6,6 +6,7 @@ import {
   IndexedFamilies,
   makeFinSetObj,
 } from '../../allTS'
+import { FinSetCoproductsWithCotuple } from '../../src/all/finset-tools'
 import type { FinSetMor, FinSetObj } from '../../allTS'
 import type { ArrowFamilies } from '../../stdlib/arrow-families'
 import type { Category } from '../../stdlib/category'
@@ -219,7 +220,36 @@ describe('CategoryLimits.makeCoconeCategory (finite diagrams)', () => {
     expect(mediatorEntry).toBeDefined()
 
     const expectedArrow = sample.lookup({ from: sample.objects.zero, to: sample.objects.left, map: [] })
-    expect(FinSet.equalMor!(mediatorEntry!.arrow.mediator, expectedArrow)).toBe(true)
+    if (!leftCocone || !mediatorEntry) {
+      throw new Error('expected to locate the left cocone and its mediator')
+    }
+    expect(FinSet.equalMor!(mediatorEntry.arrow.mediator, expectedArrow)).toBe(true)
+
+    const emptyInjections = ((_: never) => {
+      throw new Error('empty diagram has no injections')
+    }) as IndexedFamilies.Family<never, FinSetMor>
+    const canonicalEmptyCocone: CategoryLimits.Cocone<never, FinSetObj, FinSetMor> = {
+      coTip: sample.objects.zero,
+      legs: emptyInjections,
+      diagram: emptyDiagram,
+    }
+
+    const witness = CategoryLimits.isCoproductForCocone(
+      sample.category,
+      FinSet.equalMor!,
+      emptyIndices,
+      emptyFamily,
+      canonicalEmptyCocone.coTip,
+      canonicalEmptyCocone.legs,
+      canonicalEmptyCocone.diagram,
+      leftCocone,
+      FinSetCoproductsWithCotuple.cotuple,
+    )
+
+    expect(witness.triangles).toBe(true)
+    expect(witness.unique).toBe(true)
+    expect(witness.mediator).toBeDefined()
+    expect(FinSet.equalMor!(witness.mediator!, mediatorEntry.arrow.mediator)).toBe(true)
   })
 
   it('certifies coproduct cocones as initial objects', () => {
@@ -273,7 +303,27 @@ describe('CategoryLimits.makeCoconeCategory (finite diagrams)', () => {
       map,
     })
 
-    expect(FinSet.equalMor!(mediatorEntry!.arrow.mediator, expectedMediator)).toBe(true)
+    if (!locatedTarget || !mediatorEntry) {
+      throw new Error('expected to recover the located target cocone and mediator')
+    }
+    expect(FinSet.equalMor!(mediatorEntry.arrow.mediator, expectedMediator)).toBe(true)
+
+    const coproductWitness = CategoryLimits.isCoproductForCocone(
+      sample.category,
+      FinSet.equalMor!,
+      sumIndices,
+      sumFamily,
+      canonicalCocone.coTip,
+      canonicalCocone.legs,
+      canonicalCocone.diagram,
+      targetCocone,
+      FinSetCoproductsWithCotuple.cotuple,
+    )
+
+    expect(coproductWitness.triangles).toBe(true)
+    expect(coproductWitness.unique).toBe(true)
+    expect(coproductWitness.mediator).toBeDefined()
+    expect(FinSet.equalMor!(coproductWitness.mediator!, mediatorEntry.arrow.mediator)).toBe(true)
   })
 
   it('recognises coequalizer cocones as initial objects and rejects malformed legs', () => {
@@ -380,7 +430,27 @@ describe('CategoryLimits.makeCoconeCategory (finite diagrams)', () => {
       to: targetCocone.coTip,
       map: sample.objects.coequalizer.elements.map(() => 0),
     })
-    expect(FinSet.equalMor!(mediatorEntry!.arrow.mediator, expectedMediator)).toBe(true)
+    if (!locatedTarget || !mediatorEntry) {
+      throw new Error('expected to locate the target cocone and its mediator in the coequalizer test')
+    }
+    expect(FinSet.equalMor!(mediatorEntry.arrow.mediator, expectedMediator)).toBe(true)
+
+    const coequalizerWitness = CategoryLimits.isCoproductForCocone(
+      sample.category,
+      FinSet.equalMor!,
+      parallelIndices,
+      parallelFamily,
+      canonicalCocone.coTip,
+      canonicalCocone.legs,
+      canonicalCocone.diagram,
+      targetCocone,
+      FinSetCoproductsWithCotuple.cotuple,
+    )
+
+    expect(coequalizerWitness.triangles).toBe(true)
+    expect(coequalizerWitness.unique).toBe(true)
+    expect(coequalizerWitness.mediator).toBeDefined()
+    expect(FinSet.equalMor!(coequalizerWitness.mediator!, mediatorEntry.arrow.mediator)).toBe(true)
 
     const badCocone: CategoryLimits.Cocone<ParallelIndex, FinSetObj, FinSetMor> = {
       coTip: sample.objects.coequalizer,
@@ -401,5 +471,20 @@ describe('CategoryLimits.makeCoconeCategory (finite diagrams)', () => {
     expect(validation.valid).toBe(false)
     expect(validation.reason).toMatch(/does not commute/)
     expect(coconeCategory.locateCocone(badCocone)).toBeUndefined()
+
+    const rejection = CategoryLimits.isCoproductForCocone(
+      sample.category,
+      FinSet.equalMor!,
+      parallelIndices,
+      parallelFamily,
+      canonicalCocone.coTip,
+      canonicalCocone.legs,
+      canonicalCocone.diagram,
+      badCocone,
+      FinSetCoproductsWithCotuple.cotuple,
+    )
+    expect(rejection.triangles).toBe(false)
+    expect(rejection.unique).toBe(false)
+    expect(rejection.reason).toMatch(/does not commute/)
   })
 })

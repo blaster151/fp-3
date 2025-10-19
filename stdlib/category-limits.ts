@@ -2010,20 +2010,44 @@ export namespace CategoryLimits {
       F: IndexedFamilies.Family<I, O>,
       coproductObj: O,
       injections: IndexedFamilies.Family<I, M>,
+      diagram: DiagramLike<I, O, M>,
       cocone: Cocone<I, O, M>,                     // g_i : F(i) -> Y
       cotuple: (Cop: O, legs: ReadonlyArray<M>, Y: O) => M,
       options?: { competitor?: M }
     ): { triangles: boolean; unique: boolean; mediator?: M; reason?: string } => {
       const indices = Ifin.carrier
 
-    const validation = validateCoconeAgainstDiagram({ category: C, eq, indices: Ifin, onObjects: F, cocone })
-    if (!validation.valid) {
-      return {
-        triangles: false,
-        unique: false,
-        reason: validation.reason ?? 'isCoproductForCocone: cocone legs do not respect the diagram',
+      const colimitCocone: Cocone<I, O, M> = {
+        coTip: coproductObj,
+        legs: (i: I) => injections(i),
+        diagram,
       }
-    }
+
+      const colimitValidation = validateCoconeAgainstDiagram({
+        category: C,
+        eq,
+        indices: Ifin,
+        onObjects: F,
+        cocone: colimitCocone,
+      })
+      if (!colimitValidation.valid) {
+        return {
+          triangles: false,
+          unique: false,
+          reason:
+            colimitValidation.reason ??
+            'isCoproductForCocone: coproduct injections do not respect the diagram',
+        }
+      }
+
+      const validation = validateCoconeAgainstDiagram({ category: C, eq, indices: Ifin, onObjects: F, cocone })
+      if (!validation.valid) {
+        return {
+          triangles: false,
+          unique: false,
+          reason: validation.reason ?? 'isCoproductForCocone: cocone legs do not respect the diagram',
+        }
+      }
 
       const legsArr = indices.map((i) => cocone.legs(i))
       const mediator = cotuple(coproductObj, legsArr, cocone.coTip)
@@ -2031,6 +2055,24 @@ export namespace CategoryLimits {
       let unique = triangles
 
       if (triangles) {
+        if (isFiniteCategoryStructure(C)) {
+          try {
+            const coconeCategory = makeCoconeCategory({ base: C, eq, Ifin, F, diagram })
+            const locatedTarget = coconeCategory.locateCocone(cocone)
+            const initiality = checkInitialCocone(coconeCategory, colimitCocone)
+            if (locatedTarget && initiality.locatedColimit) {
+              if (!initiality.holds) {
+                unique = false
+              } else {
+                const witness = initiality.mediators.find((entry) => entry.target === locatedTarget)
+                if (!witness || !eq(witness.arrow.mediator, mediator)) unique = false
+              }
+            }
+          } catch {
+            // Fall back to legacy uniqueness checks when the finite cocone category cannot be constructed.
+          }
+        }
+
         const competitor = options?.competitor
         if (competitor) {
           const competitorTriangles = coproductMediates(C, eq, injections, competitor, cocone, indices)
@@ -2055,7 +2097,18 @@ export namespace CategoryLimits {
       cotuple: (Cop: O, legs: ReadonlyArray<M>, Y: O) => M,
       options?: { competitor?: M }
     ): { factored: boolean; mediator?: M; unique?: boolean; reason?: string } => {
-      const verdict = isCoproductForCocone(C, eq, Ifin, F, coproductObj, injections, cocone, cotuple, options)
+      const verdict = isCoproductForCocone(
+        C,
+        eq,
+        Ifin,
+        F,
+        coproductObj,
+        injections,
+        cocone.diagram,
+        cocone,
+        cotuple,
+        options,
+      )
       if (!verdict.triangles || !verdict.mediator) {
         return {
           factored: false,

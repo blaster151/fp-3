@@ -484,6 +484,7 @@ describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
         F,
         C,
         injections,
+        cocone.diagram,
         cocone,
         EnhancedVect.VectCoproductsWithCotuple.cotuple
       )
@@ -630,6 +631,7 @@ describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
       F,
       coproductWithGhost,
       injectionsWithGhost,
+      cocone.diagram,
       cocone,
       cotupleWithGhost,
       { competitor: canonical }
@@ -655,6 +657,7 @@ describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
       F,
       coproductWithGhost,
       injectionsWithGhost,
+      cocone.diagram,
       cocone,
       cotupleWithGhost,
       { competitor }
@@ -705,6 +708,7 @@ describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
       F,
       C,
       injections,
+      cocone.diagram,
       cocone,
       EnhancedVect.VectCoproductsWithCotuple.cotuple,
     )
@@ -737,6 +741,7 @@ describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
       F,
       C,
       injections,
+      domainCocone.diagram,
       domainCocone,
       EnhancedVect.VectCoproductsWithCotuple.cotuple,
     )
@@ -760,6 +765,7 @@ describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
       F,
       C,
       injections,
+      codCocone.diagram,
       codCocone,
       EnhancedVect.VectCoproductsWithCotuple.cotuple,
     )

@@ -151,6 +151,7 @@ describe('CategoryLimits cone factoring helpers', () => {
       F,
       coproduct,
       injections,
+      emptyDiagram,
       cocone,
       EnhancedVect.VectCoproductsWithCotuple.cotuple,
       { competitor: mediator },
