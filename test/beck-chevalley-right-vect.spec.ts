@@ -51,8 +51,8 @@ describe('Beck–Chevalley (Π / right Kan) — structural check in Vect', () =>
       const leftCodims = Ran_w.projections(f(i)).map(([, m]) => EnhancedVect.Vect.cod(m).dim)
       const rightCodims = Ran_u.projections(i).map(([, m]) => EnhancedVect.Vect.cod(m).dim)
       const expected = Kfiber.map((k) => G(k).dim).sort((a,b)=>a-b)
-      expect(leftCodims.toSorted((a,b)=>a-b)).toEqual(expected)
-      expect(rightCodims.toSorted((a,b)=>a-b)).toEqual(expected)
+      expect([...leftCodims].sort((a,b)=>a-b)).toEqual(expected)
+      expect([...rightCodims].sort((a,b)=>a-b)).toEqual(expected)
     }
   })
 

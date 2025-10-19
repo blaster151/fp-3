@@ -295,7 +295,7 @@ export const analyzeFiniteVectorRelativeMonad = <R>(
   witness: FiniteVectorRelativeMonadWitness<R>,
 ): FiniteVectorRelativeMonadReport<R> => {
   const { semiring } = witness;
-  const sortedDimensions = witness.dimensions.toSorted((a, b) => a - b);
+  const sortedDimensions = [...witness.dimensions].sort((a, b) => a - b);
   const uniqueDimensions = sortedDimensions.filter(
     (dimension, index, array) => index === 0 || array[index - 1] !== dimension,
   );
@@ -512,9 +512,8 @@ export const analyzeFiniteVectorRelativeMonad = <R>(
     ? `Verified relative monad laws for ${uniqueDimensions.length} dimensions over a semiring with ${semiring.elements.length} elements.`
     : "Relative monad verification uncovered issues; inspect the recorded diagnostics.";
 
-  const enumeratedDimensions = Array.from(vectorsByDimension.keys()).toSorted(
-    (a, b) => a - b,
-  );
+  const enumeratedDimensions = Array.from(vectorsByDimension.keys());
+  enumeratedDimensions.sort((a, b) => a - b);
   const enumeration = materializeIndexedFamily(
     createFiniteIndexedFamily<number, Vector<R>>({
       description: "Finite vector relative monad carrier",
@@ -541,7 +540,7 @@ export const analyzeFiniteVectorKleisliSplitting = <R>(
   witness: FiniteVectorRelativeMonadWitness<R>,
 ): FiniteVectorKleisliSplittingReport<R> => {
   const { semiring } = witness;
-  const sortedDimensions = witness.dimensions.toSorted((a, b) => a - b);
+  const sortedDimensions = [...witness.dimensions].sort((a, b) => a - b);
   const uniqueDimensions = sortedDimensions.filter(
     (dimension, index, array) => index === 0 || array[index - 1] !== dimension,
   );
@@ -734,7 +733,7 @@ export const analyzeFiniteVectorArrowCorrespondence = <R>(
   witness: FiniteVectorArrowCorrespondenceWitness<R>,
 ): FiniteVectorArrowCorrespondenceReport<R> => {
   const { semiring } = witness;
-  const sortedDimensions = witness.dimensions.toSorted((a, b) => a - b);
+  const sortedDimensions = [...witness.dimensions].sort((a, b) => a - b);
   const uniqueDimensions = sortedDimensions.filter(
     (dimension, index, array) => index === 0 || array[index - 1] !== dimension,
   );

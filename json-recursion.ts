@@ -52,7 +52,7 @@ const isPlainObj = (u: unknown): u is Record<string, unknown> =>
 
 const exactKeys = (o: Record<string, unknown>, required: string[], optional: string[] = []): boolean => {
   const ks = Object.keys(o).sort()
-  const need = required.toSorted()
+  const need = [...required].sort()
   if (!need.every((k) => ks.includes(k))) return false
   const allowed = new Set([...required, ...optional])
   return ks.every((k) => allowed.has(k))

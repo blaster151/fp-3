@@ -106,7 +106,7 @@ export const canonicalizationAndExtendedEjsonPolicies: RunnableExample = {
 
     const combinedFold = productFold(numberSumFold, uniqueStringsFold);
     const [sumOfNumbers, stringsEncountered] = foldJson(policyResult.canonical, combinedFold);
-    const sortedStrings = stringsEncountered.toSorted();
+    const sortedStrings = [...stringsEncountered].sort();
 
     const logs = [
       "== Baseline canonicalization ==",
