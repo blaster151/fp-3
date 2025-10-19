@@ -317,6 +317,36 @@ export function makeFinitePullbackCalculator<Obj, Arr>(
     const leftToRight = induce(identityOnDomain, left, right);
     const rightToLeft = induce(identityOnDomain, right, left);
 
+    const leftFactoring = factorPullbackCone(base, right, left);
+    if (!leftFactoring.factored || leftFactoring.mediator === undefined) {
+      const reason = leftFactoring.reason
+        ? `: ${leftFactoring.reason}`
+        : ".";
+      throw new Error(
+        `Pullback comparison: left cone fails to factor uniquely through the right pullback${reason}`,
+      );
+    }
+    if (!base.eq(leftFactoring.mediator, leftToRight)) {
+      throw new Error(
+        "Pullback comparison: induced mediator does not match the left-to-right factoring witness.",
+      );
+    }
+
+    const rightFactoring = factorPullbackCone(base, left, right);
+    if (!rightFactoring.factored || rightFactoring.mediator === undefined) {
+      const reason = rightFactoring.reason
+        ? `: ${rightFactoring.reason}`
+        : ".";
+      throw new Error(
+        `Pullback comparison: right cone fails to factor uniquely through the left pullback${reason}`,
+      );
+    }
+    if (!base.eq(rightFactoring.mediator, rightToLeft)) {
+      throw new Error(
+        "Pullback comparison: induced mediator does not match the right-to-left factoring witness.",
+      );
+    }
+
     const leftIdentity = base.id(left.apex);
     const rightIdentity = base.id(right.apex);
     const roundTripLeft = base.compose(rightToLeft, leftToRight);
