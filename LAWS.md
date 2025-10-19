@@ -1267,6 +1267,14 @@ so failures can be traced to sub-lemmas.
 - **Oracles**: `test/laws/law.FinSetEqualizer.spec.ts` factors a compliant fork, rejects a non-commuting fork and one that lands outside the recorded subset, and demonstrates that parallel equalizer witnesses yield inverse mediators.
 - **Witness Builder**: `finsetFactorThroughEqualizer` and `finsetEqualizerComparison` in `finset-equalizers.ts`.
 
+### Finite-set subobject classifier enumeration
+
+- **Domain**: A finite-set object `A` together with the Boolean classifier `FinSetOmega` and the canonical truth/falsity points exported from `src/all/triangulated.ts`.
+- **Statement**: `listFinSetSubobjects(A)` iterates over every subset of `A.elements`, packages the canonical inclusion `U ↪ A`, and records the characteristic map `χ_U : A → Ω` that classifies the subobject. The helper returns one representative per iso class, so permuting a mono’s domain produces the same entry. `countFinSetSubobjects(A)` realises the `2^{|A|}` subobject-count law directly from the enumeration.
+- **Rationale**: Operationalises the “subsets ↔ iso classes of subobjects” theorem for `FinSet`, providing explicit characteristic maps that plug into the subobject-classifier laws (the Ω counit/unit checks) without needing to normalise monomorphisms by hand.
+- **Oracles**: `test/laws/law.FinSetSubobjectEnumeration.spec.ts` checks that singletons yield exactly the empty/total subobjects, that enumerating isomorphic monics collapses to the canonical representatives, and that the counts agree with hand-computed `2^{|A|}` values.
+- **Witness Builder**: `listFinSetSubobjects`, `countFinSetSubobjects`, `FinSetTruth`, and `FinSetFalse` in `src/all/triangulated.ts`.
+
 ### Diagram-compatible cone and cocone validators
 
 - **Domain**: Arbitrary finite families in any category supplied to the `CategoryLimits` helpers, together with cones and cocones that record the source diagram’s arrows.

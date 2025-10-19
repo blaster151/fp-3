@@ -448,6 +448,14 @@ export {
 export { nonEpiWitnessInSet, type NonEpiWitness } from "./kinds/epi-witness-set"
 export * from "./src/all/finset-tools"
 export {
+  listFinSetSubobjects,
+  countFinSetSubobjects,
+  FinSetOmega,
+  FinSetTruth,
+  FinSetFalse,
+  type FinSetSubobject,
+} from "./src/all/triangulated"
+export {
   FinSetCat,
   type FinSetName,
   type FuncArr,

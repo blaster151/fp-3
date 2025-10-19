@@ -2620,6 +2620,22 @@ export const makeFinSetObj = <T>(elements: ReadonlyArray<T>): FinSetObjOf<T> => 
 const terminalFinSetObj: FinSetObj = { elements: [null] }
 const initialFinSetObj: FinSetObj = { elements: [] }
 
+const omegaElements = [false, true] as const
+
+export const FinSetOmega: FinSetObjOf<boolean> = { elements: omegaElements }
+
+export const FinSetFalse: FinSetMor = {
+  from: terminalFinSetObj,
+  to: FinSetOmega,
+  map: [0],
+}
+
+export const FinSetTruth: FinSetMor = {
+  from: terminalFinSetObj,
+  to: FinSetOmega,
+  map: [1],
+}
+
 const terminateFinSetAtTerminal = (X: FinSetObj): FinSetMor => ({
   from: X,
   to: terminalFinSetObj,
@@ -2894,6 +2910,44 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
 }
 
 export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
+
+export interface FinSetSubobject {
+  readonly subset: FinSetObj
+  readonly inclusion: FinSetMor
+  readonly characteristic: FinSetMor
+}
+
+export const listFinSetSubobjects = (ambient: FinSetObj): ReadonlyArray<FinSetSubobject> => {
+  const { elements } = ambient
+  const chosen: number[] = []
+  const results: FinSetSubobject[] = []
+
+  const visit = (nextIndex: number): void => {
+    if (nextIndex >= elements.length) {
+      const subsetElements = chosen.map((ix) => elements[ix]!)
+      const subset: FinSetObj = { elements: subsetElements }
+      const inclusion: FinSetMor = { from: subset, to: ambient, map: chosen.slice() }
+      const membership = new Set(chosen)
+      const characteristic: FinSetMor = {
+        from: ambient,
+        to: FinSetOmega,
+        map: elements.map((_, idx) => (membership.has(idx) ? 1 : 0)),
+      }
+      results.push({ subset, inclusion, characteristic })
+      return
+    }
+
+    visit(nextIndex + 1)
+    chosen.push(nextIndex)
+    visit(nextIndex + 1)
+    chosen.pop()
+  }
+
+  visit(0)
+  return results
+}
+
+export const countFinSetSubobjects = (ambient: FinSetObj): number => 2 ** ambient.elements.length
 
 /** FinSet bijection helper */
 export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): FinSetMor => {
