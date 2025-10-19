@@ -14,13 +14,15 @@ import {
   type Eq,
   type Fin,
 } from "./markov-category";
-import {
-  defaultMarkovOracleRegistry,
-  type TopVietorisAdapters,
-} from "./markov-oracles";
+import type { MarkovOracleRegistry, TopVietorisAdapters } from "./markov-oracles";
 import type { KolmogorovFiniteMarginal } from "./markov-zero-one";
 import type { Dist } from "./dist";
 import { Prob } from "./semiring-utils";
+import {
+  buildKolmogorovZeroOneWitness,
+  checkKolmogorovZeroOne,
+} from "./markov-zero-one";
+import { isDeterministic } from "./markov-laws";
 import {
   continuous,
   forgetStructure,
@@ -93,9 +95,10 @@ type FactorPoints<Spaces extends ReadonlyArray<TopSpace<any>>> = {
   readonly [Index in keyof Spaces]: Spaces[Index] extends TopSpace<infer Point> ? Point : never;
 };
 
-const { MarkovOracles, registerTopVietorisAdapters } = defaultMarkovOracleRegistry;
-
 const DEFAULT_PRODUCT_LABEL = "Top/Vietoris product" as const;
+
+export const TOP_VIETORIS_STATUS =
+  "Kolmogorov adapters and constant-function law helpers available; Hewitt–Savage unavailable because Kl(H) is not causal.";
 
 const defined = <T>(value: T | undefined): value is T => value !== undefined;
 
@@ -356,7 +359,7 @@ export function buildTopVietorisKolmogorovWitness<A, XJ, T = 0 | 1>(
       ? `${label}: finite marginals reused for factors ${marginalLabels.join(", ")}.`
       : `${label}: no finite marginals supplied; witness defaults to deterministic heuristics.`,
   ];
-  return MarkovOracles.zeroOne.kolmogorov.witness(p, s, finiteMarginals, {
+  return buildKolmogorovZeroOneWitness(p, s, finiteMarginals, {
     label,
     metadata: { heuristics },
   });
@@ -366,7 +369,7 @@ export function checkTopVietorisKolmogorov<A, XJ, T = 0 | 1>(
   witness: ReturnType<typeof buildTopVietorisKolmogorovWitness<A, XJ, T>>,
   opts?: { tolerance?: number },
 ) {
-  return MarkovOracles.zeroOne.kolmogorov.check(witness, opts);
+  return checkKolmogorovZeroOne(witness, opts);
 }
 
 // (Hewitt–Savage) — NOT valid in Kl(H) (non-causal). Keep as explicit error.
@@ -386,7 +389,7 @@ export function makeProductPrior<A, XJ>(mkInput: () => ProductPriorInput<A, XJ>)
   const input = mkInput();
   const descriptor = input.label ?? "Top/Vietoris product prior";
   if (input.support.length === 0) {
-    throw new Error(`${descriptor}: support must include at least one point (${MarkovOracles.top.vietoris.status}).`);
+    throw new Error(`${descriptor}: support must include at least one point (${TOP_VIETORIS_STATUS}).`);
   }
 
   const { eq, elems, show } = input.product.points;
@@ -423,7 +426,7 @@ export function makeProductPrior<A, XJ>(mkInput: () => ProductPriorInput<A, XJ>)
   const prior = new FinMarkov(input.domain, input.product.points, kernel);
 
   if (input.support.length === 1) {
-    const determinism = MarkovOracles.determinism.recognizer(
+    const determinism = isDeterministic(
       Prob,
       (a: A): Dist<number, XJ> => ({ R: Prob, w: prior.k(a) }),
       input.domain.elems,
@@ -454,7 +457,7 @@ export function makeDeterministicStatistic<XJ, T = 0 | 1>(
   }
 
   const morphism = detK(input.source.points, input.target, input.statistic);
-  const determinism = MarkovOracles.determinism.recognizer(
+  const determinism = isDeterministic(
     Prob,
     (point: XJ): Dist<number, T> => ({ R: Prob, w: morphism.k(point) }),
     input.source.points.elems,
@@ -625,7 +628,7 @@ export function checkTopVietorisConstantFunction<XJ, Y>(
   };
 }
 
-const registeredAdapters: TopVietorisAdapters = {
+export const topVietorisAdapters: TopVietorisAdapters = {
   makeClosedSubset,
   makeDiscreteTopSpace,
   makeKolmogorovProductSpace,
@@ -633,4 +636,6 @@ const registeredAdapters: TopVietorisAdapters = {
   makeDeterministicStatistic,
 };
 
-registerTopVietorisAdapters(registeredAdapters);
+export function installTopVietorisAdapters(registry: MarkovOracleRegistry): void {
+  registry.registerTopVietorisAdapters(topVietorisAdapters);
+}

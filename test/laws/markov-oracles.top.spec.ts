@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { MarkovOracles } from "../../markov-oracles";
-import "../../top-vietoris-examples";
+import { createMarkovOracleRegistry } from "../../markov-oracles";
+import { installTopVietorisAdapters } from "../../top-vietoris-examples";
+
+const markovOracleRegistry = createMarkovOracleRegistry();
+installTopVietorisAdapters(markovOracleRegistry);
+const { MarkovOracles } = markovOracleRegistry;
 
 describe("MarkovOracles.top.vietoris registry", () => {
   it("exposes a visible status string", () => {

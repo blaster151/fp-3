@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { mkFin, FinMarkov, IFin } from "../../markov-category";
-import { MarkovOracles } from "../../markov-oracles";
+import { createMarkovOracleRegistry } from "../../markov-oracles";
 import {
   buildBorelKolmogorovWitness,
   checkBorelKolmogorovZeroOne,
@@ -96,6 +96,7 @@ describe("Kolmogorov zero–one witness adapters for BorelStoch", () => {
     expect(probabilityOne).not.toBeUndefined();
     expect(probabilityOne ?? 0).toBeCloseTo(1, 10);
 
+    const { MarkovOracles } = createMarkovOracleRegistry();
     const viaRegistry = MarkovOracles.zeroOne.borel.check(witness);
     expect(viaRegistry.holds).toBe(true);
   });

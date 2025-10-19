@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { mkFin, FinMarkov, IFin } from "../../markov-category";
-import { MarkovOracles } from "../../markov-oracles";
+import { createMarkovOracleRegistry } from "../../markov-oracles";
 import {
   buildBorelHewittSavageWitness,
   checkBorelHewittSavageZeroOne,
@@ -116,6 +116,7 @@ describe("Hewitt–Savage zero–one witness adapters for BorelStoch", () => {
     const deterministicValue = [...composite.values()][0] ?? 0;
     expect(deterministicValue).toBeCloseTo(1, 10);
 
+    const { MarkovOracles } = createMarkovOracleRegistry();
     const viaRegistry = MarkovOracles.zeroOne.borelHewittSavage.check(witness);
     expect(viaRegistry.holds).toBe(true);
     expect(viaRegistry.permutationInvariant).toBe(true);
@@ -144,6 +145,7 @@ describe("Hewitt–Savage zero–one witness adapters for BorelStoch", () => {
     expect(report.permutationFailures.some((failure) => failure.includes("swap01"))).toBe(true);
     expect(report.failures.some((entry) => entry.F.includes("swap01"))).toBe(true);
 
+    const { MarkovOracles } = createMarkovOracleRegistry();
     const viaRegistry = MarkovOracles.zeroOne.borelHewittSavage.check(witness);
     expect(viaRegistry.permutationInvariant).toBe(false);
   });
