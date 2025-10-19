@@ -48,9 +48,10 @@ import {
   type Hom as FinGrpHomModel,
 } from "../../models/fingroup-cat"
 import {
+  createSliceProductToolkit,
   makeFiniteSliceProduct,
   makeSliceFiniteProductFromPullback,
-  lookupSliceProductMetadata,
+  type SliceProductToolkit,
   type SliceArrow as SliceArrowModel,
   type SliceFiniteProductWitnessBase,
   type SliceObject as SliceObjectModel,
@@ -3260,33 +3261,49 @@ type SliceArrModel = SliceArrowModel<FinSetNameModel, FuncArrModel>
 export function makeSliceProductsWithTuple(
   base: FinSetCategoryModel,
   anchor: FinSetNameModel,
-  options?: { pullbacks?: PullbackCalculator<FinSetNameModel, FuncArrModel> },
+  options?: {
+    pullbacks?: PullbackCalculator<FinSetNameModel, FuncArrModel>;
+    toolkit?: SliceProductToolkit<FinSetNameModel, FuncArrModel>;
+  },
 ): CategoryLimits.HasProductMediators<SliceObjModel, SliceArrModel>
 export function makeSliceProductsWithTuple<Obj, Arr>(
   base: ToolkitFiniteCategory<Obj, Arr> | BaseFiniteCategory<Obj, Arr>,
   anchor: Obj,
-  options?: { pullbacks?: PullbackCalculator<Obj, Arr> },
+  options?: {
+    pullbacks?: PullbackCalculator<Obj, Arr>;
+    toolkit?: SliceProductToolkit<Obj, Arr>;
+  },
 ): CategoryLimits.HasProductMediators<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>>
 export function makeSliceProductsWithTuple<Obj, Arr>(
   base: ToolkitFiniteCategory<Obj, Arr> | BaseFiniteCategory<Obj, Arr>,
   anchor: Obj,
-  options?: { pullbacks?: PullbackCalculator<Obj, Arr> },
+  options?: {
+    pullbacks?: PullbackCalculator<Obj, Arr>;
+    toolkit?: SliceProductToolkit<Obj, Arr>;
+  },
 ): CategoryLimits.HasProductMediators<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>> {
-  const { pullbacks } = options ?? {}
+  const { pullbacks, toolkit: suppliedToolkit } = options ?? {}
+  const toolkit = suppliedToolkit ?? createSliceProductToolkit<Obj, Arr>()
   return {
     product: (objs) => {
       const baseCategory = base as unknown as BaseFiniteCategory<Obj, Arr>
       const witness: SliceFiniteProductWitnessBase<Obj, Arr> = pullbacks
-        ? makeSliceFiniteProductFromPullback(baseCategory, anchor, pullbacks, objs)
+        ? makeSliceFiniteProductFromPullback(baseCategory, anchor, pullbacks, objs, { toolkit })
         : (makeFiniteSliceProduct(
             baseCategory as unknown as FinSetCategoryModel,
             anchor as unknown as FinSetNameModel,
             objs as unknown as ReadonlyArray<SliceObjectModel<FinSetNameModel, FuncArrModel>>,
+            {
+              toolkit: toolkit as unknown as SliceProductToolkit<
+                FinSetNameModel,
+                FuncArrModel
+              >,
+            },
           ) as unknown as SliceFiniteProductWitnessBase<Obj, Arr>)
       return { obj: witness.object, projections: witness.projections }
     },
     tuple: (domain, legs, product) => {
-      const metadata = lookupSliceProductMetadata(product)
+      const metadata = toolkit.lookupSliceProductMetadata(product)
       if (!metadata) {
         throw new Error(
           `makeSliceProductsWithTuple: unrecognised product object ${String(
