@@ -12,9 +12,11 @@ import {
   analyzeRelativeComonadIdentityReduction,
   analyzeRelativeComonadCoopAlgebra,
   analyzeRelativeEnrichedComonad,
+  analyzeRelativeComodule,
   describeRelativeComonadCoopAlgebraWitness,
   describeRelativeEnrichedComonadWitness,
   describeTrivialRelativeComonad,
+  describeTrivialRelativeComoduleWitness,
   type RelativeComonadData,
 } from "../../relative/relative-comonads";
 import { RelativeComonadOracles } from "../../relative/relative-comonad-oracles";
@@ -95,6 +97,36 @@ describe("Relative comonad analyzers", () => {
     const { equipment, trivial } = makeTrivialComonad();
     const report = analyzeRelativeComonadIdentityReduction(equipment, trivial);
     expect(report.holds).toBe(true);
+  });
+
+  it("certifies the trivial relative comodule", () => {
+    const { trivial } = makeTrivialComonad();
+    const witness = describeTrivialRelativeComoduleWitness(trivial);
+    const report = analyzeRelativeComodule(witness);
+    expect(report.holds).toBe(true);
+    expect(report.issues).toHaveLength(0);
+  });
+
+  it("detects a comodule boundary mismatch", () => {
+    const { equipment, trivial } = makeTrivialComonad();
+    const witness = describeTrivialRelativeComoduleWitness(trivial);
+    const broken = {
+      ...witness,
+      coaction: {
+        ...witness.coaction,
+        boundaries: {
+          ...witness.coaction.boundaries,
+          right: identityVerticalBoundary(
+            equipment,
+            "★",
+            "Comodule test boundary mismatch",
+          ),
+        },
+      },
+    };
+    const report = analyzeRelativeComodule(broken);
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain("Comodule coaction right boundary must reuse the expected tight boundary.");
   });
 
   it("confirms the canonical enriched structure", () => {

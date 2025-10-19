@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { PairComonad, PairEndo, isCoalgebraMorphism, ForgetfulFromCoalgebras } from '../allTS'
+import { PairComonad, PairEndo, isCoalgebraMorphism, ForgetfulFromCoalgebras, checkCoalgebraLaws } from '../allTS'
 import type { Coalgebra } from '../allTS'
 
 // simple structural equality
@@ -153,16 +153,33 @@ describe('Coalgebra + forgetful functor', () => {
 
   it('extend with coalgebra: local computations', () => {
     const α = alpha<string>((s) => s.length)
-    
+
     // Use extend to compute something that depends on both the value and its "context"
-    const computation = (w: readonly [number, string]) => 
+    const computation = (w: readonly [number, string]) =>
       `length=${w[0]}, value="${w[1]}", doubled=${w[1].repeat(2)}`
-    
+
     const testStr = "hello"
     const coaction = α(testStr)  // [5, "hello"]
     const result = W.extend(computation)(coaction)
-    
+
     expect(result[0]).toBe(5) // environment preserved
     expect(result[1]).toBe('length=5, value="hello", doubled=hellohello')
+  })
+
+  it('coalgebra law oracle validates the parity coalgebra', () => {
+    const parity: Coalgebra<['Pair', number], number> = (n) => [n % 2, n] as const
+    const samples = [0, 1, 2, 3, 4, 5] as const
+    const report = checkCoalgebraLaws(W)(parity, eq, samples)
+    expect(report.holds).toBe(true)
+    expect(report.counterexamples).toHaveLength(0)
+  })
+
+  it('coalgebra law oracle exposes counit failures', () => {
+    const broken: Coalgebra<['Pair', number], number> = (n) => [n % 3, n + 1] as const
+    const samples = [0, 1, 2] as const
+    const report = checkCoalgebraLaws(W)(broken, eq, samples)
+    expect(report.holds).toBe(false)
+    expect(report.counitHolds).toBe(false)
+    expect(report.counterexamples.some((entry) => entry.law === 'counit')).toBe(true)
   })
 })
