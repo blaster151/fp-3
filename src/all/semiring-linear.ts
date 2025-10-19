@@ -6,14 +6,26 @@
 // =====================================================================
 
 import { eqStrict } from "../../stdlib/eq"
-
-export type Semiring<R> = {
-  readonly zero: R
-  readonly one: R
-  readonly add: (x: R, y: R) => R
-  readonly mul: (x: R, y: R) => R
-  readonly eq?: (x: R, y: R) => boolean
-}
+import type { Semiring, Ring } from "../algebra/ring"
+export type { Semiring, Ring } from "../algebra/ring"
+export {
+  RingReal,
+  RingInteger,
+  createModuloRing,
+  normalizeMod,
+  checkRingHomomorphism,
+  checkIdeal,
+  checkModule,
+  buildQuotientRing,
+  checkQuotientRing,
+} from "../algebra/ring"
+export type {
+  RingHomomorphism,
+  RingIdeal,
+  Module,
+  QuotientRing,
+  QuotientElement,
+} from "../algebra/ring"
 
 export const SemiringNat: Semiring<number> = {
   zero: 0,
@@ -58,23 +70,6 @@ export const SemiringProb: Semiring<number> = {
   mul: (a, b) => a * b,
   one: 1,
   eq: eqStrict<number>(),
-}
-
-// ---------- Ring (Semiring + additive inverses) ----------
-export interface Ring<R> extends Semiring<R> {
-  neg: (a: R) => R
-  sub: (a: R, b: R) => R
-}
-
-// A concrete ring over number
-export const RingReal: Ring<number> = {
-  add: (a, b) => a + b,
-  zero: 0,
-  mul: (a, b) => a * b,
-  one: 1,
-  eq: eqStrict<number>(),
-  neg: a => -a,
-  sub: (a, b) => a - b,
 }
 
 export type Mat<R> = R[][] // rows x cols
