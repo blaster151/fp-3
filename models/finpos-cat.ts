@@ -13,6 +13,47 @@ export interface MonoMap {
   readonly map: (x: string) => string
 }
 
+interface FinPosProductMetadata {
+  readonly left: FinPosObj
+  readonly right: FinPosObj
+  readonly encode: (left: string, right: string) => string
+  readonly decode: (value: string) => readonly [string, string]
+}
+
+interface FinPosExponentialMetadata {
+  readonly base: FinPosObj
+  readonly codomain: FinPosObj
+  readonly maps: readonly MonoMap[]
+  readonly lookup: Map<string, MonoMap>
+}
+
+export interface FinPosProductWitness {
+  readonly object: FinPosObj
+  readonly projection1: MonoMap
+  readonly projection2: MonoMap
+  readonly element: (left: string, right: string) => string
+  readonly decompose: (value: string) => readonly [string, string]
+  readonly pair: (domain: FinPosObj, left: MonoMap, right: MonoMap) => MonoMap
+  readonly factors: readonly [FinPosObj, FinPosObj]
+}
+
+export interface FinPosExponentialWitness {
+  readonly object: FinPosObj
+  readonly base: FinPosObj
+  readonly codomain: FinPosObj
+  readonly maps: readonly MonoMap[]
+  readonly evaluation: {
+    readonly product: FinPosProductWitness
+    readonly arrow: MonoMap
+  }
+  readonly curry: (input: {
+    readonly domain: FinPosObj
+    readonly product: FinPosProductWitness
+    readonly arrow: MonoMap
+  }) => MonoMap
+  readonly lookup: (name: string) => MonoMap
+}
+
 export type TerminalArrowFailure =
   | { readonly kind: "domainMismatch"; readonly expected: string; readonly received: string }
   | { readonly kind: "codomainMismatch"; readonly expected: string; readonly received: string }
@@ -97,6 +138,35 @@ export interface FinPosCategory extends FiniteCategory<string, MonoMap> {
 const INITIAL_NAME = "0"
 const TERMINAL_NAME = "1"
 const TERMINAL_POINT = "⋆"
+
+const finPosRegistry = new Map<string, FinPosObj>()
+const finPosProductMetadata = new WeakMap<FinPosObj, FinPosProductMetadata>()
+const finPosExponentialMetadata = new WeakMap<FinPosObj, FinPosExponentialMetadata>()
+
+const registerFinPosObject = (object: FinPosObj): FinPosObj => {
+  finPosRegistry.set(object.name, object)
+  return object
+}
+
+const ensureProductMetadata = (object: FinPosObj): FinPosProductMetadata => {
+  const metadata = finPosProductMetadata.get(object)
+  if (!metadata) {
+    throw new Error(
+      `FinPos: unrecognised product object ${object.name}; build it via FinPos.product to access its structure`,
+    )
+  }
+  return metadata
+}
+
+const ensureExponentialMetadata = (object: FinPosObj): FinPosExponentialMetadata => {
+  const metadata = finPosExponentialMetadata.get(object)
+  if (!metadata) {
+    throw new Error(
+      `FinPos: unrecognised exponential object ${object.name}; build it via FinPos.exponential to access its structure`,
+    )
+  }
+  return metadata
+}
 
 function findMonotonicityViolation(
   dom: FinPosObj,
@@ -220,6 +290,9 @@ export function FinPosCat(objects: readonly FinPosObj[]): FinPosCategory {
   const byName: Record<string, FinPosObj> = {}
   for (const obj of objects) {
     byName[obj.name] = obj
+  }
+  for (const object of finPosRegistry.values()) {
+    byName[object.name] = object
   }
   if (!byName[INITIAL_NAME]) {
     const initial = FinPos.zero()
@@ -688,6 +761,257 @@ export const FinPos = {
       holds: false,
       details: `${left.name} and ${right.name} coincide on every point element of ${domain.name}`,
       failure: { kind: "indistinguishable" },
+    }
+  },
+  product(left: FinPosObj, right: FinPosObj, options: { readonly name?: string } = {}): FinPosProductWitness {
+    const encode = (leftElem: string, rightElem: string) => `⟨${leftElem}|${rightElem}⟩`
+    const decodeIndex = new Map<string, readonly [string, string]>()
+    const elements: string[] = []
+    for (const leftElem of left.elems) {
+      for (const rightElem of right.elems) {
+        const name = encode(leftElem, rightElem)
+        elements.push(name)
+        decodeIndex.set(name, [leftElem, rightElem])
+      }
+    }
+
+    const decode = (value: string): readonly [string, string] => {
+      const pair = decodeIndex.get(value)
+      if (!pair) {
+        throw new Error(
+          `FinPos.product: ${value} is not recognised as an element of ${productObj.name}; construct it via element(left,right)`,
+        )
+      }
+      return pair
+    }
+
+    const productObj: FinPosObj = registerFinPosObject({
+      name: options.name ?? `(${left.name}×${right.name})`,
+      elems: elements,
+      leq: (x, y) => {
+        if (x === y) {
+          return true
+        }
+        const [xLeft, xRight] = decode(x)
+        const [yLeft, yRight] = decode(y)
+        return left.leq(xLeft, yLeft) && right.leq(xRight, yRight)
+      },
+    })
+
+    finPosProductMetadata.set(productObj, { left, right, encode, decode })
+
+    const projection1: MonoMap = {
+      name: `π₁:${productObj.name}→${left.name}`,
+      dom: productObj.name,
+      cod: left.name,
+      map: (value) => decode(value)[0],
+    }
+
+    const projection2: MonoMap = {
+      name: `π₂:${productObj.name}→${right.name}`,
+      dom: productObj.name,
+      cod: right.name,
+      map: (value) => decode(value)[1],
+    }
+
+    const pair = (domain: FinPosObj, leftLeg: MonoMap, rightLeg: MonoMap): MonoMap => {
+      if (leftLeg.dom !== domain.name || rightLeg.dom !== domain.name) {
+        throw new Error(
+          `FinPos.product: pairing expects legs with common domain ${domain.name}; received ${leftLeg.dom} and ${rightLeg.dom}`,
+        )
+      }
+      if (leftLeg.cod !== left.name || rightLeg.cod !== right.name) {
+        throw new Error(
+          `FinPos.product: legs must target ${left.name} and ${right.name}; received ${leftLeg.cod} and ${rightLeg.cod}`,
+        )
+      }
+      if (!FinPos.isMonotone(domain, left, leftLeg)) {
+        throw new Error(`FinPos.product: left leg ${leftLeg.name} must be monotone to form a pairing`)
+      }
+      if (!FinPos.isMonotone(domain, right, rightLeg)) {
+        throw new Error(`FinPos.product: right leg ${rightLeg.name} must be monotone to form a pairing`)
+      }
+      return {
+        name: `⟨${leftLeg.name},${rightLeg.name}⟩`,
+        dom: domain.name,
+        cod: productObj.name,
+        map: (value) => {
+          const leftValue = leftLeg.map(value)
+          const rightValue = rightLeg.map(value)
+          if (!left.elems.includes(leftValue)) {
+            throw new Error(
+              `FinPos.product: ${leftValue} is not recognised as an element of ${left.name} via ${leftLeg.name}`,
+            )
+          }
+          if (!right.elems.includes(rightValue)) {
+            throw new Error(
+              `FinPos.product: ${rightValue} is not recognised as an element of ${right.name} via ${rightLeg.name}`,
+            )
+          }
+          return encode(leftValue, rightValue)
+        },
+      }
+    }
+
+    return {
+      object: productObj,
+      projection1,
+      projection2,
+      element: (leftElem, rightElem) => {
+        if (!left.elems.includes(leftElem)) {
+          throw new Error(`FinPos.product: ${leftElem} is not an element of ${left.name}`)
+        }
+        if (!right.elems.includes(rightElem)) {
+          throw new Error(`FinPos.product: ${rightElem} is not an element of ${right.name}`)
+        }
+        const name = encode(leftElem, rightElem)
+        if (!decodeIndex.has(name)) {
+          throw new Error(
+            `FinPos.product: failed to materialise element (${leftElem}, ${rightElem}) in ${productObj.name}`,
+          )
+        }
+        return name
+      },
+      decompose: decode,
+      pair,
+      factors: [left, right],
+    }
+  },
+  exponential(
+    base: FinPosObj,
+    codomain: FinPosObj,
+    options: { readonly name?: string } = {},
+  ): FinPosExponentialWitness {
+    const maps = FinPos.generalizedElements(base, codomain)
+    const lookup = new Map<string, MonoMap>()
+    for (const map of maps) {
+      lookup.set(map.name, map)
+    }
+
+    const name = options.name ?? `${codomain.name}^${base.name}`
+    const functionObj: FinPosObj = registerFinPosObject({
+      name,
+      elems: maps.map((map) => map.name),
+      leq: (leftName, rightName) => {
+        if (leftName === rightName) {
+          return true
+        }
+        const leftArrow = lookup.get(leftName)
+        const rightArrow = lookup.get(rightName)
+        if (!leftArrow || !rightArrow) {
+          throw new Error(
+            `FinPos.exponential: ${leftName} or ${rightName} is not recognised as an element of ${name}`,
+          )
+        }
+        for (const element of base.elems) {
+          if (!codomain.leq(leftArrow.map(element), rightArrow.map(element))) {
+            return false
+          }
+        }
+        return true
+      },
+    })
+
+    finPosExponentialMetadata.set(functionObj, { base, codomain, maps, lookup })
+
+    const evaluationProduct = FinPos.product(functionObj, base, {
+      name: options.name ? `${options.name}×${base.name}` : `(${name}×${base.name})`,
+    })
+
+    const evaluationArrow: MonoMap = {
+      name: `eval_${functionObj.name}×${base.name}→${codomain.name}`,
+      dom: evaluationProduct.object.name,
+      cod: codomain.name,
+      map: (value) => {
+        const [mapName, argument] = evaluationProduct.decompose(value)
+        const arrow = lookup.get(mapName)
+        if (!arrow) {
+          throw new Error(`FinPos.exponential: ${mapName} is not a recognised monotone map in ${functionObj.name}`)
+        }
+        return arrow.map(argument)
+      },
+    }
+
+    const curry = ({ domain, product, arrow }: {
+      readonly domain: FinPosObj
+      readonly product: FinPosProductWitness
+      readonly arrow: MonoMap
+    }): MonoMap => {
+      if (arrow.dom !== product.object.name) {
+        throw new Error(
+          `FinPos.exponential: arrow ${arrow.name} must originate at ${product.object.name} to curry`,
+        )
+      }
+      if (arrow.cod !== codomain.name) {
+        throw new Error(
+          `FinPos.exponential: arrow ${arrow.name} must target ${codomain.name} to curry into ${functionObj.name}`,
+        )
+      }
+      if (!FinPos.isMonotone(product.object, codomain, arrow)) {
+        throw new Error(`FinPos.exponential: arrow ${arrow.name} must be monotone to admit a curry`)
+      }
+      const [productDomain, productBase] = product.factors
+      if (productDomain.name !== domain.name || productBase.name !== base.name) {
+        throw new Error(
+          `FinPos.exponential: expected product factors ${domain.name}×${base.name}; received ${productDomain.name}×${productBase.name}`,
+        )
+      }
+      const metadata = ensureProductMetadata(product.object)
+      const assignments = new Map<string, string>()
+      for (const element of domain.elems) {
+        const evaluations = new Map<string, string>()
+        for (const argument of base.elems) {
+          const pair = metadata.encode(element, argument)
+          const image = arrow.map(pair)
+          evaluations.set(argument, image)
+        }
+        const witness = maps.find((candidate) =>
+          base.elems.every((argument) => candidate.map(argument) === evaluations.get(argument)),
+        )
+        if (!witness) {
+          throw new Error(
+            `FinPos.exponential: failed to identify the monotone map ${domain.name}→${functionObj.name} induced by ${arrow.name}`,
+          )
+        }
+        assignments.set(element, witness.name)
+      }
+      const curried: MonoMap = {
+        name: `curry(${arrow.name})`,
+        dom: domain.name,
+        cod: functionObj.name,
+        map: (value) => {
+          const image = assignments.get(value)
+          if (image === undefined) {
+            throw new Error(
+              `FinPos.exponential: ${value} is not recognised as an element of ${domain.name} when evaluating curry(${arrow.name})`,
+            )
+          }
+          return image
+        },
+      }
+      if (!FinPos.isMonotone(domain, functionObj, curried)) {
+        throw new Error(`FinPos.exponential: curry(${arrow.name}) is not monotone ${domain.name}→${functionObj.name}`)
+      }
+      return curried
+    }
+
+    return {
+      object: functionObj,
+      base,
+      codomain,
+      maps,
+      evaluation: {
+        product: evaluationProduct,
+        arrow: evaluationArrow,
+      },
+      curry,
+      lookup: (element: string) => {
+        const arrow = lookup.get(element)
+        if (!arrow) {
+          throw new Error(`FinPos.exponential: ${element} is not a recognised monotone map in ${functionObj.name}`)
+        }
+        return arrow
+      },
     }
   },
 }

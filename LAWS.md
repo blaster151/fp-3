@@ -1156,7 +1156,8 @@ so failures can be traced to sub-lemmas.
   - **Rationale**: Operationalises the textbook characterisation of finite posets via the newly exposed `FinPos.zero()`, `FinPos.initialArrow`, and `FinPos.terminate` helpers.
   - **Oracles**: `test/laws/law.FinPosInitialTerminal.spec.ts` compares canonical witnesses against arbitrary monotone maps and inspects the global-element enumerator, `test/laws/law.TerminalArrowUniqueness.spec.ts` checks that every collapse into `1` factors through the canonical witness, `test/laws/law.TerminalElementTransport.spec.ts` ensures elements defined via alternative terminals coincide with the canonical point, and `test/laws/law.WellPointedness.spec.ts` finds separating points for distinct monotone pairs while confirming that identical arrows are indistinguishable.
   - **Witness Builder**: `FinPosCat([...objects, FinPos.zero(), FinPos.one()])` ensures both extremal objects participate in the category fixture.
-  - **Generalized Elements**: `FinPos.generalizedElements(shape, target)` enumerates every monotone map from a shape into a target poset, powering separation analyses that require richer probes than terminal points.
+- **Generalized Elements**: `FinPos.generalizedElements(shape, target)` enumerates every monotone map from a shape into a target poset, powering separation analyses that require richer probes than terminal points.
+- **Exponentials**: `FinPos.exponential(B, C)` enumerates the monotone maps `B → C`, orders them pointwise, and packages the evaluation arrow together with a currying oracle.  `test/laws/law.FinPosExponential.spec.ts` checks that the pointwise order is itself monotone, that evaluation preserves the product order, and that every monotone mediator `A×B → C` factors uniquely through the exponential via the executable currying helper, witnessing the universal property inside `FinPosCat`.
 
 ### Terminal separators and well-pointedness
 
