@@ -44,19 +44,40 @@ interface CoproductCarrier<A, B> {
   readonly inrLookup: (value: B) => Coproduct<A, B>;
 }
 
-interface ProductData<A, B> {
+export interface ProductData<A, B> {
   readonly object: SetObj<Pair<A, B>>;
   readonly projections: ProductProjections<A, B>;
   readonly pair: <X>(f: SetHom<X, A>, g: SetHom<X, B>) => SetHom<X, Pair<A, B>>;
 }
 
-interface CoproductData<A, B> {
+export interface CoproductData<A, B> {
   readonly object: SetObj<Coproduct<A, B>>;
   readonly injections: CoproductInjections<A, B>;
   readonly copair: <X>(
     f: SetHom<A, X>,
     g: SetHom<B, X>,
   ) => SetHom<Coproduct<A, B>, X>;
+}
+
+export type ExponentialArrow<A, B> = (value: A) => B;
+
+export interface CurryInput<X, A, B> {
+  readonly domain: SetObj<X>;
+  readonly product?: ProductData<X, A>;
+  readonly morphism: SetHom<Pair<X, A>, B>;
+}
+
+export interface UncurryInput<X, A, B> {
+  readonly product?: ProductData<X, A>;
+  readonly morphism: SetHom<X, ExponentialArrow<A, B>>;
+}
+
+export interface ExponentialData<A, B> {
+  readonly object: SetObj<ExponentialArrow<A, B>>;
+  readonly evaluation: SetHom<Pair<ExponentialArrow<A, B>, A>, B>;
+  readonly evaluationProduct: ProductData<ExponentialArrow<A, B>, A>;
+  readonly curry: <X>(input: CurryInput<X, A, B>) => SetHom<X, ExponentialArrow<A, B>>;
+  readonly uncurry: <X>(input: UncurryInput<X, A, B>) => SetHom<Pair<X, A>, B>;
 }
 
 interface TerminalData {
@@ -76,76 +97,6 @@ const terminalValue: Terminal = { kind: "⋆" };
 const terminalObj: SetObj<Terminal> = new Set([terminalValue]);
 
 const initialObj: SetObj<never> = new Set();
-
-const cartesianProduct = <A, B>(left: SetObj<A>, right: SetObj<B>): ProductCarrier<A, B> => {
-  const lookup = new Map<A, Map<B, Pair<A, B>>>();
-  const pairs: Array<Pair<A, B>> = [];
-  for (const a of left) {
-    let column = lookup.get(a);
-    if (!column) {
-      column = new Map();
-      lookup.set(a, column);
-    }
-    for (const b of right) {
-      let pair = column.get(b);
-      if (!pair) {
-        pair = [a, b] as const;
-        column.set(b, pair);
-        pairs.push(pair);
-      }
-    }
-  }
-  return {
-    object: new Set(pairs),
-    lookup: (a, b) => {
-      const column = lookup.get(a);
-      if (!column) {
-        throw new Error("SetCat: product pairing referenced an element outside the left factor");
-      }
-      const pair = column.get(b);
-      if (!pair) {
-        throw new Error("SetCat: product pairing referenced an element outside the right factor");
-      }
-      return pair;
-    },
-  };
-};
-
-const buildCoproductCarrier = <A, B>(
-  left: SetObj<A>,
-  right: SetObj<B>,
-): CoproductCarrier<A, B> => {
-  const elements: Array<Coproduct<A, B>> = [];
-  const inlMap = new Map<A, Coproduct<A, B>>();
-  const inrMap = new Map<B, Coproduct<A, B>>();
-  for (const value of left) {
-    const tagged: Coproduct<A, B> = { tag: "inl", value };
-    elements.push(tagged);
-    inlMap.set(value, tagged);
-  }
-  for (const value of right) {
-    const tagged: Coproduct<A, B> = { tag: "inr", value };
-    elements.push(tagged);
-    inrMap.set(value, tagged);
-  }
-  return {
-    object: new Set(elements),
-    inlLookup: (value) => {
-      const tagged = inlMap.get(value);
-      if (!tagged) {
-        throw new Error("SetCat: coproduct injection referenced an element outside the left summand");
-      }
-      return tagged;
-    },
-    inrLookup: (value) => {
-      const tagged = inrMap.get(value);
-      if (!tagged) {
-        throw new Error("SetCat: coproduct injection referenced an element outside the right summand");
-      }
-      return tagged;
-    },
-  };
-};
 
 export function isSetHom<A, B>(h: SetHom<A, B>): boolean {
   const { dom, cod, map } = h;
@@ -173,6 +124,446 @@ const createSetHom = <A, B>(
   return morphism;
 };
 
+const LAZY_CUTOFF = 10_000;
+
+export type LazySetOptions<A> = {
+  readonly iterate: () => IterableIterator<A>;
+  readonly has: (value: A) => boolean;
+  readonly cardinality?: number;
+  readonly tag?: string;
+};
+
+const LAZY_SET_MARKER = Symbol.for("SetCat.LazySet");
+
+class LazySet<A> implements Set<A> {
+  private readonly iterateFn: () => IterableIterator<A>;
+  private readonly membership: (value: A) => boolean;
+  private readonly knownCardinality: number | undefined;
+  private readonly seen = new Set<A>();
+
+  public readonly [LAZY_SET_MARKER] = true;
+
+  public constructor(options: LazySetOptions<A>) {
+    this.iterateFn = options.iterate;
+    this.membership = options.has;
+    this.knownCardinality = options.cardinality;
+    this.tagLabel = options.tag ?? "LazySet";
+  }
+
+  private readonly tagLabel: string;
+
+  public get [Symbol.toStringTag](): string {
+    return this.tagLabel;
+  }
+
+  public get size(): number {
+    if (this.knownCardinality !== undefined) {
+      return this.knownCardinality;
+    }
+    return Number.POSITIVE_INFINITY;
+  }
+
+  public get cardinality(): number | undefined {
+    return this.knownCardinality;
+  }
+
+  public has(value: A): boolean {
+    if (this.seen.has(value)) {
+      return true;
+    }
+    const result = this.membership(value);
+    if (result) {
+      this.seen.add(value);
+    }
+    return result;
+  }
+
+  public add(_: A): this {
+    throw new Error("SetCat lazy carriers are immutable");
+  }
+
+  public clear(): void {
+    throw new Error("SetCat lazy carriers are immutable");
+  }
+
+  public delete(_: A): boolean {
+    return false;
+  }
+
+  public entries(): IterableIterator<[A, A]> {
+    return this.iterateMapped((value) => [value, value] as const);
+  }
+
+  public keys(): IterableIterator<A> {
+    return this[Symbol.iterator]();
+  }
+
+  public values(): IterableIterator<A> {
+    return this[Symbol.iterator]();
+  }
+
+  public forEach(callbackfn: (value: A, value2: A, set: Set<A>) => void, thisArg?: unknown): void {
+    for (const value of this) {
+      callbackfn.call(thisArg, value, value, this);
+    }
+  }
+
+  public [Symbol.iterator](): IterableIterator<A> {
+    const iterator = this.iterateFn();
+    const seen = this.seen;
+    return (function* iterate() {
+      for (const value of iterator) {
+        seen.add(value);
+        yield value;
+      }
+    })();
+  }
+
+  private iterateMapped<T>(map: (value: A) => T): IterableIterator<T> {
+    const iterator = this[Symbol.iterator]();
+    return (function* mapped() {
+      for (const value of iterator) {
+        yield map(value);
+      }
+    })();
+  }
+}
+
+export function isLazySet<A>(value: SetObj<A>): value is LazySet<A>;
+export function isLazySet(value: unknown): value is LazySet<unknown>;
+export function isLazySet<A>(value: unknown): value is LazySet<A> {
+  return typeof value === "object" && value !== null && (value as { [LAZY_SET_MARKER]?: boolean })[LAZY_SET_MARKER] === true;
+}
+
+type MaybeFinite = number | undefined;
+
+const knownFiniteCardinality = <A>(carrier: SetObj<A>): MaybeFinite => {
+  if (isLazySet(carrier)) {
+    const { cardinality } = carrier;
+    if (cardinality !== undefined && Number.isFinite(cardinality)) {
+      return cardinality;
+    }
+    return undefined;
+  }
+  if (Number.isFinite(carrier.size)) {
+    return carrier.size;
+  }
+  return undefined;
+};
+
+const multiplyCardinality = <A, B>(left: SetObj<A>, right: SetObj<B>): number | undefined => {
+  const leftSize = knownFiniteCardinality(left);
+  const rightSize = knownFiniteCardinality(right);
+  if (leftSize === undefined || rightSize === undefined) {
+    return undefined;
+  }
+  const product = leftSize * rightSize;
+  return Number.isFinite(product) ? product : undefined;
+};
+
+const addCardinality = <A, B>(left: SetObj<A>, right: SetObj<B>): number | undefined => {
+  const leftSize = knownFiniteCardinality(left);
+  const rightSize = knownFiniteCardinality(right);
+  if (leftSize === undefined || rightSize === undefined) {
+    return undefined;
+  }
+  const sum = leftSize + rightSize;
+  return Number.isFinite(sum) ? sum : undefined;
+};
+
+const shouldMaterializeProduct = <A, B>(left: SetObj<A>, right: SetObj<B>): boolean => {
+  const productSize = multiplyCardinality(left, right);
+  if (productSize === undefined) {
+    return false;
+  }
+  return productSize <= LAZY_CUTOFF;
+};
+
+const shouldMaterializeCoproduct = <A, B>(left: SetObj<A>, right: SetObj<B>): boolean => {
+  const sumSize = addCardinality(left, right);
+  if (sumSize === undefined) {
+    return false;
+  }
+  return sumSize <= LAZY_CUTOFF;
+};
+
+const isPair = <A, B>(value: unknown): value is Pair<A, B> =>
+  Array.isArray(value) && value.length === 2;
+
+const cartesianProduct = <A, B>(left: SetObj<A>, right: SetObj<B>): ProductCarrier<A, B> => {
+  const lookup = new Map<A, Map<B, Pair<A, B>>>();
+  const ensurePair = (a: A, b: B): Pair<A, B> => {
+    if (!left.has(a)) {
+      throw new Error("SetCat: product pairing referenced an element outside the left factor");
+    }
+    if (!right.has(b)) {
+      throw new Error("SetCat: product pairing referenced an element outside the right factor");
+    }
+    let column = lookup.get(a);
+    if (!column) {
+      column = new Map();
+      lookup.set(a, column);
+    }
+    let pair = column.get(b);
+    if (!pair) {
+      pair = [a, b] as const;
+      column.set(b, pair);
+    }
+    return pair;
+  };
+
+  if (shouldMaterializeProduct(left, right)) {
+    const pairs = new Set<Pair<A, B>>();
+    for (const a of left) {
+      for (const b of right) {
+        pairs.add(ensurePair(a, b));
+      }
+    }
+    return {
+      object: pairs,
+      lookup: ensurePair,
+    };
+  }
+
+  const iterate = function* (): IterableIterator<Pair<A, B>> {
+    for (const a of left) {
+      for (const b of right) {
+        yield ensurePair(a, b);
+      }
+    }
+  };
+
+  const cardinality = multiplyCardinality(left, right);
+
+  const object = new LazySet<Pair<A, B>>({
+    iterate,
+    has: (value) => {
+      if (!isPair<A, B>(value)) {
+        return false;
+      }
+      const [a, b] = value;
+      if (!left.has(a) || !right.has(b)) {
+        return false;
+      }
+      return ensurePair(a, b) === value;
+    },
+    ...(cardinality !== undefined ? { cardinality } : {}),
+    tag: "SetCatLazyProduct",
+  });
+
+  return {
+    object,
+    lookup: ensurePair,
+  };
+};
+
+const buildProductData = <A, B>(left: SetObj<A>, right: SetObj<B>): ProductData<A, B> => {
+  const carrier = cartesianProduct(left, right);
+  const projections: ProductProjections<A, B> = {
+    fst: createSetHom(carrier.object, left, (pair) => pair[0]),
+    snd: createSetHom(carrier.object, right, (pair) => pair[1]),
+  };
+  const pair = <X>(f: SetHom<X, A>, g: SetHom<X, B>): SetHom<X, Pair<A, B>> => {
+    if (f.dom !== g.dom) {
+      throw new Error("SetCat: product pairing requires shared domain");
+    }
+    if (f.cod !== left || g.cod !== right) {
+      throw new Error("SetCat: product pairing expects morphisms into the declared factors");
+    }
+    return createSetHom(
+      f.dom,
+      carrier.object,
+      (value) => carrier.lookup(f.map(value), g.map(value)),
+    );
+  };
+  return { object: carrier.object, projections, pair };
+};
+
+const createExponentialFunction = <A, B>(
+  base: SetObj<A>,
+  assignments: Map<A, B>,
+): ExponentialArrow<A, B> =>
+  (value: A) => {
+    if (!base.has(value)) {
+      throw new Error("SetCat: exponential function applied outside the declared base set");
+    }
+    if (!assignments.has(value)) {
+      throw new Error("SetCat: exponential function is undefined on a base element");
+    }
+    return assignments.get(value) as B;
+  };
+
+interface ExponentialTrieNode<A, B> {
+  readonly branches: Map<B, ExponentialTrieNode<A, B>>;
+  value?: ExponentialArrow<A, B>;
+}
+
+const enumerateExponentialCarrier = <A, B>(
+  base: SetObj<A>,
+  codomain: SetObj<B>,
+): {
+  readonly object: SetObj<ExponentialArrow<A, B>>;
+  readonly retrieve: (outputs: ReadonlyArray<B>) => ExponentialArrow<A, B>;
+  readonly baseElements: ReadonlyArray<A>;
+} => {
+  const baseElements = Array.from(base.values());
+  const codomainElements = Array.from(codomain.values());
+  type Node = ExponentialTrieNode<A, B>;
+  const root: Node = { branches: new Map() };
+  const functions: Array<ExponentialArrow<A, B>> = [];
+
+  if (baseElements.length === 0) {
+    const assignments = new Map<A, B>();
+    const fn = createExponentialFunction(base, assignments);
+    root.value = fn;
+    functions.push(fn);
+  } else {
+    const assignment: B[] = new Array(baseElements.length);
+
+    const build = (index: number, node: Node) => {
+      if (index === baseElements.length) {
+        const assignments = new Map<A, B>();
+        for (let i = 0; i < baseElements.length; i += 1) {
+          const baseElement = baseElements[i];
+          if (baseElement === undefined) {
+            throw new Error("SetCat: exponential enumeration encountered an undefined base element");
+          }
+          const valueAtIndex = assignment[i];
+          if (valueAtIndex === undefined) {
+            throw new Error("SetCat: exponential enumeration encountered an undefined assignment value");
+          }
+          assignments.set(baseElement, valueAtIndex as B);
+        }
+        const fn = createExponentialFunction(base, assignments);
+        node.value = fn;
+        functions.push(fn);
+        return;
+      }
+
+      for (const value of codomainElements) {
+        assignment[index] = value;
+        let branch = node.branches.get(value);
+        if (!branch) {
+          branch = { branches: new Map() };
+          node.branches.set(value, branch);
+        }
+        build(index + 1, branch);
+      }
+    };
+
+    build(0, root);
+  }
+
+  const object: SetObj<ExponentialArrow<A, B>> = new Set(functions);
+
+  const retrieve = (outputs: ReadonlyArray<B>): ExponentialArrow<A, B> => {
+    if (outputs.length !== baseElements.length) {
+      throw new Error("SetCat: curry produced an assignment with the wrong arity for the exponential");
+    }
+
+    let node: Node | undefined = root;
+    for (const value of outputs) {
+      node = node?.branches.get(value);
+      if (!node) {
+        break;
+      }
+    }
+
+    const fn = node?.value ?? root.value;
+    if (!fn) {
+      throw new Error("SetCat: curry attempted to reference a function outside the exponential carrier");
+    }
+    return fn;
+  };
+
+  return { object, retrieve, baseElements };
+};
+
+const buildCoproductCarrier = <A, B>(
+  left: SetObj<A>,
+  right: SetObj<B>,
+): CoproductCarrier<A, B> => {
+  const inlMap = new Map<A, Coproduct<A, B>>();
+  const inrMap = new Map<B, Coproduct<A, B>>();
+
+  const ensureInl = (value: A): Coproduct<A, B> => {
+    if (!left.has(value)) {
+      throw new Error("SetCat: coproduct injection referenced an element outside the left summand");
+    }
+    let tagged = inlMap.get(value);
+    if (!tagged) {
+      tagged = { tag: "inl", value } as const;
+      inlMap.set(value, tagged);
+    }
+    return tagged;
+  };
+
+  const ensureInr = (value: B): Coproduct<A, B> => {
+    if (!right.has(value)) {
+      throw new Error("SetCat: coproduct injection referenced an element outside the right summand");
+    }
+    let tagged = inrMap.get(value);
+    if (!tagged) {
+      tagged = { tag: "inr", value } as const;
+      inrMap.set(value, tagged);
+    }
+    return tagged;
+  };
+
+  if (shouldMaterializeCoproduct(left, right)) {
+    const elements = new Set<Coproduct<A, B>>();
+    for (const value of left) {
+      elements.add(ensureInl(value));
+    }
+    for (const value of right) {
+      elements.add(ensureInr(value));
+    }
+    return {
+      object: elements,
+      inlLookup: ensureInl,
+      inrLookup: ensureInr,
+    };
+  }
+
+  const iterate = function* (): IterableIterator<Coproduct<A, B>> {
+    for (const value of left) {
+      yield ensureInl(value);
+    }
+    for (const value of right) {
+      yield ensureInr(value);
+    }
+  };
+
+  const cardinality = addCardinality(left, right);
+
+  const object = new LazySet<Coproduct<A, B>>({
+    iterate,
+    has: (value) => {
+      if (value.tag === "inl") {
+        if (!left.has(value.value)) {
+          return false;
+        }
+        return ensureInl(value.value) === value;
+      }
+      if (value.tag === "inr") {
+        if (!right.has(value.value)) {
+          return false;
+        }
+        return ensureInr(value.value) === value;
+      }
+      return false;
+    },
+    ...(cardinality !== undefined ? { cardinality } : {}),
+    tag: "SetCatLazyCoproduct",
+  });
+
+  return {
+    object,
+    inlLookup: ensureInl,
+    inrLookup: ensureInr,
+  };
+};
+
 export function composeSet<A, B, C>(g: SetHom<B, C>, f: SetHom<A, B>): SetHom<A, C> {
   if (f.cod !== g.dom) {
     throw new Error('SetCat: domain/codomain mismatch');
@@ -186,27 +577,14 @@ export function composeSet<A, B, C>(g: SetHom<B, C>, f: SetHom<A, B>): SetHom<A,
 
 export const SetCat = {
   obj: <A>(elements: Iterable<A>): SetObj<A> => new Set(elements),
+  lazyObj: <A>(options: LazySetOptions<A>): SetObj<A> => new LazySet<A>(options),
   id: idSet,
   hom: createSetHom,
   compose: composeSet,
   isHom: isSetHom,
-  product: <A, B>(left: SetObj<A>, right: SetObj<B>): ProductData<A, B> => {
-    const carrier = cartesianProduct(left, right);
-    const projections: ProductProjections<A, B> = {
-      fst: createSetHom(carrier.object, left, (pair) => pair[0]),
-      snd: createSetHom(carrier.object, right, (pair) => pair[1]),
-    };
-    const pair = <X>(f: SetHom<X, A>, g: SetHom<X, B>): SetHom<X, Pair<A, B>> => {
-      if (f.dom !== g.dom) {
-        throw new Error("SetCat: product pairing requires shared domain");
-      }
-      if (f.cod !== left || g.cod !== right) {
-        throw new Error("SetCat: product pairing expects morphisms into the declared factors");
-      }
-      return createSetHom(f.dom, carrier.object, (value) => carrier.lookup(f.map(value), g.map(value)));
-    };
-    return { object: carrier.object, projections, pair };
-  },
+  isLazy: isLazySet,
+  knownFiniteCardinality: knownFiniteCardinality,
+  product: buildProductData,
   coproduct: <A, B>(left: SetObj<A>, right: SetObj<B>): CoproductData<A, B> => {
     const carrier = buildCoproductCarrier(left, right);
     const injections: CoproductInjections<A, B> = {
@@ -236,4 +614,113 @@ export const SetCat = {
     initialize: <A>(cod: SetObj<A>): SetHom<never, A> =>
       createSetHom(initialObj, cod, (value) => value),
   }),
+  exponential: <A, B>(base: SetObj<A>, codomain: SetObj<B>): ExponentialData<A, B> => {
+    const enumeration = enumerateExponentialCarrier(base, codomain);
+    const evaluationProduct = buildProductData(enumeration.object, base);
+    const evaluation = createSetHom(
+      evaluationProduct.object,
+      codomain,
+      (pair) => {
+        const fn = pair[0];
+        const argument = pair[1];
+        return fn(argument);
+      },
+    );
+
+    const curry = <X>(input: CurryInput<X, A, B>): SetHom<X, ExponentialArrow<A, B>> => {
+      const { domain, morphism } = input;
+      const productData = input.product ?? buildProductData(domain, base);
+
+      if (productData.object !== morphism.dom) {
+        throw new Error("SetCat: curry expects the supplied morphism to originate from the provided product");
+      }
+      if (productData.projections.fst.cod !== domain) {
+        throw new Error("SetCat: curry requires the product projections to land in the declared domain");
+      }
+      if (productData.projections.snd.cod !== base) {
+        throw new Error("SetCat: curry requires the product projections to land in the declared base set");
+      }
+      if (morphism.cod !== codomain) {
+        throw new Error("SetCat: curry expects a morphism landing in the declared codomain");
+      }
+
+      const rows = new Map<X, Map<A, Pair<X, A>>>();
+      for (const pair of productData.object) {
+        const [x, a] = pair;
+        if (!domain.has(x)) {
+          throw new Error("SetCat: curry observed a product element outside the declared domain");
+        }
+        if (!base.has(a)) {
+          throw new Error("SetCat: curry observed a product element outside the declared base set");
+        }
+        let row = rows.get(x);
+        if (!row) {
+          row = new Map();
+          rows.set(x, row);
+        }
+        row.set(a, pair);
+      }
+
+      enumeration.baseElements.forEach((a) => {
+        for (const x of domain) {
+          const row = rows.get(x);
+          if (!row || !row.has(a)) {
+            throw new Error("SetCat: curry expects the product to contain every base element for each domain point");
+          }
+        }
+      });
+
+      const assignments = new Map<X, ExponentialArrow<A, B>>();
+      for (const x of domain) {
+        const row = rows.get(x);
+        if (!row) {
+          throw new Error("SetCat: curry lost track of a domain element in the product enumeration");
+        }
+        const outputs = enumeration.baseElements.map((a) => {
+          const pair = row.get(a);
+          if (!pair) {
+            throw new Error("SetCat: curry expects the product to contain every required pair");
+          }
+          return morphism.map(pair);
+        });
+        assignments.set(x, enumeration.retrieve(outputs));
+      }
+
+      return createSetHom(domain, enumeration.object, (x) => {
+        const fn = assignments.get(x);
+        if (!fn) {
+          throw new Error("SetCat: curry evaluated on an element outside the recorded domain");
+        }
+        return fn;
+      });
+    };
+
+    const uncurry = <X>(input: UncurryInput<X, A, B>): SetHom<Pair<X, A>, B> => {
+      const { morphism } = input;
+      if (morphism.cod !== enumeration.object) {
+        throw new Error("SetCat: uncurry expects a morphism landing in the exponential object");
+      }
+      const domain = morphism.dom as SetObj<X>;
+      const productData = input.product ?? buildProductData(domain, base);
+      if (productData.projections.fst.cod !== domain) {
+        throw new Error("SetCat: uncurry requires the supplied product to project onto the morphism domain");
+      }
+      if (productData.projections.snd.cod !== base) {
+        throw new Error("SetCat: uncurry requires the supplied product to project onto the base set");
+      }
+
+      return createSetHom(productData.object, codomain, (pair) => {
+        const fn = morphism.map(pair[0]);
+        return fn(pair[1]);
+      });
+    };
+
+    return {
+      object: enumeration.object,
+      evaluation,
+      evaluationProduct,
+      curry,
+      uncurry,
+    };
+  },
 };

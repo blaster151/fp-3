@@ -9,8 +9,16 @@ import {
   checkBinaryProductNaturality,
   makeBinaryProductComponentwise,
 } from "../category-limits-helpers";
-import type { AnySet, Coproduct, SetHom, SetObj } from "../set-cat";
+import type {
+  AnySet,
+  Coproduct,
+  ProductData,
+  SetHom,
+  SetObj,
+  ExponentialArrow,
+} from "../set-cat";
 import { SetCat, composeSet } from "../set-cat";
+import { SetLaws, CardinalityComparisonResult } from "../set-laws";
 
 export type OracleReport<TExtra = Record<string, unknown>> = {
   holds: boolean;
@@ -28,8 +36,8 @@ type SetObject = AnySet<unknown>;
 type SetMorphism = SetHom<any, any>;
 
 const ensureSetObj = <T>(carrier: AnySet<T>, context: string): SetObj<T> => {
-  if (!(carrier instanceof Set)) {
-    throw new Error(`${context}: expected a concrete Set instance`);
+  if (typeof (carrier as SetObj<T>).has !== "function" || typeof (carrier as SetObj<T>)[Symbol.iterator] !== "function") {
+    throw new Error(`${context}: expected an object supporting Set iteration and membership`);
   }
   return carrier as SetObj<T>;
 };
@@ -329,6 +337,380 @@ export const checkElementsAsArrows = <A>(
   };
 };
 
+// ---------- Exponentials ----------
+export interface SetExponentialWitness<A, B> {
+  readonly base: AnySet<A>;
+  readonly codomain: AnySet<B>;
+  readonly exponential: AnySet<ExponentialArrow<A, B>>;
+  readonly evaluation: SetHom<readonly [ExponentialArrow<A, B>, A], B>;
+  readonly evaluationProduct: ProductData<ExponentialArrow<A, B>, A>;
+  readonly curry: <X>(input: {
+    readonly domain: AnySet<X>;
+    readonly product?: ProductData<X, A>;
+    readonly mediator: SetHom<readonly [X, A], B>;
+  }) => SetHom<X, ExponentialArrow<A, B>>;
+  readonly uncurry: <X>(input: {
+    readonly product?: ProductData<X, A>;
+    readonly morphism: SetHom<X, ExponentialArrow<A, B>>;
+  }) => SetHom<readonly [X, A], B>;
+  readonly checkEvaluationTriangle: <X>(input: {
+    readonly domain: AnySet<X>;
+    readonly product?: ProductData<X, A>;
+    readonly mediator: SetHom<readonly [X, A], B>;
+  }) => OracleReport<{ transpose: SetHom<X, ExponentialArrow<A, B>> | null }>;
+  readonly checkCurryUniqueness: <X>(input: {
+    readonly domain: AnySet<X>;
+    readonly product?: ProductData<X, A>;
+    readonly mediator: SetHom<readonly [X, A], B>;
+    readonly candidate: SetHom<X, ExponentialArrow<A, B>>;
+  }) => OracleReport<{ canonical: SetHom<X, ExponentialArrow<A, B>> }>;
+  readonly checkUncurryRoundTrip: <X>(input: {
+    readonly domain: AnySet<X>;
+    readonly product?: ProductData<X, A>;
+    readonly mediator: SetHom<readonly [X, A], B>;
+  }) => OracleReport<{ transpose: SetHom<X, ExponentialArrow<A, B>> | null }>;
+}
+
+const ensureProductData = <X, A>(
+  domain: SetObj<X>,
+  base: SetObj<A>,
+  product: ProductData<X, A> | undefined,
+  context: string,
+): ProductData<X, A> => {
+  if (!product) {
+    return SetCat.product(domain, base);
+  }
+  if (product.projections.fst.cod !== domain) {
+    throw new Error(`${context}: product first projection must land in the supplied domain`);
+  }
+  if (product.projections.snd.cod !== base) {
+    throw new Error(`${context}: product second projection must land in the supplied base set`);
+  }
+  return product;
+};
+
+const verifyMediatorCompatibility = <X, A, B>(
+  product: ProductData<X, A>,
+  mediator: SetHom<readonly [X, A], B>,
+  codomain: SetObj<B>,
+  context: string,
+): string[] => {
+  const failures: string[] = [];
+  if (mediator.dom !== product.object) {
+    failures.push(`${context}: mediator must have the supplied product as its domain`);
+  }
+  if (mediator.cod !== codomain) {
+    failures.push(`${context}: mediator must land in the declared codomain`);
+  }
+  return failures;
+};
+
+export const setExponentialWitness = <A, B>(
+  base: AnySet<A>,
+  codomain: AnySet<B>,
+): SetExponentialWitness<A, B> => {
+  const baseObj = ensureSetObj(base, "setExponentialWitness.base");
+  const codomainObj = ensureSetObj(codomain, "setExponentialWitness.codomain");
+  const data = SetCat.exponential(baseObj, codomainObj);
+
+  const curry = <X>(input: {
+    readonly domain: AnySet<X>;
+    readonly product?: ProductData<X, A>;
+    readonly mediator: SetHom<readonly [X, A], B>;
+  }): SetHom<X, ExponentialArrow<A, B>> => {
+    const domainObj = ensureSetObj(input.domain, "setExponentialWitness.curry.domain");
+    const product = ensureProductData(domainObj, baseObj, input.product, "setExponentialWitness.curry");
+    const failures = verifyMediatorCompatibility(product, input.mediator, codomainObj, "setExponentialWitness.curry");
+    if (failures.length > 0) {
+      throw new Error(failures.join("; "));
+    }
+    return data.curry({ domain: domainObj, product, morphism: input.mediator });
+  };
+
+  const uncurry = <X>(input: {
+    readonly product?: ProductData<X, A>;
+    readonly morphism: SetHom<X, ExponentialArrow<A, B>>;
+  }): SetHom<readonly [X, A], B> => {
+    const domainObj = input.morphism.dom as SetObj<X>;
+    const product = ensureProductData(domainObj, baseObj, input.product, "setExponentialWitness.uncurry");
+    if (input.morphism.cod !== data.object) {
+      throw new Error("setExponentialWitness.uncurry: morphism must land in the exponential carrier");
+    }
+    return data.uncurry({ product, morphism: input.morphism });
+  };
+
+  const checkEvaluationTriangle = <X>(input: {
+    readonly domain: AnySet<X>;
+    readonly product?: ProductData<X, A>;
+    readonly mediator: SetHom<readonly [X, A], B>;
+  }): OracleReport<{ transpose: SetHom<X, ExponentialArrow<A, B>> }> => {
+    const domainObj = ensureSetObj(input.domain, "setExponentialWitness.checkTriangle.domain");
+    const product = ensureProductData(domainObj, baseObj, input.product, "setExponentialWitness.checkTriangle");
+    const failures = verifyMediatorCompatibility(product, input.mediator, codomainObj, "setExponentialWitness.checkTriangle");
+    if (failures.length > 0) {
+      return { holds: false, failures, details: { transpose: null } };
+    }
+    const transpose = data.curry({ domain: domainObj, product, morphism: input.mediator });
+    const firstComponent = composeSet(transpose, product.projections.fst);
+    const secondComponent = product.projections.snd;
+    const pairing = data.evaluationProduct.pair(firstComponent, secondComponent);
+    const composite = composeSet(data.evaluation, pairing);
+    const holds = equalSetMorphisms(composite, input.mediator);
+    const localFailures = holds ? [] : ["evaluation ∘ ⟨transpose ∘ π₁, π₂⟩ failed to recover the mediator"];
+    return { holds, failures: localFailures, details: { transpose } };
+  };
+
+  const checkCurryUniqueness = <X>(input: {
+    readonly domain: AnySet<X>;
+    readonly product?: ProductData<X, A>;
+    readonly mediator: SetHom<readonly [X, A], B>;
+    readonly candidate: SetHom<X, ExponentialArrow<A, B>>;
+  }): OracleReport<{ canonical: SetHom<X, ExponentialArrow<A, B>> }> => {
+    const domainObj = ensureSetObj(input.domain, "setExponentialWitness.checkUniqueness.domain");
+    const product = ensureProductData(domainObj, baseObj, input.product, "setExponentialWitness.checkUniqueness");
+    const mediatorFailures = verifyMediatorCompatibility(
+      product,
+      input.mediator,
+      codomainObj,
+      "setExponentialWitness.checkUniqueness",
+    );
+    const failures = [...mediatorFailures];
+    if (input.candidate.dom !== domainObj) {
+      failures.push("setExponentialWitness.checkUniqueness: candidate domain must match the supplied object");
+    }
+    if (input.candidate.cod !== data.object) {
+      failures.push("setExponentialWitness.checkUniqueness: candidate must land in the exponential carrier");
+    }
+    const canonical = data.curry({ domain: domainObj, product, morphism: input.mediator });
+
+    const candidateFirst = composeSet(input.candidate, product.projections.fst);
+    const candidatePair = data.evaluationProduct.pair(candidateFirst, product.projections.snd);
+    const candidateComposite = composeSet(data.evaluation, candidatePair);
+    if (!equalSetMorphisms(candidateComposite, input.mediator)) {
+      failures.push("setExponentialWitness.checkUniqueness: evaluation composite does not recover the mediator");
+    }
+    if (failures.length === 0 && !equalSetMorphisms(input.candidate, canonical)) {
+      failures.push("setExponentialWitness.checkUniqueness: candidate differs from the canonical transpose");
+    }
+    return { holds: failures.length === 0, failures, details: { canonical } };
+  };
+
+  const checkUncurryRoundTrip = <X>(input: {
+    readonly domain: AnySet<X>;
+    readonly product?: ProductData<X, A>;
+    readonly mediator: SetHom<readonly [X, A], B>;
+  }): OracleReport<{ transpose: SetHom<X, ExponentialArrow<A, B>> }> => {
+    const domainObj = ensureSetObj(input.domain, "setExponentialWitness.checkRoundTrip.domain");
+    const product = ensureProductData(domainObj, baseObj, input.product, "setExponentialWitness.checkRoundTrip");
+    const mediatorFailures = verifyMediatorCompatibility(
+      product,
+      input.mediator,
+      codomainObj,
+      "setExponentialWitness.checkRoundTrip",
+    );
+    if (mediatorFailures.length > 0) {
+      return { holds: false, failures: mediatorFailures, details: { transpose: null } };
+    }
+    const transpose = data.curry({ domain: domainObj, product, morphism: input.mediator });
+    const uncurried = data.uncurry({ product, morphism: transpose });
+    const holds = equalSetMorphisms(uncurried, input.mediator);
+    const failures = holds ? [] : ["setExponentialWitness.checkRoundTrip: uncurry(curry(mediator)) did not recover the mediator"];
+    return { holds, failures, details: { transpose } };
+  };
+
+  return {
+    base,
+    codomain,
+    exponential: data.object,
+    evaluation: data.evaluation,
+    evaluationProduct: data.evaluationProduct,
+    curry,
+    uncurry,
+    checkEvaluationTriangle,
+    checkCurryUniqueness,
+    checkUncurryRoundTrip,
+  };
+};
+
+// ---------- Power set cardinality ----------
+export interface PowerSetWitness<A> {
+  readonly source: AnySet<A>;
+  readonly carrier: AnySet<AnySet<A>>;
+  readonly subsets: ReadonlyArray<{ subset: Set<A>; characteristic: boolean[] }>;
+}
+
+export const powerSetWitness = <A>(source: AnySet<A>): PowerSetWitness<A> => {
+  const sourceObj = ensureSetObj(source, "powerSetWitness");
+  const evidence = SetLaws.powerSetEvidence(sourceObj);
+  return {
+    source,
+    carrier: evidence.carrier,
+    subsets: evidence.subsets,
+  };
+};
+
+export const checkPowerSetWitness = <A>(
+  witness: PowerSetWitness<A>,
+): OracleReport<{ expectedSize: number; actualSize: number }> => {
+  const sourceObj = ensureSetObj(witness.source, "checkPowerSetWitness");
+  const elements = Array.from(sourceObj);
+  const expectedSize = Math.pow(2, elements.length);
+  const actualSize = witness.carrier.size;
+  const failures: string[] = [];
+
+  if (actualSize !== expectedSize) {
+    failures.push(`|P(A)| expected ${expectedSize} subsets, received ${actualSize}`);
+  }
+
+  const seen = new Set<Set<A>>();
+  witness.subsets.forEach(entry => {
+    if (!witness.carrier.has(entry.subset)) {
+      failures.push("power set evidence: subset enumeration is missing from the carrier");
+    }
+    if (entry.characteristic.length !== elements.length) {
+      failures.push("power set evidence: characteristic vector length mismatch");
+    }
+    entry.characteristic.forEach((flag, index) => {
+      const element = elements[index];
+      const hasElement = entry.subset.has(element);
+      if (flag && !hasElement) {
+        failures.push(`power set evidence: indicator marks ${String(element)} present but subset omits it`);
+      }
+      if (!flag && hasElement) {
+        failures.push(`power set evidence: indicator marks ${String(element)} absent but subset includes it`);
+      }
+    });
+    for (const value of entry.subset) {
+      if (!sourceObj.has(value)) {
+        failures.push("power set evidence: subset contains an element outside the source set");
+        break;
+      }
+    }
+    seen.add(entry.subset);
+  });
+
+  for (const subset of witness.carrier) {
+    if (!seen.has(subset as Set<A>)) {
+      failures.push("power set evidence: carrier subset missing from the enumeration");
+    }
+  }
+
+  return {
+    holds: failures.length === 0,
+    failures,
+    details: { expectedSize, actualSize },
+  };
+};
+
+// ---------- Cantor diagonal ----------
+export interface CantorDiagonalWitness<A> {
+  readonly domain: AnySet<A>;
+  readonly diagonal: Set<A>;
+  readonly diagnoses: ReadonlyArray<{
+    element: A;
+    diagonalContains: boolean;
+    imageContains: boolean;
+    image: Set<A>;
+  }>;
+}
+
+export const cantorDiagonalWitness = <A>(
+  domain: AnySet<A>,
+  mapping: (element: A) => AnySet<A>,
+): CantorDiagonalWitness<A> => {
+  const domainObj = ensureSetObj(domain, "cantorDiagonalWitness.domain");
+  const evidence = SetLaws.cantorDiagonalEvidence(domainObj, mapping);
+  return {
+    domain,
+    diagonal: evidence.diagonal,
+    diagnoses: evidence.diagnoses,
+  };
+};
+
+export const checkCantorDiagonal = <A>(
+  witness: CantorDiagonalWitness<A>,
+): OracleReport<{ diagonalSize: number; domainSize: number }> => {
+  const domainObj = ensureSetObj(witness.domain, "checkCantorDiagonal.domain");
+  const failures: string[] = [];
+
+  for (const value of witness.diagonal) {
+    if (!domainObj.has(value)) {
+      failures.push("Cantor diagonal: diagonal includes an element outside the domain");
+      break;
+    }
+  }
+
+  if (witness.diagnoses.length !== domainObj.size) {
+    failures.push("Cantor diagonal: diagnoses must cover every domain element");
+  }
+
+  witness.diagnoses.forEach(diagnosis => {
+    const { element, diagonalContains, imageContains, image } = diagnosis;
+    if (!domainObj.has(element)) {
+      failures.push("Cantor diagonal: diagnosis references an element outside the domain");
+    }
+    for (const value of image) {
+      if (!domainObj.has(value)) {
+        failures.push("Cantor diagonal: image includes an element outside the domain");
+        break;
+      }
+    }
+    if (diagonalContains === imageContains) {
+      failures.push("Cantor diagonal: diagonal and image agree on a diagonal test point");
+    }
+  });
+
+  return {
+    holds: failures.length === 0,
+    failures,
+    details: { diagonalSize: witness.diagonal.size, domainSize: domainObj.size },
+  };
+};
+
+// ---------- Cardinality comparisons ----------
+export interface CardinalityComparisonWitness<A, B> {
+  readonly left: AnySet<A>;
+  readonly right: AnySet<B>;
+  readonly analysis: CardinalityComparisonResult;
+}
+
+export const cardinalityComparisonWitness = <A, B>(
+  left: AnySet<A>,
+  right: AnySet<B>,
+): CardinalityComparisonWitness<A, B> => ({
+  left,
+  right,
+  analysis: SetLaws.compareCardinalities(left, right),
+});
+
+export const checkCardinalityComparison = <A, B>(
+  witness: CardinalityComparisonWitness<A, B>,
+): OracleReport<CardinalityComparisonResult> => {
+  const leftObj = ensureSetObj(witness.left, "checkCardinalityComparison.left");
+  const rightObj = ensureSetObj(witness.right, "checkCardinalityComparison.right");
+  const recomputed = SetLaws.compareCardinalities(leftObj, rightObj);
+  const failures: string[] = [];
+
+  if (witness.analysis.leftSize !== leftObj.size) {
+    failures.push("cardinality comparison: recorded left size does not match the carrier");
+  }
+  if (witness.analysis.rightSize !== rightObj.size) {
+    failures.push("cardinality comparison: recorded right size does not match the carrier");
+  }
+  if (witness.analysis.relation !== recomputed.relation) {
+    failures.push("cardinality comparison: recorded relation disagrees with the recomputed sizes");
+  }
+  if (witness.analysis.difference !== recomputed.difference) {
+    failures.push("cardinality comparison: recorded difference disagrees with the recomputed sizes");
+  }
+
+  return {
+    holds: failures.length === 0,
+    failures,
+    details: witness.analysis,
+  };
+};
+
 const cardinalityOracles = {
   uniqueFromEmpty: {
     witness: uniqueFromEmptyWitness,
@@ -346,6 +728,10 @@ const cardinalityOracles = {
     witness: elementsAsArrowsWitness,
     check: checkElementsAsArrows,
   },
+  compareCardinalities: {
+    witness: cardinalityComparisonWitness,
+    check: checkCardinalityComparison,
+  },
 } as const;
 
 export const SetOracles = {
@@ -357,4 +743,15 @@ export const SetOracles = {
   },
   ...cardinalityOracles,
   cardinality: cardinalityOracles,
+  exponential: {
+    witness: setExponentialWitness,
+  },
+  powerSet: {
+    witness: powerSetWitness,
+    check: checkPowerSetWitness,
+  },
+  cantorDiagonal: {
+    witness: cantorDiagonalWitness,
+    check: checkCantorDiagonal,
+  },
 };

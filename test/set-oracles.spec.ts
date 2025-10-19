@@ -134,4 +134,69 @@ describe("Set oracles", () => {
     expect(report.details.homCount).toBe(Three.size);
     expect(report.details.size).toBe(Three.size);
   });
+
+  it("packages exponentials with executable currying diagnostics", () => {
+    const base = SetCat.obj([0, 1]);
+    const codomain = SetCat.obj(["a", "b", "c"]);
+    const witness = SetOracles.exponential.witness(base, codomain);
+    const domain = SetCat.obj(["x", "y"]);
+    const product = SetCat.product(domain, base);
+    const mediator = SetCat.hom(product.object, codomain, ([label, index]) => {
+      if (label === "x" && index === 0) return "a";
+      if (label === "y" && index === 1) return "c";
+      return "b";
+    });
+
+    const triangle = witness.checkEvaluationTriangle({ domain, product, mediator });
+    expect(triangle.holds).toBe(true);
+
+    const transpose = witness.curry({ domain, product, mediator });
+    const uniqueness = witness.checkCurryUniqueness({ domain, product, mediator, candidate: transpose });
+    expect(uniqueness.holds).toBe(true);
+
+    const roundTrip = witness.checkUncurryRoundTrip({ domain, product, mediator });
+    expect(roundTrip.holds).toBe(true);
+
+    const skewDomain = SetCat.obj(["z"]);
+    const skewProduct = SetCat.product(skewDomain, base);
+    expect(() => witness.curry({ domain: skewDomain, product: skewProduct, mediator })).toThrow();
+  });
+
+  it("verifies power-set enumerations with characteristic vectors", () => {
+    const witness = SetOracles.powerSet.witness(Two);
+    const report = SetOracles.powerSet.check(witness);
+    expect(report.holds).toBe(true);
+    expect(report.details.expectedSize).toBe(4);
+    expect(report.details.actualSize).toBe(4);
+
+    const tampered = { ...witness, subsets: witness.subsets.slice(1) };
+    expect(SetOracles.powerSet.check(tampered as typeof witness).holds).toBe(false);
+  });
+
+  it("detects Cantor-diagonal separations from power-set images", () => {
+    const domain = SetCat.obj([0, 1, 2]);
+    const mapping = (value: number) =>
+      value === 0 ? SetCat.obj([0]) : value === 1 ? SetCat.obj([0, 1]) : SetCat.obj([2]);
+    const witness = SetOracles.cantorDiagonal.witness(domain, mapping);
+    const report = SetOracles.cantorDiagonal.check(witness);
+    expect(report.holds).toBe(true);
+    expect(report.details.diagonalSize).toBe(domain.size);
+
+    const skew = { ...witness, diagonal: new Set([...witness.diagonal, 99]) };
+    expect(SetOracles.cantorDiagonal.check(skew as typeof witness).holds).toBe(false);
+  });
+
+  it("records finite cardinality comparisons", () => {
+    const witness = SetOracles.compareCardinalities.witness(Two, Three);
+    const report = SetOracles.compareCardinalities.check(witness);
+    expect(report.holds).toBe(true);
+    expect(report.details.relation).toBe("less");
+    expect(report.details.difference).toBe(1);
+
+    const skew = {
+      ...witness,
+      analysis: { ...witness.analysis, leftSize: witness.analysis.leftSize + 1 },
+    };
+    expect(SetOracles.compareCardinalities.check(skew as typeof witness).holds).toBe(false);
+  });
 });
