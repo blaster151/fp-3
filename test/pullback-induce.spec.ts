@@ -1,174 +1,145 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from "vitest";
+import { makeFinitePullbackCalculator } from "../pullback";
+import type { FiniteCategory } from "../finite-cat";
 
-import { makeFinitePullbackCalculator, type PullbackData } from '../pullback'
-import type { FiniteCategory } from '../finite-cat'
+type Obj = "A" | "B" | "P" | "Q" | "Z";
 
-type Obj = 'D1' | 'D2' | 'S' | 'T' | 'P1' | 'P2'
+type ArrowName =
+  | `id_${Obj}`
+  | "f"
+  | "g"
+  | "pToA"
+  | "pToB"
+  | "pToZ"
+  | "qToA"
+  | "qToB"
+  | "qToZ"
+  | "mediator"
+  | "mediatorDuplicate";
 
 type Arrow = {
-  readonly name: string
-  readonly src: Obj
-  readonly dst: Obj
+  readonly name: ArrowName;
+  readonly src: Obj;
+  readonly dst: Obj;
+};
+
+type MediatorMode = "none" | "single" | "duplicate";
+
+interface TestCategory {
+  readonly category: FiniteCategory<Obj, Arrow>;
+  readonly getArrow: (name: ArrowName) => Arrow;
 }
 
-const id = (object: Obj): Arrow => ({
-  name: `id_${object}`,
-  src: object,
-  dst: object,
-})
+const makeTestCategory = (mode: MediatorMode): TestCategory => {
+  const arrowByName = new Map<ArrowName, Arrow>();
+  const makeArrow = (name: ArrowName, src: Obj, dst: Obj): Arrow => {
+    const arrow = { name, src, dst } as const;
+    arrowByName.set(name, arrow);
+    return arrow;
+  };
 
-const makeCompose = (table: Record<string, Arrow>) =>
-  (g: Arrow, f: Arrow): Arrow => {
-    if (f.dst !== g.src) {
-      throw new Error('compose: mismatched endpoints')
-    }
-    if (g.name === `id_${g.src}`) return f
-    if (f.name === `id_${f.src}`) return g
-    const key = `${g.name}∘${f.name}`
-    const arrow = table[key]
-    if (!arrow) {
-      throw new Error(`compose: missing case ${key}`)
-    }
-    return arrow
+  const objects: readonly Obj[] = ["A", "B", "P", "Q", "Z"];
+
+  const arrows: Arrow[] = [
+    ...objects.map((object) => makeArrow(`id_${object}`, object, object)),
+    makeArrow("f", "A", "Z"),
+    makeArrow("g", "B", "Z"),
+    makeArrow("pToA", "P", "A"),
+    makeArrow("pToB", "P", "B"),
+    makeArrow("pToZ", "P", "Z"),
+    makeArrow("qToA", "Q", "A"),
+    makeArrow("qToB", "Q", "B"),
+    makeArrow("qToZ", "Q", "Z"),
+  ];
+
+  if (mode !== "none") {
+    arrows.push(makeArrow("mediator", "P", "Q"));
+  }
+  if (mode === "duplicate") {
+    arrows.push(makeArrow("mediatorDuplicate", "P", "Q"));
   }
 
-type FixtureMode = 'unique' | 'none' | 'duplicate'
+  const getArrow = (name: ArrowName): Arrow => {
+    const arrow = arrowByName.get(name);
+    if (!arrow) throw new Error(`Unknown arrow ${name}`);
+    return arrow;
+  };
 
-interface InduceFixture {
-  readonly category: FiniteCategory<Obj, Arrow>
-  readonly f: Arrow
-  readonly g: Arrow
-  readonly h: Arrow
-  readonly j: Arrow
-  readonly pullbackOfF: PullbackData<Obj, Arrow>
-  readonly pullbackOfG: PullbackData<Obj, Arrow>
-  readonly mediator?: Arrow
-}
-
-const makeInduceFixture = (mode: FixtureMode): InduceFixture => {
-  const objects: ReadonlyArray<Obj> = ['D1', 'D2', 'S', 'T', 'P1', 'P2']
-
-  const f: Arrow = { name: 'f', src: 'D1', dst: 'T' }
-  const g: Arrow = { name: 'g', src: 'D2', dst: 'T' }
-  const h: Arrow = { name: 'h', src: 'S', dst: 'T' }
-  const j: Arrow = { name: 'j', src: 'D1', dst: 'D2' }
-
-  const p1Dom: Arrow = { name: 'p1Dom', src: 'P1', dst: 'D1' }
-  const p1Anc: Arrow = { name: 'p1Anc', src: 'P1', dst: 'S' }
-  const p1ToT: Arrow = { name: 'p1ToT', src: 'P1', dst: 'T' }
-  const jAfterP1: Arrow = { name: 'jAfterP1', src: 'P1', dst: 'D2' }
-
-  const p2Dom: Arrow = { name: 'p2Dom', src: 'P2', dst: 'D2' }
-  const p2Anc: Arrow = { name: 'p2Anc', src: 'P2', dst: 'S' }
-  const p2ToT: Arrow = { name: 'p2ToT', src: 'P2', dst: 'T' }
-
-  const mediator =
-    mode === 'none'
-      ? undefined
-      : { name: mode === 'duplicate' ? 'u1' : 'u', src: 'P1', dst: 'P2' } as const
-  const extraMediator =
-    mode === 'duplicate'
-      ? ({ name: 'u2', src: 'P1', dst: 'P2' } as const)
-      : undefined
-
-  const arrows: ReadonlyArray<Arrow> = [
-    ...objects.map((object) => id(object)),
-    f,
-    g,
-    h,
-    j,
-    p1Dom,
-    p1Anc,
-    p1ToT,
-    jAfterP1,
-    p2Dom,
-    p2Anc,
-    p2ToT,
-    ...(mediator ? [mediator] : []),
-    ...(extraMediator ? [extraMediator] : []),
-  ]
-
-  const compose = makeCompose({
-    'f∘p1Dom': p1ToT,
-    'h∘p1Anc': p1ToT,
-    'g∘p2Dom': p2ToT,
-    'h∘p2Anc': p2ToT,
-    'j∘p1Dom': jAfterP1,
-    'g∘j': f,
-    'g∘jAfterP1': p1ToT,
-    ...(mediator
-      ? {
-          [`p2Dom∘${mediator.name}`]: jAfterP1,
-          [`p2Anc∘${mediator.name}`]: p1Anc,
-        }
-      : {}),
-    ...(extraMediator
-      ? {
-          [`p2Dom∘${extraMediator.name}`]: jAfterP1,
-          [`p2Anc∘${extraMediator.name}`]: p1Anc,
-        }
-      : {}),
-  })
+  const compose = (g: Arrow, f: Arrow): Arrow => {
+    if (f.dst !== g.src) {
+      throw new Error(`compose: domain/codomain mismatch for ${g.name} ∘ ${f.name}`);
+    }
+    if (f.name.startsWith("id_")) return getArrow(g.name as ArrowName);
+    if (g.name.startsWith("id_")) return getArrow(f.name as ArrowName);
+    if (f.name === "pToA" && g.name === "f") return getArrow("pToZ");
+    if (f.name === "pToB" && g.name === "g") return getArrow("pToZ");
+    if (f.name === "qToA" && g.name === "f") return getArrow("qToZ");
+    if (f.name === "qToB" && g.name === "g") return getArrow("qToZ");
+    if (g.name === "qToA" && (f.name === "mediator" || f.name === "mediatorDuplicate")) {
+      return getArrow("pToA");
+    }
+    if (g.name === "qToB" && (f.name === "mediator" || f.name === "mediatorDuplicate")) {
+      return getArrow("pToB");
+    }
+    throw new Error(`compose: unsupported combination ${g.name} ∘ ${f.name}`);
+  };
 
   const category: FiniteCategory<Obj, Arrow> = {
     objects,
     arrows,
-    id: (object) => id(object),
+    id: (object) => getArrow(`id_${object}`),
     compose,
     src: (arrow) => arrow.src,
     dst: (arrow) => arrow.dst,
     eq: (left, right) => left.name === right.name,
-  }
+  };
 
-  const pullbackOfF: PullbackData<Obj, Arrow> = {
-    apex: 'P1',
-    toDomain: p1Dom,
-    toAnchor: p1Anc,
-  }
+  return { category, getArrow };
+};
 
-  const pullbackOfG: PullbackData<Obj, Arrow> = {
-    apex: 'P2',
-    toDomain: p2Dom,
-    toAnchor: p2Anc,
-  }
+describe("pullback mediator induction", () => {
+  it("returns the unique mediator that satisfies the pullback equations", () => {
+    const { category, getArrow } = makeTestCategory("none");
+    const calculator = makeFinitePullbackCalculator(category);
+    const f = getArrow("f");
+    const g = getArrow("g");
+    const pullback = calculator.pullback(f, g);
+    const j = category.id(category.src(f));
+    const mediator = calculator.induce(j, pullback, pullback);
+    expect(mediator.name).toBe("id_P");
+  });
 
-  const fixture = { category, f, g, h, j, pullbackOfF, pullbackOfG }
-  return mediator ? { ...fixture, mediator } : fixture
-}
+  it("throws when no mediating arrow satisfies the universal property", () => {
+    const { category, getArrow } = makeTestCategory("none");
+    const calculator = makeFinitePullbackCalculator(category);
+    const f = getArrow("f");
+    const g = getArrow("g");
+    const pullbackOfF = calculator.pullback(f, g);
+    const pullbackOfG = {
+      apex: "Q" as const,
+      toDomain: getArrow("qToA"),
+      toAnchor: getArrow("qToB"),
+    };
+    const j = category.id(category.src(f));
+    expect(() => calculator.induce(j, pullbackOfF, pullbackOfG)).toThrow(
+      "No mediating arrow satisfies the pullback conditions.",
+    );
+  });
 
-describe('PullbackCalculator.induce', () => {
-  it('returns the unique mediator when it exists', () => {
-    const fixture = makeInduceFixture('unique')
-    const calculator = makeFinitePullbackCalculator(fixture.category)
-
-    const pullbackF = calculator.pullback(fixture.f, fixture.h)
-    expect(fixture.category.eq(pullbackF.toDomain, fixture.pullbackOfF.toDomain)).toBe(true)
-    expect(fixture.category.eq(pullbackF.toAnchor, fixture.pullbackOfF.toAnchor)).toBe(true)
-
-    const pullbackG = calculator.pullback(fixture.g, fixture.h)
-    expect(fixture.category.eq(pullbackG.toDomain, fixture.pullbackOfG.toDomain)).toBe(true)
-    expect(fixture.category.eq(pullbackG.toAnchor, fixture.pullbackOfG.toAnchor)).toBe(true)
-
-    const mediator = calculator.induce(fixture.j, fixture.pullbackOfF, fixture.pullbackOfG)
-    expect(mediator).toBeDefined()
-    expect(fixture.category.eq(mediator, fixture.mediator!)).toBe(true)
-  })
-
-  it('throws when no mediating arrow satisfies the pullback equations', () => {
-    const fixture = makeInduceFixture('none')
-    const calculator = makeFinitePullbackCalculator(fixture.category)
-
-    expect(() => calculator.induce(fixture.j, fixture.pullbackOfF, fixture.pullbackOfG)).toThrow(
-      /no mediating arrow/i,
-    )
-  })
-
-  it('throws when multiple mediators satisfy the pullback equations', () => {
-    const fixture = makeInduceFixture('duplicate')
-    const calculator = makeFinitePullbackCalculator(fixture.category)
-
-    expect(() => calculator.induce(fixture.j, fixture.pullbackOfF, fixture.pullbackOfG)).toThrow(
-      /multiple mediating arrows/i,
-    )
-  })
-})
+  it("throws when more than one mediating arrow survives the commuting checks", () => {
+    const { category, getArrow } = makeTestCategory("duplicate");
+    const calculator = makeFinitePullbackCalculator(category);
+    const f = getArrow("f");
+    const g = getArrow("g");
+    const pullbackOfF = calculator.pullback(f, g);
+    const pullbackOfG = {
+      apex: "Q" as const,
+      toDomain: getArrow("qToA"),
+      toAnchor: getArrow("qToB"),
+    };
+    const j = category.id(category.src(f));
+    expect(() => calculator.induce(j, pullbackOfF, pullbackOfG)).toThrow(
+      "Multiple mediating arrows satisfy the pullback conditions.",
+    );
+  });
+});

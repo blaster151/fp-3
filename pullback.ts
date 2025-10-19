@@ -251,7 +251,7 @@ export function makeFinitePullbackCalculator<Obj, Arr>(
     pullbackOfF: PullbackData<Obj, Arr>,
     pullbackOfG: PullbackData<Obj, Arr>
   ): Arr => {
-    const candidates = base.arrows.filter((arrow) => {
+    const mediators = base.arrows.filter((arrow) => {
       if (base.src(arrow) !== pullbackOfF.apex || base.dst(arrow) !== pullbackOfG.apex) return false;
       const leftDomain = base.compose(pullbackOfG.toDomain, arrow);
       const rightDomain = base.compose(j, pullbackOfF.toDomain);
@@ -260,22 +260,14 @@ export function makeFinitePullbackCalculator<Obj, Arr>(
       return base.eq(leftAnchor, pullbackOfF.toAnchor);
     });
 
-    const mediators = candidates.filter((candidate, index) => {
-      const firstIndex = candidates.findIndex((other) => base.eq(other, candidate));
-      return firstIndex === index;
-    });
-
     if (mediators.length === 0) {
       throw new Error("No mediating arrow satisfies the pullback conditions.");
     }
     if (mediators.length > 1) {
       throw new Error("Multiple mediating arrows satisfy the pullback conditions.");
     }
-    const [mediator] = mediators;
-    if (mediator === undefined) {
-      throw new Error("Pullback induce: expected a unique mediator after filtering candidates.");
-    }
-    return mediator;
+
+    return mediators[0]!;
   };
 
   const comparison = (
