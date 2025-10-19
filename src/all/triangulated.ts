@@ -2897,14 +2897,85 @@ export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
 
 /** FinSet bijection helper */
 export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): FinSetMor => {
-  if (map.length !== from.elements.length) throw new Error('finsetBij: length mismatch')
+  const domainSize = from.elements.length
+  const codomainSize = to.elements.length
+
+  if (map.length !== domainSize) {
+    throw new Error(
+      `FinSet bijection: expected map length ${map.length} to equal domain size ${domainSize}`
+    )
+  }
+  if (codomainSize !== domainSize) {
+    throw new Error(
+      `FinSet bijection: expected codomain size ${codomainSize} to equal domain size ${domainSize}`
+    )
+  }
+
+  const seen = new Set<number>()
+  for (let i = 0; i < map.length; i++) {
+    const target = map[i]
+    if (!Number.isInteger(target) || target < 0 || target >= codomainSize) {
+      if (codomainSize === 0) {
+        throw new Error(`FinSet bijection: map[${i}] = ${target} exceeds an empty codomain`)
+      }
+      throw new Error(
+        `FinSet bijection: map[${i}] = ${target} is outside the codomain range 0..${codomainSize - 1}`
+      )
+    }
+    if (seen.has(target)) {
+      throw new Error(
+        `FinSet bijection: map is not injective; codomain index ${target} has multiple preimages`
+      )
+    }
+    seen.add(target)
+  }
+
   return { from, to, map }
 }
 
-/** FinSet inverse helper */
+/**
+ * FinSet inverse helper.
+ *
+ * The input morphism must be a bijection (total, injective, and surjective). Any
+ * deviation is reported with a descriptive error before attempting to produce the inverse.
+ */
 export const finsetInverse = (bij: FinSetMor): FinSetMor => {
-  const inv: number[] = Array.from({ length: bij.to.elements.length }, () => -1)
-  for (let i = 0; i < bij.map.length; i++) inv[bij.map[i]!] = i
+  const domainSize = bij.from.elements.length
+  const codomainSize = bij.to.elements.length
+
+  if (bij.map.length !== domainSize) {
+    throw new Error(
+      `FinSet inverse: expected map length ${bij.map.length} to equal domain size ${domainSize}`
+    )
+  }
+  if (domainSize !== codomainSize) {
+    throw new Error(
+      `FinSet inverse: expected domain size ${domainSize} to equal codomain size ${codomainSize}`
+    )
+  }
+
+  const inv: number[] = Array.from({ length: codomainSize }, () => -1)
+  for (let i = 0; i < bij.map.length; i++) {
+    const target = bij.map[i]
+    if (!Number.isInteger(target) || target < 0 || target >= codomainSize) {
+      if (codomainSize === 0) {
+        throw new Error(`FinSet inverse: map[${i}] = ${target} exceeds an empty codomain`)
+      }
+      throw new Error(
+        `FinSet inverse: map[${i}] = ${target} is outside the codomain range 0..${codomainSize - 1}`
+      )
+    }
+    if (inv[target] !== -1) {
+      throw new Error(`FinSet inverse: codomain index ${target} has multiple preimages`)
+    }
+    inv[target] = i
+  }
+
+  const missing = inv.indexOf(-1)
+  if (missing !== -1) {
+    throw new Error(`FinSet inverse: codomain index ${missing} is not hit by the map`)
+  }
+
   return { from: bij.to, to: bij.from, map: inv }
 }
 
