@@ -2683,7 +2683,13 @@ export namespace CategoryLimits {
       cone: Cone<I, O, M>,                         // f_i : X -> F(i)
       tuple: (X: O, legs: ReadonlyArray<M>, P: O) => M,
       options?: { competitor?: M }
-    ): { triangles: boolean; unique: boolean; mediator?: M; reason?: string } => {
+    ): {
+      triangles: boolean
+      unique: boolean
+      mediator?: M
+      comparison?: { competitor: M; triangles: boolean; agrees: boolean; equal: boolean }
+      reason?: string
+    } => {
       const indices = Ifin.carrier
 
       for (const index of indices) {
@@ -2722,6 +2728,7 @@ export namespace CategoryLimits {
       const mediator = tuple(cone.tip, legsArr, productObj)
       const triangles = productMediates(C, eq, projections, mediator, cone, indices)
       let unique = triangles
+      let comparison: { competitor: M; triangles: boolean; agrees: boolean; equal: boolean } | undefined
 
       if (triangles) {
         if (isFiniteCategoryStructure(C)) {
@@ -2750,13 +2757,16 @@ export namespace CategoryLimits {
         const competitor = options?.competitor
         if (competitor) {
           const competitorTriangles = productMediates(C, eq, projections, competitor, cone, indices)
-          if (competitorTriangles) {
-            const agrees = agreeUnderProjections(C, eq, projections, mediator, competitor, indices)
-            if (!agrees || !eq(competitor, mediator)) unique = false
-          }
+          const agrees =
+            competitorTriangles && mediator
+              ? agreeUnderProjections(C, eq, projections, mediator, competitor, indices)
+              : false
+          const equal = competitorTriangles && agrees && mediator ? eq(competitor, mediator) : false
+          if (competitorTriangles && agrees && !equal) unique = false
+          comparison = { competitor, triangles: competitorTriangles, agrees, equal }
         }
       }
-      return { triangles, unique, mediator }
+      return { triangles, unique, mediator, comparison }
     }
 
   export const factorConeThroughProduct =
@@ -2893,7 +2903,13 @@ export namespace CategoryLimits {
       cocone: Cocone<I, O, M>,                     // g_i : F(i) -> Y
       cotuple: (Cop: O, legs: ReadonlyArray<M>, Y: O) => M,
       options?: { competitor?: M }
-    ): { triangles: boolean; unique: boolean; mediator?: M; reason?: string } => {
+    ): {
+      triangles: boolean
+      unique: boolean
+      mediator?: M
+      comparison?: { competitor: M; triangles: boolean; agrees: boolean; equal: boolean }
+      reason?: string
+    } => {
       const indices = Ifin.carrier
 
       for (const index of indices) {
@@ -2932,18 +2948,22 @@ export namespace CategoryLimits {
       const mediator = cotuple(coproductObj, legsArr, cocone.coTip)
       const triangles = coproductMediates(C, eq, injections, mediator, cocone, indices)
       let unique = triangles
+      let comparison: { competitor: M; triangles: boolean; agrees: boolean; equal: boolean } | undefined
 
       if (triangles) {
         const competitor = options?.competitor
         if (competitor) {
           const competitorTriangles = coproductMediates(C, eq, injections, competitor, cocone, indices)
-          if (competitorTriangles) {
-            const agrees = agreeUnderInjections(C, eq, injections, mediator, competitor, indices)
-            if (!agrees || !eq(competitor, mediator)) unique = false
-          }
+          const agrees =
+            competitorTriangles && mediator
+              ? agreeUnderInjections(C, eq, injections, mediator, competitor, indices)
+              : false
+          const equal = competitorTriangles && agrees && mediator ? eq(competitor, mediator) : false
+          if (competitorTriangles && agrees && !equal) unique = false
+          comparison = { competitor, triangles: competitorTriangles, agrees, equal }
         }
       }
-      return { triangles, unique, mediator }
+      return { triangles, unique, mediator, comparison }
     }
 
   export const factorCoconeThroughCoproduct =
