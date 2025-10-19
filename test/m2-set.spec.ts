@@ -14,7 +14,8 @@ import {
   M2SetCat,
   m2HomToDyn,
   m2ToDyn,
-  exponentialM2,
+  makeM2Exponential,
+  curryM2Exponential,
   composeM2,
   isM2Morphism,
   productM2,
@@ -168,7 +169,7 @@ describe('M2 exponentials', () => {
     eq,
   });
 
-  const exponential = exponentialM2({ base: B, codomain: C });
+  const exponential = makeM2Exponential({ base: B, codomain: C });
 
   it('enumerates equivariant maps and provides a monotone evaluation arrow', () => {
     const carrier = exponential.object.carrier;
@@ -177,6 +178,8 @@ describe('M2 exponentials', () => {
       expect(isM2Morphism(func)).toBe(true);
     }
     expect(isM2Morphism(exponential.evaluation)).toBe(true);
+    expect(exponential.base).toBe(B);
+    expect(exponential.codomain).toBe(C);
   });
 
   const A = makeM2Object({
@@ -201,6 +204,9 @@ describe('M2 exponentials', () => {
   it('curries equivariant arrows and recovers them via evaluation', () => {
     const lambda = exponential.curry({ domain: A, product: productAB, arrow });
     expect(isM2Morphism(lambda)).toBe(true);
+
+    const viaHelper = curryM2Exponential({ exponential, domain: A, product: productAB, arrow });
+    expect(equalM2Morphisms(viaHelper, lambda)).toBe(true);
 
     const leftProjection = productAB.projections[0];
     const rightProjection = productAB.projections[1];

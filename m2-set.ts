@@ -279,6 +279,8 @@ interface M2FunctionRecord<B, C> {
 }
 
 export interface M2ExponentialWitness<B, C> {
+  readonly base: M2Object<B>;
+  readonly codomain: M2Object<C>;
   readonly object: M2Object<M2Morphism<B, C>>;
   readonly product: M2ProductWitness<M2Morphism<B, C>, B>;
   readonly evaluation: M2Morphism<M2Pair<M2Morphism<B, C>, B>, C>;
@@ -334,7 +336,7 @@ const enumerateEquivariantMaps = <B, C>(
   return records;
 };
 
-export const exponentialM2 = <B, C>(input: {
+const buildM2Exponential = <B, C>(input: {
   readonly base: M2Object<B>;
   readonly codomain: M2Object<C>;
 }): M2ExponentialWitness<B, C> => {
@@ -390,6 +392,12 @@ export const exponentialM2 = <B, C>(input: {
     if (arrow.cod !== codomain) {
       throw new Error('M2.exponential.curry: arrow codomain must be the exponential codomain');
     }
+    if (domainProduct.projections[0]?.cod !== domain) {
+      throw new Error('M2.exponential.curry: product must project to the supplied domain');
+    }
+    if (domainProduct.projections[1]?.cod !== base) {
+      throw new Error('M2.exponential.curry: product must project to the exponential base');
+    }
     if (!isM2Morphism(arrow)) {
       throw new Error('M2.exponential.curry: arrow must be an equivariant morphism');
     }
@@ -429,8 +437,49 @@ export const exponentialM2 = <B, C>(input: {
     });
   };
 
-  return { object, product, evaluation, curry };
+  return {
+    base,
+    codomain,
+    object,
+    product,
+    evaluation,
+    curry: <A>(inputCurry: {
+      readonly domain: M2Object<A>;
+      readonly product: M2ProductWitness<A, B>;
+      readonly arrow: M2Morphism<M2Pair<A, B>, C>;
+    }): M2Morphism<A, M2Morphism<B, C>> => {
+      const mediator = curry(inputCurry);
+
+      const domainProduct = inputCurry.product;
+      const lambdaTimesId = product.tuple(domainProduct.object, [
+        composeM2(mediator, domainProduct.projections[0]!),
+        domainProduct.projections[1]!,
+      ]);
+      const recovered = composeM2(evaluation, lambdaTimesId);
+      if (!equalM2Morphisms(recovered, inputCurry.arrow)) {
+        throw new Error('M2.exponential.curry: evaluation must recover the supplied arrow');
+      }
+
+      return mediator;
+    },
+  };
 };
+
+export const makeM2Exponential = buildM2Exponential;
+
+export const exponentialM2 = buildM2Exponential;
+
+export const curryM2Exponential = <A, B, C>(input: {
+  readonly exponential: M2ExponentialWitness<B, C>;
+  readonly domain: M2Object<A>;
+  readonly product: M2ProductWitness<A, B>;
+  readonly arrow: M2Morphism<M2Pair<A, B>, C>;
+}): M2Morphism<A, M2Morphism<B, C>> =>
+  input.exponential.curry({
+    domain: input.domain,
+    product: input.product,
+    arrow: input.arrow,
+  });
 
 export const m2ExponentialComparison = <B, C>(input: {
   readonly base: M2Object<B>;
@@ -441,6 +490,12 @@ export const m2ExponentialComparison = <B, C>(input: {
   const { base, codomain, left, right } = input;
 
   const ensureWitness = (label: string, witness: M2ExponentialWitness<B, C>) => {
+    if (witness.base !== base) {
+      throw new Error(`M2.exponentialComparison: ${label} witness is not parameterised by the supplied base object`);
+    }
+    if (witness.codomain !== codomain) {
+      throw new Error(`M2.exponentialComparison: ${label} witness does not evaluate into the supplied codomain`);
+    }
     const [projectionToFunctions, projectionToBase] = witness.product.projections;
     if (projectionToBase.cod !== base) {
       throw new Error(`M2.exponentialComparison: ${label} witness is not parameterised by the supplied base object`);
@@ -451,8 +506,8 @@ export const m2ExponentialComparison = <B, C>(input: {
     if (witness.evaluation.dom !== witness.product.object) {
       throw new Error(`M2.exponentialComparison: ${label} witness has an evaluation arrow with a mismatched domain`);
     }
-    if (witness.evaluation.cod !== codomain) {
-      throw new Error(`M2.exponentialComparison: ${label} witness does not evaluate into the supplied codomain`);
+    if (witness.evaluation.cod !== witness.codomain) {
+      throw new Error(`M2.exponentialComparison: ${label} witness does not evaluate into its declared codomain`);
     }
   };
 
