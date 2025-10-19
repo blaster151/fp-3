@@ -23,6 +23,9 @@ import {
   Ok
 } from '../../allTS'
 import type { Expr, ExprF } from '../../allTS'
+import { hyloArray, paraArray, cataJson, anaJson, hyloJson } from '../../array-recursion'
+import type { JsonF } from '../../array-recursion'
+import { None, Some } from '../../option'
 
 describe("LAW: Recursion Scheme laws", () => {
   // Common generators
@@ -229,6 +232,100 @@ describe("LAW: Recursion Scheme laws", () => {
           const actual = cataExpr(Alg_Expr_evalF)(folded)
           return actual === expected
         })
+      )
+    })
+  })
+
+  describe("Stack safety for array and JSON recursion schemes", () => {
+    const largeArrayArb = fc.array(fc.integer({ min: -5, max: 5 }), {
+      minLength: 1024,
+      maxLength: 2048
+    })
+
+    it("hyloArray sums large arrays without overflowing the stack", () => {
+      const hyloSum = hyloArray(
+        (xs: ReadonlyArray<number>) =>
+          xs.length === 0
+            ? None
+            : Some([xs[0]!, xs.slice(1)] as const),
+        (head: number, tailSum: number) => head + tailSum,
+        0
+      )
+
+      fc.assert(
+        fc.property(largeArrayArb, (values) => {
+          const expected = values.reduce((acc, n) => acc + n, 0)
+          const actual = hyloSum(values)
+          return actual === expected
+        }),
+        { numRuns: 32 }
+      )
+    })
+
+    it("paraArray computes length for large arrays", () => {
+      const paraLength = paraArray<number, number>(0, (_head, _tail, foldedTail) => foldedTail + 1)
+
+      fc.assert(
+        fc.property(largeArrayArb, (values) => paraLength(values) === values.length),
+        { numRuns: 32 }
+      )
+    })
+
+    it("Recursion factories stay stack safe on large JSON trees", () => {
+      type SeqState =
+        | { readonly tag: 'Seq'; readonly rest: ReadonlyArray<number> }
+        | { readonly tag: 'Value'; readonly value: number }
+
+      const coalg = (state: SeqState): JsonF<SeqState> => {
+        if (state.tag === 'Value') {
+          return { _tag: 'JNum', value: state.value }
+        }
+        if (state.rest.length === 0) {
+          return { _tag: 'JNull' }
+        }
+        const [head, ...tail] = state.rest
+        return {
+          _tag: 'JArr',
+          items: [
+            { tag: 'Value', value: head },
+            { tag: 'Seq', rest: tail }
+          ]
+        }
+      }
+
+      const sumAlg = (fb: JsonF<number>): number => {
+        switch (fb._tag) {
+          case 'JNull':
+          case 'JUndefined':
+            return 0
+          case 'JBool':
+            return 0
+          case 'JNum':
+            return fb.value
+          case 'JDec':
+          case 'JStr':
+          case 'JBinary':
+          case 'JRegex':
+          case 'JDate':
+            return 0
+          case 'JArr':
+          case 'JSet':
+            return fb.items.reduce((acc, n) => acc + n, 0)
+          case 'JObj':
+            return fb.entries.reduce((acc, [, value]) => acc + value, 0)
+        }
+      }
+
+      fc.assert(
+        fc.property(largeArrayArb, (values) => {
+          const start: SeqState = { tag: 'Seq', rest: values }
+          const tree = anaJson(coalg)(start)
+          const cataSum = cataJson(sumAlg)(tree)
+          const hyloSum = hyloJson(coalg, sumAlg)(start)
+          const expected = values.reduce((acc, n) => acc + n, 0)
+          return cataSum === expected && hyloSum === expected
+        }),
+        { numRuns: 16 }
       )
     })
   })
