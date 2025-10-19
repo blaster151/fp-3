@@ -10,6 +10,7 @@ import {
   makeKolmogorovProductSpace,
   makeProductPrior,
   makeDeterministicStatistic,
+  createSpaceStructureCache,
   type KolmogorovProductSpace,
 } from "../../top-vietoris-examples";
 import { IFin, mkFin } from "../../markov-category";
@@ -104,7 +105,8 @@ describe("Top/Vietoris adapters", () => {
       label: "constant tail map",
     }));
 
-    const report = checkTopVietorisConstantFunction(witness);
+    const spaceStructure = createSpaceStructureCache();
+    const report = checkTopVietorisConstantFunction(witness, { spaceStructure });
 
     expect(report.holds).toBe(true);
     expect(report.constant).toBe(true);
@@ -123,7 +125,8 @@ describe("Top/Vietoris adapters", () => {
       label: "finite dependent map",
     }));
 
-    const report = checkTopVietorisConstantFunction(witness);
+    const spaceStructure = createSpaceStructureCache();
+    const report = checkTopVietorisConstantFunction(witness, { spaceStructure });
 
     expect(report.holds).toBe(false);
     expect(report.independence).toBe(false);

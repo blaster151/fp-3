@@ -83,6 +83,8 @@ type ConstantFunctionReport<XJ, Y> = {
   readonly details: string;
 };
 
+type SpaceStructureCache = <Point>(space: TopSpace<Point>) => unknown;
+
 type TopVietorisModule = {
   readonly buildTopVietorisKolmogorovWitness: <A, XJ, XF, T = 0 | 1>(
     prior: FinMarkov<A, XJ>,
@@ -106,6 +108,7 @@ type TopVietorisModule = {
   ) => ConstantFunctionWitness<XJ, Y>;
   readonly checkTopVietorisConstantFunction: <XJ, Y>(
     witness: ConstantFunctionWitness<XJ, Y>,
+    options?: { readonly spaceStructure?: SpaceStructureCache },
   ) => ConstantFunctionReport<XJ, Y>;
   readonly makeDiscreteTopSpace: <Point>(label: string, points: Fin<Point>) => TopSpace<Point>;
   readonly makeKolmogorovProductSpace: <Spaces extends ReadonlyArray<TopSpace<any>>>(
@@ -114,6 +117,7 @@ type TopVietorisModule = {
   ) => KolmogorovProductSpace<any>;
   readonly makeProductPrior: <A, XJ>(mkInput: () => ProductPriorInput<A, XJ>) => FinMarkov<A, XJ>;
   readonly makeDeterministicStatistic: <XJ, T = 0 | 1>(mkInput: () => DeterministicStatisticInput<XJ, T>) => FinMarkov<XJ, T>;
+  readonly createSpaceStructureCache: () => SpaceStructureCache;
   readonly installTopVietorisAdapters: (registry: MarkovOracleRegistry) => void;
 };
 
@@ -143,6 +147,7 @@ const {
   makeKolmogorovProductSpace,
   makeProductPrior,
   makeDeterministicStatistic,
+  createSpaceStructureCache,
   installTopVietorisAdapters,
 } = topVietoris;
 const markovOracleRegistry = markovOraclesModule.createMarkovOracleRegistry();
@@ -210,6 +215,7 @@ function makeEnvironment(): {
 }
 
 const environment = makeEnvironment();
+const spaceStructure = createSpaceStructureCache();
 
 function kolmogorovSection(): Transcript {
   const witness = buildTopVietorisKolmogorovWitness(
@@ -288,8 +294,8 @@ function constantFunctionSection(): Transcript {
     label: "finite dependent map",
   }));
 
-  const constantReport = checkTopVietorisConstantFunction(constantWitness);
-  const dependentReport = checkTopVietorisConstantFunction(dependentWitness);
+  const constantReport = checkTopVietorisConstantFunction(constantWitness, { spaceStructure });
+  const dependentReport = checkTopVietorisConstantFunction(dependentWitness, { spaceStructure });
 
   return [
     "== Constant-function law ==",

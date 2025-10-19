@@ -102,7 +102,28 @@ export const TOP_VIETORIS_STATUS =
 
 const defined = <T>(value: T | undefined): value is T => value !== undefined;
 
-const spaceStructureCache = new WeakMap<TopSpace<any>, TopStructure<any>>();
+export type SpaceStructureCache = ReturnType<typeof createSpaceStructureCache>;
+
+export function createSpaceStructureCache() {
+  const cache = new WeakMap<TopSpace<any>, TopStructure<any>>();
+  return function spaceStructure<Point>(space: TopSpace<Point>): TopStructure<Point> {
+    const cached = cache.get(space) as TopStructure<Point> | undefined;
+    if (cached) {
+      return cached;
+    }
+
+    const carrier = uniqueCarrier(space.points);
+    const eq = space.points.eq;
+    const closedMembers = space.closedSubsets.map((subset) => evaluateClosedSubset(carrier, eq, subset));
+    closedMembers.push([], [...carrier]);
+    const closed = dedupeSubsets(eq, closedMembers);
+    const subbase = closed.map((subset) => complementSubset(eq, carrier, subset));
+    const topology = topologyFromSubbase(eq, carrier, subbase);
+    const structure = structureFromTop(eq, topology, space.points.show ? { show: space.points.show } : undefined);
+    cache.set(space, structure);
+    return structure;
+  };
+}
 
 function uniqueCarrier<Point>(points: Fin<Point>): Point[] {
   const carrier: Point[] = [];
@@ -159,26 +180,6 @@ function complementSubset<Point>(
 ): Point[] {
   return carrier.filter((candidate) => !subset.some((member) => eq(candidate, member)));
 }
-
-function spaceStructure<Point>(space: TopSpace<Point>): TopStructure<Point> {
-  const cached = spaceStructureCache.get(space) as TopStructure<Point> | undefined;
-  if (cached) {
-    return cached;
-  }
-
-  const carrier = uniqueCarrier(space.points);
-  const eq = space.points.eq;
-  const closedMembers = space.closedSubsets.map((subset) => evaluateClosedSubset(carrier, eq, subset));
-  closedMembers.push([], [...carrier]);
-  const closed = dedupeSubsets(eq, closedMembers);
-  const subbase = closed.map((subset) => complementSubset(eq, carrier, subset));
-  const topology = topologyFromSubbase(eq, carrier, subbase);
-  const structure = structureFromTop(eq, topology, space.points.show ? { show: space.points.show } : undefined);
-  spaceStructureCache.set(space, structure);
-  return structure;
-}
-
-const spaceTopology = <Point>(space: TopSpace<Point>): Top<Point> => forgetStructure(spaceStructure(space));
 
 function enumerateFiniteSubsets(arity: number): Array<ReadonlyArray<number>> {
   const results: Array<ReadonlyArray<number>> = [];
@@ -477,10 +478,11 @@ function evaluateConstantMap<XJ, Y>(
 
 function checkContinuity<XJ, Y>(
   witness: TopVietorisConstantFunctionWitness<XJ, Y>,
+  spaceStructure: SpaceStructureCache,
 ): { ok: boolean; details?: string; domain?: Top<XJ>; codomain?: Top<Y> } {
   try {
-    const domain = spaceTopology(witness.product) as Top<XJ>;
-    const codomain = spaceTopology(witness.target) as Top<Y>;
+    const domain = forgetStructure(spaceStructure(witness.product)) as Top<XJ>;
+    const codomain = forgetStructure(spaceStructure(witness.target)) as Top<Y>;
     const eqX = witness.product.points.eq as Eq<XJ>;
     const continuousReport = continuous(eqX, domain, codomain, witness.map, witness.target.points.eq);
     return continuousReport
@@ -576,14 +578,17 @@ export function buildTopVietorisConstantFunctionWitness<XJ, Y>(
 
 export function checkTopVietorisConstantFunction<XJ, Y>(
   witness: TopVietorisConstantFunctionWitness<XJ, Y>,
+  options: { readonly spaceStructure?: SpaceStructureCache } = {},
 ): TopVietorisConstantFunctionReport<XJ, Y> {
   const evaluations = evaluateConstantMap(witness);
 
-  const continuity = checkContinuity(witness);
+  const spaceStructure = options.spaceStructure ?? createSpaceStructureCache();
+
+  const continuity = checkContinuity(witness, spaceStructure);
   let hausdorff = false;
   let hausdorffDetails: string | undefined;
   try {
-    const codomain = continuity.codomain ?? (spaceTopology(witness.target) as Top<Y>);
+    const codomain = continuity.codomain ?? (forgetStructure(spaceStructure(witness.target)) as Top<Y>);
     hausdorff = isHausdorff(witness.target.points.eq, codomain);
     if (!hausdorff) {
       hausdorffDetails = `${witness.label ?? "Top/Vietoris constant"}: target is not Hausdorff.`;
