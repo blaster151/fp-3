@@ -66,6 +66,40 @@ describe('CategoryLimits cone factoring helpers', () => {
     expect(witness.triangles).toBe(true)
     expect(witness.unique).toBe(true)
     expect(witness.mediator && EnhancedVect.Vect.equalMor!(witness.mediator, mediator)).toBe(true)
+    expect(witness.comparison).toBeDefined()
+    expect(
+      witness.comparison && EnhancedVect.Vect.equalMor!(witness.comparison.competitor, mediator),
+    ).toBe(true)
+    expect(witness.comparison?.triangles).toBe(true)
+    expect(witness.comparison?.agrees).toBe(true)
+    expect(witness.comparison?.equal).toBe(true)
+
+    const badMediator: EnhancedVect.VectMor = {
+      matrix: [
+        [1, 0, 0],
+        [0, 0, 0],
+      ],
+      from: X,
+      to: product,
+    }
+
+    const comparison = CategoryLimits.isProductForCone(
+      EnhancedVect.Vect,
+      EnhancedVect.Vect.equalMor!,
+      Ifin,
+      F,
+      product,
+      projections,
+      cone,
+      EnhancedVect.VectProductsWithTuple.tuple,
+      { competitor: badMediator },
+    )
+
+    expect(comparison.triangles).toBe(true)
+    expect(comparison.unique).toBe(true)
+    expect(comparison.comparison?.triangles).toBe(false)
+    expect(comparison.comparison?.agrees).toBe(false)
+    expect(comparison.comparison?.equal).toBe(false)
   })
 
   it('rejects malformed cones when factoring through products', () => {
@@ -159,6 +193,40 @@ describe('CategoryLimits cone factoring helpers', () => {
     expect(witness.triangles).toBe(true)
     expect(witness.unique).toBe(true)
     expect(witness.mediator && EnhancedVect.Vect.equalMor!(witness.mediator, mediator)).toBe(true)
+    expect(witness.comparison).toBeDefined()
+    expect(
+      witness.comparison && EnhancedVect.Vect.equalMor!(witness.comparison.competitor, mediator),
+    ).toBe(true)
+    expect(witness.comparison?.triangles).toBe(true)
+    expect(witness.comparison?.agrees).toBe(true)
+    expect(witness.comparison?.equal).toBe(true)
+
+    const badMediator: EnhancedVect.VectMor = {
+      matrix: [
+        [1, 0],
+        [0, 0],
+      ],
+      from: coproduct,
+      to: Y,
+    }
+
+    const comparison = CategoryLimits.isCoproductForCocone(
+      EnhancedVect.Vect,
+      EnhancedVect.Vect.equalMor!,
+      Ifin,
+      F,
+      coproduct,
+      injections,
+      cocone,
+      EnhancedVect.VectCoproductsWithCotuple.cotuple,
+      { competitor: badMediator },
+    )
+
+    expect(comparison.triangles).toBe(true)
+    expect(comparison.unique).toBe(true)
+    expect(comparison.comparison?.triangles).toBe(false)
+    expect(comparison.comparison?.agrees).toBe(false)
+    expect(comparison.comparison?.equal).toBe(false)
   })
 
   it('rejects malformed cocones when factoring through coproducts', () => {
