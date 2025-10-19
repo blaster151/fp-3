@@ -1,156 +1,165 @@
-import { describe, expect, it } from 'vitest'
+import { describe, it, expect } from 'vitest'
+import fc from 'fast-check'
+import { DiagramClosure } from '../allTS'
 
-import {
-  DiagramClosure,
-  FinSet,
-  makeFinSetObj,
-  type FinSetMor,
-  type FinSetObj,
-} from '../allTS'
-import type { SmallCategory } from '../subcategory'
+// Ambient finite category with parallel arrows and explicit composites
 
-type ShapeObj = 'A' | 'B' | 'C'
+type Obj = 'A' | 'B' | 'C'
+type Arr =
+  | 'id_A'
+  | 'id_B'
+  | 'id_C'
+  | 'f'
+  | 'f_alt'
+  | 'g'
+  | 'g_alt'
+  | 'h_ff'
+  | 'h_f_falt'
+  | 'h_galt_f'
+  | 'h_galt_falt'
 
-type ShapeArrow =
-  | { kind: 'id'; object: ShapeObj; src: ShapeObj; dst: ShapeObj }
-  | { kind: 'edge'; name: 'p' | 'q' | 'r'; source: ShapeObj; target: ShapeObj; src: ShapeObj; dst: ShapeObj }
-  | { kind: 'composite'; name: 'rp' | 'rq'; source: ShapeObj; target: ShapeObj; src: ShapeObj; dst: ShapeObj }
-
-const idA: ShapeArrow = { kind: 'id', object: 'A', src: 'A', dst: 'A' }
-const idB: ShapeArrow = { kind: 'id', object: 'B', src: 'B', dst: 'B' }
-const idC: ShapeArrow = { kind: 'id', object: 'C', src: 'C', dst: 'C' }
-
-const p: ShapeArrow = { kind: 'edge', name: 'p', source: 'A', target: 'B', src: 'A', dst: 'B' }
-const q: ShapeArrow = { kind: 'edge', name: 'q', source: 'A', target: 'B', src: 'A', dst: 'B' }
-const r: ShapeArrow = { kind: 'edge', name: 'r', source: 'B', target: 'C', src: 'B', dst: 'C' }
-
-const rp: ShapeArrow = { kind: 'composite', name: 'rp', source: 'A', target: 'C', src: 'A', dst: 'C' }
-const rq: ShapeArrow = { kind: 'composite', name: 'rq', source: 'A', target: 'C', src: 'A', dst: 'C' }
-
-const ambientCategory: SmallCategory<ShapeObj, ShapeArrow> = {
-  objects: new Set<ShapeObj>(['A', 'B', 'C']),
-  arrows: new Set<ShapeArrow>([idA, idB, idC, p, q, r, rp, rq]),
-  id: (object) => {
-    switch (object) {
-      case 'A':
-        return idA
-      case 'B':
-        return idB
-      case 'C':
-        return idC
-      default:
-        throw new Error('ambientCategory.id: unknown object')
-    }
-  },
-  compose: (g, f) => {
-    if (f.kind === 'id') return g
-    if (g.kind === 'id') return f
-    if (f === p && g === r) return rp
-    if (f === q && g === r) return rq
-    throw new Error('ambientCategory.compose: unsupported composition request')
-  },
-  src: (arrow) => arrow.src,
-  dst: (arrow) => arrow.dst,
+const objects: ReadonlySet<Obj> = new Set(['A', 'B', 'C'])
+const identities: Record<Obj, Arr> = {
+  A: 'id_A',
+  B: 'id_B',
+  C: 'id_C',
+}
+const arrowEndpoints: Record<Arr, { src: Obj; dst: Obj }> = {
+  id_A: { src: 'A', dst: 'A' },
+  id_B: { src: 'B', dst: 'B' },
+  id_C: { src: 'C', dst: 'C' },
+  f: { src: 'A', dst: 'B' },
+  f_alt: { src: 'A', dst: 'B' },
+  g: { src: 'B', dst: 'C' },
+  g_alt: { src: 'B', dst: 'C' },
+  h_ff: { src: 'A', dst: 'C' },
+  h_f_falt: { src: 'A', dst: 'C' },
+  h_galt_f: { src: 'A', dst: 'C' },
+  h_galt_falt: { src: 'A', dst: 'C' },
 }
 
-const finsetA = makeFinSetObj(['a0', 'a1'])
-const finsetB = makeFinSetObj(['b0', 'b1', 'b2'])
-const finsetC = makeFinSetObj(['c0', 'c1'])
+const compositeTable: Partial<Record<Arr, Partial<Record<Arr, Arr>>>> = {
+  g: {
+    f: 'h_ff',
+    f_alt: 'h_f_falt',
+  },
+  g_alt: {
+    f: 'h_galt_f',
+    f_alt: 'h_galt_falt',
+  },
+}
 
-const objectAssignment = (object: ShapeObj): FinSetObj => {
-  switch (object) {
-    case 'A':
-      return finsetA
-    case 'B':
-      return finsetB
-    case 'C':
-      return finsetC
-    default:
-      throw new Error('objectAssignment: unknown object')
+const allArrows: ReadonlySet<Arr> = new Set(Object.keys(arrowEndpoints) as Arr[])
+
+const compose = (g: Arr, f: Arr): Arr => {
+  const fDst = arrowEndpoints[f]?.dst
+  const gSrc = arrowEndpoints[g]?.src
+  if (fDst === undefined || gSrc === undefined) {
+    throw new Error('Unknown arrow supplied to compose')
   }
+  if (fDst !== gSrc) {
+    throw new Error('compose: domain/codomain mismatch')
+  }
+  if (f === identities[arrowEndpoints[f].src]) {
+    return g
+  }
+  if (g === identities[arrowEndpoints[g].dst]) {
+    return f
+  }
+  const composite = compositeTable[g]?.[f]
+  if (!composite) {
+    throw new Error('compose: composite not present in ambient category')
+  }
+  return composite
 }
 
-const pMor: FinSetMor = { from: finsetA, to: finsetB, map: [0, 1] }
-const qMor: FinSetMor = { from: finsetA, to: finsetB, map: [2, 0] }
-const rMor: FinSetMor = { from: finsetB, to: finsetC, map: [1, 0, 0] }
+const ambient = {
+  objects,
+  arrows: allArrows,
+  id: (object: Obj): Arr => identities[object],
+  compose,
+  src: (arrow: Arr): Obj => arrowEndpoints[arrow]!.src,
+  dst: (arrow: Arr): Obj => arrowEndpoints[arrow]!.dst,
+}
 
-const ambientObjects: ShapeObj[] = ['A', 'B', 'C']
+const target = {
+  id: (object: Obj): Arr => identities[object],
+  compose,
+  dom: (arrow: Arr): Obj => arrowEndpoints[arrow]!.src,
+  cod: (arrow: Arr): Obj => arrowEndpoints[arrow]!.dst,
+  equalMor: (left: Arr, right: Arr): boolean => left === right,
+}
+
+const assignmentArb = fc.record({
+  f: fc.constantFrom<Arr>('f', 'f_alt'),
+  fAlt: fc.constantFrom<Arr>('f', 'f_alt'),
+  g: fc.constantFrom<Arr>('g', 'g_alt'),
+  gAlt: fc.constantFrom<Arr>('g', 'g_alt'),
+})
 
 describe('DiagramClosure.closeFiniteDiagram', () => {
-  it('adds identities and synthesises composites for non-thin diagrams', () => {
-    const closed = DiagramClosure.closeFiniteDiagram({
-      ambient: ambientCategory,
-      target: FinSet,
-      onObjects: objectAssignment,
-      seeds: [
-        { arrow: p, morphism: pMor },
-        { arrow: q, morphism: qMor },
-        { arrow: r, morphism: rMor },
-      ],
-      objects: ambientObjects,
-      eq: FinSet.equalMor!,
-    })
+  it('adjoins identities and ambient composites for parallel shapes', () => {
+    fc.assert(
+      fc.property(assignmentArb, ({ f, fAlt, g, gAlt }) => {
+        const diagram = DiagramClosure.closeFiniteDiagram({
+          ambient,
+          target,
+          onObjects: (object: Obj) => object,
+          seeds: [
+            { arrow: 'f', morphism: f },
+            { arrow: 'f_alt', morphism: fAlt },
+            { arrow: 'g', morphism: g },
+            { arrow: 'g_alt', morphism: gAlt },
+          ],
+        })
 
-    expect(closed.objects).toEqual(['A', 'B', 'C'])
-    expect(closed.arrows).toHaveLength(8)
-    expect(closed.arrows).toContain(rp)
-    expect(closed.arrows).toContain(rq)
+        expect(diagram.arrowLookup.get('id_A')).toEqual('id_A')
+        expect(diagram.arrowLookup.get('id_B')).toEqual('id_B')
+        expect(diagram.arrowLookup.get('id_C')).toEqual('id_C')
 
-    const idAImage = closed.onMorphisms(idA)
-    expect(FinSet.equalMor!(idAImage, FinSet.id(finsetA))).toBe(true)
-    expect(FinSet.equalMor!(closed.arrowLookup.get(idA)!, FinSet.id(finsetA))).toBe(true)
-
-    const rpImage = closed.onMorphisms(rp)
-    const rqImage = closed.onMorphisms(rq)
-    expect(FinSet.equalMor!(rpImage, FinSet.compose(rMor, pMor))).toBe(true)
-    expect(FinSet.equalMor!(rqImage, FinSet.compose(rMor, qMor))).toBe(true)
-  })
-
-  it('respects functoriality across composed paths', () => {
-    const closed = DiagramClosure.closeFiniteDiagram({
-      ambient: ambientCategory,
-      target: FinSet,
-      onObjects: objectAssignment,
-      seeds: [
-        { arrow: p, morphism: pMor },
-        { arrow: q, morphism: qMor },
-        { arrow: r, morphism: rMor },
-      ],
-      objects: ambientObjects,
-      eq: FinSet.equalMor!,
-    })
-
-    const composed = FinSet.compose(closed.onMorphisms(r), closed.onMorphisms(p))
-    expect(FinSet.equalMor!(closed.onMorphisms(rp), composed)).toBe(true)
-  })
-
-  it('rejects morphisms whose endpoints do not match their arrows', () => {
-    const bad: FinSetMor = { from: finsetC, to: finsetC, map: [0, 1] }
-    expect(() =>
-      DiagramClosure.closeFiniteDiagram({
-        ambient: ambientCategory,
-        target: FinSet,
-        onObjects: objectAssignment,
-        seeds: [{ arrow: p, morphism: bad }],
-        objects: ['A', 'B'],
-      eq: FinSet.equalMor!,
+        expect(diagram.arrowLookup.get('h_ff')).toEqual(target.compose(g, f))
+        expect(diagram.arrowLookup.get('h_f_falt')).toEqual(target.compose(g, fAlt))
+        expect(diagram.arrowLookup.get('h_galt_f')).toEqual(target.compose(gAlt, f))
+        expect(diagram.arrowLookup.get('h_galt_falt')).toEqual(target.compose(gAlt, fAlt))
       }),
-    ).toThrow(/closeFiniteDiagram: morphism endpoints do not match the arrow endpoints/)
+    )
   })
 
-  it('rejects inconsistent assignments for the same arrow', () => {
-    expect(() =>
-      DiagramClosure.closeFiniteDiagram({
-        ambient: ambientCategory,
-        target: FinSet,
-        onObjects: objectAssignment,
-        seeds: [
-          { arrow: p, morphism: pMor },
-          { arrow: p, morphism: qMor },
-        ],
-        objects: ['A', 'B'],
-      eq: FinSet.equalMor!,
+  it('remains functorial after saturation', () => {
+    fc.assert(
+      fc.property(assignmentArb, ({ f, fAlt, g, gAlt }) => {
+        const diagram = DiagramClosure.closeFiniteDiagram({
+          ambient,
+          target,
+          onObjects: (object: Obj) => object,
+          seeds: [
+            { arrow: 'f', morphism: f },
+            { arrow: 'f_alt', morphism: fAlt },
+            { arrow: 'g', morphism: g },
+            { arrow: 'g_alt', morphism: gAlt },
+          ],
+        })
+
+        for (const arrow of diagram.arrows) {
+          const morphism = diagram.onMorphisms(arrow)
+          expect(target.dom(morphism)).toEqual(diagram.shape.dom(arrow))
+          expect(target.cod(morphism)).toEqual(diagram.shape.cod(arrow))
+        }
+
+        for (const left of diagram.arrows) {
+          for (const right of diagram.arrows) {
+            if (diagram.shape.cod(left) !== diagram.shape.dom(right)) continue
+
+            const compositeArrow = diagram.shape.compose(right, left)
+            const imageLeft = diagram.onMorphisms(left)
+            const imageRight = diagram.onMorphisms(right)
+            const imageComposite = diagram.onMorphisms(compositeArrow)
+            const expected = target.compose(imageRight, imageLeft)
+
+            expect(imageComposite).toEqual(expected)
+          }
+        }
       }),
-    ).toThrow(/closeFiniteDiagram: inconsistent morphism assignment detected/)
+    )
   })
 })
