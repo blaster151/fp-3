@@ -8,6 +8,7 @@ const __dirname = dirname(__filename);
 
 const tsParser = require("@typescript-eslint/parser");
 const fp3Plugin = require("./eslint-plugin-fp-3");
+const functionalPlugin = require("./eslint-plugin-functional");
 
 const recommendedRules = fp3Plugin?.configs?.recommended?.rules ?? {};
 
@@ -24,9 +25,22 @@ export default [
     },
     plugins: {
       "fp-3": fp3Plugin,
+      functional: functionalPlugin,
     },
     rules: {
       ...recommendedRules,
+      "functional/no-let": ["error", { allowLoopIndices: true }],
+      "functional/no-var": ["error", { allowLoopIndices: true }],
+      "functional/immutable-data": [
+        "error",
+        {
+          moduleExports: {
+            disallowSet: true,
+            disallowPush: true,
+            disallowLengthReset: true,
+          },
+        },
+      ],
     },
   },
 ];
