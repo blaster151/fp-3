@@ -76,7 +76,9 @@ export const constructConjointFromRestrictions = <Obj, Arr, Payload, Evidence>(
       available: false,
       details: `Right restriction B(1,f) for ${label} produced codomain ${String(
         restricted.to,
-      )} instead of ${String(data.codomain)}.`,
+      )} instead of expected domain witness ${String(data.codomain)} when restricting at ${String(
+        data.domain,
+      )}.`,
     };
   }
 
