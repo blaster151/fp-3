@@ -417,6 +417,80 @@ export namespace CategoryLimits {
     return diagram.arrows
   }
 
+  const closeFiniteDiagramAgainstCategory = <I, A, O, M>(input: {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly eq: (a: M, b: M) => boolean
+    readonly diagram: FiniteDiagram<I, A, O, M>
+  }): FiniteDiagram<I, A, O, M> => {
+    const { category: C, eq, diagram } = input
+
+    const ambient: SmallCategory<I, A> = {
+      objects: new Set(diagram.shape.objects),
+      arrows: new Set(diagram.shape.arrows),
+      id: diagram.shape.id,
+      compose: (g, f) => diagram.shape.compose(g, f),
+      src: (arrow) => diagram.shape.src(arrow),
+      dst: (arrow) => diagram.shape.dst(arrow),
+    }
+
+    const seeds = diagram.shape.arrows.map((arrow) => ({
+      arrow,
+      morphism: diagram.onMorphisms(arrow),
+    }))
+
+    const closed = DiagramClosure.closeFiniteDiagram({
+      ambient,
+      target: C,
+      onObjects: diagram.onObjects,
+      seeds,
+      objects: diagram.shape.objects,
+      eq,
+    })
+
+    const shape: FiniteCategoryT<I, A> = {
+      objects: closed.objects.slice(),
+      arrows: closed.arrows.slice(),
+      eq: (left, right) => Object.is(left, right),
+      id: (object) => closed.shape.id(object),
+      compose: (g, f) => closed.shape.compose(g, f),
+      src: (arrow) => closed.shape.dom(arrow),
+      dst: (arrow) => closed.shape.cod(arrow),
+    }
+
+    return {
+      shape,
+      onObjects: closed.onObjects,
+      onMorphisms: closed.onMorphisms,
+    }
+  }
+
+  const prepareDiagramForChecks = <I, O, M>(input: {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly eq: (a: M, b: M) => boolean
+    readonly diagram: DiagramLike<I, O, M>
+    readonly sourceDiagram?: FiniteDiagram<I, any, O, M>
+  }):
+    | {
+        prepared: true
+        diagram: DiagramLike<I, O, M>
+        sourceDiagram?: FiniteDiagram<I, any, O, M>
+        closedDiagram?: FiniteDiagram<I, any, O, M>
+      }
+    | { prepared: false; reason: string } => {
+    const { category: C, eq, diagram, sourceDiagram } = input
+    const finiteSource = sourceDiagram ?? (isFiniteDiagram(diagram) ? diagram : undefined)
+    if (!finiteSource) {
+      return { prepared: true, diagram }
+    }
+    try {
+      const closed = closeFiniteDiagramAgainstCategory({ category: C, eq, diagram: finiteSource })
+      return { prepared: true, diagram: closed, sourceDiagram: finiteSource, closedDiagram: closed }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      return { prepared: false, reason }
+    }
+  }
+
   export interface FiniteDiagramCheckResult {
     readonly holds: boolean
     readonly issues: ReadonlyArray<string>
@@ -513,6 +587,7 @@ export namespace CategoryLimits {
     tip: O
     legs: IndexedFamilies.Family<I, M>
     diagram: DiagramLike<I, O, M>
+    sourceDiagram?: FiniteDiagram<I, any, O, M>
   }
 
   export interface ConeMorphism<I, O, M> {
@@ -566,9 +641,10 @@ export namespace CategoryLimits {
     const indices = Ifin.carrier
     const includesIndex = (value: I): boolean => indices.some((candidate) => candidate === value)
     const diagramArrows = enumerateDiagramArrows(diagram)
+    const finiteDiagram = isFiniteDiagram(diagram) ? diagram : undefined
 
-    if (isFiniteDiagram(diagram)) {
-      for (const object of diagram.shape.objects) {
+    if (finiteDiagram) {
+      for (const object of finiteDiagram.shape.objects) {
         if (!includesIndex(object)) {
           throw new Error(
             "CategoryLimits.makeConeCategory: finite diagram contains an object outside the supplied indices",
@@ -576,12 +652,12 @@ export namespace CategoryLimits {
         }
       }
       for (const index of indices) {
-        if (!diagram.shape.objects.some((candidate) => candidate === index)) {
+        if (!finiteDiagram.shape.objects.some((candidate) => candidate === index)) {
           throw new Error(
             "CategoryLimits.makeConeCategory: index family includes an object missing from the diagram",
           )
         }
-        const assigned = diagram.onObjects(index)
+        const assigned = finiteDiagram.onObjects(index)
         const advertised = F(index)
         if (assigned !== advertised) {
           throw new Error(
@@ -589,7 +665,7 @@ export namespace CategoryLimits {
           )
         }
       }
-      const functoriality = checkFiniteDiagramFunctoriality({ base, eq, diagram })
+      const functoriality = checkFiniteDiagramFunctoriality({ base, eq, diagram: finiteDiagram })
       if (!functoriality.holds) {
         throw new Error(
           `CategoryLimits.makeConeCategory: diagram fails functoriality checks: ${functoriality.issues.join('; ')}`,
@@ -638,16 +714,28 @@ export namespace CategoryLimits {
     for (const tip of base.objects) {
       if (indices.length === 0) {
         const legsMap = new Map<I, M>()
-        const cone: EnumeratedCone = {
-          tip,
-          legs: (index: I) => {
-            throw new Error(
-              `CategoryLimits.makeConeCategory: no legs available for index ${String(index)} in an empty diagram`,
-            )
-          },
-          diagram,
-          legsMap,
-        }
+        const cone: EnumeratedCone = finiteDiagram
+          ? {
+              tip,
+              legs: (index: I) => {
+                throw new Error(
+                  `CategoryLimits.makeConeCategory: no legs available for index ${String(index)} in an empty diagram`,
+                )
+              },
+              diagram,
+              sourceDiagram: finiteDiagram,
+              legsMap,
+            }
+          : {
+              tip,
+              legs: (index: I) => {
+                throw new Error(
+                  `CategoryLimits.makeConeCategory: no legs available for index ${String(index)} in an empty diagram`,
+                )
+              },
+              diagram,
+              legsMap,
+            }
         addCone(cone)
         continue
       }
@@ -664,20 +752,36 @@ export namespace CategoryLimits {
         if (position === indices.length) {
           const legsMap = new Map<I, M>()
           indices.forEach((index, idx) => legsMap.set(index, assignments[idx]!))
-          const cone: EnumeratedCone = {
-            tip,
-            legs: (index: I) => {
-              const leg = legsMap.get(index)
-              if (leg === undefined) {
-                throw new Error(
-                  `CategoryLimits.makeConeCategory: missing leg for index ${String(index)} in enumerated cone`,
-                )
+          const cone: EnumeratedCone = finiteDiagram
+            ? {
+                tip,
+                legs: (index: I) => {
+                  const leg = legsMap.get(index)
+                  if (leg === undefined) {
+                    throw new Error(
+                      `CategoryLimits.makeConeCategory: missing leg for index ${String(index)} in enumerated cone`,
+                    )
+                  }
+                  return leg
+                },
+                diagram,
+                sourceDiagram: finiteDiagram,
+                legsMap,
               }
-              return leg
-            },
-            diagram,
-            legsMap,
-          }
+            : {
+                tip,
+                legs: (index: I) => {
+                  const leg = legsMap.get(index)
+                  if (leg === undefined) {
+                    throw new Error(
+                      `CategoryLimits.makeConeCategory: missing leg for index ${String(index)} in enumerated cone`,
+                    )
+                  }
+                  return leg
+                },
+                diagram,
+                legsMap,
+              }
           if (coneRespectsDiagram(base, eq, cone)) {
             addCone(cone)
           }
@@ -918,8 +1022,9 @@ export namespace CategoryLimits {
             throw new Error('CategoryLimits.limitOfDiagram: empty diagram has no legs')
           },
           diagram,
+          sourceDiagram: diagram,
         }
-      : { tip: limitTip, legs: limitLegs, diagram }
+      : { tip: limitTip, legs: limitLegs, diagram, sourceDiagram: diagram }
 
     const coneCategory = makeConeCategory({ base, eq, Ifin, F: objectsFamily, diagram })
     const terminality = checkTerminalCone(coneCategory, limitCone)
@@ -960,7 +1065,7 @@ export namespace CategoryLimits {
         }
       }
 
-      const normalizedCone: Cone<I, O, M> = { tip: candidate.tip, legs: candidate.legs, diagram }
+      const normalizedCone: Cone<I, O, M> = { tip: candidate.tip, legs: candidate.legs, diagram, sourceDiagram: diagram }
       if (!coneRespectsDiagram(base, eq, normalizedCone)) {
         return { holds: false, reason: 'CategoryLimits.limitOfDiagram: cone legs do not commute with the diagram' }
       }
@@ -1002,6 +1107,7 @@ export namespace CategoryLimits {
     coTip: O
     legs: IndexedFamilies.Family<I, M>
     diagram: DiagramLike<I, O, M>
+    sourceDiagram?: FiniteDiagram<I, any, O, M>
   }
 
   export interface CoconeMorphism<I, O, M> {
@@ -1042,9 +1148,10 @@ export namespace CategoryLimits {
     const indices = Ifin.carrier
     const includesIndex = (value: I): boolean => indices.some((candidate) => candidate === value)
     const diagramArrows = enumerateDiagramArrows(diagram)
+    const finiteDiagram = isFiniteDiagram(diagram) ? diagram : undefined
 
-    if (isFiniteDiagram(diagram)) {
-      for (const object of diagram.shape.objects) {
+    if (finiteDiagram) {
+      for (const object of finiteDiagram.shape.objects) {
         if (!includesIndex(object)) {
           throw new Error(
             'CategoryLimits.makeCoconeCategory: finite diagram contains an object outside the supplied indices',
@@ -1052,12 +1159,12 @@ export namespace CategoryLimits {
         }
       }
       for (const index of indices) {
-        if (!diagram.shape.objects.some((candidate) => candidate === index)) {
+        if (!finiteDiagram.shape.objects.some((candidate) => candidate === index)) {
           throw new Error(
             'CategoryLimits.makeCoconeCategory: index family includes an object missing from the diagram',
           )
         }
-        const assigned = diagram.onObjects(index)
+        const assigned = finiteDiagram.onObjects(index)
         const advertised = F(index)
         if (assigned !== advertised) {
           throw new Error(
@@ -1065,7 +1172,7 @@ export namespace CategoryLimits {
           )
         }
       }
-      const functoriality = checkFiniteDiagramFunctoriality({ base, eq, diagram })
+      const functoriality = checkFiniteDiagramFunctoriality({ base, eq, diagram: finiteDiagram })
       if (!functoriality.holds) {
         throw new Error(
           `CategoryLimits.makeCoconeCategory: diagram fails functoriality checks: ${functoriality.issues.join('; ')}`,
@@ -1114,16 +1221,28 @@ export namespace CategoryLimits {
     for (const coTip of base.objects) {
       if (indices.length === 0) {
         const legsMap = new Map<I, M>()
-        const cocone: EnumeratedCocone = {
-          coTip,
-          legs: (index: I) => {
-            throw new Error(
-              `CategoryLimits.makeCoconeCategory: no legs available for index ${String(index)} in an empty diagram`,
-            )
-          },
-          diagram,
-          legsMap,
-        }
+        const cocone: EnumeratedCocone = finiteDiagram
+          ? {
+              coTip,
+              legs: (index: I) => {
+                throw new Error(
+                  `CategoryLimits.makeCoconeCategory: no legs available for index ${String(index)} in an empty diagram`,
+                )
+              },
+              diagram,
+              sourceDiagram: finiteDiagram,
+              legsMap,
+            }
+          : {
+              coTip,
+              legs: (index: I) => {
+                throw new Error(
+                  `CategoryLimits.makeCoconeCategory: no legs available for index ${String(index)} in an empty diagram`,
+                )
+              },
+              diagram,
+              legsMap,
+            }
         addCocone(cocone)
         continue
       }
@@ -1140,20 +1259,36 @@ export namespace CategoryLimits {
         if (position === indices.length) {
           const legsMap = new Map<I, M>()
           indices.forEach((index, idx) => legsMap.set(index, assignments[idx]!))
-          const cocone: EnumeratedCocone = {
-            coTip,
-            legs: (index: I) => {
-              const leg = legsMap.get(index)
-              if (leg === undefined) {
-                throw new Error(
-                  `CategoryLimits.makeCoconeCategory: missing leg for index ${String(index)} in enumerated cocone`,
-                )
+          const cocone: EnumeratedCocone = finiteDiagram
+            ? {
+                coTip,
+                legs: (index: I) => {
+                  const leg = legsMap.get(index)
+                  if (leg === undefined) {
+                    throw new Error(
+                      `CategoryLimits.makeCoconeCategory: missing leg for index ${String(index)} in enumerated cocone`,
+                    )
+                  }
+                  return leg
+                },
+                diagram,
+                sourceDiagram: finiteDiagram,
+                legsMap,
               }
-              return leg
-            },
-            diagram,
-            legsMap,
-          }
+            : {
+                coTip,
+                legs: (index: I) => {
+                  const leg = legsMap.get(index)
+                  if (leg === undefined) {
+                    throw new Error(
+                      `CategoryLimits.makeCoconeCategory: missing leg for index ${String(index)} in enumerated cocone`,
+                    )
+                  }
+                  return leg
+                },
+                diagram,
+                legsMap,
+              }
           if (coconeRespectsDiagram(base, eq, cocone)) {
             addCocone(cocone)
           }
@@ -1286,11 +1421,26 @@ export namespace CategoryLimits {
   }
 
   export const coneRespectsDiagram = <I, O, M>(
-    C: Category<O, M>,
+    C: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
     eq: (a: M, b: M) => boolean,
     cone: Cone<I, O, M>,
   ): boolean => {
-    for (const { source, target, morphism } of enumerateDiagramArrows(cone.diagram)) {
+    const prepared = cone.sourceDiagram
+      ? prepareDiagramForChecks({
+          category: C,
+          eq,
+          diagram: cone.diagram,
+          sourceDiagram: cone.sourceDiagram!,
+        })
+      : prepareDiagramForChecks({
+          category: C,
+          eq,
+          diagram: cone.diagram,
+        })
+    if (!prepared.prepared) {
+      return false
+    }
+    for (const { source, target, morphism } of enumerateDiagramArrows(prepared.diagram)) {
       const transported = C.compose(morphism, cone.legs(source))
       const targetLeg = cone.legs(target)
       if (!eq(transported, targetLeg)) {
@@ -1301,11 +1451,26 @@ export namespace CategoryLimits {
   }
 
   export const coconeRespectsDiagram = <I, O, M>(
-    C: Category<O, M>,
+    C: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
     eq: (a: M, b: M) => boolean,
     cocone: Cocone<I, O, M>,
   ): boolean => {
-    for (const { source, target, morphism } of enumerateDiagramArrows(cocone.diagram)) {
+    const prepared = cocone.sourceDiagram
+      ? prepareDiagramForChecks({
+          category: C,
+          eq,
+          diagram: cocone.diagram,
+          sourceDiagram: cocone.sourceDiagram!,
+        })
+      : prepareDiagramForChecks({
+          category: C,
+          eq,
+          diagram: cocone.diagram,
+        })
+    if (!prepared.prepared) {
+      return false
+    }
+    for (const { source, target, morphism } of enumerateDiagramArrows(prepared.diagram)) {
       const transported = C.compose(cocone.legs(target), morphism)
       const sourceLeg = cocone.legs(source)
       if (!eq(transported, sourceLeg)) {
@@ -1333,8 +1498,31 @@ export namespace CategoryLimits {
 
     const includesIndex = (index: I): boolean => carrier.some((candidate) => candidate === index)
 
-    if (isFiniteDiagram(diagram)) {
-      for (const object of diagram.shape.objects) {
+    const prepared = cone.sourceDiagram
+      ? prepareDiagramForChecks({
+          category: C,
+          eq,
+          diagram,
+          sourceDiagram: cone.sourceDiagram!,
+        })
+      : prepareDiagramForChecks({
+          category: C,
+          eq,
+          diagram,
+        })
+
+    if (!prepared.prepared) {
+      return {
+        valid: false,
+        reason: `validateConeAgainstDiagram: ${prepared.reason}`,
+      }
+    }
+
+    const workingDiagram = prepared.diagram
+    const finiteDiagram = isFiniteDiagram(workingDiagram) ? workingDiagram : undefined
+
+    if (finiteDiagram) {
+      for (const object of finiteDiagram.shape.objects) {
         if (!includesIndex(object)) {
           return {
             valid: false,
@@ -1342,7 +1530,7 @@ export namespace CategoryLimits {
           }
         }
         const advertised = onObjects(object)
-        const assigned = diagram.onObjects(object)
+        const assigned = finiteDiagram.onObjects(object)
         if (!Object.is(advertised, assigned)) {
           return {
             valid: false,
@@ -1371,7 +1559,7 @@ export namespace CategoryLimits {
       }
     }
 
-    for (const { source, target, morphism } of enumerateDiagramArrows(diagram)) {
+    for (const { source, target, morphism } of enumerateDiagramArrows(workingDiagram)) {
       if (!includesIndex(source) || !includesIndex(target)) {
         return {
           valid: false,
@@ -1429,8 +1617,31 @@ export namespace CategoryLimits {
 
     const includesIndex = (index: I): boolean => carrier.some((candidate) => candidate === index)
 
-    if (isFiniteDiagram(diagram)) {
-      for (const object of diagram.shape.objects) {
+    const prepared = cocone.sourceDiagram
+      ? prepareDiagramForChecks({
+          category: C,
+          eq,
+          diagram,
+          sourceDiagram: cocone.sourceDiagram!,
+        })
+      : prepareDiagramForChecks({
+          category: C,
+          eq,
+          diagram,
+        })
+
+    if (!prepared.prepared) {
+      return {
+        valid: false,
+        reason: `validateCoconeAgainstDiagram: ${prepared.reason}`,
+      }
+    }
+
+    const workingDiagram = prepared.diagram
+    const finiteDiagram = isFiniteDiagram(workingDiagram) ? workingDiagram : undefined
+
+    if (finiteDiagram) {
+      for (const object of finiteDiagram.shape.objects) {
         if (!includesIndex(object)) {
           return {
             valid: false,
@@ -1438,7 +1649,7 @@ export namespace CategoryLimits {
           }
         }
         const advertised = onObjects(object)
-        const assigned = diagram.onObjects(object)
+        const assigned = finiteDiagram.onObjects(object)
         if (!Object.is(advertised, assigned)) {
           return {
             valid: false,
@@ -1467,7 +1678,7 @@ export namespace CategoryLimits {
       }
     }
 
-    for (const { source, target, morphism } of enumerateDiagramArrows(diagram)) {
+    for (const { source, target, morphism } of enumerateDiagramArrows(workingDiagram)) {
       if (!includesIndex(source) || !includesIndex(target)) {
         return {
           valid: false,
@@ -1515,44 +1726,24 @@ export namespace CategoryLimits {
     readonly cone: Cone<I, O, M>
   }): { extended: true; cone: Cone<I, O, M> } | { extended: false; reason: string } => {
     const { category: C, eq, indices, onObjects, cone } = input
-    if (!isFiniteDiagram(cone.diagram)) {
+    const finiteSource = cone.sourceDiagram ?? (isFiniteDiagram(cone.diagram) ? cone.diagram : undefined)
+    if (!finiteSource) {
       return { extended: false, reason: 'extendConeToClosure: cone does not carry finite diagram data' }
     }
 
-    const finiteDiagram = cone.diagram
-    const ambient: SmallCategory<I, typeof finiteDiagram.shape.arrows[number]> = {
-      objects: new Set(finiteDiagram.shape.objects),
-      arrows: new Set(finiteDiagram.shape.arrows),
-      id: finiteDiagram.shape.id,
-      compose: (g, f) => finiteDiagram.shape.compose(g, f),
-      src: (arrow) => finiteDiagram.shape.src(arrow),
-      dst: (arrow) => finiteDiagram.shape.dst(arrow),
+    let closed: FiniteDiagram<I, any, O, M>
+    try {
+      closed = closeFiniteDiagramAgainstCategory({ category: C, eq, diagram: finiteSource })
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      return { extended: false, reason: `extendConeToClosure: ${reason}` }
     }
-
-    const seeds = finiteDiagram.shape.arrows.map((arrow) => ({
-      arrow,
-      morphism: finiteDiagram.onMorphisms(arrow),
-    }))
-
-    const closed = DiagramClosure.closeFiniteDiagram({
-      ambient,
-      target: C,
-      onObjects: finiteDiagram.onObjects,
-      seeds,
-      objects: finiteDiagram.shape.objects,
-      eq,
-    })
-
-    const closureArrows = closed.arrows.map((arrow) => ({
-      source: closed.shape.dom(arrow),
-      target: closed.shape.cod(arrow),
-      morphism: closed.onMorphisms(arrow),
-    }))
 
     const extendedCone: Cone<I, O, M> = {
       tip: cone.tip,
       legs: cone.legs,
-      diagram: { arrows: closureArrows },
+      diagram: closed,
+      sourceDiagram: finiteSource,
     }
 
     const validation = validateConeAgainstDiagram({ category: C, eq, indices, onObjects, cone: extendedCone })
@@ -1574,44 +1765,24 @@ export namespace CategoryLimits {
     readonly cocone: Cocone<I, O, M>
   }): { extended: true; cocone: Cocone<I, O, M> } | { extended: false; reason: string } => {
     const { category: C, eq, indices, onObjects, cocone } = input
-    if (!isFiniteDiagram(cocone.diagram)) {
+    const finiteSource = cocone.sourceDiagram ?? (isFiniteDiagram(cocone.diagram) ? cocone.diagram : undefined)
+    if (!finiteSource) {
       return { extended: false, reason: 'extendCoconeToClosure: cocone does not carry finite diagram data' }
     }
 
-    const finiteDiagram = cocone.diagram
-    const ambient: SmallCategory<I, typeof finiteDiagram.shape.arrows[number]> = {
-      objects: new Set(finiteDiagram.shape.objects),
-      arrows: new Set(finiteDiagram.shape.arrows),
-      id: finiteDiagram.shape.id,
-      compose: (g, f) => finiteDiagram.shape.compose(g, f),
-      src: (arrow) => finiteDiagram.shape.src(arrow),
-      dst: (arrow) => finiteDiagram.shape.dst(arrow),
+    let closed: FiniteDiagram<I, any, O, M>
+    try {
+      closed = closeFiniteDiagramAgainstCategory({ category: C, eq, diagram: finiteSource })
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      return { extended: false, reason: `extendCoconeToClosure: ${reason}` }
     }
-
-    const seeds = finiteDiagram.shape.arrows.map((arrow) => ({
-      arrow,
-      morphism: finiteDiagram.onMorphisms(arrow),
-    }))
-
-    const closed = DiagramClosure.closeFiniteDiagram({
-      ambient,
-      target: C,
-      onObjects: finiteDiagram.onObjects,
-      seeds,
-      objects: finiteDiagram.shape.objects,
-      eq,
-    })
-
-    const closureArrows = closed.arrows.map((arrow) => ({
-      source: closed.shape.dom(arrow),
-      target: closed.shape.cod(arrow),
-      morphism: closed.onMorphisms(arrow),
-    }))
 
     const extendedCocone: Cocone<I, O, M> = {
       coTip: cocone.coTip,
       legs: cocone.legs,
-      diagram: { arrows: closureArrows },
+      diagram: closed,
+      sourceDiagram: finiteSource,
     }
 
     const validation = validateCoconeAgainstDiagram({ category: C, eq, indices, onObjects, cocone: extendedCocone })
@@ -1846,11 +2017,18 @@ export namespace CategoryLimits {
       if (triangles) {
         if (isFiniteCategoryStructure(C)) {
           try {
-            const limitCone: Cone<I, O, M> = {
-              tip: productObj,
-              legs: (i: I) => projections(i),
-              diagram: cone.diagram,
-            }
+            const limitCone: Cone<I, O, M> = cone.sourceDiagram
+              ? {
+                  tip: productObj,
+                  legs: (i: I) => projections(i),
+                  diagram: cone.diagram,
+                  sourceDiagram: cone.sourceDiagram,
+                }
+              : {
+                  tip: productObj,
+                  legs: (i: I) => projections(i),
+                  diagram: cone.diagram,
+                }
             const coneCategory = makeConeCategory({ base: C, eq, Ifin, F, diagram: cone.diagram })
             const locatedSource = coneCategory.locateCone(cone)
             const terminality = checkTerminalCone(coneCategory, limitCone)
@@ -1985,11 +2163,19 @@ export namespace CategoryLimits {
         return cache.get(i)!
       }
 
-      const cone: Cone<I, O, M> = {
-        tip: C.dom(arrow),
-        legs,
-        diagram,
-      }
+      const sourceDiagram = isFiniteDiagram(diagram) ? diagram : undefined
+      const cone: Cone<I, O, M> = sourceDiagram
+        ? {
+            tip: C.dom(arrow),
+            legs,
+            diagram,
+            sourceDiagram,
+          }
+        : {
+            tip: C.dom(arrow),
+            legs,
+            diagram,
+          }
 
       if (!coneRespectsDiagram(C, eq, cone)) {
         return {
@@ -2150,11 +2336,19 @@ export namespace CategoryLimits {
         return cache.get(i)!
       }
 
-      const cocone: Cocone<I, O, M> = {
-        coTip: C.cod(arrow),
-        legs,
-        diagram,
-      }
+      const sourceDiagram = isFiniteDiagram(diagram) ? diagram : undefined
+      const cocone: Cocone<I, O, M> = sourceDiagram
+        ? {
+            coTip: C.cod(arrow),
+            legs,
+            diagram,
+            sourceDiagram,
+          }
+        : {
+            coTip: C.cod(arrow),
+            legs,
+            diagram,
+          }
 
       if (!coconeRespectsDiagram(C, eq, cocone)) {
         return {

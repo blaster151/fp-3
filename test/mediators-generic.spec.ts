@@ -385,14 +385,22 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
 
     expect(closure.extended).toBe(true)
     if (!closure.extended) throw new Error('expected closure to succeed')
-    if (!('arrows' in closure.cone.diagram)) {
-      throw new Error('expected closure diagram to enumerate arrows explicitly')
+    expect(closure.cone.sourceDiagram).toBe(diagram)
+    if (!('shape' in closure.cone.diagram)) {
+      throw new Error('expected closure diagram to retain finite shape data')
     }
-    const closureArrows = closure.cone.diagram.arrows
-    const hasComposite = closureArrows.some(
-      (arrow: CategoryLimits.DiagramArrow<number, EnhancedVect.VectMor>) =>
-        arrow.source === 0 && arrow.target === 2,
-    )
+    const finiteClosure = closure.cone.diagram as CategoryLimits.FiniteDiagram<
+      number,
+      any,
+      EnhancedVect.VectObj,
+      EnhancedVect.VectMor
+    >
+    const closureArrows = finiteClosure.shape.arrows
+    const hasComposite = closureArrows.some((arrow) => {
+      const src = finiteClosure.shape.src(arrow)
+      const dst = finiteClosure.shape.dst(arrow)
+      return src === 0 && dst === 2
+    })
     expect(hasComposite).toBe(true)
 
     const brokenCone: CategoryLimits.Cone<number, EnhancedVect.VectObj, EnhancedVect.VectMor> = {
