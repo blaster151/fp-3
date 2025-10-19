@@ -75,6 +75,7 @@ describe("BSS equivalence finite v0", () => {
       // Perfect should dominate useless (though v0 might not detect this)
       const result = testBSSDetailed(m, perfect, useless, xVals, xVals);
       // Note: v0 stub might return false, but the framework is in place
+      expect(result.dominance.viaGarbling.reason).toBe("garbling-equivalence");
     });
   });
 
@@ -125,9 +126,10 @@ describe("BSS equivalence finite v0", () => {
         ["x1", "x2"] as const,
         ["x1", "x2"] as const,
       );
-      
+
       // Should detect that informative experiment is better (though v0 might not)
       // The framework is in place for extension
+      expect(result.dominance.gridEvidence.gaps.length).toBeGreaterThan(0);
     });
   });
 

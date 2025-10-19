@@ -53,9 +53,11 @@ describe("Enhanced BSS with practical heuristics", () => {
       const g = (_: Θ): Dist<number, X> => d([["signal", 0.5], ["noise", 0.5]] as const);
       
       const result = testBSSDetailed(m, f, g, ["signal", "noise"] as const, ["signal", "noise"] as const);
-      
+
       expect(result.fMoreInformative).toBe(true);
       expect(result.details).toContain("more informative");
+      expect(result.dominance.viaGarbling.ok).toBe(true);
+      expect(result.dominance.gridEvidence.probably).toBe(true);
     });
   });
 
@@ -72,11 +74,12 @@ describe("Enhanced BSS with practical heuristics", () => {
       const g = f; // Same experiment
       
       const analysis = analyzeBSS(m, f, g, ["obs1", "obs2"] as const, ["obs1", "obs2"] as const);
-      
+
       expect(analysis.standardMeasures.fHat.w.size).toBeGreaterThan(0);
       expect(analysis.standardMeasures.gHat.w.size).toBeGreaterThan(0);
       expect(analysis.bssResult.equivalent).toBe(true);
       expect(analysis.dilationAnalysis.searchSpace).toContain("heuristics");
+      expect(analysis.dominance.viaGarbling.ok).toBe(true);
     });
 
     it("handles different posterior structures", () => {
@@ -105,9 +108,10 @@ describe("Enhanced BSS with practical heuristics", () => {
         ["A", "B", "C"] as const,
         ["X", "Y"] as const,
       );
-      
+
       expect(analysis.dilationAnalysis.fHatSupport).toBeGreaterThan(0);
       expect(analysis.dilationAnalysis.gHatSupport).toBeGreaterThan(0);
+      expect(analysis.dominance.gridEvidence.gaps.length).toBeGreaterThan(0);
     });
   });
 
@@ -131,6 +135,7 @@ describe("Enhanced BSS with practical heuristics", () => {
         ["random", "noise"] as const,
       );
       expect(result.fMoreInformative).toBe(true);
+      expect(result.dominance.viaGarbling.ok).toBe(true);
     });
 
     it("handles experiments with same information content", () => {
@@ -154,6 +159,7 @@ describe("Enhanced BSS with practical heuristics", () => {
         ["X", "Y"] as const,
       );
       expect(result.equivalent).toBe(true);
+      expect(result.dominance.viaGarbling.ok).toBe(true);
     });
   });
 
@@ -184,11 +190,12 @@ describe("Enhanced BSS with practical heuristics", () => {
         ["evidence_strong", "evidence_weak", "evidence_none"] as const,
         ["conclusion_positive", "conclusion_negative"] as const,
       );
-      
+
       // Should be able to analyze the relationship
       expect(analysis.bssResult.dilationFound).toBe(true);
       expect(analysis.standardMeasures.fHat.w.size).toBeGreaterThan(0);
       expect(analysis.standardMeasures.gHat.w.size).toBeGreaterThan(0);
+      expect(analysis.dominance.viaGarbling.ok).toBe(true);
       
       // This represents the complete achievement:
       // ✅ 250+ tests across all mathematical domains

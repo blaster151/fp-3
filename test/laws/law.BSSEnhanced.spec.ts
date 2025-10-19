@@ -104,12 +104,14 @@ describe("BSS with barycentric search (k≤3)", () => {
       const g = (_: Θ): Dist<number, Y> => d([["result", 1]] as const);
       
       const result = testBSSDetailed(m, f, g, ["obs1", "obs2"] as const, ["result"] as const);
-      
+
       // f should be more informative than g
       expect(result.fMoreInformative).toBe(true);
       expect(result.gMoreInformative).toBe(false);
       expect(result.dilationFound).toBe(true);
       expect(result.details).toContain("more informative");
+      expect(result.dominance.viaGarbling.ok).toBe(true);
+      expect(result.dominance.gridEvidence.probably).toBe(true);
     });
   });
 
@@ -129,9 +131,12 @@ describe("BSS with barycentric search (k≤3)", () => {
 
       // Should be able to find some relationship (even if not perfect)
       const analysis = analyzeBSS<Θ, Obs, Obs>(m, f, g, ["A", "B"] as const, ["A", "B"] as const);
-      
+
       expect(analysis.standardMeasures.fHat.w.size).toBeGreaterThan(0);
       expect(analysis.standardMeasures.gHat.w.size).toBeGreaterThan(0);
+      expect(analysis.dominance.viaGarbling.ok).toBe(true);
+      expect(analysis.dominance.viaGarbling.witness).toBeDefined();
+      expect(analysis.dominance.gridEvidence.probably).toBe(true);
       expect(analysis.dilationAnalysis.searchSpace).toContain("barycentric");
     });
 
@@ -144,10 +149,11 @@ describe("BSS with barycentric search (k≤3)", () => {
       
       // Single posteriors - should find trivial dilation or fail gracefully
       const result = testBSSDetailed(m, f, g, ["x"] as const, ["y"] as const);
-      
+
       // Either should find a dilation or correctly report incomparability
       expect(typeof result.dilationFound).toBe('boolean');
       expect(result.details).toBeTruthy();
+      expect(result.dominance.viaGarbling.witness).toBeDefined();
     });
   });
 
@@ -177,6 +183,9 @@ describe("BSS with barycentric search (k≤3)", () => {
       // f should be more informative than g (f ⪰ g)
       const result = testBSSDetailed(m, f, g, ["obs1", "obs2", "obs3"] as const, ["group1", "group2"] as const);
       expect(result.fMoreInformative).toBe(true);
+      expect(result.dominance.viaGarbling.ok).toBe(true);
+      expect(result.dominance.viaGarbling.witness).toBeDefined();
+      expect(result.dominance.gridEvidence.probably).toBe(true);
     });
 
     it("handles symmetric information relationships", () => {
@@ -193,9 +202,10 @@ describe("BSS with barycentric search (k≤3)", () => {
         θ === "θ1" ? d([["X", 1]] as const) : d([["Y", 1]] as const);
       
       const result = testBSSDetailed(m, f, g, ["A", "B"] as const, ["X", "Y"] as const);
-      
+
       // Should be equivalent (both perfectly informative about θ)
       expect(result.equivalent).toBe(true);
+      expect(result.dominance.viaGarbling.ok).toBe(true);
     });
   });
 
@@ -280,6 +290,8 @@ describe("BSS with barycentric search (k≤3)", () => {
       // Fine should be more informative than coarse
       expect(analysis.bssResult.fMoreInformative).toBe(true);
       expect(analysis.bssResult.details).toContain("more informative");
+      expect(analysis.dominance.viaGarbling.ok).toBe(true);
+      expect(analysis.dominance.gridEvidence.probably).toBe(true);
       
       // This demonstrates the complete mathematical machinery working together:
       // - Semiring infrastructure providing the algebraic foundation
@@ -317,10 +329,11 @@ describe("BSS with barycentric search (k≤3)", () => {
         ["evidence_positive", "evidence_negative"] as const,
         ["result_yes", "result_no"] as const,
       );
-      
+
       // Should be able to compare the informativeness of these experiments
       expect(comparison.dilationFound).toBe(true);
       expect(comparison.details).toBeTruthy();
+      expect(comparison.dominance.gridEvidence.gaps.length).toBeGreaterThan(0);
       
       // This represents the culmination:
       // ✅ Mathematical rigor (250+ tests)
@@ -357,9 +370,10 @@ describe("BSS with barycentric search (k≤3)", () => {
         ["θ1", "θ2"] as const,
         ["θ1", "θ2", "unknown"] as const,
       );
-      
+
       expect(result.fMoreInformative).toBe(true);
       expect(result.details).toContain("dilation found");
+      expect(result.dominance.viaGarbling.ok).toBe(true);
     });
 
     it("validates the complete BSS theorem implementation", () => {
