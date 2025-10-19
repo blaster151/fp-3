@@ -953,16 +953,100 @@ export const coKleisli = <F>(W: ComonadK1<F>) => ({
 // ================= Cofree over a FunctorK1 =================
 // Assumes your HKT aliases: Kind1 and FunctorK1<F> { map }
 
+/**
+ * Cofree tree with an explicit trampoline-backed API.
+ *
+ * The accompanying {@link CofreeK1} factory uses an iterative evaluation
+ * strategy so that all exported combinators remain stack-safe on large or
+ * deeply nested structures.
+ */
 export type Cofree<F extends HKId1, A> = {
   readonly head: A
   readonly tail: HKKind1<F, Cofree<F, A>>
 }
 
 export const CofreeK1 = <F extends HKId1>(F: FunctorK1<F>) => {
+  const makeEnumerator =
+    <Id extends HKId1>(Functor: FunctorK1<Id>) =>
+    <X>(fx: HKKind1<Id, X>) => {
+      const elements: X[] = []
+      const template = Functor.map((value: X) => {
+        const index = elements.length
+        elements.push(value)
+        return index
+      })(fx)
+      return { template, elements }
+    }
+
+  const makeRebuilder =
+    <Id extends HKId1>(Functor: FunctorK1<Id>) =>
+    <X>(template: HKKind1<Id, number>, values: ReadonlyArray<X | undefined>, context: string) =>
+      Functor.map((index: number) => {
+        const value = values[index]
+        if (value === undefined) {
+          throw new Error(`${context}: missing value for index ${index}`)
+        }
+        return value
+      })(template)
+
+  const enumerateF = makeEnumerator(F)
+  const rebuildF = makeRebuilder(F)
+
   const map =
     <A, B>(f: (a: A) => B) =>
-    (w: Cofree<F, A>): Cofree<F, B> =>
-      ({ head: f(w.head), tail: F.map(map(f))(w.tail) })
+    (root: Cofree<F, A>): Cofree<F, B> => {
+      type Frame =
+        | { readonly phase: 'Enter'; readonly node: Cofree<F, A>; readonly cont: (value: Cofree<F, B>) => void }
+        | {
+            readonly phase: 'Rebuild'
+            readonly head: B
+            readonly template: HKKind1<F, number>
+            readonly cont: (value: Cofree<F, B>) => void
+            readonly children: Array<Cofree<F, B> | undefined>
+          }
+
+      const stack: Frame[] = []
+      let output: Cofree<F, B> | undefined
+
+      stack.push({
+        phase: 'Enter',
+        node: root,
+        cont: (value) => {
+          output = value
+        },
+      })
+
+      while (stack.length > 0) {
+        const frame = stack.pop()!
+        if (frame.phase === 'Enter') {
+          const { node, cont } = frame
+          const head = f(node.head)
+          const { template, elements } = enumerateF(node.tail)
+          const children: Array<Cofree<F, B> | undefined> = new Array(elements.length)
+          stack.push({ phase: 'Rebuild', head, template, cont, children })
+          for (let i = elements.length - 1; i >= 0; i--) {
+            const index = i
+            const child = elements[i]!
+            stack.push({
+              phase: 'Enter',
+              node: child,
+              cont: (value) => {
+                children[index] = value
+              },
+            })
+          }
+        } else {
+          const { head, template, children, cont } = frame
+          const tail = rebuildF(template, children, 'Cofree.map')
+          cont({ head, tail })
+        }
+      }
+
+      if (output === undefined) {
+        throw new Error('Cofree.map: no result produced')
+      }
+      return output
+    }
 
   const extract =
     <A>(w: Cofree<F, A>): A =>
@@ -970,39 +1054,300 @@ export const CofreeK1 = <F extends HKId1>(F: FunctorK1<F>) => {
 
   const extend =
     <A, B>(g: (w: Cofree<F, A>) => B) =>
-    (w: Cofree<F, A>): Cofree<F, B> =>
-      ({ head: g(w), tail: F.map(extend(g))(w.tail) })
+    (root: Cofree<F, A>): Cofree<F, B> => {
+      type Frame =
+        | { readonly phase: 'Enter'; readonly node: Cofree<F, A>; readonly cont: (value: Cofree<F, B>) => void }
+        | {
+            readonly phase: 'Rebuild'
+            readonly head: B
+            readonly template: HKKind1<F, number>
+            readonly cont: (value: Cofree<F, B>) => void
+            readonly children: Array<Cofree<F, B> | undefined>
+          }
+
+      const stack: Frame[] = []
+      let output: Cofree<F, B> | undefined
+
+      stack.push({
+        phase: 'Enter',
+        node: root,
+        cont: (value) => {
+          output = value
+        },
+      })
+
+      while (stack.length > 0) {
+        const frame = stack.pop()!
+        if (frame.phase === 'Enter') {
+          const { node, cont } = frame
+          const head = g(node)
+          const { template, elements } = enumerateF(node.tail)
+          const children: Array<Cofree<F, B> | undefined> = new Array(elements.length)
+          stack.push({ phase: 'Rebuild', head, template, cont, children })
+          for (let i = elements.length - 1; i >= 0; i--) {
+            const index = i
+            const child = elements[i]!
+            stack.push({
+              phase: 'Enter',
+              node: child,
+              cont: (value) => {
+                children[index] = value
+              },
+            })
+          }
+        } else {
+          const { head, template, children, cont } = frame
+          const tail = rebuildF(template, children, 'Cofree.extend')
+          cont({ head, tail })
+        }
+      }
+
+      if (output === undefined) {
+        throw new Error('Cofree.extend: no result produced')
+      }
+      return output
+    }
 
   const duplicate = <A>(w: Cofree<F, A>): Cofree<F, Cofree<F, A>> =>
     extend<A, Cofree<F, A>>((x) => x)(w)
 
-  // unfold (cofree-ana): ψ : S -> [A, F<S>]
   const unfold =
     <S, A>(psi: (s: S) => readonly [A, HKKind1<F, S>]) =>
-    (s0: S): Cofree<F, A> => {
-      const [a, fs] = psi(s0)
-      return { head: a, tail: F.map(unfold(psi))(fs) }
+    (seed: S): Cofree<F, A> => {
+      type Frame =
+        | { readonly phase: 'Build'; readonly seed: S; readonly cont: (value: Cofree<F, A>) => void }
+        | {
+            readonly phase: 'Assemble'
+            readonly head: A
+            readonly template: HKKind1<F, number>
+            readonly cont: (value: Cofree<F, A>) => void
+            readonly children: Array<Cofree<F, A> | undefined>
+          }
+
+      const stack: Frame[] = []
+      let output: Cofree<F, A> | undefined
+
+      stack.push({
+        phase: 'Build',
+        seed,
+        cont: (value) => {
+          output = value
+        },
+      })
+
+      while (stack.length > 0) {
+        const frame = stack.pop()!
+        if (frame.phase === 'Build') {
+          const { seed: current, cont } = frame
+          const [head, nextSeeds] = psi(current)
+          const { template, elements } = enumerateF(nextSeeds)
+          const children: Array<Cofree<F, A> | undefined> = new Array(elements.length)
+          stack.push({ phase: 'Assemble', head, template, cont, children })
+          for (let i = elements.length - 1; i >= 0; i--) {
+            const index = i
+            const nextSeed = elements[i]!
+            stack.push({
+              phase: 'Build',
+              seed: nextSeed,
+              cont: (value) => {
+                children[index] = value
+              },
+            })
+          }
+        } else {
+          const { head, template, children, cont } = frame
+          const tail = rebuildF(template, children, 'Cofree.unfold')
+          cont({ head, tail })
+        }
+      }
+
+      if (output === undefined) {
+        throw new Error('Cofree.unfold: no result produced')
+      }
+      return output
     }
 
-  // fold (cofree-cata): φ : F<B> -> B  and  h : [A, B] -> B
-  //   combine head & folded tail
   const cata =
     <A, B>(phi: (fb: HKKind1<F, B>) => B, h: (a: A, b: B) => B) =>
-    (w: Cofree<F, A>): B =>
-      h(w.head, phi(F.map(cata(phi, h))(w.tail)))
+    (root: Cofree<F, A>): B => {
+      type Frame =
+        | { readonly phase: 'Enter'; readonly node: Cofree<F, A>; readonly cont: (value: B) => void }
+        | {
+            readonly phase: 'Fold'
+            readonly node: Cofree<F, A>
+            readonly template: HKKind1<F, number>
+            readonly cont: (value: B) => void
+            readonly children: Array<B | undefined>
+          }
 
-  // limit (materialize N layers)
+      const stack: Frame[] = []
+      let output: B | undefined
+
+      stack.push({
+        phase: 'Enter',
+        node: root,
+        cont: (value) => {
+          output = value
+        },
+      })
+
+      while (stack.length > 0) {
+        const frame = stack.pop()!
+        if (frame.phase === 'Enter') {
+          const { node, cont } = frame
+          const { template, elements } = enumerateF(node.tail)
+          const children: Array<B | undefined> = new Array(elements.length)
+          stack.push({ phase: 'Fold', node, template, cont, children })
+          for (let i = elements.length - 1; i >= 0; i--) {
+            const index = i
+            const child = elements[i]!
+            stack.push({
+              phase: 'Enter',
+              node: child,
+              cont: (value) => {
+                children[index] = value
+              },
+            })
+          }
+        } else {
+          const { node, template, children, cont } = frame
+          const foldedTail = phi(rebuildF(template, children, 'Cofree.cata'))
+          cont(h(node.head, foldedTail))
+        }
+      }
+
+      if (output === undefined) {
+        throw new Error('Cofree.cata: no result produced')
+      }
+      return output
+    }
+
   const take =
     (n: number) =>
-    <A>(w: Cofree<F, A>): Cofree<F, A> =>
-      n <= 0 ? w : ({ head: w.head, tail: F.map(take(n - 1))(w.tail) })
+    <A>(root: Cofree<F, A>): Cofree<F, A> => {
+      type Frame =
+        | {
+            readonly phase: 'Enter'
+            readonly node: Cofree<F, A>
+            readonly depth: number
+            readonly cont: (value: Cofree<F, A>) => void
+          }
+        | {
+            readonly phase: 'Rebuild'
+            readonly head: A
+            readonly template: HKKind1<F, number>
+            readonly cont: (value: Cofree<F, A>) => void
+            readonly children: Array<Cofree<F, A> | undefined>
+          }
 
-  // change base functor via natural transformation F ~> G
+      const stack: Frame[] = []
+      let output: Cofree<F, A> | undefined
+
+      stack.push({
+        phase: 'Enter',
+        node: root,
+        depth: n,
+        cont: (value) => {
+          output = value
+        },
+      })
+
+      while (stack.length > 0) {
+        const frame = stack.pop()!
+        if (frame.phase === 'Enter') {
+          const { node, depth, cont } = frame
+          if (depth <= 0) {
+            cont(node)
+            continue
+          }
+          const { template, elements } = enumerateF(node.tail)
+          const children: Array<Cofree<F, A> | undefined> = new Array(elements.length)
+          stack.push({ phase: 'Rebuild', head: node.head, template, cont, children })
+          for (let i = elements.length - 1; i >= 0; i--) {
+            const index = i
+            const child = elements[i]!
+            stack.push({
+              phase: 'Enter',
+              node: child,
+              depth: depth - 1,
+              cont: (value) => {
+                children[index] = value
+              },
+            })
+          }
+        } else {
+          const { head, template, children, cont } = frame
+          const tail = rebuildF(template, children, 'Cofree.take')
+          cont({ head, tail })
+        }
+      }
+
+      if (output === undefined) {
+        throw new Error('Cofree.take: no result produced')
+      }
+      return output
+    }
+
   const hoist =
     <G extends HKId1>(G: FunctorK1<G>) =>
     (nt: <X>(fx: HKKind1<F, X>) => HKKind1<G, X>) => {
-      const go = <A>(w: Cofree<F, A>): Cofree<G, A> =>
-        ({ head: w.head, tail: G.map(go)(nt(w.tail)) })
+      const enumerateG = makeEnumerator(G)
+      const rebuildG = makeRebuilder(G)
+
+      const go = <A>(root: Cofree<F, A>): Cofree<G, A> => {
+        type Frame =
+          | { readonly phase: 'Enter'; readonly node: Cofree<F, A>; readonly cont: (value: Cofree<G, A>) => void }
+          | {
+              readonly phase: 'Rebuild'
+              readonly head: A
+              readonly template: HKKind1<G, number>
+              readonly cont: (value: Cofree<G, A>) => void
+              readonly children: Array<Cofree<G, A> | undefined>
+            }
+
+        const stack: Frame[] = []
+        let output: Cofree<G, A> | undefined
+
+        stack.push({
+          phase: 'Enter',
+          node: root,
+          cont: (value) => {
+            output = value
+          },
+        })
+
+        while (stack.length > 0) {
+          const frame = stack.pop()!
+          if (frame.phase === 'Enter') {
+            const { node, cont } = frame
+            const convertedTail = nt(node.tail)
+            const { template, elements } = enumerateG(convertedTail)
+            const children: Array<Cofree<G, A> | undefined> = new Array(elements.length)
+            stack.push({ phase: 'Rebuild', head: node.head, template, cont, children })
+            for (let i = elements.length - 1; i >= 0; i--) {
+              const index = i
+              const child = elements[i]!
+              stack.push({
+                phase: 'Enter',
+                node: child,
+                cont: (value) => {
+                  children[index] = value
+                },
+              })
+            }
+          } else {
+            const { head, template, children, cont } = frame
+            const tail = rebuildG(template, children, 'Cofree.hoist')
+            cont({ head, tail })
+          }
+        }
+
+        if (output === undefined) {
+          throw new Error('Cofree.hoist: no result produced')
+        }
+        return output
+      }
+
       return go
     }
 
