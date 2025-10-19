@@ -155,6 +155,7 @@ export type { DeepReadonly } from "./stdlib/deep-freeze"
 export { deepFreeze } from "./stdlib/deep-freeze"
 
 export * from "./stdlib/category-limits"
+export type { SubobjectClassifierCategory } from "./stdlib/category"
 
 export * from "./stdlib/expr"
 export * from "./stdlib/rwst"
@@ -266,6 +267,8 @@ export type { M2InternalGroupWitness } from "./internal-group-m2"
 export type { SimpleCat } from "./simple-cat"
 export {
   makeFinitePullbackCalculator,
+  makePullbackFromProductsAndEqualizers,
+  makeFinSetPullbackCalculator,
   type PullbackCalculator,
   type PullbackData,
   type PullbackConeFactorResult,
@@ -280,6 +283,8 @@ export {
   type ProductFromPullbackInput,
   finsetProductFromPullback,
   type FinSetProductFromPullbackWitness,
+  finsetCharacteristicPullback,
+  type FinSetCharacteristicPullbackWitness,
   equalizerFromPullback,
   type EqualizerFromPullbackWitness,
   type EqualizerFromPullbackFactorResult,

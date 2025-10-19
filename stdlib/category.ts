@@ -4,8 +4,13 @@ export interface Category<O, M> {
   id: (a: O) => M
   compose: (g: M, f: M) => M
   isId?: (m: M) => boolean
+  eq?: (x: M, y: M) => boolean
   equalMor?: (x: M, y: M) => boolean
 }
+
+export type FinitelyCocompleteCategory<O, M> = import("./category-limits").CategoryLimits.FinitelyCocompleteCategory<O, M>
+
+export type SubobjectClassifierCategory<O, M> = import("./category-limits").CategoryLimits.SubobjectClassifierCategory<O, M>
 
 export interface CartesianClosedBinaryProductWitness<O, M> {
   readonly obj: O

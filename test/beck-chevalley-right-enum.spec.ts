@@ -18,7 +18,7 @@ describe('Beck–Chevalley (Π / right Kan) on discrete indices — count equali
     const Kcar = [0, 1, 2, 3]
     const L = [0, 1]
 
-    const Ifin = { carrier: Icar }
+    const Ifin = IndexedFamilies.finiteIndex(Icar)
     const Kfin = { carrier: Kcar }
 
     const f = (i: number) => L[i % L.length]!
@@ -55,7 +55,7 @@ describe('Beck–Chevalley (Π / right Kan) on discrete indices — count equali
     const Kcar = [0, 1, 2, 3, 4]
     const L = [0, 1]
 
-    const Ifin = { carrier: Icar }
+    const Ifin = IndexedFamilies.finiteIndex(Icar)
     const Kfin = { carrier: Kcar }
 
     // More complex maps
