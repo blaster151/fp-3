@@ -3,6 +3,7 @@ import type { Option } from "./option"
 import { isErr } from "./result"
 import type { Result as ResultT } from "./result"
 import type { FunctorK1, HKId1, HKKind1 } from "./allTS"
+import { evalDefer, evalMap, evalNow, evaluate } from "./array-recursion-trampoline"
 
 // ========== Catamorphism / Anamorphism / Hylomorphism (Array) ==========
 
@@ -33,18 +34,20 @@ export const anaArray =
 // hylo (unfold + fold) without storing the intermediate array
 export const hyloArray =
   <A, S, B>(
-    step: (s: S) => Option<readonly [A, S]>,                 // coalgebra
-    alg: (head: A, tailFold: B) => B,                        // algebra
+    step: (s: S) => Option<readonly [A, S]>, // coalgebra
+    alg: (head: A, tailFold: B) => B, // algebra
     nil: B
   ) =>
   (s0: S): B => {
-    const go = (s: S): B => {
-      const o = step(s)
-      if (isNone(o)) return nil
-      const [a, s1] = o.value
-      return alg(a, go(s1))
-    }
-    return go(s0)
+    const go = (s: S) =>
+      evalDefer(() => {
+        const o = step(s)
+        if (isNone(o)) return evalNow(nil)
+        const [a, s1] = o.value
+        return evalMap(go(s1), (tail) => alg(a, tail))
+      })
+
+    return evaluate(go(s0))
   }
 
 // ========== Paramorphism / Apomorphism (Array) ==========
@@ -55,9 +58,14 @@ type Result<E, A> = ResultT<E, A>
 export const paraArray =
   <A, B>(nil: B, cons: (head: A, tail: ReadonlyArray<A>, foldedTail: B) => B) =>
   (as: ReadonlyArray<A>): B => {
-    const go = (xs: ReadonlyArray<A>): B =>
-      xs.length === 0 ? nil : cons(xs[0]!, xs.slice(1), go(xs.slice(1)))
-    return go(as)
+    const go = (xs: ReadonlyArray<A>) =>
+      evalDefer(() => {
+        if (xs.length === 0) return evalNow(nil)
+        const tail = xs.slice(1)
+        return evalMap(go(tail), (foldedTail) => cons(xs[0]!, tail, foldedTail))
+      })
+
+    return evaluate(go(as))
   }
 
 // apo: step returns either an embedded remaining tail (Err) or one element + next seed (Ok)
@@ -133,21 +141,41 @@ export type Fix1<F extends HKId1> = { un: HKKind1<F, Fix1<F>> }
 
 // Generic factory — no unsound casts.
 export const makeRecursionK1 = <F extends HKId1>(F: FunctorK1<F>) => {
+  // These schemes build chains of Eval thunks and execute them via evaluate (see array-recursion-trampoline.ts)
   const cata =
     <B>(alg: (fb: HKKind1<F, B>) => B) =>
-    (t: Fix1<F>): B =>
-      alg(F.map(cata(alg))(t.un))
+    (t: Fix1<F>): B => {
+      const fold = (node: Fix1<F>) =>
+        evalDefer(() => {
+          const mapped = F.map((child: Fix1<F>) => evaluate(fold(child)))(node.un)
+          return evalNow(alg(mapped))
+        })
+
+      return evaluate(fold(t))
+    }
 
   const ana =
     <S>(coalg: (s: S) => HKKind1<F, S>) =>
-    (s0: S): Fix1<F> =>
-      ({ un: F.map(ana(coalg))(coalg(s0)) })
+    (s0: S): Fix1<F> => {
+      const unfold = (s: S) =>
+        evalDefer(() => {
+          const mapped = F.map((next: S) => evaluate(unfold(next)))(coalg(s))
+          return evalNow({ un: mapped })
+        })
+
+      return evaluate(unfold(s0))
+    }
 
   const hylo =
     <S, B>(coalg: (s: S) => HKKind1<F, S>, alg: (fb: HKKind1<F, B>) => B) =>
     (s0: S): B => {
-      const go = (s: S): B => alg(F.map(go)(coalg(s)))
-      return go(s0)
+      const go = (s: S) =>
+        evalDefer(() => {
+          const mapped = F.map((next: S) => evaluate(go(next)))(coalg(s))
+          return evalNow(alg(mapped))
+        })
+
+      return evaluate(go(s0))
     }
 
   return { cata, ana, hylo }
