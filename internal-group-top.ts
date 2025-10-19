@@ -1,11 +1,9 @@
-import type { BinaryProductTuple } from './category-limits-helpers'
 import {
   analyzeInternalGroup,
   enrichInternalGroupDiagonal,
   type CategoryOps,
   type InternalGroupAnalysis,
   type InternalGroupWitness,
-  type TerminalWitness,
 } from './internal-group'
 import {
   analyzeInternalMonoid,
@@ -14,124 +12,22 @@ import {
   type InternalMonoidWitness,
 } from './internal-monoid'
 import {
-  compose as composeContinuous,
-  identity as identityContinuous,
   makeContinuousMap,
-  pairing,
-  productStructure,
   type ContinuousMap,
   type ProductPoint,
 } from './src/top/ContinuousMap'
-import { forgetStructure, topStructure, type Top, type TopStructure } from './src/top/Topology'
-
-export type Eq<X> = (a: X, b: X) => boolean
-
-export interface TopObject<Point> {
-  readonly structure: TopStructure<Point>
-  readonly topology: Top<Point>
-  readonly eq: Eq<Point>
-}
-
-const toTopology = <Point>(structure: TopStructure<Point>) => forgetStructure(structure)
-
-const makeTopObject = <Point>(structure: TopStructure<Point>): TopObject<Point> => ({
-  structure,
-  topology: toTopology(structure),
-  eq: structure.eq,
-})
+import {
+  makeTopBinaryProduct,
+  makeTopCategoryOps,
+  makeTopObject,
+  makeTopTerminal,
+  type Eq,
+  type TopObject,
+} from './src/top/categoryOps'
+import { type TopStructure } from './src/top/Topology'
 
 const contains = <Point>(carrier: ReadonlyArray<Point>, eq: Eq<Point>) =>
   (value: Point): boolean => carrier.some((candidate) => eq(candidate, value))
-
-const equalContinuousMaps = (
-  left: ContinuousMap<any, any>,
-  right: ContinuousMap<any, any>,
-): boolean => {
-  if (left.source !== right.source) {
-    return false
-  }
-  if (left.target !== right.target) {
-    return false
-  }
-  if (left.eqSource !== right.eqSource || left.eqTarget !== right.eqTarget) {
-    return false
-  }
-  const carrier = left.source.carrier
-  return carrier.every((value) => left.eqTarget(left.map(value), right.map(value)))
-}
-
-const composeAny = (
-  g: ContinuousMap<any, any>,
-  f: ContinuousMap<any, any>,
-): ContinuousMap<any, any> => composeContinuous(g, f)
-
-const identityAny = (object: TopObject<any>): ContinuousMap<any, any> =>
-  identityContinuous(object.eq, object.topology)
-
-const makeCategoryOps = (): CategoryOps<TopObject<any>, ContinuousMap<any, any>> => ({
-  compose: composeAny,
-  eq: equalContinuousMaps,
-  id: identityAny,
-})
-
-const makeTerminal = (): TerminalWitness<TopObject<any>, ContinuousMap<any, any>> => {
-  const terminalPoint = '⋆'
-  const structure = topStructure({
-    carrier: [terminalPoint],
-    opens: [[], [terminalPoint]],
-    eq: (left: string, right: string) => left === right,
-  })
-  const object = makeTopObject(structure)
-
-  return {
-    object,
-    terminate: (domain) =>
-      makeContinuousMap({
-        source: domain.topology,
-        target: object.topology,
-        eqSource: domain.eq,
-        eqTarget: object.eq,
-        map: () => terminalPoint,
-      }),
-  }
-}
-
-const makeBinaryProduct = <Left, Right>(input: {
-  readonly left: TopObject<Left>
-  readonly right: TopObject<Right>
-}): {
-  readonly object: TopObject<ProductPoint<Left, Right>>
-  readonly tuple: BinaryProductTuple<TopObject<any>, ContinuousMap<any, any>>
-} => {
-  const { left, right } = input
-  const base = productStructure(left.structure, right.structure)
-  const productStructureArgs = {
-    carrier: base.topology.carrier,
-    opens: base.topology.opens,
-    eq: base.eq,
-  } as const
-  const structure = topStructure(productStructureArgs)
-  const object = makeTopObject(structure)
-
-  const tuple: BinaryProductTuple<TopObject<any>, ContinuousMap<any, any>> = {
-    object,
-    projections: [base.proj1, base.proj2],
-    tuple: (domain, legs) => {
-      if (legs.length !== 2) {
-        throw new Error(
-          `makeBinaryProduct: expected 2 legs for a binary product, received ${legs.length}`,
-        )
-      }
-      const [leftLeg, rightLeg] = legs as readonly [ContinuousMap<any, any>, ContinuousMap<any, any>]
-      if (leftLeg.eqSource !== domain.eq || rightLeg.eqSource !== domain.eq) {
-        throw new Error('makeBinaryProduct: leg equality witnesses must match the domain')
-      }
-      return pairing(leftLeg, rightLeg, { topology: base.topology, eq: base.eq })
-    },
-  }
-
-  return { object, tuple }
-}
 
 const ensureContinuousMap = <Source, Target>(build: () => ContinuousMap<Source, Target>, message: string): ContinuousMap<Source, Target> => {
   try {
@@ -190,11 +86,11 @@ export const makeTopInternalGroupWitness = <Point>(input: TopInternalGroupInput<
   }
 
   const object = makeTopObject(structure)
-  const category = makeCategoryOps()
+  const category = makeTopCategoryOps()
 
-  const product = makeBinaryProduct({ left: object, right: object })
-  const productLeft = makeBinaryProduct({ left: product.object, right: object })
-  const productRight = makeBinaryProduct({ left: object, right: product.object })
+  const product = makeTopBinaryProduct({ left: object, right: object })
+  const productLeft = makeTopBinaryProduct({ left: product.object, right: object })
+  const productRight = makeTopBinaryProduct({ left: object, right: product.object })
 
   const multiplication = ensureContinuousMap(
     () =>
@@ -220,7 +116,7 @@ export const makeTopInternalGroupWitness = <Point>(input: TopInternalGroupInput<
     'makeTopInternalGroupWitness: inverse must be continuous',
   )
 
-  const terminal = makeTerminal()
+  const terminal = makeTopTerminal()
 
   const unitArrow = ensureContinuousMap(
     () =>
@@ -297,11 +193,11 @@ export const makeTopInternalMonoidWitness = <Point>(
   }
 
   const object = makeTopObject(structure)
-  const category = makeCategoryOps()
+  const category = makeTopCategoryOps()
 
-  const product = makeBinaryProduct({ left: object, right: object })
-  const productLeft = makeBinaryProduct({ left: product.object, right: object })
-  const productRight = makeBinaryProduct({ left: object, right: product.object })
+  const product = makeTopBinaryProduct({ left: object, right: object })
+  const productLeft = makeTopBinaryProduct({ left: product.object, right: object })
+  const productRight = makeTopBinaryProduct({ left: object, right: product.object })
 
   const multiplication = ensureContinuousMap(
     () =>
@@ -315,7 +211,7 @@ export const makeTopInternalMonoidWitness = <Point>(
     'makeTopInternalMonoidWitness: multiplication must be continuous',
   )
 
-  const terminal = makeTerminal()
+  const terminal = makeTopTerminal()
 
   const unitArrow = ensureContinuousMap(
     () =>
