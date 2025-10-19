@@ -50,7 +50,7 @@ export function lawfulKernelMatrixIso_Iso() {
     from: (P) => matrixToKernel(A, B, P),
   };
 
-  const laws = isoLaws(eqKernel, eqMatrix, iso, samples);
+  const laws = isoLaws(eqKernel, eqMatrix, iso);
 
   return {
     tag,

@@ -33,29 +33,15 @@ export function isoLaws<A, B>(
   eqA: (a: A, b: A) => boolean,
   eqB: (a: B, b: B) => boolean,
   iso: Iso<A, B>,
-  fallback?: IsoLawContext<A, B>,
 ): ReadonlyArray<Law<IsoLawContext<A, B>>> {
-  const resolveContext = (context: IsoLawContext<A, B> | undefined): IsoLawContext<A, B> => {
-    const resolved = context ?? fallback;
-    if (!resolved) {
-      throw new Error("Law context requested outside of runLaws");
-    }
-    return resolved;
-  };
   return [
     {
       name: "from ∘ to = id",
-      check: (context) => {
-        const { samplesA } = resolveContext(context);
-        return samplesA.every((a) => eqA(iso.from(iso.to(a)), a));
-      },
+      check: ({ samplesA }) => samplesA.every((a) => eqA(iso.from(iso.to(a)), a)),
     },
     {
       name: "to ∘ from = id",
-      check: (context) => {
-        const { samplesB } = resolveContext(context);
-        return samplesB.every((b) => eqB(iso.to(iso.from(b)), b));
-      },
+      check: ({ samplesB }) => samplesB.every((b) => eqB(iso.to(iso.from(b)), b)),
     },
   ];
 }
