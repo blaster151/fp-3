@@ -123,8 +123,12 @@ export function quotientTopology<X, Y>(spec: QuotientMap<X, Y>): QuotientWitness
 function assertEquivalenceRelation<X>(spec: QuotientByRelationSpec<X>): void {
   const { source, eqSource, relation } = spec;
   for (const x of source.carrier) {
-    if (!relation(x, x)) {
-      throw new Error("quotientByRelation: relation must be reflexive");
+    for (const y of source.carrier) {
+      for (const z of source.carrier) {
+        if (relation(x, y) && relation(y, z) && !relation(x, z)) {
+          throw new Error("quotientByRelation: relation must be transitive");
+        }
+      }
     }
   }
   for (const x of source.carrier) {
@@ -135,12 +139,8 @@ function assertEquivalenceRelation<X>(spec: QuotientByRelationSpec<X>): void {
     }
   }
   for (const x of source.carrier) {
-    for (const y of source.carrier) {
-      for (const z of source.carrier) {
-        if (relation(x, y) && relation(y, z) && !relation(x, z)) {
-          throw new Error("quotientByRelation: relation must be transitive");
-        }
-      }
+    if (!relation(x, x)) {
+      throw new Error("quotientByRelation: relation must be reflexive");
     }
   }
   for (const x of source.carrier) {

@@ -286,23 +286,31 @@ export const analyzeWeightedColimitRestriction = <Obj, Arr, Payload, Evidence>(
     "Weighted colimit restriction cartesian target",
   );
 
-  const direction = data.restriction.cartesian.boundary.direction;
-  const relevantBoundary =
-    direction === "left"
-      ? data.cocone.cocone.boundaries.left
-      : data.cocone.cocone.boundaries.right;
-  const cartesianBoundary =
-    direction === "left"
-      ? data.restriction.cartesian.boundaries.left
-      : data.restriction.cartesian.boundaries.right;
+  compareVerticalBoundary(
+    context,
+    data.restriction.cartesian.boundaries.left,
+    data.cocone.cocone.boundaries.left,
+    "Weighted colimit restriction left boundary",
+  );
 
   compareVerticalBoundary(
     context,
-    cartesianBoundary,
-    relevantBoundary,
+    data.restriction.cartesian.boundaries.right,
+    data.cocone.cocone.boundaries.right,
+    "Weighted colimit restriction right boundary",
+  );
+
+  const direction = data.restriction.cartesian.boundary.direction;
+  const expectedVertical =
     direction === "left"
-      ? "Weighted colimit left restriction boundary"
-      : "Weighted colimit right restriction boundary",
+      ? data.cocone.cocone.boundaries.left
+      : data.cocone.cocone.boundaries.right;
+
+  compareVerticalBoundary(
+    context,
+    data.restriction.cartesian.boundary.vertical,
+    expectedVertical,
+    "Weighted colimit cartesian boundary",
   );
 
   return {
@@ -337,23 +345,31 @@ export const analyzeWeightedLimitRestriction = <Obj, Arr, Payload, Evidence>(
     "Weighted limit restriction cartesian target",
   );
 
-  const direction = data.restriction.cartesian.boundary.direction;
-  const relevantBoundary =
-    direction === "left"
-      ? data.cone.cone.boundaries.left
-      : data.cone.cone.boundaries.right;
-  const cartesianBoundary =
-    direction === "left"
-      ? data.restriction.cartesian.boundaries.left
-      : data.restriction.cartesian.boundaries.right;
+  compareVerticalBoundary(
+    context,
+    data.restriction.cartesian.boundaries.left,
+    data.cone.cone.boundaries.left,
+    "Weighted limit restriction left boundary",
+  );
 
   compareVerticalBoundary(
     context,
-    cartesianBoundary,
-    relevantBoundary,
+    data.restriction.cartesian.boundaries.right,
+    data.cone.cone.boundaries.right,
+    "Weighted limit restriction right boundary",
+  );
+
+  const direction = data.restriction.cartesian.boundary.direction;
+  const expectedVertical =
     direction === "left"
-      ? "Weighted limit left restriction boundary"
-      : "Weighted limit right restriction boundary",
+      ? data.cone.cone.boundaries.left
+      : data.cone.cone.boundaries.right;
+
+  compareVerticalBoundary(
+    context,
+    data.restriction.cartesian.boundary.vertical,
+    expectedVertical,
+    "Weighted limit cartesian boundary",
   );
 
   return {
