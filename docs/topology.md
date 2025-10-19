@@ -19,6 +19,15 @@ notes the composite aggregates them and appends a `"composition witness"` marker
 registry consumer can see which stages supplied evidence. This makes the oracle output
 stable even when several constructions share the same underlying witnesses.【F:src/top/ContinuousMap.ts†L323-L371】
 
+## Shared category operations for Top
+
+`src/top/categoryOps.ts` packages the canonical `TopObject` wrapper together with
+category operations, terminal witnesses, and binary product builders that mirror the
+continuous-map semantics. Internal adapters such as the internal group/monoid witnesses
+now import those helpers directly, and future adapters can do the same to share the
+Top-level categorical structure without reimplementing equality checks or universal
+property mediators.【F:src/top/categoryOps.ts†L1-L88】【F:internal-group-top.ts†L1-L209】
+
 ## Registry reporters and descriptors
 
 `ContRegistry` records featured continuous maps under stable descriptor tags. The
