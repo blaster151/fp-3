@@ -36,7 +36,12 @@ import { CategoryLimits } from "../../stdlib/category-limits"
 import { ArrowFamilies } from "../../stdlib/arrow-families"
 import { EnhancedVect } from "../../stdlib/enhanced-vect"
 import { composeFun, idFun } from "../../stdlib/category"
-import type { CatMonad, CFunctor, FiniteCategory } from "./category-toolkit"
+import type {
+  CatMonad,
+  CFunctor,
+  FiniteCategory as ToolkitFiniteCategory,
+} from "./category-toolkit"
+import type { FiniteCategory as BaseFiniteCategory } from "../../finite-cat"
 import {
   FinGrp as FinGrpModel,
   type FinGrpObj as FinGrpObjModel,
@@ -44,10 +49,15 @@ import {
 } from "../../models/fingroup-cat"
 import {
   makeFiniteSliceProduct,
+  makeSliceFiniteProductFromPullback,
   lookupSliceProductMetadata,
   type SliceArrow as SliceArrowModel,
+  type SliceFiniteProductWitnessBase,
   type SliceObject as SliceObjectModel,
+  type SliceArrow,
+  type SliceObject,
 } from "../../slice-cat"
+import type { PullbackCalculator } from "../../pullback"
 import {
   type FinSetCategory as FinSetCategoryModel,
   type FinSetName as FinSetNameModel,
@@ -2768,7 +2778,12 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
       from: evalProduct.obj,
       to: B,
       map: evalProduct.obj.elements.map(tuple => {
-        const [funcIx, aIx] = tuple as ReadonlyArray<number>
+        const coordinates = tuple as ReadonlyArray<number>
+        const funcIx = coordinates[0]
+        const aIx = coordinates[1]
+        if (funcIx === undefined || aIx === undefined) {
+          throw new Error('FinSet.exponential: malformed product tuple for evaluation')
+        }
         const encoding = expObj.elements[funcIx] as ReadonlyArray<number> | undefined
         const value = encoding?.[aIx]
         if (value === undefined) {
@@ -2835,7 +2850,12 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
 
       const productXA = buildBinaryProductWitness(X, A)
       const map = productXA.obj.elements.map(tuple => {
-        const [xIx, aIx] = tuple as ReadonlyArray<number>
+        const coordinates = tuple as ReadonlyArray<number>
+        const xIx = coordinates[0]
+        const aIx = coordinates[1]
+        if (xIx === undefined || aIx === undefined) {
+          throw new Error('FinSet.exponential.uncurry: malformed product tuple')
+        }
         const funcIx = k.map[xIx]
         if (funcIx === undefined) {
           throw new Error('FinSet.exponential.uncurry: missing exponential component')
@@ -2960,7 +2980,7 @@ export const homPrecomposeFinSet = (eta: FinSetMor, X: FinSetObj): FinSetMor => 
 
 /** Codensity carrier T^G(A) in FinSet via end formula */
 export const codensityCarrierFinSet = <BO, BM>(
-  CatB: FiniteCategory<BO, BM>,
+  CatB: ToolkitFiniteCategory<BO, BM>,
   G: CFunctor<BO, BM, FinSetObj, FinSetMor>,   // G : B -> FinSet
   A: FinSetObj
 ): FinSetObj => {
@@ -2969,7 +2989,7 @@ export const codensityCarrierFinSet = <BO, BM>(
 
 /** Structured data for the codensity end in FinSet */
 export const codensityDataFinSet = <BO, BM>(
-  CatB: FiniteCategory<BO, BM>,
+  CatB: ToolkitFiniteCategory<BO, BM>,
   G: CFunctor<BO, BM, FinSetObj, FinSetMor>,   // G : B -> FinSet
   A: FinSetObj
 ) => {
@@ -3042,7 +3062,7 @@ export const codensityDataFinSet = <BO, BM>(
 
 // Update the convenience wrapper to use the structured version
 export const codensityCarrierFinSetUpdated = <BO, BM>(
-  CatB: FiniteCategory<BO, BM>,
+  CatB: ToolkitFiniteCategory<BO, BM>,
   G: CFunctor<BO, BM, FinSetObj, FinSetMor>,
   A: FinSetObj
 ): FinSetObj => {
@@ -3051,7 +3071,7 @@ export const codensityCarrierFinSetUpdated = <BO, BM>(
 
 /** Codensity unit η^G_A : A -> T^G(A) (FinSet) */
 export const codensityUnitFinSet = <BO, BM>(
-  CatB: FiniteCategory<BO, BM>,
+  CatB: ToolkitFiniteCategory<BO, BM>,
   G: CFunctor<BO, BM, FinSetObj, FinSetMor>,
   A: FinSetObj
 ): FinSetMor => {
@@ -3086,7 +3106,7 @@ export const codensityUnitFinSet = <BO, BM>(
 
 /** Codensity multiplication μ^G_A : T^G T^G A -> T^G A (FinSet) */
 export const codensityMuFinSet = <BO, BM>(
-  CatB: FiniteCategory<BO, BM>,
+  CatB: ToolkitFiniteCategory<BO, BM>,
   G: CFunctor<BO, BM, FinSetObj, FinSetMor>,
   A: FinSetObj
 ): FinSetMor => {
@@ -3163,7 +3183,7 @@ export const codensityMuFinSet = <BO, BM>(
 
 /** Codensity functor map: T^G(f) : T^G(A) -> T^G(A') (FinSet) */
 export const codensityMapFinSet = <BO, BM>(
-  CatB: FiniteCategory<BO, BM>,
+  CatB: ToolkitFiniteCategory<BO, BM>,
   G: CFunctor<BO, BM, FinSetObj, FinSetMor>,
   f: FinSetMor                                // f: A -> A'
 ): FinSetMor => {
@@ -3231,24 +3251,46 @@ export const FinGrpProductsWithTuple: CategoryLimits.HasProductMediators<FinGrpO
 type SliceObjModel = SliceObjectModel<FinSetNameModel, FuncArrModel>
 type SliceArrModel = SliceArrowModel<FinSetNameModel, FuncArrModel>
 
-export const makeSliceProductsWithTuple = (
+export function makeSliceProductsWithTuple(
   base: FinSetCategoryModel,
   anchor: FinSetNameModel,
-): CategoryLimits.HasProductMediators<SliceObjModel, SliceArrModel> => ({
-  product: (objs) => {
-    const witness = makeFiniteSliceProduct(base, anchor, objs)
-    return { obj: witness.object, projections: witness.projections }
-  },
-  tuple: (domain, legs, product) => {
-    const metadata = lookupSliceProductMetadata(product)
-    if (!metadata) {
-      throw new Error(
-        `makeSliceProductsWithTuple: unrecognised product object ${product.domain}; build it via makeFiniteSliceProduct first`,
-      )
-    }
-    return metadata.tuple(domain, legs)
+): CategoryLimits.HasProductMediators<SliceObjModel, SliceArrModel>
+export function makeSliceProductsWithTuple<Obj, Arr>(
+  base: ToolkitFiniteCategory<Obj, Arr>,
+  anchor: Obj,
+  options: { pullbacks: PullbackCalculator<Obj, Arr> },
+): CategoryLimits.HasProductMediators<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>>
+export function makeSliceProductsWithTuple<Obj, Arr>(
+  base: ToolkitFiniteCategory<Obj, Arr>,
+  anchor: Obj,
+  options: { pullbacks?: PullbackCalculator<Obj, Arr> } = {},
+): CategoryLimits.HasProductMediators<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>> {
+  const { pullbacks } = options
+  return {
+    product: (objs) => {
+      const baseCategory = base as unknown as BaseFiniteCategory<Obj, Arr>
+      const witness: SliceFiniteProductWitnessBase<Obj, Arr> = pullbacks
+        ? makeSliceFiniteProductFromPullback(baseCategory, anchor, pullbacks, objs)
+        : (makeFiniteSliceProduct(
+            baseCategory as unknown as FinSetCategoryModel,
+            anchor as unknown as FinSetNameModel,
+            objs as unknown as ReadonlyArray<SliceObjectModel<FinSetNameModel, FuncArrModel>>,
+          ) as unknown as SliceFiniteProductWitnessBase<Obj, Arr>)
+      return { obj: witness.object, projections: witness.projections }
+    },
+    tuple: (domain, legs, product) => {
+      const metadata = lookupSliceProductMetadata(product)
+      if (!metadata) {
+        throw new Error(
+          `makeSliceProductsWithTuple: unrecognised product object ${String(
+            product.domain,
+          )}; build it via makeFiniteSliceProduct first`,
+        )
+      }
+      return metadata.tuple(domain, legs)
+    },
   }
-})
+}
 
 /* ================================================================
    General (co)limit interfaces for categories

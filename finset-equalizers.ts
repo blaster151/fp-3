@@ -1,5 +1,6 @@
-import { FinSet } from './allTS'
-import type { FinSetMor, FinSetObj } from './allTS'
+import { FinSet } from './src/all/triangulated'
+import type { FinSetMor, FinSetObj } from './src/all/triangulated'
+import type { PullbackData } from './pullback'
 
 const equalMor = (left: FinSetMor, right: FinSetMor): boolean =>
   FinSet.equalMor?.(left, right) ??
@@ -124,6 +125,110 @@ export const finsetFactorThroughEqualizer = (
 export interface FinSetEqualizerComparison {
   readonly forward: FinSetMor
   readonly backward: FinSetMor
+}
+
+const equalFinSetObj = (left: FinSetObj, right: FinSetObj): boolean => {
+  if (left.elements.length !== right.elements.length) {
+    return false
+  }
+  for (let idx = 0; idx < left.elements.length; idx++) {
+    if (left.elements[idx] !== right.elements[idx]) {
+      return false
+    }
+  }
+  return true
+}
+
+export interface FinSetEqualizerPullbackWitness {
+  readonly equalizer: { readonly object: FinSetObj; readonly inclusion: FinSetMor }
+  readonly span: {
+    readonly left: FinSetMor
+    readonly right: FinSetMor
+    readonly pair: FinSetMor
+    readonly diagonal: FinSetMor
+  }
+  readonly pullback: PullbackData<FinSetObj, FinSetMor>
+  readonly factorCone: (fork: FinSetMor) => FinSetMor
+}
+
+const assertEqualizerMatchesPullback = (
+  canonical: { readonly obj: FinSetObj; readonly equalize: FinSetMor },
+  pullbackInclusion: FinSetMor,
+  pullbackObj: FinSetObj,
+): void => {
+  if (!equalFinSetObj(canonical.obj, pullbackObj)) {
+    throw new Error('finsetEqualizerAsPullback: pullback carrier differs from the subset equalizer.')
+  }
+
+  if (!equalMor(canonical.equalize, pullbackInclusion)) {
+    throw new Error('finsetEqualizerAsPullback: pullback inclusion does not match the subset equalizer.')
+  }
+}
+
+export const finsetEqualizerAsPullback = (f: FinSetMor, g: FinSetMor): FinSetEqualizerPullbackWitness => {
+  assertParallelPair(f, g)
+
+  const source = f.from
+  const target = f.to
+
+  const canonical = FinSet.equalizer(f, g)
+
+  const indices: number[] = []
+  const equalizerElements: Array<FinSetObj['elements'][number]> = []
+  source.elements.forEach((element, index) => {
+    if (f.map[index] === g.map[index]) {
+      indices.push(index)
+      equalizerElements.push(element)
+    }
+  })
+
+  const equalizerObj: FinSetObj = { elements: equalizerElements }
+  const inclusion: FinSetMor = { from: equalizerObj, to: source, map: indices }
+
+  assertEqualizerMatchesPullback(canonical, inclusion, equalizerObj)
+
+  const product = FinSet.binaryProduct(target, target)
+  const pair = product.pair(source, f, g)
+  const idTarget = FinSet.id(target)
+  const diagonal = product.pair(target, idTarget, idTarget)
+
+  const anchor = FinSet.compose(f, inclusion)
+  const leftComparison = FinSet.compose(pair, inclusion)
+  const rightComparison = FinSet.compose(diagonal, anchor)
+
+  if (!equalMor(leftComparison, rightComparison)) {
+    throw new Error('finsetEqualizerAsPullback: constructed square fails the pullback commutativity check.')
+  }
+
+  const factorCone = (fork: FinSetMor): FinSetMor => {
+    const mediator = finsetFactorThroughEqualizer(f, g, inclusion, fork)
+
+    const anchorViaMediator = FinSet.compose(anchor, mediator)
+    const leftComposite = FinSet.compose(f, fork)
+    if (!equalMor(anchorViaMediator, leftComposite)) {
+      throw new Error('finsetEqualizerAsPullback: mediator does not respect the anchor leg of the pullback.')
+    }
+
+    const rightComposite = FinSet.compose(g, fork)
+    if (!equalMor(anchorViaMediator, rightComposite)) {
+      throw new Error('finsetEqualizerAsPullback: mediator fails to equalise the parallel pair.')
+    }
+
+    return mediator
+  }
+
+  const pullback: PullbackData<FinSetObj, FinSetMor> = {
+    apex: equalizerObj,
+    toDomain: inclusion,
+    toAnchor: anchor,
+  }
+
+  return {
+    equalizer: { object: equalizerObj, inclusion },
+    span: { left: f, right: g, pair, diagonal },
+    pullback,
+    factorCone,
+  }
 }
 
 export const finsetEqualizerComparison = (

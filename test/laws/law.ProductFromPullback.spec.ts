@@ -168,11 +168,11 @@ describe('productFromPullbacks', () => {
     const fixture = makeBrokenFixture()
     const calculator = makeFinitePullbackCalculator(fixture.category)
 
-      expect(() =>
-        productFromPullbacks<Obj, Arrow>({
-          category: withDomCod(fixture.category),
-          eq: fixture.category.eq,
-          calculator,
+    expect(() =>
+      productFromPullbacks<Obj, Arrow>({
+        category: withDomCod(fixture.category),
+        eq: fixture.category.eq,
+        calculator,
         terminalObj: 'T',
         leftObj: 'A',
         rightObj: 'B',
@@ -204,8 +204,8 @@ describe('finsetProductFromPullback', () => {
     const tupleFromNative = witness.native.tuple(left, [FinSet.id(left), constantRight])
     expect(FinSet.equalMor?.(tupleFromPullback, tupleFromNative)).toBe(true)
 
-    const leftTerminate = FinSet.terminate(left)
-    const rightTerminate = FinSet.terminate(right)
+    const leftTerminate = FinSet.terminal.terminate(left)
+    const rightTerminate = FinSet.terminal.terminate(right)
     expect(FinSet.equalMor?.(witness.span.left, leftTerminate)).toBe(true)
     expect(FinSet.equalMor?.(witness.span.right, rightTerminate)).toBe(true)
 

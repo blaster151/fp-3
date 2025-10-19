@@ -85,6 +85,10 @@ type PullbackData<Obj, Arr> = {
 
 type PullbackCalculator<Obj, Arr> = {
   readonly pullback: (f: Arr, h: Arr) => PullbackData<Obj, Arr>;
+  readonly factorCone: (
+    target: PullbackData<Obj, Arr>,
+    cone: PullbackData<Obj, Arr>,
+  ) => { readonly factored: boolean; readonly mediator?: Arr; readonly reason?: string };
   readonly certify: (
     f: Arr,
     h: Arr,
@@ -100,6 +104,13 @@ type PullbackCalculator<Obj, Arr> = {
     readonly leftToRight: Arr;
     readonly rightToLeft: Arr;
   };
+  readonly transportPullback: (
+    f: Arr,
+    h: Arr,
+    source: PullbackData<Obj, Arr>,
+    iso: { readonly forward: Arr; readonly inverse: Arr },
+    candidate: PullbackData<Obj, Arr>,
+  ) => PullbackData<Obj, Arr>;
 };
 
 type ReindexingFunctor<Obj, Arr> = {
