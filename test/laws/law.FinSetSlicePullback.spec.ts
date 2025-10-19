@@ -67,6 +67,7 @@ describe("FinSet slice products agree with pullback data", () => {
   registry.push(idX, idA, idB, idC, f, g, h, u, v)
 
   const slice = makeSlice(category, "X")
+  const { sliceProductToolkit: toolkit } = slice
 
   const left = slice.objects.find((object) => object.domain === "A")
   const right = slice.objects.find((object) => object.domain === "B")
@@ -76,7 +77,10 @@ describe("FinSet slice products agree with pullback data", () => {
     throw new Error("Expected the slice objects for A, B, and C to be present")
   }
 
-  const product = makeSliceProduct(category, "X", left, right, { name: "A×_X B" })
+  const product = makeSliceProduct(category, "X", left, right, {
+    name: "A×_X B",
+    toolkit,
+  })
 
   registry.push(
     product.object.arrowToAnchor,

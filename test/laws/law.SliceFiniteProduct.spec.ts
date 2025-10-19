@@ -104,6 +104,7 @@ describe("Finite slice products over a common anchor", () => {
   registry.push(idX, idA, idB, idC, idD, f, g, h, k, p, q, r, rAlt)
 
   const slice = makeSlice(base, "X")
+  const { sliceProductToolkit: toolkit } = slice
 
   const left = slice.objects.find((object) => object.domain === "A")
   const middle = slice.objects.find((object) => object.domain === "B")
@@ -114,10 +115,14 @@ describe("Finite slice products over a common anchor", () => {
     throw new Error("Expected slice objects for A, B, C, and D to exist")
   }
 
-  const pairAB = makeSliceProduct(base, "X", left, middle, { name: "A×_X B" })
+  const pairAB = makeSliceProduct(base, "X", left, middle, {
+    name: "A×_X B",
+    toolkit,
+  })
 
   const triple = makeFiniteSliceProduct(base, "X", [left, middle, right], {
     name: "A×_X B×_X C",
+    toolkit,
   })
 
   const fiberCarrier = base.carrier(triple.object.domain)
@@ -328,7 +333,7 @@ describe("Finite slice products over a common anchor", () => {
   })
 
   it("integrates with CategoryLimits finite-product helpers", () => {
-    const hasProducts = makeSliceProductsWithTuple(base, "X")
+    const hasProducts = makeSliceProductsWithTuple(base, "X", { toolkit })
     const indices = { carrier: [0, 1, 2] as const }
     const factors = [left, middle, right] as const
 

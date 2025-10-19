@@ -329,6 +329,7 @@ export {
   type SliceArrow,
   type SliceCategory,
   type CosliceCategory,
+  type SliceCategoryOptions,
   type SliceProductToolkit,
   type SliceProductOptions,
   type FiniteSliceProductOptions,

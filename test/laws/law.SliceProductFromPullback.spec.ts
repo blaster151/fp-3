@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  createSliceProductToolkit,
   makeSliceProductFromPullback,
   makeSliceFiniteProductFromPullback,
   type SliceArrow,
@@ -94,9 +95,12 @@ const bottomSlice: SliceObject<Obj, Arr> = {
 
 describe("Slice products reconstructed from pullbacks", () => {
   const calculator = makeFinitePullbackCalculator(PosetCategory)
+  const toolkit = createSliceProductToolkit<Obj, Arr>()
 
   it("builds binary fiber products and mediates pairings", () => {
-    const product = makeSliceProductFromPullback(PosetCategory, anchor, calculator, aSlice, bSlice)
+    const product = makeSliceProductFromPullback(PosetCategory, anchor, calculator, aSlice, bSlice, {
+      toolkit,
+    })
     expect(product.object.domain).toBe("⊥")
     expect(PosetCategory.eq(product.object.arrowToAnchor, findArrow("⊥", "⊤"))).toBe(true)
     expect(PosetCategory.eq(product.projectionLeft.mediating, findArrow("⊥", "a"))).toBe(true)
@@ -118,7 +122,9 @@ describe("Slice products reconstructed from pullbacks", () => {
   })
 
   it("exposes swap, diagonal, and unit isomorphisms", () => {
-    const product = makeSliceProductFromPullback(PosetCategory, anchor, calculator, aSlice, bSlice)
+    const product = makeSliceProductFromPullback(PosetCategory, anchor, calculator, aSlice, bSlice, {
+      toolkit,
+    })
     const swap = product.swap?.()
     expect(swap).toBeDefined()
     if (!swap) throw new Error("expected swap data")
@@ -131,20 +137,25 @@ describe("Slice products reconstructed from pullbacks", () => {
       calculator,
       aSlice,
       aSlice,
+      { toolkit },
     )
     const diagonal = selfProduct.diagonal?.()
     expect(diagonal).toBeDefined()
     if (!diagonal) throw new Error("expected diagonal data")
     expect(PosetCategory.eq(diagonal.arrow.mediating, findArrow("a", "a"))).toBe(true)
 
-    const leftUnit = makeSliceProductFromPullback(PosetCategory, anchor, calculator, topSlice, aSlice)
+    const leftUnit = makeSliceProductFromPullback(PosetCategory, anchor, calculator, topSlice, aSlice, {
+      toolkit,
+    })
     const leftUnitIso = leftUnit.leftUnit?.()
     expect(leftUnitIso).toBeDefined()
     if (!leftUnitIso) throw new Error("expected left unit data")
     expect(PosetCategory.eq(leftUnitIso.forward.mediating, findArrow("⊥", "a"))).toBe(true)
     expect(PosetCategory.eq(leftUnitIso.backward.mediating, identities["a"])).toBe(true)
 
-    const rightUnit = makeSliceProductFromPullback(PosetCategory, anchor, calculator, aSlice, topSlice)
+    const rightUnit = makeSliceProductFromPullback(PosetCategory, anchor, calculator, aSlice, topSlice, {
+      toolkit,
+    })
     const rightUnitIso = rightUnit.rightUnit?.()
     expect(rightUnitIso).toBeDefined()
     if (!rightUnitIso) throw new Error("expected right unit data")
@@ -157,7 +168,9 @@ describe("Slice products reconstructed from pullbacks", () => {
       aSlice,
       bSlice,
       topSlice,
-    ])
+    ], {
+      toolkit,
+    })
     expect(witness.factors.length).toBe(3)
     expect(PosetCategory.eq(witness.object.arrowToAnchor, findArrow("⊥", "⊤"))).toBe(true)
 
@@ -171,7 +184,7 @@ describe("Slice products reconstructed from pullbacks", () => {
   })
 
   it("integrates with the tuple toolkit when using pullback builders", () => {
-    const limits = makeSliceProductsWithTuple(PosetCategory, anchor, { pullbacks: calculator })
+    const limits = makeSliceProductsWithTuple(PosetCategory, anchor, { pullbacks: calculator, toolkit })
     const { obj, projections } = limits.product([aSlice, bSlice])
     expect(obj).toEqual({ domain: "⊥", arrowToAnchor: findArrow("⊥", "⊤") })
     expect(projections).toHaveLength(2)
@@ -188,12 +201,16 @@ describe("Slice products reconstructed from pullbacks", () => {
       factorCone: () => ({ factored: false, reason: "faulty" }),
     }
     expect(() =>
-      makeSliceProductFromPullback(PosetCategory, anchor, faulty, aSlice, bSlice),
+      makeSliceProductFromPullback(PosetCategory, anchor, faulty, aSlice, bSlice, {
+        toolkit,
+      }),
     ).toThrow(/does not factor/)
   })
 
   it("detects non-commuting slice legs when pairing", () => {
-    const product = makeSliceProductFromPullback(PosetCategory, anchor, calculator, aSlice, bSlice)
+    const product = makeSliceProductFromPullback(PosetCategory, anchor, calculator, aSlice, bSlice, {
+      toolkit,
+    })
     const leftLeg: SliceArrow<Obj, Arr> = {
       src: bottomSlice,
       dst: aSlice,
