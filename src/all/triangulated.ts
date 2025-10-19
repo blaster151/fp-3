@@ -2543,6 +2543,9 @@ export interface FinSetMor {
   map: ReadonlyArray<number> // total function by index: [0..|from|-1] -> [0..|to|-1]
 }
 
+// Runtime validators enforce |map| = |from.elements| and 0 ≤ map[i] < |to.elements|,
+// so categorical operations may freely index into the codomain arrays.
+
 export const FinSetMor = Symbol.for('FinSetMor')
 
 const isReadonlyArray = (value: unknown): value is ReadonlyArray<unknown> =>
@@ -2562,23 +2565,62 @@ export const assertFinSetObj = (value: unknown): FinSetObj => {
 }
 
 const isNumberArray = (value: unknown): value is ReadonlyArray<number> =>
-  isReadonlyArray(value) && value.every((entry) => typeof entry === 'number')
+  isReadonlyArray(value) && value.every((entry) => typeof entry === 'number' && Number.isFinite(entry))
+
+const describeFinSetMorIssue = (value: unknown): string | undefined => {
+  if (typeof value !== 'object' || value === null) {
+    return 'received a non-object value'
+  }
+
+  const candidate = value as { from?: unknown; to?: unknown; map?: unknown }
+
+  const fromObj = candidate.from
+  if (!isFinSetObj(fromObj)) {
+    return 'missing a valid "from" FinSet object'
+  }
+
+  const toObj = candidate.to
+  if (!isFinSetObj(toObj)) {
+    return 'missing a valid "to" FinSet object'
+  }
+
+  const mapArray = candidate.map
+  if (!isNumberArray(mapArray)) {
+    return '"map" must be an array of finite numbers'
+  }
+
+  const fromSize = fromObj.elements.length
+  if (mapArray.length !== fromSize) {
+    return `map length ${mapArray.length} does not match domain cardinality ${fromSize}`
+  }
+
+  const toSize = toObj.elements.length
+  for (let i = 0; i < mapArray.length; i++) {
+    const valueAt = mapArray[i]!
+    if (!Number.isInteger(valueAt)) {
+      return `map[${i}] = ${valueAt} is not an integer index`
+    }
+    if (valueAt < 0) {
+      return `map[${i}] = ${valueAt} is negative`
+    }
+    if (valueAt >= toSize) {
+      return `map[${i}] = ${valueAt} lies outside codomain of size ${toSize}`
+    }
+  }
+
+  return undefined
+}
 
 export const isFinSetMor = (value: unknown): value is FinSetMor =>
-  typeof value === 'object' &&
-  value !== null &&
-  'from' in value &&
-  'to' in value &&
-  'map' in value &&
-  isFinSetObj((value as { from?: unknown }).from) &&
-  isFinSetObj((value as { to?: unknown }).to) &&
-  isNumberArray((value as { map?: unknown }).map)
+  describeFinSetMorIssue(value) === undefined
 
-export const assertFinSetMor = (value: unknown): FinSetMor => {
-  if (!isFinSetMor(value)) {
-    throw new TypeError('Expected a FinSet morphism')
+export const assertFinSetMor = (value: unknown, context?: string): FinSetMor => {
+  const issue = describeFinSetMorIssue(value)
+  if (issue !== undefined) {
+    const baseMessage = `Expected a FinSet morphism: ${issue}`
+    throw new TypeError(context ? `${context}: ${baseMessage}` : baseMessage)
   }
-  return value
+  return value as FinSetMor
 }
 
 type FinSetObjOf<T> = FinSetObj & { elements: ReadonlyArray<T> }
@@ -2620,11 +2662,15 @@ export const makeFinSetObj = <T>(elements: ReadonlyArray<T>): FinSetObjOf<T> => 
 const terminalFinSetObj: FinSetObj = { elements: [null] }
 const initialFinSetObj: FinSetObj = { elements: [] }
 
-const terminateFinSetAtTerminal = (X: FinSetObj): FinSetMor => ({
-  from: X,
-  to: terminalFinSetObj,
-  map: Array.from({ length: X.elements.length }, () => 0)
-})
+const terminateFinSetAtTerminal = (X: FinSetObj): FinSetMor =>
+  assertFinSetMor(
+    {
+      from: X,
+      to: terminalFinSetObj,
+      map: Array.from({ length: X.elements.length }, () => 0)
+    },
+    'FinSet.terminate'
+  )
 
 const buildBinaryProductWitness = (A: FinSetObj, B: FinSetObj) => {
   const tuples: Array<readonly [number, number]> = []
@@ -2688,10 +2734,13 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     readonly initialArrow: (X: FinSetObj) => FinSetMor
   } = {
   
-  id: (X) => ({ from: X, to: X, map: X.elements.map((_, i) => i) }),
+  id: (X) => assertFinSetMor({ from: X, to: X, map: X.elements.map((_, i) => i) }, 'FinSet.id'),
   compose: (g, f) => {
     if (f.to !== g.from) throw new Error('FinSet.compose: shape mismatch')
-    return { from: f.from, to: g.to, map: f.map.map((i) => g.map[i]!) }
+    // Each FinSet arrow is a total function whose indices land inside its codomain;
+    // the strengthened assertFinSetMor guarantees these lookups are safe.
+    const map = f.map.map((i) => g.map[i]!)
+    return assertFinSetMor({ from: f.from, to: g.to, map }, 'FinSet.compose')
   },
   isId: (m) => m.map.every((i, idx) => i === idx) && m.from.elements.length === m.to.elements.length,
   dom: (m) => m.from,
@@ -2786,7 +2835,8 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     terminate: terminateFinSetAtTerminal
   },
   terminate: terminateFinSetAtTerminal,
-  initialArrow: (target: FinSetObj): FinSetMor => ({ from: initialFinSetObj, to: target, map: [] }),
+  initialArrow: (target: FinSetObj): FinSetMor =>
+    assertFinSetMor({ from: initialFinSetObj, to: target, map: [] }, 'FinSet.initialArrow'),
   binaryProduct: (A: FinSetObj, B: FinSetObj) => buildBinaryProductWitness(A, B),
   exponential: (A: FinSetObj, B: FinSetObj) => {
     const expObj = expFinSet(B, A)
@@ -2898,14 +2948,14 @@ export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
 /** FinSet bijection helper */
 export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): FinSetMor => {
   if (map.length !== from.elements.length) throw new Error('finsetBij: length mismatch')
-  return { from, to, map }
+  return assertFinSetMor({ from, to, map }, 'finsetBijection')
 }
 
 /** FinSet inverse helper */
 export const finsetInverse = (bij: FinSetMor): FinSetMor => {
   const inv: number[] = Array.from({ length: bij.to.elements.length }, () => -1)
   for (let i = 0; i < bij.map.length; i++) inv[bij.map[i]!] = i
-  return { from: bij.to, to: bij.from, map: inv }
+  return assertFinSetMor({ from: bij.to, to: bij.from, map: inv }, 'finsetInverse')
 }
 
 /** FinSet exponential: X^S (all functions S -> X) */
@@ -2932,7 +2982,7 @@ export const expPostcompose = (h: FinSetMor, S: FinSetObj): FinSetMor => {
     const out = (arr as number[]).map((ix) => XtoY[ix]!)
     return indexMap.get(JSON.stringify(out))!
   })
-  return { from: XpowS, to: YpowS, map }
+  return assertFinSetMor({ from: XpowS, to: YpowS, map }, 'expPostcompose')
 }
 
 /** Precompose on exponentials: given r: S' -> S, map X^S -> X^{S'} by (- ∘ r) */
@@ -2945,7 +2995,7 @@ export const expPrecompose = (X: FinSetObj, r: FinSetMor, S: FinSetObj, Sprime: 
     const out = r.map.map((j) => (arr as number[])[j]!) // g[s'] = f[r(s')]
     return indexMap.get(JSON.stringify(out))!
   })
-  return { from: XpowS, to: XpowSprim, map }
+  return assertFinSetMor({ from: XpowS, to: XpowSprim, map }, 'expPrecompose')
 }
 
 /** All FinSet morphisms A -> X as a FinSet object (the Hom-set object) */
@@ -2971,7 +3021,7 @@ export const homPostcomposeFinSet = (A: FinSetObj, h: FinSetMor): FinSetMor => {
     const out = (arr as number[]).map(aIx => h.map[aIx]!)
     return indexMap.get(JSON.stringify(out))!
   })
-  return { from: S, to: T, map }
+  return assertFinSetMor({ from: S, to: T, map }, 'homPostcomposeFinSet')
 }
 
 /** Helper: index a FinSet object's elements by JSON */
@@ -2993,7 +3043,7 @@ export const homPrecomposeFinSet = (eta: FinSetMor, X: FinSetObj): FinSetMor => 
     const indexS = indexObj(S).get(JSON.stringify(out))!
     return indexS
   })
-  return { from: Sprime, to: S, map }
+  return assertFinSetMor({ from: Sprime, to: S, map }, 'homPrecomposeFinSet')
 }
 
 /** Codensity carrier T^G(A) in FinSet via end formula */
@@ -3068,7 +3118,7 @@ export const codensityDataFinSet = <BO, BM>(
       if (idx === undefined) throw new Error('tupleInto: coordinate missing')
       return idx
     })
-    return { from, to, map }
+    return assertFinSetMor({ from, to, map }, 'tupleInto')
   }
 
   const S = tupleInto(ProdEb, ProdF, legsS)

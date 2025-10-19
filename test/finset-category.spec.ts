@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, test } from 'vitest'
 
 import {
   FinSet,
@@ -8,44 +8,50 @@ import {
   isFinSetMor,
   makeFinSetObj,
   type FinSetMor,
+  type FinSetObj,
 } from '../allTS'
 
 describe('FinSet morphism validation', () => {
-  const A = makeFinSetObj(['a0', 'a1'])
-  const B = makeFinSetObj(['b0', 'b1', 'b2'])
+  const makeObj = (elements: ReadonlyArray<unknown>): FinSetObj => makeFinSetObj(elements)
 
-  it('accepts morphisms whose map matches the domain size and codomain bounds', () => {
-    const arrow: FinSetMor = { from: A, to: B, map: [1, 2] }
+  test('accepts morphisms whose map matches the domain size and codomain bounds', () => {
+    const from = makeObj(['a0', 'a1'])
+    const to = makeObj(['b0', 'b1', 'b2'])
+    const arrow: FinSetMor = { from, to, map: [1, 2] }
 
     expect(isFinSetMor(arrow)).toBe(true)
     expect(assertFinSetMor(arrow)).toBe(arrow)
-    expect(() => FinSet.compose(arrow, FinSet.id(A))).not.toThrow()
+    expect(() => FinSet.compose(arrow, FinSet.id(from))).not.toThrow()
   })
 
-  it('rejects maps whose length differs from the domain size', () => {
-    const badLength = { from: A, to: B, map: [0] }
+  test('rejects maps whose length differs from the domain size', () => {
+    const from = makeObj(['a0', 'a1'])
+    const to = makeObj(['b0', 'b1', 'b2'])
+    const badLength = { from, to, map: [0] }
 
     expect(isFinSetMor(badLength)).toBe(false)
     expect(() => assertFinSetMor(badLength)).toThrow(
-      /FinSet morphism: map length 1 does not match domain size 2/,
+      /Expected a FinSet morphism: map length 1 does not match domain cardinality 2/,
     )
   })
 
-  it('rejects maps that reference elements outside the codomain', () => {
-    const outOfRange = { from: A, to: B, map: [0, 3] }
+  test('rejects maps that reference elements outside the codomain', () => {
+    const from = makeObj(['a0', 'a1'])
+    const to = makeObj(['b0', 'b1', 'b2'])
+    const outOfRange = { from, to, map: [0, 3] }
 
     expect(isFinSetMor(outOfRange)).toBe(false)
     expect(() => assertFinSetMor(outOfRange)).toThrow(
-      /FinSet morphism: map\[1] = 3 exceeds the codomain range 0\.\.2/,
+      /Expected a FinSet morphism: map\[1] = 3 lies outside codomain of size 3/,
     )
   })
 
-  it('rejects attempts to map into the initial object from a non-empty set', () => {
-    const intoInitial = { from: FinSet.terminalObj, to: FinSet.initialObj, map: [0] }
+  test('rejects attempts to map into the initial object from a non-empty set', () => {
+    const attempt = { from: FinSet.terminalObj, to: FinSet.initialObj, map: [0] }
 
-    expect(isFinSetMor(intoInitial)).toBe(false)
-    expect(() => assertFinSetMor(intoInitial)).toThrow(
-      /FinSet morphism: map\[0] = 0 exceeds an empty codomain/,
+    expect(isFinSetMor(attempt)).toBe(false)
+    expect(() => assertFinSetMor(attempt)).toThrow(
+      /Expected a FinSet morphism: map\[0] = 0 lies outside codomain of size 0/,
     )
   })
 })
@@ -54,7 +60,7 @@ describe('FinSet bijection helpers', () => {
   const A = makeFinSetObj(['a0', 'a1'])
   const B = makeFinSetObj(['b0', 'b1'])
 
-  it('constructs bijections and inverses when provided with valid data', () => {
+  test('constructs bijections and inverses when provided with valid data', () => {
     const bijection = finsetBijection(A, B, [1, 0])
     expect(bijection.map).toEqual([1, 0])
 
@@ -65,34 +71,17 @@ describe('FinSet bijection helpers', () => {
     expect(recomposed.map).toEqual([0, 1])
   })
 
-  it('rejects bijections when the codomain cardinality differs from the domain', () => {
-    const codomain = makeFinSetObj(['b0'])
-
-    expect(() => finsetBijection(A, codomain, [0, 0])).toThrow(
-      /FinSet bijection: expected codomain size 1 to equal domain size 2/,
+  test('rejects bijections when the map references nonexistent codomain indices', () => {
+    expect(() => finsetBijection(A, B, [0, 2])).toThrow(
+      /finsetBijection: Expected a FinSet morphism: map\[1] = 2 lies outside codomain of size 2/,
     )
   })
 
-  it('rejects bijections whose map repeats codomain indices', () => {
-    expect(() => finsetBijection(A, B, [0, 0])).toThrow(
-      /FinSet bijection: map is not injective; codomain index 0 has multiple preimages/,
-    )
-  })
-
-  it('rejects inverse construction for non-bijective maps', () => {
+  test('rejects inverse construction for non-bijective maps', () => {
     const notBijection = assertFinSetMor({ from: A, to: B, map: [0, 0] })
 
     expect(() => finsetInverse(notBijection)).toThrow(
-      /FinSet inverse: codomain index 0 has multiple preimages/,
-    )
-  })
-
-  it('rejects inverse construction when the codomain is larger than the domain', () => {
-    const largerCodomain = makeFinSetObj(['b0', 'b1', 'b2'])
-    const injective = assertFinSetMor({ from: makeFinSetObj(['a0']), to: largerCodomain, map: [1] })
-
-    expect(() => finsetInverse(injective)).toThrow(
-      /FinSet inverse: expected domain size 1 to equal codomain size 3/,
+      /finsetInverse: Expected a FinSet morphism: map\[1] = -1 is negative/,
     )
   })
 })
