@@ -1,5 +1,11 @@
 import { CategoryLimits } from "../../stdlib/category-limits"
-import { FinSet, type FinSetMor, type FinSetObj } from "./triangulated"
+import { IndexedFamilies } from "../../stdlib/indexed-families"
+import {
+  FinSet,
+  type FinSetMor,
+  type FinSetObj,
+  type FinSetPushoutWitness,
+} from "./triangulated"
 
 const arrowsEqual = (left: FinSetMor, right: FinSetMor): boolean => {
   if (FinSet.equalMor) {
@@ -47,8 +53,32 @@ const buildExistingExponential = (object: FinSetObj) => {
   return { metadata, functionAt, indexOfFunction }
 }
 
-export const FinSetProductsWithTuple: CategoryLimits.HasProductMediators<FinSetObj, FinSetMor> = {
+export const FinSetProductsWithTuple: CategoryLimits.HasSmallProductMediators<FinSetObj, FinSetMor> = {
   product: (objects) => FinSet.product(objects),
+  smallProduct<I>(index: IndexedFamilies.SmallIndex<I>, family: IndexedFamilies.SmallFamily<I, FinSetObj>) {
+    const finite = IndexedFamilies.ensureFiniteIndex(index)
+    const objects = finite.carrier.map((entry) => family(entry))
+    const { obj, projections } = FinSet.product(objects)
+    const projectionCache = new Map<I, FinSetMor>()
+
+    finite.carrier.forEach((entry, position) => {
+      const projection = projections[position]
+      if (!projection) {
+        throw new Error('FinSetProductsWithTuple.smallProduct: projection missing for supplied index')
+      }
+      projectionCache.set(entry, projection)
+    })
+
+    const projectionFamily: IndexedFamilies.SmallFamily<I, FinSetMor> = (entry) => {
+      const projection = projectionCache.get(entry)
+      if (!projection) {
+        throw new Error('FinSetProductsWithTuple.smallProduct: index outside enumerated carrier')
+      }
+      return projection
+    }
+
+    return { obj, projections: projectionFamily }
+  },
   tuple: (domain, legs, product) => {
     if (legs.length === 0) {
       if (product.elements.length === 0) {
@@ -96,9 +126,7 @@ export const FinSetProductsWithTuple: CategoryLimits.HasProductMediators<FinSetO
   },
 }
 
-export const FinSetCoproductsWithCotuple: CategoryLimits.HasFiniteCoproducts<FinSetObj, FinSetMor> & {
-  readonly cotuple: (coproduct: FinSetObj, legs: ReadonlyArray<FinSetMor>, codomain: FinSetObj) => FinSetMor
-} = {
+export const FinSetCoproductsWithCotuple: CategoryLimits.HasCoproductMediators<FinSetObj, FinSetMor> = {
   coproduct: (objects) => FinSet.coproduct(objects),
   cotuple: (coproduct, legs, codomain) => {
     if (coproduct.elements.length === 0) {
@@ -197,6 +225,87 @@ export const finsetProductPullback = (left: FinSetObj, right: FinSetObj): FinSet
       return FinSetProductsWithTuple.tuple(object, [intoLeft, intoRight], product)
     },
   }
+}
+
+export interface FinSetPushoutQuotientWitness extends FinSetPushoutWitness {
+  readonly factorCocone: (input: {
+    readonly object: FinSetObj
+    readonly fromLeft: FinSetMor
+    readonly fromRight: FinSetMor
+  }) => FinSetMor
+}
+
+export const finsetPushout = (f: FinSetMor, g: FinSetMor): FinSetPushoutQuotientWitness => {
+  const base = FinSet.pushout(f, g)
+
+  const factorCocone = ({ object, fromLeft, fromRight }: {
+    readonly object: FinSetObj
+    readonly fromLeft: FinSetMor
+    readonly fromRight: FinSetMor
+  }): FinSetMor => {
+    if (fromLeft.from !== f.to || fromRight.from !== g.to) {
+      throw new Error('finsetPushout: wedge legs must originate at the cospan codomains')
+    }
+    if (fromLeft.to !== object || fromRight.to !== object) {
+      throw new Error('finsetPushout: wedge legs must land in the advertised apex')
+    }
+
+    const leftComposite = FinSet.compose(fromLeft, f)
+    const rightComposite = FinSet.compose(fromRight, g)
+    if (!arrowsEqual(leftComposite, rightComposite)) {
+      throw new Error('finsetPushout: wedge does not commute over the shared domain')
+    }
+
+    const entries = base.coproduct.elements as ReadonlyArray<{ tag: number; i: number }>
+    const mediatorValues: Array<number | undefined> = new Array(base.apex.elements.length).fill(undefined)
+
+    entries.forEach((entry, index) => {
+      if (!entry || typeof entry.tag !== 'number' || typeof entry.i !== 'number') {
+        throw new Error('finsetPushout: encountered malformed coproduct element')
+      }
+      const classIndex = base.quotient.map[index]
+      if (classIndex === undefined) {
+        throw new Error('finsetPushout: quotient map missing image for coproduct element')
+      }
+
+      let value: number | undefined
+      if (entry.tag === 0) {
+        value = fromLeft.map[entry.i]
+        if (value === undefined) {
+          throw new Error('finsetPushout: wedge left leg missing an image for a coproduct element')
+        }
+      } else if (entry.tag === 1) {
+        value = fromRight.map[entry.i]
+        if (value === undefined) {
+          throw new Error('finsetPushout: wedge right leg missing an image for a coproduct element')
+        }
+      } else {
+        throw new Error('finsetPushout: coproduct tag outside the cospan range')
+      }
+
+      if (value < 0 || value >= object.elements.length) {
+        throw new Error('finsetPushout: wedge leg lands outside the target apex')
+      }
+
+      const recorded = mediatorValues[classIndex]
+      if (recorded === undefined) {
+        mediatorValues[classIndex] = value
+      } else if (recorded !== value) {
+        throw new Error('finsetPushout: wedge is not constant on a pushout equivalence class')
+      }
+    })
+
+    const map = mediatorValues.map((value, classIndex) => {
+      if (value === undefined) {
+        throw new Error(`finsetPushout: equivalence class ${classIndex} lacks a wedge representative`)
+      }
+      return value
+    })
+
+    return { from: base.apex, to: object, map }
+  }
+
+  return { ...base, factorCocone }
 }
 
 export const finSetExponential = (codomain: FinSetObj, base: FinSetObj) => {

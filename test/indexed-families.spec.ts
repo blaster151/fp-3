@@ -565,14 +565,14 @@ describe('Indexed Families and Discrete Categories', () => {
     test('Lan = Σ over fibers; Ran = Π over fibers (count check)', () => {
       const Jcar = [0, 1, 2, 3]
       const u = (j: number) => j % 2 // map to {0, 1}
-      const Jfin = { carrier: Jcar }
+      const Jfin = IndexedFamilies.finiteIndex(Jcar)
       const fam: IndexedFamilies.EnumFamily<number, number> = (j) => ({
         enumerate: () => Array.from({ length: (j % 3) }, (_, k) => k)
       })
       
       const Lan = IndexedFamilies.lanEnum(u, Jfin, fam)
       const Ran = IndexedFamilies.ranEnum(u, Jfin, fam)
-      const Ifin = { carrier: IndexedFamilies.imageCarrier(Jcar, u) }
+      const Ifin = IndexedFamilies.finiteIndex(IndexedFamilies.imageCarrier(Jcar, u))
       
       for (const i of Ifin.carrier) {
         const fiber = Jcar.filter((j) => u(j) === i)
@@ -588,7 +588,7 @@ describe('Indexed Families and Discrete Categories', () => {
   describe('Triangle Identity for Σ ⊣ pullback', () => {
     test('u^* ε ∘ η = id elementwise', () => {
       const Icar = [0, 1, 2]
-      const Ifin = { carrier: Icar }
+      const Ifin = IndexedFamilies.finiteIndex(Icar)
       const u = (j: number) => j // identity for clarity
       const Y: IndexedFamilies.EnumFamily<number, number> = (i) => ({
         enumerate: () => Array.from({ length: (i % 3) + 1 }, (_, k) => k)
@@ -615,7 +615,7 @@ describe('Indexed Families and Discrete Categories', () => {
       const L = [0, 1]
       const f = (i: number) => L[i % L.length]!
       const w = (k: number) => L[k % L.length]!
-      const Ifin = { carrier: Icar }
+      const Ifin = IndexedFamilies.finiteIndex(Icar)
       const Kfin = { carrier: Kcar }
       const { Jfin, u, v } = IndexedFamilies.pullbackIndices(Ifin, Kfin, f, w)
       const G: IndexedFamilies.EnumFamily<number, number> = (k) => ({
@@ -688,7 +688,7 @@ describe('Indexed Families and Discrete Categories', () => {
     test('Lan_u uses coproduct over fibers; Ran_u uses product over fibers', () => {
       const I = [0, 1] as const
       const J = [0, 1, 2, 3] as const
-      const Ifin = { carrier: I as readonly number[] }
+      const Ifin = IndexedFamilies.finiteIndex(I as readonly number[])
       const Jfin = { carrier: J as readonly number[] }
       const u = (j: number) => j % 2
 
@@ -714,7 +714,7 @@ describe('Indexed Families and Discrete Categories', () => {
       // Test that injections/projections have correct domains/codomains
       const I = [0, 1]
       const J = [0, 1, 2]
-      const Ifin = { carrier: I }
+      const Ifin = IndexedFamilies.finiteIndex(I)
       const Jfin = { carrier: J }
       const u = (j: number) => j < 2 ? 0 : 1 // fiber 0: {0,1}, fiber 1: {2}
 

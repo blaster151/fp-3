@@ -21,7 +21,7 @@ describe('Universal property — Product in Vect', () => {
     const V1: EnhancedVect.VectObj = { dim: 2 }
     const V2: EnhancedVect.VectObj = { dim: 1 }
     const I = [0, 1] as const
-    const Ifin = { carrier: I as readonly number[] }
+    const Ifin = IndexedFamilies.finiteIndex(I as readonly number[])
 
     // family F : I -> Vect objects
     const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (i) => (i === 0 ? V1 : V2)
@@ -74,7 +74,7 @@ describe('Universal property — Coproduct in Vect', () => {
     const V2: EnhancedVect.VectObj = { dim: 1 }
     const Y: EnhancedVect.VectObj = { dim: 3 }
     const I = [0, 1] as const
-    const Ifin = { carrier: I as readonly number[] }
+    const Ifin = IndexedFamilies.finiteIndex(I as readonly number[])
 
     // family F : I -> Vect objects
     const F: IndexedFamilies.Family<number, EnhancedVect.VectObj> = (i) => (i === 0 ? V1 : V2)
@@ -126,7 +126,7 @@ describe('Universal property verification', () => {
     const P: EnhancedVect.VectObj = { dim: 3 } // product of {dim:2} + {dim:1}
     
     const I = [0, 1]
-    const Ifin = { carrier: I }
+    const Ifin = IndexedFamilies.finiteIndex(I)
     const F = (i: number) => ({ dim: i === 0 ? 2 : 1 })
     const { projections } = CategoryLimits.finiteProduct(Ifin, F, EnhancedVect.VectHasFiniteProducts)
     

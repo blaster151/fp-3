@@ -3,12 +3,29 @@ import type { DiscDiagram } from "../allTS"
 import { DiscreteCategory, LanDisc, reindexDisc } from "../allTS"
 
 export namespace IndexedFamilies {
-  /** An indexed family is just a function from index to object */
-  export type Family<I, X> = (i: I) => X
+  /** Small indexed family represented as a function */
+  export type SmallFamily<I, X> = (i: I) => X
+
+  /**
+   * Family helper kept for backwards compatibility – aliases {@link SmallFamily}.
+   * Prefer the `SmallFamily` name when working with potentially infinite indices.
+   */
+  export type Family<I, X> = SmallFamily<I, X>
+
+  /** Index described by an enumerator; may be infinite. */
+  export interface SmallIndex<I> {
+    /** Produce a fresh iterable of indices. */
+    readonly enumerate?: () => Iterable<I>
+    /** Optional cardinality hint for diagnostics. */
+    readonly sizeHint?: number
+    /** When true the index is known to be finite. */
+    readonly knownFinite?: boolean
+  }
 
   /** Finite index set with explicit carrier */
-  export interface FiniteIndex<I> {
+  export interface FiniteIndex<I> extends SmallIndex<I> {
     readonly carrier: ReadonlyArray<I>
+    readonly knownFinite?: true
   }
 
   /** Convert family to discrete diagram (our existing DiscDiagram format) */
@@ -55,7 +72,73 @@ export namespace IndexedFamilies {
     }
 
   /** Create finite index from array */
-  export const finiteIndex = <I>(carrier: ReadonlyArray<I>): FiniteIndex<I> => ({ carrier })
+  export const finiteIndex = <I>(carrier: ReadonlyArray<I>): FiniteIndex<I> => ({
+    carrier,
+    enumerate: () => carrier,
+    knownFinite: true,
+    sizeHint: carrier.length,
+  })
+
+  /** Construct a small index from an enumerator. */
+  export const smallIndex = <I>(
+    enumerate: () => Iterable<I>,
+    options: { knownFinite?: boolean; sizeHint?: number } = {},
+  ): SmallIndex<I> => ({
+    enumerate,
+    ...(options.knownFinite !== undefined ? { knownFinite: options.knownFinite } : {}),
+    ...(options.sizeHint !== undefined ? { sizeHint: options.sizeHint } : {}),
+  })
+
+  /** Type guard recognising {@link FiniteIndex} values. */
+  export const isFiniteIndex = <I>(index: SmallIndex<I>): index is FiniteIndex<I> =>
+    Array.isArray((index as { carrier?: unknown }).carrier)
+
+  const DEFAULT_SMALL_INDEX_GUARD = 10_000
+
+  /** Materialise the carrier of a small index with an optional safety guard. */
+  export const materialiseSmallIndex = <I>(
+    index: SmallIndex<I>,
+    options: { maxSize?: number } = {},
+  ): ReadonlyArray<I> => {
+    const max = options.maxSize ?? (index.knownFinite === true ? undefined : DEFAULT_SMALL_INDEX_GUARD)
+    const out: I[] = []
+    let seen = 0
+    const iterator = index.enumerate ?? (() => {
+      if (!Array.isArray((index as { carrier?: unknown }).carrier)) {
+        throw new Error('IndexedFamilies.materialiseSmallIndex: index does not expose an enumerator or carrier')
+      }
+      return (index as FiniteIndex<I>).carrier
+    })
+    for (const element of iterator()) {
+      out.push(element)
+      seen += 1
+      if (max !== undefined && seen > max) {
+        throw new Error(
+          `IndexedFamilies.materialiseSmallIndex: enumeration exceeded guard of ${max}; index may be infinite.`,
+        )
+      }
+    }
+    return out
+  }
+
+  /** Ensure a {@link SmallIndex} is finite by materialising its carrier when necessary. */
+  export const ensureFiniteIndex = <I>(
+    index: SmallIndex<I>,
+    options: { maxSize?: number } = {},
+  ): FiniteIndex<I> => {
+    if (isFiniteIndex(index)) {
+      if (!index.enumerate) {
+        return {
+          ...index,
+          enumerate: () => index.carrier,
+          knownFinite: true,
+        }
+      }
+      return { ...index, knownFinite: true }
+    }
+    const carrier = materialiseSmallIndex(index, options)
+    return finiteIndex(carrier)
+  }
 
   /** Bridge to our existing discrete diagram operations */
   export const familyLanDisc =
@@ -266,7 +349,7 @@ export namespace IndexedFamilies {
   export const familyFromArray =
     <X>(xs: ReadonlyArray<X>) => {
       const I = xs.map((_, i) => i)
-      const Ifin: FiniteIndex<number> = { carrier: I }
+      const Ifin = finiteIndex(I)
       const fam: Family<number, X> = (i) => xs[i]!
       return { I, Ifin, fam, Idisc: DiscreteCategory.create(I) } as const
     }
@@ -275,7 +358,7 @@ export namespace IndexedFamilies {
   export const familyFromRecord =
     <K extends string | number | symbol, X>(rec: Record<K, X>) => {
       const keys = Object.keys(rec) as K[]
-      const Ifin: FiniteIndex<K> = { carrier: keys }
+      const Ifin = finiteIndex(keys)
       const fam: Family<K, X> = (k) => rec[k]!
       return { keys, Ifin, fam, Idisc: DiscreteCategory.create(keys) } as const
     }
@@ -283,15 +366,15 @@ export namespace IndexedFamilies {
   /** Pullback indices for Beck-Chevalley tests */
   export const pullbackIndices =
     <I, K, L>(
-      Ifin: { carrier: ReadonlyArray<I> },
-      Kfin: { carrier: ReadonlyArray<K> },
+      Ifin: FiniteIndex<I>,
+      Kfin: FiniteIndex<K>,
       f: (i: I) => L,
       w: (k: K) => L
     ) => {
       const J = Ifin.carrier.flatMap((i) =>
         Kfin.carrier.filter((k) => f(i) === w(k)).map((k) => [i, k] as const)
       )
-      const Jfin: FiniteIndex<readonly [I, K]> = { carrier: J }
+      const Jfin = finiteIndex(J)
       const u = (jk: readonly [I, K]) => jk[0]
       const v = (jk: readonly [I, K]) => jk[1]
       return { J, Jfin, u, v }

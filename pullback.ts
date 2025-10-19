@@ -4,7 +4,8 @@ import { CategoryLimits } from "./stdlib/category-limits";
 import type { FiniteCategory } from "./finite-cat";
 import type { IsoWitness } from "./kinds/iso";
 import type { FinSetMor, FinSetObj } from "./src/all/triangulated";
-import { FinSet } from "./src/all/triangulated";
+import { FinSet, FinSetTruthArrow, FinSetTruthValues } from "./src/all/triangulated";
+import { finsetFactorThroughEqualizer } from "./finset-equalizers";
 
 export interface PullbackData<Obj, Arr> {
   readonly apex: Obj;
@@ -48,6 +49,53 @@ export interface PullbackCalculator<Obj, Arr> {
     candidate: PullbackData<Obj, Arr>,
   ): PullbackData<Obj, Arr>;
 }
+
+export interface PullbackFromEqualizerWitness<Obj, Arr> {
+  readonly product: {
+    readonly obj: Obj;
+    readonly projections: readonly [Arr, Arr];
+  };
+  readonly parallelPair: readonly [Arr, Arr];
+  readonly equalizer: { readonly obj: Obj; readonly equalize: Arr };
+  readonly pullback: PullbackData<Obj, Arr>;
+}
+
+export const makePullbackFromProductsAndEqualizers = <Obj, Arr>(
+  base: Category<Obj, Arr> &
+    ArrowFamilies.HasDomCod<Obj, Arr> &
+    CategoryLimits.HasFiniteProducts<Obj, Arr> &
+    CategoryLimits.HasEqualizers<Obj, Arr>,
+  f: Arr,
+  h: Arr,
+): PullbackFromEqualizerWitness<Obj, Arr> => {
+  const codomainOfF = base.cod(f);
+  const codomainOfH = base.cod(h);
+  if (codomainOfF !== codomainOfH) {
+    throw new Error("makePullbackFromProductsAndEqualizers: arrows must share a codomain.");
+  }
+
+  const domainSource = base.dom(f);
+  const anchorSource = base.dom(h);
+  const productWitness = base.product([domainSource, anchorSource]);
+  if (productWitness.projections.length !== 2) {
+    throw new Error("makePullbackFromProductsAndEqualizers: binary product must supply two projections.");
+  }
+  const [projectionToDomain, projectionToAnchor] = productWitness.projections as readonly [Arr, Arr];
+
+  const leftParallel = base.compose(f, projectionToDomain);
+  const rightParallel = base.compose(h, projectionToAnchor);
+  const equalizerWitness = base.equalizer(leftParallel, rightParallel);
+
+  const toDomain = base.compose(projectionToDomain, equalizerWitness.equalize);
+  const toAnchor = base.compose(projectionToAnchor, equalizerWitness.equalize);
+
+  return {
+    product: { obj: productWitness.obj, projections: [projectionToDomain, projectionToAnchor] },
+    parallelPair: [leftParallel, rightParallel],
+    equalizer: equalizerWitness,
+    pullback: { apex: equalizerWitness.obj, toDomain, toAnchor },
+  };
+};
 
 export const factorPullbackCone = <Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
@@ -711,6 +759,314 @@ const validateFinSetProductCarrier = (product: FinSetObj, left: FinSetObj, right
     indexLookup.set(finsetProductKey(leftIndex, rightIndex), idx);
   });
   return indexLookup;
+};
+
+interface FinSetPullbackMetadata {
+  readonly span: { readonly left: FinSetMor; readonly right: FinSetMor };
+  readonly product: { readonly obj: FinSetObj; readonly projections: readonly [FinSetMor, FinSetMor] };
+  readonly equalizer: { readonly obj: FinSetObj; readonly equalize: FinSetMor };
+  readonly tuple: (domain: FinSetObj, legs: readonly [FinSetMor, FinSetMor]) => FinSetMor;
+  readonly pullback: PullbackData<FinSetObj, FinSetMor>;
+}
+
+const ensureFinSetEqual = (left: FinSetMor, right: FinSetMor): boolean => {
+  const verdict = FinSet.equalMor?.(left, right);
+  if (typeof verdict === "boolean") {
+    return verdict;
+  }
+  return finsetMorEq(left, right);
+};
+
+export const makeFinSetPullbackCalculator = (): PullbackCalculator<FinSetObj, FinSetMor> => {
+  const metadata = new WeakMap<PullbackData<FinSetObj, FinSetMor>, FinSetPullbackMetadata>();
+
+  const buildMetadata = (f: FinSetMor, h: FinSetMor): FinSetPullbackMetadata => {
+    const witness = makePullbackFromProductsAndEqualizers(FinSet, f, h);
+    const domainObj = FinSet.dom(f);
+    const anchorObj = FinSet.dom(h);
+    const indexLookup = validateFinSetProductCarrier(witness.product.obj, domainObj, anchorObj);
+    const tuple = makeFinSetProductTuple(witness.product.obj, domainObj, anchorObj, indexLookup);
+    return {
+      span: { left: witness.parallelPair[0], right: witness.parallelPair[1] },
+      product: witness.product,
+      equalizer: witness.equalizer,
+      tuple,
+      pullback: witness.pullback,
+    };
+  };
+
+  const certifyCandidate = (
+    f: FinSetMor,
+    h: FinSetMor,
+    candidate: PullbackData<FinSetObj, FinSetMor>,
+  ): {
+    readonly valid: boolean;
+    readonly reason?: string;
+    readonly metadata?: FinSetPullbackMetadata;
+  } => {
+    const witness = buildMetadata(f, h);
+    if (candidate.apex !== witness.equalizer.obj) {
+      return { valid: false, reason: "FinSet pullback certification: apex differs from the canonical equalizer." };
+    }
+    if (!ensureFinSetEqual(candidate.toDomain, witness.pullback.toDomain)) {
+      return { valid: false, reason: "FinSet pullback certification: domain leg differs from the canonical factor." };
+    }
+    if (!ensureFinSetEqual(candidate.toAnchor, witness.pullback.toAnchor)) {
+      return { valid: false, reason: "FinSet pullback certification: anchor leg differs from the canonical factor." };
+    }
+    return { valid: true, metadata: witness };
+  };
+
+  const induceMediator = (
+    j: FinSetMor,
+    pullbackOfF: PullbackData<FinSetObj, FinSetMor>,
+    pullbackOfG: PullbackData<FinSetObj, FinSetMor>,
+  ): FinSetMor => {
+    if (pullbackOfF.toDomain.from !== pullbackOfF.apex || pullbackOfF.toAnchor.from !== pullbackOfF.apex) {
+      throw new Error("FinSet pullback induce: first pullback legs must emanate from the apex.");
+    }
+    if (pullbackOfG.toDomain.from !== pullbackOfG.apex || pullbackOfG.toAnchor.from !== pullbackOfG.apex) {
+      throw new Error("FinSet pullback induce: second pullback legs must emanate from the apex.");
+    }
+
+    const mediatedDomain = FinSet.compose(j, pullbackOfF.toDomain);
+    const anchorLeg = pullbackOfF.toAnchor;
+
+    const mediatorMap = pullbackOfF.apex.elements.map((_value, index) => {
+      const expectedDomain = mediatedDomain.map[index];
+      const expectedAnchor = anchorLeg.map[index];
+      if (expectedDomain === undefined || expectedAnchor === undefined) {
+        throw new Error("FinSet pullback induce: pullback legs must enumerate every apex element.");
+      }
+
+      const matches: number[] = [];
+      pullbackOfG.apex.elements.forEach((_candidate, candidateIndex) => {
+        const domainImage = pullbackOfG.toDomain.map[candidateIndex];
+        const anchorImage = pullbackOfG.toAnchor.map[candidateIndex];
+        if (domainImage === expectedDomain && anchorImage === expectedAnchor) {
+          matches.push(candidateIndex);
+        }
+      });
+
+      if (matches.length === 0) {
+        throw new Error("FinSet pullback induce: no apex element satisfies the pullback equations.");
+      }
+      if (matches.length > 1) {
+        throw new Error("FinSet pullback induce: multiple apex elements satisfy the pullback equations.");
+      }
+      return matches[0]!;
+    });
+
+    return { from: pullbackOfF.apex, to: pullbackOfG.apex, map: mediatorMap };
+  };
+
+  const calculator: PullbackCalculator<FinSetObj, FinSetMor> = {
+    pullback(f, h) {
+      const witness = buildMetadata(f, h);
+      metadata.set(witness.pullback, witness);
+      return witness.pullback;
+    },
+    factorCone(target, cone) {
+      const data = metadata.get(target);
+      if (!data) {
+        return {
+          factored: false,
+          reason:
+            "FinSet pullback factorCone: unrecognised apex; construct it via makeFinSetPullbackCalculator.pullback first.",
+        };
+      }
+      try {
+        const fork = data.tuple(cone.apex, [cone.toDomain, cone.toAnchor]);
+        const mediator = finsetFactorThroughEqualizer(
+          data.span.left,
+          data.span.right,
+          data.equalizer.equalize,
+          fork,
+        );
+        return { factored: true, mediator };
+      } catch (error) {
+        return {
+          factored: false,
+          reason:
+            error instanceof Error
+              ? error.message
+              : "FinSet pullback factorCone: unable to factor cone through the equalizer.",
+        };
+      }
+    },
+    certify(f, h, candidate) {
+      const verdict = certifyCandidate(f, h, candidate);
+      if (!verdict.valid || !verdict.metadata) {
+        return {
+          valid: false,
+          reason: verdict.reason ?? "FinSet pullback certification: candidate differs from canonical witness.",
+          conesChecked: [],
+        };
+      }
+      metadata.set(candidate, verdict.metadata);
+      return { valid: true, conesChecked: [] };
+    },
+    induce: induceMediator,
+    comparison(f, h, left, right) {
+      const domainIdentity = FinSet.id(FinSet.dom(f));
+      const leftToRight = induceMediator(domainIdentity, left, right);
+      const rightToLeft = induceMediator(domainIdentity, right, left);
+
+      const roundTripLeft = FinSet.compose(rightToLeft, leftToRight);
+      if (!ensureFinSetEqual(roundTripLeft, FinSet.id(left.apex))) {
+        throw new Error("FinSet pullback comparison: mediators do not reduce to the identity on the left apex.");
+      }
+      const roundTripRight = FinSet.compose(leftToRight, rightToLeft);
+      if (!ensureFinSetEqual(roundTripRight, FinSet.id(right.apex))) {
+        throw new Error("FinSet pullback comparison: mediators do not reduce to the identity on the right apex.");
+      }
+
+      return { leftToRight, rightToLeft };
+    },
+    transportPullback(f, h, source, iso, candidate) {
+      if (iso.forward.from !== source.apex) {
+        throw new Error("FinSet pullback transport: iso forward arrow must originate at the source apex.");
+      }
+      if (iso.forward.to !== candidate.apex) {
+        throw new Error("FinSet pullback transport: iso forward arrow must land in the candidate apex.");
+      }
+      if (iso.inverse.from !== candidate.apex || iso.inverse.to !== source.apex) {
+        throw new Error("FinSet pullback transport: iso inverse must map between the candidate and source apex.");
+      }
+
+      const forwardThenInverse = FinSet.compose(iso.forward, iso.inverse);
+      if (!ensureFinSetEqual(forwardThenInverse, FinSet.id(candidate.apex))) {
+        throw new Error("FinSet pullback transport: iso witnesses do not compose to the identity on the candidate apex.");
+      }
+      const inverseThenForward = FinSet.compose(iso.inverse, iso.forward);
+      if (!ensureFinSetEqual(inverseThenForward, FinSet.id(source.apex))) {
+        throw new Error("FinSet pullback transport: iso witnesses do not compose to the identity on the source apex.");
+      }
+
+      const codomain = FinSet.cod(f);
+      if (codomain !== FinSet.cod(h)) {
+        throw new Error("FinSet pullback transport: span legs must share a codomain.");
+      }
+      if (candidate.toDomain.from !== candidate.apex || candidate.toAnchor.from !== candidate.apex) {
+        throw new Error("FinSet pullback transport: candidate legs must emanate from the apex.");
+      }
+      if (candidate.toDomain.to !== FinSet.dom(f)) {
+        throw new Error("FinSet pullback transport: candidate domain leg must land in dom(f).");
+      }
+      if (candidate.toAnchor.to !== FinSet.dom(h)) {
+        throw new Error("FinSet pullback transport: candidate anchor leg must land in dom(h).");
+      }
+
+      const leftComposite = FinSet.compose(f, candidate.toDomain);
+      const rightComposite = FinSet.compose(h, candidate.toAnchor);
+      if (!ensureFinSetEqual(leftComposite, rightComposite)) {
+        throw new Error("FinSet pullback transport: candidate square does not commute with the span.");
+      }
+
+      const checkDomain = FinSet.compose(candidate.toDomain, iso.forward);
+      if (!ensureFinSetEqual(checkDomain, source.toDomain)) {
+        throw new Error("FinSet pullback transport: iso forward does not reproduce the source domain projection.");
+      }
+      const checkAnchor = FinSet.compose(candidate.toAnchor, iso.forward);
+      if (!ensureFinSetEqual(checkAnchor, source.toAnchor)) {
+        throw new Error("FinSet pullback transport: iso forward does not reproduce the source anchor projection.");
+      }
+
+      const mediators = calculator.comparison(f, h, source, candidate);
+      if (!ensureFinSetEqual(mediators.leftToRight, iso.forward)) {
+        throw new Error("FinSet pullback transport: comparison mediator differs from the supplied iso forward arrow.");
+      }
+      if (!ensureFinSetEqual(mediators.rightToLeft, iso.inverse)) {
+        throw new Error("FinSet pullback transport: comparison mediator differs from the supplied iso inverse arrow.");
+      }
+
+      metadata.set(candidate, buildMetadata(f, h));
+      return candidate;
+    },
+  } satisfies PullbackCalculator<FinSetObj, FinSetMor>;
+
+  return calculator;
+};
+
+export interface FinSetCharacteristicPullbackWitness {
+  readonly pullback: PullbackData<FinSetObj, FinSetMor>;
+  readonly subobject: FinSetObj;
+  readonly inclusion: FinSetMor;
+  readonly terminalProjection: FinSetMor;
+  readonly squareCommutes: boolean;
+  readonly characteristicComposite: FinSetMor;
+  readonly truthComposite: FinSetMor;
+  readonly factorCone: (
+    cone: PullbackData<FinSetObj, FinSetMor>,
+  ) => PullbackConeFactorResult<FinSetMor>;
+  readonly certification: PullbackCertification<FinSetObj, FinSetMor>;
+}
+
+const finsetTruthPullbacks = makeFinSetPullbackCalculator();
+
+export const finsetCharacteristicPullback = (
+  characteristic: FinSetMor,
+): FinSetCharacteristicPullbackWitness => {
+  if (characteristic.to !== FinSetTruthValues) {
+    throw new Error(
+      "finsetSubobjectFromCharacteristic: arrow must land in the FinSet truth-value object.",
+    );
+  }
+
+  if (characteristic.map.length !== characteristic.from.elements.length) {
+    throw new Error(
+      "finsetSubobjectFromCharacteristic: characteristic arrow must provide a verdict for every element.",
+    );
+  }
+
+  const trueIndex = FinSetTruthArrow.map[0];
+
+  characteristic.map.forEach((value, index) => {
+    if (value < 0 || value >= FinSetTruthValues.elements.length) {
+      throw new Error("finsetSubobjectFromCharacteristic: characteristic arrow is not truth-valued.");
+    }
+    if (value === trueIndex && characteristic.from.elements[index] === undefined) {
+      throw new Error("finsetSubobjectFromCharacteristic: missing domain element for true fibre.");
+    }
+  });
+
+  const pullback = finsetTruthPullbacks.pullback(characteristic, FinSetTruthArrow);
+
+  if (pullback.toDomain.to !== characteristic.from) {
+    throw new Error(
+      "finsetCharacteristicPullback: pullback domain leg does not target the characteristic domain.",
+    );
+  }
+
+  const characteristicComposite = FinSet.compose(characteristic, pullback.toDomain);
+  const truthComposite = FinSet.compose(FinSetTruthArrow, pullback.toAnchor);
+  const squareCommutes = ensureFinSetEqual(characteristicComposite, truthComposite);
+  if (!squareCommutes) {
+    throw new Error(
+      "finsetCharacteristicPullback: canonical pullback square fails to commute with the truth arrow.",
+    );
+  }
+
+  const certification = finsetTruthPullbacks.certify(characteristic, FinSetTruthArrow, pullback);
+  if (!certification.valid) {
+    throw new Error(
+      `finsetCharacteristicPullback: canonical witness failed certification: ${
+        certification.reason ?? "unknown reason"
+      }`,
+    );
+  }
+
+  return {
+    pullback,
+    subobject: pullback.apex,
+    inclusion: pullback.toDomain,
+    terminalProjection: pullback.toAnchor,
+    squareCommutes,
+    characteristicComposite,
+    truthComposite,
+    factorCone: (cone) => finsetTruthPullbacks.factorCone(pullback, cone),
+    certification,
+  };
 };
 
 export interface FinSetProductFromPullbackWitness {

@@ -3,7 +3,7 @@ import type { Option } from "./option"
 import { isErr } from "./result"
 import type { Result as ResultT } from "./result"
 import type { FunctorK1, HKId1, HKKind1 } from "./allTS"
-import { evalDefer, evalMap, evalNow, evaluate } from "./array-recursion-trampoline"
+import { evalDefer, evalMap, evalNow, evaluate, type Eval } from "./array-recursion-trampoline"
 
 // ========== Catamorphism / Anamorphism / Hylomorphism (Array) ==========
 
@@ -39,12 +39,12 @@ export const hyloArray =
     nil: B
   ) =>
   (s0: S): B => {
-    const go = (s: S) =>
+    const go = (s: S): Eval<B> =>
       evalDefer(() => {
         const o = step(s)
         if (isNone(o)) return evalNow(nil)
         const [a, s1] = o.value
-        return evalMap(go(s1), (tail) => alg(a, tail))
+        return evalMap(go(s1), (tail: B) => alg(a, tail))
       })
 
     return evaluate(go(s0))
@@ -58,11 +58,11 @@ type Result<E, A> = ResultT<E, A>
 export const paraArray =
   <A, B>(nil: B, cons: (head: A, tail: ReadonlyArray<A>, foldedTail: B) => B) =>
   (as: ReadonlyArray<A>): B => {
-    const go = (xs: ReadonlyArray<A>) =>
+    const go = (xs: ReadonlyArray<A>): Eval<B> =>
       evalDefer(() => {
         if (xs.length === 0) return evalNow(nil)
         const tail = xs.slice(1)
-        return evalMap(go(tail), (foldedTail) => cons(xs[0]!, tail, foldedTail))
+        return evalMap(go(tail), (foldedTail: B) => cons(xs[0]!, tail, foldedTail))
       })
 
     return evaluate(go(as))
@@ -145,9 +145,9 @@ export const makeRecursionK1 = <F extends HKId1>(F: FunctorK1<F>) => {
   const cata =
     <B>(alg: (fb: HKKind1<F, B>) => B) =>
     (t: Fix1<F>): B => {
-      const fold = (node: Fix1<F>) =>
+      const fold = (node: Fix1<F>): Eval<B> =>
         evalDefer(() => {
-          const mapped = F.map((child: Fix1<F>) => evaluate(fold(child)))(node.un)
+          const mapped: HKKind1<F, B> = F.map((child: Fix1<F>) => evaluate(fold(child)))(node.un)
           return evalNow(alg(mapped))
         })
 
@@ -157,9 +157,9 @@ export const makeRecursionK1 = <F extends HKId1>(F: FunctorK1<F>) => {
   const ana =
     <S>(coalg: (s: S) => HKKind1<F, S>) =>
     (s0: S): Fix1<F> => {
-      const unfold = (s: S) =>
+      const unfold = (s: S): Eval<Fix1<F>> =>
         evalDefer(() => {
-          const mapped = F.map((next: S) => evaluate(unfold(next)))(coalg(s))
+          const mapped: HKKind1<F, Fix1<F>> = F.map((next: S) => evaluate(unfold(next)))(coalg(s))
           return evalNow({ un: mapped })
         })
 
@@ -169,9 +169,9 @@ export const makeRecursionK1 = <F extends HKId1>(F: FunctorK1<F>) => {
   const hylo =
     <S, B>(coalg: (s: S) => HKKind1<F, S>, alg: (fb: HKKind1<F, B>) => B) =>
     (s0: S): B => {
-      const go = (s: S) =>
+      const go = (s: S): Eval<B> =>
         evalDefer(() => {
-          const mapped = F.map((next: S) => evaluate(go(next)))(coalg(s))
+          const mapped: HKKind1<F, B> = F.map((next: S) => evaluate(go(next)))(coalg(s))
           return evalNow(alg(mapped))
         })
 

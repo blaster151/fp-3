@@ -91,7 +91,8 @@ describe('Cofree trampolined combinators are stack safe', () => {
 
   it('cata agrees with manual sums for randomly sized chains', () => {
     fc.assert(
-      fc.property(fc.integer({ min: 0, max: 200 }), (n) => {
+      fc.property(fc.nat(), (raw) => {
+        const n = raw % 201
         const chain = buildChain(n)
         const folded = CF.cata<number, number>((ob) => (isSome(ob) ? ob.value : 0), (head, tailSum) => head + tailSum)(chain)
         return folded === sumUpTo(n)

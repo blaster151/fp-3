@@ -31,6 +31,7 @@ import type {
   Groupoid,
   MorOf,
   ObjOf,
+  SubobjectClassifierCategory,
 } from "../../stdlib/category"
 import { CategoryLimits } from "../../stdlib/category-limits"
 import { ArrowFamilies } from "../../stdlib/arrow-families"
@@ -59,13 +60,20 @@ import {
   type SliceArrow,
   type SliceObject,
 } from "../../slice-cat"
-import type { PullbackCalculator } from "../../pullback"
+import type {
+  PullbackCalculator,
+  PullbackConeFactorResult,
+  PullbackData,
+} from "../../pullback"
 import {
   type FinSetCategory as FinSetCategoryModel,
   type FinSetName as FinSetNameModel,
   type FuncArr as FuncArrModel,
 } from "../../models/finset-cat"
+import type { PushoutData } from "../../pushout"
 import { smithNormalForm } from "../../comonad-k1"
+import { finsetFactorThroughEqualizer } from "../../finset-equalizers"
+import { finsetFactorThroughQuotient } from "../../finset-quotients"
 
 // ---------------------------------------------------------------------
 // Exact functor composition: (F : R→S) ∘ (G : S→T) : R→T
@@ -2545,6 +2553,12 @@ export interface FinSetMor {
 
 export const FinSetMor = Symbol.for('FinSetMor')
 
+export interface FinSetPushoutWitness extends PushoutData<FinSetObj, FinSetMor> {
+  readonly coproduct: FinSetObj
+  readonly coproductInjections: readonly [FinSetMor, FinSetMor]
+  readonly quotient: FinSetMor
+}
+
 const isReadonlyArray = (value: unknown): value is ReadonlyArray<unknown> =>
   Array.isArray(value)
 
@@ -2620,11 +2634,654 @@ export const makeFinSetObj = <T>(elements: ReadonlyArray<T>): FinSetObjOf<T> => 
 const terminalFinSetObj: FinSetObj = { elements: [null] }
 const initialFinSetObj: FinSetObj = { elements: [] }
 
+const FINSET_FALSE_INDEX = 0
+const FINSET_TRUE_INDEX = 1
+
+const finsetTruthValuesObj: FinSetObj = { elements: [false, true] }
+
+export const FinSetTruthValues = finsetTruthValuesObj
+
+const finsetTruthArrowMor: FinSetMor = {
+  from: terminalFinSetObj,
+  to: finsetTruthValuesObj,
+  map: [FINSET_TRUE_INDEX],
+}
+
+export const FinSetTruthArrow = finsetTruthArrowMor
+
 const terminateFinSetAtTerminal = (X: FinSetObj): FinSetMor => ({
   from: X,
   to: terminalFinSetObj,
   map: Array.from({ length: X.elements.length }, () => 0)
 })
+
+export interface FinSetSubobjectWitness {
+  readonly subobject: FinSetObj
+  readonly inclusion: FinSetMor
+}
+
+export interface FinSetTopSubobjectWitness {
+  readonly top: FinSetSubobjectWitness
+  readonly dominates: (candidate: FinSetMor) => FinSetSubobjectLeqResult
+}
+
+export interface FinSetBottomSubobjectWitness {
+  readonly bottom: FinSetSubobjectWitness
+  readonly subordinate: (candidate: FinSetMor) => FinSetSubobjectLeqResult
+}
+
+let cachedFinSetPullbackHelpers: typeof import("../../pullback") | undefined
+
+const getFinSetPullbackHelpers = (): typeof import("../../pullback") => {
+  if (!cachedFinSetPullbackHelpers) {
+    cachedFinSetPullbackHelpers = require("../../pullback") as typeof import("../../pullback")
+  }
+  return cachedFinSetPullbackHelpers
+}
+
+export const finsetCharacteristic = (monomorphism: FinSetMor): FinSetMor => {
+  const domain = monomorphism.from
+  const codomain = monomorphism.to
+
+  if (monomorphism.map.length !== domain.elements.length) {
+    throw new Error('finsetCharacteristic: monomorphism map must enumerate every domain element.')
+  }
+
+  const seen = new Set<number>()
+  monomorphism.map.forEach((image, index) => {
+    if (image < 0 || image >= codomain.elements.length) {
+      throw new Error(`finsetCharacteristic: image ${image} out of bounds for the codomain.`)
+    }
+    if (seen.has(image)) {
+      throw new Error('finsetCharacteristic: arrow is not injective and cannot classify a subobject.')
+    }
+    seen.add(image)
+    if (domain.elements[index] === undefined) {
+      throw new Error('finsetCharacteristic: domain element missing for monomorphism index.')
+    }
+  })
+
+  const map = codomain.elements.map((_value, index) => (seen.has(index) ? FINSET_TRUE_INDEX : FINSET_FALSE_INDEX))
+  return { from: codomain, to: FinSetTruthValues, map }
+}
+
+const manualSubobjectFromCharacteristic = (
+  characteristic: FinSetMor,
+): FinSetSubobjectWitness => {
+  if (characteristic.to !== FinSetTruthValues) {
+    throw new Error('finsetSubobjectFromCharacteristic: arrow must land in the FinSet truth-value object.')
+  }
+
+  if (characteristic.map.length !== characteristic.from.elements.length) {
+    throw new Error('finsetSubobjectFromCharacteristic: characteristic arrow must provide a verdict for every element.')
+  }
+
+  const selectedIndices: number[] = []
+  const selectedElements: FinSetElem[] = []
+
+  characteristic.map.forEach((value, index) => {
+    if (value !== FINSET_FALSE_INDEX && value !== FINSET_TRUE_INDEX) {
+      throw new Error('finsetSubobjectFromCharacteristic: characteristic arrow is not truth-valued.')
+    }
+    if (value === FINSET_TRUE_INDEX) {
+      selectedIndices.push(index)
+      const element = characteristic.from.elements[index]
+      if (element === undefined) {
+        throw new Error('finsetSubobjectFromCharacteristic: missing domain element for true fibre.')
+      }
+      selectedElements.push(element)
+    }
+  })
+
+  const subobject = makeFinSetObj(selectedElements)
+  const inclusion: FinSetMor = { from: subobject, to: characteristic.from, map: selectedIndices }
+
+  return { subobject, inclusion }
+}
+
+export const finsetSubobjectFromCharacteristic = (characteristic: FinSetMor): FinSetSubobjectWitness => {
+  const { finsetCharacteristicPullback } = getFinSetPullbackHelpers()
+  try {
+    const witness = finsetCharacteristicPullback(characteristic)
+    return { subobject: witness.subobject, inclusion: witness.inclusion }
+  } catch (pullbackError) {
+    let manualWitness: FinSetSubobjectWitness | undefined
+    try {
+      manualWitness = manualSubobjectFromCharacteristic(characteristic)
+    } catch (manualError) {
+      throw manualError
+    }
+
+    const pullbackMessage =
+      pullbackError instanceof Error ? pullbackError.message : String(pullbackError)
+    const manualSummary =
+      manualWitness === undefined
+        ? ''
+        : ` Manual enumeration recovered inclusion [${manualWitness.inclusion.map.join(', ')}] on ${manualWitness.subobject.elements.length} elements.`
+
+    throw new Error(
+      `finsetSubobjectFromCharacteristic: pullback reconstruction failed: ${pullbackMessage}.${manualSummary}`,
+    )
+  }
+}
+
+export interface FinSetSubobjectEnumerationEntry {
+  readonly witness: FinSetSubobjectWitness
+  readonly characteristic: FinSetMor
+}
+
+export const listFinSetSubobjects = (ambient: FinSetObj): ReadonlyArray<FinSetSubobjectEnumerationEntry> => {
+  const size = ambient.elements.length
+  const accumulator: FinSetSubobjectEnumerationEntry[] = []
+  const verdictBuffer = new Array<number>(size)
+
+  const enumerate = (index: number): void => {
+    if (index === size) {
+      const map = verdictBuffer.slice()
+      const characteristic: FinSetMor = { from: ambient, to: FinSetTruthValues, map }
+      const witness = finsetSubobjectFromCharacteristic(characteristic)
+      accumulator.push({ witness, characteristic })
+      return
+    }
+
+    verdictBuffer[index] = FINSET_FALSE_INDEX
+    enumerate(index + 1)
+    verdictBuffer[index] = FINSET_TRUE_INDEX
+    enumerate(index + 1)
+  }
+
+  enumerate(0)
+
+  return accumulator
+}
+
+export interface FinSetSubobjectLeqResult {
+  readonly holds: boolean
+  readonly mediator?: FinSetMor
+  readonly reason?: string
+}
+
+export interface FinSetSubobjectIsomorphism {
+  readonly forward: FinSetMor
+  readonly backward: FinSetMor
+}
+
+export interface FinSetSubobjectPartialOrderResult {
+  readonly leftLeqRight: FinSetSubobjectLeqResult
+  readonly rightLeqLeft: FinSetSubobjectLeqResult
+  readonly isomorphic?: FinSetSubobjectIsomorphism
+}
+
+export interface FinSetSubobjectIntersectionWitness {
+  readonly pullback: PullbackData<FinSetObj, FinSetMor>
+  readonly intersection: FinSetSubobjectWitness
+  readonly projections: { readonly left: FinSetMor; readonly right: FinSetMor }
+  readonly factorCone: (
+    cone: PullbackData<FinSetObj, FinSetMor>,
+  ) => PullbackConeFactorResult<FinSetMor>
+}
+
+export const finsetSubobjectIntersection = (
+  left: FinSetMor,
+  right: FinSetMor,
+): FinSetSubobjectIntersectionWitness => {
+  if (left.to !== right.to) {
+    throw new Error('finsetSubobjectIntersection: monomorphisms must share a codomain.')
+  }
+
+  assertMonomorphism(left, 'finsetSubobjectIntersection (left mono)')
+  assertMonomorphism(right, 'finsetSubobjectIntersection (right mono)')
+
+  const { makeFinSetPullbackCalculator } = getFinSetPullbackHelpers()
+  const calculator = makeFinSetPullbackCalculator()
+  const pullback = calculator.pullback(left, right)
+
+  const certification = calculator.certify(left, right, pullback)
+  if (!certification.valid) {
+    throw new Error(
+      `finsetSubobjectIntersection: pullback certification failed: ${
+        certification.reason ?? 'candidate differs from canonical witness'
+      }.`,
+    )
+  }
+
+  if (pullback.toDomain.from !== pullback.apex) {
+    throw new Error('finsetSubobjectIntersection: left projection must originate at the pullback apex.')
+  }
+  if (pullback.toAnchor.from !== pullback.apex) {
+    throw new Error('finsetSubobjectIntersection: right projection must originate at the pullback apex.')
+  }
+  if (pullback.toDomain.to !== left.from) {
+    throw new Error('finsetSubobjectIntersection: left projection must land in the left domain.')
+  }
+  if (pullback.toAnchor.to !== right.from) {
+    throw new Error('finsetSubobjectIntersection: right projection must land in the right domain.')
+  }
+
+  const inclusionViaLeft = FinSet.compose(left, pullback.toDomain)
+  const inclusionViaRight = FinSet.compose(right, pullback.toAnchor)
+
+  if (!equalFinSetMor(inclusionViaLeft, inclusionViaRight)) {
+    throw new Error(
+      'finsetSubobjectIntersection: pullback legs do not agree on the ambient composite.',
+    )
+  }
+
+  return {
+    pullback,
+    intersection: { subobject: pullback.apex, inclusion: inclusionViaLeft },
+    projections: { left: pullback.toDomain, right: pullback.toAnchor },
+    factorCone: (cone) => calculator.factorCone(pullback, cone),
+  }
+}
+
+const assertIntersectionWitness = (
+  spanLeft: FinSetMor,
+  spanRight: FinSetMor,
+  witness: FinSetSubobjectIntersectionWitness,
+  context: string,
+): void => {
+  if (witness.pullback.toDomain.from !== witness.pullback.apex) {
+    throw new Error(`${context}: left projection must originate at the witness apex.`)
+  }
+  if (witness.pullback.toAnchor.from !== witness.pullback.apex) {
+    throw new Error(`${context}: right projection must originate at the witness apex.`)
+  }
+  if (witness.pullback.toDomain.to !== spanLeft.from) {
+    throw new Error(`${context}: left projection must land in the left subobject.`)
+  }
+  if (witness.pullback.toAnchor.to !== spanRight.from) {
+    throw new Error(`${context}: right projection must land in the right subobject.`)
+  }
+  if (witness.intersection.subobject !== witness.pullback.apex) {
+    throw new Error(`${context}: intersection inclusion must use the pullback apex as its domain.`)
+  }
+  if (witness.intersection.inclusion.from !== witness.pullback.apex) {
+    throw new Error(`${context}: intersection inclusion must originate at the pullback apex.`)
+  }
+  if (!equalFinSetMor(witness.projections.left, witness.pullback.toDomain)) {
+    throw new Error(`${context}: recorded left projection differs from the pullback leg.`)
+  }
+  if (!equalFinSetMor(witness.projections.right, witness.pullback.toAnchor)) {
+    throw new Error(`${context}: recorded right projection differs from the pullback leg.`)
+  }
+
+  if (typeof witness.factorCone !== 'function') {
+    throw new Error(`${context}: intersection witness must expose a factorCone helper.`)
+  }
+
+  const identityFactor = witness.factorCone(witness.pullback)
+  if (!identityFactor.factored || !identityFactor.mediator) {
+    throw new Error(`${context}: factorCone must accept the canonical pullback cone.`)
+  }
+  if (!equalFinSetMor(identityFactor.mediator, FinSet.id(witness.pullback.apex))) {
+    throw new Error(`${context}: factorCone mediator must reduce to the identity on the apex.`)
+  }
+
+  const leftComposite = FinSet.compose(spanLeft, witness.projections.left)
+  if (!equalFinSetMor(leftComposite, witness.intersection.inclusion)) {
+    throw new Error(`${context}: left projection does not reproduce the intersection inclusion.`)
+  }
+
+  const rightComposite = FinSet.compose(spanRight, witness.projections.right)
+  if (!equalFinSetMor(rightComposite, witness.intersection.inclusion)) {
+    throw new Error(`${context}: right projection does not reproduce the intersection inclusion.`)
+  }
+}
+
+export const compareFinSetSubobjectIntersections = (
+  left: FinSetMor,
+  right: FinSetMor,
+  first: FinSetSubobjectIntersectionWitness,
+  second: FinSetSubobjectIntersectionWitness,
+): FinSetSubobjectIsomorphism => {
+  if (left.to !== right.to) {
+    throw new Error('compareFinSetSubobjectIntersections: monomorphisms must share a codomain.')
+  }
+
+  assertMonomorphism(left, 'compareFinSetSubobjectIntersections (left mono)')
+  assertMonomorphism(right, 'compareFinSetSubobjectIntersections (right mono)')
+
+  assertIntersectionWitness(left, right, first, 'compareFinSetSubobjectIntersections (first witness)')
+  assertIntersectionWitness(left, right, second, 'compareFinSetSubobjectIntersections (second witness)')
+
+  const { makeFinSetPullbackCalculator } = getFinSetPullbackHelpers()
+  const calculator = makeFinSetPullbackCalculator()
+  const mediators = calculator.comparison(left, right, first.pullback, second.pullback)
+
+  const transportFirst = FinSet.compose(second.intersection.inclusion, mediators.leftToRight)
+  if (!equalFinSetMor(transportFirst, first.intersection.inclusion)) {
+    throw new Error(
+      'compareFinSetSubobjectIntersections: forward mediator does not preserve the intersection inclusion.',
+    )
+  }
+
+  const transportSecond = FinSet.compose(first.intersection.inclusion, mediators.rightToLeft)
+  if (!equalFinSetMor(transportSecond, second.intersection.inclusion)) {
+    throw new Error(
+      'compareFinSetSubobjectIntersections: backward mediator does not preserve the intersection inclusion.',
+    )
+  }
+
+  const leftRoundTrip = FinSet.compose(mediators.rightToLeft, mediators.leftToRight)
+  if (!equalFinSetMor(leftRoundTrip, FinSet.id(first.pullback.apex))) {
+    throw new Error(
+      'compareFinSetSubobjectIntersections: mediators are not inverse on the first intersection.',
+    )
+  }
+
+  const rightRoundTrip = FinSet.compose(mediators.leftToRight, mediators.rightToLeft)
+  if (!equalFinSetMor(rightRoundTrip, FinSet.id(second.pullback.apex))) {
+    throw new Error(
+      'compareFinSetSubobjectIntersections: mediators are not inverse on the second intersection.',
+    )
+  }
+
+  return { forward: mediators.leftToRight, backward: mediators.rightToLeft }
+}
+
+const equalFinSetMor = (left: FinSetMor, right: FinSetMor): boolean =>
+  FinSet.equalMor?.(left, right) ??
+  (left.from === right.from &&
+    left.to === right.to &&
+    left.map.length === right.map.length &&
+    left.map.every((value, index) => value === right.map[index]))
+
+const assertMonomorphism = (arrow: FinSetMor, context: string): void => {
+  const seen = new Set<number>()
+  arrow.map.forEach((image, index) => {
+    if (image === undefined) {
+      throw new Error(`${context}: monomorphism map must enumerate every domain element.`)
+    }
+    if (image < 0 || image >= arrow.to.elements.length) {
+      throw new Error(`${context}: codomain index ${image} is outside the target carrier.`)
+    }
+    if (seen.has(image)) {
+      throw new Error(`${context}: map is not injective; codomain index ${image} has multiple preimages.`)
+    }
+    seen.add(image)
+  })
+}
+
+const assertEpimorphism = (arrow: FinSetMor, context: string): void => {
+  const covered = new Set<number>()
+  arrow.map.forEach((image, index) => {
+    if (image === undefined) {
+      throw new Error(`${context}: epimorphism map must enumerate every domain element.`)
+    }
+    if (image < 0 || image >= arrow.to.elements.length) {
+      throw new Error(`${context}: codomain index ${image} is outside the target carrier.`)
+    }
+    covered.add(image)
+  })
+  for (let idx = 0; idx < arrow.to.elements.length; idx++) {
+    if (!covered.has(idx)) {
+      throw new Error(`${context}: codomain element ${idx} has no preimage and the map is not surjective.`)
+    }
+  }
+}
+
+export interface FinSetImageFactorization {
+  readonly arrow: FinSetMor
+  readonly image: FinSetObj
+  readonly epi: FinSetMor
+  readonly mono: FinSetMor
+}
+
+export const finsetImageFactorization = (arrow: FinSetMor): FinSetImageFactorization => {
+  const domainSize = arrow.from.elements.length
+  if (arrow.map.length !== domainSize) {
+    throw new Error('finsetImageFactorization: arrow map must provide an image for every domain element.')
+  }
+
+  const codomainSize = arrow.to.elements.length
+  const seen = new Map<number, number>()
+  const imageIndices: number[] = []
+  const imageElements: FinSetElem[] = []
+
+  for (let idx = 0; idx < domainSize; idx++) {
+    const target = arrow.map[idx]
+    if (target === undefined) {
+      throw new Error('finsetImageFactorization: arrow map must enumerate every domain index.')
+    }
+    if (target < 0 || target >= codomainSize) {
+      throw new Error(`finsetImageFactorization: codomain index ${target} lies outside the declared carrier.`)
+    }
+    if (!seen.has(target)) {
+      seen.set(target, imageIndices.length)
+      imageIndices.push(target)
+      const element = arrow.to.elements[target]
+      if (element === undefined) {
+        throw new Error('finsetImageFactorization: codomain element missing for encountered image index.')
+      }
+      imageElements.push(element)
+    }
+  }
+
+  const image = makeFinSetObj(imageElements)
+  const epiMap = arrow.map.map((target) => {
+    const position = seen.get(target!)
+    if (position === undefined) {
+      throw new Error('finsetImageFactorization: internal bookkeeping failed to locate an image position.')
+    }
+    return position
+  })
+  const epi: FinSetMor = { from: arrow.from, to: image, map: epiMap }
+  const mono: FinSetMor = { from: image, to: arrow.to, map: imageIndices }
+
+  return { arrow, image, epi, mono }
+}
+
+export const finsetFactorImageThroughMonomorphism = (
+  canonical: FinSetImageFactorization,
+  candidate: FinSetMor,
+): FinSetMor => {
+  if (candidate.to !== canonical.arrow.to) {
+    throw new Error('finsetFactorImageThroughMonomorphism: monomorphism codomain must match the target of the arrow.')
+  }
+
+  assertMonomorphism(candidate, 'finsetFactorImageThroughMonomorphism')
+
+  const membership = new Map<number, number>()
+  candidate.map.forEach((codomainIndex, domainIndex) => {
+    if (!membership.has(codomainIndex)) {
+      membership.set(codomainIndex, domainIndex)
+    }
+  })
+
+  const mediatorMap = canonical.mono.map.map((codomainIndex) => {
+    const position = membership.get(codomainIndex)
+    if (position === undefined) {
+      throw new Error(
+        `finsetFactorImageThroughMonomorphism: candidate monomorphism omits the canonical image element ${codomainIndex}.`,
+      )
+    }
+    return position
+  })
+
+  const mediator: FinSetMor = { from: canonical.image, to: candidate.from, map: mediatorMap }
+
+  const recomposed = FinSet.compose(candidate, mediator)
+  if (!equalFinSetMor(recomposed, canonical.mono)) {
+    throw new Error(
+      'finsetFactorImageThroughMonomorphism: reconstructed mediator does not reproduce the canonical inclusion.',
+    )
+  }
+
+  return mediator
+}
+
+export interface FinSetImageComparison {
+  readonly forward: FinSetMor
+  readonly backward: FinSetMor
+}
+
+export const finsetImageComparison = (
+  left: FinSetImageFactorization,
+  right: FinSetImageFactorization,
+): FinSetImageComparison => {
+  const leftComposite = FinSet.compose(left.mono, left.epi)
+  if (!equalFinSetMor(leftComposite, left.arrow)) {
+    throw new Error('finsetImageComparison: left factorization does not reproduce the original arrow.')
+  }
+
+  const rightComposite = FinSet.compose(right.mono, right.epi)
+  if (!equalFinSetMor(rightComposite, right.arrow)) {
+    throw new Error('finsetImageComparison: right factorization does not reproduce the original arrow.')
+  }
+
+  if (!equalFinSetMor(left.arrow, right.arrow)) {
+    throw new Error('finsetImageComparison: factorizations must target the same arrow.')
+  }
+
+  if (left.epi.from !== left.arrow.from || right.epi.from !== right.arrow.from) {
+    throw new Error('finsetImageComparison: epimorphism domains must coincide with the arrow source.')
+  }
+
+  if (left.epi.to !== left.image || right.epi.to !== right.image) {
+    throw new Error('finsetImageComparison: epimorphism codomains must match their recorded image objects.')
+  }
+
+  if (left.mono.from !== left.image || right.mono.from !== right.image) {
+    throw new Error('finsetImageComparison: monomorphism domains must match their recorded image objects.')
+  }
+
+  assertEpimorphism(left.epi, 'finsetImageComparison (left epi)')
+  assertEpimorphism(right.epi, 'finsetImageComparison (right epi)')
+  assertMonomorphism(left.mono, 'finsetImageComparison (left mono)')
+  assertMonomorphism(right.mono, 'finsetImageComparison (right mono)')
+
+  const forward = finsetFactorImageThroughMonomorphism(left, right.mono)
+  const backward = finsetFactorImageThroughMonomorphism(right, left.mono)
+
+  const rightThenForward = FinSet.compose(right.mono, forward)
+  if (!equalFinSetMor(rightThenForward, left.mono)) {
+    throw new Error('finsetImageComparison: forward mediator does not transport the canonical inclusion.')
+  }
+
+  const leftThenBackward = FinSet.compose(left.mono, backward)
+  if (!equalFinSetMor(leftThenBackward, right.mono)) {
+    throw new Error('finsetImageComparison: backward mediator does not transport the alternate inclusion.')
+  }
+
+  const backwardThenForward = FinSet.compose(backward, forward)
+  if (!equalFinSetMor(backwardThenForward, FinSet.id(left.image))) {
+    throw new Error('finsetImageComparison: mediators are not inverse on the canonical image.')
+  }
+
+  const forwardThenBackward = FinSet.compose(forward, backward)
+  if (!equalFinSetMor(forwardThenBackward, FinSet.id(right.image))) {
+    throw new Error('finsetImageComparison: mediators are not inverse on the alternate image.')
+  }
+
+  return { forward, backward }
+}
+
+export const finsetSubobjectLeq = (
+  lower: FinSetMor,
+  upper: FinSetMor,
+): FinSetSubobjectLeqResult => {
+  if (lower.to !== upper.to) {
+    return {
+      holds: false,
+      reason: 'finsetSubobjectLeq: subobjects must share a codomain to compare.',
+    }
+  }
+
+  assertMonomorphism(lower, 'finsetSubobjectLeq (lower)')
+  assertMonomorphism(upper, 'finsetSubobjectLeq (upper)')
+
+  const canonical = finsetImageFactorization(lower)
+
+  try {
+    const imageMediator = finsetFactorImageThroughMonomorphism(canonical, upper)
+    const mediator = FinSet.compose(imageMediator, canonical.epi)
+
+    const recomposed = FinSet.compose(upper, mediator)
+    if (!equalFinSetMor(recomposed, lower)) {
+      return {
+        holds: false,
+        reason: 'finsetSubobjectLeq: mediator does not reconstruct the lower inclusion.',
+      }
+    }
+
+    return { holds: true, mediator }
+  } catch (error) {
+    return {
+      holds: false,
+      reason:
+        error instanceof Error
+          ? error.message
+          : 'finsetSubobjectLeq: unable to factor the lower subobject through the upper inclusion.',
+    }
+  }
+}
+
+export const finsetSubobjectPartialOrder = (
+  left: FinSetMor,
+  right: FinSetMor,
+): FinSetSubobjectPartialOrderResult => {
+  const leftLeqRight = finsetSubobjectLeq(left, right)
+  const rightLeqLeft = finsetSubobjectLeq(right, left)
+
+  if (leftLeqRight.holds && rightLeqLeft.holds) {
+    const forward = leftLeqRight.mediator
+    const backward = rightLeqLeft.mediator
+    if (!forward || !backward) {
+      throw new Error(
+        'finsetSubobjectPartialOrder: missing mediators despite successful comparisons.',
+      )
+    }
+
+    const backwardThenForward = FinSet.compose(backward, forward)
+    if (!equalFinSetMor(backwardThenForward, FinSet.id(left.from))) {
+      throw new Error(
+        'finsetSubobjectPartialOrder: mediators are not inverse on the left subobject.',
+      )
+    }
+
+    const forwardThenBackward = FinSet.compose(forward, backward)
+    if (!equalFinSetMor(forwardThenBackward, FinSet.id(right.from))) {
+      throw new Error(
+        'finsetSubobjectPartialOrder: mediators are not inverse on the right subobject.',
+      )
+    }
+
+    return {
+      leftLeqRight,
+      rightLeqLeft,
+      isomorphic: { forward, backward },
+    }
+  }
+
+  return { leftLeqRight, rightLeqLeft }
+}
+
+export const finsetIdentitySubobject = (X: FinSetObj): FinSetSubobjectWitness => ({
+  subobject: X,
+  inclusion: FinSet.id(X),
+})
+
+export const finsetZeroSubobject = (X: FinSetObj): FinSetSubobjectWitness => ({
+  subobject: initialFinSetObj,
+  inclusion: FinSet.initialArrow(X),
+})
+
+export const finsetTopSubobject = (X: FinSetObj): FinSetTopSubobjectWitness => {
+  const top = finsetIdentitySubobject(X)
+  const dominates = (candidate: FinSetMor): FinSetSubobjectLeqResult =>
+    finsetSubobjectLeq(candidate, top.inclusion)
+
+  return { top, dominates }
+}
+
+export const finsetBottomSubobject = (X: FinSetObj): FinSetBottomSubobjectWitness => {
+  const bottom = finsetZeroSubobject(X)
+  const subordinate = (candidate: FinSetMor): FinSetSubobjectLeqResult =>
+    finsetSubobjectLeq(bottom.inclusion, candidate)
+
+  return { bottom, subordinate }
+}
 
 const buildBinaryProductWitness = (A: FinSetObj, B: FinSetObj) => {
   const tuples: Array<readonly [number, number]> = []
@@ -2686,6 +3343,7 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
   CartesianClosedCategory<FinSetObj, FinSetMor> & {
     readonly terminate: (X: FinSetObj) => FinSetMor
     readonly initialArrow: (X: FinSetObj) => FinSetMor
+    readonly pushout: (f: FinSetMor, g: FinSetMor) => FinSetPushoutWitness
   } = {
   
   id: (X) => ({ from: X, to: X, map: X.elements.map((_, i) => i) }),
@@ -2777,6 +3435,85 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
       map: Array.from({ length: n }, (_, y) => reps.get(find(y))!) 
     }
     return { obj: Q, coequalize: q }
+  },
+
+  pushout: (f, g) => {
+    if (f.from !== g.from) {
+      throw new Error('FinSet.pushout: cospan legs must share their domain')
+    }
+
+    const domainSize = f.from.elements.length
+    if (f.map.length !== domainSize || g.map.length !== domainSize) {
+      throw new Error('FinSet.pushout: cospan maps must enumerate every domain element')
+    }
+
+    const { obj: coproduct, injections } = FinSet.coproduct([f.to, g.to])
+    if (injections.length !== 2) {
+      throw new Error('FinSet.pushout: coproduct over the cospan codomains must have two injections')
+    }
+
+    const [inLeft, inRight] = injections as readonly [FinSetMor, FinSetMor]
+
+    const total = coproduct.elements.length
+    const parent = Array.from({ length: total }, (_, i) => i)
+
+    const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x]!)))
+    const unite = (a: number, b: number) => {
+      const rootA = find(a)
+      const rootB = find(b)
+      if (rootA !== rootB) parent[rootB] = rootA
+    }
+
+    for (let idx = 0; idx < domainSize; idx++) {
+      const leftIndex = f.map[idx]
+      const rightIndex = g.map[idx]
+      if (leftIndex === undefined || rightIndex === undefined) {
+        throw new Error('FinSet.pushout: cospan maps must be total on their domain indices')
+      }
+      if (leftIndex < 0 || leftIndex >= f.to.elements.length) {
+        throw new Error('FinSet.pushout: domain leg references an element outside its codomain')
+      }
+      if (rightIndex < 0 || rightIndex >= g.to.elements.length) {
+        throw new Error('FinSet.pushout: anchor leg references an element outside its codomain')
+      }
+
+      const leftImage = inLeft.map[leftIndex]
+      const rightImage = inRight.map[rightIndex]
+      if (leftImage === undefined || rightImage === undefined) {
+        throw new Error('FinSet.pushout: coproduct injections must enumerate their domain elements')
+      }
+
+      unite(leftImage, rightImage)
+    }
+
+    const representative = new Map<number, number>()
+    const quotientMap = Array.from({ length: total }, (_, index) => {
+      const root = find(index)
+      let cls = representative.get(root)
+      if (cls === undefined) {
+        const newIndex = representative.size
+        representative.set(root, newIndex)
+        cls = newIndex
+      }
+      return cls
+    })
+
+    const apex: FinSetObj = { elements: Array.from({ length: representative.size }, (_, i) => i) }
+    const quotient: FinSetMor = { from: coproduct, to: apex, map: quotientMap }
+    const fromDomain = FinSet.compose(quotient, inLeft)
+    const fromAnchor = FinSet.compose(quotient, inRight)
+
+    return {
+      apex,
+      fromDomain,
+      fromAnchor,
+      Q: apex,
+      iA: fromDomain,
+      iZ: fromAnchor,
+      coproduct,
+      coproductInjections: [inLeft, inRight],
+      quotient,
+    }
   },
 
   initialObj: initialFinSetObj,
@@ -2894,6 +3631,104 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
 }
 
 export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
+
+const { makeFinSetPullbackCalculator } = getFinSetPullbackHelpers()
+const { FinSetProductsWithTuple, FinSetCoproductsWithCotuple } = require("./finset-tools") as typeof import("./finset-tools")
+
+export const FinSetPullbacksFromEqualizer = makeFinSetPullbackCalculator()
+
+export const FinSetEqualizersFromPullbacks = CategoryLimits.makeEqualizersFromPullbacks({
+  base: FinSet,
+  terminal: { terminalObj: FinSet.terminalObj },
+  products: FinSetProductsWithTuple,
+  pullbacks: FinSetPullbacksFromEqualizer,
+})
+
+export const FinSetFinitelyCocomplete: CategoryLimits.FinitelyCocompleteCategory<FinSetObj, FinSetMor> = {
+  ...FinSet,
+  tuple: FinSetProductsWithTuple.tuple,
+  cotuple: FinSetCoproductsWithCotuple.cotuple,
+}
+
+export const FinSetSubobjectClassifier: SubobjectClassifierCategory<FinSetObj, FinSetMor> = {
+  ...FinSet,
+  truthValues: FinSetTruthValues,
+  truthArrow: FinSetTruthArrow,
+  characteristic: finsetCharacteristic,
+  subobjectFromCharacteristic: finsetSubobjectFromCharacteristic,
+}
+
+export const finsetLimitFromProductsAndEqualizers = <I, A>(
+  diagram: CategoryLimits.FiniteDiagram<I, A, FinSetObj, FinSetMor>,
+): CategoryLimits.LimitFromProductsAndEqualizersWitness<I, FinSetObj, FinSetMor> =>
+  CategoryLimits.limitFromProductsAndEqualizers({
+    base: FinSet,
+    products: FinSetProductsWithTuple,
+    diagram,
+    factorEqualizer: ({ left, right, inclusion, fork }) => {
+      try {
+        const mediator = finsetFactorThroughEqualizer(left, right, inclusion, fork)
+        return { factored: true, mediator }
+      } catch (error) {
+        return {
+          factored: false,
+          reason:
+            error instanceof Error
+              ? error.message
+              : 'finsetLimitFromProductsAndEqualizers: unable to factor cone through the equalizer.',
+        }
+      }
+    },
+  })
+
+const eqFinSetMor = (left: FinSetMor, right: FinSetMor): boolean => {
+  if (FinSet.equalMor) {
+    const verdict = FinSet.equalMor(left, right)
+    if (typeof verdict === 'boolean') {
+      return verdict
+    }
+  }
+  if (left.from !== right.from || left.to !== right.to) {
+    return false
+  }
+  if (left.map.length !== right.map.length) {
+    return false
+  }
+  return left.map.every((value, index) => value === right.map[index])
+}
+
+export const finsetFiniteColimitFromCoproductsAndCoequalizers = <I, A>(
+  diagram: CategoryLimits.FiniteDiagram<I, A, FinSetObj, FinSetMor>,
+): CategoryLimits.FiniteColimitFromCoproductsAndCoequalizersWitness<I, FinSetObj, FinSetMor> =>
+  CategoryLimits.finiteColimitFromCoproductsAndCoequalizers({
+    base: FinSetFinitelyCocomplete,
+    diagram,
+    factorCoequalizer: ({ left, right, coequalizer, fork }) => {
+      const viaLeft = FinSet.compose(fork, left)
+      const viaRight = FinSet.compose(fork, right)
+
+      if (!eqFinSetMor(viaLeft, viaRight)) {
+        return {
+          factored: false,
+          reason:
+            'finsetFiniteColimitFromCoproductsAndCoequalizers: supplied cocone does not coequalize the canonical parallel pair.',
+        }
+      }
+
+      try {
+        const mediator = finsetFactorThroughQuotient(coequalizer, fork)
+        return { factored: true, mediator }
+      } catch (error) {
+        return {
+          factored: false,
+          reason:
+            error instanceof Error
+              ? error.message
+              : 'finsetFiniteColimitFromCoproductsAndCoequalizers: unable to construct mediating arrow.',
+        }
+      }
+    },
+  })
 
 /** FinSet bijection helper */
 export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): FinSetMor => {

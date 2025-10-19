@@ -1,4 +1,6 @@
 import type { FiniteCategory as FiniteCategoryT } from "../finite-cat"
+import type { PullbackCalculator, PullbackData } from "../pullback"
+import type { PushoutData } from "../pushout"
 import { isIso } from "../kinds/inverses"
 import { DiagramClosure } from "./diagram-closure"
 import type { SmallCategory } from "../subcategory"
@@ -28,6 +30,24 @@ import { IndexedFamilies } from "./indexed-families"
 import type { Category } from "./category"
 
 export namespace CategoryLimits {
+  export interface HasSmallProducts<O, M> {
+    smallProduct: <I>(
+      index: IndexedFamilies.SmallIndex<I>,
+      family: IndexedFamilies.SmallFamily<I, O>,
+    ) => { obj: O; projections: IndexedFamilies.SmallFamily<I, M> }
+  }
+
+  export interface HasSmallEqualizers<O, M> {
+    smallEqualizer: <I>(
+      index: IndexedFamilies.SmallIndex<I>,
+      parallel: IndexedFamilies.SmallFamily<I, M>,
+    ) => { obj: O; equalize: IndexedFamilies.SmallFamily<I, M> }
+  }
+
+  export interface HasSmallProductMediators<O, M> extends HasProductMediators<O, M> {
+    smallProduct: HasSmallProducts<O, M>["smallProduct"]
+  }
+
   /** Category with finite coproducts */
   export interface HasFiniteCoproducts<O, M> {
     coproduct: (xs: ReadonlyArray<O>) => { obj: O; injections: ReadonlyArray<M> }
@@ -36,12 +56,65 @@ export namespace CategoryLimits {
   /** Category with finite products */
   export interface HasFiniteProducts<O, M> {
     product: (xs: ReadonlyArray<O>) => { obj: O; projections: ReadonlyArray<M> }
+    smallProduct?: HasSmallProducts<O, M>['smallProduct']
   }
 
   /** Category with equalizers */
   export interface HasEqualizers<O, M> {
     // equalizer of f,g : X -> Y returns E --e--> X s.t. f∘e = g∘e and universal
     equalizer: (f: M, g: M) => { obj: O; equalize: M }
+    smallEqualizer?: HasSmallEqualizers<O, M>['smallEqualizer']
+  }
+
+  export interface EqualizerFactorizationResult<M> {
+    readonly factored: boolean
+    readonly mediator?: M
+    readonly reason?: string
+  }
+
+  export type EqualizerFactorizer<M> = (input: {
+    readonly left: M
+    readonly right: M
+    readonly inclusion: M
+    readonly fork: M
+  }) => EqualizerFactorizationResult<M>
+
+  export interface CoequalizerFactorizationResult<M> {
+    readonly factored: boolean
+    readonly mediator?: M
+    readonly reason?: string
+  }
+
+  export type CoequalizerFactorizer<M> = (input: {
+    readonly left: M
+    readonly right: M
+    readonly coequalizer: M
+    readonly fork: M
+  }) => CoequalizerFactorizationResult<M>
+
+  export interface EqualizerFromPullbacksInput<O, M> {
+    readonly base: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly terminal: HasTerminal<O, M>
+    readonly products: HasProductMediators<O, M>
+    readonly pullbacks: PullbackCalculator<O, M>
+    readonly eq?: (left: M, right: M) => boolean
+  }
+
+  export interface EqualizerFromPullbackSpanWitness<O, M> {
+    readonly left: M
+    readonly right: M
+    readonly product: { readonly obj: O; readonly projections: readonly [M, M] }
+    readonly diagonal: M
+    readonly pairing: M
+    readonly pullback: PullbackData<O, M>
+    readonly inclusion: M
+    readonly anchor: M
+  }
+
+  export interface EqualizerFromPullbacksWitness<O, M> {
+    readonly equalizer: HasEqualizers<O, M>["equalizer"]
+    readonly factorEqualizer: EqualizerFactorizer<M>
+    readonly spanWitness: (left: M, right: M) => EqualizerFromPullbackSpanWitness<O, M>
   }
 
   /** Category with coequalizers */
@@ -58,6 +131,34 @@ export namespace CategoryLimits {
   /** Category with terminal object */
   export interface HasTerminal<O, M> {
     terminalObj: O // ∏ over ∅
+  }
+
+  /** Category equipped with a subobject classifier */
+  export interface SubobjectClassifierCategory<O, M>
+    extends Category<O, M>,
+      ArrowFamilies.HasDomCod<O, M>,
+      HasTerminal<O, M>,
+      HasInitial<O, M> {
+    readonly terminate: (X: O) => M
+    readonly truthValues: O
+    readonly truthArrow: M
+    readonly initialArrow: (X: O) => M
+    characteristic: (monomorphism: M) => M
+    subobjectFromCharacteristic: (
+      characteristic: M,
+    ) => { readonly subobject: O; readonly inclusion: M }
+  }
+
+  /** Category with finite colimits */
+  export interface FinitelyCocompleteCategory<O, M>
+    extends Category<O, M>,
+      ArrowFamilies.HasDomCod<O, M>,
+      HasInitial<O, M>,
+      HasProductMediators<O, M>,
+      HasCoproductMediators<O, M>,
+      HasCoequalizers<O, M> {
+    readonly pushout: (left: M, right: M) => PushoutData<O, M>
+    readonly initialArrow: (target: O) => M
   }
 
   /** Compute finite coproduct of a family with injection family */
@@ -80,6 +181,18 @@ export namespace CategoryLimits {
       fam: (i: I) => O,
       C: HasFiniteProducts<O, M>
     ) => {
+      if (
+        "smallProduct" in C &&
+        typeof C.smallProduct === "function"
+      ) {
+        const small = (C as HasSmallProducts<O, M>).smallProduct(
+          IndexedFamilies.finiteIndex(Ifin.carrier),
+          fam,
+        )
+        const projections = Ifin.carrier.map((i) => small.projections(i))
+        const projFam = (i: I) => projections[Ifin.carrier.indexOf(i)]!
+        return { product: small.obj, projections: projFam }
+      }
       const objs = Ifin.carrier.map((i) => fam(i))
       const { obj, projections } = C.product(objs)
       const projFam = (i: I) => projections[Ifin.carrier.indexOf(i)]!
@@ -199,6 +312,14 @@ export namespace CategoryLimits {
 
   export interface Diagram<I, M> {
     readonly arrows: ReadonlyArray<DiagramArrow<I, M>>
+  }
+
+  export interface SmallDiagram<I, A, O, M> {
+    readonly shape: SmallCategory<I, A>
+    readonly objectIndex: IndexedFamilies.SmallIndex<I>
+    readonly onObjects: IndexedFamilies.SmallFamily<I, O>
+    readonly arrowIndex: IndexedFamilies.SmallIndex<A>
+    readonly onMorphisms: IndexedFamilies.SmallFamily<A, M>
   }
 
   export interface FiniteDiagram<I, A, O, M> {
@@ -399,16 +520,33 @@ export namespace CategoryLimits {
     return { shape, onObjects, onMorphisms }
   }
 
-  type DiagramLike<I, O, M> = Diagram<I, M> | FiniteDiagram<I, any, O, M>
+  type DiagramLike<I, O, M> = Diagram<I, M> | FiniteDiagram<I, any, O, M> | SmallDiagram<I, any, O, M>
 
   const isFiniteDiagram = <I, O, M>(value: DiagramLike<I, O, M>): value is FiniteDiagram<I, any, O, M> =>
     typeof (value as FiniteDiagram<I, any, O, M>).onMorphisms === 'function' &&
     typeof (value as FiniteDiagram<I, any, O, M>).onObjects === 'function' &&
-    typeof (value as FiniteDiagram<I, any, O, M>).shape === 'object'
+    typeof (value as FiniteDiagram<I, any, O, M>).shape === 'object' &&
+    Array.isArray((value as FiniteDiagram<I, any, O, M>).shape.objects)
+
+  const isSmallDiagram = <I, A, O, M>(value: DiagramLike<I, O, M>): value is SmallDiagram<I, A, O, M> =>
+    typeof (value as SmallDiagram<I, A, O, M>).onMorphisms === 'function' &&
+    typeof (value as SmallDiagram<I, A, O, M>).onObjects === 'function' &&
+    typeof (value as SmallDiagram<I, A, O, M>).shape === 'object' &&
+    value !== undefined &&
+    (value as SmallDiagram<I, A, O, M>).objectIndex !== undefined &&
+    (value as SmallDiagram<I, A, O, M>).arrowIndex !== undefined
 
   const enumerateDiagramArrows = <I, O, M>(diagram: DiagramLike<I, O, M>): ReadonlyArray<DiagramArrow<I, M>> => {
     if (isFiniteDiagram(diagram)) {
       return diagram.shape.arrows.map((arrow) => ({
+        source: diagram.shape.src(arrow),
+        target: diagram.shape.dst(arrow),
+        morphism: diagram.onMorphisms(arrow),
+      }))
+    }
+    if (isSmallDiagram(diagram)) {
+      const arrows = IndexedFamilies.materialiseSmallIndex(diagram.arrowIndex)
+      return arrows.map((arrow) => ({
         source: diagram.shape.src(arrow),
         target: diagram.shape.dst(arrow),
         morphism: diagram.onMorphisms(arrow),
@@ -814,6 +952,725 @@ export namespace CategoryLimits {
     readonly factor: (candidate: Cone<I, O, M>) => { holds: boolean; mediator?: M; reason?: string }
     readonly coneCategory: ConeCategoryResult<I, O, M>
     readonly terminality: ConeTerminalityWitness<I, O, M>
+  }
+
+  export interface SmallLimitFromProductsAndEqualizersInput<I, A, O, M> {
+    readonly base: Category<O, M> &
+      ArrowFamilies.HasDomCod<O, M> &
+      HasSmallProducts<O, M> &
+      HasSmallEqualizers<O, M>
+    readonly products: HasSmallProductMediators<O, M>
+    readonly diagram: SmallDiagram<I, A, O, M>
+    readonly eq?: (a: M, b: M) => boolean
+    readonly factorEqualizer: EqualizerFactorizer<M>
+    readonly guard?: { readonly objects?: number; readonly arrows?: number }
+  }
+
+  export interface SmallLimitFromProductsAndEqualizersWitness<I, O, M> {
+    readonly product: { readonly obj: O; readonly projections: IndexedFamilies.SmallFamily<I, M> }
+    readonly pair: readonly [M, M]
+    readonly equalizer: { readonly obj: O; readonly equalize: M }
+    readonly cone: Cone<I, O, M>
+    readonly factor: (candidate: Cone<I, O, M>) => EqualizerFactorizationResult<M>
+  }
+
+  export const smallLimitFromProductsAndEqualizers = <I, A, O, M>(
+    input: SmallLimitFromProductsAndEqualizersInput<I, A, O, M>,
+  ): SmallLimitFromProductsAndEqualizersWitness<I, O, M> => {
+    const { base, products, diagram, factorEqualizer } = input
+    const eq = input.eq ?? (base as { eq?: (a: M, b: M) => boolean }).eq
+
+    if (!eq) {
+      throw new Error(
+        'CategoryLimits.smallLimitFromProductsAndEqualizers: base category must supply morphism equality',
+      )
+    }
+
+    const guard = input.guard ?? {}
+    const objectCarrier = IndexedFamilies.materialiseSmallIndex(
+      diagram.objectIndex,
+      guard.objects !== undefined ? { maxSize: guard.objects } : {},
+    )
+
+    if (objectCarrier.length === 0) {
+      throw new Error(
+        'CategoryLimits.smallLimitFromProductsAndEqualizers: diagram must contain at least one object',
+      )
+    }
+
+    const arrowCarrier = IndexedFamilies.materialiseSmallIndex(
+      diagram.arrowIndex,
+      guard.arrows !== undefined ? { maxSize: guard.arrows } : {},
+    )
+
+    const objectFamily = diagram.onObjects
+
+    const smallProduct = products.smallProduct
+    if (!smallProduct) {
+      throw new Error(
+        'CategoryLimits.smallLimitFromProductsAndEqualizers: product mediators must provide smallProduct witness',
+      )
+    }
+    const productWitness = smallProduct(diagram.objectIndex, objectFamily)
+
+    const getProjection = (index: I): M => productWitness.projections(index)
+
+    const arrowTargetsFamily: IndexedFamilies.SmallFamily<A, O> = (arrow) => {
+      const target = diagram.shape.dst(arrow)
+      return diagram.onObjects(target)
+    }
+
+    const arrowProductWitness = smallProduct(diagram.arrowIndex, arrowTargetsFamily)
+
+    const arrowSourceLegs: M[] = arrowCarrier.map((arrow) => {
+      const sourceIndex = diagram.shape.src(arrow)
+      const morphism = diagram.onMorphisms(arrow)
+      return base.compose(morphism, getProjection(sourceIndex))
+    })
+
+    const arrowTargetLegs: M[] = arrowCarrier.map((arrow) => {
+      const targetIndex = diagram.shape.dst(arrow)
+      return getProjection(targetIndex)
+    })
+
+    const deltaSource = products.tuple(productWitness.obj, arrowSourceLegs, arrowProductWitness.obj)
+    const deltaTarget = products.tuple(productWitness.obj, arrowTargetLegs, arrowProductWitness.obj)
+
+    const equalizerIndex = IndexedFamilies.finiteIndex([0 as const, 1 as const])
+    const equalizerWitness = base.smallEqualizer(equalizerIndex, (position) =>
+      position === 0 ? deltaSource : deltaTarget,
+    )
+
+    const inclusion = equalizerWitness.equalize(equalizerIndex.carrier[0]!)
+
+    const limitLegs: IndexedFamilies.SmallFamily<I, M> = (index) =>
+      base.compose(getProjection(index), inclusion)
+
+    const limitCone: Cone<I, O, M> = { tip: equalizerWitness.obj, legs: limitLegs, diagram }
+
+    const validateCone = (candidate: Cone<I, O, M>): ConeValidationResult => {
+      if (candidate.diagram !== diagram) {
+        return {
+          valid: false,
+          reason: 'CategoryLimits.smallLimitFromProductsAndEqualizers: candidate references a different diagram',
+        }
+      }
+
+      for (const index of objectCarrier) {
+        const leg = candidate.legs(index)
+        if (base.dom(leg) !== candidate.tip) {
+          return {
+            valid: false,
+            reason: `CategoryLimits.smallLimitFromProductsAndEqualizers: leg ${String(
+              index,
+            )} has incorrect domain`,
+          }
+        }
+        const expectedCodomain = diagram.onObjects(index)
+        if (base.cod(leg) !== expectedCodomain) {
+          return {
+            valid: false,
+            reason: `CategoryLimits.smallLimitFromProductsAndEqualizers: leg ${String(
+              index,
+            )} has incorrect codomain`,
+          }
+        }
+      }
+
+      for (const arrow of arrowCarrier) {
+        const source = diagram.shape.src(arrow)
+        const target = diagram.shape.dst(arrow)
+        const morphism = diagram.onMorphisms(arrow)
+        const transported = base.compose(morphism, candidate.legs(source))
+        const expected = candidate.legs(target)
+        if (!eq(transported, expected)) {
+          return {
+            valid: false,
+            reason: `CategoryLimits.smallLimitFromProductsAndEqualizers: leg ${String(
+              target,
+            )} does not commute with arrow ${String(source)}→${String(target)}`,
+          }
+        }
+      }
+
+      return { valid: true }
+    }
+
+    const factor = (candidate: Cone<I, O, M>): EqualizerFactorizationResult<M> => {
+      const validation = validateCone(candidate)
+      if (!validation.valid) {
+        return validation.reason
+          ? { factored: false, reason: validation.reason }
+          : { factored: false }
+      }
+
+      const legsArr = objectCarrier.map((index) => candidate.legs(index))
+      const fork = products.tuple(candidate.tip, legsArr, productWitness.obj)
+
+      const report = factorEqualizer({
+        left: deltaSource,
+        right: deltaTarget,
+        inclusion,
+        fork,
+      })
+
+      if (!report.factored || !report.mediator) {
+        return {
+          factored: false,
+          reason:
+            report.reason ??
+            'CategoryLimits.smallLimitFromProductsAndEqualizers: equalizer factorization failed',
+        }
+      }
+
+      if (base.dom(report.mediator) !== candidate.tip || base.cod(report.mediator) !== limitCone.tip) {
+        return {
+          factored: false,
+          reason:
+            'CategoryLimits.smallLimitFromProductsAndEqualizers: mediator shape does not match the cones',
+        }
+      }
+
+      for (const index of objectCarrier) {
+        const expected = candidate.legs(index)
+        const projection = getProjection(index)
+        const recomposed = base.compose(projection, report.mediator)
+        if (!eq(recomposed, expected)) {
+          return {
+            factored: false,
+            reason: `CategoryLimits.smallLimitFromProductsAndEqualizers: mediator does not reproduce leg ${String(
+              index,
+            )}`,
+          }
+        }
+      }
+
+      return { factored: true, mediator: report.mediator }
+    }
+
+    const projections: IndexedFamilies.SmallFamily<I, M> = (index) => getProjection(index)
+
+    return {
+      product: { obj: productWitness.obj, projections },
+      pair: [deltaSource, deltaTarget],
+      equalizer: { obj: equalizerWitness.obj, equalize: inclusion },
+      cone: limitCone,
+      factor,
+    }
+  }
+
+  export interface LimitFromProductsAndEqualizersInput<I, A, O, M> {
+    readonly base: Category<O, M> &
+      ArrowFamilies.HasDomCod<O, M> &
+      HasFiniteProducts<O, M> &
+      HasEqualizers<O, M>
+    readonly products: HasProductMediators<O, M>
+    readonly diagram: FiniteDiagram<I, A, O, M>
+    readonly eq?: (a: M, b: M) => boolean
+    readonly factorEqualizer: EqualizerFactorizer<M>
+  }
+
+  export interface LimitFromProductsAndEqualizersWitness<I, O, M> {
+    readonly product: { readonly obj: O; readonly projections: IndexedFamilies.Family<I, M> }
+    readonly pair: readonly [M, M]
+    readonly equalizer: { readonly obj: O; readonly equalize: M }
+    readonly cone: Cone<I, O, M>
+    readonly factor: (candidate: Cone<I, O, M>) => EqualizerFactorizationResult<M>
+  }
+
+  export const limitFromProductsAndEqualizers = <I, A, O, M>(
+    input: LimitFromProductsAndEqualizersInput<I, A, O, M>,
+  ): LimitFromProductsAndEqualizersWitness<I, O, M> => {
+    const { base, products, diagram, factorEqualizer } = input
+    const eq = input.eq ?? base.eq
+
+    if (!eq) {
+      throw new Error(
+        'CategoryLimits.limitFromProductsAndEqualizers: base category must supply morphism equality',
+      )
+    }
+
+    const objectCarrier = diagram.shape.objects.slice()
+    if (objectCarrier.length === 0) {
+      throw new Error(
+        'CategoryLimits.limitFromProductsAndEqualizers: diagram must contain at least one object',
+      )
+    }
+
+    const Ifin = IndexedFamilies.finiteIndex(objectCarrier)
+    const projectionCache = new Map<I, M>()
+    const legCache = new Map<I, M>()
+
+    const objectsFamily: IndexedFamilies.Family<I, O> = (index) => diagram.onObjects(index)
+
+    const factors = objectCarrier.map((index) => diagram.onObjects(index))
+    const productWitness = products.product(factors)
+
+    objectCarrier.forEach((index, idx) => {
+      const projection = productWitness.projections[idx]
+      if (!projection) {
+        throw new Error(
+          'CategoryLimits.limitFromProductsAndEqualizers: missing projection for diagram object',
+        )
+      }
+      projectionCache.set(index, projection)
+    })
+
+    const getProjection = (index: I): M => {
+      const projection = projectionCache.get(index)
+      if (!projection) {
+        throw new Error(
+          `CategoryLimits.limitFromProductsAndEqualizers: no projection available for ${String(index)}`,
+        )
+      }
+      return projection
+    }
+
+    const arrows = diagram.shape.arrows.slice()
+    const arrowTargets = arrows.map((arrow) => diagram.onObjects(diagram.shape.dst(arrow)))
+    const arrowProductWitness = products.product(arrowTargets)
+
+    const arrowSourceLegs = arrows.map((arrow) => {
+      const sourceIndex = diagram.shape.src(arrow)
+      const morphism = diagram.onMorphisms(arrow)
+      return base.compose(morphism, getProjection(sourceIndex))
+    })
+
+    const arrowTargetLegs = arrows.map((arrow) => {
+      const targetIndex = diagram.shape.dst(arrow)
+      return getProjection(targetIndex)
+    })
+
+    const deltaSource = products.tuple(productWitness.obj, arrowSourceLegs, arrowProductWitness.obj)
+    const deltaTarget = products.tuple(productWitness.obj, arrowTargetLegs, arrowProductWitness.obj)
+    const equalizerWitness = base.equalizer(deltaSource, deltaTarget)
+
+    objectCarrier.forEach((index) => {
+      const leg = base.compose(getProjection(index), equalizerWitness.equalize)
+      legCache.set(index, leg)
+    })
+
+    const limitLegs: IndexedFamilies.Family<I, M> = (index) => {
+      const leg = legCache.get(index)
+      if (!leg) {
+        throw new Error(
+          `CategoryLimits.limitFromProductsAndEqualizers: limit leg unavailable for ${String(index)}`,
+        )
+      }
+      return leg
+    }
+
+    const limitCone: Cone<I, O, M> = { tip: equalizerWitness.obj, legs: limitLegs, diagram }
+
+    const factor = (candidate: Cone<I, O, M>): EqualizerFactorizationResult<M> => {
+      const validation = validateConeAgainstDiagram({
+        category: base,
+        eq,
+        indices: Ifin,
+        onObjects: objectsFamily,
+        cone: candidate,
+      })
+
+      if (!validation.valid) {
+        return validation.reason
+          ? { factored: false, reason: validation.reason }
+          : { factored: false }
+      }
+
+      const legsArr = Ifin.carrier.map((index) => candidate.legs(index))
+      const fork = products.tuple(candidate.tip, legsArr, productWitness.obj)
+
+      const report = factorEqualizer({
+        left: deltaSource,
+        right: deltaTarget,
+        inclusion: equalizerWitness.equalize,
+        fork,
+      })
+
+      if (!report.factored || !report.mediator) {
+        return {
+          factored: false,
+          reason:
+            report.reason ??
+            'CategoryLimits.limitFromProductsAndEqualizers: equalizer factorization failed',
+        }
+      }
+
+      if (base.dom(report.mediator) !== candidate.tip || base.cod(report.mediator) !== limitCone.tip) {
+        return {
+          factored: false,
+          reason:
+            'CategoryLimits.limitFromProductsAndEqualizers: mediator shape does not match the cones',
+        }
+      }
+
+      for (const index of objectCarrier) {
+        const expected = candidate.legs(index)
+        const projection = getProjection(index)
+        const recomposed = base.compose(projection, report.mediator)
+        if (!eq(recomposed, expected)) {
+          return {
+            factored: false,
+            reason: `CategoryLimits.limitFromProductsAndEqualizers: mediator does not reproduce leg ${String(
+              index,
+            )}`,
+          }
+        }
+      }
+
+      return { factored: true, mediator: report.mediator }
+    }
+
+    const projections: IndexedFamilies.Family<I, M> = (index) => getProjection(index)
+
+    return {
+      product: { obj: productWitness.obj, projections },
+      pair: [deltaSource, deltaTarget],
+      equalizer: { obj: equalizerWitness.obj, equalize: equalizerWitness.equalize },
+      cone: limitCone,
+      factor,
+    }
+  }
+
+  export interface FiniteColimitFromCoproductsAndCoequalizersInput<I, A, O, M> {
+    readonly base: FinitelyCocompleteCategory<O, M>
+    readonly diagram: FiniteDiagram<I, A, O, M>
+    readonly eq?: (a: M, b: M) => boolean
+    readonly factorCoequalizer: CoequalizerFactorizer<M>
+  }
+
+  export interface FiniteColimitFromCoproductsAndCoequalizersWitness<I, O, M> {
+    readonly coproduct: { readonly obj: O; readonly injections: IndexedFamilies.Family<I, M> }
+    readonly pair: readonly [M, M]
+    readonly coequalizer: { readonly obj: O; readonly coequalize: M }
+    readonly cocone: Cocone<I, O, M>
+    readonly factor: (candidate: Cocone<I, O, M>) => CoequalizerFactorizationResult<M>
+  }
+
+  export const finiteColimitFromCoproductsAndCoequalizers = <I, A, O, M>(
+    input: FiniteColimitFromCoproductsAndCoequalizersInput<I, A, O, M>,
+  ): FiniteColimitFromCoproductsAndCoequalizersWitness<I, O, M> => {
+    const { base, diagram, factorCoequalizer } = input
+    const eq = input.eq ?? base.eq
+
+    if (!eq) {
+      throw new Error(
+        'CategoryLimits.finiteColimitFromCoproductsAndCoequalizers: base category must supply morphism equality',
+      )
+    }
+
+    const objectCarrier = diagram.shape.objects.slice()
+    const Ifin = IndexedFamilies.finiteIndex(objectCarrier)
+
+    const objectFamily: IndexedFamilies.Family<I, O> = (index) => diagram.onObjects(index)
+
+    const objectCoproductWitness =
+      objectCarrier.length === 0
+        ? ({ obj: base.initialObj, injections: [] } as {
+            readonly obj: O
+            readonly injections: ReadonlyArray<M>
+          })
+        : base.coproduct(objectCarrier.map((index) => diagram.onObjects(index)))
+
+    const injectionCache = new Map<I, M>()
+    objectCarrier.forEach((index, position) => {
+      const injection = objectCoproductWitness.injections[position]
+      if (!injection) {
+        throw new Error(
+          'CategoryLimits.finiteColimitFromCoproductsAndCoequalizers: missing injection for diagram object',
+        )
+      }
+      injectionCache.set(index, injection)
+    })
+
+    const getInjection = (index: I): M => {
+      const injection = injectionCache.get(index)
+      if (!injection) {
+        throw new Error(
+          `CategoryLimits.finiteColimitFromCoproductsAndCoequalizers: no injection available for ${String(index)}`,
+        )
+      }
+      return injection
+    }
+
+    const arrows = diagram.shape.arrows.slice()
+    const arrowSources = arrows.map((arrow) => diagram.onObjects(diagram.shape.src(arrow)))
+    const arrowCoproduct =
+      arrows.length === 0
+        ? ({ obj: base.initialObj, injections: [] } as {
+            readonly obj: O
+            readonly injections: ReadonlyArray<M>
+          })
+        : base.coproduct(arrowSources)
+
+    const arrowLeftLegs = arrows.map((arrow) => getInjection(diagram.shape.src(arrow)))
+    const arrowRightLegs = arrows.map((arrow) => {
+      const morphism = diagram.onMorphisms(arrow)
+      const targetInjection = getInjection(diagram.shape.dst(arrow))
+      return base.compose(targetInjection, morphism)
+    })
+
+    const deltaSource = base.cotuple(arrowCoproduct.obj, arrowLeftLegs, objectCoproductWitness.obj)
+    const deltaTarget = base.cotuple(arrowCoproduct.obj, arrowRightLegs, objectCoproductWitness.obj)
+
+    const coequalizerWitness = base.coequalizer(deltaSource, deltaTarget)
+
+    const legCache = new Map<I, M>()
+    objectCarrier.forEach((index) => {
+      const injection = getInjection(index)
+      const leg = base.compose(coequalizerWitness.coequalize, injection)
+      legCache.set(index, leg)
+    })
+
+    const colimitLegs: IndexedFamilies.Family<I, M> = (index) => {
+      const leg = legCache.get(index)
+      if (!leg) {
+        throw new Error(
+          `CategoryLimits.finiteColimitFromCoproductsAndCoequalizers: colimit leg unavailable for ${String(index)}`,
+        )
+      }
+      return leg
+    }
+
+    const cocone: Cocone<I, O, M> = {
+      coTip: coequalizerWitness.obj,
+      legs: colimitLegs,
+      diagram,
+    }
+
+    const validation = validateCoconeAgainstDiagram({
+      category: base,
+      eq,
+      indices: Ifin,
+      onObjects: objectFamily,
+      cocone,
+    })
+
+    if (!validation.valid) {
+      throw new Error(
+        validation.reason
+          ? `CategoryLimits.finiteColimitFromCoproductsAndCoequalizers: canonical cocone invalid: ${validation.reason}`
+          : 'CategoryLimits.finiteColimitFromCoproductsAndCoequalizers: canonical cocone fails validation',
+      )
+    }
+
+    const factor = (candidate: Cocone<I, O, M>): CoequalizerFactorizationResult<M> => {
+      const candidateValidation = validateCoconeAgainstDiagram({
+        category: base,
+        eq,
+        indices: Ifin,
+        onObjects: objectFamily,
+        cocone: candidate,
+      })
+
+      if (!candidateValidation.valid) {
+        return candidateValidation.reason
+          ? { factored: false, reason: candidateValidation.reason }
+          : { factored: false }
+      }
+
+      const legsArr = Ifin.carrier.map((index) => candidate.legs(index))
+      const fork = base.cotuple(objectCoproductWitness.obj, legsArr, candidate.coTip)
+
+      const report = factorCoequalizer({
+        left: deltaSource,
+        right: deltaTarget,
+        coequalizer: coequalizerWitness.coequalize,
+        fork,
+      })
+
+      if (!report.factored || !report.mediator) {
+        return {
+          factored: false,
+          reason:
+            report.reason ??
+            'CategoryLimits.finiteColimitFromCoproductsAndCoequalizers: coequalizer factorization failed',
+        }
+      }
+
+      if (base.dom(report.mediator) !== cocone.coTip || base.cod(report.mediator) !== candidate.coTip) {
+        return {
+          factored: false,
+          reason:
+            'CategoryLimits.finiteColimitFromCoproductsAndCoequalizers: mediator shape does not match the cocones',
+        }
+      }
+
+      for (const index of objectCarrier) {
+        const expected = candidate.legs(index)
+        const canonical = colimitLegs(index)
+        const recomposed = base.compose(report.mediator, canonical)
+        if (!eq(recomposed, expected)) {
+          return {
+            factored: false,
+            reason: `CategoryLimits.finiteColimitFromCoproductsAndCoequalizers: mediator does not reproduce leg ${String(
+              index,
+            )}`,
+          }
+        }
+      }
+
+      return { factored: true, mediator: report.mediator }
+    }
+
+    const injections: IndexedFamilies.Family<I, M> = (index) => getInjection(index)
+
+    return {
+      coproduct: { obj: objectCoproductWitness.obj, injections },
+      pair: [deltaSource, deltaTarget],
+      coequalizer: { obj: coequalizerWitness.obj, coequalize: coequalizerWitness.coequalize },
+      cocone,
+      factor,
+    }
+  }
+
+  export const makeEqualizersFromPullbacks = <O, M extends object>(
+    input: EqualizerFromPullbacksInput<O, M>,
+  ): EqualizerFromPullbacksWitness<O, M> => {
+    const { base, terminal, products, pullbacks } = input
+    const eq = input.eq ?? base.equalMor ?? ((left: M, right: M) => Object.is(left, right))
+
+    const { terminalObj } = terminal
+    if (terminalObj === undefined) {
+      throw new Error('CategoryLimits.makeEqualizersFromPullbacks: terminal object witness is required')
+    }
+
+    const registry = new WeakMap<M, EqualizerFromPullbackSpanWitness<O, M>>()
+
+    const describe = (left: M, right: M): EqualizerFromPullbackSpanWitness<O, M> => {
+      const source = base.dom(left)
+      if (source !== base.dom(right)) {
+        throw new Error('CategoryLimits.makeEqualizersFromPullbacks: arrows must share a domain')
+      }
+
+      const target = base.cod(left)
+      if (target !== base.cod(right)) {
+        throw new Error('CategoryLimits.makeEqualizersFromPullbacks: arrows must share a codomain')
+      }
+
+      const { obj: productObj, projections } = products.product([target, target])
+      if (projections.length !== 2) {
+        throw new Error('CategoryLimits.makeEqualizersFromPullbacks: binary product must supply two projections')
+      }
+
+      const [projectionLeft, projectionRight] = projections as readonly [M, M]
+      const pairing = products.tuple(source, [left, right], productObj)
+
+      const idTarget = base.id(target)
+      const diagonal = products.tuple(target, [idTarget, idTarget], productObj)
+
+      const pullback = pullbacks.pullback(pairing, diagonal)
+      const inclusion = pullback.toDomain
+      const anchor = pullback.toAnchor
+
+      if (base.dom(inclusion) !== pullback.apex) {
+        throw new Error('CategoryLimits.makeEqualizersFromPullbacks: inclusion must originate at the pullback apex')
+      }
+      if (base.cod(inclusion) !== source) {
+        throw new Error('CategoryLimits.makeEqualizersFromPullbacks: inclusion must land in the shared domain')
+      }
+      if (base.dom(anchor) !== pullback.apex || base.cod(anchor) !== target) {
+        throw new Error('CategoryLimits.makeEqualizersFromPullbacks: anchor leg must land in the shared codomain')
+      }
+
+      const witness: EqualizerFromPullbackSpanWitness<O, M> = {
+        left,
+        right,
+        product: { obj: productObj, projections: [projectionLeft, projectionRight] },
+        diagonal,
+        pairing,
+        pullback,
+        inclusion,
+        anchor,
+      }
+
+      registry.set(inclusion, witness)
+      return witness
+    }
+
+    const equalizer = (left: M, right: M) => {
+      const witness = describe(left, right)
+      return { obj: witness.pullback.apex, equalize: witness.inclusion }
+    }
+
+    const factorEqualizer: EqualizerFactorizer<M> = ({ left, right, inclusion, fork }) => {
+      const witness = registry.get(inclusion)
+      if (!witness) {
+        return {
+          factored: false,
+          reason:
+            'CategoryLimits.makeEqualizersFromPullbacks: unrecognised inclusion; construct it via spanWitness or equalizer first.',
+        }
+      }
+
+      if (!eq(left, witness.left) || !eq(right, witness.right)) {
+        return {
+          factored: false,
+          reason: 'CategoryLimits.makeEqualizersFromPullbacks: supplied arrows differ from the registered parallel pair.',
+        }
+      }
+
+      const forkDomain = base.dom(fork)
+      const forkCodomain = base.cod(fork)
+      const expectedCodomain = base.cod(witness.inclusion)
+      if (forkCodomain !== expectedCodomain) {
+        return {
+          factored: false,
+          reason: 'CategoryLimits.makeEqualizersFromPullbacks: fork must land in the equalizer domain.',
+        }
+      }
+
+      const viaLeft = base.compose(left, fork)
+      const viaRight = base.compose(right, fork)
+      if (!eq(viaLeft, viaRight)) {
+        return {
+          factored: false,
+          reason: 'CategoryLimits.makeEqualizersFromPullbacks: fork does not equalize the parallel pair.',
+        }
+      }
+
+      const candidate: PullbackData<O, M> = { apex: forkDomain, toDomain: fork, toAnchor: viaLeft }
+
+      let mediator: M | undefined
+      try {
+        const verdict = pullbacks.factorCone(witness.pullback, candidate)
+        if (!verdict.factored) {
+          return {
+            factored: false,
+            reason:
+              verdict.reason ?? 'CategoryLimits.makeEqualizersFromPullbacks: pullback calculator could not produce a mediator.',
+          }
+        }
+        mediator = verdict.mediator
+      } catch (error) {
+        return {
+          factored: false,
+          reason:
+            error instanceof Error
+              ? error.message
+              : 'CategoryLimits.makeEqualizersFromPullbacks: pullback calculator threw during factorisation.',
+        }
+      }
+
+      if (!mediator) {
+        return {
+          factored: false,
+          reason: 'CategoryLimits.makeEqualizersFromPullbacks: pullback factorisation did not return a mediator.',
+        }
+      }
+
+      const recomposed = base.compose(witness.inclusion, mediator)
+      if (!eq(recomposed, fork)) {
+        return {
+          factored: false,
+          reason: 'CategoryLimits.makeEqualizersFromPullbacks: constructed mediator does not reproduce the fork.',
+        }
+      }
+
+      return { factored: true, mediator }
+    }
+
+    return { equalizer, factorEqualizer, spanWitness: describe }
   }
 
   export const limitOfDiagram = <I, A, O, M>(input: {

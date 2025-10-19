@@ -16,7 +16,7 @@ describe('Beck–Chevalley (Π / right Kan) — structural check in Vect', () =>
     const Kcar = [0, 1, 2, 3] as const
     const L = [0, 1] as const
 
-    const Ifin = { carrier: Icar as readonly number[] }
+    const Ifin = IndexedFamilies.finiteIndex(Icar as readonly number[])
     const Kfin = { carrier: Kcar as readonly number[] }
 
     const f = (i: number) => L[i % L.length]!
@@ -62,7 +62,7 @@ describe('Beck–Chevalley (Π / right Kan) — structural check in Vect', () =>
     const Kcar = [0, 1, 2, 3, 4]
     const L = [0, 1]
 
-    const Ifin = { carrier: Icar }
+    const Ifin = IndexedFamilies.finiteIndex(Icar)
     const Kfin = { carrier: Kcar }
 
     const f = (i: number) => i < 2 ? 0 : 1

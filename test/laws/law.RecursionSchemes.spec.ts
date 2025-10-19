@@ -19,7 +19,7 @@ import {
   evalSum1toN_FUSED, showSum1toN_FUSED,
   evalPowMul_FUSED, showPowMul_FUSED,
   showAndEvalPowMul_FUSED, buildAndFoldSum_FUSED,
-  lit, add, mul, mapExprF,
+  lit, add, mul, addN, mapExprF,
   Ok
 } from '../../allTS'
 import type { Expr, ExprF } from '../../allTS'
@@ -213,23 +213,23 @@ describe("LAW: Recursion Scheme laws", () => {
 
   describe("Fused pipeline laws", () => {
     it("Fused sum evaluation: evalSum1toN_FUSED(n) = sum 1..n", () => {
-      fc.assert(
-        fc.property(genSmallInt(), (n) => {
-          const left = evalSum1toN_FUSED(n)
-          const right = Array.from({ length: n }, (_, i) => i + 1).reduce((a, b) => a + b, 0)
-          return left === right
-        })
-      )
+    fc.assert(
+      fc.property(genSmallInt(), (n) => {
+        const left = evalSum1toN_FUSED(n)
+        const right = Array.from({ length: n }, (_, i) => i + 1).reduce((a, b) => a + b, 0)
+        return left === right
+      })
+    )
     })
 
     it("Fused power evaluation: evalPowMul_FUSED(depth, leaf) = leaf^(2^depth)", () => {
-      fc.assert(
-        fc.property(
-          fc.constantFrom(0, 1, 2, 3, 4, 5), // Keep depth small
-          fc.constantFrom(1, 2, 3, 4, 5), // Keep leaf small
-          (depth, leaf) => {
-            const left = evalPowMul_FUSED(depth, leaf)
-            const right = Math.pow(leaf, Math.pow(2, depth))
+    fc.assert(
+      fc.property(
+        fc.constantFrom(0, 1, 2, 3, 4, 5), // Keep depth small
+        fc.constantFrom(1, 2, 3, 4, 5), // Keep leaf small
+        (depth, leaf) => {
+          const left = evalPowMul_FUSED(depth, leaf)
+          const right = Math.pow(leaf, Math.pow(2, depth))
             return left === right
           }
         )
@@ -237,13 +237,13 @@ describe("LAW: Recursion Scheme laws", () => {
     })
 
     it("Fused pretty and eval: showAndEvalPowMul_FUSED returns consistent results", () => {
-      fc.assert(
-        fc.property(
-          fc.constantFrom(0, 1, 2, 3), // Keep depth small
-          fc.constantFrom(1, 2, 3), // Keep leaf small
-          (depth, leaf) => {
-            const [pretty, value] = showAndEvalPowMul_FUSED(depth, leaf)
-            const expectedValue = Math.pow(leaf, Math.pow(2, depth))
+    fc.assert(
+      fc.property(
+        fc.constantFrom(0, 1, 2, 3), // Keep depth small
+        fc.constantFrom(1, 2, 3), // Keep leaf small
+        (depth, leaf) => {
+          const [pretty, value] = showAndEvalPowMul_FUSED(depth, leaf)
+          const expectedValue = Math.pow(leaf, Math.pow(2, depth))
             return value === expectedValue && pretty.length > 0
           }
         )
@@ -251,19 +251,20 @@ describe("LAW: Recursion Scheme laws", () => {
     })
 
     it("Fused constant folding: buildAndFoldSum_FUSED simplifies expressions", () => {
-      fc.assert(
-        fc.property(genSmallInt(), (n) => {
-          const folded = buildAndFoldSum_FUSED(n)
-          const expected = evalSum1toN_FUSED(n)
-          const actual = cataExpr(Alg_Expr_evalF)(folded)
-          return actual === expected
-        })
-      )
+    fc.assert(
+      fc.property(genSmallInt(), (n) => {
+        const folded = buildAndFoldSum_FUSED(n)
+        const expected = evalSum1toN_FUSED(n)
+        const actual = cataExpr(Alg_Expr_evalF)(folded)
+        return actual === expected
+      })
+    )
     })
   })
 
   describe("Stack safety for array and JSON recursion schemes", () => {
-    const largeArrayArb = fc.array(fc.integer({ min: -5, max: 5 }), {
+    const smallBoundedInt = fc.constantFrom(-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5)
+    const largeArrayArb = fc.array(smallBoundedInt, {
       minLength: 1024,
       maxLength: 2048
     })
@@ -284,7 +285,6 @@ describe("LAW: Recursion Scheme laws", () => {
           const actual = hyloSum(values)
           return actual === expected
         }),
-        { numRuns: 32 }
       )
     })
 
@@ -293,7 +293,6 @@ describe("LAW: Recursion Scheme laws", () => {
 
       fc.assert(
         fc.property(largeArrayArb, (values) => paraLength(values) === values.length),
-        { numRuns: 32 }
       )
     })
 
@@ -310,6 +309,9 @@ describe("LAW: Recursion Scheme laws", () => {
           return { _tag: 'JNull' }
         }
         const [head, ...tail] = state.rest
+        if (head === undefined) {
+          throw new Error('Recursion scheme coalg: expected head value for non-empty rest')
+        }
         return {
           _tag: 'JArr',
           items: [
@@ -351,7 +353,6 @@ describe("LAW: Recursion Scheme laws", () => {
           const expected = values.reduce((acc, n) => acc + n, 0)
           return cataSum === expected && hyloSum === expected
         }),
-        { numRuns: 16 }
       )
     })
   })
