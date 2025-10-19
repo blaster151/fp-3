@@ -299,6 +299,8 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
     expect(domainResult.triangles).toBe(false)
     expect(domainResult.unique).toBe(false)
     expect(domainResult.reason).toBeDefined()
+    if (!domainResult.reason) throw new Error('expected domain failure to report a reason')
+    expect(domainResult.reason).toContain('isProductForCone')
     expect(domainResult.reason).toMatch(/domain/i)
 
     const wrongCodLeg: EnhancedVect.VectMor = { matrix: [[2]], from: X, to: V1 }
@@ -322,6 +324,8 @@ describe('mediateProduct / isProductForCone (Vect)', () => {
     expect(codResult.triangles).toBe(false)
     expect(codResult.unique).toBe(false)
     expect(codResult.reason).toBeDefined()
+    if (!codResult.reason) throw new Error('expected codomain failure to report a reason')
+    expect(codResult.reason).toContain('isProductForCone')
     expect(codResult.reason).toMatch(/targets/i)
   })
 
@@ -744,6 +748,8 @@ describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
     expect(domainResult.triangles).toBe(false)
     expect(domainResult.unique).toBe(false)
     expect(domainResult.reason).toBeDefined()
+    if (!domainResult.reason) throw new Error('expected domain failure to report a reason')
+    expect(domainResult.reason).toContain('isCoproductForCocone')
     expect(domainResult.reason).toMatch(/domain/i)
 
     const wrongCodLeg: EnhancedVect.VectMor = { matrix: [[1]], from: V2, to: V1 }
@@ -767,6 +773,8 @@ describe('mediateCoproduct / isCoproductForCocone (Vect)', () => {
     expect(codResult.triangles).toBe(false)
     expect(codResult.unique).toBe(false)
     expect(codResult.reason).toBeDefined()
+    if (!codResult.reason) throw new Error('expected codomain failure to report a reason')
+    expect(codResult.reason).toContain('isCoproductForCocone')
     expect(codResult.reason).toMatch(/targets/i)
   })
 
