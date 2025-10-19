@@ -7,6 +7,7 @@ module.exports = {
     "registry-path-convention": require("./rules/registry-path-convention"),
     "registry-satisfies-record": require("./rules/registry-satisfies-record"),
     "law-registry-registration": require("./rules/law-registry-registration"),
+    "no-module-mutable-collections": require("./rules/no-module-mutable-collections"),
   },
   configs: {
     recommended: {
@@ -17,6 +18,7 @@ module.exports = {
         "fp-3/registry-path-convention": "error",
         "fp-3/registry-satisfies-record": "warn",
         "fp-3/law-registry-registration": "warn",
+        "fp-3/no-module-mutable-collections": "error",
       },
     },
   },
