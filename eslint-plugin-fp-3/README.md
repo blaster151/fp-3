@@ -84,6 +84,16 @@ Warns when a module exports a `Lawful`-typed constant without also calling
 `registerLawful(constant)` in the same file. The heuristic catches unregistered
 law suites before they quietly fall out of the runtime registry.
 
+## `no-module-mutable-collections`
+
+**Severity:** error in the recommended config.
+
+Flags module-level `new Map(...)`, `new WeakMap(...)`, or array literal
+declarations that are subsequently mutated (for example via `.set`, `.delete`,
+or `.push`). Keeping mutable collections out of module scope prevents
+accidentally shared state from leaking between examples, tests, or runtime
+executions.
+
 ## Flat config support
 
 Repositories that rely on ESLint’s flat configuration (including toolchains like Next.js once they move to ESLint 9) can import `eslint.config.js`, which reuses the same parser and plugin instance that `.eslintrc.cjs` references today. This keeps framework builds and local CLI runs aligned on the recommended rule set without forcing adopters to duplicate settings.
