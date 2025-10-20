@@ -209,9 +209,12 @@ export const SetSmallProducts: CategoryLimits.HasSmallProductMediators<AnySetObj
     const { carrier, projections } = productMetadata.buildProduct(objects);
     return { obj: carrier, projections };
   },
-  smallProduct<I>(index, family) {
+  smallProduct<I>(
+    index: IndexedFamilies.SmallIndex<I>,
+    family: IndexedFamilies.SmallFamily<I, AnySetObj>,
+  ): { obj: AnySetObj; projections: IndexedFamilies.SmallFamily<I, AnySetHom> } {
     if (IndexedFamilies.isFiniteIndex(index) || index.knownFinite === true) {
-      const finite = IndexedFamilies.ensureFiniteIndex(index);
+      const finite: IndexedFamilies.FiniteIndex<I> = IndexedFamilies.ensureFiniteIndex(index);
       const factors = finite.carrier.map((entry) => widenObj(family(entry)));
       const { carrier, projections } = productMetadata.buildProduct(factors);
       const projectionMap = new Map<I, AnySetHom>();
@@ -269,15 +272,21 @@ export const SetSmallProducts: CategoryLimits.HasSmallProductMediators<AnySetObj
 };
 
 export const SetSmallEqualizers: CategoryLimits.HasSmallEqualizers<AnySetObj, AnySetHom> = {
-  smallEqualizer<I>(index, parallel) {
-    const finite = IndexedFamilies.ensureFiniteIndex(index);
+  smallEqualizer<I>(
+    index: IndexedFamilies.SmallIndex<I>,
+    parallel: IndexedFamilies.SmallFamily<I, AnySetHom>,
+  ): { obj: AnySetObj; equalize: IndexedFamilies.SmallFamily<I, AnySetHom> } {
+    const finite: IndexedFamilies.FiniteIndex<I> = IndexedFamilies.ensureFiniteIndex(index);
     if (finite.carrier.length !== 2) {
       throw new Error("Set small equalizer: expected a parallel pair of arrows");
     }
 
     const [leftKey, rightKey] = finite.carrier;
-    const left = parallel(leftKey!);
-    const right = parallel(rightKey!);
+    if (leftKey === undefined || rightKey === undefined) {
+      throw new Error("Set small equalizer: missing entries for the parallel pair");
+    }
+    const left = parallel(leftKey);
+    const right = parallel(rightKey);
 
     if (left.dom !== right.dom || left.cod !== right.cod) {
       throw new Error("Set small equalizer: parallel morphisms must share domain and codomain");

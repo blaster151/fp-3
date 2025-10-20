@@ -3926,8 +3926,9 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     readonly terminate: (X: FinSetObj) => FinSetMor
     readonly initialArrow: (X: FinSetObj) => FinSetMor
     readonly pushout: (f: FinSetMor, g: FinSetMor) => FinSetPushoutWitness
-    readonly traits: { readonly functionalArrows: true }
+    readonly traits: { readonly functionalArrows: true; readonly balanced?: true }
     readonly isInjective: (arrow: FinSetMor) => boolean
+    readonly isSurjective: (arrow: FinSetMor) => boolean
   } = {
 
   id: (X) => ({ from: X, to: X, map: X.elements.map((_, i) => i) }),
@@ -3958,7 +3959,7 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
     }
     return true
   },
-  isSurjective: (arrow) => {
+  isSurjective: (arrow: FinSetMor) => {
     if (arrow.map.length !== arrow.from.elements.length) return false
     const codomainSize = arrow.to.elements.length
     if (codomainSize === 0) return true
@@ -4405,6 +4406,9 @@ export const finsetBijection = (from: FinSetObj, to: FinSetObj, map: number[]): 
   const seen = new Set<number>()
   for (let i = 0; i < map.length; i++) {
     const target = map[i]
+    if (target === undefined) {
+      throw new Error(`FinSet bijection: map[${i}] is missing for the supplied domain element`)
+    }
     if (!Number.isInteger(target) || target < 0 || target >= codomainSize) {
       if (codomainSize === 0) {
         throw new Error(`FinSet bijection: map[${i}] = ${target} exceeds an empty codomain`)
@@ -4448,6 +4452,9 @@ export const finsetInverse = (bij: FinSetMor): FinSetMor => {
   const inv: number[] = Array.from({ length: codomainSize }, () => -1)
   for (let i = 0; i < bij.map.length; i++) {
     const target = bij.map[i]
+    if (target === undefined) {
+      throw new Error(`FinSet inverse: map[${i}] is missing for the supplied domain element`)
+    }
     if (!Number.isInteger(target) || target < 0 || target >= codomainSize) {
       if (codomainSize === 0) {
         throw new Error(`FinSet inverse: map[${i}] = ${target} exceeds an empty codomain`)

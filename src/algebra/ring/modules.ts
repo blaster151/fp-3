@@ -177,7 +177,8 @@ export const checkModuleHomomorphism = <R, Domain, Codomain>(
       )
 
       if (!additionPreserved) {
-        violations.push({ kind: "addition", pair: [left, right] })
+        const witness = [left, right] as DeepReadonly<[Domain, Domain]>
+        violations.push({ kind: "addition", pair: witness })
       }
     }
   }

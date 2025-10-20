@@ -2922,7 +2922,12 @@ export namespace CategoryLimits {
           comparison = { competitor, triangles: competitorTriangles, agrees, equal }
         }
       }
-      return { triangles, unique, mediator, comparison }
+      return {
+        triangles,
+        unique,
+        mediator,
+        ...(comparison === undefined ? {} : { comparison }),
+      }
     }
 
   export const factorConeThroughProduct =
@@ -3119,7 +3124,12 @@ export namespace CategoryLimits {
           comparison = { competitor, triangles: competitorTriangles, agrees, equal }
         }
       }
-      return { triangles, unique, mediator, comparison }
+      return {
+        triangles,
+        unique,
+        mediator,
+        ...(comparison === undefined ? {} : { comparison }),
+      }
     }
 
   export const factorCoconeThroughCoproduct =

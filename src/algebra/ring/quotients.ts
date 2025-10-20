@@ -48,7 +48,7 @@ export const buildQuotientRing = <A>(construction: QuotientConstruction<A>): Quo
     ring,
     project: (value: A) => makeCoset(reduce, value),
     representative: lift,
-    name: construction.name,
+    ...(construction.name === undefined ? {} : { name: construction.name }),
   }
 }
 

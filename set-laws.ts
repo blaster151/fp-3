@@ -138,4 +138,4 @@ export const SetLaws = {
   compareCardinalities,
 };
 
-export type { AnySet, PowerSetEvidence, CardinalityComparisonResult };
+export type { AnySet, PowerSetEvidence };

@@ -10,9 +10,8 @@ import {
   discreteMeasurableSpace,
   IMeasurable,
   makeGiryKleisli,
-  ProbabilityMeasure,
-  MeasurableSpace,
 } from "../../giry";
+import type { ProbabilityMeasure, MeasurableSpace } from "../../giry";
 import { embedFiniteDistribution } from "../../markov-category";
 
 const borelR: MeasurableSpace<number> = {

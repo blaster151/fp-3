@@ -374,7 +374,8 @@ export const checkRingHomomorphism = <Domain, Codomain>(
       )
       additivePairsChecked++
       if (!additionPreserved) {
-        violations.push({ kind: "addition", pair: [left, right] })
+        const witness = [left, right] as DeepReadonly<[Domain, Domain]>
+        violations.push({ kind: "addition", pair: witness })
       }
 
       const multiplicationPreserved = eq(
@@ -383,7 +384,8 @@ export const checkRingHomomorphism = <Domain, Codomain>(
       )
       multiplicativePairsChecked++
       if (!multiplicationPreserved) {
-        violations.push({ kind: "multiplication", pair: [left, right] })
+        const witness = [left, right] as DeepReadonly<[Domain, Domain]>
+        violations.push({ kind: "multiplication", pair: witness })
       }
     }
   }

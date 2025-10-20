@@ -3,7 +3,8 @@
 
 import type { Dist } from "./dist";
 import { toLegacy } from "./dist";
-import { standardMeasure, equalDistNum, type StandardMeasure } from "./standard-experiment";
+import { standardMeasure, equalDistNum } from "./standard-experiment";
+import type { StandardMeasure } from "./standard-experiment";
 import { sosdFromWitness, type Dilation } from "./sosd";
 import { mkFin } from "./markov-category";
 import { blackwellMeasure } from "./experiments";
@@ -295,7 +296,28 @@ function pushMeasure<Θ>(
 // ===== Public API: BSS with barycentric dilation search (k ≤ 3) =====
 
 export type Posterior<Θ> = Dist<number, Θ>;
-export type StandardMeasure<Θ> = Dist<number, Posterior<Θ>>;
+export type { StandardMeasure } from "./standard-experiment";
+
+export type ConvexOrderEvidence<
+  X extends string | number,
+  Y extends string | number
+> = {
+  viaGarbling: ConvexOrderWitness<X, Y>;
+  gridEvidence: ConvexOrderGridEvidence;
+};
+
+export type BSSDetailedResult<
+  Θ extends string | number,
+  X extends string | number,
+  Y extends string | number
+> = {
+  fMoreInformative: boolean;
+  gMoreInformative: boolean;
+  equivalent: boolean;
+  dilationFound: boolean;
+  details: string;
+  dominance: ConvexOrderEvidence<X, Y>;
+};
 
 /**
  * Enhanced BSS compare with barycentric dilation search
@@ -328,11 +350,6 @@ export function bssCompare<
 }
 
 // ===== Enhanced BSS Testing Framework =====
-
-type ConvexOrderEvidence<X, Y> = {
-  viaGarbling: ConvexOrderWitness<X, Y>;
-  gridEvidence: ConvexOrderGridEvidence;
-};
 
 function computeConvexOrderEvidence<
   Θ extends string | number,
@@ -380,14 +397,7 @@ export function testBSSDetailed<
   g: (θ: Θ) => Dist<number, Y>,
   xVals: readonly X[],
   yVals: readonly Y[]
-): {
-  fMoreInformative: boolean;
-  gMoreInformative: boolean;
-  equivalent: boolean;
-  dilationFound: boolean;
-  details: string;
-  dominance: ConvexOrderEvidence<X, Y>;
-} {
+): BSSDetailedResult<Θ, X, Y> {
   const fToG = bssCompare(m, f, g, xVals, yVals);
   const gToF = bssCompare(m, g, f, yVals, xVals);
 
@@ -440,7 +450,7 @@ export function analyzeBSS<
     fHat: StandardMeasure<Θ>;
     gHat: StandardMeasure<Θ>;
   };
-  bssResult: ReturnType<typeof testBSSDetailed>;
+  bssResult: BSSDetailedResult<Θ, X, Y>;
   dominance: ConvexOrderEvidence<X, Y>;
   dilationAnalysis: {
     fHatSupport: number;

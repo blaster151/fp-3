@@ -149,15 +149,14 @@ export const defaultTight1CellEquality = <Obj, Arr>(
   right: Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>,
 ): boolean => left === right;
 
-export const defaultTight2CellEquality = <Obj, Arr>(
-  left: Tight2Cell<
-    Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>,
-    Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>
-  >,
-  right: Tight2Cell<
-    Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>,
-    Tight1Cell<TightCategory<Obj, Arr>, TightCategory<Obj, Arr>>
-  >,
+export const defaultTight2CellEquality = <
+  Obj,
+  Arr,
+  F extends Tight1Cell<unknown, unknown>,
+  G extends Tight1Cell<unknown, unknown>
+>(
+  left: Tight2Cell<F, G>,
+  right: Tight2Cell<F, G>,
 ): boolean => left === right;
 
 export interface EquipmentTightLayer<Obj, Arr> {

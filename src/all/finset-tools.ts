@@ -6,8 +6,8 @@ import {
   type FinSetObj,
   type FinSetPushoutWitness,
 } from "./triangulated"
-import { FinSet, type FinSetMor, type FinSetObj } from "./triangulated"
-export { FinSetInitialProductIso, finsetProductInitialIso, finsetInitialProductIso } from "./triangulated"
+export type { FinSetInitialProductIso } from "./triangulated"
+export { finsetProductInitialIso, finsetInitialProductIso } from "./triangulated"
 
 const arrowsEqual = (left: FinSetMor, right: FinSetMor): boolean => {
   if (FinSet.equalMor) {

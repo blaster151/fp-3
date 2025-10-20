@@ -35,7 +35,10 @@ const toIssueSummary = <A>(report: {
   if (report.counterexamples.length === 0) {
     return ["All sampled coalgebra laws held."];
   }
-  const [first, ...rest] = report.counterexamples;
+  const [first, ...rest] = report.counterexamples as [
+    CoalgebraLawCounterexample<A>,
+    ...CoalgebraLawCounterexample<A>[]
+  ];
   const lines = [
     `First counterexample at sample ${String(first.sample)} violates ${first.law}.`,
     `  actual   → ${JSON.stringify(first.actual)}`,
@@ -81,7 +84,7 @@ function breakComodule<Obj, Arr, Payload, Evidence>(
         ...witness.coaction.boundaries,
         right: identityVerticalBoundary(
           equipment,
-          "★",
+          witness.coaction.boundaries.right.from,
           "Broken right boundary to trigger diagnostics",
         ),
       },

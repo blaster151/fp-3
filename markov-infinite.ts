@@ -308,29 +308,30 @@ export const restrictProjectiveFamily = <R, J, X, Carrier>(
     family.measurability !== undefined ? restrictMeasurabilityWitness(allowed, family.measurability) : undefined;
   const positivity =
     family.positivity !== undefined ? restrictPositivityWitness(allowed, family.positivity) : undefined;
+  const giryBase = family.giry;
   const giry =
-    family.giry === undefined
+    giryBase === undefined
       ? undefined
       : {
           coordinateSpace: (index: J) => {
             if (!allowed.has(index)) {
               throw new Error(`Coordinate ${String(index)} is outside the restricted subset.`);
             }
-            return family.giry.coordinateSpace(index);
+            return giryBase.coordinateSpace(index);
           },
           coordinate: (index: J) => {
             if (!allowed.has(index)) {
               throw new Error(`Coordinate ${String(index)} is outside the restricted subset.`);
             }
-            return family.giry.coordinate(index);
+            return giryBase.coordinate(index);
           },
           cylinderSpace: (finite: FiniteSubset<J>) => {
             ensureSubset(finite);
-            return family.giry.cylinderSpace(finite);
+            return giryBase.cylinderSpace(finite);
           },
           marginal: (finite: FiniteSubset<J>) => {
             ensureSubset(finite);
-            return family.giry.marginal(finite);
+            return giryBase.marginal(finite);
           },
         } satisfies GiryProjectiveFamilyData<J, X>;
 

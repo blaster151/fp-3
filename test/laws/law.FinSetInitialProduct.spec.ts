@@ -3,7 +3,6 @@ import {
   FinSet,
   finsetInitialProductIso,
   finsetProductInitialIso,
-  isMono,
   makeFinSetObj,
 } from '../../allTS'
 import type { FinSetMor } from '../../allTS'
@@ -68,7 +67,7 @@ describe('FinSet products with the initial object', () => {
     ]
 
     for (const arrow of arrows) {
-      expect(isMono(FinSet as Parameters<typeof isMono>[0], arrow)).toBe(true)
+      expect(FinSet.isInjective(arrow)).toBe(true)
     }
   })
 })
