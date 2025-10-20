@@ -58,4 +58,23 @@ describe("SetCat exponentials", () => {
       data.curry({ domain: skewDomain, product: skewProduct, morphism: mediator }),
     ).toThrow(/mediator must have the supplied product/);
   });
+
+  it("constructs lazy exponentials when the base set is large", () => {
+    const base = SetCat.obj(Array.from({ length: 20 }, (_, index) => index));
+    const codomain = SetCat.obj(["even", "odd"]);
+    const data = SetCat.exponential(base, codomain);
+
+    expect(SetCat.isLazy(data.object)).toBe(true);
+
+    const domain = SetCat.obj(["marker"]);
+    const product = SetCat.product(domain, base);
+    const mediator = SetCat.hom(product.object, codomain, ([, value]) =>
+      value % 2 === 0 ? "even" : "odd",
+    );
+
+    const transpose = data.curry({ domain, product, morphism: mediator });
+    const classifier = transpose.map("marker");
+    expect(classifier(2)).toBe("even");
+    expect(classifier(3)).toBe("odd");
+  });
 });

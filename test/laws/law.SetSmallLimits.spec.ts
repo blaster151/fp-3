@@ -232,5 +232,25 @@ describe('Set small limits from products and equalizers', () => {
       }),
     ).toThrow(/materialiseSmallIndex/)
   })
+
+  it('supports products indexed by enumerators without a finite carrier', () => {
+    const index = IndexedFamilies.smallIndex(() => [0, 1, 2])
+    const factors: IndexedFamilies.SmallFamily<number, AnySetObj> = (position) =>
+      widenObj(SetCat.obj([`v${position}` as const, `w${position}` as const]))
+
+    const product = SetSmallProducts.smallProduct(index, factors)
+    const domain = SetCat.obj(['⋆'])
+    const legs = [0, 1, 2].map((position) =>
+      widenHom(
+        SetCat.hom(domain, factors(position), () => `v${position}` as const),
+      ),
+    )
+
+    const mediator = SetSmallProducts.tuple(domain, legs, product.obj)
+    const tuple = mediator.map('⋆') as ReadonlyMap<number, string>
+
+    expect(tuple.get(0)).toBe('v0')
+    expect(tuple.get(2)).toBe('v2')
+  })
 })
 

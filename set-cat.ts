@@ -48,6 +48,7 @@ export interface ProductData<A, B> {
   readonly object: SetObj<Pair<A, B>>;
   readonly projections: ProductProjections<A, B>;
   readonly pair: <X>(f: SetHom<X, A>, g: SetHom<X, B>) => SetHom<X, Pair<A, B>>;
+  readonly lookup?: (left: A, right: B) => Pair<A, B>;
 }
 
 export interface CoproductData<A, B> {
@@ -287,6 +288,22 @@ const shouldMaterializeCoproduct = <A, B>(left: SetObj<A>, right: SetObj<B>): bo
   return sumSize <= LAZY_CUTOFF;
 };
 
+const shouldMaterializeExponential = <A, B>(base: SetObj<A>, codomain: SetObj<B>): boolean => {
+  const baseSize = knownFiniteCardinality(base);
+  const codSize = knownFiniteCardinality(codomain);
+  if (baseSize === undefined || codSize === undefined) {
+    return false;
+  }
+  let combinations = 1;
+  for (let i = 0; i < baseSize; i += 1) {
+    combinations *= codSize;
+    if (!Number.isFinite(combinations) || combinations > LAZY_CUTOFF) {
+      return false;
+    }
+  }
+  return combinations <= LAZY_CUTOFF;
+};
+
 const isPair = <A, B>(value: unknown): value is Pair<A, B> =>
   Array.isArray(value) && value.length === 2;
 
@@ -376,7 +393,7 @@ const buildProductData = <A, B>(left: SetObj<A>, right: SetObj<B>): ProductData<
       (value) => carrier.lookup(f.map(value), g.map(value)),
     );
   };
-  return { object: carrier.object, projections, pair };
+  return { object: carrier.object, projections, pair, lookup: carrier.lookup };
 };
 
 const createExponentialFunction = <A, B>(
@@ -393,19 +410,63 @@ const createExponentialFunction = <A, B>(
     return assignments.get(value) as B;
   };
 
+const createLazyExponentialFunction = <A, B>(
+  base: SetObj<A>,
+  codomain: SetObj<B>,
+  evaluate: (value: A) => B,
+): ExponentialArrow<A, B> => {
+  const cache = new Map<A, B>();
+  return (value: A) => {
+    if (!base.has(value)) {
+      throw new Error("SetCat: exponential function applied outside the declared base set");
+    }
+    if (cache.has(value)) {
+      return cache.get(value) as B;
+    }
+    const result = evaluate(value);
+    if (!codomain.has(result)) {
+      throw new Error("SetCat: exponential function produced a value outside the declared codomain");
+    }
+    cache.set(value, result);
+    return result;
+  };
+};
+
 interface ExponentialTrieNode<A, B> {
   readonly branches: Map<B, ExponentialTrieNode<A, B>>;
   value?: ExponentialArrow<A, B>;
 }
 
+interface ExponentialCarrier<A, B> {
+  readonly object: SetObj<ExponentialArrow<A, B>>;
+  readonly register: (assignment: (value: A) => B) => ExponentialArrow<A, B>;
+}
+
 const enumerateExponentialCarrier = <A, B>(
   base: SetObj<A>,
   codomain: SetObj<B>,
-): {
-  readonly object: SetObj<ExponentialArrow<A, B>>;
-  readonly retrieve: (outputs: ReadonlyArray<B>) => ExponentialArrow<A, B>;
-  readonly baseElements: ReadonlyArray<A>;
-} => {
+): ExponentialCarrier<A, B> => {
+  if (!shouldMaterializeExponential(base, codomain)) {
+    const known = new Set<ExponentialArrow<A, B>>();
+    const object: SetObj<ExponentialArrow<A, B>> = new LazySet({
+      iterate: function* (): IterableIterator<ExponentialArrow<A, B>> {
+        for (const fn of known) {
+          yield fn;
+        }
+      },
+      has: (fn) => known.has(fn),
+      tag: "SetCatLazyExponential",
+    });
+
+    const register = (assignment: (value: A) => B): ExponentialArrow<A, B> => {
+      const fn = createLazyExponentialFunction(base, codomain, assignment);
+      known.add(fn);
+      return fn;
+    };
+
+    return { object, register };
+  }
+
   const baseElements = Array.from(base.values());
   const codomainElements = Array.from(codomain.values());
   type Node = ExponentialTrieNode<A, B>;
@@ -476,7 +537,18 @@ const enumerateExponentialCarrier = <A, B>(
     return fn;
   };
 
-  return { object, retrieve, baseElements };
+  const register = (assignment: (value: A) => B): ExponentialArrow<A, B> => {
+    const outputs = baseElements.map((element) => {
+      const value = assignment(element);
+      if (!codomain.has(value)) {
+        throw new Error("SetCat: exponential function produced a value outside the declared codomain");
+      }
+      return value;
+    });
+    return retrieve(outputs);
+  };
+
+  return { object, register };
 };
 
 const buildCoproductCarrier = <A, B>(
@@ -644,53 +716,33 @@ export const SetCat = {
         throw new Error("SetCat: curry expects a morphism landing in the declared codomain");
       }
 
-      const rows = new Map<X, Map<A, Pair<X, A>>>();
-      for (const pair of productData.object) {
-        const [x, a] = pair;
+      const assignments = new Map<X, ExponentialArrow<A, B>>();
+
+      const lookupPair = (x: X, a: A): Pair<X, A> => {
         if (!domain.has(x)) {
-          throw new Error("SetCat: curry observed a product element outside the declared domain");
+          throw new Error("SetCat: curry evaluated on an element outside the declared domain");
         }
         if (!base.has(a)) {
-          throw new Error("SetCat: curry observed a product element outside the declared base set");
+          throw new Error("SetCat: curry evaluated on an element outside the declared base set");
         }
-        let row = rows.get(x);
-        if (!row) {
-          row = new Map();
-          rows.set(x, row);
+        if (productData.lookup) {
+          return productData.lookup(x, a);
         }
-        row.set(a, pair);
-      }
-
-      enumeration.baseElements.forEach((a) => {
-        for (const x of domain) {
-          const row = rows.get(x);
-          if (!row || !row.has(a)) {
-            throw new Error("SetCat: curry expects the product to contain every base element for each domain point");
+        for (const candidate of productData.object) {
+          if (candidate[0] === x && candidate[1] === a) {
+            return candidate;
           }
         }
-      });
-
-      const assignments = new Map<X, ExponentialArrow<A, B>>();
-      for (const x of domain) {
-        const row = rows.get(x);
-        if (!row) {
-          throw new Error("SetCat: curry lost track of a domain element in the product enumeration");
-        }
-        const outputs = enumeration.baseElements.map((a) => {
-          const pair = row.get(a);
-          if (!pair) {
-            throw new Error("SetCat: curry expects the product to contain every required pair");
-          }
-          return morphism.map(pair);
-        });
-        assignments.set(x, enumeration.retrieve(outputs));
-      }
+        throw new Error("SetCat: curry could not locate the required product element");
+      };
 
       return createSetHom(domain, enumeration.object, (x) => {
-        const fn = assignments.get(x);
-        if (!fn) {
-          throw new Error("SetCat: curry evaluated on an element outside the recorded domain");
+        const existing = assignments.get(x);
+        if (existing) {
+          return existing;
         }
+        const fn = enumeration.register((a) => morphism.map(lookupPair(x, a)));
+        assignments.set(x, fn);
         return fn;
       });
     };
