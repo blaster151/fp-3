@@ -86,6 +86,9 @@ describe('FinSetSubobjectClassifier', () => {
     expect(chi.to).toBe(FinSetSubobjectClassifier.truthValues)
     expect(chi.map).toEqual([1, 0, 1])
 
+    expect(FinSetSubobjectClassifier.truthValues).toBe(FinSetTruthValues)
+    expectEqualArrows(FinSetSubobjectClassifier.truthArrow, FinSetTruthArrow)
+
     const truthComposite = FinSetSubobjectClassifier.compose(
       FinSetSubobjectClassifier.truthArrow,
       FinSetSubobjectClassifier.terminate(S),
@@ -93,6 +96,18 @@ describe('FinSetSubobjectClassifier', () => {
 
     const charComposite = FinSetSubobjectClassifier.compose(chi, inclusion)
     expectEqualArrows(charComposite, truthComposite)
+
+    const reconstructed = FinSetSubobjectClassifier.subobjectFromCharacteristic(chi)
+    const iso = buildIsoFromCanonical(reconstructed, inclusion)
+
+    expectEqualArrows(
+      FinSetSubobjectClassifier.compose(reconstructed.inclusion, iso.forward),
+      inclusion,
+    )
+    expectEqualArrows(
+      FinSetSubobjectClassifier.characteristic(reconstructed.inclusion),
+      chi,
+    )
   })
 
   it('exposes the categorical false arrow alongside truth', () => {
@@ -149,10 +164,8 @@ describe('FinSetSubobjectClassifier', () => {
   })
 
   it('validates negation witnesses and falls back to the computed arrow when equality is unavailable', () => {
-    const eqless = {
-      ...FinSetSubobjectClassifier,
-      equalMor: undefined,
-    } as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
+    const { equalMor: _ignoredEqualMor, ...withoutEqual } = FinSetSubobjectClassifier
+    const eqless = withoutEqual as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
 
     const derived = CategoryLimits.subobjectClassifierNegation(eqless)
     expectEqualArrows(derived, FinSetNegation)
@@ -165,9 +178,8 @@ describe('FinSetSubobjectClassifier', () => {
     expect(() => CategoryLimits.subobjectClassifierNegation(inconsistent)).toThrow(/negation|false/i)
 
     const eqlessInconsistent = {
-      ...FinSetSubobjectClassifier,
+      ...withoutEqual,
       negation: FinSetTruthArrow,
-      equalMor: undefined,
     } as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
 
     const recovered = CategoryLimits.subobjectClassifierNegation(eqlessInconsistent)

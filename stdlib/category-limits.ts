@@ -32,7 +32,7 @@ import {
 } from "../category-limits-helpers"
 import { ArrowFamilies } from "./arrow-families"
 import { IndexedFamilies } from "./indexed-families"
-import type { Category } from "./category"
+import type { CartesianClosedCategory, Category } from "./category"
 
 export namespace CategoryLimits {
   export interface HasSmallProducts<O, M> {
@@ -209,6 +209,1732 @@ export namespace CategoryLimits {
     subobjectFromCharacteristic: (
       characteristic: M,
     ) => { readonly subobject: O; readonly inclusion: M }
+  }
+
+  export interface NaturalNumbersObjectSequence<O, M> {
+    readonly target: O
+    readonly zero: M
+    readonly successor: M
+  }
+
+  export interface NaturalNumbersObjectCompatibility<M> {
+    readonly zeroComposite: M
+    readonly successorLeft: M
+    readonly successorRight: M
+  }
+
+  export interface NaturalNumbersObjectMediatorWitness<M> {
+    readonly mediator: M
+    readonly compatibility: NaturalNumbersObjectCompatibility<M>
+  }
+
+  export interface NaturalNumbersObjectUniquenessWitness<M> {
+    readonly agrees: boolean
+    readonly mediator: M
+    readonly candidate: M
+    readonly compatibility: NaturalNumbersObjectCompatibility<M>
+    readonly reason?: string
+  }
+
+  export interface NaturalNumbersObjectWitness<O, M> {
+    readonly carrier: O
+    readonly zero: M
+    readonly successor: M
+    readonly induce: (
+      sequence: NaturalNumbersObjectSequence<O, M>,
+    ) => NaturalNumbersObjectMediatorWitness<M>
+    readonly checkCandidate?: (
+      sequence: NaturalNumbersObjectSequence<O, M>,
+      candidate: M,
+    ) => NaturalNumbersObjectUniquenessWitness<M>
+  }
+
+  export interface NaturalNumbersObjectCategory<O, M>
+    extends Category<O, M>,
+      ArrowFamilies.HasDomCod<O, M>,
+      HasTerminal<O, M> {
+    readonly naturalNumbersObject: NaturalNumbersObjectWitness<O, M>
+    readonly naturalNumbersSequence?: () => NaturalNumbersObjectSequence<O, M>
+    readonly naturalNumbersInduce?: (
+      sequence: NaturalNumbersObjectSequence<O, M>,
+    ) => NaturalNumbersObjectMediatorWitness<M>
+  }
+
+  export interface NaturalNumbersObjectCompatibilityInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly natural: NaturalNumbersObjectWitness<O, M>
+    readonly sequence: NaturalNumbersObjectSequence<O, M>
+    readonly mediator: M
+  }
+
+  export interface NaturalNumbersObjectCandidateInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly natural: NaturalNumbersObjectWitness<O, M>
+    readonly sequence: NaturalNumbersObjectSequence<O, M>
+    readonly candidate: M
+    readonly equalMor?: (left: M, right: M) => boolean
+  }
+
+  export const naturalNumbersObjectCompatibility = <O, M>({
+    category,
+    natural,
+    sequence,
+    mediator,
+  }: NaturalNumbersObjectCompatibilityInput<O, M>): NaturalNumbersObjectCompatibility<M> => ({
+    zeroComposite: category.compose(mediator, natural.zero),
+    successorLeft: category.compose(mediator, natural.successor),
+    successorRight: category.compose(sequence.successor, mediator),
+  })
+
+  export const naturalNumbersObjectCandidateVerdict = <O, M>({
+    category,
+    natural,
+    sequence,
+    candidate,
+    equalMor,
+  }: NaturalNumbersObjectCandidateInput<O, M>): NaturalNumbersObjectUniquenessWitness<M> => {
+    const eq =
+      equalMor ??
+      category.equalMor ??
+      category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    const compatibility = naturalNumbersObjectCompatibility({
+      category,
+      natural,
+      sequence,
+      mediator: candidate,
+    })
+
+    const zeroHolds = eq(compatibility.zeroComposite, sequence.zero)
+    const successorHolds = eq(compatibility.successorLeft, compatibility.successorRight)
+
+    const canonical = natural.induce(sequence)
+    const agrees = zeroHolds && successorHolds && eq(candidate, canonical.mediator)
+
+    let reason: string | undefined
+    if (!agrees) {
+      if (!zeroHolds) {
+        reason =
+          'CategoryLimits.naturalNumbersObjectCandidateVerdict: candidate fails zero compatibility.'
+      } else if (!successorHolds) {
+        reason =
+          'CategoryLimits.naturalNumbersObjectCandidateVerdict: candidate fails successor compatibility.'
+      } else {
+        reason =
+          'CategoryLimits.naturalNumbersObjectCandidateVerdict: candidate differs from canonical mediator.'
+      }
+    }
+
+    const verdict: NaturalNumbersObjectUniquenessWitness<M> = {
+      agrees,
+      mediator: canonical.mediator,
+      candidate,
+      compatibility,
+    }
+
+    return reason ? { ...verdict, reason } : verdict
+  }
+
+  export const naturalNumbersObjectSequenceFromWitness = <O, M>(
+    witness: NaturalNumbersObjectWitness<O, M>,
+  ): NaturalNumbersObjectSequence<O, M> => ({
+    target: witness.carrier,
+    zero: witness.zero,
+    successor: witness.successor,
+  })
+
+  export const naturalNumbersObjectSequenceFromCategory = <O, M>(
+    category: NaturalNumbersObjectCategory<O, M>,
+  ): NaturalNumbersObjectSequence<O, M> =>
+    category.naturalNumbersSequence
+      ? category.naturalNumbersSequence()
+      : naturalNumbersObjectSequenceFromWitness(category.naturalNumbersObject)
+
+  export const naturalNumbersObjectInduceSequence = <O, M>(
+    category: NaturalNumbersObjectCategory<O, M>,
+    sequence: NaturalNumbersObjectSequence<O, M>,
+  ): NaturalNumbersObjectMediatorWitness<M> =>
+    category.naturalNumbersInduce
+      ? category.naturalNumbersInduce(sequence)
+      : category.naturalNumbersObject.induce(sequence)
+
+  export interface NaturalNumbersInductionInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M> & HasTerminal<O, M>
+    readonly natural: NaturalNumbersObjectWitness<O, M>
+    readonly inclusion: M
+    readonly zeroLift: M
+    readonly successorLift: M
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly ensureMonomorphism?: (arrow: M) => void
+    readonly label?: string
+  }
+
+  export interface NaturalNumbersInductionCompatibility<M> {
+    readonly zeroComposite: M
+    readonly successorLeft: M
+    readonly successorRight: M
+  }
+
+  export interface NaturalNumbersInductionWitness<M> {
+    readonly holds: boolean
+    readonly inclusion: M
+    readonly compatibility: NaturalNumbersInductionCompatibility<M>
+    readonly retraction?: M
+    readonly rightComposite?: M
+    readonly section?: M
+    readonly identityVerdict?: NaturalNumbersObjectUniquenessWitness<M>
+    readonly monomorphismCertified: boolean
+    readonly details: string
+    readonly reason?: string
+  }
+
+  export interface NaturalNumbersInductionIsomorphismMetadata<M> {
+    readonly compatibility: NaturalNumbersInductionCompatibility<M>
+    readonly identityVerdict?: NaturalNumbersObjectUniquenessWitness<M>
+    readonly monomorphismCertified: boolean
+  }
+
+  export interface NaturalNumbersInductionIsomorphismWitness<M> {
+    readonly found: boolean
+    readonly forward?: M
+    readonly backward?: M
+    readonly leftComposite?: M
+    readonly rightComposite?: M
+    readonly details: string
+    readonly reason?: string
+    readonly metadata: NaturalNumbersInductionIsomorphismMetadata<M>
+  }
+
+  export interface NaturalNumbersInductionIsomorphismInput<M> {
+    readonly result: NaturalNumbersInductionResult<M>
+    readonly label?: string
+  }
+
+  export const naturalNumbersInductionIsomorphism = <M>({
+    result,
+    label,
+  }: NaturalNumbersInductionIsomorphismInput<M>): NaturalNumbersInductionIsomorphismWitness<M> => {
+    const qualifier = label
+      ? `CategoryLimits.naturalNumbersInductionIsomorphism: ${label}`
+      : 'CategoryLimits.naturalNumbersInductionIsomorphism'
+
+    const metadata: NaturalNumbersInductionIsomorphismMetadata<M> = {
+      compatibility: result.compatibility,
+      monomorphismCertified: result.monomorphismCertified,
+      ...(result.identityVerdict !== undefined
+        ? { identityVerdict: result.identityVerdict }
+        : {}),
+    }
+
+    if (!result.holds) {
+      return {
+        found: false,
+        details: `${qualifier} unavailable because the induction witness failed.`,
+        reason:
+          result.reason ??
+          `${qualifier}: induction witness did not establish an isomorphism.`,
+        metadata,
+      }
+    }
+
+    const { inclusion, retraction, section, rightComposite } = result
+
+    if (!retraction || !section || !rightComposite) {
+      return {
+        found: false,
+        details: `${qualifier}: induction witness is missing canonical composites.`,
+        reason: `${qualifier}: retraction, section, and right composite are required to extract the isomorphism.`,
+        metadata,
+      }
+    }
+
+    return {
+      found: true,
+      forward: inclusion,
+      backward: retraction,
+      leftComposite: section,
+      rightComposite,
+      details: `${qualifier}: extracted isomorphism from the inductive inclusion.`,
+      metadata,
+    }
+  }
+
+  export interface NaturalNumbersZeroSeparationInput<O, M> {
+    readonly category: Category<O, M> &
+      ArrowFamilies.HasDomCod<O, M> &
+      HasTerminal<O, M> &
+      HasEqualizers<O, M>
+    readonly natural: NaturalNumbersObjectWitness<O, M>
+    readonly classifier: SubobjectClassifierCategory<O, M>
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly label?: string
+  }
+
+  export interface NaturalNumbersZeroSeparationClassification<O, M> {
+    readonly subobject: O
+    readonly inclusion: M
+  }
+
+  export interface NaturalNumbersZeroSeparationWitness<O, M> {
+    readonly separated: boolean
+    readonly successorZero: M
+    readonly equalizer: { readonly obj: O; readonly equalize: M }
+    readonly characteristic: M
+    readonly classification: NaturalNumbersZeroSeparationClassification<O, M>
+    readonly classificationAgrees: boolean
+    readonly equalsFalse: boolean
+    readonly equalsTruth: boolean
+    readonly details: string
+    readonly reason?: string
+  }
+
+  export const certifyNaturalNumbersZeroSeparation = <O, M>({
+    category,
+    natural,
+    classifier,
+    equalMor,
+    label,
+  }: NaturalNumbersZeroSeparationInput<O, M>): NaturalNumbersZeroSeparationWitness<O, M> => {
+    const eq =
+      equalMor ??
+      classifier.equalMor ??
+      category.equalMor ??
+      category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    const qualifier = label
+      ? `CategoryLimits.certifyNaturalNumbersZeroSeparation: ${label}`
+      : 'CategoryLimits.certifyNaturalNumbersZeroSeparation'
+
+    const successorZero = category.compose(natural.successor, natural.zero)
+    const equalizer = category.equalizer(successorZero, natural.zero)
+
+    const characteristic = classifier.characteristic(equalizer.equalize)
+    const classification = classifier.subobjectFromCharacteristic(characteristic)
+    const classificationAgrees = eq(classification.inclusion, equalizer.equalize)
+
+    const equalsFalse = eq(characteristic, classifier.falseArrow)
+    const equalsTruth = eq(characteristic, classifier.truthArrow)
+
+    if (category.cod(classification.inclusion) !== category.terminalObj) {
+      throw new Error(
+        `${qualifier}: classified inclusion must land in the terminal object.`,
+      )
+    }
+
+    const separated = equalsFalse
+
+    if (separated) {
+      return {
+        separated: true,
+        successorZero,
+        equalizer,
+        characteristic,
+        classification,
+        classificationAgrees,
+        equalsFalse,
+        equalsTruth,
+        details: `${qualifier}: zero is not in the image of successor.`,
+      }
+    }
+
+    const reason = equalsTruth
+      ? `${qualifier}: characteristic arrow equals truth; zero appears as a successor.`
+      : `${qualifier}: characteristic arrow is not the false point.`
+
+    return {
+      separated: false,
+      successorZero,
+      equalizer,
+      characteristic,
+      classification,
+      classificationAgrees,
+      equalsFalse,
+      equalsTruth,
+      details: `${qualifier}: failed to separate zero from successor.`,
+      reason,
+    }
+  }
+
+  export interface NaturalNumbersPrimitiveRecursionInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly natural: NaturalNumbersObjectWitness<O, M>
+    readonly cartesianClosed: CartesianClosedCategory<O, M>
+    readonly parameter: O
+    readonly target: O
+    readonly base: M
+    readonly step: M
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly label?: string
+  }
+
+  export interface NaturalNumbersPrimitiveRecursionCompatibility<O, M> {
+    readonly baseInclusion: M
+    readonly baseComposite: M
+    readonly successorInclusion: M
+    readonly mediatorPair: M
+    readonly stepLeft: M
+    readonly stepRight: M
+  }
+
+  export interface NaturalNumbersPrimitiveRecursionWitness<O, M> {
+    readonly holds: boolean
+    readonly mediator: M
+    readonly curried: NaturalNumbersObjectMediatorWitness<M>
+    readonly sequence: NaturalNumbersObjectSequence<O, M>
+    readonly compatibility: NaturalNumbersPrimitiveRecursionCompatibility<O, M>
+    readonly details: string
+    readonly reason?: string
+  }
+
+  export interface NaturalNumbersPrimitiveRecursionExponentialInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly natural: NaturalNumbersObjectWitness<O, M>
+    readonly cartesianClosed: CartesianClosedCategory<O, M>
+    readonly parameter: O
+    readonly target: O
+    readonly base: M
+    readonly step: M
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly label?: string
+  }
+
+  export interface NaturalNumbersPrimitiveRecursionExponentialEvaluation<M> {
+    readonly lift: M
+    readonly pair: M
+    readonly composite: M
+  }
+
+  export interface NaturalNumbersPrimitiveRecursionExponentialWitness<O, M> {
+    readonly holds: boolean
+    readonly mediator: M
+    readonly primitive: NaturalNumbersPrimitiveRecursionWitness<O, M>
+    readonly evaluation: NaturalNumbersPrimitiveRecursionExponentialEvaluation<M>
+    readonly details: string
+    readonly reason?: string
+  }
+
+  export interface NaturalNumbersInitialAlgebraCoproduct<O, M> {
+    readonly obj: O
+    readonly injections: readonly [M, M]
+  }
+
+  export interface NaturalNumbersInitialAlgebraCanonical<O, M> {
+    readonly coproduct: NaturalNumbersInitialAlgebraCoproduct<O, M>
+    readonly algebra: M
+  }
+
+  export interface NaturalNumbersInitialAlgebraTarget<O, M> {
+    readonly coproduct: NaturalNumbersInitialAlgebraCoproduct<O, M>
+    readonly algebra: M
+    readonly zero: M
+    readonly successor: M
+  }
+
+  export interface NaturalNumbersInitialAlgebraTriangleWitness<M> {
+    readonly holds: boolean
+    readonly expected: M
+    readonly actual: M
+  }
+
+  export interface NaturalNumbersInitialAlgebraComparisonWitness<M> {
+    readonly canonicalComposite: M
+    readonly targetComposite: M
+    readonly holds: boolean
+  }
+
+  export interface NaturalNumbersInitialAlgebraMorphismWitness<M> {
+    readonly onePlusMediator: M
+    readonly zeroTriangle: NaturalNumbersInitialAlgebraTriangleWitness<M>
+    readonly successorSquare: NaturalNumbersInitialAlgebraTriangleWitness<M>
+    readonly comparison: NaturalNumbersInitialAlgebraComparisonWitness<M>
+  }
+
+  export interface NaturalNumbersInitialAlgebraWitness<O, M> {
+    readonly holds: boolean
+    readonly canonical: NaturalNumbersInitialAlgebraCanonical<O, M>
+    readonly target?: NaturalNumbersInitialAlgebraTarget<O, M>
+    readonly mediator?: M
+    readonly primitive?: NaturalNumbersObjectMediatorWitness<M>
+    readonly morphism?: NaturalNumbersInitialAlgebraMorphismWitness<M>
+    readonly reason?: string
+    readonly details: string
+  }
+
+  export interface NaturalNumbersInitialAlgebraInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M> & HasTerminal<O, M>
+    readonly natural: NaturalNumbersObjectWitness<O, M>
+    readonly coproducts: HasCoproductMediators<O, M>
+    readonly target: O
+    readonly algebra: M
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly label?: string
+  }
+
+  export const naturalNumbersPrimitiveRecursion = <O, M>({
+    category,
+    natural,
+    cartesianClosed,
+    parameter,
+    target,
+    base,
+    step,
+    equalMor,
+    label,
+  }: NaturalNumbersPrimitiveRecursionInput<O, M>): NaturalNumbersPrimitiveRecursionWitness<O, M> => {
+    const eq =
+      equalMor ??
+      category.equalMor ??
+      category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    const toBinaryProduct = (
+      witness: ReturnType<CartesianClosedCategory<O, M>['binaryProduct']>,
+    ): BinaryProductWithPairWitness<O, M> => ({
+      obj: witness.obj,
+      projections: [witness.proj1, witness.proj2] as const,
+      pair: (domain: O, leftArrow: M, rightArrow: M) => witness.pair(domain, leftArrow, rightArrow),
+    })
+
+    const exponentialWitness = cartesianClosed.exponential(parameter, target)
+    const exponentialProduct = toBinaryProduct(exponentialWitness.product)
+
+    if (category.dom(base) !== parameter) {
+      throw new Error(
+        'CategoryLimits.naturalNumbersPrimitiveRecursion: base arrow must originate from the parameter object.',
+      )
+    }
+    if (category.cod(base) !== target) {
+      throw new Error(
+        'CategoryLimits.naturalNumbersPrimitiveRecursion: base arrow must land in the target object.',
+      )
+    }
+
+    const targetParameterProduct = toBinaryProduct(cartesianClosed.binaryProduct(target, parameter))
+    if (category.dom(step) !== targetParameterProduct.obj) {
+      throw new Error(
+        'CategoryLimits.naturalNumbersPrimitiveRecursion: step arrow must originate from the target-parameter product.',
+      )
+    }
+    if (category.cod(step) !== target) {
+      throw new Error(
+        'CategoryLimits.naturalNumbersPrimitiveRecursion: step arrow must land in the target object.',
+      )
+    }
+
+    const terminalObj = cartesianClosed.terminal.obj
+    const parameterUnitProduct = toBinaryProduct(cartesianClosed.binaryProduct(terminalObj, parameter))
+    const zeroLift = category.compose(base, parameterUnitProduct.projections[1])
+    const zeroArrow = exponentialWitness.curry(terminalObj, zeroLift)
+
+    const evaluationPair = targetParameterProduct.pair(
+      exponentialProduct.obj,
+      exponentialWitness.evaluation,
+      exponentialProduct.projections[1],
+    )
+    const successorLift = category.compose(step, evaluationPair)
+    const successorArrow = exponentialWitness.curry(exponentialWitness.obj, successorLift)
+
+    const sequence: NaturalNumbersObjectSequence<O, M> = {
+      target: exponentialWitness.obj,
+      zero: zeroArrow,
+      successor: successorArrow,
+    }
+
+    const curried = natural.induce(sequence)
+    const mediator = exponentialWitness.uncurry(natural.carrier, curried.mediator)
+
+    const naturalParameterProduct = toBinaryProduct(cartesianClosed.binaryProduct(natural.carrier, parameter))
+    const terminateParameter = cartesianClosed.terminal.terminate(parameter)
+    const zeroOnParameter = category.compose(natural.zero, terminateParameter)
+    const baseInclusion = naturalParameterProduct.pair(
+      parameter,
+      zeroOnParameter,
+      category.id(parameter),
+    )
+    const baseComposite = category.compose(mediator, baseInclusion)
+
+    const successorInclusion = naturalParameterProduct.pair(
+      naturalParameterProduct.obj,
+      category.compose(natural.successor, naturalParameterProduct.projections[0]),
+      naturalParameterProduct.projections[1],
+    )
+    const stepLeft = category.compose(mediator, successorInclusion)
+
+    const mediatorPair = targetParameterProduct.pair(
+      naturalParameterProduct.obj,
+      mediator,
+      naturalParameterProduct.projections[1],
+    )
+    const stepRight = category.compose(step, mediatorPair)
+
+    const baseMatches = eq(baseComposite, base)
+    const stepMatches = eq(stepLeft, stepRight)
+
+    const holds = baseMatches && stepMatches
+    const labelPrefix = label
+      ? `CategoryLimits.naturalNumbersPrimitiveRecursion: ${label}`
+      : 'CategoryLimits.naturalNumbersPrimitiveRecursion'
+
+    let reason: string | undefined
+    if (!holds) {
+      reason = !baseMatches
+        ? `${labelPrefix}: base case fails to match the supplied arrow.`
+        : `${labelPrefix}: step case fails to respect the recursive equation.`
+    }
+
+    const details = holds
+      ? `${labelPrefix}: primitive recursion mediates the advertised arrow.`
+      : `${labelPrefix}: primitive recursion equations do not hold.`
+
+    const compatibility: NaturalNumbersPrimitiveRecursionCompatibility<O, M> = {
+      baseInclusion,
+      baseComposite,
+      successorInclusion,
+      mediatorPair,
+      stepLeft,
+      stepRight,
+    }
+
+    return {
+      holds,
+      mediator,
+      curried,
+      sequence,
+      compatibility,
+      details,
+      ...(reason ? { reason } : {}),
+    }
+  }
+
+  export const naturalNumbersPrimitiveRecursionFromExponential = <O, M>({
+    category,
+    natural,
+    cartesianClosed,
+    parameter,
+    target,
+    base,
+    step,
+    equalMor,
+    label,
+  }: NaturalNumbersPrimitiveRecursionExponentialInput<O, M>): NaturalNumbersPrimitiveRecursionExponentialWitness<O, M> => {
+    const toBinaryProduct = (
+      witness: ReturnType<CartesianClosedCategory<O, M>['binaryProduct']>,
+    ): BinaryProductWithPairWitness<O, M> => ({
+      obj: witness.obj,
+      projections: [witness.proj1, witness.proj2] as const,
+      pair: (domain: O, leftArrow: M, rightArrow: M) => witness.pair(domain, leftArrow, rightArrow),
+    })
+
+    const exponentialWitness = cartesianClosed.exponential(parameter, target)
+    const exponentialProduct = toBinaryProduct(exponentialWitness.product)
+
+    if (category.dom(step) !== target) {
+      throw new Error(
+        'CategoryLimits.naturalNumbersPrimitiveRecursionFromExponential: step arrow must originate from the target object.',
+      )
+    }
+    if (category.cod(step) !== exponentialWitness.obj) {
+      throw new Error(
+        'CategoryLimits.naturalNumbersPrimitiveRecursionFromExponential: step arrow must land in the exponential object.',
+      )
+    }
+
+    const targetParameterProduct = toBinaryProduct(cartesianClosed.binaryProduct(target, parameter))
+    const stepLift = category.compose(step, targetParameterProduct.projections[0])
+    const evaluationPair = exponentialProduct.pair(
+      targetParameterProduct.obj,
+      stepLift,
+      targetParameterProduct.projections[1],
+    )
+    const evaluationComposite = category.compose(exponentialWitness.evaluation, evaluationPair)
+
+    const primitive = naturalNumbersPrimitiveRecursion({
+      category,
+      natural,
+      cartesianClosed,
+      parameter,
+      target,
+      base,
+      step: evaluationComposite,
+      ...(equalMor !== undefined ? { equalMor } : {}),
+      ...(label !== undefined ? { label: `${label} (via exponential)` } : {}),
+    })
+
+    const holds = primitive.holds
+    const evaluation: NaturalNumbersPrimitiveRecursionExponentialEvaluation<M> = {
+      lift: stepLift,
+      pair: evaluationPair,
+      composite: evaluationComposite,
+    }
+
+    const qualifier = label
+      ? `CategoryLimits.naturalNumbersPrimitiveRecursionFromExponential: ${label}`
+      : 'CategoryLimits.naturalNumbersPrimitiveRecursionFromExponential'
+
+    const details = holds
+      ? `${qualifier}: recursion via exponential transpose constructs the advertised mediator.`
+      : `${qualifier}: recursion via exponential transpose fails to satisfy primitive recursion.`
+
+    const result: NaturalNumbersPrimitiveRecursionExponentialWitness<O, M> = {
+      holds,
+      mediator: primitive.mediator,
+      primitive,
+      evaluation,
+      details,
+    }
+
+    return primitive.reason ? { ...result, reason: primitive.reason } : result
+  }
+
+  export const naturalNumbersInitialAlgebra = <O, M>({
+    category,
+    natural,
+    coproducts,
+    target,
+    algebra,
+    equalMor,
+    label,
+  }: NaturalNumbersInitialAlgebraInput<O, M>): NaturalNumbersInitialAlgebraWitness<O, M> => {
+    const eq =
+      equalMor ??
+      category.equalMor ??
+      category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    const qualifier = label
+      ? `CategoryLimits.naturalNumbersInitialAlgebra: ${label}`
+      : 'CategoryLimits.naturalNumbersInitialAlgebra'
+
+    const canonicalCoproductRaw = coproducts.coproduct([
+      category.terminalObj,
+      natural.carrier,
+    ])
+
+    if (canonicalCoproductRaw.injections.length !== 2) {
+      throw new Error(
+        `${qualifier}: coproduct of the terminal object and natural numbers carrier must expose two injections.`,
+      )
+    }
+
+    const canonicalInjections = canonicalCoproductRaw.injections as readonly [M, M]
+    const canonical: NaturalNumbersInitialAlgebraCanonical<O, M> = {
+      coproduct: { obj: canonicalCoproductRaw.obj, injections: canonicalInjections },
+      algebra: coproducts.cotuple(
+        canonicalCoproductRaw.obj,
+        [natural.zero, natural.successor],
+        natural.carrier,
+      ),
+    }
+
+    const targetCoproductRaw = coproducts.coproduct([
+      category.terminalObj,
+      target,
+    ])
+
+    if (targetCoproductRaw.injections.length !== 2) {
+      throw new Error(
+        `${qualifier}: coproduct of the terminal object and target must expose two injections.`,
+      )
+    }
+
+    const targetInjections = targetCoproductRaw.injections as readonly [M, M]
+
+    if (category.dom(algebra) !== targetCoproductRaw.obj) {
+      return {
+        holds: false,
+        canonical,
+        details: `${qualifier}: algebra arrow must originate from the coproduct of the terminal object and target.`,
+        reason: `${qualifier}: supplied algebra domain does not match the canonical coproduct.`,
+      }
+    }
+
+    const zeroArrow = category.compose(algebra, targetInjections[0])
+    const successorArrow = category.compose(algebra, targetInjections[1])
+
+    if (category.cod(algebra) !== target) {
+      return {
+        holds: false,
+        canonical,
+        target: {
+          coproduct: { obj: targetCoproductRaw.obj, injections: targetInjections },
+          algebra,
+          zero: zeroArrow,
+          successor: successorArrow,
+        },
+        details: `${qualifier}: algebra arrow must land in the advertised target object.`,
+        reason: `${qualifier}: supplied algebra codomain does not match the target.`,
+      }
+    }
+
+    if (category.dom(targetInjections[0]) !== category.terminalObj) {
+      throw new Error(
+        `${qualifier}: coproduct injection for the terminal summand must originate from the terminal object.`,
+      )
+    }
+
+    if (category.dom(targetInjections[1]) !== target) {
+      throw new Error(
+        `${qualifier}: coproduct injection for the target summand must originate from the target object.`,
+      )
+    }
+
+    const targetData: NaturalNumbersInitialAlgebraTarget<O, M> = {
+      coproduct: { obj: targetCoproductRaw.obj, injections: targetInjections },
+      algebra,
+      zero: zeroArrow,
+      successor: successorArrow,
+    }
+
+    const sequence: NaturalNumbersObjectSequence<O, M> = {
+      target,
+      zero: zeroArrow,
+      successor: successorArrow,
+    }
+
+    const primitive = natural.induce(sequence)
+
+    const zeroTriangleHolds = eq(primitive.compatibility.zeroComposite, zeroArrow)
+    const successorSquareHolds = eq(
+      primitive.compatibility.successorLeft,
+      primitive.compatibility.successorRight,
+    )
+
+    const onePlusMediator = coproducts.cotuple(
+      canonical.coproduct.obj,
+      [targetInjections[0], category.compose(targetInjections[1], primitive.mediator)],
+      targetCoproductRaw.obj,
+    )
+
+    const canonicalComposite = category.compose(primitive.mediator, canonical.algebra)
+    const targetComposite = category.compose(algebra, onePlusMediator)
+    const comparisonHolds = eq(canonicalComposite, targetComposite)
+
+    const morphism: NaturalNumbersInitialAlgebraMorphismWitness<M> = {
+      onePlusMediator,
+      zeroTriangle: {
+        holds: zeroTriangleHolds,
+        expected: zeroArrow,
+        actual: primitive.compatibility.zeroComposite,
+      },
+      successorSquare: {
+        holds: successorSquareHolds,
+        expected: primitive.compatibility.successorRight,
+        actual: primitive.compatibility.successorLeft,
+      },
+      comparison: {
+        canonicalComposite,
+        targetComposite,
+        holds: comparisonHolds,
+      },
+    }
+
+    const holds = zeroTriangleHolds && successorSquareHolds && comparisonHolds
+
+    let reason: string | undefined
+    if (!holds) {
+      if (!zeroTriangleHolds) {
+        reason = `${qualifier}: mediator does not respect the algebra's zero leg.`
+      } else if (!successorSquareHolds) {
+        reason = `${qualifier}: mediator does not commute with the algebra's successor leg.`
+      } else {
+        reason = `${qualifier}: induced algebra morphism square fails to commute.`
+      }
+    }
+
+    const details = holds
+      ? `${qualifier}: induced mediator realises the unique algebra morphism from 1 + ℕ.`
+      : `${qualifier}: induced mediator fails to witness the initial algebra.`
+
+    const result: NaturalNumbersInitialAlgebraWitness<O, M> = {
+      holds,
+      canonical,
+      target: targetData,
+      mediator: primitive.mediator,
+      primitive,
+      morphism,
+      details,
+    }
+
+    return reason ? { ...result, reason } : result
+  }
+
+  export const certifyNaturalNumbersInduction = <O, M>({
+    category,
+    natural,
+    inclusion,
+    zeroLift,
+    successorLift,
+    equalMor,
+    ensureMonomorphism,
+    label,
+  }: NaturalNumbersInductionInput<O, M>): NaturalNumbersInductionWitness<M> => {
+    const eq =
+      equalMor ??
+      category.equalMor ??
+      category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    const qualifier = label
+      ? `CategoryLimits.certifyNaturalNumbersInduction: ${label}`
+      : 'CategoryLimits.certifyNaturalNumbersInduction'
+
+    if (category.cod(inclusion) !== natural.carrier) {
+      throw new Error(
+        `${qualifier}: inclusion must land in the natural numbers carrier.`,
+      )
+    }
+
+    const domain = category.dom(inclusion)
+
+    if (category.dom(zeroLift) !== category.terminalObj) {
+      throw new Error(
+        `${qualifier}: zero lift must originate from the terminal object.`,
+      )
+    }
+
+    if (category.cod(zeroLift) !== domain) {
+      throw new Error(
+        `${qualifier}: zero lift must land in the subobject domain.`,
+      )
+    }
+
+    if (category.dom(successorLift) !== domain) {
+      throw new Error(
+        `${qualifier}: successor lift must originate in the subobject domain.`,
+      )
+    }
+
+    if (category.cod(successorLift) !== domain) {
+      throw new Error(
+        `${qualifier}: successor lift must land in the subobject domain.`,
+      )
+    }
+
+    const zeroComposite = category.compose(inclusion, zeroLift)
+    const successorLeft = category.compose(inclusion, successorLift)
+    const successorRight = category.compose(natural.successor, inclusion)
+
+    const compatibility: NaturalNumbersInductionCompatibility<M> = {
+      zeroComposite,
+      successorLeft,
+      successorRight,
+    }
+
+    if (!eq(zeroComposite, natural.zero)) {
+      return {
+        holds: false,
+        inclusion,
+        compatibility,
+        monomorphismCertified: false,
+        details: `${qualifier} fails because the lifted zero does not match the canonical zero.`,
+        reason: `${qualifier}: lifted zero fails to coincide with the natural numbers zero.`,
+      }
+    }
+
+    if (!eq(successorLeft, successorRight)) {
+      return {
+        holds: false,
+        inclusion,
+        compatibility,
+        monomorphismCertified: false,
+        details: `${qualifier} fails because the lifted successor is not preserved by the inclusion.`,
+        reason: `${qualifier}: inclusion and lifted successor do not commute.`,
+      }
+    }
+
+    let monomorphismCertified = false
+    if (ensureMonomorphism) {
+      try {
+        ensureMonomorphism(inclusion)
+        monomorphismCertified = true
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        return {
+          holds: false,
+          inclusion,
+          compatibility,
+          monomorphismCertified: false,
+          details: `${qualifier} fails monomorphism validation.`,
+          reason: `${qualifier}: ${reason}`,
+        }
+      }
+    }
+
+    const sequence: NaturalNumbersObjectSequence<O, M> = {
+      target: domain,
+      zero: zeroLift,
+      successor: successorLift,
+    }
+
+    const mediator = natural.induce(sequence)
+    const retraction = mediator.mediator
+    const rightComposite = category.compose(inclusion, retraction)
+
+    const identitySequence = naturalNumbersObjectSequenceFromWitness(natural)
+    const identityVerdict = naturalNumbersObjectCandidateVerdict({
+      category,
+      natural,
+      sequence: identitySequence,
+      candidate: rightComposite,
+      ...(equalMor ? { equalMor } : {}),
+    })
+
+    if (!identityVerdict.agrees) {
+      const failureReason =
+        identityVerdict.reason ??
+        `${qualifier}: induced retraction does not agree with the natural numbers identity.`
+      return {
+        holds: false,
+        inclusion,
+        compatibility,
+        retraction,
+        rightComposite,
+        identityVerdict,
+        monomorphismCertified,
+        details: `${qualifier} fails because the induced retraction does not recover the natural numbers identity.`,
+        reason: failureReason,
+      }
+    }
+
+    const section = category.compose(retraction, inclusion)
+    const identityOnSubobject = category.id(domain)
+    const leftMatches = eq(section, identityOnSubobject)
+    const anchored = eq(category.compose(inclusion, section), inclusion)
+
+    if (!leftMatches && !(monomorphismCertified && anchored)) {
+      return {
+        holds: false,
+        inclusion,
+        compatibility,
+        retraction,
+        rightComposite,
+        section,
+        identityVerdict,
+        monomorphismCertified,
+        details: `${qualifier} fails because the induced section does not collapse to the subobject identity.`,
+        reason: `${qualifier}: unable to confirm that the inclusion retracts onto its domain.`,
+      }
+    }
+
+    return {
+      holds: true,
+      inclusion,
+      compatibility,
+      retraction,
+      rightComposite,
+      section,
+      identityVerdict,
+      monomorphismCertified,
+      details: `${qualifier}: inclusion is an isomorphism onto the natural numbers object.`,
+    }
+  }
+
+  export interface PointImageWitness<M> {
+    readonly point: M
+    readonly image: M
+  }
+
+  export interface PointCollisionWitness<M> {
+    readonly left: PointImageWitness<M>
+    readonly right: PointImageWitness<M>
+  }
+
+  export interface PointInjectiveInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M> & HasTerminal<O, M>
+    readonly arrow: M
+    readonly domainPoints: ReadonlyArray<M>
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly label?: string
+  }
+
+  export interface PointInjectiveWitness<M> {
+    readonly holds: boolean
+    readonly images: ReadonlyArray<PointImageWitness<M>>
+    readonly collision?: PointCollisionWitness<M>
+    readonly details: string
+  }
+
+  export const checkPointInjective = <O, M>({
+    category,
+    arrow,
+    domainPoints,
+    equalMor,
+    label,
+  }: PointInjectiveInput<O, M>): PointInjectiveWitness<M> => {
+    const eq =
+      equalMor ??
+      category.equalMor ??
+      category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    const domain = category.dom(arrow)
+
+    const composites = domainPoints.map((point) => {
+      if (category.dom(point) !== category.terminalObj) {
+        throw new Error(
+          'CategoryLimits.checkPointInjective: supplied point must originate from the terminal object.',
+        )
+      }
+      if (category.cod(point) !== domain) {
+        throw new Error(
+          'CategoryLimits.checkPointInjective: supplied point must land in the arrow domain.',
+        )
+      }
+      return {
+        point,
+        image: category.compose(arrow, point),
+      }
+    })
+
+    let collision: PointCollisionWitness<M> | undefined
+    for (let leftIndex = 0; leftIndex < composites.length; leftIndex++) {
+      for (let rightIndex = leftIndex + 1; rightIndex < composites.length; rightIndex++) {
+        const left = composites[leftIndex]!
+        const right = composites[rightIndex]!
+
+        if (eq(left.image, right.image) && !eq(left.point, right.point)) {
+          collision = { left, right }
+          break
+        }
+      }
+      if (collision) {
+        break
+      }
+    }
+
+    if (collision) {
+      return {
+        holds: false,
+        images: composites,
+        collision,
+        details:
+          label
+            ? `CategoryLimits.checkPointInjective: ${label} is not point-injective.`
+            : 'CategoryLimits.checkPointInjective: arrow is not point-injective.',
+      }
+    }
+
+    return {
+      holds: true,
+      images: composites,
+      details:
+        label
+          ? `CategoryLimits.checkPointInjective: ${label} is injective on global points.`
+          : 'CategoryLimits.checkPointInjective: arrow is injective on global points.',
+    }
+  }
+
+  export interface PointSurjectiveInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M> & HasTerminal<O, M>
+    readonly arrow: M
+    readonly domainPoints: ReadonlyArray<M>
+    readonly codomainPoints: ReadonlyArray<M>
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly label?: string
+  }
+
+  export interface PointCoverageWitness<M> {
+    readonly target: M
+    readonly preimages: ReadonlyArray<PointImageWitness<M>>
+  }
+
+  export interface PointSurjectiveWitness<M> {
+    readonly holds: boolean
+    readonly coverage: ReadonlyArray<PointCoverageWitness<M>>
+    readonly missing?: M
+    readonly details: string
+  }
+
+  export const checkPointSurjective = <O, M>({
+    category,
+    arrow,
+    domainPoints,
+    codomainPoints,
+    equalMor,
+    label,
+  }: PointSurjectiveInput<O, M>): PointSurjectiveWitness<M> => {
+    const eq =
+      equalMor ??
+      category.equalMor ??
+      category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    const domain = category.dom(arrow)
+    const codomain = category.cod(arrow)
+
+    const composites = domainPoints.map((point) => {
+      if (category.dom(point) !== category.terminalObj) {
+        throw new Error(
+          'CategoryLimits.checkPointSurjective: supplied point must originate from the terminal object.',
+        )
+      }
+      if (category.cod(point) !== domain) {
+        throw new Error(
+          'CategoryLimits.checkPointSurjective: supplied point must land in the arrow domain.',
+        )
+      }
+      return {
+        point,
+        image: category.compose(arrow, point),
+      }
+    })
+
+    const coverage = codomainPoints.map((target) => {
+      if (category.dom(target) !== category.terminalObj) {
+        throw new Error(
+          'CategoryLimits.checkPointSurjective: codomain point must originate from the terminal object.',
+        )
+      }
+      if (category.cod(target) !== codomain) {
+        throw new Error(
+          'CategoryLimits.checkPointSurjective: codomain point must land in the arrow codomain.',
+        )
+      }
+
+      const preimages = composites.filter((entry) => eq(entry.image, target))
+      return { target, preimages }
+    })
+
+    const missing = coverage.find((entry) => entry.preimages.length === 0)
+
+    if (missing) {
+      return {
+        holds: false,
+        coverage,
+        missing: missing.target,
+        details:
+          label
+            ? `CategoryLimits.checkPointSurjective: ${label} misses a point.`
+            : 'CategoryLimits.checkPointSurjective: arrow misses a point.',
+      }
+    }
+
+    return {
+      holds: true,
+      coverage,
+      details:
+        label
+          ? `CategoryLimits.checkPointSurjective: ${label} is surjective on global points.`
+          : 'CategoryLimits.checkPointSurjective: arrow is surjective on global points.',
+    }
+  }
+
+  export interface PointInfiniteInput<O, M> {
+    readonly injection: PointInjectiveInput<O, M>
+    readonly surjection: PointSurjectiveInput<O, M>
+  }
+
+  export interface PointInfiniteWitness<M> {
+    readonly holds: boolean
+    readonly injective: PointInjectiveWitness<M>
+    readonly surjective: PointSurjectiveWitness<M>
+    readonly details: string
+  }
+
+  export const checkPointInfinite = <O, M>({
+    injection,
+    surjection,
+  }: PointInfiniteInput<O, M>): PointInfiniteWitness<M> => {
+    const eq =
+      injection.equalMor ??
+      surjection.equalMor ??
+      injection.category.equalMor ??
+      injection.category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    if (!eq(injection.arrow, surjection.arrow)) {
+      throw new Error(
+        'CategoryLimits.checkPointInfinite: injection and surjection must analyse the same arrow.',
+      )
+    }
+
+    const injective = checkPointInjective(injection)
+    const surjective = checkPointSurjective(surjection)
+
+    if (!injective.holds) {
+      return {
+        holds: false,
+        injective,
+        surjective,
+        details: 'CategoryLimits.checkPointInfinite: arrow fails to be point-injective.',
+      }
+    }
+
+    if (surjective.holds) {
+      return {
+        holds: false,
+        injective,
+        surjective,
+        details: 'CategoryLimits.checkPointInfinite: arrow remains point-surjective.',
+      }
+    }
+
+    return {
+      holds: true,
+      injective,
+      surjective,
+      details: 'CategoryLimits.checkPointInfinite: arrow is point-injective and omits a global point.',
+    }
+  }
+
+  export interface DedekindInfiniteInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M> & HasTerminal<O, M>
+    readonly arrow: M
+    readonly domainPoints: ReadonlyArray<M>
+    readonly codomainPoints: ReadonlyArray<M>
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly ensureMonomorphism?: (arrow: M) => void
+    readonly label?: string
+  }
+
+  export interface DedekindInfiniteWitness<M> {
+    readonly holds: boolean
+    readonly pointInfinite: PointInfiniteWitness<M>
+    readonly monomorphismCertified: boolean
+    readonly details: string
+  }
+
+  export const checkDedekindInfinite = <O, M>({
+    category,
+    arrow,
+    domainPoints,
+    codomainPoints,
+    equalMor,
+    ensureMonomorphism,
+    label,
+  }: DedekindInfiniteInput<O, M>): DedekindInfiniteWitness<M> => {
+    const domain = category.dom(arrow)
+    const codomain = category.cod(arrow)
+
+    if (domain !== codomain) {
+      throw new Error('CategoryLimits.checkDedekindInfinite: supplied arrow must be an endomorphism.')
+    }
+
+    const injectionInput: PointInjectiveInput<O, M> = {
+      category,
+      arrow,
+      domainPoints,
+      ...(equalMor ? { equalMor } : {}),
+      ...(label !== undefined ? { label } : {}),
+    }
+
+    const surjectionInput: PointSurjectiveInput<O, M> = {
+      category,
+      arrow,
+      domainPoints,
+      codomainPoints,
+      ...(equalMor ? { equalMor } : {}),
+      ...(label !== undefined ? { label } : {}),
+    }
+
+    const pointInfinite = checkPointInfinite({
+      injection: injectionInput,
+      surjection: surjectionInput,
+    })
+
+    if (!pointInfinite.holds) {
+      return {
+        holds: false,
+        pointInfinite,
+        monomorphismCertified: false,
+        details:
+          label
+            ? `CategoryLimits.checkDedekindInfinite: ${label} does not witness point infiniteness.`
+            : 'CategoryLimits.checkDedekindInfinite: arrow does not witness point infiniteness.',
+      }
+    }
+
+    let monomorphismCertified = false
+    if (ensureMonomorphism) {
+      try {
+        ensureMonomorphism(arrow)
+        monomorphismCertified = true
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        return {
+          holds: false,
+          pointInfinite,
+          monomorphismCertified: false,
+          details:
+            label
+              ? `CategoryLimits.checkDedekindInfinite: ${label} failed monomorphism validation: ${reason}`
+              : `CategoryLimits.checkDedekindInfinite: monomorphism validation failed: ${reason}`,
+        }
+      }
+    }
+
+    return {
+      holds: true,
+      pointInfinite,
+      monomorphismCertified,
+      details:
+        label
+          ? `CategoryLimits.checkDedekindInfinite: ${label} witnesses Dedekind infiniteness.`
+          : 'CategoryLimits.checkDedekindInfinite: arrow witnesses Dedekind infiniteness.',
+    }
+  }
+
+  export interface SubobjectClassifierFromPowerObjectInput<O, M> {
+    readonly category: Category<O, M> &
+      ArrowFamilies.HasDomCod<O, M> &
+      HasTerminal<O, M> &
+      HasInitial<O, M>
+    readonly pullbacks: PullbackCalculator<O, M>
+    readonly powerObject: (anchor: O) => PowerObjectWitness<O, M>
+    readonly binaryProduct: (
+      left: O,
+      right: O,
+    ) => BinaryProductWithPairWitness<O, M>
+    readonly ensureMonomorphism?: (arrow: M) => void
+    readonly terminate?: (object: O) => M
+    readonly initialArrow?: (target: O) => M
+  }
+
+  export const makeSubobjectClassifierFromPowerObject = <O, M>({
+    category,
+    pullbacks,
+    powerObject,
+    binaryProduct,
+    ensureMonomorphism,
+    terminate: suppliedTerminate,
+    initialArrow: suppliedInitialArrow,
+  }: SubobjectClassifierFromPowerObjectInput<O, M>): SubobjectClassifierCategory<O, M> => {
+    const ensureMono = ensureMonomorphism ?? (() => undefined)
+
+    const terminate =
+      suppliedTerminate ??
+      (category as Partial<{ terminate: (object: O) => M }>).terminate
+    if (!terminate) {
+      throw new Error(
+        'CategoryLimits.makeSubobjectClassifierFromPowerObject: terminate arrow is required to build characteristic relations.',
+      )
+    }
+
+    const initialArrow =
+      suppliedInitialArrow ??
+      (category as Partial<{ initialArrow: (target: O) => M }>).initialArrow
+    if (!initialArrow) {
+      throw new Error(
+        'CategoryLimits.makeSubobjectClassifierFromPowerObject: initial arrow is required to construct the false point.',
+      )
+    }
+
+    const terminal = category.terminalObj
+    const initial = category.initialObj
+
+    const terminalPower = powerObject(terminal)
+    const truthValues = terminalPower.powerObj
+    const membership = terminalPower.membership
+
+    const terminalProduct = binaryProduct(terminal, terminal)
+
+    const truthRelation = terminalProduct.pair(
+      terminal,
+      category.id(terminal),
+      category.id(terminal),
+    )
+    ensureMono(truthRelation)
+
+    const truthWitness = terminalPower.classify({
+      ambient: terminal,
+      relation: truthRelation,
+      product: terminalProduct,
+      pullbacks,
+    })
+
+    const truthArrow = truthWitness.mediator
+
+    const falseRelation = terminalProduct.pair(
+      initial,
+      initialArrow(terminal),
+      initialArrow(terminal),
+    )
+    ensureMono(falseRelation)
+
+    const falseWitness = terminalPower.classify({
+      ambient: terminal,
+      relation: falseRelation,
+      product: terminalProduct,
+      pullbacks,
+    })
+
+    const falseArrow = falseWitness.mediator
+
+    const characteristic = (monomorphism: M): M => {
+      ensureMono(monomorphism)
+
+      const ambient = category.cod(monomorphism)
+      const domain = category.dom(monomorphism)
+
+      const product = binaryProduct(ambient, terminal)
+      const relation = product.pair(domain, monomorphism, terminate(domain))
+      ensureMono(relation)
+
+      const witness = terminalPower.classify({
+        ambient,
+        relation,
+        product,
+        pullbacks,
+      })
+
+      return witness.mediator
+    }
+
+    const subobjectFromCharacteristic = (
+      chi: M,
+    ): { readonly subobject: O; readonly inclusion: M } => {
+      if (category.cod(chi) !== truthValues) {
+        throw new Error(
+          'CategoryLimits.makeSubobjectClassifierFromPowerObject: characteristic arrow must land in the derived truth object.',
+        )
+      }
+
+      const ambient = category.dom(chi)
+
+      const pairing = membership.product.pair(
+        ambient,
+        chi,
+        terminate(ambient),
+      )
+
+      const pullback = pullbacks.pullback(pairing, membership.inclusion)
+      const certification = pullbacks.certify(pairing, membership.inclusion, pullback)
+
+      if (!certification.valid) {
+        throw new Error(
+          `CategoryLimits.makeSubobjectClassifierFromPowerObject: membership pullback failed certification: ${
+            certification.reason ?? 'unknown reason'
+          }`,
+        )
+      }
+
+      return { subobject: pullback.apex, inclusion: pullback.toDomain }
+    }
+
+    const negation = characteristic(falseArrow)
+
+    return {
+      ...category,
+      terminate,
+      initialArrow,
+      truthValues,
+      truthArrow,
+      falseArrow,
+      negation,
+      powerObject,
+      characteristic,
+      subobjectFromCharacteristic,
+    }
+  }
+
+  export interface PowerObjectFromSubobjectClassifierInput<O, M> {
+    readonly category: SubobjectClassifierCategory<O, M> &
+      CartesianClosedCategory<O, M>
+    readonly pullbacks: PullbackCalculator<O, M>
+    readonly binaryProduct?: (
+      left: O,
+      right: O,
+    ) => BinaryProductWithPairWitness<O, M>
+    readonly ensureMonomorphism?: (arrow: M, context?: string) => void
+    readonly makeIso?: (
+      relation: M,
+      canonical: M,
+      context: string,
+    ) => SubobjectClassifierIsoWitness<M>
+    readonly equalMor?: (left: M, right: M) => boolean
+  }
+
+  export const makePowerObjectFromSubobjectClassifier = <O, M>({
+    category,
+    pullbacks,
+    binaryProduct: suppliedBinaryProduct,
+    ensureMonomorphism,
+    makeIso,
+    equalMor,
+  }: PowerObjectFromSubobjectClassifierInput<O, M>): (anchor: O) => PowerObjectWitness<O, M> => {
+    const ensureMono = ensureMonomorphism ?? (() => undefined)
+    const eq =
+      equalMor ??
+      category.equalMor ??
+      category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    return (anchor: O): PowerObjectWitness<O, M> => {
+      const exponential = category.exponential(anchor, category.truthValues)
+      const membershipProduct: BinaryProductWithPairWitness<O, M> = {
+        obj: exponential.product.obj,
+        projections: [exponential.product.proj1, exponential.product.proj2],
+        pair: (domain, leftArrow, rightArrow) =>
+          exponential.product.pair(domain, leftArrow, rightArrow),
+      }
+
+      const membershipPullback = pullbacks.pullback(
+        exponential.evaluation,
+        category.truthArrow,
+      )
+      const membershipCertification = pullbacks.certify(
+        exponential.evaluation,
+        category.truthArrow,
+        membershipPullback,
+      )
+
+      if (!membershipCertification.valid) {
+        throw new Error(
+          `CategoryLimits.makePowerObjectFromSubobjectClassifier: evaluation pullback failed certification: ${
+            membershipCertification.reason ?? 'unknown reason'
+          }`,
+        )
+      }
+
+      const membership: PowerObjectMembershipWitness<O, M> = {
+        subobject: membershipPullback.apex,
+        inclusion: membershipPullback.toDomain,
+        product: membershipProduct,
+        evaluation: exponential.evaluation,
+        pullback: membershipPullback,
+        certification: membershipCertification,
+      }
+
+      return {
+        anchor,
+        powerObj: exponential.obj,
+        membership,
+        classify: ({ ambient, relation, product, pullbacks: calculator }) => {
+          const canonicalProduct = suppliedBinaryProduct
+            ? suppliedBinaryProduct(ambient, anchor)
+            : product
+
+          if (suppliedBinaryProduct) {
+            const [expectedAmbient, expectedAnchor] = canonicalProduct.projections
+            if (canonicalProduct.obj !== product.obj) {
+              throw new Error(
+                'CategoryLimits.makePowerObjectFromSubobjectClassifier.classify: supplied product witness must use the canonical ambient × anchor object.',
+              )
+            }
+            if (!eq(expectedAmbient, product.projections[0]!)) {
+              throw new Error(
+                'CategoryLimits.makePowerObjectFromSubobjectClassifier.classify: supplied product witness must reproduce the canonical ambient projection.',
+              )
+            }
+            if (!eq(expectedAnchor, product.projections[1]!)) {
+              throw new Error(
+                'CategoryLimits.makePowerObjectFromSubobjectClassifier.classify: supplied product witness must reproduce the canonical anchor projection.',
+              )
+            }
+          }
+
+          const [projectionToAmbient, projectionToAnchor] =
+            canonicalProduct.projections
+          const context =
+            'CategoryLimits.makePowerObjectFromSubobjectClassifier.classify'
+
+          if (category.cod(relation) !== canonicalProduct.obj) {
+            throw new Error(
+              `${context}: relation codomain must match the supplied product object.`,
+            )
+          }
+
+          if (
+            category.dom(projectionToAmbient) !== canonicalProduct.obj ||
+            category.dom(projectionToAnchor) !== canonicalProduct.obj
+          ) {
+            throw new Error(
+              `${context}: product projections must originate at the ambient product object.`,
+            )
+          }
+
+          if (category.cod(projectionToAmbient) !== ambient) {
+            throw new Error(
+              `${context}: first projection must land in the ambient object.`,
+            )
+          }
+
+          if (category.cod(projectionToAnchor) !== anchor) {
+            throw new Error(
+              `${context}: second projection must land in the anchor object.`,
+            )
+          }
+
+          ensureMono(relation, context)
+
+          const characteristic = category.characteristic(relation)
+
+          if (category.dom(characteristic) !== canonicalProduct.obj) {
+            throw new Error(
+              `${context}: characteristic domain must equal the ambient product object.`,
+            )
+          }
+
+          const mediator = exponential.curry(ambient, characteristic)
+          const mediatorComposite = category.compose(
+            mediator,
+            projectionToAmbient,
+          )
+
+          const pairing = membership.product.pair(
+            canonicalProduct.obj,
+            mediatorComposite,
+            projectionToAnchor,
+          )
+
+          const pullback = calculator.pullback(pairing, membership.inclusion)
+          const certification = calculator.certify(
+            pairing,
+            membership.inclusion,
+            pullback,
+          )
+
+          if (!certification.valid) {
+            throw new Error(
+              `${context}: induced pullback failed certification: ${
+                certification.reason ?? 'unknown reason'
+              }`,
+            )
+          }
+
+          if (!makeIso) {
+            throw new Error(
+              `${context}: makeIso helper is required to compare classified relations with the canonical pullback.`,
+            )
+          }
+
+          const iso = makeIso(relation, pullback.toDomain, context)
+
+          const relationRecover = category.compose(pullback.toDomain, iso.forward)
+          if (!eq(relationRecover, relation)) {
+            throw new Error(
+              `${context}: canonical pullback mediator does not reproduce the supplied relation.`,
+            )
+          }
+
+          const relationAnchor = category.compose(pullback.toAnchor, iso.forward)
+          const membershipComposite = category.compose(
+            membership.inclusion,
+            relationAnchor,
+          )
+          const pairingComposite = category.compose(pairing, relation)
+
+          if (!eq(membershipComposite, pairingComposite)) {
+            throw new Error(
+              `${context}: relation square does not commute with membership inclusion.`,
+            )
+          }
+
+          return {
+            mediator,
+            characteristic,
+            pairing,
+            pullback,
+            certification,
+            relationIso: iso,
+            relationAnchor,
+            factorCone: (candidate) => calculator.factorCone(pullback, candidate),
+          }
+        },
+      }
+    }
   }
 
   export const subobjectClassifierFalseArrow = <O, M>(
@@ -2658,6 +4384,31 @@ export namespace CategoryLimits {
 
   export type BinaryProductNaturalityInput<O, M> = CategoryBinaryProductNaturalityInput<O, M>
 
+  export type NaturalNumbersObjectSequenceInput<O, M> = NaturalNumbersObjectSequence<O, M>
+  export type NaturalNumbersObjectMediator<O, M> = NaturalNumbersObjectMediatorWitness<M>
+  export type NaturalNumbersObjectUniqueness<O, M> = NaturalNumbersObjectUniquenessWitness<M>
+  export type NaturalNumbersObjectStructure<O, M> = NaturalNumbersObjectWitness<O, M>
+  export type NaturalNumbersInductionResult<M> = NaturalNumbersInductionWitness<M>
+  export type NaturalNumbersInductionIsomorphismResult<M> =
+    NaturalNumbersInductionIsomorphismWitness<M>
+  export type NaturalNumbersZeroSeparationResult<O, M> =
+    NaturalNumbersZeroSeparationWitness<O, M>
+  export type NaturalNumbersPrimitiveRecursionResult<O, M> =
+    NaturalNumbersPrimitiveRecursionWitness<O, M>
+  export type NaturalNumbersPrimitiveRecursionExponentialResult<O, M> =
+    NaturalNumbersPrimitiveRecursionExponentialWitness<O, M>
+  export type NaturalNumbersPrimitiveRecursionCompatibilityResult<O, M> =
+    NaturalNumbersPrimitiveRecursionCompatibility<O, M>
+  export type NaturalNumbersInitialAlgebraResult<O, M> =
+    NaturalNumbersInitialAlgebraWitness<O, M>
+  export type PointImage<M> = PointImageWitness<M>
+  export type PointCollision<M> = PointCollisionWitness<M>
+  export type PointInjectiveResult<M> = PointInjectiveWitness<M>
+  export type PointCoverage<M> = PointCoverageWitness<M>
+  export type PointSurjectiveResult<M> = PointSurjectiveWitness<M>
+  export type PointInfiniteResult<M> = PointInfiniteWitness<M>
+  export type DedekindInfiniteResult<M> = DedekindInfiniteWitness<M>
+
   export type BinaryProductUnitPointCompatibilityInput<O, M> = CategoryBinaryProductUnitPointCompatibilityInput<O, M>
 
   export interface BinaryProductUnitCategory<C, M> {
@@ -2706,6 +4457,10 @@ export namespace CategoryLimits {
   export const checkBinaryProductNaturality = checkBinaryProductNaturalityHelper as <O, M>(
     input: BinaryProductNaturalityInput<O, M>,
   ) => boolean
+
+  export const naturalNumbersObjectComposites = naturalNumbersObjectCompatibility
+
+  export const naturalNumbersObjectCheckCandidate = naturalNumbersObjectCandidateVerdict
 
   export const checkBinaryProductDiagonalPairing = checkBinaryProductDiagonalPairingHelper as <O, M>(
     input: BinaryProductDiagonalPairingInput<O, M>,

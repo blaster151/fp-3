@@ -63,6 +63,7 @@ const defaultSamples: FunctorCheckSamples<TwoObjects, TwoArrows> = {
     { f: TwoObjectCategory.id("•"), g: TwoObjectCategory.id("•") },
     { f: nonIdentity, g: TwoObjectCategory.id("★") },
   ],
+  arrows: TwoObjectCategory.arrows,
 };
 
 const promoteIdentityFunctor = (
@@ -112,16 +113,94 @@ describe("virtual equipment tight primitive catalogue", () => {
           { f: TwoObjectCategory.id("•"), g: TwoObjectCategory.id("•") },
           { f: nonIdentity, g: TwoObjectCategory.id("★") },
         ],
+        arrows: TwoObjectCategory.arrows,
       },
     );
 
     expect(report.holds).toBe(true);
+    expect(report.respectsSourcesAndTargets).toBe(true);
+    expect(report.details).toHaveLength(0);
+    expect(report.ignoredCompositionPairs).toHaveLength(0);
     expect(catFunctor.onObj("•")).toBe("•");
     expect(catFunctor.onMor(nonIdentity)).toBe(nonIdentity);
 
     const roundTripped = demoteFunctor(catFunctor);
     expect(roundTripped.F0("★")).toBe("★");
     expect(roundTripped.F1(nonIdentity)).toBe(nonIdentity);
+  });
+
+  test("functor law report captures identity and composition failures", () => {
+    const brokenFunctor: Functor<TwoObject, TwoArrow, TwoObject, TwoArrow> = {
+      F0: (obj: TwoObject) => obj,
+      F1: () => nonIdentity,
+    };
+
+    const { report } = promoteFunctor(
+      TwoObjectCategory,
+      TwoObjectCategory,
+      brokenFunctor,
+      defaultSamples,
+    );
+
+    expect(report.holds).toBe(false);
+    expect(report.preservesIdentities).toBe(false);
+    expect(report.identityFailures.length).toBeGreaterThan(0);
+    expect(report.preservesComposition).toBe(false);
+    expect(report.compositionFailures.length).toBeGreaterThan(0);
+    expect(report.ignoredCompositionPairs.length).toBe(0);
+    expect(report.respectsSourcesAndTargets).toBe(false);
+    expect(report.endpointFailures.length).toBeGreaterThan(0);
+    expect(report.details.some((detail) => detail.includes("Functor failed"))).toBe(true);
+  });
+
+  test("functor law report records non-composable sample pairs", () => {
+    const identityFunctor: Functor<TwoObject, TwoArrow, TwoObject, TwoArrow> = {
+      F0: (obj: TwoObject) => obj,
+      F1: (arrow: TwoArrow) => arrow,
+    };
+
+    const samples: FunctorCheckSamples<TwoObject, TwoArrow> = {
+      objects: TwoObjectCategory.objects,
+      composablePairs: [
+        { f: TwoObjectCategory.id("•"), g: TwoObjectCategory.id("★") },
+        { f: TwoObjectCategory.id("★"), g: TwoObjectCategory.id("•") },
+      ],
+    };
+
+    const { report } = promoteFunctor(
+      TwoObjectCategory,
+      TwoObjectCategory,
+      identityFunctor,
+      samples,
+    );
+
+    expect(report.preservesComposition).toBe(true);
+    expect(report.ignoredCompositionPairs.length).toBe(2);
+    expect(report.details.some((detail) => detail.includes("non-composable"))).toBe(true);
+  });
+
+  test("endpoint diagnostics derive arrow samples when omitted", () => {
+    const endpointBroken: Functor<TwoObject, TwoArrow, TwoObject, TwoArrow> = {
+      F0: (object: TwoObject) => object,
+      F1: (arrow: TwoArrow) => (arrow.name === "f" ? TwoObjectCategory.id("•") : arrow),
+    };
+
+    const samples: FunctorCheckSamples<TwoObject, TwoArrow> = {
+      objects: TwoObjectCategory.objects,
+      composablePairs: [{ f: TwoObjectCategory.id("•"), g: nonIdentity }],
+    };
+
+    const { report } = promoteFunctor(
+      TwoObjectCategory,
+      TwoObjectCategory,
+      endpointBroken,
+      samples,
+    );
+
+    expect(report.preservesIdentities).toBe(true);
+    expect(report.preservesComposition).toBe(true);
+    expect(report.respectsSourcesAndTargets).toBe(false);
+    expect(report.endpointFailures.length).toBeGreaterThan(0);
   });
 
   test("catalogued categories expose explicit endpoints", () => {

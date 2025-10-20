@@ -7,6 +7,7 @@ import {
   FinSetPullbacksFromEqualizer,
   FinSetTruthArrow,
   FinSetTruthValues,
+  finsetCharacteristicPullback,
   makeFinSetObj,
   type FinSetMor,
   type FinSetObj,
@@ -42,6 +43,7 @@ describe('FinSet power objects', () => {
 
     expect(powerWitness.anchor).toBe(Y)
     expect(powerWitness.membership.evaluation.to).toBe(FinSetTruthValues)
+    expect(powerWitness.membership.certification.valid).toBe(true)
 
     const membershipPullback = powerWitness.membership.pullback
     const evaluationComposite = FinSet.compose(
@@ -101,6 +103,18 @@ describe('FinSet power objects', () => {
     const membershipComposite = FinSet.compose(powerWitness.membership.inclusion, classification.relationAnchor)
     const pairingComposite = FinSet.compose(classification.pairing, relation)
     expectEqualArrows(membershipComposite, pairingComposite)
+  })
+
+  it('builds membership by pulling evaluation back along the truth arrow', () => {
+    const Y = makeFinSetObj(['y0', 'y1', 'y2'])
+    const powerWitness = FinSetPowerObject(Y)
+
+    const manual = finsetCharacteristicPullback(powerWitness.membership.evaluation)
+
+    expect(sameObject(powerWitness.membership.subobject, manual.subobject)).toBe(true)
+    expectEqualArrows(powerWitness.membership.inclusion, manual.inclusion)
+    expectEqualArrows(powerWitness.membership.pullback.toDomain, manual.pullback.toDomain)
+    expectEqualArrows(powerWitness.membership.pullback.toAnchor, manual.pullback.toAnchor)
   })
 
   it('rejects non-monomorphic relations', () => {
