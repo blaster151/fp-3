@@ -29,7 +29,7 @@ export interface MeasurableSpace<X> {
 /** Convenience builder for the discrete σ-algebra (all subsets measurable). */
 export function discreteMeasurableSpace<X>(label?: string): MeasurableSpace<X> {
   return {
-    label,
+    ...(label === undefined ? {} : { label }),
     isMeasurable: () => true,
   };
 }
@@ -41,7 +41,7 @@ export function productMeasurableSpace<A, B>(
   label?: string,
 ): MeasurableSpace<Pair<A, B>> {
   return {
-    label,
+    ...(label === undefined ? {} : { label }),
     isMeasurable: (set) =>
       typeof set === "function" &&
       left.isMeasurable((a) => right.isMeasurable((b) => set([a, b]))),

@@ -46,7 +46,12 @@ interface Span2CellEvidence {
 
 type SpanProarrow = EquipmentProarrow<FiniteSet, SpanPayload>;
 
-type SpanCell = Equipment2Cell<FiniteSet, FiniteSet, SpanPayload, Span2CellEvidence>;
+type SpanCell = Equipment2Cell<
+  FiniteSet,
+  { readonly from: FiniteSet; readonly to: FiniteSet },
+  SpanPayload,
+  Span2CellEvidence
+>;
 
 const IDENTITY_PREFIX = "id:";
 
@@ -144,10 +149,18 @@ const composeSpanPayload = (
 };
 
 const makeBoundaries = (
-  equipment: VirtualEquipment<FiniteSet, FiniteSet, SpanPayload, Span2CellEvidence>,
+  equipment: VirtualEquipment<
+    FiniteSet,
+    { readonly from: FiniteSet; readonly to: FiniteSet },
+    SpanPayload,
+    Span2CellEvidence
+  >,
   source: SpanProarrow,
   target: SpanProarrow,
-): EquipmentCellBoundaries<FiniteSet, FiniteSet> => ({
+): EquipmentCellBoundaries<
+  FiniteSet,
+  { readonly from: FiniteSet; readonly to: FiniteSet }
+> => ({
   left: identityVerticalBoundary(
     equipment,
     source.from,
@@ -161,7 +174,12 @@ const makeBoundaries = (
 });
 
 const makeSpanCell = (
-  equipment: VirtualEquipment<FiniteSet, FiniteSet, SpanPayload, Span2CellEvidence>,
+  equipment: VirtualEquipment<
+    FiniteSet,
+    { readonly from: FiniteSet; readonly to: FiniteSet },
+    SpanPayload,
+    Span2CellEvidence
+  >,
   sourceArrows: ReadonlyArray<SpanProarrow>,
   targetArrows: ReadonlyArray<SpanProarrow>,
   mapping: ReadonlyArray<number>,
@@ -252,8 +270,18 @@ const composeHorizontalMapping = (
 };
 
 const makeWeakComposition = (
-  equipment: VirtualEquipment<FiniteSet, FiniteSet, SpanPayload, Span2CellEvidence>,
-): EquipmentWeakComposition<FiniteSet, FiniteSet, SpanPayload, Span2CellEvidence> => ({
+  equipment: VirtualEquipment<
+    FiniteSet,
+    { readonly from: FiniteSet; readonly to: FiniteSet },
+    SpanPayload,
+    Span2CellEvidence
+  >,
+): EquipmentWeakComposition<
+  FiniteSet,
+  { readonly from: FiniteSet; readonly to: FiniteSet },
+  SpanPayload,
+  Span2CellEvidence
+> => ({
   associator: (h, g, f) => {
     const hg = horizontalComposeProarrows(equipment, h, g);
     const gh = horizontalComposeProarrows(equipment, g, f);
@@ -343,9 +371,17 @@ const makeSpanIdentityFunctor = (
 });
 
 const spanCells = (
-  equipment: VirtualEquipment<FiniteSet, FiniteSet, SpanPayload, Span2CellEvidence>,
+  equipment: VirtualEquipment<
+    FiniteSet,
+    { readonly from: FiniteSet; readonly to: FiniteSet },
+    SpanPayload,
+    Span2CellEvidence
+  >,
 ) => ({
-  identity: (frame: EquipmentFrame<FiniteSet, SpanPayload>): Span2CellEvidence => {
+  identity: (
+    frame: EquipmentFrame<FiniteSet, SpanPayload>,
+    _boundaries: EquipmentCellBoundaries<FiniteSet, { readonly from: FiniteSet; readonly to: FiniteSet }>,
+  ): Span2CellEvidence => {
     const composite = horizontalComposeManyProarrows(
       equipment,
       frame.arrows,
@@ -472,11 +508,21 @@ const spanCells = (
 export const makeFiniteSpanEquipment = (
   objects: ReadonlyArray<FiniteSet>,
   equals: ObjectEquality<FiniteSet> = compareFiniteSets,
-): VirtualEquipment<FiniteSet, FiniteSet, SpanPayload, Span2CellEvidence> => {
+): VirtualEquipment<
+  FiniteSet,
+  { readonly from: FiniteSet; readonly to: FiniteSet },
+  SpanPayload,
+  Span2CellEvidence
+> => {
   const category = makeSpanTightCategory();
   const identityFunctor = makeSpanIdentityFunctor(category);
   const tight = defaultTightLayer(category, identityFunctor, composeFun);
-  const equipment: VirtualEquipment<FiniteSet, FiniteSet, SpanPayload, Span2CellEvidence> = {
+  const equipment: VirtualEquipment<
+    FiniteSet,
+    { readonly from: FiniteSet; readonly to: FiniteSet },
+    SpanPayload,
+    Span2CellEvidence
+  > = {
     objects,
     equalsObjects: equals,
     tight,
@@ -509,11 +555,8 @@ export const makeFiniteSpanEquipment = (
           if (!next) {
             return undefined;
           }
-          const composed = horizontalComposeProarrows(
-            equipment,
-            next,
-            accumulator,
-          );
+          const composed: EquipmentProarrow<FiniteSet, SpanPayload> | undefined =
+            horizontalComposeProarrows(equipment, next, accumulator);
           if (!composed) {
             return undefined;
           }
@@ -527,15 +570,24 @@ export const makeFiniteSpanEquipment = (
       right: () => undefined,
     },
     cells: undefined as unknown as ReturnType<typeof spanCells>,
-    weakComposition: undefined,
   };
   (equipment as {
     cells: ReturnType<typeof spanCells>;
-    weakComposition: EquipmentWeakComposition<FiniteSet, FiniteSet, SpanPayload, Span2CellEvidence>;
+    weakComposition: EquipmentWeakComposition<
+      FiniteSet,
+      { readonly from: FiniteSet; readonly to: FiniteSet },
+      SpanPayload,
+      Span2CellEvidence
+    >;
   }).cells = spanCells(equipment);
   (equipment as {
     cells: ReturnType<typeof spanCells>;
-    weakComposition: EquipmentWeakComposition<FiniteSet, FiniteSet, SpanPayload, Span2CellEvidence>;
+    weakComposition: EquipmentWeakComposition<
+      FiniteSet,
+      { readonly from: FiniteSet; readonly to: FiniteSet },
+      SpanPayload,
+      Span2CellEvidence
+    >;
   }).weakComposition = makeWeakComposition(equipment);
   return equipment;
 };
@@ -543,7 +595,12 @@ export const makeFiniteSpanEquipment = (
 export const makeFiniteSpanBicategory = (
   objects: ReadonlyArray<FiniteSet>,
   equals: ObjectEquality<FiniteSet> = compareFiniteSets,
-): Bicategory<FiniteSet, FiniteSet, SpanPayload, Span2CellEvidence> => {
+): Bicategory<
+  FiniteSet,
+  { readonly from: FiniteSet; readonly to: FiniteSet },
+  SpanPayload,
+  Span2CellEvidence
+> => {
   const equipment = makeFiniteSpanEquipment(objects, equals);
   const result = bicategoryFromEquipment(equipment);
   if (!result.bicategory) {

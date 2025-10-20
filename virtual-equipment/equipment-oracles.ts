@@ -121,10 +121,10 @@ const createOracleResult = <Analysis>(
   };
 };
 
-const createPendingResult = (
+const createPendingResult = <Analysis = unknown>(
   law: EquipmentLawKey,
   reason: string,
-): OracleResult => {
+): OracleResult<Analysis> => {
   const descriptor = EquipmentLawRegistry[law];
   return {
     holds: false,

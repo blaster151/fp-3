@@ -55,9 +55,9 @@ const sampleDims: ReadonlyArray<[number, number]> = [
 ];
 
 const phiId: RingHom<number, number> = {
-  src: RingReal,
-  dst: RingReal,
-  phi: (x: number) => x,
+  source: RingReal,
+  target: RingReal,
+  map: (x: number) => x,
 };
 
 const Fscalar = makeScalarExactFunctor(phiId);

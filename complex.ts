@@ -2,9 +2,8 @@
 // Bounded chain complexes (homological grading), validation, and shift [1].
 
 import type { Mat } from './allTS'
-import { matMul } from './allTS'
+import { matMul, matNeg } from './allTS'
 import type { Ring } from './ring'
-import { matNeg } from './ring'
 
 export type Complex<R> = {
   readonly S: Ring<R>

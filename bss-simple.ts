@@ -4,6 +4,7 @@
 import type { Dist } from "./dist";
 import { toLegacy } from "./dist";
 import { standardMeasure, equalDistNum } from "./standard-experiment";
+import type { BSSDetailedResult, ConvexOrderEvidence, StandardMeasure } from "./bss";
 import { mkFin } from "./markov-category";
 import { blackwellMeasure } from "./experiments";
 import {
@@ -13,13 +14,7 @@ import {
   type ConvexOrderWitness,
 } from "./dominance";
 
-export type Posterior<Θ> = Dist<number, Θ>;
-export type StandardMeasure<Θ> = Dist<number, Posterior<Θ>>;
-
-type ConvexOrderEvidence<X, Y> = {
-  viaGarbling: ConvexOrderWitness<X, Y>;
-  gridEvidence: ConvexOrderGridEvidence;
-};
+export type { Posterior, StandardMeasure, ConvexOrderEvidence } from "./bss";
 
 function computeConvexOrderEvidence<
   Θ extends string | number,
@@ -131,14 +126,7 @@ export function testBSSDetailed<
   g: (θ: Θ) => Dist<number, Y>,
   xVals: readonly X[],
   yVals: readonly Y[]
-): {
-  fMoreInformative: boolean;
-  gMoreInformative: boolean;
-  equivalent: boolean;
-  dilationFound: boolean;
-  details: string;
-  dominance: ConvexOrderEvidence<X, Y>;
-} {
+): BSSDetailedResult<Θ, X, Y> {
   const fToG = bssCompare(m, f, g, xVals, yVals);
   const gToF = bssCompare(m, g, f, yVals, xVals);
 
@@ -191,7 +179,7 @@ export function analyzeBSS<
     fHat: StandardMeasure<Θ>;
     gHat: StandardMeasure<Θ>;
   };
-  bssResult: ReturnType<typeof testBSSDetailed>;
+  bssResult: BSSDetailedResult<Θ, X, Y>;
   dominance: ConvexOrderEvidence<X, Y>;
   dilationAnalysis: {
     fHatSupport: number;

@@ -2,10 +2,9 @@
 // Chain maps and the standard mapping cone Cone(f).
 
 import type { Mat } from './allTS'
-import { matMul } from './allTS'
+import { matMul, idMat, zerosMat, matNeg, hcat, vcat } from './allTS'
 import type { Complex } from './complex'
 import type { Ring } from './ring'
-import { idMat, zerosMat, matNeg, hcat, vcat } from './ring'
 
 export type ChainMap<R> = {
   readonly S: Ring<R>

@@ -18,7 +18,8 @@ import type {
   ExponentialArrow,
 } from "../set-cat";
 import { SetCat, composeSet } from "../set-cat";
-import { SetLaws, CardinalityComparisonResult } from "../set-laws";
+import { SetLaws } from "../set-laws";
+import type { CardinalityComparisonResult } from "../set-laws";
 
 export type OracleReport<TExtra = Record<string, unknown>> = {
   holds: boolean;
@@ -357,7 +358,7 @@ export interface SetExponentialWitness<A, B> {
     readonly domain: AnySet<X>;
     readonly product?: ProductData<X, A>;
     readonly mediator: SetHom<readonly [X, A], B>;
-  }) => OracleReport<{ transpose: SetHom<X, ExponentialArrow<A, B>> | null }>;
+  }) => OracleReport<{ transpose?: SetHom<X, ExponentialArrow<A, B>> }>;
   readonly checkCurryUniqueness: <X>(input: {
     readonly domain: AnySet<X>;
     readonly product?: ProductData<X, A>;
@@ -368,7 +369,7 @@ export interface SetExponentialWitness<A, B> {
     readonly domain: AnySet<X>;
     readonly product?: ProductData<X, A>;
     readonly mediator: SetHom<readonly [X, A], B>;
-  }) => OracleReport<{ transpose: SetHom<X, ExponentialArrow<A, B>> | null }>;
+  }) => OracleReport<{ transpose?: SetHom<X, ExponentialArrow<A, B>> }>;
 }
 
 const ensureProductData = <X, A>(
@@ -443,12 +444,12 @@ export const setExponentialWitness = <A, B>(
     readonly domain: AnySet<X>;
     readonly product?: ProductData<X, A>;
     readonly mediator: SetHom<readonly [X, A], B>;
-  }): OracleReport<{ transpose: SetHom<X, ExponentialArrow<A, B>> }> => {
+  }): OracleReport<{ transpose?: SetHom<X, ExponentialArrow<A, B>> }> => {
     const domainObj = ensureSetObj(input.domain, "setExponentialWitness.checkTriangle.domain");
     const product = ensureProductData(domainObj, baseObj, input.product, "setExponentialWitness.checkTriangle");
     const failures = verifyMediatorCompatibility(product, input.mediator, codomainObj, "setExponentialWitness.checkTriangle");
     if (failures.length > 0) {
-      return { holds: false, failures, details: { transpose: null } };
+      return { holds: false, failures, details: {} };
     }
     const transpose = data.curry({ domain: domainObj, product, morphism: input.mediator });
     const firstComponent = composeSet(transpose, product.projections.fst);
@@ -499,7 +500,7 @@ export const setExponentialWitness = <A, B>(
     readonly domain: AnySet<X>;
     readonly product?: ProductData<X, A>;
     readonly mediator: SetHom<readonly [X, A], B>;
-  }): OracleReport<{ transpose: SetHom<X, ExponentialArrow<A, B>> }> => {
+  }): OracleReport<{ transpose?: SetHom<X, ExponentialArrow<A, B>> }> => {
     const domainObj = ensureSetObj(input.domain, "setExponentialWitness.checkRoundTrip.domain");
     const product = ensureProductData(domainObj, baseObj, input.product, "setExponentialWitness.checkRoundTrip");
     const mediatorFailures = verifyMediatorCompatibility(
@@ -509,7 +510,7 @@ export const setExponentialWitness = <A, B>(
       "setExponentialWitness.checkRoundTrip",
     );
     if (mediatorFailures.length > 0) {
-      return { holds: false, failures: mediatorFailures, details: { transpose: null } };
+      return { holds: false, failures: mediatorFailures, details: {} };
     }
     const transpose = data.curry({ domain: domainObj, product, morphism: input.mediator });
     const uncurried = data.uncurry({ product, morphism: transpose });
@@ -570,8 +571,17 @@ export const checkPowerSetWitness = <A>(
     if (entry.characteristic.length !== elements.length) {
       failures.push("power set evidence: characteristic vector length mismatch");
     }
-    entry.characteristic.forEach((flag, index) => {
+    for (let index = 0; index < elements.length; index += 1) {
       const element = elements[index];
+      if (element === undefined) {
+        failures.push("power set evidence: element enumeration missing entry for characteristic vector");
+        continue;
+      }
+      const flag = entry.characteristic[index];
+      if (flag === undefined) {
+        failures.push("power set evidence: characteristic vector missing entry for source element");
+        continue;
+      }
       const hasElement = entry.subset.has(element);
       if (flag && !hasElement) {
         failures.push(`power set evidence: indicator marks ${String(element)} present but subset omits it`);
@@ -579,7 +589,7 @@ export const checkPowerSetWitness = <A>(
       if (!flag && hasElement) {
         failures.push(`power set evidence: indicator marks ${String(element)} absent but subset includes it`);
       }
-    });
+    }
     for (const value of entry.subset) {
       if (!sourceObj.has(value)) {
         failures.push("power set evidence: subset contains an element outside the source set");

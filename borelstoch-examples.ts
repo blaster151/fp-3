@@ -43,19 +43,18 @@ interface BorelOmegaMeasure<Ω> {
 
 type BorelOmegaOptions<Ω> = BorelOmegaSupport<Ω> | BorelOmegaMeasure<Ω>;
 
-interface BorelWitnessBaseOptions<Ω, XJ> extends BorelOmegaOptions<Ω> {
+type BorelWitnessBaseOptions<Ω, XJ> = BorelOmegaOptions<Ω> & {
   readonly label?: string;
   readonly productSpace: Fin<XJ>;
-}
+};
 
-export interface BorelKolmogorovOptions<Ω, XJ, T> extends BorelWitnessBaseOptions<Ω, XJ> {
+export type BorelKolmogorovOptions<Ω, XJ, T> = BorelWitnessBaseOptions<Ω, XJ> & {
   readonly tailSpace?: Fin<T>;
-}
+};
 
-export interface BorelHewittSavageOptions<Ω, XJ, T>
-  extends BorelWitnessBaseOptions<Ω, XJ> {
+export type BorelHewittSavageOptions<Ω, XJ, T> = BorelWitnessBaseOptions<Ω, XJ> & {
   readonly tailSpace?: Fin<T>;
-}
+};
 
 export interface BorelPermutation<XJ> {
   readonly name: string;
@@ -90,7 +89,8 @@ function ensureOmegaMeasure<Ω>(
     isMeasurable: () => true,
   } satisfies MeasurableSpace<Ω>);
 
-  const dist = fromWeights([...options.omegaSupport], true);
+  const distEntries = options.omegaSupport.map(([omega, weight]) => [omega, weight] as [Ω, number]);
+  const dist = fromWeights(distEntries, true);
   return probabilityFromFinite(omegaSpace, dist);
 }
 
@@ -142,7 +142,7 @@ function buildBorelPrior<Ω, Coord, XJ>(
   const productMeasurable = measurableFromFin(productSpace, `${context} product`);
   const canonicalize = (value: XJ, reason: string) => canonicalElement(productSpace, value, reason);
 
-  const omegaMeasure = ensureOmegaMeasure(options, context);
+  const omegaMeasure = ensureOmegaMeasure<Ω>(options, context);
 
   const pushforward = {
     space: productMeasurable,

@@ -94,7 +94,7 @@ describe("Top category operations helpers", () => {
     const badLeg = {
       ...rightLeg,
       eqSource: rightObject.eq,
-    } as typeof rightLeg;
+    } as unknown as typeof rightLeg;
 
     expect(() => tuple.tuple(leftObject, [leftLeg, badLeg])).toThrow(
       /leg equality witnesses must match the domain/,
