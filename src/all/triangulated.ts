@@ -64,7 +64,14 @@ import type {
   PullbackCalculator,
   PullbackConeFactorResult,
   PullbackData,
+  FinSetCharacteristicPullbackWitness,
 } from "../../pullback"
+import {
+  makeMonicCategory,
+  type MonicCategory,
+  type MonicMorphism,
+  type MonicObject,
+} from "../../monic-category"
 import {
   type FinSetCategory as FinSetCategoryModel,
   type FinSetName as FinSetNameModel,
@@ -2705,6 +2712,65 @@ export const finsetCharacteristic = (monomorphism: FinSetMor): FinSetMor => {
   return { from: codomain, to: FinSetTruthValues, map }
 }
 
+export const FinSetFalseArrow = finsetCharacteristic(FinSet.initialArrow(FinSet.terminalObj))
+
+export const FinSetNegation = finsetCharacteristic(FinSetFalseArrow)
+
+export const finsetCharacteristicComplement = (characteristic: FinSetMor): FinSetMor => {
+  if (characteristic.to !== FinSetTruthValues) {
+    throw new Error('finsetCharacteristicComplement: characteristic must land in the truth-value object.')
+  }
+
+  if (characteristic.map.length !== characteristic.from.elements.length) {
+    throw new Error('finsetCharacteristicComplement: characteristic must enumerate every domain element.')
+  }
+
+  const map = characteristic.map.map((value, index) => {
+    if (value === FINSET_TRUE_INDEX) {
+      return FINSET_FALSE_INDEX
+    }
+    if (value === FINSET_FALSE_INDEX) {
+      if (characteristic.from.elements[index] === undefined) {
+        throw new Error('finsetCharacteristicComplement: missing domain element for false fibre.')
+      }
+      return FINSET_TRUE_INDEX
+    }
+    throw new Error('finsetCharacteristicComplement: characteristic map is not truth-valued.')
+  })
+
+  return { from: characteristic.from, to: FinSetTruthValues, map }
+}
+
+export const finsetCharacteristicFalsePullback = (characteristic: FinSetMor) => {
+  const { finsetCharacteristicPullback } = getFinSetPullbackHelpers()
+  return finsetCharacteristicPullback(characteristic, FinSetFalseArrow)
+}
+
+export interface FinSetComplementSubobjectWitness {
+  readonly complement: FinSetSubobjectWitness
+  readonly characteristic: FinSetMor
+  readonly falsePullback: FinSetCharacteristicPullbackWitness
+}
+
+export const finsetComplementSubobject = (monomorphism: FinSetMor): FinSetComplementSubobjectWitness => {
+  if (!FinSet.isInjective(monomorphism)) {
+    throw new Error('finsetComplementSubobject: monomorphism must be injective to form a complement.')
+  }
+
+  const characteristic = finsetCharacteristic(monomorphism)
+  const falsePullback = finsetCharacteristicFalsePullback(characteristic)
+  const complement: FinSetSubobjectWitness = {
+    subobject: falsePullback.subobject,
+    inclusion: falsePullback.inclusion,
+  }
+
+  return {
+    complement,
+    characteristic: finsetCharacteristicComplement(characteristic),
+    falsePullback,
+  }
+}
+
 const manualSubobjectFromCharacteristic = (
   characteristic: FinSetMor,
 ): FinSetSubobjectWitness => {
@@ -2762,6 +2828,115 @@ export const finsetSubobjectFromCharacteristic = (characteristic: FinSetMor): Fi
     throw new Error(
       `finsetSubobjectFromCharacteristic: pullback reconstruction failed: ${pullbackMessage}.${manualSummary}`,
     )
+  }
+}
+
+export const FinSetPowerObject = (
+  anchor: FinSetObj,
+): CategoryLimits.PowerObjectWitness<FinSetObj, FinSetMor> => {
+  const { finsetCharacteristicPullback } = getFinSetPullbackHelpers()
+  const exponential = FinSet.exponential(anchor, FinSetTruthValues)
+
+  const membershipProduct: CategoryLimits.BinaryProductWithPairWitness<FinSetObj, FinSetMor> = {
+    obj: exponential.product.obj,
+    projections: [exponential.product.proj1, exponential.product.proj2],
+    pair: (domain, left, right) => exponential.product.pair(domain, left, right),
+  }
+
+  const membershipPullback = finsetCharacteristicPullback(exponential.evaluation)
+
+  const membership: CategoryLimits.PowerObjectMembershipWitness<FinSetObj, FinSetMor> = {
+    subobject: membershipPullback.subobject,
+    inclusion: membershipPullback.inclusion,
+    product: membershipProduct,
+    evaluation: exponential.evaluation,
+    pullback: membershipPullback.pullback,
+    certification: membershipPullback.certification,
+  }
+
+  return {
+    anchor,
+    powerObj: exponential.obj,
+    membership,
+    classify: ({ ambient, relation, product, pullbacks }) => {
+      const [projectionToAmbient, projectionToAnchor] = product.projections
+
+      if (relation.to !== product.obj) {
+        throw new Error('FinSetPowerObject.classify: relation codomain must match the supplied product.')
+      }
+
+      if (projectionToAmbient.from !== product.obj || projectionToAnchor.from !== product.obj) {
+        throw new Error('FinSetPowerObject.classify: product projections must originate at the ambient product object.')
+      }
+
+      if (projectionToAmbient.to !== ambient) {
+        throw new Error('FinSetPowerObject.classify: first projection must land in the ambient object.')
+      }
+
+      if (projectionToAnchor.to !== anchor) {
+        throw new Error('FinSetPowerObject.classify: second projection must land in the anchor object.')
+      }
+
+      assertMonomorphism(relation, 'FinSetPowerObject.classify')
+
+      const characteristic = finsetCharacteristic(relation)
+
+      if (characteristic.from !== product.obj) {
+        throw new Error('FinSetPowerObject.classify: characteristic domain must equal the ambient product.')
+      }
+
+      const mediator = exponential.curry(ambient, characteristic)
+      const pairing = membership.product.pair(
+        product.obj,
+        FinSet.compose(mediator, projectionToAmbient),
+        projectionToAnchor,
+      )
+
+      const pullback = pullbacks.pullback(pairing, membership.inclusion)
+      const certification = pullbacks.certify(pairing, membership.inclusion, pullback)
+
+      if (!certification.valid) {
+        throw new Error(
+          `FinSetPowerObject.classify: induced pullback failed certification: ${
+            certification.reason ?? 'unknown reason'
+          }`,
+        )
+      }
+
+      const iso = buildFinSetMonomorphismIso(
+        relation,
+        pullback.toDomain,
+        'FinSetPowerObject.classify',
+      )
+
+      const relationRecover = FinSet.compose(pullback.toDomain, iso.forward)
+      if (!equalFinSetMor(relationRecover, relation)) {
+        throw new Error(
+          'FinSetPowerObject.classify: canonical pullback mediator does not reproduce the supplied relation.',
+        )
+      }
+
+      const relationAnchor = FinSet.compose(pullback.toAnchor, iso.forward)
+      const membershipComposite = FinSet.compose(membership.inclusion, relationAnchor)
+      const pairingComposite = FinSet.compose(pairing, relation)
+
+      if (!equalFinSetMor(membershipComposite, pairingComposite)) {
+        throw new Error(
+          'FinSetPowerObject.classify: relation square does not commute with membership inclusion.',
+        )
+      }
+
+      return {
+        mediator,
+        characteristic,
+        pairing,
+        pullback,
+        certification,
+        relationIso: iso,
+        relationAnchor,
+        factorCone: (candidate) => pullbacks.factorCone(pullback, candidate),
+      }
+    },
   }
 }
 
@@ -3340,6 +3515,64 @@ const assertEpimorphism = (arrow: FinSetMor, context: string): void => {
   }
 }
 
+const buildFinSetMonomorphismIso = (
+  relation: FinSetMor,
+  canonical: FinSetMor,
+  context: string,
+): CategoryLimits.SubobjectClassifierIsoWitness<FinSetMor> => {
+  assertMonomorphism(relation, `${context}: relation arrow must be a monomorphism.`)
+  assertMonomorphism(canonical, `${context}: canonical pullback arrow must be a monomorphism.`)
+
+  if (relation.to !== canonical.to) {
+    throw new Error(`${context}: relation and canonical monomorphisms must share a codomain.`)
+  }
+
+  const forwardMap = relation.map.map((codomainIndex, domainIndex) => {
+    if (!Number.isInteger(codomainIndex)) {
+      throw new Error(`${context}: relation image at index ${domainIndex} is malformed.`)
+    }
+    const target = canonical.map.indexOf(codomainIndex)
+    if (target < 0) {
+      throw new Error(
+        `${context}: canonical pullback is missing the codomain index ${codomainIndex} present in the relation.`,
+      )
+    }
+    return target
+  })
+
+  const backwardMap = canonical.map.map((codomainIndex, domainIndex) => {
+    if (!Number.isInteger(codomainIndex)) {
+      throw new Error(`${context}: canonical image at index ${domainIndex} is malformed.`)
+    }
+    const target = relation.map.indexOf(codomainIndex)
+    if (target < 0) {
+      throw new Error(
+        `${context}: relation is missing the codomain index ${codomainIndex} present in the canonical pullback.`,
+      )
+    }
+    return target
+  })
+
+  const forward: FinSetMor = { from: relation.from, to: canonical.from, map: forwardMap }
+  const backward: FinSetMor = { from: canonical.from, to: relation.from, map: backwardMap }
+
+  const forwardThenBackward = FinSet.compose(backward, forward)
+  if (!equalFinSetMor(forwardThenBackward, FinSet.id(relation.from))) {
+    throw new Error(
+      `${context}: forward/backward composites must equal the identity on the relation domain.`,
+    )
+  }
+
+  const backwardThenForward = FinSet.compose(forward, backward)
+  if (!equalFinSetMor(backwardThenForward, FinSet.id(canonical.from))) {
+    throw new Error(
+      `${context}: forward/backward composites must equal the identity on the canonical apex.`,
+    )
+  }
+
+  return { forward, backward }
+}
+
 export interface FinSetImageFactorization {
   readonly arrow: FinSetMor
   readonly image: FinSetObj
@@ -3651,6 +3884,36 @@ const buildBinaryProductWitness = (A: FinSetObj, B: FinSetObj) => {
   return { obj, proj1, proj2, pair }
 }
 
+const finsetTruthProductBase = buildBinaryProductWitness(FinSetTruthValues, FinSetTruthValues)
+
+export const FinSetTruthProduct: CategoryLimits.TruthProductWitness<FinSetObj, FinSetMor> = {
+  obj: finsetTruthProductBase.obj,
+  projections: [finsetTruthProductBase.proj1, finsetTruthProductBase.proj2] as const,
+  pair: finsetTruthProductBase.pair,
+}
+
+export const FinSetTruthAnd: FinSetMor = {
+  from: finsetTruthProductBase.obj,
+  to: FinSetTruthValues,
+  map: finsetTruthProductBase.obj.elements.map(tuple => {
+    const coordinates = tuple as ReadonlyArray<number>
+    const left = coordinates[0]
+    const right = coordinates[1]
+    if (left === undefined || right === undefined) {
+      throw new Error('FinSetTruthAnd: malformed product tuple in Ω × Ω carrier.')
+    }
+    if (
+      (left !== FINSET_FALSE_INDEX && left !== FINSET_TRUE_INDEX) ||
+      (right !== FINSET_FALSE_INDEX && right !== FINSET_TRUE_INDEX)
+    ) {
+      throw new Error('FinSetTruthAnd: tuple indexes must reference boolean truth values.')
+    }
+    return left === FINSET_TRUE_INDEX && right === FINSET_TRUE_INDEX
+      ? FINSET_TRUE_INDEX
+      : FINSET_FALSE_INDEX
+  }),
+}
+
 export const FinSet: Category<FinSetObj, FinSetMor> &
   ArrowFamilies.HasDomCod<FinSetObj, FinSetMor> &
   CategoryLimits.HasFiniteProducts<FinSetObj, FinSetMor> &
@@ -3683,10 +3946,13 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
   traits: { functionalArrows: true, balanced: true },
   isInjective: (arrow) => {
     if (arrow.map.length !== arrow.from.elements.length) return false
+    const codomainSize = arrow.to.elements.length
     const seen = new Set<number>()
     for (let idx = 0; idx < arrow.map.length; idx++) {
       const image = arrow.map[idx]
       if (image === undefined) return false
+      if (!Number.isInteger(image)) return false
+      if (image < 0 || image >= codomainSize) return false
       if (seen.has(image)) return false
       seen.add(image)
     }
@@ -4001,8 +4267,51 @@ export const FinSetSubobjectClassifier: SubobjectClassifierCategory<FinSetObj, F
   ...FinSet,
   truthValues: FinSetTruthValues,
   truthArrow: FinSetTruthArrow,
+  falseArrow: FinSetFalseArrow,
+  negation: FinSetNegation,
+  truthProduct: FinSetTruthProduct,
+  truthAnd: FinSetTruthAnd,
+  powerObject: FinSetPowerObject,
   characteristic: finsetCharacteristic,
   subobjectFromCharacteristic: finsetSubobjectFromCharacteristic,
+}
+
+export type FinSetMonicObject = MonicObject<FinSetObj, FinSetMor>
+export type FinSetMonicMorphism = MonicMorphism<FinSetObj, FinSetMor>
+
+export const FinSetMonicCategory: MonicCategory<FinSetObj, FinSetMor> = makeMonicCategory({
+  base: FinSet,
+  isMonomorphism: FinSet.isInjective,
+  pullbacks: FinSetPullbacksFromEqualizer,
+  equalMor: FinSet.equalMor,
+})
+
+const finsetTruthMonicObject = FinSetMonicCategory.makeObject(FinSetTruthArrow)
+
+export interface FinSetMonicTerminalMediation {
+  readonly morphism: FinSetMonicMorphism
+  readonly characteristic: FinSetMor
+  readonly terminalLeg: FinSetMor
+}
+
+export interface FinSetMonicTerminalWitness {
+  readonly terminal: FinSetMonicObject
+  readonly mediator: (object: FinSetMonicObject) => FinSetMonicTerminalMediation
+}
+
+export const FinSetTruthTerminal: FinSetMonicTerminalWitness = {
+  terminal: finsetTruthMonicObject,
+  mediator: (object) => {
+    const characteristic = finsetCharacteristic(object.monic)
+    const terminalLeg = FinSet.terminate(object.domain)
+    const morphism = FinSetMonicCategory.makeMorphism({
+      from: object,
+      to: finsetTruthMonicObject,
+      codomainArrow: characteristic,
+      mediator: terminalLeg,
+    })
+    return { morphism, characteristic, terminalLeg }
+  },
 }
 
 export const finsetLimitFromProductsAndEqualizers = <I, A>(

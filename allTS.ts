@@ -24,6 +24,7 @@ export * from "./src/all/category-toolkit"
 export * from "./src/all/internal-algebra"
 export * from "./src/all/semiring-linear"
 export * from "./src/all/triangulated"
+export * from "./monic-category"
 export type {
   Coring,
   Algebra,

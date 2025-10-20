@@ -1039,6 +1039,7 @@ const finsetTruthPullbacks = makeFinSetPullbackCalculator();
 
 export const finsetCharacteristicPullback = (
   characteristic: FinSetMor,
+  target: FinSetMor = FinSetTruthArrow,
 ): FinSetCharacteristicPullbackWitness => {
   if (characteristic.to !== FinSetTruthValues) {
     throw new Error(
@@ -1052,18 +1053,40 @@ export const finsetCharacteristicPullback = (
     );
   }
 
-  const trueIndex = FinSetTruthArrow.map[0];
+  if (target.to !== FinSetTruthValues) {
+    throw new Error("finsetCharacteristicPullback: target arrow must land in the truth-value object.");
+  }
+
+  if (target.from !== FinSet.terminalObj) {
+    throw new Error("finsetCharacteristicPullback: target arrow must originate at the FinSet terminal object.");
+  }
+
+  if (target.map.length !== target.from.elements.length) {
+    throw new Error(
+      "finsetCharacteristicPullback: target arrow must enumerate every element of the terminal object.",
+    );
+  }
+
+  const targetIndex = target.map[0];
+
+  if (!Number.isInteger(targetIndex)) {
+    throw new Error("finsetCharacteristicPullback: target arrow must select a valid truth index.");
+  }
+
+  if (targetIndex < 0 || targetIndex >= FinSetTruthValues.elements.length) {
+    throw new Error("finsetCharacteristicPullback: target arrow must pick out a valid truth value.");
+  }
 
   characteristic.map.forEach((value, index) => {
     if (value < 0 || value >= FinSetTruthValues.elements.length) {
       throw new Error("finsetSubobjectFromCharacteristic: characteristic arrow is not truth-valued.");
     }
-    if (value === trueIndex && characteristic.from.elements[index] === undefined) {
-      throw new Error("finsetSubobjectFromCharacteristic: missing domain element for true fibre.");
+    if (value === targetIndex && characteristic.from.elements[index] === undefined) {
+      throw new Error("finsetSubobjectFromCharacteristic: missing domain element for targeted fibre.");
     }
   });
 
-  const pullback = finsetTruthPullbacks.pullback(characteristic, FinSetTruthArrow);
+  const pullback = finsetTruthPullbacks.pullback(characteristic, target);
 
   if (pullback.toDomain.to !== characteristic.from) {
     throw new Error(
@@ -1071,16 +1094,22 @@ export const finsetCharacteristicPullback = (
     );
   }
 
-  const characteristicComposite = FinSet.compose(characteristic, pullback.toDomain);
-  const truthComposite = FinSet.compose(FinSetTruthArrow, pullback.toAnchor);
-  const squareCommutes = ensureFinSetEqual(characteristicComposite, truthComposite);
-  if (!squareCommutes) {
+  if (pullback.toAnchor.to !== target.from) {
     throw new Error(
-      "finsetCharacteristicPullback: canonical pullback square fails to commute with the truth arrow.",
+      "finsetCharacteristicPullback: pullback anchor leg does not target the supplied terminal object.",
     );
   }
 
-  const certification = finsetTruthPullbacks.certify(characteristic, FinSetTruthArrow, pullback);
+  const characteristicComposite = FinSet.compose(characteristic, pullback.toDomain);
+  const truthComposite = FinSet.compose(target, pullback.toAnchor);
+  const squareCommutes = ensureFinSetEqual(characteristicComposite, truthComposite);
+  if (!squareCommutes) {
+    throw new Error(
+      "finsetCharacteristicPullback: canonical pullback square fails to commute with the target arrow.",
+    );
+  }
+
+  const certification = finsetTruthPullbacks.certify(characteristic, target, pullback);
   if (!certification.valid) {
     throw new Error(
       `finsetCharacteristicPullback: canonical witness failed certification: ${

@@ -81,3 +81,13 @@ describe('FinSet inverse helper', () => {
     )
   })
 })
+
+describe('FinSet.isInjective', () => {
+  it('rejects maps that point outside the codomain', () => {
+    const domain = makeFinSetObj(['a'])
+    const codomain = makeFinSetObj(['b'])
+    const outOfRange = { from: domain, to: codomain, map: [1] }
+
+    expect(FinSet.isInjective(outOfRange)).toBe(false)
+  })
+})

@@ -1,5 +1,10 @@
 import type { FiniteCategory as FiniteCategoryT } from "../finite-cat"
-import type { PullbackCalculator, PullbackData } from "../pullback"
+import type {
+  PullbackCalculator,
+  PullbackCertification,
+  PullbackConeFactorResult,
+  PullbackData,
+} from "../pullback"
 import type { PushoutData } from "../pushout"
 import { isIso } from "../kinds/inverses"
 import { DiagramClosure } from "./diagram-closure"
@@ -133,6 +138,58 @@ export namespace CategoryLimits {
     terminalObj: O // ∏ over ∅
   }
 
+  export type TruthProductPairer<O, M> = (domain: O, left: M, right: M) => M
+
+  export interface TruthProductWitness<O, M> {
+    readonly obj: O
+    readonly projections: readonly [M, M]
+    readonly pair: TruthProductPairer<O, M>
+  }
+
+  export interface BinaryProductWithPairWitness<O, M> {
+    readonly obj: O
+    readonly projections: readonly [M, M]
+    readonly pair: (domain: O, left: M, right: M) => M
+  }
+
+  export interface PowerObjectClassificationInput<O, M> {
+    readonly ambient: O
+    readonly relation: M
+    readonly product: BinaryProductWithPairWitness<O, M>
+    readonly pullbacks: PullbackCalculator<O, M>
+  }
+
+  export interface PowerObjectMembershipWitness<O, M> {
+    readonly subobject: O
+    readonly inclusion: M
+    readonly product: BinaryProductWithPairWitness<O, M>
+    readonly evaluation: M
+    readonly pullback: PullbackData<O, M>
+    readonly certification: PullbackCertification<O, M>
+  }
+
+  export interface PowerObjectClassificationWitness<O, M> {
+    readonly mediator: M
+    readonly characteristic: M
+    readonly pairing: M
+    readonly pullback: PullbackData<O, M>
+    readonly certification: PullbackCertification<O, M>
+    readonly relationIso: SubobjectClassifierIsoWitness<M>
+    readonly relationAnchor: M
+    readonly factorCone: (
+      cone: PullbackData<O, M>,
+    ) => PullbackConeFactorResult<M>
+  }
+
+  export interface PowerObjectWitness<O, M> {
+    readonly anchor: O
+    readonly powerObj: O
+    readonly membership: PowerObjectMembershipWitness<O, M>
+    classify: (
+      input: PowerObjectClassificationInput<O, M>,
+    ) => PowerObjectClassificationWitness<O, M>
+  }
+
   /** Category equipped with a subobject classifier */
   export interface SubobjectClassifierCategory<O, M>
     extends Category<O, M>,
@@ -142,11 +199,43 @@ export namespace CategoryLimits {
     readonly terminate: (X: O) => M
     readonly truthValues: O
     readonly truthArrow: M
+    readonly falseArrow: M
+    readonly negation: M
+    readonly truthProduct?: TruthProductWitness<O, M>
+    readonly truthAnd?: M
+    readonly powerObject?: (anchor: O) => PowerObjectWitness<O, M>
     readonly initialArrow: (X: O) => M
     characteristic: (monomorphism: M) => M
     subobjectFromCharacteristic: (
       characteristic: M,
     ) => { readonly subobject: O; readonly inclusion: M }
+  }
+
+  export const subobjectClassifierFalseArrow = <O, M>(
+    category: SubobjectClassifierCategory<O, M>,
+  ): M => category.characteristic(category.initialArrow(category.terminalObj))
+
+  export interface SubobjectClassifierNegationOptions<M> {
+    readonly equalMor?: (left: M, right: M) => boolean
+  }
+
+  export const subobjectClassifierNegation = <O, M>(
+    category: SubobjectClassifierCategory<O, M>,
+    options?: SubobjectClassifierNegationOptions<M>,
+  ): M => {
+    const computed = category.characteristic(category.falseArrow)
+    const eq = options?.equalMor ?? category.equalMor ?? category.eq
+
+    if (eq) {
+      if (!eq(category.negation, computed)) {
+        throw new Error(
+          'CategoryLimits.subobjectClassifierNegation: advertised negation must classify the false point.',
+        )
+      }
+      return category.negation
+    }
+
+    return computed
   }
 
   export interface SubobjectClassifierIsoWitness<M> {
