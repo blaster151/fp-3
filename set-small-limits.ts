@@ -3,13 +3,28 @@ import { ArrowFamilies } from "./stdlib/arrow-families";
 import { IndexedFamilies } from "./stdlib/indexed-families";
 import type { Category } from "./stdlib/category";
 import { SetCat, type SetHom, type SetObj } from "./set-cat";
+import {
+  createSetMultInfObj,
+  setMultObjFromSet,
+  type SetMultIndexedFamily,
+  type SetMultProduct,
+  type SetMultTuple,
+} from "./setmult-category";
 
 type AnySetObj = SetObj<unknown>;
 type AnySetHom = SetHom<unknown, unknown>;
 
 type ProductMetadata = {
+  readonly kind: "finite";
   readonly arity: number;
   readonly lookup: Map<string, ReadonlyArray<unknown>>;
+};
+
+type InfiniteProductMetadata = {
+  readonly product: SetMultProduct<unknown, unknown>;
+  readonly projectionIndex: WeakMap<AnySetHom, unknown>;
+  readonly knownTuples: Set<SetMultTuple<unknown, unknown>>;
+  readonly registerTuple: (assignment: Map<unknown, unknown>) => SetMultTuple<unknown, unknown>;
 };
 
 type ProductBuilder = (
@@ -56,7 +71,7 @@ const createProductMetadata = (): { buildProduct: ProductBuilder; tuple: TupleBu
     build([], 0);
     const rawCarrier = SetCat.obj(tuples);
     const carrier = widenObj(rawCarrier);
-    metadata.set(carrier, { arity: objects.length, lookup });
+    metadata.set(carrier, { kind: "finite", arity: objects.length, lookup });
 
     const projections = objects.map((object, position) =>
       widenHom(
@@ -75,6 +90,9 @@ const createProductMetadata = (): { buildProduct: ProductBuilder; tuple: TupleBu
     const data = metadata.get(product);
     if (!data) {
       throw new Error("Set small product tuple: unrecognised product carrier");
+    }
+    if (data.kind !== "finite") {
+      throw new Error("Set small product tuple: expected finite product metadata");
     }
     if (legs.length !== data.arity) {
       throw new Error("Set small product tuple: leg count does not match product arity");
@@ -96,36 +114,156 @@ const createProductMetadata = (): { buildProduct: ProductBuilder; tuple: TupleBu
 
 const productMetadata = createProductMetadata();
 
+const infiniteProductMetadata = new WeakMap<AnySetObj, InfiniteProductMetadata>();
+
+const createIndexIterable = <I>(index: IndexedFamilies.SmallIndex<I>): Iterable<I> => ({
+  [Symbol.iterator]: () => {
+    if (index.enumerate) {
+      return index.enumerate()[Symbol.iterator]();
+    }
+    const carrier = (index as { carrier?: ReadonlyArray<I> }).carrier;
+    if (!carrier) {
+      throw new Error("Set small product: index must expose an enumerator or carrier");
+    }
+    return carrier[Symbol.iterator]();
+  },
+});
+
+const buildInfiniteProduct = <I>(
+  index: IndexedFamilies.SmallIndex<I>,
+  family: IndexedFamilies.SmallFamily<I, AnySetObj>,
+): { obj: AnySetObj; projections: IndexedFamilies.SmallFamily<I, AnySetHom> } => {
+  const iterable = createIndexIterable(index);
+  const setMultFamily: SetMultIndexedFamily<I, unknown> = {
+    index: iterable,
+    coordinate: (entry) => setMultObjFromSet(family(entry) as SetObj<unknown>),
+  };
+
+  const product = createSetMultInfObj(setMultFamily as SetMultIndexedFamily<I, unknown>);
+  const knownTuples = new Set<SetMultTuple<I, unknown>>();
+
+  const carrierObj = SetCat.lazyObj<SetMultTuple<I, unknown>>({
+    iterate: function* (): IterableIterator<SetMultTuple<I, unknown>> {
+      for (const tuple of knownTuples) {
+        yield tuple;
+      }
+    },
+    has: (tuple) => knownTuples.has(tuple as SetMultTuple<I, unknown>),
+    tag: "SetSmallInfiniteProduct",
+  });
+
+  const carrier = widenObj(carrierObj);
+  const projectionIndex = new WeakMap<AnySetHom, I>();
+  const projectionCache = new Map<I, AnySetHom>();
+
+  const projections: IndexedFamilies.SmallFamily<I, AnySetHom> = (entry) => {
+    const cached = projectionCache.get(entry);
+    if (cached) {
+      return cached;
+    }
+
+    const factor = family(entry) as SetObj<unknown>;
+    const projection = widenHom(
+      SetCat.hom<SetMultTuple<I, unknown>, unknown>(carrierObj, factor, (tuple) => {
+        if (!knownTuples.has(tuple)) {
+          throw new Error("Set small product: projection observed an unregistered tuple");
+        }
+        const value = tuple.get(entry);
+        if (value === undefined) {
+          throw new Error(`Set small product: tuple missing coordinate ${String(entry)}`);
+        }
+        return value;
+      }),
+    );
+
+    projectionCache.set(entry, projection);
+    projectionIndex.set(projection, entry);
+    return projection;
+  };
+
+  const registerTuple = (assignment: Map<I, unknown>): SetMultTuple<I, unknown> => {
+    const tuple = product.carrier((indexValue) => {
+      if (!assignment.has(indexValue)) {
+        throw new Error(
+          `Set small product: tuple legs do not determine coordinate ${String(indexValue)}`,
+        );
+      }
+      return assignment.get(indexValue) as unknown;
+    });
+    knownTuples.add(tuple);
+    return tuple;
+  };
+
+  infiniteProductMetadata.set(carrier, {
+    product: product as SetMultProduct<unknown, unknown>,
+    projectionIndex: projectionIndex as unknown as WeakMap<AnySetHom, unknown>,
+    knownTuples: knownTuples as unknown as Set<SetMultTuple<unknown, unknown>>,
+    registerTuple: registerTuple as unknown as (assignment: Map<unknown, unknown>) => SetMultTuple<unknown, unknown>,
+  });
+
+  return { obj: carrier, projections };
+};
+
 export const SetSmallProducts: CategoryLimits.HasSmallProductMediators<AnySetObj, AnySetHom> = {
   product: (objects) => {
     const { carrier, projections } = productMetadata.buildProduct(objects);
     return { obj: carrier, projections };
   },
   smallProduct<I>(index, family) {
-    const finite = IndexedFamilies.ensureFiniteIndex(index);
-    const factors = finite.carrier.map((entry) => widenObj(family(entry)));
-    const { carrier, projections } = productMetadata.buildProduct(factors);
-    const projectionMap = new Map<I, AnySetHom>();
+    if (IndexedFamilies.isFiniteIndex(index) || index.knownFinite === true) {
+      const finite = IndexedFamilies.ensureFiniteIndex(index);
+      const factors = finite.carrier.map((entry) => widenObj(family(entry)));
+      const { carrier, projections } = productMetadata.buildProduct(factors);
+      const projectionMap = new Map<I, AnySetHom>();
 
-    finite.carrier.forEach((entry, position) => {
-      const projection = projections[position];
-      if (!projection) {
-        throw new Error("Set small product: projection missing for enumerated index");
-      }
-      projectionMap.set(entry, projection);
-    });
+      finite.carrier.forEach((entry, position) => {
+        const projection = projections[position];
+        if (!projection) {
+          throw new Error("Set small product: projection missing for enumerated index");
+        }
+        projectionMap.set(entry, projection);
+      });
 
-    const projectionFamily: IndexedFamilies.SmallFamily<I, AnySetHom> = (entry) => {
-      const projection = projectionMap.get(entry);
-      if (!projection) {
-        throw new Error("Set small product: index outside enumerated carrier");
-      }
-      return projection;
-    };
+      const projectionFamily: IndexedFamilies.SmallFamily<I, AnySetHom> = (entry) => {
+        const projection = projectionMap.get(entry);
+        if (!projection) {
+          throw new Error("Set small product: index outside enumerated carrier");
+        }
+        return projection;
+      };
 
-    return { obj: carrier, projections: projectionFamily };
+      return { obj: carrier, projections: projectionFamily };
+    }
+
+    return buildInfiniteProduct(index, family);
   },
   tuple(domain, legs, product) {
+    const infinite = infiniteProductMetadata.get(product);
+    if (infinite) {
+      const cache = new Map<unknown, SetMultTuple<unknown, unknown>>();
+      return SetCat.hom<unknown, unknown>(domain, product, (value: unknown) => {
+        const existing = cache.get(value);
+        if (existing) {
+          return existing as unknown;
+        }
+
+        const assignments = new Map<unknown, unknown>();
+        for (const leg of legs) {
+          const index = infinite.projectionIndex.get(leg);
+          if (index === undefined) {
+            throw new Error(
+              "Set small product tuple: leg does not correspond to the recorded projections",
+            );
+          }
+          assignments.set(index, leg.map(value));
+        }
+
+        const tuple = infinite.registerTuple(assignments);
+        cache.set(value, tuple);
+        return tuple as unknown;
+      });
+    }
+
     return productMetadata.tuple(domain, legs, product);
   },
 };
