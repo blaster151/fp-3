@@ -4,6 +4,7 @@ import {
   CategoryLimits,
   FinSetFalseArrow,
   FinSetNegation,
+  FinSet,
   FinSetSubobjectClassifier,
   FinSetTruthArrow,
   FinSetTruthAnd,
@@ -152,7 +153,7 @@ describe('FinSetSubobjectClassifier', () => {
     const eqless = {
       ...FinSetSubobjectClassifier,
       equalMor: undefined,
-    } as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
+    } as unknown as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
 
     const derived = CategoryLimits.subobjectClassifierNegation(eqless)
     expectEqualArrows(derived, FinSetNegation)
@@ -168,7 +169,7 @@ describe('FinSetSubobjectClassifier', () => {
       ...FinSetSubobjectClassifier,
       negation: FinSetTruthArrow,
       equalMor: undefined,
-    } as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
+    } as unknown as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
 
     const recovered = CategoryLimits.subobjectClassifierNegation(eqlessInconsistent)
     expectEqualArrows(recovered, FinSetNegation)
@@ -439,18 +440,32 @@ describe('FinSetSubobjectClassifier', () => {
 
     const swappedNegation = swappedCharacteristic(swappedFalseArrow)
 
-    const swappedTruthProductBase = FinSetSubobjectClassifier.binaryProduct(
-      swappedTruthValues,
-      swappedTruthValues,
-    )
+    const swappedTruthProductBase = FinSet.product([swappedTruthValues, swappedTruthValues])
 
     const swappedTruthProduct: CategoryLimits.TruthProductWitness<FinSetObj, FinSetMor> = {
       obj: swappedTruthProductBase.obj,
       projections: [
-        swappedTruthProductBase.proj1,
-        swappedTruthProductBase.proj2,
+        swappedTruthProductBase.projections[0]!,
+        swappedTruthProductBase.projections[1]!,
       ] as const,
-      pair: swappedTruthProductBase.pair,
+      pair: (domain, left, right) => {
+        const map = domain.elements.map((_value, index) => {
+          const leftIndex = left.map[index]
+          const rightIndex = right.map[index]
+          if (leftIndex === undefined || rightIndex === undefined) {
+            throw new Error('alternate classifier: missing coordinate for truth product pair.')
+          }
+          const tupleIndex = swappedTruthProductBase.obj.elements.findIndex((tuple) => {
+            const coordinates = tuple as ReadonlyArray<number>
+            return coordinates[0] === leftIndex && coordinates[1] === rightIndex
+          })
+          if (tupleIndex < 0) {
+            throw new Error('alternate classifier: coordinates outside swapped truth product.')
+          }
+          return tupleIndex
+        })
+        return { from: domain, to: swappedTruthProductBase.obj, map }
+      },
     }
 
     const swappedTruthAnd: FinSetMor = {

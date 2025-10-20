@@ -2712,9 +2712,37 @@ export const finsetCharacteristic = (monomorphism: FinSetMor): FinSetMor => {
   return { from: codomain, to: FinSetTruthValues, map }
 }
 
-export const FinSetFalseArrow = finsetCharacteristic(FinSet.initialArrow(FinSet.terminalObj))
+const makeLazyArrow = (compute: () => FinSetMor): FinSetMor => {
+  let cached: FinSetMor | undefined
+  const ensure = (): FinSetMor => {
+    if (!cached) {
+      cached = compute()
+    }
+    return cached
+  }
 
-export const FinSetNegation = finsetCharacteristic(FinSetFalseArrow)
+  return Object.freeze({
+    get from() {
+      return ensure().from
+    },
+    get to() {
+      return ensure().to
+    },
+    get map() {
+      return ensure().map
+    },
+  }) as FinSetMor
+}
+
+const FinSetFalseArrowLazy = makeLazyArrow(() =>
+  finsetCharacteristic(FinSet.initialArrow(FinSet.terminalObj)),
+)
+
+export const FinSetFalseArrow: FinSetMor = FinSetFalseArrowLazy
+
+const FinSetNegationLazy = makeLazyArrow(() => finsetCharacteristic(FinSetFalseArrowLazy))
+
+export const FinSetNegation: FinSetMor = FinSetNegationLazy
 
 export const finsetCharacteristicComplement = (characteristic: FinSetMor): FinSetMor => {
   if (characteristic.to !== FinSetTruthValues) {
@@ -2743,7 +2771,7 @@ export const finsetCharacteristicComplement = (characteristic: FinSetMor): FinSe
 
 export const finsetCharacteristicFalsePullback = (characteristic: FinSetMor) => {
   const { finsetCharacteristicPullback } = getFinSetPullbackHelpers()
-  return finsetCharacteristicPullback(characteristic, FinSetFalseArrow)
+  return finsetCharacteristicPullback(characteristic, FinSetFalseArrowLazy)
 }
 
 export interface FinSetComplementSubobjectWitness {
@@ -4280,11 +4308,18 @@ export const FinSetSubobjectClassifier: SubobjectClassifierCategory<FinSetObj, F
 export type FinSetMonicObject = MonicObject<FinSetObj, FinSetMor>
 export type FinSetMonicMorphism = MonicMorphism<FinSetObj, FinSetMor>
 
+const finsetEqualMor = (left: FinSetMor, right: FinSetMor): boolean => {
+  if (!FinSet.equalMor) {
+    throw new Error('FinSet.equalMor is unavailable')
+  }
+  return FinSet.equalMor(left, right)
+}
+
 export const FinSetMonicCategory: MonicCategory<FinSetObj, FinSetMor> = makeMonicCategory({
   base: FinSet,
   isMonomorphism: FinSet.isInjective,
   pullbacks: FinSetPullbacksFromEqualizer,
-  equalMor: FinSet.equalMor,
+  equalMor: finsetEqualMor,
 })
 
 const finsetTruthMonicObject = FinSetMonicCategory.makeObject(FinSetTruthArrow)

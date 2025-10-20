@@ -14,6 +14,7 @@ export * from "./resolution-oracles";
 export * from "./mnne-vector-monads";
 export * from "./mnne-lambda-monads";
 export * from "./mnne-indexed-container-monads";
+export * from "./adt-polynomial-relative";
 export * from "./mnne-lax-monoidal";
 export * from "./mnne-well-behaved";
 export * from "./mnne-monad-extensions";

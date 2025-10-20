@@ -1,5 +1,6 @@
 import type { RepresentabilityWitness, VirtualEquipment } from "../virtual-equipment";
 import type { LooseMonoidData, LooseMonoidShapeReport } from "../virtual-equipment/loose-structures";
+import type { ADTConstructor, ADTField } from "../src/algebra/adt/adt";
 import type {
   RelativeEnrichedEilenbergMooreAlgebraWitness,
   RelativeEnrichedKleisliInclusionWitness,
@@ -39,6 +40,12 @@ import {
   describeIndexedContainerExample4Witness,
   type IndexedContainerRelativeMonadWitness,
 } from "./mnne-indexed-container-monads";
+import {
+  analyzeADTPolynomialRelativeMonad,
+  analyzeADTPolynomialRelativeStreet,
+  type ADTPolynomialRelativeMonadInput,
+  type ADTPolynomialRelativeStreetInput,
+} from "./adt-polynomial-relative";
 import {
   analyzePowersetRelativeMonad,
   describeCofinitePowersetWitness,
@@ -215,6 +222,62 @@ export const RelativeMonadOracles = {
       registryPath: descriptor.registryPath,
       details: report.details,
       issues: report.issues,
+    };
+  },
+  polynomialContainerBridge: <
+    TypeName extends string,
+    Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+    FoldResult,
+    Seed,
+  >(
+    input: ADTPolynomialRelativeMonadInput<
+      TypeName,
+      Constructors,
+      FoldResult,
+      Seed
+    >,
+  ): RelativeMonadOracleResult => {
+    const descriptor = RelativeMonadLawRegistry.polynomialContainerBridge;
+    const report = analyzeADTPolynomialRelativeMonad(input);
+    const issues: string[] = [];
+    for (const issue of report.valueIssues) {
+      issues.push(`Value bridge: ${issue.details}`);
+    }
+    for (const issue of report.foldIssues) {
+      issues.push(`Fold replay: ${issue.details}`);
+    }
+    for (const issue of report.unfoldIssues) {
+      issues.push(`Unfold replay: ${issue.details}`);
+    }
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues,
+    };
+  },
+  polynomialStreetHarness: <
+    TypeName extends string,
+    Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+  >(
+    input: ADTPolynomialRelativeStreetInput<TypeName, Constructors>,
+  ): RelativeMonadOracleResult => {
+    const descriptor = RelativeMonadLawRegistry.polynomialStreetHarness;
+    const report = analyzeADTPolynomialRelativeStreet(input);
+    const issues: string[] = [];
+    for (const issue of report.extensionIssues) {
+      issues.push(`Extension scenario ${issue.scenarioId}: ${issue.details}`);
+    }
+    for (const issue of report.kleisliIssues) {
+      issues.push(`Kleisli scenario ${issue.scenarioId}: ${issue.details}`);
+    }
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues,
     };
   },
   powersetRelativeMonad: <Element>(

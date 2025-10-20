@@ -1,6 +1,18 @@
 // Registry for algebra-specific oracles following the semicartesian development
 
 import type { CRingPlusObj, CRingPlusMor } from "./cring-plus";
+import type { ADTConstructor, ADTField } from "./src/algebra/adt/adt";
+import {
+  analyzeADTCoalgebra,
+  analyzeADTIndexes,
+  analyzeADTFoldUnfold,
+  analyzeADTPolynomialMap,
+  analyzeADTPolynomialRecursion,
+  analyzeADTPolynomialRoundtrip,
+  analyzeADTPolynomialContainerComposition,
+  analyzeADTPolynomialContainerIdentity,
+  analyzeADTTraversal,
+} from "./src/algebra/adt/adt";
 import {
   checkCRingPlusInitialSemicartesian,
   buildCRingPlusCausalityScenario,
@@ -17,6 +29,12 @@ import type {
   RelativeMonadLawAnalysis,
 } from "./relative/relative-monads";
 import { analyzeRelativeMonadLaws } from "./relative/relative-monads";
+import {
+  analyzeADTPolynomialRelativeMonad,
+  analyzeADTPolynomialRelativeStreet,
+  type ADTPolynomialRelativeMonadInput,
+  type ADTPolynomialRelativeStreetInput,
+} from "./relative/adt-polynomial-relative";
 
 export interface RelativeMonadLawCheckResult<Obj, Arr, Payload, Evidence> {
   readonly holds: boolean;
@@ -42,6 +60,36 @@ export const AlgebraOracles = {
     checkRelativeMonadLaws: <Obj, Arr, Payload, Evidence>(
       monad: RelativeMonadData<Obj, Arr, Payload, Evidence>,
     ) => checkRelativeMonadLaws(monad),
+    analyzePolynomialContainerBridge: <
+      TypeName extends string,
+      Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+      FoldResult,
+      Seed,
+    >(
+      input: ADTPolynomialRelativeMonadInput<
+        TypeName,
+        Constructors,
+        FoldResult,
+        Seed
+      >,
+    ) => analyzeADTPolynomialRelativeMonad(input),
+    analyzePolynomialStreetHarness: <
+      TypeName extends string,
+      Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+    >(
+      input: ADTPolynomialRelativeStreetInput<TypeName, Constructors>,
+    ) => analyzeADTPolynomialRelativeStreet(input),
+  },
+  adt: {
+    analyzeCoalgebra: analyzeADTCoalgebra,
+    analyzeFoldUnfold: analyzeADTFoldUnfold,
+    analyzeTraversal: analyzeADTTraversal,
+    analyzeIndexes: analyzeADTIndexes,
+    analyzePolynomialRoundtrip: analyzeADTPolynomialRoundtrip,
+    analyzePolynomialMap: analyzeADTPolynomialMap,
+    analyzePolynomialRecursion: analyzeADTPolynomialRecursion,
+    analyzePolynomialContainerIdentity: analyzeADTPolynomialContainerIdentity,
+    analyzePolynomialContainerComposition: analyzeADTPolynomialContainerComposition,
   },
 } as const;
 

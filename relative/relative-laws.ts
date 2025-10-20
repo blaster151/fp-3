@@ -89,6 +89,18 @@ export const RelativeMonadLawRegistry = {
     summary:
       "Example 4 of *Monads Need Not Be Endofunctors* realises indexed containers as relative monads; the analyzer enumerates finite families, checks the Example 4 unit and substitution data, and verifies the relative monad laws hold for every sample.",
   },
+  polynomialContainerBridge: {
+    name: "ADT polynomial container relative monad bridge",
+    registryPath: "relativeMonad.adt.polynomialBridge",
+    summary:
+      "Polynomial ADTs expose container data; the analyzer replays unit, multiplication, and recursion schemes via the container and checks they agree with defineADT’s constructors, folds, and unfolds.",
+  },
+  polynomialStreetHarness: {
+    name: "ADT polynomial Street law harness",
+    registryPath: "relativeMonad.adt.polynomialStreet",
+    summary:
+      "Street-style unit and Kleisli composites induced by polynomial ADTs should agree with the supplied bridge scenarios; the analyzer replays extension and sequential binds via the container-derived catamorphisms.",
+  },
   powersetRelativeMonad: {
     name: "Powerset relative monad diagnostics",
     registryPath: "relativeMonad.mnne.powerset",
