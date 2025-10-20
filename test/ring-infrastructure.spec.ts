@@ -8,12 +8,14 @@ import {
   checkRingHomomorphism,
   checkIdeal,
   checkModule,
+  checkModuleHomomorphism,
   buildQuotientRing,
   checkQuotientRing,
   type RingHomomorphism,
   type Ring,
   type RingIdeal,
   type Module,
+  type ModuleHomomorphism,
   type QuotientConstruction,
 } from "../allTS"
 
@@ -126,6 +128,68 @@ describe("ring infrastructure", () => {
     expect(result.holds).toBe(true)
     expect(result.metadata.scalarSamples).toBe(5)
     expect(result.violations).toHaveLength(0)
+  })
+
+  it("validates the identity module homomorphism on ℤ", () => {
+    const module: Module<bigint, bigint> = {
+      ring: RingInteger,
+      zero: 0n,
+      add: (left, right) => left + right,
+      neg: (value) => -value,
+      scalar: (scalar, value) => scalar * value,
+      eq: (left, right) => left === right,
+      name: "ℤ",
+    }
+
+    const hom: ModuleHomomorphism<bigint, bigint, bigint> = {
+      source: module,
+      target: module,
+      map: (value) => value,
+      label: "id",
+    }
+
+    const vectorSamples = [-2n, -1n, 0n, 1n, 2n] as const
+    const scalarSamples = [-1n, 0n, 1n, 2n] as const
+
+    const result = checkModuleHomomorphism(hom, {
+      vectorSamples,
+      scalarSamples,
+    })
+
+    expect(result.holds).toBe(true)
+    expect(result.metadata.additivePairsChecked).toBe(vectorSamples.length ** 2)
+    expect(result.metadata.scalarPairsChecked).toBe(scalarSamples.length * vectorSamples.length)
+  })
+
+  it("flags module homomorphisms that fail scalar preservation", () => {
+    const module: Module<bigint, bigint> = {
+      ring: RingInteger,
+      zero: 0n,
+      add: (left, right) => left + right,
+      neg: (value) => -value,
+      scalar: (scalar, value) => scalar * value,
+      eq: (left, right) => left === right,
+      name: "ℤ",
+    }
+
+    const failingHom: ModuleHomomorphism<bigint, bigint, bigint> = {
+      source: module,
+      target: module,
+      map: (value) => value + 1n,
+      label: "translate",
+    }
+
+    const vectorSamples = [-1n, 0n, 1n] as const
+    const scalarSamples = [0n, 1n, 2n] as const
+
+    const result = checkModuleHomomorphism(failingHom, {
+      vectorSamples,
+      scalarSamples,
+    })
+
+    expect(result.holds).toBe(false)
+    expect(result.violations.some((violation) => violation.kind === "scalar")).toBe(true)
+    expect(result.violations.some((violation) => violation.kind === "addition")).toBe(true)
   })
 
   it("flags non-abelian module additions", () => {
