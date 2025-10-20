@@ -4,12 +4,14 @@ import {
   RingReal,
   createModuloRing,
   normalizeMod,
+  checkRing,
   checkRingHomomorphism,
   checkIdeal,
   checkModule,
   buildQuotientRing,
   checkQuotientRing,
   type RingHomomorphism,
+  type Ring,
   type RingIdeal,
   type Module,
   type QuotientConstruction,
@@ -48,6 +50,37 @@ describe("ring infrastructure", () => {
 
     expect(result.holds).toBe(true)
     expect(result.metadata.checkedRingElements).toBeGreaterThan(0)
+  })
+
+  it("validates ℤ as a ring", () => {
+    const samples = [-2n, -1n, 0n, 1n, 2n]
+
+    const result = checkRing(RingInteger, { samples })
+
+    expect(result.holds).toBe(true)
+    expect(result.metadata.sampleCount).toBe(samples.length)
+    expect(result.violations).toHaveLength(0)
+  })
+
+  it("flags non-associative additions in rings", () => {
+    const weirdAdd = (left: number, right: number): number =>
+      left === 1 && right === 2 ? 10 : left + right
+
+    const weirdRing: Ring<number> = {
+      zero: 0,
+      one: 1,
+      add: weirdAdd,
+      mul: (left, right) => left * right,
+      neg: (value) => -value,
+      sub: (left, right) => left - right,
+      eq: (left, right) => left === right,
+    }
+
+    const result = checkRing(weirdRing, { samples: [0, 1, 2] })
+
+    expect(result.holds).toBe(false)
+    expect(result.violations.some((violation) => violation.kind === "addAssociative")).toBe(true)
+    expect(result.violations.some((violation) => violation.kind === "addCommutative")).toBe(true)
   })
 
   it("builds the quotient ring ℤ/5ℤ", () => {
