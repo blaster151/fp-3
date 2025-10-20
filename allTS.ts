@@ -102,6 +102,13 @@ export * from "./reader-tools"
 export * from "./json-recursion"
 export * from "./graph-category"
 export * from "./graph-subobject-classifier"
+export {
+  GraphPowerObject,
+  graphBinaryProductWithPair,
+  graphPowerObjectDecodeNode,
+  GraphSubobjectClassifier,
+  GraphWitnesses,
+} from "./graph-subobject-classifier"
 
 // Aggregated exports for the emerging virtual equipment and relative layers.
 export * from "./src/all/virtual-equipment-relative"
