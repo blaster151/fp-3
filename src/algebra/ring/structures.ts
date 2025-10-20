@@ -15,6 +15,38 @@ export interface Ring<A> extends Semiring<A> {
   readonly sub: (left: A, right: A) => A
 }
 
+export type RingViolation<A> =
+  | { readonly kind: "addIdentity"; readonly value: A; readonly side: "left" | "right" }
+  | { readonly kind: "addInverse"; readonly value: A }
+  | { readonly kind: "addAssociative"; readonly triple: readonly [A, A, A] }
+  | { readonly kind: "addCommutative"; readonly pair: readonly [A, A] }
+  | { readonly kind: "mulIdentity"; readonly value: A; readonly side: "left" | "right" }
+  | { readonly kind: "mulAssociative"; readonly triple: readonly [A, A, A] }
+  | { readonly kind: "zeroAnnihilation"; readonly value: A; readonly side: "left" | "right" }
+  | { readonly kind: "leftDistributive"; readonly triple: readonly [A, A, A] }
+  | { readonly kind: "rightDistributive"; readonly triple: readonly [A, A, A] }
+  | { readonly kind: "subConsistent"; readonly pair: readonly [A, A] }
+
+export interface RingCheckOptions<A> {
+  readonly samples?: ReadonlyArray<A>
+}
+
+export interface RingCheckResult<A> {
+  readonly holds: boolean
+  readonly violations: ReadonlyArray<RingViolation<A>>
+  readonly details: string
+  readonly metadata: {
+    readonly sampleCount: number
+    readonly additivePairsChecked: number
+    readonly additiveTriplesChecked: number
+    readonly multiplicativeTriplesChecked: number
+    readonly leftDistributiveTriplesChecked: number
+    readonly rightDistributiveTriplesChecked: number
+    readonly subConsistencyChecks: number
+    readonly zeroAnnihilationChecks: number
+  }
+}
+
 export interface RingHomomorphism<Domain, Codomain> {
   readonly source: Ring<Domain>
   readonly target: Ring<Codomain>
@@ -47,6 +79,143 @@ export interface RingHomomorphismCheckOptions<Domain> {
 
 const withEquality = <A>(eq?: Equality<A>): Equality<A> =>
   eq ?? ((left, right) => Object.is(left, right))
+
+export const checkRing = <A>(ring: Ring<A>, options: RingCheckOptions<A> = {}): RingCheckResult<A> => {
+  const samples = options.samples ?? []
+  const eq = withEquality(ring.eq)
+  const violations: RingViolation<A>[] = []
+
+  let zeroAnnihilationChecks = 0
+  for (const value of samples) {
+    const rightIdentity = ring.add(value, ring.zero)
+    if (!eq(rightIdentity, value)) {
+      violations.push({ kind: "addIdentity", value, side: "right" })
+    }
+
+    const leftIdentity = ring.add(ring.zero, value)
+    if (!eq(leftIdentity, value)) {
+      violations.push({ kind: "addIdentity", value, side: "left" })
+    }
+
+    const hasInverse = ring.add(value, ring.neg(value))
+    if (!eq(hasInverse, ring.zero)) {
+      violations.push({ kind: "addInverse", value })
+    }
+
+    const rightMulIdentity = ring.mul(value, ring.one)
+    if (!eq(rightMulIdentity, value)) {
+      violations.push({ kind: "mulIdentity", value, side: "right" })
+    }
+
+    const leftMulIdentity = ring.mul(ring.one, value)
+    if (!eq(leftMulIdentity, value)) {
+      violations.push({ kind: "mulIdentity", value, side: "left" })
+    }
+
+    const rightZero = ring.mul(value, ring.zero)
+    zeroAnnihilationChecks++
+    if (!eq(rightZero, ring.zero)) {
+      violations.push({ kind: "zeroAnnihilation", value, side: "right" })
+    }
+
+    const leftZero = ring.mul(ring.zero, value)
+    zeroAnnihilationChecks++
+    if (!eq(leftZero, ring.zero)) {
+      violations.push({ kind: "zeroAnnihilation", value, side: "left" })
+    }
+  }
+
+  let additivePairsChecked = 0
+  let subConsistencyChecks = 0
+  for (const left of samples) {
+    for (const right of samples) {
+      const sumLeftRight = ring.add(left, right)
+      const sumRightLeft = ring.add(right, left)
+      additivePairsChecked++
+      if (!eq(sumLeftRight, sumRightLeft)) {
+        violations.push({ kind: "addCommutative", pair: [left, right] })
+      }
+
+      const difference = ring.sub(left, right)
+      const reconstructed = ring.add(left, ring.neg(right))
+      subConsistencyChecks++
+      if (!eq(difference, reconstructed)) {
+        violations.push({ kind: "subConsistent", pair: [left, right] })
+      }
+    }
+  }
+
+  let additiveTriplesChecked = 0
+  for (const a of samples) {
+    for (const b of samples) {
+      for (const c of samples) {
+        additiveTriplesChecked++
+        const leftAssociative = ring.add(ring.add(a, b), c)
+        const rightAssociative = ring.add(a, ring.add(b, c))
+        if (!eq(leftAssociative, rightAssociative)) {
+          violations.push({ kind: "addAssociative", triple: [a, b, c] })
+        }
+      }
+    }
+  }
+
+  let multiplicativeTriplesChecked = 0
+  for (const a of samples) {
+    for (const b of samples) {
+      for (const c of samples) {
+        multiplicativeTriplesChecked++
+        const leftAssociative = ring.mul(ring.mul(a, b), c)
+        const rightAssociative = ring.mul(a, ring.mul(b, c))
+        if (!eq(leftAssociative, rightAssociative)) {
+          violations.push({ kind: "mulAssociative", triple: [a, b, c] })
+        }
+      }
+    }
+  }
+
+  let leftDistributiveTriplesChecked = 0
+  let rightDistributiveTriplesChecked = 0
+  for (const a of samples) {
+    for (const b of samples) {
+      for (const c of samples) {
+        leftDistributiveTriplesChecked++
+        const leftSide = ring.mul(a, ring.add(b, c))
+        const rightSide = ring.add(ring.mul(a, b), ring.mul(a, c))
+        if (!eq(leftSide, rightSide)) {
+          violations.push({ kind: "leftDistributive", triple: [a, b, c] })
+        }
+
+        rightDistributiveTriplesChecked++
+        const rightMul = ring.mul(ring.add(a, b), c)
+        const rightMulExpanded = ring.add(ring.mul(a, c), ring.mul(b, c))
+        if (!eq(rightMul, rightMulExpanded)) {
+          violations.push({ kind: "rightDistributive", triple: [a, b, c] })
+        }
+      }
+    }
+  }
+
+  const holds = violations.length === 0
+  const details = holds
+    ? `Ring laws validated on ${samples.length} elements.`
+    : `${violations.length} ring constraints failed.`
+
+  return {
+    holds,
+    violations,
+    details,
+    metadata: {
+      sampleCount: samples.length,
+      additivePairsChecked,
+      additiveTriplesChecked,
+      multiplicativeTriplesChecked,
+      leftDistributiveTriplesChecked,
+      rightDistributiveTriplesChecked,
+      subConsistencyChecks,
+      zeroAnnihilationChecks,
+    },
+  }
+}
 
 export const checkRingHomomorphism = <Domain, Codomain>(
   hom: RingHomomorphism<Domain, Codomain>,
