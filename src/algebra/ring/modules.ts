@@ -15,6 +15,8 @@ export interface Module<R, M> {
 export type ModuleViolation<R, M> =
   | { readonly kind: "zero"; readonly value: M }
   | { readonly kind: "inverse"; readonly value: M }
+  | { readonly kind: "addAssociative"; readonly triple: readonly [M, M, M] }
+  | { readonly kind: "addCommutative"; readonly pair: readonly [M, M] }
   | { readonly kind: "leftDistributive"; readonly scalar: R; readonly pair: readonly [M, M] }
   | { readonly kind: "rightDistributive"; readonly scalars: readonly [R, R]; readonly value: M }
   | { readonly kind: "scalarAssociative"; readonly scalars: readonly [R, R]; readonly value: M }
@@ -60,6 +62,22 @@ export const checkModule = <R, M>(module: Module<R, M>, options: ModuleCheckOpti
 
     if (!eq(module.scalar(ring.zero, value), module.zero)) {
       violations.push({ kind: "scalarZero", value })
+    }
+  }
+
+  for (const left of vectorSamples) {
+    for (const right of vectorSamples) {
+      if (!eq(module.add(left, right), module.add(right, left))) {
+        violations.push({ kind: "addCommutative", pair: [left, right] })
+      }
+
+      for (const tail of vectorSamples) {
+        const leftAssociative = module.add(module.add(left, right), tail)
+        const rightAssociative = module.add(left, module.add(right, tail))
+        if (!eq(leftAssociative, rightAssociative)) {
+          violations.push({ kind: "addAssociative", triple: [left, right, tail] })
+        }
+      }
     }
   }
 
