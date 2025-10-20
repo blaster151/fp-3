@@ -1069,6 +1069,10 @@ export const finsetCharacteristicPullback = (
 
   const targetIndex = target.map[0]!;
 
+  if (targetIndex === undefined) {
+    throw new Error("finsetCharacteristicPullback: target arrow must select at least one truth index.");
+  }
+
   if (!Number.isInteger(targetIndex)) {
     throw new Error("finsetCharacteristicPullback: target arrow must select a valid truth index.");
   }

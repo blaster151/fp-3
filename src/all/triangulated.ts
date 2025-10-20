@@ -2712,6 +2712,38 @@ export const finsetCharacteristic = (monomorphism: FinSetMor): FinSetMor => {
   return { from: codomain, to: FinSetTruthValues, map }
 }
 
+const makeLazyArrow = (compute: () => FinSetMor): FinSetMor => {
+  let cached: FinSetMor | undefined
+  const ensure = (): FinSetMor => {
+    if (!cached) {
+      cached = compute()
+    }
+    return cached
+  }
+
+  return Object.freeze({
+    get from() {
+      return ensure().from
+    },
+    get to() {
+      return ensure().to
+    },
+    get map() {
+      return ensure().map
+    },
+  }) as FinSetMor
+}
+
+const FinSetFalseArrowLazy = makeLazyArrow(() =>
+  finsetCharacteristic(FinSet.initialArrow(FinSet.terminalObj)),
+)
+
+export const FinSetFalseArrow: FinSetMor = FinSetFalseArrowLazy
+
+const FinSetNegationLazy = makeLazyArrow(() => finsetCharacteristic(FinSetFalseArrowLazy))
+
+export const FinSetNegation: FinSetMor = FinSetNegationLazy
+
 export const finsetCharacteristicComplement = (characteristic: FinSetMor): FinSetMor => {
   if (characteristic.to !== FinSetTruthValues) {
     throw new Error('finsetCharacteristicComplement: characteristic must land in the truth-value object.')
@@ -2735,6 +2767,36 @@ export const finsetCharacteristicComplement = (characteristic: FinSetMor): FinSe
   })
 
   return { from: characteristic.from, to: FinSetTruthValues, map }
+}
+
+export const finsetCharacteristicFalsePullback = (characteristic: FinSetMor) => {
+  const { finsetCharacteristicPullback } = getFinSetPullbackHelpers()
+  return finsetCharacteristicPullback(characteristic, FinSetFalseArrowLazy)
+}
+
+export interface FinSetComplementSubobjectWitness {
+  readonly complement: FinSetSubobjectWitness
+  readonly characteristic: FinSetMor
+  readonly falsePullback: FinSetCharacteristicPullbackWitness
+}
+
+export const finsetComplementSubobject = (monomorphism: FinSetMor): FinSetComplementSubobjectWitness => {
+  if (!FinSet.isInjective(monomorphism)) {
+    throw new Error('finsetComplementSubobject: monomorphism must be injective to form a complement.')
+  }
+
+  const characteristic = finsetCharacteristic(monomorphism)
+  const falsePullback = finsetCharacteristicFalsePullback(characteristic)
+  const complement: FinSetSubobjectWitness = {
+    subobject: falsePullback.subobject,
+    inclusion: falsePullback.inclusion,
+  }
+
+  return {
+    complement,
+    characteristic: finsetCharacteristicComplement(characteristic),
+    falsePullback,
+  }
 }
 
 const manualSubobjectFromCharacteristic = (
@@ -4625,12 +4687,18 @@ export const FinSetNaturalNumbersObject = createFinSetNaturalNumbersObject()
 export type FinSetMonicObject = MonicObject<FinSetObj, FinSetMor>
 export type FinSetMonicMorphism = MonicMorphism<FinSetObj, FinSetMor>
 
+const finsetEqualMor = (left: FinSetMor, right: FinSetMor): boolean => {
+  if (!FinSet.equalMor) {
+    throw new Error('FinSet.equalMor is unavailable')
+  }
+  return FinSet.equalMor(left, right)
+}
+
 export const FinSetMonicCategory: MonicCategory<FinSetObj, FinSetMor> = makeMonicCategory({
   base: FinSet,
   isMonomorphism: FinSet.isInjective,
   pullbacks: FinSetPullbacksFromEqualizer,
-  equalMor:
-    FinSet.equalMor ?? ((left: FinSetMor, right: FinSetMor) => Object.is(left, right)),
+  equalMor: finsetEqualMor,
 })
 
 const finsetTruthMonicObject = FinSetMonicCategory.makeObject(FinSetTruthArrow)
