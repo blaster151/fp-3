@@ -99,4 +99,6 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 85. **Comonad coalgebra and relative comodule diagnostics** – Check Pair-comonad coalgebra samples with the reusable oracle, certify the trivial relative comodule, and report targeted boundary failures from the analyzer. (examples/runnable/085-comonad-coalgebra-and-relative-comodule-diagnostics.ts)
 
+86. **FinSet natural numbers recursion and infinity diagnostics** – Derive addition from the FinSet natural-numbers object via primitive recursion, compare exponential transposes, and certify the Dedekind-infinite successor while separating zero from successor images. (examples/runnable/086-finset-natural-numbers-recursion.ts, src/all/triangulated.ts, stdlib/category-limits.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.

@@ -2859,115 +2859,6 @@ export const finsetSubobjectFromCharacteristic = (characteristic: FinSetMor): Fi
   }
 }
 
-export const FinSetPowerObject = (
-  anchor: FinSetObj,
-): CategoryLimits.PowerObjectWitness<FinSetObj, FinSetMor> => {
-  const { finsetCharacteristicPullback } = getFinSetPullbackHelpers()
-  const exponential = FinSet.exponential(anchor, FinSetTruthValues)
-
-  const membershipProduct: CategoryLimits.BinaryProductWithPairWitness<FinSetObj, FinSetMor> = {
-    obj: exponential.product.obj,
-    projections: [exponential.product.proj1, exponential.product.proj2],
-    pair: (domain, left, right) => exponential.product.pair(domain, left, right),
-  }
-
-  const membershipPullback = finsetCharacteristicPullback(exponential.evaluation)
-
-  const membership: CategoryLimits.PowerObjectMembershipWitness<FinSetObj, FinSetMor> = {
-    subobject: membershipPullback.subobject,
-    inclusion: membershipPullback.inclusion,
-    product: membershipProduct,
-    evaluation: exponential.evaluation,
-    pullback: membershipPullback.pullback,
-    certification: membershipPullback.certification,
-  }
-
-  return {
-    anchor,
-    powerObj: exponential.obj,
-    membership,
-    classify: ({ ambient, relation, product, pullbacks }) => {
-      const [projectionToAmbient, projectionToAnchor] = product.projections
-
-      if (relation.to !== product.obj) {
-        throw new Error('FinSetPowerObject.classify: relation codomain must match the supplied product.')
-      }
-
-      if (projectionToAmbient.from !== product.obj || projectionToAnchor.from !== product.obj) {
-        throw new Error('FinSetPowerObject.classify: product projections must originate at the ambient product object.')
-      }
-
-      if (projectionToAmbient.to !== ambient) {
-        throw new Error('FinSetPowerObject.classify: first projection must land in the ambient object.')
-      }
-
-      if (projectionToAnchor.to !== anchor) {
-        throw new Error('FinSetPowerObject.classify: second projection must land in the anchor object.')
-      }
-
-      assertMonomorphism(relation, 'FinSetPowerObject.classify')
-
-      const characteristic = finsetCharacteristic(relation)
-
-      if (characteristic.from !== product.obj) {
-        throw new Error('FinSetPowerObject.classify: characteristic domain must equal the ambient product.')
-      }
-
-      const mediator = exponential.curry(ambient, characteristic)
-      const pairing = membership.product.pair(
-        product.obj,
-        FinSet.compose(mediator, projectionToAmbient),
-        projectionToAnchor,
-      )
-
-      const pullback = pullbacks.pullback(pairing, membership.inclusion)
-      const certification = pullbacks.certify(pairing, membership.inclusion, pullback)
-
-      if (!certification.valid) {
-        throw new Error(
-          `FinSetPowerObject.classify: induced pullback failed certification: ${
-            certification.reason ?? 'unknown reason'
-          }`,
-        )
-      }
-
-      const iso = buildFinSetMonomorphismIso(
-        relation,
-        pullback.toDomain,
-        'FinSetPowerObject.classify',
-      )
-
-      const relationRecover = FinSet.compose(pullback.toDomain, iso.forward)
-      if (!equalFinSetMor(relationRecover, relation)) {
-        throw new Error(
-          'FinSetPowerObject.classify: canonical pullback mediator does not reproduce the supplied relation.',
-        )
-      }
-
-      const relationAnchor = FinSet.compose(pullback.toAnchor, iso.forward)
-      const membershipComposite = FinSet.compose(membership.inclusion, relationAnchor)
-      const pairingComposite = FinSet.compose(pairing, relation)
-
-      if (!equalFinSetMor(membershipComposite, pairingComposite)) {
-        throw new Error(
-          'FinSetPowerObject.classify: relation square does not commute with membership inclusion.',
-        )
-      }
-
-      return {
-        mediator,
-        characteristic,
-        pairing,
-        pullback,
-        certification,
-        relationIso: iso,
-        relationAnchor,
-        factorCone: (candidate) => pullbacks.factorCone(pullback, candidate),
-      }
-    },
-  }
-}
-
 const finsetArrowEquals = (left: FinSetMor, right: FinSetMor): boolean => {
   const verdict = FinSet.equalMor?.(left, right)
   if (typeof verdict === 'boolean') {
@@ -4272,12 +4163,85 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
   }
 }
 
-export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
+export const FinSetFalseArrow: FinSetMor = finsetCharacteristic(
+  FinSet.initialArrow(FinSet.terminalObj),
+)
+
+export const FinSetNegation: FinSetMor = finsetCharacteristic(FinSetFalseArrow)
+
+export const finsetCharacteristicFalsePullback = (
+  characteristic: FinSetMor,
+): FinSetCharacteristicPullbackWitness => {
+  const { finsetCharacteristicPullback } = getFinSetPullbackHelpers()
+  return finsetCharacteristicPullback(characteristic, FinSetFalseArrow)
+}
+
+export interface FinSetComplementSubobjectWitness {
+  readonly complement: FinSetSubobjectWitness
+  readonly characteristic: FinSetMor
+  readonly falsePullback: FinSetCharacteristicPullbackWitness
+}
+
+export const finsetComplementSubobject = (
+  monomorphism: FinSetMor,
+): FinSetComplementSubobjectWitness => {
+  if (!FinSet.isInjective(monomorphism)) {
+    throw new Error('finsetComplementSubobject: monomorphism must be injective to form a complement.')
+  }
+
+  const characteristic = finsetCharacteristic(monomorphism)
+  const falsePullback = finsetCharacteristicFalsePullback(characteristic)
+  const complement: FinSetSubobjectWitness = {
+    subobject: falsePullback.subobject,
+    inclusion: falsePullback.inclusion,
+  }
+
+  return {
+    complement,
+    characteristic: finsetCharacteristicComplement(characteristic),
+    falsePullback,
+  }
+}
+
+const FinSetClassifierForPowerObject: CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor> &
+  CartesianClosedCategory<FinSetObj, FinSetMor> = {
+  ...FinSet,
+  terminate: FinSet.terminate,
+  initialArrow: FinSet.initialArrow,
+  truthValues: FinSetTruthValues,
+  truthArrow: FinSetTruthArrow,
+  falseArrow: FinSetFalseArrow,
+  negation: FinSetNegation,
+  characteristic: finsetCharacteristic,
+  subobjectFromCharacteristic: manualSubobjectFromCharacteristic,
+}
 
 const { makeFinSetPullbackCalculator } = getFinSetPullbackHelpers()
+const finsetPullbackCalculator = makeFinSetPullbackCalculator()
+
+export const FinSetPowerObject = CategoryLimits.makePowerObjectFromSubobjectClassifier({
+  category: FinSetClassifierForPowerObject,
+  pullbacks: finsetPullbackCalculator,
+  binaryProduct: (left, right) => {
+    const witness = FinSet.binaryProduct(left, right)
+    return {
+      obj: witness.obj,
+      projections: [witness.proj1, witness.proj2] as const,
+      pair: witness.pair,
+    }
+  },
+  ensureMonomorphism: (arrow, context) =>
+    assertMonomorphism(arrow, context ?? 'FinSetPowerObject'),
+  makeIso: (relation, canonical, context) =>
+    buildFinSetMonomorphismIso(relation, canonical, context ?? 'FinSetPowerObject'),
+  equalMor: finsetArrowEquals,
+})
+
+export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
+
 const { FinSetProductsWithTuple, FinSetCoproductsWithCotuple } = require("./finset-tools") as typeof import("./finset-tools")
 
-export const FinSetPullbacksFromEqualizer = makeFinSetPullbackCalculator()
+export const FinSetPullbacksFromEqualizer = finsetPullbackCalculator
 
 export const FinSetEqualizersFromPullbacks = CategoryLimits.makeEqualizersFromPullbacks({
   base: FinSet,
@@ -4292,18 +4256,433 @@ export const FinSetFinitelyCocomplete: CategoryLimits.FinitelyCocompleteCategory
   cotuple: FinSetCoproductsWithCotuple.cotuple,
 }
 
-export const FinSetSubobjectClassifier: SubobjectClassifierCategory<FinSetObj, FinSetMor> = {
-  ...FinSet,
-  truthValues: FinSetTruthValues,
-  truthArrow: FinSetTruthArrow,
-  falseArrow: FinSetFalseArrow,
-  negation: FinSetNegation,
+export const FinSetSubobjectClassifier: SubobjectClassifierCategory<FinSetObj, FinSetMor> & {
+  readonly truthProduct: CategoryLimits.TruthProductWitness<FinSetObj, FinSetMor>
+  readonly truthAnd: FinSetMor
+  readonly binaryProduct: typeof FinSet.binaryProduct
+} = {
+  ...CategoryLimits.makeSubobjectClassifierFromPowerObject({
+    category: FinSet,
+    pullbacks: FinSetPullbacksFromEqualizer,
+    powerObject: FinSetPowerObject,
+    binaryProduct: (left, right) => {
+      const witness = FinSet.binaryProduct(left, right)
+      return {
+        obj: witness.obj,
+        projections: [witness.proj1, witness.proj2] as const,
+        pair: witness.pair,
+      }
+    },
+    ensureMonomorphism: (arrow) => {
+      if (!FinSet.isInjective(arrow)) {
+        throw new Error(
+          'FinSetSubobjectClassifier: classified relations must be monomorphisms.',
+        )
+      }
+    },
+  }),
+  binaryProduct: FinSet.binaryProduct,
   truthProduct: FinSetTruthProduct,
   truthAnd: FinSetTruthAnd,
-  powerObject: FinSetPowerObject,
-  characteristic: finsetCharacteristic,
-  subobjectFromCharacteristic: finsetSubobjectFromCharacteristic,
 }
+
+const FINSET_NATURAL_NUMBERS_BOUND = 16
+
+const finsetNaturalNumbersCarrier: FinSetObj = {
+  elements: Object.freeze(Array.from({ length: FINSET_NATURAL_NUMBERS_BOUND + 1 }, (_, index) => index)),
+}
+
+const finsetNaturalNumbersZero: FinSetMor = {
+  from: terminalFinSetObj,
+  to: finsetNaturalNumbersCarrier,
+  map: [0],
+}
+
+const finsetNaturalNumbersSuccessor: FinSetMor = {
+  from: finsetNaturalNumbersCarrier,
+  to: finsetNaturalNumbersCarrier,
+  map: finsetNaturalNumbersCarrier.elements.map((_, index, elements) =>
+    index + 1 < elements.length ? index + 1 : index,
+  ),
+}
+
+const finsetNaturalNumbersPoints: ReadonlyArray<FinSetMor> = Object.freeze(
+  finsetNaturalNumbersCarrier.elements.map((_, index) =>
+    Object.freeze({
+      from: terminalFinSetObj,
+      to: finsetNaturalNumbersCarrier,
+      map: Object.freeze([index]),
+    }),
+  ),
+)
+
+const finsetNaturalNumbersEqualMor = (left: FinSetMor, right: FinSetMor): boolean => {
+  const verdict = FinSet.equalMor?.(left, right)
+  if (typeof verdict === 'boolean') {
+    return verdict
+  }
+  if (left.from !== right.from || left.to !== right.to) {
+    return false
+  }
+  if (left.map.length !== right.map.length) {
+    return false
+  }
+  return left.map.every((value, index) => value === right.map[index])
+}
+
+const ensureNaturalNumbersSequence = (
+  sequence: CategoryLimits.NaturalNumbersObjectSequence<FinSetObj, FinSetMor>,
+) => {
+  const { target, zero, successor } = sequence
+
+  if (zero.from !== FinSet.terminalObj) {
+    throw new Error(
+      'FinSetNaturalNumbersObject.induce: zero arrow must originate from the terminal object.',
+    )
+  }
+  if (zero.to !== target) {
+    throw new Error(
+      'FinSetNaturalNumbersObject.induce: zero arrow must land in the target object.',
+    )
+  }
+  if (zero.map.length !== 1) {
+    throw new Error(
+      'FinSetNaturalNumbersObject.induce: zero arrow must provide a single image.',
+    )
+  }
+
+  if (successor.from !== target || successor.to !== target) {
+    throw new Error(
+      'FinSetNaturalNumbersObject.induce: successor arrow must be an endomorphism on the target object.',
+    )
+  }
+  if (successor.map.length !== target.elements.length) {
+    throw new Error(
+      'FinSetNaturalNumbersObject.induce: successor arrow must enumerate every element of the target.',
+    )
+  }
+
+  const zeroValue = zero.map[0]
+  if (zeroValue === undefined) {
+    throw new Error(
+      'FinSetNaturalNumbersObject.induce: zero arrow must map the terminal element into the target.',
+    )
+  }
+  if (!Number.isInteger(zeroValue) || zeroValue < 0 || zeroValue >= target.elements.length) {
+    throw new Error(
+      'FinSetNaturalNumbersObject.induce: zero image must reference a valid target element index.',
+    )
+  }
+}
+
+const buildFinSetNaturalNumbersMediatorMap = (
+  sequence: CategoryLimits.NaturalNumbersObjectSequence<FinSetObj, FinSetMor>,
+): number[] => {
+  const { target, zero, successor } = sequence
+  const targetSize = target.elements.length
+  const zeroValue = zero.map[0]!
+  if (!Number.isInteger(zeroValue) || zeroValue < 0 || zeroValue >= targetSize) {
+    throw new Error(
+      'FinSetNaturalNumbersObject.induce: zero arrow must reference a target element within bounds.',
+    )
+  }
+
+  const mediatorMap: number[] = []
+  for (let index = 0; index < finsetNaturalNumbersCarrier.elements.length; index++) {
+    if (index === 0) {
+      mediatorMap.push(zeroValue)
+      continue
+    }
+
+    const previous = mediatorMap[index - 1]
+    if (previous === undefined) {
+      throw new Error('FinSetNaturalNumbersObject.induce: iteration failed to record previous value.')
+    }
+    const image = successor.map[previous]
+    if (image === undefined) {
+      throw new Error('FinSetNaturalNumbersObject.induce: successor arrow must be total on the target.')
+    }
+    if (!Number.isInteger(image) || image < 0 || image >= targetSize) {
+      throw new Error(
+        'FinSetNaturalNumbersObject.induce: successor image must remain within the target carrier.',
+      )
+    }
+    mediatorMap.push(image)
+  }
+
+  return mediatorMap
+}
+
+const createFinSetNaturalNumbersObject = () => {
+  const witness = {
+    carrier: finsetNaturalNumbersCarrier,
+    zero: finsetNaturalNumbersZero,
+    successor: finsetNaturalNumbersSuccessor,
+    bound: finsetNaturalNumbersCarrier.elements.length,
+    enumeratePoints: () => finsetNaturalNumbersPoints,
+    canonicalSelfEmbedding: () => finsetNaturalNumbersSuccessor,
+    induce: (
+      sequence: CategoryLimits.NaturalNumbersObjectSequence<FinSetObj, FinSetMor>,
+    ): CategoryLimits.NaturalNumbersObjectMediatorWitness<FinSetMor> => {
+      ensureNaturalNumbersSequence(sequence)
+      const mediatorMap = buildFinSetNaturalNumbersMediatorMap(sequence)
+      const mediator: FinSetMor = {
+        from: finsetNaturalNumbersCarrier,
+        to: sequence.target,
+        map: mediatorMap,
+      }
+
+      const compatibility = CategoryLimits.naturalNumbersObjectComposites({
+        category: FinSet,
+        natural: witness,
+        sequence,
+        mediator,
+      })
+
+      return { mediator, compatibility }
+    },
+    checkCandidate: (
+      sequence: CategoryLimits.NaturalNumbersObjectSequence<FinSetObj, FinSetMor>,
+      candidate: FinSetMor,
+    ): CategoryLimits.NaturalNumbersObjectUniquenessWitness<FinSetMor> => {
+      if (candidate.from !== finsetNaturalNumbersCarrier) {
+        throw new Error(
+          'FinSetNaturalNumbersObject.checkCandidate: candidate domain must equal the natural numbers carrier.',
+        )
+      }
+      if (candidate.to !== sequence.target) {
+        throw new Error(
+          'FinSetNaturalNumbersObject.checkCandidate: candidate codomain must equal the sequence target.',
+        )
+      }
+
+      return CategoryLimits.naturalNumbersObjectCheckCandidate({
+        category: FinSet,
+        natural: witness,
+        sequence,
+        candidate,
+        equalMor: finsetNaturalNumbersEqualMor,
+      })
+    },
+    certifyInductiveSubobject: (input: {
+      readonly inclusion: FinSetMor
+      readonly zeroLift: FinSetMor
+      readonly successorLift: FinSetMor
+      readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+      readonly ensureMonomorphism?: (arrow: FinSetMor) => void
+      readonly label?: string
+    }): CategoryLimits.NaturalNumbersInductionResult<FinSetMor> => {
+      const ensure =
+        input.ensureMonomorphism ??
+        ((arrow: FinSetMor) => {
+          if (!FinSet.isInjective(arrow)) {
+            throw new Error(
+              'FinSetNaturalNumbersObject.certifyInductiveSubobject: inclusion must be injective.',
+            )
+          }
+        })
+
+      return CategoryLimits.certifyNaturalNumbersInduction({
+        category: FinSet,
+        natural: witness,
+        inclusion: input.inclusion,
+        zeroLift: input.zeroLift,
+        successorLift: input.successorLift,
+        equalMor: input.equalMor ?? finsetNaturalNumbersEqualMor,
+        ensureMonomorphism: ensure,
+        ...(input.label !== undefined ? { label: input.label } : {}),
+      })
+    },
+    certifyInductiveSubobjectIsomorphism: (input: {
+      readonly inclusion: FinSetMor
+      readonly zeroLift: FinSetMor
+      readonly successorLift: FinSetMor
+      readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+      readonly ensureMonomorphism?: (arrow: FinSetMor) => void
+      readonly label?: string
+    }): CategoryLimits.NaturalNumbersInductionIsomorphismResult<FinSetMor> => {
+      const verdict = witness.certifyInductiveSubobject(input)
+
+      return CategoryLimits.naturalNumbersInductionIsomorphism({
+        result: verdict,
+        ...(input.label !== undefined ? { label: input.label } : {}),
+      })
+    },
+    primitiveRecursion: (input: {
+      readonly parameter: FinSetObj
+      readonly target: FinSetObj
+      readonly base: FinSetMor
+      readonly step: FinSetMor
+      readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+      readonly label?: string
+    }): CategoryLimits.NaturalNumbersPrimitiveRecursionResult<FinSetObj, FinSetMor> =>
+      CategoryLimits.naturalNumbersPrimitiveRecursion({
+        category: FinSet,
+        natural: witness,
+        cartesianClosed: FinSetCCC,
+        parameter: input.parameter,
+        target: input.target,
+        base: input.base,
+        step: input.step,
+        equalMor: input.equalMor ?? finsetNaturalNumbersEqualMor,
+        ...(input.label !== undefined ? { label: input.label } : {}),
+      }),
+    primitiveRecursionFromExponential: (input: {
+      readonly parameter: FinSetObj
+      readonly target: FinSetObj
+      readonly base: FinSetMor
+      readonly step: FinSetMor
+      readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+      readonly label?: string
+    }): CategoryLimits.NaturalNumbersPrimitiveRecursionExponentialResult<FinSetObj, FinSetMor> =>
+      CategoryLimits.naturalNumbersPrimitiveRecursionFromExponential({
+        category: FinSet,
+        natural: witness,
+        cartesianClosed: FinSetCCC,
+        parameter: input.parameter,
+        target: input.target,
+        base: input.base,
+        step: input.step,
+        equalMor: input.equalMor ?? finsetNaturalNumbersEqualMor,
+        ...(input.label !== undefined ? { label: input.label } : {}),
+      }),
+    initialAlgebra: (input: {
+      readonly target: FinSetObj
+      readonly algebra: FinSetMor
+      readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+      readonly label?: string
+    }): CategoryLimits.NaturalNumbersInitialAlgebraResult<FinSetObj, FinSetMor> =>
+      CategoryLimits.naturalNumbersInitialAlgebra({
+        category: FinSet,
+        natural: witness,
+        coproducts: FinSetCoproductsWithCotuple,
+        target: input.target,
+        algebra: input.algebra,
+        equalMor: input.equalMor ?? finsetNaturalNumbersEqualMor,
+        ...(input.label !== undefined ? { label: input.label } : {}),
+      }),
+    certifySuccessorZeroSeparation: (options?: {
+      readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+      readonly label?: string
+    }): CategoryLimits.NaturalNumbersZeroSeparationResult<FinSetObj, FinSetMor> =>
+      CategoryLimits.certifyNaturalNumbersZeroSeparation({
+        category: FinSet,
+        natural: witness,
+        classifier: FinSetSubobjectClassifier,
+        equalMor: options?.equalMor ?? finsetNaturalNumbersEqualMor,
+        ...(options?.label !== undefined ? { label: options.label } : {}),
+      }),
+    certifyPointInjective: (): CategoryLimits.PointInjectiveResult<FinSetMor> =>
+      CategoryLimits.checkPointInjective({
+        category: FinSet,
+        arrow: finsetNaturalNumbersSuccessor,
+        domainPoints: finsetNaturalNumbersPoints,
+        equalMor: finsetNaturalNumbersEqualMor,
+        label: 'FinSet successor',
+      }),
+    certifyPointSurjective: (): CategoryLimits.PointSurjectiveResult<FinSetMor> =>
+      CategoryLimits.checkPointSurjective({
+        category: FinSet,
+        arrow: finsetNaturalNumbersSuccessor,
+        domainPoints: finsetNaturalNumbersPoints,
+        codomainPoints: finsetNaturalNumbersPoints,
+        equalMor: finsetNaturalNumbersEqualMor,
+        label: 'FinSet successor',
+      }),
+    certifyPointInfinite: (): CategoryLimits.PointInfiniteResult<FinSetMor> =>
+      CategoryLimits.checkPointInfinite({
+        injection: {
+          category: FinSet,
+          arrow: finsetNaturalNumbersSuccessor,
+          domainPoints: finsetNaturalNumbersPoints,
+          equalMor: finsetNaturalNumbersEqualMor,
+          label: 'FinSet successor',
+        },
+        surjection: {
+          category: FinSet,
+          arrow: finsetNaturalNumbersSuccessor,
+          domainPoints: finsetNaturalNumbersPoints,
+          codomainPoints: finsetNaturalNumbersPoints,
+          equalMor: finsetNaturalNumbersEqualMor,
+          label: 'FinSet successor',
+        },
+      }),
+    certifyDedekindInfinite: (): CategoryLimits.DedekindInfiniteResult<FinSetMor> =>
+      CategoryLimits.checkDedekindInfinite({
+        category: FinSet,
+        arrow: finsetNaturalNumbersSuccessor,
+        domainPoints: finsetNaturalNumbersPoints,
+        codomainPoints: finsetNaturalNumbersPoints,
+        equalMor: finsetNaturalNumbersEqualMor,
+        ensureMonomorphism: (candidate) => {
+          if (!FinSet.isInjective(candidate)) {
+            throw new Error(
+              'FinSetNaturalNumbersObject.certifyDedekindInfinite: successor must be injective.',
+            )
+          }
+        },
+        label: 'FinSet successor',
+      }),
+  } as CategoryLimits.NaturalNumbersObjectWitness<FinSetObj, FinSetMor> & {
+    readonly bound: number
+    readonly checkCandidate: (
+      sequence: CategoryLimits.NaturalNumbersObjectSequence<FinSetObj, FinSetMor>,
+      candidate: FinSetMor,
+    ) => CategoryLimits.NaturalNumbersObjectUniquenessWitness<FinSetMor>
+    readonly enumeratePoints: () => ReadonlyArray<FinSetMor>
+    readonly canonicalSelfEmbedding: () => FinSetMor
+    readonly certifyInductiveSubobject: (input: {
+      readonly inclusion: FinSetMor
+      readonly zeroLift: FinSetMor
+      readonly successorLift: FinSetMor
+      readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+      readonly ensureMonomorphism?: (arrow: FinSetMor) => void
+      readonly label?: string
+    }) => CategoryLimits.NaturalNumbersInductionResult<FinSetMor>
+      readonly certifyInductiveSubobjectIsomorphism: (input: {
+        readonly inclusion: FinSetMor
+        readonly zeroLift: FinSetMor
+        readonly successorLift: FinSetMor
+        readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+        readonly ensureMonomorphism?: (arrow: FinSetMor) => void
+        readonly label?: string
+      }) => CategoryLimits.NaturalNumbersInductionIsomorphismResult<FinSetMor>
+      readonly primitiveRecursion: (input: {
+        readonly parameter: FinSetObj
+        readonly target: FinSetObj
+        readonly base: FinSetMor
+        readonly step: FinSetMor
+        readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+        readonly label?: string
+      }) => CategoryLimits.NaturalNumbersPrimitiveRecursionResult<FinSetObj, FinSetMor>
+      readonly primitiveRecursionFromExponential: (input: {
+        readonly parameter: FinSetObj
+        readonly target: FinSetObj
+        readonly base: FinSetMor
+        readonly step: FinSetMor
+        readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+        readonly label?: string
+      }) => CategoryLimits.NaturalNumbersPrimitiveRecursionExponentialResult<FinSetObj, FinSetMor>
+      readonly initialAlgebra: (input: {
+        readonly target: FinSetObj
+        readonly algebra: FinSetMor
+        readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+        readonly label?: string
+      }) => CategoryLimits.NaturalNumbersInitialAlgebraResult<FinSetObj, FinSetMor>
+      readonly certifySuccessorZeroSeparation: (options?: {
+        readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+        readonly label?: string
+      }) => CategoryLimits.NaturalNumbersZeroSeparationResult<FinSetObj, FinSetMor>
+      readonly certifyPointInjective: () => CategoryLimits.PointInjectiveResult<FinSetMor>
+    readonly certifyPointSurjective: () => CategoryLimits.PointSurjectiveResult<FinSetMor>
+    readonly certifyPointInfinite: () => CategoryLimits.PointInfiniteResult<FinSetMor>
+    readonly certifyDedekindInfinite: () => CategoryLimits.DedekindInfiniteResult<FinSetMor>
+  }
+
+  return witness
+}
+
+export const FinSetNaturalNumbersObject = createFinSetNaturalNumbersObject()
 
 export type FinSetMonicObject = MonicObject<FinSetObj, FinSetMor>
 export type FinSetMonicMorphism = MonicMorphism<FinSetObj, FinSetMor>

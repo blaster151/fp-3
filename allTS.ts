@@ -100,6 +100,8 @@ export * from "./typeclasses"
 export * from "./catTransforms"
 export * from "./reader-tools"
 export * from "./json-recursion"
+export * from "./graph-category"
+export * from "./graph-subobject-classifier"
 
 // Aggregated exports for the emerging virtual equipment and relative layers.
 export * from "./src/all/virtual-equipment-relative"
@@ -472,6 +474,8 @@ export {
 export {
   FinPosCat,
   FinPos,
+  FinPosSubobjectClassifier,
+  FinPosPowerObject,
   type FinPosCategory,
   type FinPosObj,
   type FinPosProduct,

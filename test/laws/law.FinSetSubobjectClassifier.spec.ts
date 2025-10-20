@@ -87,6 +87,9 @@ describe('FinSetSubobjectClassifier', () => {
     expect(chi.to).toBe(FinSetSubobjectClassifier.truthValues)
     expect(chi.map).toEqual([1, 0, 1])
 
+    expect(FinSetSubobjectClassifier.truthValues).toBe(FinSetTruthValues)
+    expectEqualArrows(FinSetSubobjectClassifier.truthArrow, FinSetTruthArrow)
+
     const truthComposite = FinSetSubobjectClassifier.compose(
       FinSetSubobjectClassifier.truthArrow,
       FinSetSubobjectClassifier.terminate(S),
@@ -94,6 +97,18 @@ describe('FinSetSubobjectClassifier', () => {
 
     const charComposite = FinSetSubobjectClassifier.compose(chi, inclusion)
     expectEqualArrows(charComposite, truthComposite)
+
+    const reconstructed = FinSetSubobjectClassifier.subobjectFromCharacteristic(chi)
+    const iso = buildIsoFromCanonical(reconstructed, inclusion)
+
+    expectEqualArrows(
+      FinSetSubobjectClassifier.compose(reconstructed.inclusion, iso.forward),
+      inclusion,
+    )
+    expectEqualArrows(
+      FinSetSubobjectClassifier.characteristic(reconstructed.inclusion),
+      chi,
+    )
   })
 
   it('exposes the categorical false arrow alongside truth', () => {
@@ -166,7 +181,7 @@ describe('FinSetSubobjectClassifier', () => {
     expect(() => CategoryLimits.subobjectClassifierNegation(inconsistent)).toThrow(/negation|false/i)
 
     const eqlessInconsistent = {
-      ...FinSetSubobjectClassifier,
+      ...withoutEqual,
       negation: FinSetTruthArrow,
       equalMor: undefined,
     } as unknown as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
