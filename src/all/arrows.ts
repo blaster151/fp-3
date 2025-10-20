@@ -34,3 +34,23 @@ export {
   second,
   zero,
 } from "../arrows/arrow-ir"
+
+export type { Profunctor } from "../arrows/profunctor"
+export {
+  ProfunctorToolkit,
+  arrP as arrProfunctor,
+  compose as composeProfunctor,
+  dimap as dimapProfunctor,
+  fanout as fanoutProfunctor,
+  first as firstProfunctor,
+  fromIR as profunctorFromIR,
+  id as profunctorId,
+  left as leftProfunctor,
+  lmap as lmapProfunctor,
+  right as rightProfunctor,
+  rmap as rmapProfunctor,
+  run as runProfunctor,
+  second as secondProfunctor,
+  split as splitProfunctor,
+  toIR as profunctorToIR,
+} from "../arrows/profunctor"
