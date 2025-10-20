@@ -4,6 +4,7 @@ import {
   RingReal,
   createModuloRing,
   normalizeMod,
+  checkSemiring,
   checkRing,
   checkRingHomomorphism,
   checkIdeal,
@@ -13,6 +14,7 @@ import {
   checkQuotientRing,
   type RingHomomorphism,
   type Ring,
+  type Semiring,
   type RingIdeal,
   type Module,
   type ModuleHomomorphism,
@@ -64,6 +66,16 @@ describe("ring infrastructure", () => {
     expect(result.violations).toHaveLength(0)
   })
 
+  it("validates ℤ as a semiring", () => {
+    const samples = [-2n, -1n, 0n, 1n, 2n]
+
+    const result = checkSemiring(RingInteger, { samples })
+
+    expect(result.holds).toBe(true)
+    expect(result.metadata.sampleCount).toBe(samples.length)
+    expect(result.violations).toHaveLength(0)
+  })
+
   it("flags non-associative additions in rings", () => {
     const weirdAdd = (left: number, right: number): number =>
       left === 1 && right === 2 ? 10 : left + right
@@ -83,6 +95,21 @@ describe("ring infrastructure", () => {
     expect(result.holds).toBe(false)
     expect(result.violations.some((violation) => violation.kind === "addAssociative")).toBe(true)
     expect(result.violations.some((violation) => violation.kind === "addCommutative")).toBe(true)
+  })
+
+  it("flags semiring identity failures", () => {
+    const brokenSemiring: Semiring<number> = {
+      zero: 0,
+      one: 1,
+      add: (left, right) => left + right,
+      mul: (left, right) => (left === 1 && right === 1 ? 0 : left * right),
+      eq: (left, right) => left === right,
+    }
+
+    const result = checkSemiring(brokenSemiring, { samples: [0, 1, 2] })
+
+    expect(result.holds).toBe(false)
+    expect(result.violations.some((violation) => violation.kind === "mulIdentity")).toBe(true)
   })
 
   it("builds the quotient ring ℤ/5ℤ", () => {
