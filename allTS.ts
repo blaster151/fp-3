@@ -472,6 +472,8 @@ export {
 export {
   FinPosCat,
   FinPos,
+  FinPosSubobjectClassifier,
+  FinPosPowerObject,
   type FinPosCategory,
   type FinPosObj,
   type FinPosProduct,
