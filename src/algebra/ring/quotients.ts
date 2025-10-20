@@ -60,7 +60,11 @@ export interface QuotientCheckResult<A> {
   readonly holds: boolean
   readonly details: string
   readonly violations: ReadonlyArray<{ readonly kind: string; readonly witness: readonly [A, A?] }>
-  readonly metadata: { readonly samples: number }
+  readonly metadata: {
+    readonly samples: number
+    readonly idempotenceChecks: number
+    readonly cosetComparisons: number
+  }
 }
 
 const toViolation = <A>(kind: string, witness: readonly [A, A?]): { readonly kind: string; readonly witness: readonly [A, A?] } => ({
@@ -71,12 +75,23 @@ const toViolation = <A>(kind: string, witness: readonly [A, A?]): { readonly kin
 export const checkQuotientRing = <A>(quotient: QuotientRing<A>, options: QuotientCheckOptions<A> = {}): QuotientCheckResult<A> => {
   const samples = options.samples ?? []
   const eq = quotient.ring.eq ?? ((left: QuotientElement<A>, right: QuotientElement<A>) => Object.is(left, right))
+  const baseEq = quotient.base.eq ?? ((left: A, right: A) => Object.is(left, right))
   const violations: Array<{ readonly kind: string; readonly witness: readonly [A, A?] }> = []
 
   const project = quotient.project
 
+  let idempotenceChecks = 0
+  let cosetComparisons = 0
+
   for (const value of samples) {
     const projected = project(value)
+    const canonical = quotient.representative(projected)
+    const secondPass = quotient.representative(project(canonical))
+    idempotenceChecks += 1
+    if (!baseEq(secondPass, canonical)) {
+      violations.push(toViolation("reductionIdempotence", [value]))
+    }
+
     const projectedNeg = quotient.ring.neg(projected)
     const baseNeg = project(quotient.base.neg(value))
     if (!eq(projectedNeg, baseNeg)) {
@@ -91,13 +106,23 @@ export const checkQuotientRing = <A>(quotient: QuotientRing<A>, options: Quotien
 
   for (const left of samples) {
     for (const right of samples) {
-      const projectedSum = quotient.ring.add(project(left), project(right))
+      const leftProjected = project(left)
+      const rightProjected = project(right)
+
+      if (quotient.ideal.contains(quotient.base.sub(left, right))) {
+        cosetComparisons += 1
+        if (!eq(leftProjected, rightProjected)) {
+          violations.push(toViolation("cosetEquality", [left, right]))
+        }
+      }
+
+      const projectedSum = quotient.ring.add(leftProjected, rightProjected)
       const baseSum = project(quotient.base.add(left, right))
       if (!eq(projectedSum, baseSum)) {
         violations.push(toViolation("addition", [left, right]))
       }
 
-      const projectedProduct = quotient.ring.mul(project(left), project(right))
+      const projectedProduct = quotient.ring.mul(leftProjected, rightProjected)
       const baseProduct = project(quotient.base.mul(left, right))
       if (!eq(projectedProduct, baseProduct)) {
         violations.push(toViolation("multiplication", [left, right]))
@@ -107,13 +132,17 @@ export const checkQuotientRing = <A>(quotient: QuotientRing<A>, options: Quotien
 
   const holds = violations.length === 0
   const details = holds
-    ? `Quotient ring respected ${samples.length} sample representatives.`
-    : `${violations.length} quotient ring constraints failed.`
+    ? `Quotient ring respected ${samples.length} sample representatives with ${idempotenceChecks} idempotence checks and ${cosetComparisons} coset comparisons.`
+    : `${violations.length} quotient ring constraints failed after ${idempotenceChecks} idempotence checks and ${cosetComparisons} coset comparisons.`
 
   return {
     holds,
     details,
     violations,
-    metadata: { samples: samples.length },
+    metadata: {
+      samples: samples.length,
+      idempotenceChecks,
+      cosetComparisons,
+    },
   }
 }

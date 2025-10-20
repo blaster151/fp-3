@@ -107,6 +107,30 @@ describe("ring infrastructure", () => {
     expect(quotient.representative(sum)).toBe(4n)
   })
 
+  it("diagnoses non-idempotent quotient reducers", () => {
+    const modulus = 5n
+    const construction: QuotientConstruction<bigint> = {
+      base: RingInteger,
+      ideal: {
+        ring: RingInteger,
+        contains: (value) => value % modulus === 0n,
+        name: "(5)",
+      },
+      reduce: (value) => value + value / modulus,
+      name: "skewed ℤ/5ℤ",
+    }
+
+    const quotient = buildQuotientRing(construction)
+    const samples = [0n, 1n, 5n, 6n, 10n]
+    const result = checkQuotientRing(quotient, { samples })
+
+    expect(result.holds).toBe(false)
+    expect(result.metadata.idempotenceChecks).toBe(samples.length)
+    expect(result.metadata.cosetComparisons).toBeGreaterThan(0)
+    expect(result.violations.some((violation) => violation.kind === "reductionIdempotence")).toBe(true)
+    expect(result.violations.some((violation) => violation.kind === "cosetEquality")).toBe(true)
+  })
+
   it("confirms ℤ as a module over itself", () => {
     const module: Module<bigint, bigint> = {
       ring: RingInteger,
