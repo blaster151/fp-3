@@ -97,6 +97,8 @@ import {
   // CategoryFn, ProfunctorFn, StrongFn, ArrowFn,
   // New Arrow IR system
   Arrow, arr, comp, first, leftArrow, par, fanout, zero, alt, loop, denot, normalize,
+  // Profunctor wrapper for Arrow IR
+  arrProfunctor, dimapProfunctor, firstProfunctor, lmapProfunctor, rmapProfunctor, runProfunctor,
   // Json constructors
   jObj, jStr, jNum, jArr, jUndef, jDec, jBinary, jRegex, jSet,
   // Catamorphism
@@ -1104,6 +1106,19 @@ async function runExamples() {
   console.log('Arrow IR - fused (3):', denot(fusedIR)(3))
   console.log('Arrow IR - normalized functorial (3):', denot(normalizedFunctorialIR.plan)(3))
   console.log('Arrow IR - functoriality preserved:', denot(functorialIR)(3) === denot(normalizedFunctorialIR.plan)(3))
+
+  const profunctorBase = arrProfunctor((n: number) => n + 1)
+  const profunctorDimapped = dimapProfunctor(
+    profunctorBase,
+    (input: number) => input * 2,
+    (output: number) => `value:${output}`,
+  )
+  const profunctorShifted = lmapProfunctor(rmapProfunctor(profunctorBase, (n: number) => n * 3), (n: number) => n - 1)
+  const profunctorFirst = firstProfunctor(profunctorBase)
+
+  console.log('Profunctor dimap (5):', runProfunctor(profunctorDimapped)(5))
+  console.log('Profunctor lmap/rmap (4):', runProfunctor(profunctorShifted)(4))
+  console.log('Profunctor first ([3, "tag"]):', runProfunctor(profunctorFirst)([3, 'tag']))
 
   // ArrowChoice example (with Either-like types)
   const processLeft = leftArrow(arr((s: string) => s.toUpperCase()))

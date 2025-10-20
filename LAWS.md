@@ -1538,7 +1538,7 @@ For any profunctor `P`:
 **Identity**: `dimap(id, id) = id`
 **Composition**: `dimap(f ∘ g, h ∘ i) = dimap(g, h) ∘ dimap(f, i)`
 
-**Witness**: Property test with random functions `f, g, h, i`
+**Witness**: Property test with random functions `f, g, h, i` (see `test/laws/law.ProfunctorIR.spec.ts`)
 
 ### Strong Laws
 For any strong profunctor `P`:
@@ -1547,7 +1547,7 @@ For any strong profunctor `P`:
 **Associativity**: `first(first(f)) ∘ assoc = assoc ∘ first(f)`
 **Unitality**: `first(f) ∘ unitor = unitor ∘ f`
 
-**Witness**: Property test with random functions and arrows
+**Witness**: Property test with random functions and arrows (see `test/laws/law.StrongProfunctorIR.spec.ts`)
 
 ### ArrowApply Laws
 For any ArrowApply `A`:
