@@ -30,6 +30,11 @@ This document provides a quick reference for finding the right tool for your pro
 
 > **Migration tip:** legacy call sites importing from `stdlib/collections` still work, but the richer helpers now live in `src/collections/set`. Prefer importing from the new module so the Eq/Ord-aware APIs are available in one place.
 
+### **Validate module actions**
+| **Goal** | **Use This** | **Notes** |
+|----------|--------------|-----------|
+| Certify that a ring action forms a module | `checkModule(module, { scalarSamples, vectorSamples })` | Confirms zero/negation, scalar laws, **and** now rejects non-associative or non-commutative additions by surfacing explicit witnesses |
+
 ### **Solve Graph Problems**
 | **Problem** | **Use This** | **Semiring** |
 |-------------|--------------|--------------|

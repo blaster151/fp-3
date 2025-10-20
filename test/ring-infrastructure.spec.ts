@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   RingInteger,
+  RingReal,
   createModuloRing,
   normalizeMod,
   checkRingHomomorphism,
@@ -91,5 +92,34 @@ describe("ring infrastructure", () => {
 
     expect(result.holds).toBe(true)
     expect(result.metadata.scalarSamples).toBe(5)
+    expect(result.violations).toHaveLength(0)
+  })
+
+  it("flags non-abelian module additions", () => {
+    const add = (left: number, right: number): number => {
+      if (left === 1 && right === 2) return 42
+      if (left === 2 && right === 1) return 41
+      if (left === 1 && right === 1) return 1
+      return left + right
+    }
+
+    const module: Module<number, number> = {
+      ring: RingReal,
+      zero: 0,
+      add,
+      neg: (value) => -value,
+      scalar: (scalar, value) => scalar * value,
+      eq: (left, right) => left === right,
+      name: "non-abelian toy module",
+    }
+
+    const result = checkModule(module, {
+      scalarSamples: [0, 1],
+      vectorSamples: [0, 1, 2],
+    })
+
+    expect(result.holds).toBe(false)
+    expect(result.violations.some((violation) => violation.kind === "addCommutative")).toBe(true)
+    expect(result.violations.some((violation) => violation.kind === "addAssociative")).toBe(true)
   })
 })
