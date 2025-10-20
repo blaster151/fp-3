@@ -2,10 +2,18 @@ import { describe, expect, it } from 'vitest'
 
 import {
   CategoryLimits,
+  FinSetFalseArrow,
+  FinSetNegation,
   FinSetSubobjectClassifier,
   FinSetTruthArrow,
+  FinSetTruthAnd,
+  FinSetTruthProduct,
   FinSetTruthValues,
   finsetCharacteristicPullback,
+  finsetCharacteristicFalsePullback,
+  finsetCharacteristicComplement,
+  finsetComplementSubobject,
+  finsetSubobjectIntersection,
   finsetMonicEpicIso,
   finsetMonomorphismEqualizer,
   finsetSubobjectLeq,
@@ -87,6 +95,85 @@ describe('FinSetSubobjectClassifier', () => {
     expectEqualArrows(charComposite, truthComposite)
   })
 
+  it('exposes the categorical false arrow alongside truth', () => {
+    const computed = CategoryLimits.subobjectClassifierFalseArrow(FinSetSubobjectClassifier)
+
+    expectEqualArrows(FinSetSubobjectClassifier.falseArrow, FinSetFalseArrow)
+    expectEqualArrows(FinSetSubobjectClassifier.falseArrow, computed)
+
+    expect(FinSetSubobjectClassifier.falseArrow.from).toBe(
+      FinSetSubobjectClassifier.terminalObj,
+    )
+    expect(FinSetSubobjectClassifier.falseArrow.to).toBe(
+      FinSetSubobjectClassifier.truthValues,
+    )
+
+    expect(eqArrows(FinSetSubobjectClassifier.falseArrow, FinSetTruthArrow)).toBe(false)
+  })
+
+  it('exposes Ω negation via the false point and composes to complements', () => {
+    const computed = CategoryLimits.subobjectClassifierNegation(FinSetSubobjectClassifier)
+
+    expectEqualArrows(FinSetSubobjectClassifier.negation, FinSetNegation)
+    expectEqualArrows(FinSetSubobjectClassifier.negation, computed)
+
+    expectEqualArrows(
+      FinSetSubobjectClassifier.compose(
+        FinSetSubobjectClassifier.negation,
+        FinSetSubobjectClassifier.truthArrow,
+      ),
+      FinSetSubobjectClassifier.falseArrow,
+    )
+
+    expectEqualArrows(
+      FinSetSubobjectClassifier.compose(
+        FinSetSubobjectClassifier.negation,
+        FinSetSubobjectClassifier.falseArrow,
+      ),
+      FinSetTruthArrow,
+    )
+
+    const ambient = makeFinSetObj(['x0', 'x1', 'x2'])
+    const subobject = makeFinSetObj(['s0'])
+    const inclusion: FinSetMor = { from: subobject, to: ambient, map: [1] }
+
+    const chi = FinSetSubobjectClassifier.characteristic(inclusion)
+    const complement = finsetComplementSubobject(inclusion)
+    const complementViaNegation = FinSetSubobjectClassifier.compose(
+      FinSetSubobjectClassifier.negation,
+      chi,
+    )
+
+    expectEqualArrows(complement.characteristic, complementViaNegation)
+    expectEqualArrows(complement.characteristic, finsetCharacteristicComplement(chi))
+  })
+
+  it('validates negation witnesses and falls back to the computed arrow when equality is unavailable', () => {
+    const eqless = {
+      ...FinSetSubobjectClassifier,
+      equalMor: undefined,
+    } as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
+
+    const derived = CategoryLimits.subobjectClassifierNegation(eqless)
+    expectEqualArrows(derived, FinSetNegation)
+
+    const inconsistent = {
+      ...FinSetSubobjectClassifier,
+      negation: FinSetTruthArrow,
+    } as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
+
+    expect(() => CategoryLimits.subobjectClassifierNegation(inconsistent)).toThrow(/negation|false/i)
+
+    const eqlessInconsistent = {
+      ...FinSetSubobjectClassifier,
+      negation: FinSetTruthArrow,
+      equalMor: undefined,
+    } as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
+
+    const recovered = CategoryLimits.subobjectClassifierNegation(eqlessInconsistent)
+    expectEqualArrows(recovered, FinSetNegation)
+  })
+
   it('reconstructs subobjects from characteristic maps', () => {
     const A = makeFinSetObj(['a0', 'a1', 'a2', 'a3'])
     const S = makeFinSetObj(['s0', 's1'])
@@ -125,6 +212,83 @@ describe('FinSetSubobjectClassifier', () => {
       FinSetSubobjectClassifier.characteristic(canonical.inclusion),
       chi,
     )
+  })
+
+  it('builds complement subobjects by pulling back along the false point', () => {
+    const ambient = makeFinSetObj(['a0', 'a1', 'a2', 'a3'])
+    const subobject = makeFinSetObj(['s0', 's1'])
+    const inclusion: FinSetMor = { from: subobject, to: ambient, map: [0, 3] }
+
+    const chi = FinSetSubobjectClassifier.characteristic(inclusion)
+    const falseWitness = finsetCharacteristicFalsePullback(chi)
+
+    expect(falseWitness.inclusion.map).toEqual([1, 2])
+    expect(falseWitness.inclusion.to).toBe(ambient)
+
+    const complement = finsetComplementSubobject(inclusion)
+    expect(sameObject(falseWitness.subobject, complement.complement.subobject)).toBe(true)
+    expectEqualArrows(falseWitness.inclusion, complement.complement.inclusion)
+
+    const complementChi = finsetCharacteristicComplement(chi)
+    expectEqualArrows(complementChi, complement.characteristic)
+
+    const recomposed = FinSetSubobjectClassifier.subobjectFromCharacteristic(
+      complement.characteristic,
+    )
+    expect(sameObject(recomposed.subobject, complement.complement.subobject)).toBe(true)
+    expectEqualArrows(recomposed.inclusion, complement.complement.inclusion)
+
+    expectEqualArrows(
+      FinSetSubobjectClassifier.compose(
+        complement.characteristic,
+        complement.complement.inclusion,
+      ),
+      FinSetSubobjectClassifier.compose(
+        FinSetSubobjectClassifier.falseArrow,
+        complement.falsePullback.terminalProjection,
+      ),
+    )
+  })
+
+  it('exposes Ω conjunction whose composition realises intersections', () => {
+    const truthProduct = FinSetSubobjectClassifier.truthProduct
+    const truthAnd = FinSetSubobjectClassifier.truthAnd
+
+    if (!truthProduct || !truthAnd) {
+      throw new Error('FinSetSubobjectClassifier must expose truth-product witnesses.')
+    }
+
+    expect(truthProduct.obj).toBe(FinSetTruthProduct.obj)
+    expectEqualArrows(truthProduct.projections[0], FinSetTruthProduct.projections[0])
+    expectEqualArrows(truthProduct.projections[1], FinSetTruthProduct.projections[1])
+    expectEqualArrows(truthAnd, FinSetTruthAnd)
+    expect(truthAnd.map).toEqual([0, 0, 0, 1])
+
+    const ambient = makeFinSetObj(['a0', 'a1', 'a2', 'a3'])
+    const left = makeFinSetObj(['l0', 'l1'])
+    const right = makeFinSetObj(['r0', 'r1'])
+    const includeLeft: FinSetMor = { from: left, to: ambient, map: [0, 2] }
+    const includeRight: FinSetMor = { from: right, to: ambient, map: [2, 3] }
+
+    const chiLeft = FinSetSubobjectClassifier.characteristic(includeLeft)
+    const chiRight = FinSetSubobjectClassifier.characteristic(includeRight)
+    const paired = truthProduct.pair(ambient, chiLeft, chiRight)
+    const conjunction = FinSetSubobjectClassifier.compose(truthAnd, paired)
+
+    const intersection = finsetSubobjectIntersection(includeLeft, includeRight)
+    const chiIntersection = FinSetSubobjectClassifier.characteristic(
+      intersection.intersection.inclusion,
+    )
+
+    expectEqualArrows(conjunction, chiIntersection)
+
+    const truthVsFalse = truthProduct.pair(
+      FinSetSubobjectClassifier.terminalObj,
+      FinSetSubobjectClassifier.truthArrow,
+      FinSetSubobjectClassifier.falseArrow,
+    )
+    const meetWithTruthAndFalse = FinSetSubobjectClassifier.compose(truthAnd, truthVsFalse)
+    expectEqualArrows(meetWithTruthAndFalse, FinSetSubobjectClassifier.falseArrow)
   })
 
   it('packages the truth pullback universal property for characteristic maps', () => {
@@ -269,10 +433,51 @@ describe('FinSetSubobjectClassifier', () => {
       return FinSetSubobjectClassifier.subobjectFromCharacteristic(canonical)
     }
 
+    const swappedFalseArrow = swappedCharacteristic(
+      FinSetSubobjectClassifier.initialArrow(FinSetSubobjectClassifier.terminalObj),
+    )
+
+    const swappedNegation = swappedCharacteristic(swappedFalseArrow)
+
+    const swappedTruthProductBase = FinSetSubobjectClassifier.binaryProduct(
+      swappedTruthValues,
+      swappedTruthValues,
+    )
+
+    const swappedTruthProduct: CategoryLimits.TruthProductWitness<FinSetObj, FinSetMor> = {
+      obj: swappedTruthProductBase.obj,
+      projections: [
+        swappedTruthProductBase.proj1,
+        swappedTruthProductBase.proj2,
+      ] as const,
+      pair: swappedTruthProductBase.pair,
+    }
+
+    const swappedTruthAnd: FinSetMor = {
+      from: swappedTruthProduct.obj,
+      to: swappedTruthValues,
+      map: swappedTruthProduct.obj.elements.map(tuple => {
+        const coordinates = tuple as ReadonlyArray<number>
+        const left = coordinates[0]
+        const right = coordinates[1]
+        if (left === undefined || right === undefined) {
+          throw new Error('alternate classifier: malformed Ω × Ω tuple.')
+        }
+        if ((left !== 0 && left !== 1) || (right !== 0 && right !== 1)) {
+          throw new Error('alternate classifier: tuple indexes must reference swapped truth values.')
+        }
+        return left === 0 && right === 0 ? 0 : 1
+      }),
+    }
+
     const alternate: CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor> = {
       ...FinSetSubobjectClassifier,
       truthValues: swappedTruthValues,
       truthArrow: swappedTruthArrow,
+      falseArrow: swappedFalseArrow,
+      negation: swappedNegation,
+      truthProduct: swappedTruthProduct,
+      truthAnd: swappedTruthAnd,
       characteristic: swappedCharacteristic,
       subobjectFromCharacteristic: swappedSubobjectFromCharacteristic,
     }
@@ -406,7 +611,38 @@ describe('FinSetSubobjectClassifier', () => {
       map: [0, 2, 1],
     }
 
-    expect(() => finsetCharacteristicPullback(malformed)).toThrow(/pullback|truth/i)
+    expect(() => finsetCharacteristicPullback(malformed)).toThrow(/pullback|truth|target/i)
+  })
+
+  it('rejects malformed target arrows when extracting characteristic pullbacks', () => {
+    const ambient = makeFinSetObj(['a0', 'a1'])
+    const sub = makeFinSetObj(['s0'])
+    const inclusion: FinSetMor = { from: sub, to: ambient, map: [1] }
+    const chi = FinSetSubobjectClassifier.characteristic(inclusion)
+
+    const truncatedTarget: FinSetMor = {
+      from: FinSetSubobjectClassifier.terminalObj,
+      to: FinSetSubobjectClassifier.truthValues,
+      map: [],
+    }
+
+    expect(() => finsetCharacteristicPullback(chi, truncatedTarget)).toThrow(/target|terminal/i)
+
+    const fractionalTarget: FinSetMor = {
+      from: FinSetSubobjectClassifier.terminalObj,
+      to: FinSetSubobjectClassifier.truthValues,
+      map: [0.5],
+    }
+
+    expect(() => finsetCharacteristicPullback(chi, fractionalTarget)).toThrow(/truth|index|target/i)
+
+    const outOfRangeTarget: FinSetMor = {
+      from: FinSetSubobjectClassifier.terminalObj,
+      to: FinSetSubobjectClassifier.truthValues,
+      map: [3],
+    }
+
+    expect(() => finsetCharacteristicPullback(chi, outOfRangeTarget)).toThrow(/truth|target/i)
   })
 
   it('rejects non-monic arrows and non truth-valued characteristic maps', () => {

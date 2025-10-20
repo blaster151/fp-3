@@ -28,6 +28,7 @@ export * from "./src/algebra/ring/modules"
 export * from "./src/algebra/ring/structures"
 export * from "./src/algebra/ring/ideals"
 export * from "./src/algebra/ring/quotients"
+export * from "./monic-category"
 export type {
   Coring,
   Algebra,
