@@ -13,6 +13,7 @@ export {
   RingInteger,
   createModuloRing,
   normalizeMod,
+  checkSemiring,
   checkRing,
   checkRingHomomorphism,
   checkIdeal,
@@ -22,6 +23,9 @@ export {
 } from "../algebra/ring"
 export type {
   RingViolation,
+  SemiringViolation,
+  SemiringCheckOptions,
+  SemiringCheckResult,
   RingCheckOptions,
   RingCheckResult,
   RingHomomorphism,

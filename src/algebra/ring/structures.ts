@@ -15,6 +15,33 @@ export interface Ring<A> extends Semiring<A> {
   readonly sub: (left: A, right: A) => A
 }
 
+export type SemiringViolation<A> =
+  | { readonly kind: "addIdentity"; readonly value: A; readonly side: "left" | "right" }
+  | { readonly kind: "mulIdentity"; readonly value: A; readonly side: "left" | "right" }
+  | { readonly kind: "addAssociative"; readonly triple: readonly [A, A, A] }
+  | { readonly kind: "mulAssociative"; readonly triple: readonly [A, A, A] }
+  | { readonly kind: "leftDistributive"; readonly triple: readonly [A, A, A] }
+  | { readonly kind: "rightDistributive"; readonly triple: readonly [A, A, A] }
+
+export interface SemiringCheckOptions<A> {
+  readonly samples?: ReadonlyArray<A>
+}
+
+export interface SemiringCheckResult<A> {
+  readonly holds: boolean
+  readonly violations: ReadonlyArray<SemiringViolation<A>>
+  readonly details: string
+  readonly metadata: {
+    readonly sampleCount: number
+    readonly additiveIdentityChecks: number
+    readonly multiplicativeIdentityChecks: number
+    readonly additiveAssociativityChecks: number
+    readonly multiplicativeAssociativityChecks: number
+    readonly leftDistributiveChecks: number
+    readonly rightDistributiveChecks: number
+  }
+}
+
 export type RingViolation<A> =
   | { readonly kind: "addIdentity"; readonly value: A; readonly side: "left" | "right" }
   | { readonly kind: "addInverse"; readonly value: A }
@@ -79,6 +106,107 @@ export interface RingHomomorphismCheckOptions<Domain> {
 
 const withEquality = <A>(eq?: Equality<A>): Equality<A> =>
   eq ?? ((left, right) => Object.is(left, right))
+
+export const checkSemiring = <A>(
+  semiring: Semiring<A>,
+  options: SemiringCheckOptions<A> = {},
+): SemiringCheckResult<A> => {
+  const samples = options.samples ?? []
+  const eq = withEquality(semiring.eq)
+  const violations: SemiringViolation<A>[] = []
+
+  let additiveIdentityChecks = 0
+  let multiplicativeIdentityChecks = 0
+  for (const value of samples) {
+    const addRight = semiring.add(value, semiring.zero)
+    additiveIdentityChecks++
+    if (!eq(addRight, value)) {
+      violations.push({ kind: "addIdentity", value, side: "right" })
+    }
+
+    const addLeft = semiring.add(semiring.zero, value)
+    additiveIdentityChecks++
+    if (!eq(addLeft, value)) {
+      violations.push({ kind: "addIdentity", value, side: "left" })
+    }
+
+    const mulRight = semiring.mul(value, semiring.one)
+    multiplicativeIdentityChecks++
+    if (!eq(mulRight, value)) {
+      violations.push({ kind: "mulIdentity", value, side: "right" })
+    }
+
+    const mulLeft = semiring.mul(semiring.one, value)
+    multiplicativeIdentityChecks++
+    if (!eq(mulLeft, value)) {
+      violations.push({ kind: "mulIdentity", value, side: "left" })
+    }
+  }
+
+  let additiveAssociativityChecks = 0
+  let multiplicativeAssociativityChecks = 0
+  let leftDistributiveChecks = 0
+  let rightDistributiveChecks = 0
+  for (const a of samples) {
+    for (const b of samples) {
+      for (const c of samples) {
+        additiveAssociativityChecks++
+        const addLeftAssoc = semiring.add(semiring.add(a, b), c)
+        const addRightAssoc = semiring.add(a, semiring.add(b, c))
+        if (!eq(addLeftAssoc, addRightAssoc)) {
+          violations.push({ kind: "addAssociative", triple: [a, b, c] })
+        }
+
+        multiplicativeAssociativityChecks++
+        const mulLeftAssoc = semiring.mul(semiring.mul(a, b), c)
+        const mulRightAssoc = semiring.mul(a, semiring.mul(b, c))
+        if (!eq(mulLeftAssoc, mulRightAssoc)) {
+          violations.push({ kind: "mulAssociative", triple: [a, b, c] })
+        }
+
+        leftDistributiveChecks++
+        const leftDistributiveLeft = semiring.mul(a, semiring.add(b, c))
+        const leftDistributiveRight = semiring.add(
+          semiring.mul(a, b),
+          semiring.mul(a, c),
+        )
+        if (!eq(leftDistributiveLeft, leftDistributiveRight)) {
+          violations.push({ kind: "leftDistributive", triple: [a, b, c] })
+        }
+
+        rightDistributiveChecks++
+        const rightDistributiveLeft = semiring.mul(semiring.add(a, b), c)
+        const rightDistributiveRight = semiring.add(
+          semiring.mul(a, c),
+          semiring.mul(b, c),
+        )
+        if (!eq(rightDistributiveLeft, rightDistributiveRight)) {
+          violations.push({ kind: "rightDistributive", triple: [a, b, c] })
+        }
+      }
+    }
+  }
+
+  const holds = violations.length === 0
+  const details = holds
+    ? `Semiring laws validated on ${samples.length} elements.`
+    : `${violations.length} semiring constraints failed.`
+
+  return {
+    holds,
+    violations,
+    details,
+    metadata: {
+      sampleCount: samples.length,
+      additiveIdentityChecks,
+      multiplicativeIdentityChecks,
+      additiveAssociativityChecks,
+      multiplicativeAssociativityChecks,
+      leftDistributiveChecks,
+      rightDistributiveChecks,
+    },
+  }
+}
 
 export const checkRing = <A>(ring: Ring<A>, options: RingCheckOptions<A> = {}): RingCheckResult<A> => {
   const samples = options.samples ?? []
