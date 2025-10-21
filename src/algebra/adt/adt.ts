@@ -384,10 +384,32 @@ type ADTIndexed = Readonly<{ readonly [ADT_INDEX_METADATA]: ADTIndexMetadata }>
 
 export type ADTRecursionKind = 'self' | 'foreign'
 
+export type ADTHigherOrderFieldMetadata = Readonly<{
+  readonly parameter: string
+  readonly description?: string
+  readonly dependencies?: readonly string[]
+}>
+
+export type ADTHigherOrderParameterDescriptorMetadata = Readonly<{
+  readonly description?: string
+  readonly dependencies?: readonly string[]
+}>
+
+export type ADTHigherOrderParameterContext = Readonly<{
+  readonly typeName: string
+  readonly constructorName: string
+  readonly fieldName: string
+  readonly parameterName: string
+  readonly parameterWitness: TypeWitness<unknown>
+  readonly witnesses: Record<string, TypeWitness<unknown>>
+  readonly indexes: readonly ADTConstructorIndex[]
+}>
+
 export type ADTField<Name extends string, A> = Readonly<{
   readonly name: Name
   readonly witness: TypeWitness<A>
   readonly recursion?: ADTRecursionKind
+  readonly higherOrder?: ADTHigherOrderFieldMetadata
 }>
 
 export type ADTParameter<Name extends string> = Readonly<{
@@ -400,6 +422,20 @@ export type ADTParameterField<Name extends string, ParameterName extends string>
   readonly recursion?: ADTRecursionKind
 }>
 
+export type ADTHigherOrderParameterField<
+  Name extends string,
+  ParameterName extends string,
+  Value,
+> = Readonly<{
+  readonly name: Name
+  readonly parameter: ParameterName
+  readonly recursion?: Exclude<ADTRecursionKind, 'self'>
+  readonly higherOrder: Readonly<{
+    readonly derive: (context: ADTHigherOrderParameterContext) => TypeWitness<Value>
+    readonly metadata?: ADTHigherOrderParameterDescriptorMetadata
+  }>
+}>
+
 const EMPTY_PARAMETER_LIST = Object.freeze([]) as readonly ADTParameter<string>[]
 
 type ParameterNames<Parameters extends readonly ADTParameter<string>[]> = Parameters extends readonly []
@@ -409,7 +445,10 @@ type ParameterNames<Parameters extends readonly ADTParameter<string>[]> = Parame
 export type ADTFieldDescriptor<
   Name extends string,
   ParameterName extends string,
-> = ADTField<Name, any> | ADTParameterField<Name, ParameterName>
+> =
+  | ADTField<Name, any>
+  | ADTParameterField<Name, ParameterName>
+  | ADTHigherOrderParameterField<Name, ParameterName, any>
 
 export type ADTConstructorFamily<
   Name extends string,
@@ -863,7 +902,9 @@ type ResolvedField<
   ? ADTField<Name, Value>
   : Field extends ADTParameterField<string, any>
     ? ParameterFieldWithWitness<Field, ParameterTypes>
-    : never
+    : Field extends ADTHigherOrderParameterField<infer Name, any, infer Value>
+      ? ADTField<Name, Value>
+      : never
 
 export type InstantiateConstructors<
   Constructors extends ReadonlyArray<
@@ -2743,10 +2784,15 @@ const realizeADT = <
   } as AlgebraicDataType<TypeName, Constructors>
 }
 
+const isHigherOrderParameterField = <Name extends string, ParameterName extends string>(
+  field: ADTFieldDescriptor<Name, ParameterName>,
+): field is ADTHigherOrderParameterField<Name, ParameterName, unknown> =>
+  Object.prototype.hasOwnProperty.call(field, 'higherOrder')
+
 const isParameterField = <Name extends string, ParameterName extends string>(
   field: ADTFieldDescriptor<Name, ParameterName>,
 ): field is ADTParameterField<Name, ParameterName> =>
-  Object.prototype.hasOwnProperty.call(field, 'parameter')
+  Object.prototype.hasOwnProperty.call(field, 'parameter') && !isHigherOrderParameterField(field)
 
 const ensureNoParameterFieldsWithoutDefinitions = (
   typeName: string,
@@ -2754,7 +2800,7 @@ const ensureNoParameterFieldsWithoutDefinitions = (
 ): void => {
   for (const ctor of constructors) {
     for (const field of ctor.fields) {
-      if (isParameterField(field)) {
+      if (isParameterField(field) || isHigherOrderParameterField(field)) {
         throw new Error(
           `ADT ${typeName} references parameter ${String(field.parameter)} in constructor ${String(
             ctor.name,
@@ -2786,7 +2832,10 @@ const ensureParameterUsageValid = (
 ): void => {
   for (const ctor of constructors) {
     for (const field of ctor.fields) {
-      if (isParameterField(field) && !parameterNames.has(field.parameter)) {
+      if (
+        (isParameterField(field) || isHigherOrderParameterField(field)) &&
+        !parameterNames.has(field.parameter)
+      ) {
         throw new Error(
           `Constructor ${String(ctor.name)} in ADT ${typeName} references unknown parameter ${String(
             field.parameter,
@@ -2821,11 +2870,13 @@ const resolveField = <
   ParameterName extends string,
 >(
   typeName: string,
+  constructorName: string,
+  indexes: readonly ADTConstructorIndex[],
   field: ADTFieldDescriptor<Name, ParameterName>,
   witnesses: Record<string, TypeWitness<unknown>>,
   parameterNames: ReadonlySet<string>,
 ): ADTField<Name, unknown> => {
-  if (!isParameterField(field)) {
+  if (!isParameterField(field) && !isHigherOrderParameterField(field)) {
     return field
   }
 
@@ -2849,10 +2900,39 @@ const resolveField = <
     )
   }
 
+  if (isParameterField(field)) {
+    return {
+      name: field.name,
+      witness,
+      ...(field.recursion ? { recursion: field.recursion } : {}),
+    }
+  }
+
+  const derivedWitness = field.higherOrder.derive({
+    typeName,
+    constructorName,
+    fieldName: field.name,
+    parameterName: parameter,
+    parameterWitness: witness,
+    witnesses,
+    indexes,
+  })
+  if (typeof derivedWitness?.equals !== 'function') {
+    throw new Error(
+      `Higher-order field ${String(field.name)} in ADT ${typeName} must derive an equality witness`,
+    )
+  }
+
+  const metadata: ADTHigherOrderFieldMetadata = Object.freeze({
+    parameter,
+    ...(field.higherOrder.metadata ? field.higherOrder.metadata : {}),
+  })
+
   return {
     name: field.name,
-    witness,
+    witness: derivedWitness,
     ...(field.recursion ? { recursion: field.recursion } : {}),
+    higherOrder: metadata,
   }
 }
 
@@ -2934,7 +3014,14 @@ export function defineADT<
     const resolvedConstructors = constructors.map((ctor) => ({
       name: ctor.name,
       fields: ctor.fields.map((field) =>
-        resolveField(definition.typeName, field, witnesses, parameterNames),
+        resolveField(
+          definition.typeName,
+          ctor.name,
+          ctor.indexes ?? EMPTY_INDEX_LIST,
+          field,
+          witnesses,
+          parameterNames,
+        ),
       ),
       ...(ctor.indexes ? { indexes: ctor.indexes } : {}),
     })) as unknown as InstantiateConstructors<Constructors, ParameterTypes>
@@ -2967,6 +3054,38 @@ export const parameterField = <Name extends string, ParameterName extends string
   options?.recursion
     ? { name, parameter, recursion: options.recursion }
     : { name, parameter }
+
+export const higherOrderParameterField = <
+  Name extends string,
+  ParameterName extends string,
+  Value,
+>(
+  name: Name,
+  parameter: ParameterName,
+  derive: (context: ADTHigherOrderParameterContext) => TypeWitness<Value>,
+  options?: {
+    readonly recursion?: Exclude<ADTRecursionKind, 'self'>
+    readonly description?: string
+    readonly dependencies?: readonly string[]
+  },
+): ADTHigherOrderParameterField<Name, ParameterName, Value> => {
+  const metadata = options
+    ? Object.freeze({
+        ...(options.description ? { description: options.description } : {}),
+        ...(options.dependencies ? { dependencies: options.dependencies } : {}),
+      })
+    : undefined
+
+  return {
+    name,
+    parameter,
+    ...(options?.recursion ? { recursion: options.recursion } : {}),
+    higherOrder: {
+      derive,
+      ...(metadata ? { metadata } : {}),
+    },
+  }
+}
 
 const ensureIndexPresence = (
   value: ADTIndexMetadata,

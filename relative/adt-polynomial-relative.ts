@@ -8,6 +8,14 @@ import type {
   RecursiveAlgebraicDataType,
   TypeWitness,
 } from "../src/algebra/adt/adt";
+import type {
+  RelativeEnrichedEilenbergMooreAlgebraOptions,
+  RelativeEnrichedKleisliInclusionOptions,
+  RelativeEnrichedStreetRollupOptions,
+  RelativeEnrichedVCatMonadOptions,
+  RelativeEnrichedYonedaDistributorOptions,
+  RelativeEnrichedYonedaOptions,
+} from "./relative-monads";
 
 export interface ADTPolynomialRelativeMonadValueIssue<
   Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
@@ -818,6 +826,14 @@ export const rollupADTPolynomialRelativeStreet = <
       const value = scenario.samples[index];
       const snapshot = groupedSnapshots[index];
 
+      if (value === undefined) {
+        pending = true;
+        issues.push(
+          `Extension scenario ${scenario.id} missing Street sample for index ${index}.`,
+        );
+        continue;
+      }
+
       if (!snapshot) {
         pending = true;
         issues.push(
@@ -929,6 +945,14 @@ export const rollupADTPolynomialRelativeStreet = <
     for (let index = 0; index < scenario.samples.length; index += 1) {
       const value = scenario.samples[index];
       const snapshot = groupedSnapshots[index];
+
+      if (value === undefined) {
+        pending = true;
+        issues.push(
+          `Kleisli scenario ${scenario.id} missing Street sample for index ${index}.`,
+        );
+        continue;
+      }
 
       if (!snapshot) {
         pending = true;
@@ -1043,6 +1067,46 @@ export const rollupADTPolynomialRelativeStreet = <
     details,
     extensions,
     kleisli,
+  };
+};
+
+export type ADTPolynomialRelativeStreetEnrichedOptions<
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>
+> = RelativeEnrichedStreetRollupOptions<
+  ADTPolynomialRelativeStreetRollup<Constructors>
+>;
+
+export interface ADTPolynomialRelativeStreetEnrichedBundle<
+  TypeName extends string,
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>
+> {
+  readonly report: ADTPolynomialRelativeStreetReport<Constructors>;
+  readonly rollup: ADTPolynomialRelativeStreetRollup<Constructors>;
+  readonly options: ADTPolynomialRelativeStreetEnrichedOptions<Constructors>;
+}
+
+export const buildADTPolynomialRelativeStreetEnrichedBundle = <
+  TypeName extends string,
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+>(
+  input: ADTPolynomialRelativeStreetInput<TypeName, Constructors>,
+  reportOverride?: ADTPolynomialRelativeStreetReport<Constructors>,
+  rollupOverride?: ADTPolynomialRelativeStreetRollup<Constructors>,
+): ADTPolynomialRelativeStreetEnrichedBundle<TypeName, Constructors> => {
+  const report = reportOverride ?? analyzeADTPolynomialRelativeStreet(input);
+  const rollup = rollupOverride ?? rollupADTPolynomialRelativeStreet(input, report);
+  const options: ADTPolynomialRelativeStreetEnrichedOptions<Constructors> = {
+    yoneda: { streetRollups: rollup },
+    yonedaDistributor: { streetRollups: rollup },
+    eilenbergMoore: { streetRollups: rollup },
+    kleisli: { streetRollups: rollup },
+    vcat: { streetRollups: rollup },
+  };
+
+  return {
+    report,
+    rollup,
+    options,
   };
 };
 

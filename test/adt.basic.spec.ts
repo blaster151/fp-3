@@ -11,6 +11,7 @@ import {
   analyzeADTPolynomialContainerIdentity,
   analyzeADTTraversal,
   defineADT,
+  higherOrderParameterField,
   primitiveStrictEqualsWitness,
   parameterField,
   getADTIndex,
@@ -1223,6 +1224,66 @@ describe('Algebraic Data Type builder', () => {
     const headField = consConcrete?.fields.find((field: any) => field.name === 'head')
     expect(headField && 'parameter' in headField).toBe(false)
     expect(headField?.witness.equals(8, 8)).toBe(true)
+  })
+
+  it('derives higher-order parameter witnesses for dependent fields', () => {
+    const NonEmptyList = defineAnyADT({
+      typeName: 'NonEmptyList',
+      parameters: [{ name: 'A' }] as const,
+      constructors: [
+        {
+          name: 'Single',
+          fields: [parameterField('value', 'A')],
+        },
+        {
+          name: 'Cons',
+          fields: [
+            parameterField('head', 'A'),
+            higherOrderParameterField<'tail', 'A', readonly unknown[]>(
+              'tail',
+              'A',
+              ({ parameterWitness }) =>
+                witnessFromEquals((left: readonly unknown[], right: readonly unknown[]) => {
+                  if (left.length !== right.length) {
+                    return false
+                  }
+                  return left.every((value, index) =>
+                    parameterWitness.equals(value, right[index]!),
+                  )
+                }),
+              {
+                description: 'Tail values compare element-wise using the parameter witness.',
+              },
+            ),
+          ],
+        },
+      ] as const,
+    })
+
+    const numbers = NonEmptyList.instantiate({
+      A: primitiveStrictEqualsWitness<number>(),
+    })
+
+    const { Single, Cons } = numbers.constructors
+    const single = Single({ value: 5 })
+    const pair = Cons({ head: 1, tail: [2, 3] as readonly number[] })
+    const pairDuplicate = Cons({ head: 1, tail: [2, 3] as readonly number[] })
+    const pairDifferent = Cons({ head: 1, tail: [2, 4] as readonly number[] })
+
+    expect(numbers.equals(pair, pairDuplicate)).toBe(true)
+    expect(numbers.equals(pair, pairDifferent)).toBe(false)
+    expect(numbers.equals(pair, single)).toBe(false)
+
+    const familySnapshot = NonEmptyList.introspect()
+    const consFamily = familySnapshot.constructors.find((ctor: any) => ctor.name === 'Cons')
+    const tailDescriptor = consFamily?.fields.find((field: any) => field.name === 'tail')
+    expect(tailDescriptor?.higherOrder?.metadata?.description).toMatch(/Tail values/)
+
+    const instanceSnapshot = numbers.introspect()
+    const consInstance = instanceSnapshot.constructors.find((ctor: any) => ctor.name === 'Cons')
+    const tailField = consInstance?.fields.find((field: any) => field.name === 'tail')
+    expect(tailField?.higherOrder?.parameter).toBe('A')
+    expect(tailField?.higherOrder?.description).toMatch(/Tail values/)
   })
 
   it('tracks constructor indexes for recursive parameterised ADTs', () => {
