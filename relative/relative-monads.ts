@@ -377,8 +377,10 @@ export interface RelativeEnrichedYonedaReport<
   Arr,
   Payload,
   Evidence,
+  StreetRollups = unknown,
 > {
   readonly holds: boolean;
+  readonly pending: boolean;
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly witness: RelativeEnrichedYonedaWitness<
@@ -387,6 +389,11 @@ export interface RelativeEnrichedYonedaReport<
     Payload,
     Evidence
   >;
+  readonly streetRollups?: StreetRollups;
+}
+
+export interface RelativeEnrichedYonedaOptions<StreetRollups> {
+  readonly streetRollups?: StreetRollups;
 }
 
 export const analyzeRelativeEnrichedYoneda = <
@@ -394,13 +401,22 @@ export const analyzeRelativeEnrichedYoneda = <
   Arr,
   Payload,
   Evidence,
+  StreetRollups = unknown,
 >(
   witness: RelativeEnrichedYonedaWitness<Obj, Arr, Payload, Evidence>,
-): RelativeEnrichedYonedaReport<Obj, Arr, Payload, Evidence> => {
+  options: RelativeEnrichedYonedaOptions<StreetRollups> = {},
+): RelativeEnrichedYonedaReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+  StreetRollups
+> => {
   const { enriched, presheafCategory, yoneda, representable, action } = witness;
   const equality =
     enriched.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
   const issues: string[] = [];
+  let pending = false;
 
   ensureBoundary(
     equality,
@@ -491,15 +507,38 @@ export const analyzeRelativeEnrichedYoneda = <
     );
   }
 
+  const { streetRollups } = options;
+
+  if (streetRollups !== undefined) {
+    const rollupMetadata = streetRollups as {
+      readonly pending?: boolean;
+      readonly holds?: boolean;
+      readonly issues?: ReadonlyArray<string>;
+    };
+    if (rollupMetadata.pending === true || rollupMetadata.holds === false) {
+      pending = true;
+      const rollupIssues = rollupMetadata.issues ?? [];
+      const rollupSummary =
+        rollupIssues.length > 0
+          ? rollupIssues.join("; ")
+          : rollupMetadata.holds === false
+          ? "Street roll-up artifacts reported harness discrepancies."
+          : "Street roll-up artifacts remain pending.";
+      issues.push(`Yoneda Street roll-ups pending: ${rollupSummary}`);
+    }
+  }
+
   const holds = issues.length === 0;
   return {
     holds,
+    pending,
     issues,
     details: holds
       ? witness.details ??
         "Yoneda embedding witness reuses the enriched hom object, tensor comparison, and extension data from Example 8.6."
       : `Relative enriched Yoneda issues: ${issues.join("; ")}`,
     witness,
+    ...(streetRollups !== undefined && { streetRollups }),
   };
 };
 
@@ -547,8 +586,10 @@ export interface RelativeEnrichedYonedaDistributorReport<
   Arr,
   Payload,
   Evidence,
+  StreetRollups = unknown,
 > {
   readonly holds: boolean;
+  readonly pending: boolean;
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly witness: RelativeEnrichedYonedaDistributorWitness<
@@ -558,6 +599,11 @@ export interface RelativeEnrichedYonedaDistributorReport<
     Evidence
   >;
   readonly rightLift: RightLiftAnalysis;
+  readonly streetRollups?: StreetRollups;
+}
+
+export interface RelativeEnrichedYonedaDistributorOptions<StreetRollups> {
+  readonly streetRollups?: StreetRollups;
 }
 
 export interface RelativeEnrichedEilenbergMooreDiagramWitness<
@@ -618,6 +664,7 @@ export interface RelativeEnrichedEilenbergMooreAlgebraReport<
   Arr,
   Payload,
   Evidence,
+  StreetRollups = unknown,
 > {
   readonly holds: boolean;
   readonly pending: boolean;
@@ -629,6 +676,11 @@ export interface RelativeEnrichedEilenbergMooreAlgebraReport<
     Payload,
     Evidence
   >;
+  readonly streetRollups?: StreetRollups;
+}
+
+export interface RelativeEnrichedEilenbergMooreAlgebraOptions<StreetRollups> {
+  readonly streetRollups?: StreetRollups;
 }
 
 export const analyzeRelativeEnrichedYonedaDistributor = <
@@ -636,6 +688,7 @@ export const analyzeRelativeEnrichedYonedaDistributor = <
   Arr,
   Payload,
   Evidence,
+  StreetRollups = unknown,
 >(
   witness: RelativeEnrichedYonedaDistributorWitness<
     Obj,
@@ -643,12 +696,20 @@ export const analyzeRelativeEnrichedYonedaDistributor = <
     Payload,
     Evidence
   >,
-): RelativeEnrichedYonedaDistributorReport<Obj, Arr, Payload, Evidence> => {
+  options: RelativeEnrichedYonedaDistributorOptions<StreetRollups> = {},
+): RelativeEnrichedYonedaDistributorReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+  StreetRollups
+> => {
   const { yoneda, redComposite, greenComposite, factorisation, rightLift } = witness;
   const equality =
     yoneda.enriched.monad.equipment.equalsObjects ??
     defaultObjectEquality<Obj>;
   const issues: string[] = [];
+  let pending = false;
 
   ensureBoundary(
     equality,
@@ -736,9 +797,33 @@ export const analyzeRelativeEnrichedYonedaDistributor = <
     );
   }
 
+  const { streetRollups } = options;
+
+  if (streetRollups !== undefined) {
+    const rollupMetadata = streetRollups as {
+      readonly pending?: boolean;
+      readonly holds?: boolean;
+      readonly issues?: ReadonlyArray<string>;
+    };
+    if (rollupMetadata.pending === true || rollupMetadata.holds === false) {
+      pending = true;
+      const rollupIssues = rollupMetadata.issues ?? [];
+      const rollupSummary =
+        rollupIssues.length > 0
+          ? rollupIssues.join("; ")
+          : rollupMetadata.holds === false
+          ? "Street roll-up artifacts reported harness discrepancies."
+          : "Street roll-up artifacts remain pending.";
+      issues.push(
+        `Yoneda distributor Street roll-ups pending: ${rollupSummary}`,
+      );
+    }
+  }
+
   const holds = issues.length === 0;
   return {
     holds,
+    pending,
     issues: holds ? [] : issues,
     details: holds
       ? witness.details ??
@@ -746,6 +831,7 @@ export const analyzeRelativeEnrichedYonedaDistributor = <
       : `Relative enriched distributor issues: ${issues.join("; ")}`,
     witness,
     rightLift: rightLiftReport,
+    ...(streetRollups !== undefined && { streetRollups }),
   };
 };
 
@@ -754,6 +840,7 @@ export const analyzeRelativeEnrichedEilenbergMooreAlgebra = <
   Arr,
   Payload,
   Evidence,
+  StreetRollups = unknown,
 >(
   witness: RelativeEnrichedEilenbergMooreAlgebraWitness<
     Obj,
@@ -761,7 +848,14 @@ export const analyzeRelativeEnrichedEilenbergMooreAlgebra = <
     Payload,
     Evidence
   >,
-): RelativeEnrichedEilenbergMooreAlgebraReport<Obj, Arr, Payload, Evidence> => {
+  options: RelativeEnrichedEilenbergMooreAlgebraOptions<StreetRollups> = {},
+): RelativeEnrichedEilenbergMooreAlgebraReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+  StreetRollups
+> => {
   const { enriched, carrier, extension, diagrams } = witness;
   const equality =
     enriched.monad.equipment.equalsObjects ?? defaultObjectEquality<Obj>;
@@ -932,6 +1026,9 @@ export const analyzeRelativeEnrichedEilenbergMooreAlgebra = <
         "Enriched Eilenberg–Moore algebra reproduces the Definition 8.16 unit and multiplication composites via Street evaluation."
       : `Relative enriched Eilenberg–Moore issues: ${issues.join("; ")}`,
     witness: witnessWithComparisons,
+    ...(options.streetRollups !== undefined && {
+      streetRollups: options.streetRollups,
+    }),
   };
 };
 
@@ -1509,8 +1606,10 @@ export interface RelativeEnrichedKleisliInclusionReport<
   Arr,
   Payload,
   Evidence,
+  StreetRollups = unknown,
 > {
   readonly holds: boolean;
+  readonly pending: boolean;
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly witness: RelativeEnrichedKleisliInclusionWitness<
@@ -1519,6 +1618,11 @@ export interface RelativeEnrichedKleisliInclusionReport<
     Payload,
     Evidence
   >;
+  readonly streetRollups?: StreetRollups;
+}
+
+export interface RelativeEnrichedKleisliInclusionOptions<StreetRollups> {
+  readonly streetRollups?: StreetRollups;
 }
 
 export const analyzeRelativeEnrichedKleisliInclusion = <
@@ -1526,13 +1630,22 @@ export const analyzeRelativeEnrichedKleisliInclusion = <
   Arr,
   Payload,
   Evidence,
+  StreetRollups = unknown,
 >(
   witness: RelativeEnrichedKleisliInclusionWitness<Obj, Arr, Payload, Evidence>,
-): RelativeEnrichedKleisliInclusionReport<Obj, Arr, Payload, Evidence> => {
+  options: RelativeEnrichedKleisliInclusionOptions<StreetRollups> = {},
+): RelativeEnrichedKleisliInclusionReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+  StreetRollups
+> => {
   const equality =
     witness.enriched.monad.equipment.equalsObjects ??
     defaultObjectEquality<Obj>;
   const issues: string[] = [];
+  let pending = false;
 
   ensureBoundary(
     equality,
@@ -1589,15 +1702,40 @@ export const analyzeRelativeEnrichedKleisliInclusion = <
     );
   }
 
+  const { streetRollups } = options;
+
+  if (streetRollups !== undefined) {
+    const rollupMetadata = streetRollups as {
+      readonly pending?: boolean;
+      readonly holds?: boolean;
+      readonly issues?: ReadonlyArray<string>;
+    };
+    if (rollupMetadata.pending === true || rollupMetadata.holds === false) {
+      pending = true;
+      const rollupIssues = rollupMetadata.issues ?? [];
+      const rollupSummary =
+        rollupIssues.length > 0
+          ? rollupIssues.join("; ")
+          : rollupMetadata.holds === false
+          ? "Street roll-up artifacts reported harness discrepancies."
+          : "Street roll-up artifacts remain pending.";
+      issues.push(
+        `Kleisli inclusion Street roll-ups pending: ${rollupSummary}`,
+      );
+    }
+  }
+
   const holds = issues.length === 0;
   return {
     holds,
+    pending,
     issues,
     details: holds
       ? witness.details ??
         "Kleisli inclusion witness confirms the identity-on-objects functor, opalgebra morphism, and hom distributor all reuse the enriched unit and extension data."
       : `Relative enriched Kleisli inclusion issues: ${issues.join("; ")}`,
     witness,
+    ...(streetRollups !== undefined && { streetRollups }),
   };
 };
 

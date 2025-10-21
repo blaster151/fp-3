@@ -16,7 +16,8 @@
 - ✅ **D3 — Polynomial container law harness** (landed via reusable naturality helpers, functor-law diagnostics, and registry wiring for polynomial containers).
 - ✅ **E1 — Relative monad container integration** (bridged polynomial containers through the relative monad toolkit and added diagnostics).
 - ✅ **E2 — Relative monad law harness** (Street-style unit and Kleisli composites now replay through the polynomial container with scenario-driven diagnostics.).
-- ⏭️ **F1 — Street action registry integration** (next; capture Street witness snapshots for enriched bridges and surface the results through the relative oracle catalogue).
+- ✅ **F1 — Street action registry integration** (landed via Street harness snapshot persistence and registry wiring through the relative oracle catalogue).
+- ✅ **F2 — Street witness roll-ups for enriched adapters** (aggregated Street snapshots into enriched-ready roll-ups and exposed them through the registry).
 
 > We evolve this roadmap after every PR so completed slices are explicitly marked and the “next slice” always reflects the forthcoming implementation target.
 
@@ -124,10 +125,27 @@
 - `RelativeMonadOracles.polynomialStreetHarness` and `AlgebraOracles.relative.analyzePolynomialStreetHarness` surface the analyzer so downstream tooling can reuse the Street diagnostics alongside the container bridge.
 - Vitest coverage captures successful and failing Street scenarios, documenting how counterexamples and execution errors surface before enriched integrations land.
 
-#### F1 — Street action registry integration *(⏭️ planned)*
-- Persist the Street harness witness data so enriched and indexed adapters can recover executed composites without re-running scenarios.
-- Thread the Street diagnostics through the broader relative-monad law enumerator, preparing the registry for enriched Street comparisons and oracle roll-ups.
-- Update documentation/tests to describe the Street witness snapshots and highlight the new registry hooks for follow-up enriched tooling.
+#### F1 — Street action registry integration *(✅ delivered)*
+- Street harness analyses now record per-scenario extension and Kleisli snapshots, making the executed composites reusable for enriched and indexed adapters without rerunning folds.
+- `RelativeMonadOracles.polynomialStreetHarness` threads the captured snapshots through the oracle registry so enumeration surfaces both diagnostic issues and recovered witness data.
+- Regression coverage asserts the snapshot streams stay empty on failures, preventing stale artefacts while documenting the new success path.
+
+#### F2 — Street witness roll-ups for enriched adapters *(✅ delivered)*
+- Added aggregation helpers that replay Street snapshots into enriched-ready roll-ups, carrying replayed and expected composites per scenario.
+- Extended the relative monad oracle registry with a Street roll-up entry so enumeration surfaces aggregated extension/Kleisli artifacts alongside the harness diagnostics.
+- Documented the roll-up workflow and broadened coverage so enumerated results confirm Street composites remain reusable for enriched adapters.
+- Threaded Street roll-up artifacts through the enriched Eilenberg–Moore analyzer and set-enriched adapters so enriched oracle reports expose the aggregated composites alongside classical Street diagnostics.
+- Captured enriched adapter documentation that spells out how Eilenberg–Moore and set-enriched analyzers accept optional `streetRollups` metadata produced by the polynomial Street harness.
+- Added regression coverage that exercises parameterised and indexed ADTs end-to-end, ensuring Street roll-up aggregation preserves constructor index metadata for enriched reuse.
+
+##### Yoneda, V-cat, and distributor Street roll-up staging
+- Documented how the enriched Yoneda, V-cat, and distributor adapters will forward Street roll-up artifacts once their analyzers consume the aggregated composites, noting that enumeration will reuse the same `streetRollups` payloads and mark results pending when the harness reports outstanding issues.
+- Outlined staged regression suites for each adapter so once the wiring lands we can enable pending-aware Vitest coverage that checks shared Street composites, distributor factorisations, and V-cat comparisons without recomputing harness scenarios.
+
+##### Street roll-up consumption guide
+- Produce Street diagnostics with `analyzeADTPolynomialRelativeStreet` and aggregate them via `rollupADTPolynomialRelativeStreet` to obtain replayed composites.
+- Pass the resulting artifacts through `analyzeRelativeEnrichedEilenbergMooreAlgebra`/`analyzeRelativeSetEnrichedMonad` (or the corresponding registry enumeration helpers) so enriched adapters can reuse the persisted composites without rerunning Street harness scenarios.
+- Downstream enriched analyzers should forward the same `streetRollups` payload to avoid recomputing Kleisli or extension witnesses; enumeration now retains these artifacts for both enriched analyzers.
 
 ### Milestone C — Enriched integrations (future)
 - Support parameterised ADTs and higher-order constructors (GADTs/indices) by layering constraints over the base schema.
@@ -135,9 +153,8 @@
 - Extend LAWS documentation with ADT-specific oracle coverage and add runnable examples bridging to relative monad tooling.
 
 ## 4. Immediate Implementation Tasks
-- Capture persistent Street witness artefacts from the polynomial harness so enriched adapters can reuse them without recomputation.
-- Extend the relative monad law enumerator to ingest Street harness reports and expose aggregated diagnostics through the registry facade.
-- Document the Street witness workflow and seed tests that ensure future enriched/indexed integrations can read the recorded composites.
+- Wire Street roll-up artifacts through the enriched V-cat analyzer so enumeration reuses the aggregated composites while surfacing pending Street states alongside the existing adapters.
+- Promote the staged V-cat Street roll-up regression suite to active coverage once the analyzer exposes shared artifacts, updating the documentation to capture the completed adapter wiring.
 
 ## 5. Testing and Quality Strategy
 - Use Vitest for deterministic behavioural checks.

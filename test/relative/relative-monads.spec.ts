@@ -49,6 +49,21 @@ import {
 import { RelativeMonadLawRegistry } from "../../relative/relative-laws";
 import { checkRelativeMonadLaws } from "../../algebra-oracles";
 import { CatMonad, composeFun, idFun } from "../../allTS";
+import {
+  defineADT,
+  getADTIndex,
+  parameterField,
+  primitiveStrictEqualsWitness,
+  witnessFromEquals,
+} from "../../src/algebra/adt/adt";
+import {
+  analyzeADTPolynomialRelativeStreet,
+  rollupADTPolynomialRelativeStreet,
+  type ADTPolynomialRelativeStreetExtensionRollup,
+  type ADTPolynomialRelativeStreetExtensionSnapshot,
+  type ADTPolynomialRelativeStreetKleisliRollup,
+  type ADTPolynomialRelativeStreetKleisliSnapshot,
+} from "../../relative/adt-polynomial-relative";
 
 const makeTrivialData = () => {
   const equipment = virtualizeFiniteCategory(TwoObjectCategory);
@@ -151,6 +166,101 @@ const makeIdentityCatMonad = (): CatMonad<typeof TwoObjectCategory> => {
       component: (object: TwoObject) => TwoObjectCategory.id(object),
     },
   };
+};
+
+const buildPolynomialStreetHarness = () => {
+  const defineAnyADT: any = defineADT;
+
+  const List = defineAnyADT({
+    typeName: "PolyStreetList",
+    parameters: [{ name: "A" }] as const,
+    constructors: [
+      {
+        name: "Nil",
+        fields: [],
+        indexes: [
+          {
+            name: "Length",
+            witness: primitiveStrictEqualsWitness<number>(),
+            compute: () => 0,
+          },
+        ],
+      },
+      {
+        name: "Cons",
+        fields: [
+          parameterField("head", "A"),
+          {
+            name: "tail",
+            witness: witnessFromEquals(() => true),
+            recursion: "self",
+          },
+        ],
+        indexes: [
+          {
+            name: "Length",
+            witness: primitiveStrictEqualsWitness<number>(),
+            compute: (fields: { readonly tail: unknown }) =>
+              Number(getADTIndex(fields.tail as never, "Length")) + 1,
+          },
+        ],
+      },
+    ] as const,
+  });
+
+  const numbers = List.instantiate({
+    A: primitiveStrictEqualsWitness<number>(),
+  });
+
+  const { Nil, Cons } = numbers.constructors;
+  const samples = [
+    Nil(),
+    Cons({ head: 1, tail: Nil() }),
+    Cons({ head: 2, tail: Cons({ head: 3, tail: Nil() }) }),
+  ];
+
+  const addTenAlgebra: any = {
+    Nil: () => Nil(),
+    Cons: ({ head, tail }: any) => Cons({ head: head + 10, tail }),
+  };
+
+  const incrementAlgebra: any = {
+    Nil: () => Nil(),
+    Cons: ({ head, tail }: any) => Cons({ head: head + 1, tail }),
+  };
+
+  const streetInput = {
+    adt: numbers,
+    extensions: [
+      {
+        id: "identity",
+        algebra: addTenAlgebra,
+        witness: witnessFromEquals(numbers.equals),
+        samples,
+        expected: (value: typeof samples[number]) => numbers.fold(addTenAlgebra)(value),
+      },
+    ],
+    kleisli: [
+      {
+        id: "sequential-binds",
+        first: addTenAlgebra,
+        second: incrementAlgebra,
+        witness: witnessFromEquals(numbers.equals),
+        samples,
+        expected: ({
+          value,
+          extendFirst,
+          extendSecond,
+        }: {
+          readonly value: typeof samples[number];
+          readonly extendFirst: (value: typeof samples[number]) => typeof samples[number];
+          readonly extendSecond: (value: typeof samples[number]) => typeof samples[number];
+        }) => extendFirst(extendSecond(value)),
+      },
+    ],
+  } as const;
+
+  return { numbers, Nil, Cons, samples, addTenAlgebra, incrementAlgebra, streetInput } as const;
 };
 
 describe("Relative monad framing analyzer", () => {
@@ -325,7 +435,106 @@ describe("Relative enriched Yoneda analyzer", () => {
     const witness = describeRelativeEnrichedYonedaWitness(enriched);
     const report = analyzeRelativeEnrichedYoneda(witness);
     expect(report.holds).toBe(true);
+    expect(report.pending).toBe(false);
     expect(report.issues).toHaveLength(0);
+  });
+
+  it("threads Street roll-ups into the Yoneda report", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const witness = describeRelativeEnrichedYonedaWitness(enriched);
+    const { streetInput } = buildPolynomialStreetHarness();
+    const streetReport = analyzeADTPolynomialRelativeStreet(streetInput);
+    const streetRollup = rollupADTPolynomialRelativeStreet(streetInput, streetReport);
+    const report = analyzeRelativeEnrichedYoneda(witness, {
+      streetRollups: streetRollup,
+    });
+    expect(report.streetRollups).toBe(streetRollup);
+    expect(report.pending).toBe(false);
+  });
+
+  it("marks the Yoneda report pending when Street roll-ups are pending", () => {
+    const defineAnyADT: any = defineADT;
+    const List = defineAnyADT({
+      typeName: "YonedaPendingStreetList",
+      parameters: [{ name: "A" }] as const,
+      constructors: [
+        {
+          name: "Nil",
+          fields: [],
+          indexes: [
+            {
+              name: "Length",
+              witness: primitiveStrictEqualsWitness<number>(),
+              compute: () => 0,
+            },
+          ],
+        },
+        {
+          name: "Cons",
+          fields: [
+            parameterField("head", "A"),
+            {
+              name: "tail",
+              witness: witnessFromEquals(() => true),
+              recursion: "self",
+            },
+          ],
+          indexes: [
+            {
+              name: "Length",
+              witness: primitiveStrictEqualsWitness<number>(),
+              compute: (fields: { readonly tail: unknown }) =>
+                Number(getADTIndex(fields.tail as never, "Length")) + 1,
+            },
+          ],
+        },
+      ] as const,
+    });
+
+    const numbers = List.instantiate({
+      A: primitiveStrictEqualsWitness<number>(),
+    });
+
+    const { Nil, Cons } = numbers.constructors;
+    const samples = [
+      Nil(),
+      Cons({ head: 1, tail: Nil() }),
+    ];
+
+    const identityAlgebra: any = {
+      Nil: () => Nil(),
+      Cons: ({ head, tail }: any) => Cons({ head, tail }),
+    };
+
+    const streetInput = {
+      adt: numbers,
+      extensions: [
+        {
+          id: "identity",
+          algebra: identityAlgebra,
+          witness: witnessFromEquals(numbers.equals),
+          samples,
+          expected: () => Nil(),
+        },
+      ],
+    } as const;
+
+    const streetReport = analyzeADTPolynomialRelativeStreet(streetInput);
+    const streetRollup = rollupADTPolynomialRelativeStreet(streetInput, streetReport);
+    expect(streetRollup.pending).toBe(true);
+
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const witness = describeRelativeEnrichedYonedaWitness(enriched);
+    const report = analyzeRelativeEnrichedYoneda(witness, {
+      streetRollups: streetRollup,
+    });
+    expect(report.pending).toBe(true);
+    expect(report.holds).toBe(false);
+    expect(
+      report.issues.some((issue) => issue.includes("Street roll-ups pending")),
+    ).toBe(true);
   });
 
   it("flags mismatched Yoneda compositions", () => {
@@ -363,6 +572,19 @@ describe("Relative enriched Eilenberg–Moore algebra analyzer", () => {
     expect(report.issues).toHaveLength(0);
     expect(report.witness.diagrams.associativity.comparison?.holds).toBe(true);
     expect(report.witness.diagrams.unit.comparison?.holds).toBe(true);
+  });
+
+  it("threads Street roll-ups into the enriched report", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const witness = describeRelativeEnrichedEilenbergMooreAlgebraWitness(enriched);
+    const { streetInput } = buildPolynomialStreetHarness();
+    const streetReport = analyzeADTPolynomialRelativeStreet(streetInput);
+    const streetRollup = rollupADTPolynomialRelativeStreet(streetInput, streetReport);
+    const report = analyzeRelativeEnrichedEilenbergMooreAlgebra(witness, {
+      streetRollups: streetRollup,
+    });
+    expect(report.streetRollups).toBe(streetRollup);
   });
 
   it("flags mismatched extension operators", () => {
@@ -450,7 +672,106 @@ describe("Relative enriched Kleisli inclusion analyzer", () => {
     const witness = describeRelativeEnrichedKleisliInclusionWitness(enriched);
     const report = analyzeRelativeEnrichedKleisliInclusion(witness);
     expect(report.holds).toBe(true);
+    expect(report.pending).toBe(false);
     expect(report.issues).toHaveLength(0);
+  });
+
+  it("threads Street roll-ups into the enriched report", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const witness = describeRelativeEnrichedKleisliInclusionWitness(enriched);
+    const { streetInput } = buildPolynomialStreetHarness();
+    const streetReport = analyzeADTPolynomialRelativeStreet(streetInput);
+    const streetRollup = rollupADTPolynomialRelativeStreet(streetInput, streetReport);
+    const report = analyzeRelativeEnrichedKleisliInclusion(witness, {
+      streetRollups: streetRollup,
+    });
+    expect(report.streetRollups).toBe(streetRollup);
+    expect(report.pending).toBe(false);
+  });
+
+  it("marks the inclusion pending when Street roll-ups are pending", () => {
+    const defineAnyADT: any = defineADT;
+    const List = defineAnyADT({
+      typeName: "PendingStreetList",
+      parameters: [{ name: "A" }] as const,
+      constructors: [
+        {
+          name: "Nil",
+          fields: [],
+          indexes: [
+            {
+              name: "Length",
+              witness: primitiveStrictEqualsWitness<number>(),
+              compute: () => 0,
+            },
+          ],
+        },
+        {
+          name: "Cons",
+          fields: [
+            parameterField("head", "A"),
+            {
+              name: "tail",
+              witness: witnessFromEquals(() => true),
+              recursion: "self",
+            },
+          ],
+          indexes: [
+            {
+              name: "Length",
+              witness: primitiveStrictEqualsWitness<number>(),
+              compute: (fields: { readonly tail: unknown }) =>
+                Number(getADTIndex(fields.tail as never, "Length")) + 1,
+            },
+          ],
+        },
+      ] as const,
+    });
+
+    const numbers = List.instantiate({
+      A: primitiveStrictEqualsWitness<number>(),
+    });
+
+    const { Nil, Cons } = numbers.constructors;
+    const samples = [
+      Nil(),
+      Cons({ head: 1, tail: Nil() }),
+    ];
+
+    const identityAlgebra: any = {
+      Nil: () => Nil(),
+      Cons: ({ head, tail }: any) => Cons({ head, tail }),
+    };
+
+    const streetInput = {
+      adt: numbers,
+      extensions: [
+        {
+          id: "identity",
+          algebra: identityAlgebra,
+          witness: witnessFromEquals(numbers.equals),
+          samples,
+          expected: () => Nil(),
+        },
+      ],
+    } as const;
+
+    const streetReport = analyzeADTPolynomialRelativeStreet(streetInput);
+    const streetRollup = rollupADTPolynomialRelativeStreet(streetInput, streetReport);
+    expect(streetRollup.pending).toBe(true);
+
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const witness = describeRelativeEnrichedKleisliInclusionWitness(enriched);
+    const report = analyzeRelativeEnrichedKleisliInclusion(witness, {
+      streetRollups: streetRollup,
+    });
+    expect(report.pending).toBe(true);
+    expect(report.holds).toBe(false);
+    expect(
+      report.issues.some((issue) => issue.includes("Street roll-ups pending")),
+    ).toBe(true);
   });
 
   it("flags identity transformation mismatches", () => {
@@ -508,8 +829,110 @@ describe("Relative enriched Yoneda distributor analyzer", () => {
     const witness = describeRelativeEnrichedYonedaDistributorWitness(yoneda);
     const report = analyzeRelativeEnrichedYonedaDistributor(witness);
     expect(report.holds).toBe(true);
+    expect(report.pending).toBe(false);
     expect(report.issues).toHaveLength(0);
     expect(report.rightLift.holds).toBe(true);
+  });
+
+  it("threads Street roll-ups into the distributor report", () => {
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const yoneda = describeRelativeEnrichedYonedaWitness(enriched);
+    const witness = describeRelativeEnrichedYonedaDistributorWitness(yoneda);
+    const { streetInput } = buildPolynomialStreetHarness();
+    const streetReport = analyzeADTPolynomialRelativeStreet(streetInput);
+    const streetRollup = rollupADTPolynomialRelativeStreet(streetInput, streetReport);
+    const report = analyzeRelativeEnrichedYonedaDistributor(witness, {
+      streetRollups: streetRollup,
+    });
+    expect(report.streetRollups).toBe(streetRollup);
+    expect(report.pending).toBe(false);
+  });
+
+  it("marks the distributor report pending when Street roll-ups are pending", () => {
+    const defineAnyADT: any = defineADT;
+
+    const List = defineAnyADT({
+      typeName: "YonedaDistributorPendingStreetList",
+      parameters: [{ name: "A" }] as const,
+      constructors: [
+        {
+          name: "Nil",
+          fields: [],
+          indexes: [
+            {
+              name: "Length",
+              witness: primitiveStrictEqualsWitness<number>(),
+              compute: () => 0,
+            },
+          ],
+        },
+        {
+          name: "Cons",
+          fields: [
+            parameterField("head", "A"),
+            {
+              name: "tail",
+              witness: witnessFromEquals(() => true),
+              recursion: "self",
+            },
+          ],
+          indexes: [
+            {
+              name: "Length",
+              witness: primitiveStrictEqualsWitness<number>(),
+              compute: (fields: { readonly tail: unknown }) =>
+                Number(getADTIndex(fields.tail as never, "Length")) + 1,
+            },
+          ],
+        },
+      ] as const,
+    });
+
+    const numbers = List.instantiate({
+      A: primitiveStrictEqualsWitness<number>(),
+    });
+
+    const { Nil, Cons } = numbers.constructors;
+    const samples = [
+      Nil(),
+      Cons({ head: 1, tail: Nil() }),
+    ];
+
+    const identityAlgebra: any = {
+      Nil: () => Nil(),
+      Cons: ({ head, tail }: any) => Cons({ head, tail }),
+    };
+
+    const streetInput = {
+      adt: numbers,
+      extensions: [
+        {
+          id: "identity",
+          algebra: identityAlgebra,
+          witness: witnessFromEquals(numbers.equals),
+          samples,
+          expected: () => Nil(),
+        },
+      ],
+    } as const;
+
+    const streetReport = analyzeADTPolynomialRelativeStreet(streetInput);
+    const streetRollup = rollupADTPolynomialRelativeStreet(streetInput, streetReport);
+    expect(streetRollup.pending).toBe(true);
+
+    const { trivial } = makeTrivialData();
+    const enriched = describeRelativeEnrichedMonadWitness(trivial);
+    const yoneda = describeRelativeEnrichedYonedaWitness(enriched);
+    const witness = describeRelativeEnrichedYonedaDistributorWitness(yoneda);
+    const report = analyzeRelativeEnrichedYonedaDistributor(witness, {
+      streetRollups: streetRollup,
+    });
+    expect(report.pending).toBe(true);
+    expect(report.holds).toBe(false);
+    expect(
+      report.issues.some((issue) => issue.includes("Street roll-ups pending")),
+    ).toBe(true);
   });
 
   it("detects divergent PZ(p,q) composites", () => {
@@ -689,6 +1112,15 @@ describe("Relative enriched V-Cat monad analyzer", () => {
       "Theorem 8.12 τ V-naturality green composite must match the recorded comparison evidence.",
     );
   });
+});
+
+describe("Relative enriched V-Cat Street roll-up staging", () => {
+  it.todo(
+    "propagates Street roll-up artifacts into the V-Cat analyzer once wiring is available",
+  );
+  it.todo(
+    "marks V-Cat Street diagnostics pending when aggregated roll-ups remain unresolved",
+  );
 });
 
 describe("Relative monad identity reduction", () => {
@@ -929,5 +1361,268 @@ describe("Relative monad skew-monoid bridge analyzer", () => {
           RelativeMonadLawRegistry.setEnrichedCompatibility.registryPath,
       ),
     ).toBe(true);
+  });
+
+  it("exposes Street harness artifacts via enumeration", () => {
+    const { numbers, samples, addTenAlgebra, incrementAlgebra, streetInput } =
+      buildPolynomialStreetHarness();
+
+    const results = enumerateRelativeMonadOracles(trivial, {
+      polynomialStreetHarness: streetInput,
+    });
+
+    const streetPath = RelativeMonadLawRegistry.polynomialStreetHarness.registryPath;
+    const streetResult = results.find((result) => result.registryPath === streetPath);
+
+    expect(streetResult).toBeDefined();
+    expect(streetResult?.holds).toBe(true);
+
+    type NumbersConstructors = typeof numbers.constructorsList;
+    const artifacts = streetResult?.artifacts as
+      | {
+          readonly extensionSnapshots: ReadonlyArray<
+            ADTPolynomialRelativeStreetExtensionSnapshot<NumbersConstructors>
+          >;
+          readonly kleisliSnapshots: ReadonlyArray<
+            ADTPolynomialRelativeStreetKleisliSnapshot<NumbersConstructors>
+          >;
+        }
+      | undefined;
+
+    expect(artifacts?.extensionSnapshots).toHaveLength(samples.length);
+    expect(artifacts?.kleisliSnapshots).toHaveLength(samples.length);
+
+    const extendSecond = numbers.fold(incrementAlgebra);
+    const extendFirst = numbers.fold(addTenAlgebra);
+    const lengthOf = (value: unknown) =>
+      Number(getADTIndex(value as never, "Length"));
+
+    for (const snapshot of artifacts?.extensionSnapshots ?? []) {
+      expect(snapshot.scenarioId).toBe("identity");
+      expect(numbers.equals(snapshot.result, extendFirst(snapshot.value))).toBe(true);
+      const originalLength = lengthOf(snapshot.value);
+      expect(lengthOf(snapshot.result)).toBe(originalLength);
+      expect(lengthOf(extendFirst(snapshot.value))).toBe(originalLength);
+    }
+
+    for (const snapshot of artifacts?.kleisliSnapshots ?? []) {
+      expect(snapshot.scenarioId).toBe("sequential-binds");
+      expect(numbers.equals(snapshot.intermediate, extendSecond(snapshot.value))).toBe(true);
+      expect(numbers.equals(snapshot.result, extendFirst(snapshot.intermediate))).toBe(true);
+      const originalLength = lengthOf(snapshot.value);
+      expect(lengthOf(snapshot.intermediate)).toBe(originalLength);
+      expect(lengthOf(snapshot.result)).toBe(originalLength);
+      expect(lengthOf(extendSecond(snapshot.value))).toBe(originalLength);
+      expect(lengthOf(extendFirst(snapshot.intermediate))).toBe(originalLength);
+    }
+
+    const rollupPath =
+      RelativeMonadLawRegistry.polynomialStreetRollups.registryPath;
+    const rollupResult = results.find(
+      (result) => result.registryPath === rollupPath,
+    );
+
+    expect(rollupResult).toBeDefined();
+    expect(rollupResult?.holds).toBe(true);
+    expect(rollupResult?.pending).toBe(false);
+
+    type StreetRollupArtifacts =
+      | {
+          readonly extensions: ReadonlyArray<
+            ADTPolynomialRelativeStreetExtensionRollup<NumbersConstructors>
+          >;
+          readonly kleisli: ReadonlyArray<
+            ADTPolynomialRelativeStreetKleisliRollup<NumbersConstructors>
+          >;
+        }
+      | undefined;
+
+    const rollupArtifacts = rollupResult?.artifacts as StreetRollupArtifacts;
+    expect(rollupArtifacts?.extensions).toHaveLength(1);
+    expect(rollupArtifacts?.kleisli).toHaveLength(1);
+
+    const extensionRollup = rollupArtifacts?.extensions?.[0];
+    expect(extensionRollup?.scenarioId).toBe("identity");
+    expect(extensionRollup?.samples).toHaveLength(samples.length);
+    for (const sample of extensionRollup?.samples ?? []) {
+      expect(sample.matchesReplayedResult).toBe(true);
+      expect(sample.matchesExpectedResult).toBe(true);
+      const originalLength = lengthOf(sample.value);
+      expect(lengthOf(sample.streetResult)).toBe(originalLength);
+      if (sample.replayedResult) {
+        expect(lengthOf(sample.replayedResult)).toBe(originalLength);
+      }
+      if (sample.expectedResult) {
+        expect(lengthOf(sample.expectedResult)).toBe(originalLength);
+      }
+    }
+
+    const kleisliRollup = rollupArtifacts?.kleisli?.[0];
+    expect(kleisliRollup?.scenarioId).toBe("sequential-binds");
+    expect(kleisliRollup?.samples).toHaveLength(samples.length);
+    for (const sample of kleisliRollup?.samples ?? []) {
+      expect(sample.matchesReplayedIntermediate).toBe(true);
+      expect(sample.matchesReplayedResult).toBe(true);
+      expect(sample.matchesExpectedResult).toBe(true);
+      const originalLength = lengthOf(sample.value);
+      expect(lengthOf(sample.streetIntermediate)).toBe(originalLength);
+      expect(lengthOf(sample.streetResult)).toBe(originalLength);
+      if (sample.replayedIntermediate) {
+        expect(lengthOf(sample.replayedIntermediate)).toBe(originalLength);
+      }
+      if (sample.replayedResult) {
+        expect(lengthOf(sample.replayedResult)).toBe(originalLength);
+      }
+      if (sample.expectedResult) {
+        expect(lengthOf(sample.expectedResult)).toBe(originalLength);
+      }
+    }
+
+    const eilenbergPath =
+      RelativeMonadLawRegistry.enrichedEilenbergMooreAlgebra.registryPath;
+    const eilenbergResult = results.find(
+      (result) => result.registryPath === eilenbergPath,
+    );
+    expect(eilenbergResult?.artifacts).toEqual({ streetRollups: rollupArtifacts });
+
+    const kleisliPath =
+      RelativeMonadLawRegistry.enrichedKleisliInclusion.registryPath;
+    const kleisliResult = results.find(
+      (result) => result.registryPath === kleisliPath,
+    );
+    expect(kleisliResult?.artifacts).toEqual({ streetRollups: rollupArtifacts });
+    expect(kleisliResult?.pending).toBe(false);
+
+    const setEnrichedPath =
+      RelativeMonadLawRegistry.setEnrichedCompatibility.registryPath;
+    const setEnrichedResult = results.find(
+      (result) => result.registryPath === setEnrichedPath,
+    );
+    expect(setEnrichedResult?.artifacts).toEqual({ streetRollups: rollupArtifacts });
+
+    const yonedaPath = RelativeMonadLawRegistry.enrichedYoneda.registryPath;
+    const yonedaResult = results.find(
+      (result) => result.registryPath === yonedaPath,
+    );
+    expect(yonedaResult?.artifacts).toEqual({ streetRollups: rollupArtifacts });
+    expect(yonedaResult?.pending).toBe(false);
+
+    const distributorPath =
+      RelativeMonadLawRegistry.enrichedYonedaDistributor.registryPath;
+    const distributorResult = results.find(
+      (result) => result.registryPath === distributorPath,
+    );
+    expect(distributorResult?.artifacts).toEqual({
+      streetRollups: rollupArtifacts,
+    });
+    expect(distributorResult?.pending).toBe(false);
+  });
+
+  it("marks Street roll-ups pending when Street composites disagree", () => {
+    const defineAnyADT: any = defineADT;
+    const { trivial } = makeTrivialData();
+
+    const List = defineAnyADT({
+      typeName: "BrokenStreetList",
+      parameters: [{ name: "A" }] as const,
+      constructors: [
+        {
+          name: "Nil",
+          fields: [],
+          indexes: [
+            {
+              name: "Length",
+              witness: primitiveStrictEqualsWitness<number>(),
+              compute: () => 0,
+            },
+          ],
+        },
+        {
+          name: "Cons",
+          fields: [
+            parameterField("head", "A"),
+            {
+              name: "tail",
+              witness: witnessFromEquals(() => true),
+              recursion: "self",
+            },
+          ],
+          indexes: [
+            {
+              name: "Length",
+              witness: primitiveStrictEqualsWitness<number>(),
+              compute: (fields: { readonly tail: unknown }) =>
+                Number(getADTIndex(fields.tail as never, "Length")) + 1,
+            },
+          ],
+        },
+      ] as const,
+    });
+
+    const numbers = List.instantiate({
+      A: primitiveStrictEqualsWitness<number>(),
+    });
+
+    const { Nil, Cons } = numbers.constructors;
+    const samples = [
+      Nil(),
+      Cons({ head: 1, tail: Nil() }),
+    ];
+
+    const identityAlgebra: any = {
+      Nil: () => Nil(),
+      Cons: ({ head, tail }: any) => Cons({ head, tail }),
+    };
+
+    const streetInput = {
+      adt: numbers,
+      extensions: [
+        {
+          id: "identity",
+          algebra: identityAlgebra,
+          witness: witnessFromEquals(numbers.equals),
+          samples,
+          expected: () => Nil(),
+        },
+      ],
+    } as const;
+
+    const rollup = RelativeMonadOracles.polynomialStreetRollups(streetInput);
+    expect(rollup.pending).toBe(true);
+    expect(rollup.holds).toBe(false);
+    expect(
+      rollup.issues?.some((issue) => issue.includes("identity")),
+    ).toBe(true);
+
+    const results = enumerateRelativeMonadOracles(trivial, {
+      polynomialStreetHarness: streetInput,
+    });
+
+    const kleisliPath =
+      RelativeMonadLawRegistry.enrichedKleisliInclusion.registryPath;
+    const kleisliResult = results.find(
+      (result) => result.registryPath === kleisliPath,
+    );
+    expect(kleisliResult?.pending).toBe(true);
+
+    const setEnrichedPath =
+      RelativeMonadLawRegistry.setEnrichedCompatibility.registryPath;
+    const setEnrichedResult = results.find(
+      (result) => result.registryPath === setEnrichedPath,
+    );
+    expect(setEnrichedResult?.pending).toBe(true);
+
+    const yonedaPath = RelativeMonadLawRegistry.enrichedYoneda.registryPath;
+    const yonedaResult = results.find(
+      (result) => result.registryPath === yonedaPath,
+    );
+    expect(yonedaResult?.pending).toBe(true);
+
+    const distributorPath =
+      RelativeMonadLawRegistry.enrichedYonedaDistributor.registryPath;
+    const distributorResult = results.find(
+      (result) => result.registryPath === distributorPath,
+    );
+    expect(distributorResult?.pending).toBe(true);
   });
 });
