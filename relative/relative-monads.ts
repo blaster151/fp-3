@@ -1401,11 +1401,18 @@ export interface RelativeEnrichedVCatMonadReport<
   Arr,
   Payload,
   Evidence,
+  StreetRollups = unknown,
 > {
   readonly holds: boolean;
+  readonly pending: boolean;
   readonly issues: ReadonlyArray<string>;
   readonly details: string;
   readonly witness: RelativeEnrichedVCatMonadWitness<Obj, Arr, Payload, Evidence>;
+  readonly streetRollups?: StreetRollups;
+}
+
+export interface RelativeEnrichedVCatMonadOptions<StreetRollups> {
+  readonly streetRollups?: StreetRollups;
 }
 
 const analyzeTriangleAgainst = <
@@ -1458,13 +1465,22 @@ export const analyzeRelativeEnrichedVCatMonad = <
   Arr,
   Payload,
   Evidence,
+  StreetRollups = unknown,
 >(
   witness: RelativeEnrichedVCatMonadWitness<Obj, Arr, Payload, Evidence>,
-): RelativeEnrichedVCatMonadReport<Obj, Arr, Payload, Evidence> => {
+  options: RelativeEnrichedVCatMonadOptions<StreetRollups> = {},
+): RelativeEnrichedVCatMonadReport<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+  StreetRollups
+> => {
   const equality =
     witness.enriched.monad.equipment.equalsObjects ??
     defaultObjectEquality<Obj>;
   const issues: string[] = [];
+  let pending = false;
 
   analyzeTriangleAgainst(
     equality,
@@ -1503,15 +1519,38 @@ export const analyzeRelativeEnrichedVCatMonad = <
     issues,
   );
 
+  const { streetRollups } = options;
+
+  if (streetRollups !== undefined) {
+    const rollupMetadata = streetRollups as {
+      readonly pending?: boolean;
+      readonly holds?: boolean;
+      readonly issues?: ReadonlyArray<string>;
+    };
+    if (rollupMetadata.pending === true || rollupMetadata.holds === false) {
+      pending = true;
+      const rollupIssues = rollupMetadata.issues ?? [];
+      const rollupSummary =
+        rollupIssues.length > 0
+          ? rollupIssues.join("; ")
+          : rollupMetadata.holds === false
+          ? "Street roll-up artifacts reported harness discrepancies."
+          : "Street roll-up artifacts remain pending.";
+      issues.push(`Theorem 8.12 Street roll-ups pending: ${rollupSummary}`);
+    }
+  }
+
   const holds = issues.length === 0;
   return {
     holds,
+    pending,
     issues,
     details: holds
       ? witness.details ??
         "Theorem 8.12 witness confirms the enriched unit/multiplication triangles, functoriality identities/composites, and τ-naturality all reuse the recorded comparisons."
       : `Relative enriched V-Cat monad issues: ${issues.join("; ")}`,
     witness,
+    ...(streetRollups !== undefined && { streetRollups }),
   };
 };
 
@@ -1772,6 +1811,178 @@ export const describeRelativeEnrichedKleisliInclusionWitness = <
   details:
     "Kleisli inclusion witness defaults to reusing the enriched unit, extension, and loose arrow highlighted in the Lemma 8.7 discussion of the Kleisli identity-on-objects functor.",
 });
+
+export interface RelativeEnrichedStreetRollupOptions<StreetRollups> {
+  readonly yoneda: RelativeEnrichedYonedaOptions<StreetRollups>;
+  readonly yonedaDistributor: RelativeEnrichedYonedaDistributorOptions<StreetRollups>;
+  readonly eilenbergMoore: RelativeEnrichedEilenbergMooreAlgebraOptions<StreetRollups>;
+  readonly kleisli: RelativeEnrichedKleisliInclusionOptions<StreetRollups>;
+  readonly vcat: RelativeEnrichedVCatMonadOptions<StreetRollups>;
+}
+
+export interface RelativeEnrichedStreetRollupWitnesses<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+> {
+  readonly yoneda: RelativeEnrichedYonedaWitness<Obj, Arr, Payload, Evidence>;
+  readonly yonedaDistributor: RelativeEnrichedYonedaDistributorWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly eilenbergMoore: RelativeEnrichedEilenbergMooreAlgebraWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly kleisli: RelativeEnrichedKleisliInclusionWitness<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  >;
+  readonly vcat: RelativeEnrichedVCatMonadWitness<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeEnrichedStreetRollupReports<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+  StreetRollups,
+> {
+  readonly yoneda: RelativeEnrichedYonedaReport<Obj, Arr, Payload, Evidence, StreetRollups>;
+  readonly yonedaDistributor: RelativeEnrichedYonedaDistributorReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence,
+    StreetRollups
+  >;
+  readonly eilenbergMoore: RelativeEnrichedEilenbergMooreAlgebraReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence,
+    StreetRollups
+  >;
+  readonly kleisli: RelativeEnrichedKleisliInclusionReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence,
+    StreetRollups
+  >;
+  readonly vcat: RelativeEnrichedVCatMonadReport<
+    Obj,
+    Arr,
+    Payload,
+    Evidence,
+    StreetRollups
+  >;
+}
+
+export interface RelativeEnrichedStreetRollupAnalysis<
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+  StreetRollups,
+> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly streetRollups?: StreetRollups;
+  readonly reports: RelativeEnrichedStreetRollupReports<
+    Obj,
+    Arr,
+    Payload,
+    Evidence,
+    StreetRollups
+  >;
+}
+
+export const analyzeRelativeEnrichedStreetRollups = <
+  Obj,
+  Arr,
+  Payload,
+  Evidence,
+  StreetRollups,
+>(
+  witnesses: RelativeEnrichedStreetRollupWitnesses<Obj, Arr, Payload, Evidence>,
+  options: RelativeEnrichedStreetRollupOptions<StreetRollups>,
+): RelativeEnrichedStreetRollupAnalysis<Obj, Arr, Payload, Evidence, StreetRollups> => {
+  const yoneda = analyzeRelativeEnrichedYoneda(witnesses.yoneda, options.yoneda);
+  const yonedaDistributor = analyzeRelativeEnrichedYonedaDistributor(
+    witnesses.yonedaDistributor,
+    options.yonedaDistributor,
+  );
+  const eilenbergMoore = analyzeRelativeEnrichedEilenbergMooreAlgebra(
+    witnesses.eilenbergMoore,
+    options.eilenbergMoore,
+  );
+  const kleisli = analyzeRelativeEnrichedKleisliInclusion(
+    witnesses.kleisli,
+    options.kleisli,
+  );
+  const vcat = analyzeRelativeEnrichedVCatMonad(witnesses.vcat, options.vcat);
+
+  const reportEntries = [
+    ["Yoneda", yoneda] as const,
+    ["Yoneda distributor", yonedaDistributor] as const,
+    ["Eilenberg–Moore", eilenbergMoore] as const,
+    ["Kleisli inclusion", kleisli] as const,
+    ["V-Cat", vcat] as const,
+  ];
+
+  const holds = reportEntries.every(([, report]) => report.holds);
+  const pending = reportEntries.some(([, report]) => report.pending);
+
+  const issues: string[] = [];
+  for (const [label, report] of reportEntries) {
+    for (const issue of report.issues) {
+      issues.push(`${label} analyzer: ${issue}`);
+    }
+  }
+
+  const streetRollups =
+    options.yoneda.streetRollups ??
+    options.yonedaDistributor.streetRollups ??
+    options.eilenbergMoore.streetRollups ??
+    options.kleisli.streetRollups ??
+    options.vcat.streetRollups;
+
+  let details: string;
+  if (holds) {
+    details = pending
+      ? "Enriched analyzers defer final status until pending Street roll-ups resolve."
+      : "All enriched analyzers hold with the supplied Street roll-ups.";
+  } else if (issues.length > 0) {
+    details = `Enriched analyzers reported issues: ${issues.join("; ")}`;
+  } else {
+    details = "Enriched analyzers reported failures without additional issue details.";
+  }
+
+  return {
+    holds,
+    pending,
+    issues,
+    details,
+    ...(streetRollups !== undefined && { streetRollups }),
+    reports: {
+      yoneda,
+      yonedaDistributor,
+      eilenbergMoore,
+      kleisli,
+      vcat,
+    },
+  };
+};
 
 export interface RelativeMonadIdentityReductionReport {
   readonly holds: boolean;
