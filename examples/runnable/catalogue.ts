@@ -87,8 +87,12 @@ import { stage083TopUniversalPropertyReports } from "./083-top-universal-propert
 import { stage084MnnePowersetRelativeMonad } from "./084-mnne-powerset-relative-monad";
 import { stage085ComonadCoalgebraAndRelativeComoduleDiagnostics } from "./085-comonad-coalgebra-and-relative-comodule-diagnostics";
 import { stage086FinSetNaturalNumbersRecursion } from "./086-finset-natural-numbers-recursion";
-import { stage087SetOmegaInternalLogic } from "./087-set-omega-internal-logic";
-import { stage088SetNaturalNumbersOracles } from "./088-set-natural-numbers-oracles";
+import { stage087bSetOmegaInternalLogic } from "./087-set-omega-internal-logic";
+import { stage088bSetNaturalNumbersOracles } from "./088-set-natural-numbers-oracles";
+import { stage087AdtPolynomialStreetHarness } from "./087-adt-polynomial-street-harness";
+import { stage088AdtPolynomialEnrichedAdapters } from "./088-adt-polynomial-enriched-adapters";
+import { stage089AdtPolynomialEnrichedHigherOrder } from "./089-adt-polynomial-enriched-higher-order";
+import { stage090AdtPolynomialEnrichedStreetRollups } from "./090-adt-polynomial-enriched-street-rollups";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -179,6 +183,10 @@ export const registry: RunnableRegistry = [
   stage084MnnePowersetRelativeMonad,
   stage085ComonadCoalgebraAndRelativeComoduleDiagnostics,
   stage086FinSetNaturalNumbersRecursion,
-  stage087SetOmegaInternalLogic,
-  stage088SetNaturalNumbersOracles,
+  stage087bSetOmegaInternalLogic,
+  stage088bSetNaturalNumbersOracles,
+  stage087AdtPolynomialStreetHarness,
+  stage088AdtPolynomialEnrichedAdapters,
+  stage089AdtPolynomialEnrichedHigherOrder,
+  stage090AdtPolynomialEnrichedStreetRollups,
 ];

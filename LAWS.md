@@ -221,7 +221,10 @@ This document catalogs the algebraic laws that our functional programming constr
   specification of a j-relative monad. The oracle demands that the unit and
   multiplication triangles reuse the enriched unit/extension witnesses, that the
   functorial identity/composition diagrams share those comparisons, and that the
-  τ witnesses agree with the recorded naturality data.
+  τ witnesses agree with the recorded naturality data. Street roll-up artifacts
+  now flow through the analyzer so registry enumeration exposes the aggregated
+  composites (or pending Street discrepancies) alongside the Yoneda, distributor,
+  and Kleisli adapters.
 - `relativeMonad.representableLooseMonoid` captures Theorem 4.16’s bridge
   between j-relative monads and monoids in `X[j]` whose loose arrows are
   representable.  `RelativeMonadOracles.representableLooseMonoid` consumes the
@@ -267,6 +270,69 @@ This document catalogs the algebraic laws that our functional programming constr
   (the unit arrow, composed Street pastings, and restriction outputs) so
   downstream debuggers can inspect the exact morphisms responsible for a
   failure.
+
+#### ADT polynomial Street harness registry
+
+- `relativeMonad.adt.polynomialBridge` documents the bridge from
+  `defineADT`-generated constructors, folds, and unfolds into the polynomial
+  container interface. `RelativeMonadOracles.polynomialContainerBridge` calls
+  `analyzeADTPolynomialRelativeMonad`, returning detailed value/fold/unfold
+  counterexamples when the replayed container structure diverges from the ADT
+  surface.
+- `relativeMonad.adt.polynomialStreet` captures the Street-style unit and
+  Kleisli composites induced by ADT catamorphisms.  The corresponding oracle
+  `RelativeMonadOracles.polynomialStreetHarness` threads
+  `analyzeADTPolynomialRelativeStreet`, exposing extension and Kleisli
+  snapshot artefacts so enriched adapters can reuse the recorded composites.
+- `relativeMonad.adt.polynomialStreetRollups` records the persisted Street
+  composites used by enriched Yoneda, V-cat, and distributor adapters.
+  `RelativeMonadOracles.polynomialStreetRollups` invokes
+  `rollupADTPolynomialRelativeStreet` to aggregate the snapshots, surfaces
+  pending status when a harness scenario fails, and returns the replayable
+  artefacts for downstream witnesses.
+- `relativeMonad.adt.polynomialStreetRollupAggregation` summarises the
+  aggregated Street payload across every enriched analyzer.
+  `RelativeMonadOracles.polynomialStreetRollupAggregation` reuses
+  `analyzeRelativeEnrichedStreetRollups` so enumeration emits a combined
+  holds/pending verdict alongside per-analyzer reports without recomputing the
+  Street harness.
+- `relativeMonad.adt.polynomialEnrichedAdapters` packages the Street harness
+  report, roll-ups, and enriched adapter option bundles for the Yoneda,
+  Eilenberg–Moore, Kleisli, V-cat, and distributor analyzers.  The oracle
+  `RelativeMonadOracles.polynomialStreetEnrichedAdapters` reuses
+  `buildADTPolynomialRelativeStreetEnrichedBundle` so enumeration always
+  forwards the same artifacts that the Street harness produced.  Stage 089 shows
+  how higher-order indexed ADTs reuse the same bundle while exposing dependency
+  metadata through introspection snapshots.
+- `analyzeRelativeEnrichedStreetRollups` runs the Yoneda, distributor,
+  Eilenberg–Moore, Kleisli, and V-Cat analyzers against a shared Street roll-up
+  payload, returning a combined holds/pending summary while preserving the
+  individual analyzer reports and their Street artifacts for drill-down.
+- Higher-order parameter descriptors surface via
+  `higherOrderParameterField`: ADT schemas can now derive equality witnesses for
+  dependent payloads directly from instantiated parameter metadata. The
+  resulting constructor fields retain `higherOrder` metadata so enriched
+  adapters and code generators can inspect which parameter drives each
+  dependent payload without recomputing schema information.
+- **Runnable examples:** Stage 087
+  (`examples/runnable/087-adt-polynomial-street-harness.ts`) shows how to build
+  a numeric list ADT, run the Street harness, roll up the snapshots, and query
+  the core registry entries. Stage 088
+  (`examples/runnable/088-adt-polynomial-enriched-adapters.ts`) extends the
+  workflow by producing the enriched adapter bundle and replaying the skew
+  monoid bridge alongside the Street diagnostics. Stage 089
+  (`examples/runnable/089-adt-polynomial-enriched-higher-order.ts`) specialises
+  the workflow to a higher-order indexed ADT, highlighting how Street roll-ups
+  carry dependency metadata into the Yoneda analyzer. Stage 090
+  (`examples/runnable/090-adt-polynomial-enriched-street-rollups.ts`) aggregates
+  the Street roll-up payload across the enriched analyzers and reports combined
+  holds/pending status alongside per-analyzer summaries. The
+  `npm run validate-relative-monads` CLI mirrors that aggregated verdict and, via
+  `--aggregated-json <file>`, exports the enumeration result so generators can
+  consume machine-readable Street roll-up payloads without rerunning analyzers.
+  `scripts/generate-aggregated-street-rollup-scaffold.mjs` now turns that JSON
+  export into a TypeScript module with pending-aware guards and analyzer
+  summaries so enriched adapters can branch on the recorded verdicts.
 
 ### Relative algebra scaffolding
 

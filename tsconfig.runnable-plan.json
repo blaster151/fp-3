@@ -5,10 +5,12 @@
     "moduleResolution": "node",
     "outDir": "./dist",
     "rootDir": "./",
-    "verbatimModuleSyntax": false
+    "verbatimModuleSyntax": false,
+    "types": ["node"]
   },
   "include": [
     "run-runnable-examples.ts",
-    "examples/runnable/**/*.ts"
+    "examples/runnable/**/*.ts",
+    "scripts/validate-relative-monads.ts"
   ]
 }

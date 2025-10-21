@@ -107,6 +107,18 @@ export const RelativeMonadLawRegistry = {
     summary:
       "Persisted Street composites should be reusable for enriched adapters; the analyzer aggregates extension and Kleisli snapshots into comparison-ready roll-ups for downstream witnesses.",
   },
+  polynomialStreetRollupAggregation: {
+    name: "ADT polynomial aggregated Street roll-up analysis",
+    registryPath: "relativeMonad.adt.polynomialStreetRollupAggregation",
+    summary:
+      "Aggregated Street roll-ups should drive every enriched analyzer in lockstep; the oracle summarizes Yoneda, distributor, Eilenberg–Moore, Kleisli, and V-Cat reports alongside the shared Street payload.",
+  },
+  polynomialStreetEnrichedAdapters: {
+    name: "ADT polynomial enriched adapter bundle",
+    registryPath: "relativeMonad.adt.polynomialEnrichedAdapters",
+    summary:
+      "Street roll-up bundles expose reusable options for enriched Yoneda, Eilenberg–Moore, Kleisli, V-cat, and distributor analyzers together with the underlying harness report.",
+  },
   powersetRelativeMonad: {
     name: "Powerset relative monad diagnostics",
     registryPath: "relativeMonad.mnne.powerset",

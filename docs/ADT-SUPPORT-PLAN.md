@@ -18,6 +18,12 @@
 - ✅ **E2 — Relative monad law harness** (Street-style unit and Kleisli composites now replay through the polynomial container with scenario-driven diagnostics.).
 - ✅ **F1 — Street action registry integration** (landed via Street harness snapshot persistence and registry wiring through the relative oracle catalogue).
 - ✅ **F2 — Street witness roll-ups for enriched adapters** (aggregated Street snapshots into enriched-ready roll-ups and exposed them through the registry).
+- ✅ **C1 — Higher-order constructors + dependent parameters** (higher-order parameter fields now derive equality witnesses from instantiated parameter metadata and surface dependency snapshots through introspection).
+- ✅ **C2 — Categorical adapters for ADT metadata** (`buildADTPolynomialRelativeStreetEnrichedBundle` packages Street harness reports, roll-ups, and enriched adapter options; the oracle catalogue and runnable examples now surface the bundle alongside existing Street diagnostics).
+- ✅ **C3 — LAWS + runnable example integration** (`LAWS.md` now documents the enriched bundle alongside Stage 087/088/089 runnables, and the catalogue showcases higher-order Street roll-up reuse).
+- ✅ **C4 — Aggregated Street roll-up analyzers** (`analyzeRelativeEnrichedStreetRollups` collapses Yoneda, distributor, Kleisli, Eilenberg–Moore, and V-Cat reports into a single status and powers the Stage 090 aggregation runnable).
+- ✅ **C5 — Aggregated Street roll-up registry summaries** (enumeration now threads the aggregated analysis alongside individual enriched entries so registry consumers see combined verdicts and per-analyzer artifacts in one pass).
+- ✅ **C6 — Aggregated Street roll-up CLI + generator stub** (`npm run validate-relative-monads` now prints the aggregated Street roll-up summary beside each analyzer verdict, and `scripts/generate-aggregated-street-rollup-scaffold.mjs` consumes the oracle output to outline pending-aware adapter emission).
 
 > We evolve this roadmap after every PR so completed slices are explicitly marked and the “next slice” always reflects the forthcoming implementation target.
 
@@ -147,14 +153,116 @@
 - Pass the resulting artifacts through `analyzeRelativeEnrichedEilenbergMooreAlgebra`/`analyzeRelativeSetEnrichedMonad` (or the corresponding registry enumeration helpers) so enriched adapters can reuse the persisted composites without rerunning Street harness scenarios.
 - Downstream enriched analyzers should forward the same `streetRollups` payload to avoid recomputing Kleisli or extension witnesses; enumeration now retains these artifacts for both enriched analyzers.
 
-### Milestone C — Enriched integrations (future)
-- Support parameterised ADTs and higher-order constructors (GADTs/indices) by layering constraints over the base schema.
-- Connect ADT metadata to categorical libraries (e.g. build free polynomial functors, interpret ADTs inside target categories).
-- Extend LAWS documentation with ADT-specific oracle coverage and add runnable examples bridging to relative monad tooling.
+### Milestone C — Enriched integrations *(in progress)*
+
+We are now unblocking the "future" slices so enriched adapters and the
+documentation surface gain concrete entry points. The milestone now breaks
+down into staged deliveries:
+
+#### C1 — Higher-order constructors and dependent parameters *(✅ delivered)*
+- Added higher-order parameter descriptors via `higherOrderParameterField`,
+  allowing schema authors to derive equality witnesses for dependent payloads
+  (arrays, records, witness transformers) from the supplied parameter
+  witnesses.
+- `defineADT.instantiate` now validates higher-order usages, derives the
+  specialised witnesses during instantiation, and attaches frozen dependency
+  metadata to the realised constructor fields.
+- `introspect()` snapshots on both families and concrete ADTs retain the
+  higher-order annotations so code generators, adapters, and documentation can
+  recover the parameter dependency structure without reparsing schema records.
+
+#### C2 — Categorical adapters for ADT metadata *(✅ delivered)*
+- `buildADTPolynomialRelativeStreetEnrichedBundle` now packages Street harness
+  reports, roll-ups, and enriched adapter option records for Yoneda,
+  Eilenberg–Moore, Kleisli, V-cat, and distributor analyzers.
+- `RelativeMonadOracles.polynomialStreetEnrichedAdapters` exposes the bundle in
+  the oracle registry, while `enumerateRelativeMonadOracles` forwards the same
+  artifacts whenever Street harness data is supplied.
+- Runnable Stage 088 demonstrates how to derive the bundle from an ADT, feed it
+  into the enriched analyzers, and inspect the skew monoid bridge alongside the
+  Street diagnostics.
+
+#### C3 — LAWS + runnable example integration *(✅ delivered)*
+- `LAWS.md` now documents the enriched adapter bundle alongside the bridge,
+  Street harness, and roll-up registry entries, referencing Stage 087, Stage 088,
+  and the new Stage 089 higher-order showcase so contributors can replay the
+  workflow end-to-end.
+- The runnable catalogue gained Stage 089, instantiating a higher-order indexed
+  ADT, replaying Street roll-ups, and feeding the resulting bundle into the
+  Yoneda analyzer to demonstrate enriched reuse of the persisted composites.
+- This roadmap cross-links the Stage 087/088/089 documentation so future slices
+  inherit the enriched adapter workflow without re-deriving how to bridge Street
+  diagnostics into enriched analyzers.
+
+#### C4 — Aggregated Street roll-up analyzers *(✅ delivered)*
+- Introduced `analyzeRelativeEnrichedStreetRollups` to execute Yoneda,
+  distributor, Eilenberg–Moore, Kleisli, and V-Cat analyzers against a single
+  Street roll-up payload while surfacing combined holds/pending state and
+  per-analyzer issues.
+- The helper annotates each analyzer report with the shared artifacts so
+  downstream tooling can drill into the Street evidence without recomputing the
+  harness diagnostics.
+- Stage 090 runnable example demonstrates the aggregation helper and summarises
+  analyzer statuses alongside the captured Street roll-up counts.
+
+#### C5 — Aggregated Street roll-up registry summaries *(✅ delivered)*
+- `RelativeMonadOracles.polynomialStreetRollupAggregation` packages
+  `analyzeRelativeEnrichedStreetRollups` so oracle enumeration emits a single
+  holds/pending verdict, Street payload reference, and per-analyzer reports.
+- Enumeration now lists the Street harness report, roll-ups, aggregated
+  analysis, and enriched adapter bundle consecutively, making the registry a
+  one-stop source for enriched Street diagnostics.
+- The regression suite exercises the new entry to ensure the aggregated summary
+  reports the same Street roll-ups that the individual enriched analyzers reuse.
+
+#### C6 — Aggregated Street roll-up CLI + generator scaffold *(✅ delivered)*
+- `npm run validate-relative-monads` now drives the polynomial Street harness
+  and prints the aggregated roll-up verdict alongside each enriched analyzer
+  status, so CLI automation surfaces combined Street summaries out of the box.
+- Added `scripts/generate-aggregated-street-rollup-scaffold.mjs`, a generator
+  scaffold that ingests the aggregated oracle result and sketches pending-aware
+  adapter emission guarded by Street roll-up status.
+- The scaffold documents the downstream workflow for persisting Street roll-up
+  artifacts, threading analyzer verdicts into templates, and selecting guard
+  strategies before real code generation lands.
+
+#### C7 — Aggregated Street roll-up JSON export + module emitter *(✅ delivered)*
+- `npm run validate-relative-monads -- --aggregated-json <file>` now persists
+  the aggregated Street roll-up entry to disk so automation can reuse the
+  enumeration payload without replaying analyzers.
+- `scripts/generate-aggregated-street-rollup-scaffold.mjs` consumes that JSON and
+  emits a TypeScript module exposing pending-aware guards, analyzer summaries,
+  and helper selectors so enriched adapters can branch on recorded verdicts.
+- The generated module surfaces convenience guards (`assertAggregatedStreetRollupReady`,
+  `selectAggregatedStreetAdapters`) and payload inspection helpers so downstream
+  emitters can make ready/pending/blocked decisions from a single import.
+
+### Aggregated Street roll-up code-generation guidance
+
+- Code generators can call `enumerateRelativeMonadOracles` with Street harness
+  inputs to receive the Street report, roll-ups, aggregated analysis, and
+  enriched adapter bundle in one pass.
+- The aggregated oracle result exposes both a shared `streetRollups` reference
+  and the individual analyzer reports, so scaffolding can detect pending
+  harnesses, drill into Yoneda/Kleisli/V-cat diagnostics, and decide whether to
+  emit provisional enriched adapters.
+- When automation needs per-constructor insight (e.g. to emit witness guards),
+  reuse the Street harness report from the neighbouring entry—both artifacts
+  share the same registry path prefix, simplifying downstream indexing.
+- `npm run validate-relative-monads` mirrors the aggregated verdicts in the CLI
+  so orchestration scripts can scrape combined Street statuses without manual
+  enumeration calls.
+- Use `scripts/generate-aggregated-street-rollup-scaffold.mjs <result.json>` to
+  outline pending-aware adapter emission and guard strategies from recorded
+  Street roll-up summaries until full code generation is automated.
 
 ## 4. Immediate Implementation Tasks
-- Wire Street roll-up artifacts through the enriched V-cat analyzer so enumeration reuses the aggregated composites while surfacing pending Street states alongside the existing adapters.
-- Promote the staged V-cat Street roll-up regression suite to active coverage once the analyzer exposes shared artifacts, updating the documentation to capture the completed adapter wiring.
+- Demonstrate generated aggregated Street modules inside the Stage 090 runnable,
+  wiring the guard helpers into the logged summary so documentation shows the
+  pending-aware flow end-to-end.
+- Backfill regression coverage around `selectAggregatedStreetAdapters` to assert
+  ready/pending/blocked handlers fire as expected across synthesized Street
+  verdicts.
 
 ## 5. Testing and Quality Strategy
 - Use Vitest for deterministic behavioural checks.
