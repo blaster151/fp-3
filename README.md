@@ -12,7 +12,7 @@
 
 ## Two Independent Systems
 
-This PDI folder contains **TWO DISTINCT SYSTEMS**:
+The `pdi/` folder contains **TWO DISTINCT SYSTEMS**:
 
 ## Core typeclasses
 
@@ -56,17 +56,19 @@ you can inspect the combined reports or archive them for later analysis.
 
 ## PDI Files
 
+All documentation and support scripts for the system live inside the `pdi/` directory.
+
 ### Core Documentation
-- **`AI_DEV_GUIDELINES.md`** - Detailed processes for AI-assisted development
-- **`HUMAN_DEV_GUIDELINES.md`** - Concise overview for human developers
-- **`KNOWLEDGE_BASE.md`** - Patterns, utilities, and LLM hints
-- **`UPGRADE_BACKLOG.md`** - Tracked improvement opportunities
+- **`pdi/AI_DEV_GUIDELINES.md`** - Detailed processes for AI-assisted development
+- **`pdi/HUMAN_DEV_GUIDELINES.md`** - Concise overview for human developers
+- **`pdi/KNOWLEDGE_BASE.md`** - Patterns, utilities, and LLM hints
+- **`pdi/UPGRADE_BACKLOG.md`** - Tracked improvement opportunities
 
 ### Supporting Files
-- **`REMINDERS.md`** - Maintenance checklist
-- **`DEVELOPMENT_STRUCTURE.md`** - File organization guide
-- **`RECOVERY_STRATEGY.md`** - Recovering lost knowledge
-- **`SYSTEM_ARCHITECTURE.md`** - Two independent systems explained
+- **`pdi/REMINDERS.md`** - Maintenance checklist
+- **`pdi/DEVELOPMENT_STRUCTURE.md`** - File organization guide
+- **`pdi/RECOVERY_STRATEGY.md`** - Recovering lost knowledge
+- **`pdi/SYSTEM_ARCHITECTURE.md`** - Two independent systems explained
 
 ### Virtual Equipment Scaffolding
 
