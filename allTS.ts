@@ -109,6 +109,7 @@ export {
   GraphSubobjectClassifier,
   GraphWitnesses,
 } from "./graph-subobject-classifier"
+export * from "./set-subobject-classifier"
 
 // Aggregated exports for the emerging virtual equipment and relative layers.
 export * from "./src/all/virtual-equipment-relative"

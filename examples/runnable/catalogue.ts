@@ -87,6 +87,8 @@ import { stage083TopUniversalPropertyReports } from "./083-top-universal-propert
 import { stage084MnnePowersetRelativeMonad } from "./084-mnne-powerset-relative-monad";
 import { stage085ComonadCoalgebraAndRelativeComoduleDiagnostics } from "./085-comonad-coalgebra-and-relative-comodule-diagnostics";
 import { stage086FinSetNaturalNumbersRecursion } from "./086-finset-natural-numbers-recursion";
+import { stage087SetOmegaInternalLogic } from "./087-set-omega-internal-logic";
+import { stage088SetNaturalNumbersOracles } from "./088-set-natural-numbers-oracles";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -177,4 +179,6 @@ export const registry: RunnableRegistry = [
   stage084MnnePowersetRelativeMonad,
   stage085ComonadCoalgebraAndRelativeComoduleDiagnostics,
   stage086FinSetNaturalNumbersRecursion,
+  stage087SetOmegaInternalLogic,
+  stage088SetNaturalNumbersOracles,
 ];

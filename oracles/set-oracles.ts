@@ -16,10 +16,22 @@ import type {
   SetHom,
   SetObj,
   ExponentialArrow,
+  SetTerminalObject,
 } from "../set-cat";
-import { SetCat, composeSet } from "../set-cat";
+import { SetCat, composeSet, ensureSubsetMonomorphism } from "../set-cat";
 import { SetLaws } from "../set-laws";
-import type { CardinalityComparisonResult } from "../set-laws";
+import { CategoryLimits } from "../stdlib/category-limits";
+import {
+  SetSubobjectClassifier,
+  SetNaturalNumbersObject,
+  SetCartesianClosed,
+  SetCoproductsWithCotuple,
+} from "../set-subobject-classifier";
+import type {
+  CardinalityComparisonResult,
+  CantorImageDiagnosis,
+  CharacteristicWitness,
+} from "../set-laws";
 
 export type OracleReport<TExtra = Record<string, unknown>> = {
   holds: boolean;
@@ -69,6 +81,79 @@ const setCategoryForHelpers = {
 const setCategoryForComponentwise = {
   compose: composeSetMorphisms,
 };
+
+const setNaturalNumbersZeroSeparation = () =>
+  CategoryLimits.certifyNaturalNumbersZeroSeparation({
+    category: SetSubobjectClassifier,
+    natural: SetNaturalNumbersObject,
+    classifier: SetSubobjectClassifier,
+    equalMor: equalSetMorphisms,
+    label: "Set ℕ zero/successor separation",
+  });
+
+const setNaturalNumbersInduction = () => {
+  const inclusion = SetCat.id(SetNaturalNumbersObject.carrier) as SetMorphism;
+  return CategoryLimits.certifyNaturalNumbersInduction({
+    category: SetSubobjectClassifier,
+    natural: SetNaturalNumbersObject,
+    inclusion,
+    zeroLift: SetNaturalNumbersObject.zero as SetMorphism,
+    successorLift: SetNaturalNumbersObject.successor as SetMorphism,
+    equalMor: equalSetMorphisms,
+    ensureMonomorphism: (arrow) =>
+      ensureSubsetMonomorphism(arrow as SetHom<unknown, unknown>, "Set ℕ induction"),
+    label: "Set ℕ identity inclusion",
+  });
+};
+
+const setNaturalNumbersPrimitiveRecursion = () => {
+  const parameter = SetSubobjectClassifier.terminalObj as SetObject;
+  const target = SetNaturalNumbersObject.carrier as SetObject;
+  const product = SetCat.product(target as SetObj<number>, parameter as SetObj<unknown>);
+  const step = SetCat.hom(product.object, target as SetObj<number>, (pair) => {
+    const [current] = pair as readonly [number, unknown];
+    return SetNaturalNumbersObject.successor.map(current);
+  });
+
+  return CategoryLimits.naturalNumbersPrimitiveRecursion({
+    category: SetSubobjectClassifier,
+    natural: SetNaturalNumbersObject,
+    cartesianClosed: SetCartesianClosed,
+    parameter,
+    target,
+    base: SetNaturalNumbersObject.zero as SetMorphism,
+    step: step as SetMorphism,
+    equalMor: equalSetMorphisms,
+    label: "Set ℕ primitive recursion",
+  });
+};
+
+const setNaturalNumbersInitialAlgebra = () => {
+  const target = SetNaturalNumbersObject.carrier as SetObject;
+  const terminal = SetSubobjectClassifier.terminalObj as SetObject;
+  const canonical = SetCat.coproduct(terminal as SetObj<unknown>, target as SetObj<number>);
+  const algebra = canonical.copair(
+    SetNaturalNumbersObject.zero as SetHom<SetTerminalObject, number>,
+    SetNaturalNumbersObject.successor,
+  );
+
+  return CategoryLimits.naturalNumbersInitialAlgebra({
+    category: SetSubobjectClassifier,
+    natural: SetNaturalNumbersObject,
+    coproducts: SetCoproductsWithCotuple,
+    target,
+    algebra: algebra as SetMorphism,
+    equalMor: equalSetMorphisms,
+    label: "Set ℕ canonical algebra",
+  });
+};
+
+const setNaturalNumbersOracles = {
+  zeroSeparation: setNaturalNumbersZeroSeparation,
+  induction: setNaturalNumbersInduction,
+  primitiveRecursion: setNaturalNumbersPrimitiveRecursion,
+  initialAlgebra: setNaturalNumbersInitialAlgebra,
+} as const;
 
 export interface SetBinaryProductWitness<A, B> {
   readonly left: AnySet<A>;
@@ -536,8 +621,10 @@ export const setExponentialWitness = <A, B>(
 // ---------- Power set cardinality ----------
 export interface PowerSetWitness<A> {
   readonly source: AnySet<A>;
-  readonly carrier: AnySet<AnySet<A>>;
-  readonly subsets: ReadonlyArray<{ subset: Set<A>; characteristic: boolean[] }>;
+  readonly ambient: SetObj<A>;
+  readonly subsetCarrier: SetObj<SetObj<A>>;
+  readonly characteristicCarrier: SetObj<SetHom<A, boolean>>;
+  readonly subsets: ReadonlyArray<CharacteristicWitness<A>>;
 }
 
 export const powerSetWitness = <A>(source: AnySet<A>): PowerSetWitness<A> => {
@@ -545,7 +632,9 @@ export const powerSetWitness = <A>(source: AnySet<A>): PowerSetWitness<A> => {
   const evidence = SetLaws.powerSetEvidence(sourceObj);
   return {
     source,
-    carrier: evidence.carrier,
+    ambient: evidence.ambient,
+    subsetCarrier: evidence.subsetCarrier,
+    characteristicCarrier: evidence.characteristicCarrier,
     subsets: evidence.subsets,
   };
 };
@@ -553,55 +642,66 @@ export const powerSetWitness = <A>(source: AnySet<A>): PowerSetWitness<A> => {
 export const checkPowerSetWitness = <A>(
   witness: PowerSetWitness<A>,
 ): OracleReport<{ expectedSize: number; actualSize: number }> => {
-  const sourceObj = ensureSetObj(witness.source, "checkPowerSetWitness");
-  const elements = Array.from(sourceObj);
+  const ambient = ensureSetObj(witness.ambient, "checkPowerSetWitness.ambient");
+  const elements = Array.from(ambient);
   const expectedSize = Math.pow(2, elements.length);
-  const actualSize = witness.carrier.size;
+  const actualSize = witness.subsetCarrier.size;
   const failures: string[] = [];
 
   if (actualSize !== expectedSize) {
     failures.push(`|P(A)| expected ${expectedSize} subsets, received ${actualSize}`);
   }
 
-  const seen = new Set<Set<A>>();
+  const seenSubsets = new Set<SetObj<A>>();
+  const seenCharacteristics = new Set<SetHom<A, boolean>>();
+
   witness.subsets.forEach(entry => {
-    if (!witness.carrier.has(entry.subset)) {
+    const { subset, inclusion, characteristic } = entry;
+    if (!witness.subsetCarrier.has(subset)) {
       failures.push("power set evidence: subset enumeration is missing from the carrier");
     }
-    if (entry.characteristic.length !== elements.length) {
-      failures.push("power set evidence: characteristic vector length mismatch");
+    if (!witness.characteristicCarrier.has(characteristic)) {
+      failures.push("power set evidence: characteristic map missing from Ω^A");
     }
-    for (let index = 0; index < elements.length; index += 1) {
-      const element = elements[index];
-      if (element === undefined) {
-        failures.push("power set evidence: element enumeration missing entry for characteristic vector");
-        continue;
-      }
-      const flag = entry.characteristic[index];
-      if (flag === undefined) {
-        failures.push("power set evidence: characteristic vector missing entry for source element");
-        continue;
-      }
-      const hasElement = entry.subset.has(element);
-      if (flag && !hasElement) {
-        failures.push(`power set evidence: indicator marks ${String(element)} present but subset omits it`);
-      }
-      if (!flag && hasElement) {
-        failures.push(`power set evidence: indicator marks ${String(element)} absent but subset includes it`);
-      }
+    if (inclusion.dom !== subset) {
+      failures.push("power set evidence: inclusion domain does not match the subset carrier");
     }
-    for (const value of entry.subset) {
-      if (!sourceObj.has(value)) {
+    if (inclusion.cod !== ambient) {
+      failures.push("power set evidence: inclusion codomain must equal the ambient set");
+    }
+    for (const element of subset) {
+      if (!ambient.has(element)) {
         failures.push("power set evidence: subset contains an element outside the source set");
         break;
       }
+      if (inclusion.map(element) !== element) {
+        failures.push("power set evidence: inclusion must be the identity on subset elements");
+        break;
+      }
     }
-    seen.add(entry.subset);
+    for (const element of elements) {
+      const hasElement = subset.has(element);
+      const classification = characteristic.map(element);
+      if (classification !== hasElement) {
+        failures.push(
+          `power set evidence: characteristic map disagrees with subset membership for ${String(element)}`,
+        );
+        break;
+      }
+    }
+    seenSubsets.add(subset);
+    seenCharacteristics.add(characteristic);
   });
 
-  for (const subset of witness.carrier) {
-    if (!seen.has(subset as Set<A>)) {
+  for (const subset of witness.subsetCarrier) {
+    if (!seenSubsets.has(subset)) {
       failures.push("power set evidence: carrier subset missing from the enumeration");
+    }
+  }
+
+  for (const characteristic of witness.characteristicCarrier) {
+    if (!seenCharacteristics.has(characteristic)) {
+      failures.push("power set evidence: carrier characteristic missing from the enumeration");
     }
   }
 
@@ -615,13 +715,9 @@ export const checkPowerSetWitness = <A>(
 // ---------- Cantor diagonal ----------
 export interface CantorDiagonalWitness<A> {
   readonly domain: AnySet<A>;
-  readonly diagonal: Set<A>;
-  readonly diagnoses: ReadonlyArray<{
-    element: A;
-    diagonalContains: boolean;
-    imageContains: boolean;
-    image: Set<A>;
-  }>;
+  readonly ambient: SetObj<A>;
+  readonly diagonal: CharacteristicWitness<A>;
+  readonly diagnoses: ReadonlyArray<CantorImageDiagnosis<A>>;
 }
 
 export const cantorDiagonalWitness = <A>(
@@ -632,6 +728,7 @@ export const cantorDiagonalWitness = <A>(
   const evidence = SetLaws.cantorDiagonalEvidence(domainObj, mapping);
   return {
     domain,
+    ambient: domainObj,
     diagonal: evidence.diagonal,
     diagnoses: evidence.diagnoses,
   };
@@ -640,32 +737,50 @@ export const cantorDiagonalWitness = <A>(
 export const checkCantorDiagonal = <A>(
   witness: CantorDiagonalWitness<A>,
 ): OracleReport<{ diagonalSize: number; domainSize: number }> => {
-  const domainObj = ensureSetObj(witness.domain, "checkCantorDiagonal.domain");
+  const ambient = ensureSetObj(witness.ambient, "checkCantorDiagonal.ambient");
   const failures: string[] = [];
 
-  for (const value of witness.diagonal) {
-    if (!domainObj.has(value)) {
+  for (const value of witness.diagonal.subset) {
+    if (!ambient.has(value)) {
       failures.push("Cantor diagonal: diagonal includes an element outside the domain");
       break;
     }
   }
 
-  if (witness.diagnoses.length !== domainObj.size) {
+  if (witness.diagnoses.length !== ambient.size) {
     failures.push("Cantor diagonal: diagnoses must cover every domain element");
   }
 
   witness.diagnoses.forEach(diagnosis => {
-    const { element, diagonalContains, imageContains, image } = diagnosis;
-    if (!domainObj.has(element)) {
+    const { element, diagonalValue, imageValue, imageWitness } = diagnosis;
+    if (!ambient.has(element)) {
       failures.push("Cantor diagonal: diagnosis references an element outside the domain");
     }
-    for (const value of image) {
-      if (!domainObj.has(value)) {
+    for (const value of imageWitness.subset) {
+      if (!ambient.has(value)) {
         failures.push("Cantor diagonal: image includes an element outside the domain");
         break;
       }
     }
-    if (diagonalContains === imageContains) {
+    if (imageWitness.inclusion.cod !== ambient) {
+      failures.push("Cantor diagonal: image inclusion must land in the ambient set");
+    }
+    if (imageWitness.inclusion.dom !== imageWitness.subset) {
+      failures.push("Cantor diagonal: image inclusion domain must match its subset");
+    }
+    if (imageWitness.characteristic.dom !== ambient) {
+      failures.push("Cantor diagonal: image characteristic must classify ambient elements");
+    }
+    if (witness.diagonal.characteristic.dom !== ambient) {
+      failures.push("Cantor diagonal: diagonal characteristic must classify the ambient");
+    }
+    if (witness.diagonal.characteristic.map(element) !== diagonalValue) {
+      failures.push("Cantor diagonal: recorded diagonal value disagrees with the characteristic map");
+    }
+    if (imageWitness.characteristic.map(element) !== imageValue) {
+      failures.push("Cantor diagonal: recorded image value disagrees with the characteristic map");
+    }
+    if (diagonalValue === imageValue) {
       failures.push("Cantor diagonal: diagonal and image agree on a diagonal test point");
     }
   });
@@ -673,7 +788,7 @@ export const checkCantorDiagonal = <A>(
   return {
     holds: failures.length === 0,
     failures,
-    details: { diagonalSize: witness.diagonal.size, domainSize: domainObj.size },
+    details: { diagonalSize: witness.diagonal.subset.size, domainSize: ambient.size },
   };
 };
 
@@ -721,6 +836,82 @@ export const checkCardinalityComparison = <A, B>(
   };
 };
 
+// ---------- Internal logic via CategoryLimits ----------
+export interface SetInternalLogicWitness {
+  readonly classifier: typeof SetSubobjectClassifier;
+}
+
+export const setInternalLogicWitness = (): SetInternalLogicWitness => ({
+  classifier: SetSubobjectClassifier,
+});
+
+export const checkInternalLogicWitness = (
+  witness: SetInternalLogicWitness,
+): OracleReport<{
+  derivedFalse: SetMorphism;
+  derivedNegation: SetMorphism;
+  iso: CategoryLimits.SubobjectClassifierIsoWitness<SetMorphism>;
+}> => {
+  const classifier = witness.classifier;
+  const failures: string[] = [];
+
+  const derivedFalse =
+    CategoryLimits.subobjectClassifierFalseArrow(classifier) as SetMorphism;
+  const publishedFalse = classifier.falseArrow as SetMorphism;
+  if (!equalSetMorphisms(derivedFalse, publishedFalse)) {
+    failures.push(
+      "Set internal logic: derived false arrow does not match the published arrow.",
+    );
+  }
+
+  const derivedNegation =
+    CategoryLimits.subobjectClassifierNegation(classifier, {
+      equalMor: equalSetMorphisms,
+    }) as SetMorphism;
+  const publishedNegation = classifier.negation as SetMorphism;
+  if (!equalSetMorphisms(derivedNegation, publishedNegation)) {
+    failures.push(
+      "Set internal logic: derived negation does not match the published arrow.",
+    );
+  }
+
+  const iso = CategoryLimits.buildSubobjectClassifierIso(classifier, classifier, {
+    equalMor: equalSetMorphisms,
+  });
+
+  const identity = classifier.id(classifier.truthValues) as SetMorphism;
+  const forwardBackward = classifier.compose(
+    iso.forward as SetMorphism,
+    iso.backward as SetMorphism,
+  ) as SetMorphism;
+  const backwardForward = classifier.compose(
+    iso.backward as SetMorphism,
+    iso.forward as SetMorphism,
+  ) as SetMorphism;
+
+  if (!equalSetMorphisms(forwardBackward, identity)) {
+    failures.push(
+      "Set internal logic: forward/backward composite must be the identity on Ω.",
+    );
+  }
+
+  if (!equalSetMorphisms(backwardForward, identity)) {
+    failures.push(
+      "Set internal logic: backward/forward composite must be the identity on Ω.",
+    );
+  }
+
+  return {
+    holds: failures.length === 0,
+    failures,
+    details: {
+      derivedFalse,
+      derivedNegation,
+      iso,
+    },
+  };
+};
+
 const cardinalityOracles = {
   uniqueFromEmpty: {
     witness: uniqueFromEmptyWitness,
@@ -764,4 +955,9 @@ export const SetOracles = {
     witness: cantorDiagonalWitness,
     check: checkCantorDiagonal,
   },
+  internalLogic: {
+    witness: setInternalLogicWitness,
+    check: checkInternalLogicWitness,
+  },
+  naturalNumbers: setNaturalNumbersOracles,
 };

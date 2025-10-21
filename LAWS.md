@@ -1054,8 +1054,8 @@ so failures can be traced to sub-lemmas.
 
 #### Power sets and Cantor diagonals
 
-- **Witness helpers:** `SetLaws.powerSetEvidence(A)` enumerates every subset of `A` with characteristic vectors, and `set.powerSet.witness(A)` lifts the evidence into the oracle registry.
-- **Cantor theorem diagnostics:** `set.cantorDiagonal.witness(A, f)` materialises the diagonal subset given a candidate family of subsets, and `set.cantorDiagonal.check` confirms the diagonal differs from each image while rejecting witnesses that leave the domain.
+- **Witness helpers:** `SetLaws.powerSetEvidence(A)` enumerates every subobject inclusion together with its Ω-valued characteristic map, and `set.powerSet.witness(A)` lifts both the subset carrier and the Ω^A power object into the oracle registry.
+- **Cantor theorem diagnostics:** `set.cantorDiagonal.witness(A, f)` materialises the diagonal characteristic map given a candidate family of Ω-valued subsets, and `set.cantorDiagonal.check` confirms the diagonal differs from each image while rejecting witnesses that leave the domain.
 - **Cardinality comparisons:** `set.compareCardinalities.witness(left, right)` packages finite cardinal arithmetic into an oracle so recorded counts stay in sync with the carriers.
 - **Tests:** `test/set-laws-advanced.spec.ts` exercises the law helpers directly, and `test/set-oracles.spec.ts` covers the oracle-level checks together with failure cases.
 

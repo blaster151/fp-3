@@ -1,5 +1,28 @@
 # Future Enhancements
 
+## Set Big Unlocks
+
+### 1. Topos-level internal logic for `Set`
+- ✅ Completed via the Ω classifier, characteristic combinators, CategoryLimits adapters, and runnable examples recorded in `set-subobject-classifier.ts`, `set-category-limits.ts`, and `examples/runnable/087-set-omega-internal-logic.ts`.
+
+### 2. Robust infinite carriers instead of heuristics
+- **Goal**: Replace the size-based heuristics and bespoke lookup tables that currently decide when to materialise products, coproducts, and exponentials with principled carrier semantics, so infinite constructions admit the same universal-property guarantees as finite ones.
+- **Why it matters**: Lazily defined sets and large universes should compose without surprising cache invalidations or silent truncation; oracles and power objects must be able to witness infinite behaviour directly rather than delegating to hand-coded special cases.
+- **Substeps**:
+  1. **Carrier semantics abstraction** – Introduce a `SetCarrierSemantics` (or similarly named) interface in `set-cat.ts` that captures membership, iteration, and equality for both finite and infinite carriers; migrate existing `LazySet` guards to this interface and ensure all object constructors accept explicit semantics instances instead of inferring strategies from cardinalities.
+  2. **Deterministic (co)limit builders** – Reimplement `SetCat.product`, `SetCat.coproduct`, and related helpers (`set-small-limits.ts`, `set-pullbacks.ts`) so they compute carriers through the new semantics rather than heuristics. This includes explicit iterators for potentially infinite tuples, projections/injections that do not rely on cached arrays, and universal-property witnesses that validate membership lazily but deterministically.
+  3. **Exponential and power-object overhaul** – Refactor `SetCat.exponential`, `SetCat.powerObject`, and Ω-based helpers to build evaluation/currying data from the carrier semantics. Ensure characteristic maps, Heyting operations, and power-object enumerations can stream infinite fibres while still exposing finite snapshots for tests. Update `set-laws.ts` and oracle suites to consume the new representations.
+  4. **Cache and witness stabilisation** – Replace ad-hoc lookup tables with memoisation keyed by semantics-aware hashes so repeated products/exponentials of infinite carriers reuse structure safely. Audit downstream modules (`set-subobject-tools.ts`, `set-small-limits.ts`, `set-category-limits.ts`, runnable examples) to ensure they no longer depend on implicit materialisation orders.
+  5. **Verification and regression coverage** – Extend Vitest suites (e.g., `test/set-lazy-carriers.spec.ts`, `test/set-subobject-classifier.spec.ts`, `law.SetSubobjectTools.spec.ts`) with fixtures covering stream-based and probabilistic carriers. Add oracle checks that compare the new constructions against known infinite witnesses and document the behaviour in `LAWS.md`/`runnable-examples-outline.md` so downstream tooling understands the upgraded semantics.
+
+### 3. Higher-level arithmetic and logic oracles for `Set`
+- **Goal**: Promote the natural-numbers object diagnostics (zero/successor separation, inductive subobjects, primitive recursion, and initial-algebra witnesses) from the FinSet backend into raw `Set`, reusing the Ω classifier so the proofs run over infinite and lazily represented carriers.
+- **Why it matters**: The arithmetic law suite validates Heyting logic against ℕ; extending it to `Set` unlocks reusable witnesses for successor splittings, recursion combinators, and Dedekind-infinite reasoning on arbitrary carriers.
+- **Substeps**:
+  1. **Construct the Set natural-numbers object** – Define a lazily enumerated ℕ carrier, zero arrow, and successor endomorphism in a dedicated module (e.g., `set-natural-numbers-object.ts`). Implement the `CategoryLimits.NaturalNumbersObjectWitness` interface by producing mediators via primitive recursion and validating sequences against the Ω-backed classifier guards.
+  2. **Wire CategoryLimits diagnostics** – Expose `SetNaturalNumbersObject` through the Set limits barrel, then adapt the arithmetic oracles to run with `SetSubobjectClassifier`, ensuring zero/successor separation, inductive subobject checks, primitive recursion, and initial-algebra mediators derive their witnesses from the classifier rather than bespoke finite evidence.
+  3. **Executable coverage** – Extend `set-oracles.ts`, `test/set-oracles.spec.ts`, and the runnable examples catalogue with fixtures that round-trip Set-based arithmetic witnesses, demonstrating that the infinite carrier respects the same logical identities as the FinSet backend.
+
 ## Virtual Equipment Dualisation for V-Cat^co
 - **What could be implemented:** Proposition 8.22 identifies an isomorphism between the virtual double categories V-Cat^co and V^co-Cat. Once the virtual equipment API exposes a programmatic dualisation (on objects, tight morphisms, and loose cells), we can add witnesses/analyzers that replay this equivalence and compare the induced distributors.
 - **Trigger factor:** Implemented support for forming the co equipment (reversing tight 1-cells and proarrows) together with automatic transport of enriched hom/tensor data.
