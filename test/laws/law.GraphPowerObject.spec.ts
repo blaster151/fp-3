@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { makeGraph } from "../../graph";
-import type { Edge } from "../../graph";
+import type { Edge, NodeId } from "../../graph";
 import {
   GraphCategory,
   GraphFalseArrow,
@@ -62,13 +62,13 @@ describe("Graph power objects", () => {
     const projectionToAmbient = product.projections[0]!;
     const projectionToAnchor = product.projections[1]!;
 
-    const includeNode = (node: string): boolean => {
+    const includeNode = (node: NodeId): boolean => {
       const ambientNode = projectionToAmbient.mapNode(node);
       const anchorNode = projectionToAnchor.mapNode(node);
       return ambientNode === "X0" || anchorNode === "Y1";
     };
 
-    const includedNodes = new Set<string>();
+    const includedNodes = new Set<NodeId>();
     for (const node of productGraph.nodes) {
       if (includeNode(node)) {
         includedNodes.add(node);
@@ -188,7 +188,7 @@ describe("Graph power objects", () => {
     const product = graphBinaryProductWithPair(ambient, anchor);
     const swapped = {
       obj: product.obj,
-      projections: [product.projections[1]!, product.projections[0]!],
+      projections: [product.projections[1]!, product.projections[0]!] as const,
       pair: product.pair,
     };
 

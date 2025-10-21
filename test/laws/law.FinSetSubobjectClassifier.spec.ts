@@ -165,12 +165,12 @@ describe('FinSetSubobjectClassifier', () => {
   })
 
   it('validates negation witnesses and falls back to the computed arrow when equality is unavailable', () => {
-    const eqless = {
+    const withoutEqual = {
       ...FinSetSubobjectClassifier,
       equalMor: undefined,
     } as unknown as CategoryLimits.SubobjectClassifierCategory<FinSetObj, FinSetMor>
 
-    const derived = CategoryLimits.subobjectClassifierNegation(eqless)
+    const derived = CategoryLimits.subobjectClassifierNegation(withoutEqual)
     expectEqualArrows(derived, FinSetNegation)
 
     const inconsistent = {

@@ -272,7 +272,7 @@ const buildBinaryProductWitness = (
 
   return {
     obj: product,
-    projections: [projectionLeft, projectionRight],
+    projections: [projectionLeft, projectionRight] as const,
     pair,
   };
 };
@@ -285,43 +285,6 @@ const TERMINAL_EDGE = "loop";
 export const GraphTerminal: DiGraph = makeGraph([TERMINAL_NODE], [{ id: TERMINAL_EDGE, src: TERMINAL_NODE, dst: TERMINAL_NODE }]);
 
 const TERMINAL_EDGE_OBJECT = GraphTerminal.edges[0]!;
-
-export const GraphCategory: Category<DiGraph, GraphHom> &
-  ArrowFamilies.HasDomCod<DiGraph, GraphHom> &
-  CategoryLimits.HasFiniteProducts<DiGraph, GraphHom> &
-  CategoryLimits.HasTerminal<DiGraph, GraphHom> &
-  CategoryLimits.HasInitial<DiGraph, GraphHom> = {
-  id: (graph) =>
-    makeGraphHom({
-      dom: graph,
-      cod: graph,
-      nodeImage: (node) => node,
-      edgeImage: (edge) => edge,
-    }),
-  compose: composeGraphHoms,
-  isId: (mor) => graphHomEquals(mor, GraphCategory.id(mor.dom)),
-  eq: graphHomEquals,
-  dom: (mor) => mor.dom,
-  cod: (mor) => mor.cod,
-  terminalObj: GraphTerminal,
-  initialObj: GraphInitial,
-  product: (objects) => {
-    if (objects.length === 0) {
-      return { obj: GraphTerminal, projections: [] };
-    }
-    if (objects.length === 1) {
-      return { obj: objects[0], projections: [GraphCategory.id(objects[0]!)] };
-    }
-    if (objects.length === 2) {
-      const witness = buildBinaryProductWitness(objects[0]!, objects[1]!);
-      return { obj: witness.obj, projections: witness.projections };
-    }
-    throw new Error("GraphCategory.product: only binary products are supported presently.");
-  },
-  binaryProduct: (left, right) => buildBinaryProductWitness(left, right),
-  terminate: GraphTerminate,
-  initialArrow: GraphInitialArrow,
-};
 
 export const GraphTerminate = (object: DiGraph): GraphHom =>
   makeGraphHom({
@@ -342,6 +305,52 @@ export const GraphInitialArrow = (target: DiGraph): GraphHom =>
       throw new Error("GraphInitialArrow: domain has no edges");
     },
   });
+
+type GraphCategoryType = Category<DiGraph, GraphHom> &
+  ArrowFamilies.HasDomCod<DiGraph, GraphHom> &
+  CategoryLimits.HasFiniteProducts<DiGraph, GraphHom> &
+  CategoryLimits.HasTerminal<DiGraph, GraphHom> &
+  CategoryLimits.HasInitial<DiGraph, GraphHom> & {
+    readonly binaryProduct: (
+      left: DiGraph,
+      right: DiGraph,
+    ) => CategoryLimits.BinaryProductWithPairWitness<DiGraph, GraphHom>;
+    readonly terminate: (object: DiGraph) => GraphHom;
+    readonly initialArrow: (target: DiGraph) => GraphHom;
+  };
+
+export const GraphCategory: GraphCategoryType = {
+  id: (graph) =>
+    makeGraphHom({
+      dom: graph,
+      cod: graph,
+      nodeImage: (node) => node,
+      edgeImage: (edge) => edge,
+    }),
+  compose: composeGraphHoms,
+  isId: (mor) => graphHomEquals(mor, GraphCategory.id(mor.dom)),
+  eq: graphHomEquals,
+  dom: (mor) => mor.dom,
+  cod: (mor) => mor.cod,
+  terminalObj: GraphTerminal,
+  initialObj: GraphInitial,
+  product: (objects) => {
+    if (objects.length === 0) {
+      return { obj: GraphTerminal, projections: [] };
+    }
+    if (objects.length === 1) {
+      return { obj: objects[0]!, projections: [GraphCategory.id(objects[0]!)] };
+    }
+    if (objects.length === 2) {
+      const witness = buildBinaryProductWitness(objects[0]!, objects[1]!);
+      return { obj: witness.obj, projections: witness.projections };
+    }
+    throw new Error("GraphCategory.product: only binary products are supported presently.");
+  },
+  binaryProduct: (left: DiGraph, right: DiGraph) => buildBinaryProductWitness(left, right),
+  terminate: GraphTerminate,
+  initialArrow: GraphInitialArrow,
+};
 
 const ensureSharedCodomain = (f: GraphHom, h: GraphHom): void => {
   if (f.cod !== h.cod) {
@@ -466,11 +475,15 @@ const certifyPullback = (
     const sameApex = candidate.apex === canonical.apex;
     const sameDomain = graphHomEquals(candidate.toDomain, canonical.toDomain);
     const sameAnchor = graphHomEquals(candidate.toAnchor, canonical.toAnchor);
+    const valid = sameApex && sameDomain && sameAnchor;
+    const reason = valid
+      ? "GraphPullback.certify: candidate matches canonical pullback"
+      : "GraphPullback.certify: candidate does not match canonical pullback";
     return {
-      valid: sameApex && sameDomain && sameAnchor,
+      valid,
       conesChecked: [canonical],
       mediators: [],
-      reason: sameApex && sameDomain && sameAnchor ? undefined : "GraphPullback.certify: candidate does not match canonical pullback",
+      reason,
     };
   } catch (error) {
     return {
