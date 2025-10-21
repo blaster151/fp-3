@@ -101,4 +101,8 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 86. **FinSet natural numbers recursion and infinity diagnostics** – Derive addition from the FinSet natural-numbers object via primitive recursion, compare exponential transposes, and certify the Dedekind-infinite successor while separating zero from successor images. (examples/runnable/086-finset-natural-numbers-recursion.ts, src/all/triangulated.ts, stdlib/category-limits.ts)
 
+87. **Set internal logic via Ω and characteristic maps** – Build characteristic maps for finite subsets, evaluate Heyting combinations (∧, ∨, ⇒, ¬), and verify the Set subobject-classifier round-trip on the resulting inclusions. (examples/runnable/087-set-omega-internal-logic.ts)
+
+88. **Set natural numbers oracles** – Evaluate the Set natural-numbers object via zero/successor separation, certify the identity inductive subobject, demonstrate primitive recursion samples, and inspect the canonical 1 + ℕ initial-algebra mediator. (examples/runnable/088-set-natural-numbers-oracles.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.

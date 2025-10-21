@@ -1,38 +1,36 @@
-import type { AnySet } from "./set-cat";
+import type { AnySet, SetHom, SetObj } from "./set-cat";
+
+import { ensureSubsetMonomorphism, SetOmega } from "./set-subobject-classifier";
 
 const EMPTY = new Set<never>();
 
-function cloneToSet<A>(source: AnySet<A>): Set<A> {
-  return source instanceof Set ? new Set(source.values()) : new Set(source);
+function cloneToSet<A>(source: AnySet<A>): SetObj<A> {
+  return source instanceof Set ? (source as SetObj<A>) : (new Set(source) as SetObj<A>);
 }
 
-function enumeratePowerSet<A>(elements: ReadonlyArray<A>): Array<{ subset: Set<A>; characteristic: boolean[] }> {
-  let current: Array<{ subset: Set<A>; characteristic: boolean[] }> = [
-    { subset: new Set<A>(), characteristic: [] },
-  ];
+type CharacteristicWitness<A> = {
+  readonly subset: SetObj<A>;
+  readonly inclusion: SetHom<A, A>;
+  readonly characteristic: SetHom<A, boolean>;
+};
+
+function enumerateSubsetWitnesses<A>(ambient: SetObj<A>): CharacteristicWitness<A>[] {
+  const elements = Array.from(ambient);
+  let current: Array<{ subset: SetObj<A> }> = [{ subset: new Set<A>() }];
 
   elements.forEach(element => {
-    const next: Array<{ subset: Set<A>; characteristic: boolean[] }> = [];
+    const next: Array<{ subset: SetObj<A> }> = [];
     current.forEach(entry => {
-      const withoutElement = {
-        subset: new Set(entry.subset),
-        characteristic: [...entry.characteristic, false],
-      };
-      const withElementSubset = new Set(entry.subset);
+      const withoutElement = { subset: new Set(entry.subset) as SetObj<A> };
+      const withElementSubset = new Set(entry.subset) as SetObj<A>;
       withElementSubset.add(element);
-      const withElement = {
-        subset: withElementSubset,
-        characteristic: [...entry.characteristic, true],
-      };
+      const withElement = { subset: withElementSubset };
       next.push(withoutElement, withElement);
     });
     current = next;
   });
 
-  return current.map(entry => ({
-    subset: entry.subset,
-    characteristic: entry.characteristic,
-  }));
+  return current.map(entry => buildCharacteristicWitness(entry.subset, ambient));
 }
 
 function homCount<X, Y>(domain: AnySet<X>, codomain: AnySet<Y>): number {
@@ -55,51 +53,75 @@ function isSingletonByHoms<S>(
   return universeSamples.every(sample => homCount(sample, candidate) === 1);
 }
 
-type PowerSetEvidence<A> = {
-  readonly carrier: AnySet<AnySet<A>>;
-  readonly subsets: ReadonlyArray<{ subset: Set<A>; characteristic: boolean[] }>;
+export type PowerSetEvidence<A> = {
+  readonly ambient: SetObj<A>;
+  readonly subsetCarrier: SetObj<SetObj<A>>;
+  readonly characteristicCarrier: SetObj<SetHom<A, boolean>>;
+  readonly subsets: ReadonlyArray<CharacteristicWitness<A>>;
 };
 
 function powerSetEvidence<A>(source: AnySet<A>): PowerSetEvidence<A> {
-  const elements = Array.from(source);
-  const subsets = enumeratePowerSet(elements);
-  const carrier = new Set(subsets.map(entry => entry.subset)) as AnySet<AnySet<A>>;
-  return { carrier, subsets };
+  const ambient = cloneToSet(source);
+  const subsets = enumerateSubsetWitnesses(ambient);
+  const subsetCarrier = new Set(subsets.map(({ subset }) => subset)) as SetObj<SetObj<A>>;
+  const characteristicCarrier = new Set(subsets.map(({ characteristic }) => characteristic)) as SetObj<
+    SetHom<A, boolean>
+  >;
+  return { ambient, subsetCarrier, characteristicCarrier, subsets };
+}
+
+export type CantorImageDiagnosis<A> = {
+  readonly element: A;
+  readonly imageWitness: CharacteristicWitness<A>;
+  readonly diagonalValue: boolean;
+  readonly imageValue: boolean;
+};
+
+export type CantorDiagonalEvidence<A> = {
+  readonly diagonal: CharacteristicWitness<A>;
+  readonly diagnoses: ReadonlyArray<CantorImageDiagnosis<A>>;
+};
+
+function buildCharacteristicWitness<A>(
+  subset: SetObj<A>,
+  ambient: SetObj<A>,
+): CharacteristicWitness<A> {
+  const inclusion: SetHom<A, A> = { dom: subset, cod: ambient, map: (value) => value };
+  ensureSubsetMonomorphism(inclusion, "SetLaws.buildCharacteristicWitness");
+  const characteristic: SetHom<A, boolean> = {
+    dom: ambient,
+    cod: SetOmega as SetObj<boolean>,
+    map: (value) => subset.has(value),
+  };
+  return { subset, inclusion, characteristic };
 }
 
 function cantorDiagonalEvidence<A>(
   domain: AnySet<A>,
   mapping: (element: A) => AnySet<A>,
-): {
-  readonly diagonal: Set<A>;
-  readonly diagnoses: ReadonlyArray<{
-    element: A;
-    diagonalContains: boolean;
-    imageContains: boolean;
-    image: Set<A>;
-  }>;
-} {
-  const diagonal = new Set<A>();
-  const diagnoses: Array<{
-    element: A;
-    diagonalContains: boolean;
-    imageContains: boolean;
-    image: Set<A>;
-  }> = [];
+): CantorDiagonalEvidence<A> {
+  const ambient = cloneToSet(domain);
+  const diagonalMembers: A[] = [];
+  const diagnoses: CantorImageDiagnosis<A>[] = [];
 
-  for (const element of domain) {
+  for (const element of ambient) {
     const image = cloneToSet(mapping(element));
-    const contains = image.has(element);
-    if (!contains) {
-      diagonal.add(element);
+    const imageWitness = buildCharacteristicWitness(image, ambient);
+    const imageValue = imageWitness.characteristic.map(element);
+    const diagonalValue = imageValue === false;
+    if (diagonalValue) {
+      diagonalMembers.push(element);
     }
     diagnoses.push({
       element,
-      diagonalContains: !contains,
-      imageContains: contains,
-      image,
+      imageWitness,
+      diagonalValue,
+      imageValue,
     });
   }
+
+  const diagonalSubset = cloneToSet(new Set(diagonalMembers));
+  const diagonal = buildCharacteristicWitness(diagonalSubset, ambient);
 
   return { diagonal, diagnoses };
 }
@@ -138,4 +160,4 @@ export const SetLaws = {
   compareCardinalities,
 };
 
-export type { AnySet, PowerSetEvidence };
+export type { AnySet, CharacteristicWitness };
