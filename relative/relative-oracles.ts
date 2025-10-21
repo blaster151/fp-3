@@ -43,8 +43,11 @@ import {
 import {
   analyzeADTPolynomialRelativeMonad,
   analyzeADTPolynomialRelativeStreet,
+  rollupADTPolynomialRelativeStreet,
   type ADTPolynomialRelativeMonadInput,
   type ADTPolynomialRelativeStreetInput,
+  type ADTPolynomialRelativeStreetReport,
+  type ADTPolynomialRelativeStreetRollup,
 } from "./adt-polynomial-relative";
 import {
   analyzePowersetRelativeMonad,
@@ -102,6 +105,7 @@ export interface RelativeMonadOracleResult {
   readonly registryPath: string;
   readonly details: string;
   readonly issues?: ReadonlyArray<string>;
+  readonly artifacts?: unknown;
 }
 
 const pendingOracle = (law: RelativeMonadLawKey): RelativeMonadOracleResult => {
@@ -262,9 +266,10 @@ export const RelativeMonadOracles = {
     Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
   >(
     input: ADTPolynomialRelativeStreetInput<TypeName, Constructors>,
+    reportOverride?: ADTPolynomialRelativeStreetReport<Constructors>,
   ): RelativeMonadOracleResult => {
     const descriptor = RelativeMonadLawRegistry.polynomialStreetHarness;
-    const report = analyzeADTPolynomialRelativeStreet(input);
+    const report = reportOverride ?? analyzeADTPolynomialRelativeStreet(input);
     const issues: string[] = [];
     for (const issue of report.extensionIssues) {
       issues.push(`Extension scenario ${issue.scenarioId}: ${issue.details}`);
@@ -278,6 +283,32 @@ export const RelativeMonadOracles = {
       registryPath: descriptor.registryPath,
       details: report.details,
       issues,
+      artifacts: {
+        extensionSnapshots: report.extensionSnapshots,
+        kleisliSnapshots: report.kleisliSnapshots,
+      },
+    };
+  },
+  polynomialStreetRollups: <
+    TypeName extends string,
+    Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+  >(
+    input: ADTPolynomialRelativeStreetInput<TypeName, Constructors>,
+    reportOverride?: ADTPolynomialRelativeStreetReport<Constructors>,
+  ): RelativeMonadOracleResult => {
+    const descriptor = RelativeMonadLawRegistry.polynomialStreetRollups;
+    const report = reportOverride ?? analyzeADTPolynomialRelativeStreet(input);
+    const rollup = rollupADTPolynomialRelativeStreet(input, report);
+    return {
+      holds: rollup.holds,
+      pending: rollup.pending,
+      registryPath: descriptor.registryPath,
+      details: rollup.details,
+      issues: rollup.issues,
+      artifacts: {
+        extensions: rollup.extensions,
+        kleisli: rollup.kleisli,
+      },
     };
   },
   powersetRelativeMonad: <Element>(
@@ -440,6 +471,9 @@ export const RelativeMonadOracles = {
       registryPath: descriptor.registryPath,
       details: report.details,
       issues: report.issues,
+      ...(options.polynomialStreetRollup !== undefined && {
+        artifacts: { streetRollups: options.polynomialStreetRollup },
+      }),
     };
   },
   enrichedEilenbergMooreAlgebra: <Obj, Arr, Payload, Evidence>(
@@ -453,13 +487,19 @@ export const RelativeMonadOracles = {
     const algebraWitness =
       options.enrichedEilenbergMooreWitness ??
       describeRelativeEnrichedEilenbergMooreAlgebraWitness(enrichedWitness);
-    const report = analyzeRelativeEnrichedEilenbergMooreAlgebra(algebraWitness);
+    const report = analyzeRelativeEnrichedEilenbergMooreAlgebra(
+      algebraWitness,
+      { streetRollups: options.polynomialStreetRollup },
+    );
     return {
       holds: report.holds,
       pending: report.pending,
       registryPath: descriptor.registryPath,
       details: report.details,
       issues: report.issues,
+      ...(report.streetRollups !== undefined && {
+        artifacts: { streetRollups: report.streetRollups },
+      }),
     };
   },
   enrichedKleisliInclusion: <Obj, Arr, Payload, Evidence>(
@@ -472,13 +512,18 @@ export const RelativeMonadOracles = {
     const inclusionWitness =
       options.enrichedKleisliWitness ??
       describeRelativeEnrichedKleisliInclusionWitness(enrichedWitness);
-    const report = analyzeRelativeEnrichedKleisliInclusion(inclusionWitness);
+    const report = analyzeRelativeEnrichedKleisliInclusion(inclusionWitness, {
+      streetRollups: options.polynomialStreetRollup,
+    });
     return {
       holds: report.holds,
-      pending: false,
+      pending: report.pending,
       registryPath: descriptor.registryPath,
       details: report.details,
       issues: report.issues,
+      ...(report.streetRollups !== undefined && {
+        artifacts: { streetRollups: report.streetRollups },
+      }),
     };
   },
   enrichedVCatSpecification: <Obj, Arr, Payload, Evidence>(
@@ -510,13 +555,18 @@ export const RelativeMonadOracles = {
     const yonedaWitness =
       options.yonedaWitness ??
       describeRelativeEnrichedYonedaWitness(enrichedWitness);
-    const report = analyzeRelativeEnrichedYoneda(yonedaWitness);
+    const report = analyzeRelativeEnrichedYoneda(yonedaWitness, {
+      streetRollups: options.polynomialStreetRollup,
+    });
     return {
       holds: report.holds,
-      pending: false,
+      pending: report.pending,
       registryPath: descriptor.registryPath,
       details: report.details,
       issues: report.issues,
+      ...(report.streetRollups !== undefined && {
+        artifacts: { streetRollups: report.streetRollups },
+      }),
     };
   },
   enrichedYonedaDistributor: <Obj, Arr, Payload, Evidence>(
@@ -532,13 +582,18 @@ export const RelativeMonadOracles = {
     const distributorWitness =
       options.yonedaDistributorWitness ??
       describeRelativeEnrichedYonedaDistributorWitness(yonedaWitness);
-    const report = analyzeRelativeEnrichedYonedaDistributor(distributorWitness);
+    const report = analyzeRelativeEnrichedYonedaDistributor(distributorWitness, {
+      streetRollups: options.polynomialStreetRollup,
+    });
     return {
       holds: report.holds,
-      pending: false,
+      pending: report.pending,
       registryPath: descriptor.registryPath,
       details: report.details,
       issues: report.issues,
+      ...(report.streetRollups !== undefined && {
+        artifacts: { streetRollups: report.streetRollups },
+      }),
     };
   },
   associativityPasting: () => pendingOracle("associativityPasting"),
@@ -590,23 +645,55 @@ export interface RelativeMonadOracleOptions<Obj, Arr, Payload, Evidence> {
     Payload,
     Evidence
   >;
+  readonly polynomialStreetHarness?: ADTPolynomialRelativeStreetInput<
+    string,
+    ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>
+  >;
+  readonly polynomialStreetReport?: ADTPolynomialRelativeStreetReport<
+    ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>
+  >;
+  readonly polynomialStreetRollup?: ADTPolynomialRelativeStreetRollup<
+    ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>
+  >;
 }
 
 export const enumerateRelativeMonadOracles = <Obj, Arr, Payload, Evidence>(
   data: RelativeMonadData<Obj, Arr, Payload, Evidence>,
   options: RelativeMonadOracleOptions<Obj, Arr, Payload, Evidence> = {},
 ): ReadonlyArray<RelativeMonadOracleResult> => {
+  const streetHarness = options.polynomialStreetHarness;
+  let streetReport = options.polynomialStreetReport;
+  if (!streetReport && streetHarness) {
+    streetReport = analyzeADTPolynomialRelativeStreet(streetHarness);
+  }
+
+  let streetRollup = options.polynomialStreetRollup;
+  if (!streetRollup && streetHarness && streetReport) {
+    streetRollup = rollupADTPolynomialRelativeStreet(streetHarness, streetReport);
+  }
+
+  const extendedOptions: RelativeMonadOracleOptions<
+    Obj,
+    Arr,
+    Payload,
+    Evidence
+  > = {
+    ...options,
+    ...(streetReport && { polynomialStreetReport: streetReport }),
+    ...(streetRollup && { polynomialStreetRollup: streetRollup }),
+  };
+
   const results: RelativeMonadOracleResult[] = [
     RelativeMonadOracles.framing(data),
     RelativeMonadOracles.identityReduction(data),
     RelativeMonadOracles.extensionFraming(data),
     RelativeMonadOracles.enrichedCompatibility(data),
-    RelativeMonadOracles.setEnrichedCompatibility(data, options),
-    RelativeMonadOracles.enrichedEilenbergMooreAlgebra(data, options),
-    RelativeMonadOracles.enrichedKleisliInclusion(data, options),
-    RelativeMonadOracles.enrichedVCatSpecification(data, options),
-    RelativeMonadOracles.enrichedYoneda(data, options),
-    RelativeMonadOracles.enrichedYonedaDistributor(data, options),
+    RelativeMonadOracles.setEnrichedCompatibility(data, extendedOptions),
+    RelativeMonadOracles.enrichedEilenbergMooreAlgebra(data, extendedOptions),
+    RelativeMonadOracles.enrichedKleisliInclusion(data, extendedOptions),
+    RelativeMonadOracles.enrichedVCatSpecification(data, extendedOptions),
+    RelativeMonadOracles.enrichedYoneda(data, extendedOptions),
+    RelativeMonadOracles.enrichedYonedaDistributor(data, extendedOptions),
     RelativeMonadOracles.associativityPasting(),
   ];
 
@@ -636,6 +723,15 @@ export const enumerateRelativeMonadOracles = <Obj, Arr, Payload, Evidence>(
 
   if (options.skewMonoidBridgeInput) {
     results.push(RelativeMonadOracles.skewMonoidBridge(options.skewMonoidBridgeInput));
+  }
+
+  if (streetHarness && streetReport) {
+    results.push(
+      RelativeMonadOracles.polynomialStreetHarness(streetHarness, streetReport),
+    );
+    results.push(
+      RelativeMonadOracles.polynomialStreetRollups(streetHarness, streetReport),
+    );
   }
 
   results.push(RelativeMonadOracles.lanExtension());

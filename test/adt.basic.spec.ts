@@ -1090,6 +1090,20 @@ describe('Algebraic Data Type builder', () => {
     expect(report.holds).toBe(true)
     expect(report.extensionIssues).toEqual([])
     expect(report.kleisliIssues).toEqual([])
+    expect(report.extensionSnapshots).toHaveLength(values.length)
+    for (const snapshot of report.extensionSnapshots) {
+      expect(snapshot.scenarioId).toBe('identity')
+      expect(numbers.equals(snapshot.result, snapshot.value)).toBe(true)
+    }
+
+    const extendSecond = numbers.fold(incrementAlgebra)
+    const extendFirst = numbers.fold(addTenAlgebra)
+    expect(report.kleisliSnapshots).toHaveLength(values.length)
+    for (const snapshot of report.kleisliSnapshots) {
+      expect(snapshot.scenarioId).toBe('sequential-binds')
+      expect(numbers.equals(snapshot.intermediate, extendSecond(snapshot.value))).toBe(true)
+      expect(numbers.equals(snapshot.result, extendFirst(snapshot.intermediate))).toBe(true)
+    }
   })
 
   it('flags polynomial Street harness failures', () => {
@@ -1168,6 +1182,8 @@ describe('Algebraic Data Type builder', () => {
     expect(report.holds).toBe(false)
     expect(report.extensionIssues.length).toBeGreaterThan(0)
     expect(report.kleisliIssues.length).toBeGreaterThan(0)
+    expect(report.extensionSnapshots).toEqual([])
+    expect(report.kleisliSnapshots).toEqual([])
   })
 
   it('introspects parameterised schemas and specialisations', () => {

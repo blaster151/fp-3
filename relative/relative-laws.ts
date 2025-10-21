@@ -101,6 +101,12 @@ export const RelativeMonadLawRegistry = {
     summary:
       "Street-style unit and Kleisli composites induced by polynomial ADTs should agree with the supplied bridge scenarios; the analyzer replays extension and sequential binds via the container-derived catamorphisms.",
   },
+  polynomialStreetRollups: {
+    name: "ADT polynomial Street enriched roll-ups",
+    registryPath: "relativeMonad.adt.polynomialStreetRollups",
+    summary:
+      "Persisted Street composites should be reusable for enriched adapters; the analyzer aggregates extension and Kleisli snapshots into comparison-ready roll-ups for downstream witnesses.",
+  },
   powersetRelativeMonad: {
     name: "Powerset relative monad diagnostics",
     registryPath: "relativeMonad.mnne.powerset",

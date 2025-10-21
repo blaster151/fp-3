@@ -423,6 +423,23 @@ export interface ADTPolynomialRelativeStreetKleisliIssue<
   readonly details: string;
 }
 
+export interface ADTPolynomialRelativeStreetExtensionSnapshot<
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+> {
+  readonly scenarioId: string;
+  readonly value: ADTValue<Constructors>;
+  readonly result: ADTValue<Constructors>;
+}
+
+export interface ADTPolynomialRelativeStreetKleisliSnapshot<
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+> {
+  readonly scenarioId: string;
+  readonly value: ADTValue<Constructors>;
+  readonly intermediate: ADTValue<Constructors>;
+  readonly result: ADTValue<Constructors>;
+}
+
 export interface ADTPolynomialRelativeStreetReport<
   Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
 > {
@@ -434,6 +451,12 @@ export interface ADTPolynomialRelativeStreetReport<
     ADTPolynomialRelativeStreetKleisliIssue<Constructors>
   >;
   readonly details: string;
+  readonly extensionSnapshots: ReadonlyArray<
+    ADTPolynomialRelativeStreetExtensionSnapshot<Constructors>
+  >;
+  readonly kleisliSnapshots: ReadonlyArray<
+    ADTPolynomialRelativeStreetKleisliSnapshot<Constructors>
+  >;
 }
 
 export interface ADTPolynomialRelativeStreetInput<
@@ -460,6 +483,9 @@ export const analyzeADTPolynomialRelativeStreet = <
 
   const extensionIssues: Array<
     ADTPolynomialRelativeStreetExtensionIssue<Constructors>
+  > = [];
+  const extensionSnapshots: Array<
+    ADTPolynomialRelativeStreetExtensionSnapshot<Constructors>
   > = [];
 
   for (const scenario of input.extensions ?? []) {
@@ -499,7 +525,12 @@ export const analyzeADTPolynomialRelativeStreet = <
         continue;
       }
 
-      if (!scenario.witness.equals(expected as ADTValue<Constructors>, actual as ADTValue<Constructors>)) {
+      const matches = scenario.witness.equals(
+        expected as ADTValue<Constructors>,
+        actual as ADTValue<Constructors>,
+      );
+
+      if (!matches) {
         extensionIssues.push({
           scenarioId: scenario.id,
           value,
@@ -508,11 +539,27 @@ export const analyzeADTPolynomialRelativeStreet = <
           details: `Extension scenario ${scenario.id} disagreed with the supplied expectation.`,
         });
       }
+
+      if (
+        !actualError &&
+        !expectedError &&
+        actual &&
+        matches
+      ) {
+        extensionSnapshots.push({
+          scenarioId: scenario.id,
+          value,
+          result: actual,
+        });
+      }
     }
   }
 
   const kleisliIssues: Array<
     ADTPolynomialRelativeStreetKleisliIssue<Constructors>
+  > = [];
+  const kleisliSnapshots: Array<
+    ADTPolynomialRelativeStreetKleisliSnapshot<Constructors>
   > = [];
 
   for (const scenario of input.kleisli ?? []) {
@@ -524,9 +571,10 @@ export const analyzeADTPolynomialRelativeStreet = <
       let expected: ADTValue<Constructors> | undefined;
       let actualError: unknown;
       let expectedError: unknown;
+      let intermediate: ADTValue<Constructors> | undefined;
 
       try {
-        const intermediate = extendSecond(value);
+        intermediate = extendSecond(value);
         actual = extendFirst(intermediate);
       } catch (error) {
         actualError = error;
@@ -559,13 +607,33 @@ export const analyzeADTPolynomialRelativeStreet = <
         continue;
       }
 
-      if (!scenario.witness.equals(expected as ADTValue<Constructors>, actual as ADTValue<Constructors>)) {
+      const matches = scenario.witness.equals(
+        expected as ADTValue<Constructors>,
+        actual as ADTValue<Constructors>,
+      );
+
+      if (!matches) {
         kleisliIssues.push({
           scenarioId: scenario.id,
           value,
           expected: expected as ADTValue<Constructors>,
           actual: actual as ADTValue<Constructors>,
           details: `Kleisli scenario ${scenario.id} disagreed with the supplied expectation.`,
+        });
+      }
+
+      if (
+        !actualError &&
+        !expectedError &&
+        actual &&
+        intermediate &&
+        matches
+      ) {
+        kleisliSnapshots.push({
+          scenarioId: scenario.id,
+          value,
+          intermediate,
+          result: actual,
         });
       }
     }
@@ -581,6 +649,400 @@ export const analyzeADTPolynomialRelativeStreet = <
     extensionIssues,
     kleisliIssues,
     details,
+    extensionSnapshots,
+    kleisliSnapshots,
+  };
+};
+
+export interface ADTPolynomialRelativeStreetExtensionRollupSample<
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+> {
+  readonly value: ADTValue<Constructors>;
+  readonly streetResult: ADTValue<Constructors>;
+  readonly replayedResult?: ADTValue<Constructors>;
+  readonly matchesReplayedResult?: boolean;
+  readonly expectedResult?: ADTValue<Constructors>;
+  readonly matchesExpectedResult?: boolean;
+}
+
+export interface ADTPolynomialRelativeStreetExtensionRollup<
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+> {
+  readonly scenarioId: string;
+  readonly samples: ReadonlyArray<
+    ADTPolynomialRelativeStreetExtensionRollupSample<Constructors>
+  >;
+}
+
+export interface ADTPolynomialRelativeStreetKleisliRollupSample<
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+> {
+  readonly value: ADTValue<Constructors>;
+  readonly streetIntermediate: ADTValue<Constructors>;
+  readonly streetResult: ADTValue<Constructors>;
+  readonly replayedIntermediate?: ADTValue<Constructors>;
+  readonly matchesReplayedIntermediate?: boolean;
+  readonly replayedResult?: ADTValue<Constructors>;
+  readonly matchesReplayedResult?: boolean;
+  readonly expectedResult?: ADTValue<Constructors>;
+  readonly matchesExpectedResult?: boolean;
+}
+
+export interface ADTPolynomialRelativeStreetKleisliRollup<
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+> {
+  readonly scenarioId: string;
+  readonly samples: ReadonlyArray<
+    ADTPolynomialRelativeStreetKleisliRollupSample<Constructors>
+  >;
+}
+
+export interface ADTPolynomialRelativeStreetRollup<
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+> {
+  readonly holds: boolean;
+  readonly pending: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly extensions: ReadonlyArray<
+    ADTPolynomialRelativeStreetExtensionRollup<Constructors>
+  >;
+  readonly kleisli: ReadonlyArray<
+    ADTPolynomialRelativeStreetKleisliRollup<Constructors>
+  >;
+}
+
+const groupExtensionSnapshots = <
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+>(
+  snapshots: ReadonlyArray<ADTPolynomialRelativeStreetExtensionSnapshot<Constructors>>,
+) => {
+  const grouped = new Map<
+    string,
+    Array<ADTPolynomialRelativeStreetExtensionSnapshot<Constructors>>
+  >();
+  for (const snapshot of snapshots) {
+    const existing = grouped.get(snapshot.scenarioId);
+    if (existing) {
+      existing.push(snapshot);
+    } else {
+      grouped.set(snapshot.scenarioId, [snapshot]);
+    }
+  }
+  return grouped;
+};
+
+const groupKleisliSnapshots = <
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+>(
+  snapshots: ReadonlyArray<ADTPolynomialRelativeStreetKleisliSnapshot<Constructors>>,
+) => {
+  const grouped = new Map<
+    string,
+    Array<ADTPolynomialRelativeStreetKleisliSnapshot<Constructors>>
+  >();
+  for (const snapshot of snapshots) {
+    const existing = grouped.get(snapshot.scenarioId);
+    if (existing) {
+      existing.push(snapshot);
+    } else {
+      grouped.set(snapshot.scenarioId, [snapshot]);
+    }
+  }
+  return grouped;
+};
+
+export const rollupADTPolynomialRelativeStreet = <
+  TypeName extends string,
+  Constructors extends ReadonlyArray<ADTConstructor<string, readonly ADTField<string, any>[]>>,
+>(
+  input: ADTPolynomialRelativeStreetInput<TypeName, Constructors>,
+  report: ADTPolynomialRelativeStreetReport<Constructors>,
+): ADTPolynomialRelativeStreetRollup<Constructors> => {
+  const { adt } = input;
+  const issues: string[] = [];
+
+  if (!report.holds) {
+    for (const issue of report.extensionIssues) {
+      issues.push(
+        `Street harness extension issue (${issue.scenarioId}): ${issue.details}`,
+      );
+    }
+    for (const issue of report.kleisliIssues) {
+      issues.push(
+        `Street harness Kleisli issue (${issue.scenarioId}): ${issue.details}`,
+      );
+    }
+    if (issues.length === 0) {
+      issues.push(
+        "Street harness reported discrepancies; enriched roll-ups are pending.",
+      );
+    }
+    return {
+      holds: false,
+      pending: true,
+      issues,
+      details: `Street harness issues prevent producing enriched roll-ups: ${issues.join(
+        "; ",
+      )}`,
+      extensions: [],
+      kleisli: [],
+    };
+  }
+
+  const fieldsByConstructor = buildFieldsByConstructor(adt.constructorsList);
+  const extensionGroups = groupExtensionSnapshots(report.extensionSnapshots);
+  const kleisliGroups = groupKleisliSnapshots(report.kleisliSnapshots);
+
+  let pending = false;
+  const extensions: Array<
+    ADTPolynomialRelativeStreetExtensionRollup<Constructors>
+  > = [];
+
+  for (const scenario of input.extensions ?? []) {
+    const extend = replayFoldViaPolynomial(adt, fieldsByConstructor, scenario.algebra);
+    const groupedSnapshots = extensionGroups.get(scenario.id) ?? [];
+
+    if (groupedSnapshots.length !== scenario.samples.length) {
+      pending = true;
+      issues.push(
+        `Extension scenario ${scenario.id} produced ${groupedSnapshots.length} snapshots for ${scenario.samples.length} samples.`,
+      );
+    }
+
+    const samples: Array<
+      ADTPolynomialRelativeStreetExtensionRollupSample<Constructors>
+    > = [];
+
+    for (let index = 0; index < scenario.samples.length; index += 1) {
+      const value = scenario.samples[index];
+      const snapshot = groupedSnapshots[index];
+
+      if (!snapshot) {
+        pending = true;
+        issues.push(
+          `Extension scenario ${scenario.id} missing Street snapshot for sample index ${index}.`,
+        );
+        continue;
+      }
+
+      if (!adt.equals(snapshot.value, value)) {
+        issues.push(
+          `Extension scenario ${scenario.id} Street snapshot value disagrees with the recorded sample at index ${index}.`,
+        );
+      }
+
+      let replayedResult: ADTValue<Constructors> | undefined;
+      let expectedResult: ADTValue<Constructors> | undefined;
+
+      try {
+        replayedResult = extend(value);
+      } catch (error) {
+        pending = true;
+        issues.push(
+          `Extension scenario ${scenario.id} failed to replay the Street composite: ${error instanceof Error ? error.message : String(
+            error,
+          )}.`,
+        );
+      }
+
+      try {
+        expectedResult = scenario.expected(value);
+      } catch (error) {
+        pending = true;
+        issues.push(
+          `Extension scenario ${scenario.id} failed to evaluate the expected composite: ${error instanceof Error ? error.message : String(
+            error,
+          )}.`,
+        );
+      }
+
+      const matchesReplayedResult =
+        replayedResult === undefined
+          ? undefined
+          : adt.equals(replayedResult, snapshot.result);
+      const matchesExpectedResult =
+        expectedResult === undefined
+          ? undefined
+          : scenario.witness.equals(expectedResult, snapshot.result);
+
+      if (matchesReplayedResult === false) {
+        issues.push(
+          `Extension scenario ${scenario.id} Street snapshot diverged from the replayed fold result.`,
+        );
+      }
+
+      if (matchesExpectedResult === false) {
+        issues.push(
+          `Extension scenario ${scenario.id} Street snapshot disagreed with the supplied expectation.`,
+        );
+      }
+
+      samples.push({
+        value,
+        streetResult: snapshot.result,
+        ...(replayedResult !== undefined && { replayedResult }),
+        ...(matchesReplayedResult !== undefined && {
+          matchesReplayedResult,
+        }),
+        ...(expectedResult !== undefined && { expectedResult }),
+        ...(matchesExpectedResult !== undefined && {
+          matchesExpectedResult,
+        }),
+      });
+    }
+
+    extensions.push({
+      scenarioId: scenario.id,
+      samples,
+    });
+  }
+
+  const kleisli: Array<
+    ADTPolynomialRelativeStreetKleisliRollup<Constructors>
+  > = [];
+
+  for (const scenario of input.kleisli ?? []) {
+    const extendFirst = replayFoldViaPolynomial(
+      adt,
+      fieldsByConstructor,
+      scenario.first,
+    );
+    const extendSecond = replayFoldViaPolynomial(
+      adt,
+      fieldsByConstructor,
+      scenario.second,
+    );
+    const groupedSnapshots = kleisliGroups.get(scenario.id) ?? [];
+
+    if (groupedSnapshots.length !== scenario.samples.length) {
+      pending = true;
+      issues.push(
+        `Kleisli scenario ${scenario.id} produced ${groupedSnapshots.length} snapshots for ${scenario.samples.length} samples.`,
+      );
+    }
+
+    const samples: Array<
+      ADTPolynomialRelativeStreetKleisliRollupSample<Constructors>
+    > = [];
+
+    for (let index = 0; index < scenario.samples.length; index += 1) {
+      const value = scenario.samples[index];
+      const snapshot = groupedSnapshots[index];
+
+      if (!snapshot) {
+        pending = true;
+        issues.push(
+          `Kleisli scenario ${scenario.id} missing Street snapshot for sample index ${index}.`,
+        );
+        continue;
+      }
+
+      if (!adt.equals(snapshot.value, value)) {
+        issues.push(
+          `Kleisli scenario ${scenario.id} Street snapshot value disagrees with the recorded sample at index ${index}.`,
+        );
+      }
+
+      let replayedIntermediate: ADTValue<Constructors> | undefined;
+      let replayedResult: ADTValue<Constructors> | undefined;
+      let expectedResult: ADTValue<Constructors> | undefined;
+
+      try {
+        replayedIntermediate = extendSecond(value);
+        replayedResult = extendFirst(replayedIntermediate);
+      } catch (error) {
+        pending = true;
+        issues.push(
+          `Kleisli scenario ${scenario.id} failed to replay the Street composites: ${error instanceof Error ? error.message : String(
+            error,
+          )}.`,
+        );
+      }
+
+      try {
+        expectedResult = scenario.expected({
+          value,
+          extendFirst,
+          extendSecond,
+        });
+      } catch (error) {
+        pending = true;
+        issues.push(
+          `Kleisli scenario ${scenario.id} failed to evaluate the expected composite: ${error instanceof Error ? error.message : String(
+            error,
+          )}.`,
+        );
+      }
+
+      const matchesReplayedIntermediate =
+        replayedIntermediate === undefined
+          ? undefined
+          : adt.equals(replayedIntermediate, snapshot.intermediate);
+      const matchesReplayedResult =
+        replayedResult === undefined
+          ? undefined
+          : adt.equals(replayedResult, snapshot.result);
+      const matchesExpectedResult =
+        expectedResult === undefined
+          ? undefined
+          : scenario.witness.equals(expectedResult, snapshot.result);
+
+      if (matchesReplayedIntermediate === false) {
+        issues.push(
+          `Kleisli scenario ${scenario.id} Street intermediate disagreed with the replayed second extension.`,
+        );
+      }
+
+      if (matchesReplayedResult === false) {
+        issues.push(
+          `Kleisli scenario ${scenario.id} Street result disagreed with the replayed first extension.`,
+        );
+      }
+
+      if (matchesExpectedResult === false) {
+        issues.push(
+          `Kleisli scenario ${scenario.id} Street result disagreed with the supplied expectation.`,
+        );
+      }
+
+      samples.push({
+        value,
+        streetIntermediate: snapshot.intermediate,
+        streetResult: snapshot.result,
+        ...(replayedIntermediate !== undefined && { replayedIntermediate }),
+        ...(matchesReplayedIntermediate !== undefined && {
+          matchesReplayedIntermediate,
+        }),
+        ...(replayedResult !== undefined && { replayedResult }),
+        ...(matchesReplayedResult !== undefined && {
+          matchesReplayedResult,
+        }),
+        ...(expectedResult !== undefined && { expectedResult }),
+        ...(matchesExpectedResult !== undefined && {
+          matchesExpectedResult,
+        }),
+      });
+    }
+
+    kleisli.push({
+      scenarioId: scenario.id,
+      samples,
+    });
+  }
+
+  const holds = issues.length === 0 && !pending;
+  const details = holds
+    ? "Street harness roll-ups reproduce extension and Kleisli composites for enriched adapters."
+    : `Street roll-up evaluation uncovered issues: ${issues.join("; ")}`;
+
+  return {
+    holds,
+    pending,
+    issues,
+    details,
+    extensions,
+    kleisli,
   };
 };
 
