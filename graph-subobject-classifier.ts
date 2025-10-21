@@ -5,19 +5,19 @@ import type {
   CartesianClosedCategory,
   CartesianClosedExponentialWitness,
 } from "./stdlib/category";
-import type { CategoryLimits } from "./stdlib/category-limits";
+import { CategoryLimits } from "./stdlib/category-limits";
 import {
   GraphCategory,
   GraphInitialArrow,
   GraphTerminate,
   GraphTerminal,
   GraphPullbacks,
-  GraphHom,
   makeGraphHom,
   ensureGraphMonomorphism,
   composeGraphHoms,
   graphHomEquals,
 } from "./graph-category";
+import type { GraphHom } from "./graph-category";
 
 const OMEGA_NODE_IN = "in";
 const OMEGA_NODE_OUT = "out";
@@ -709,7 +709,7 @@ export const GraphSubobjectClassifier: CategoryLimits.SubobjectClassifierCategor
   characteristic: graphCharacteristicOfSubgraph,
   subobjectFromCharacteristic: (characteristic) => {
     const result = graphSubobjectFromCharacteristic(characteristic);
-    return { subobject: result.subgraph, inclusion: result.inclusion };
+    return { subobject: result.subgraph, subgraph: result.subgraph, inclusion: result.inclusion };
   },
 };
 
@@ -725,7 +725,7 @@ const GraphClassifierForPowerObject: CategoryLimits.SubobjectClassifierCategory<
   characteristic: graphCharacteristicOfSubgraph,
   subobjectFromCharacteristic: (characteristic) => {
     const result = graphSubobjectFromCharacteristic(characteristic);
-    return { subobject: result.subgraph, inclusion: result.inclusion };
+    return { subobject: result.subgraph, subgraph: result.subgraph, inclusion: result.inclusion };
   },
   binaryProduct: (left, right) => toCartesianProductWitness(left, right),
   exponential: (base, codomain) => {
@@ -749,7 +749,7 @@ export const GraphPowerObject = CategoryLimits.makePowerObjectFromSubobjectClass
   ensureMonomorphism: (arrow, context) => ensureGraphMonomorphism(arrow, context ?? "GraphPowerObject"),
   makeIso: (relation, canonical, context) =>
     buildGraphMonomorphismIso(relation, canonical, context ?? "GraphPowerObject"),
-  equalMor: GraphCategory.eq,
+  equalMor: (left, right) => graphHomEquals(left, right),
 });
 
 export const graphPowerObjectDecodeNode = (
@@ -773,3 +773,11 @@ export const GraphWitnesses = {
   subobjectClassifier: GraphSubobjectClassifier,
   powerObject: GraphPowerObject,
 };
+
+export {
+  GraphCategory,
+  GraphPullbacks,
+  GraphInitialArrow,
+  GraphTerminate,
+  graphHomEquals,
+} from "./graph-category";

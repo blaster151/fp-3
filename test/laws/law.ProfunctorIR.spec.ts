@@ -7,6 +7,7 @@
 
 import { describe, it } from "vitest";
 import * as fc from "fast-check";
+import type { Arbitrary } from "fast-check";
 import { arrProfunctor, dimapProfunctor, runProfunctor } from "../../allTS";
 
 const idNumber = (n: number): number => n;
@@ -21,9 +22,17 @@ const functionPool: ReadonlyArray<(n: number) => number> = [
   (n) => n * n,
 ];
 
+const boundedIntegers = (min: number, max: number): Arbitrary<number> => {
+  const values: number[] = [];
+  for (let value = min; value <= max; value += 1) {
+    values.push(value);
+  }
+  return fc.constantFrom(...values);
+};
+
 describe("LAW: Profunctor (Arrow IR) laws", () => {
-  const genFn = () => fc.constantFrom(...functionPool);
-  const genInput = () => fc.integer({ min: -5, max: 5 });
+  const genFn = (): Arbitrary<(n: number) => number> => fc.constantFrom(...functionPool);
+  const genInput = (): Arbitrary<number> => boundedIntegers(-5, 5);
 
   it("Identity", () => {
     fc.assert(
@@ -42,11 +51,9 @@ describe("LAW: Profunctor (Arrow IR) laws", () => {
         fc.tuple(genFn(), genFn(), genFn(), genFn(), genFn(), genInput()),
         ([base, f, g, h, i, value]) => {
           const prof = arrProfunctor(base);
-
           const lhs = runProfunctor(
             dimapProfunctor(prof, compose(f, g), compose(h, i)),
           )(value);
-
           const rhs = runProfunctor(
             dimapProfunctor(dimapProfunctor(prof, f, i), g, h),
           )(value);

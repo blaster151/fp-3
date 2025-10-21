@@ -8,6 +8,7 @@
 
 import { describe, it } from "vitest";
 import * as fc from "fast-check";
+import type { Arbitrary } from "fast-check";
 import {
   arrProfunctor,
   composeProfunctor,
@@ -44,21 +45,48 @@ const eqPair = (a: Pair, b: Pair): boolean => a[0] === b[0] && a[1] === b[1];
 const eqNested = (a: NestedPair, b: NestedPair): boolean => a[0] === b[0] && eqPair(a[1], b[1]);
 const eqUnitPair = (a: UnitPair, b: UnitPair): boolean => a[0] === b[0] && a[1] === b[1];
 
+const mustMap = <T, U>(arb: Arbitrary<T>, mapper: (value: T) => U): Arbitrary<U> => {
+  const mapFn = arb.map;
+  if (!mapFn) {
+    throw new Error("fast-check Arbitrary.map is not available in this environment");
+  }
+  return mapFn(mapper as (value: unknown) => U) as Arbitrary<U>;
+};
+
+const boundedIntegers = (min: number, max: number): Arbitrary<number> => {
+  const values: number[] = [];
+  for (let value = min; value <= max; value += 1) {
+    values.push(value);
+  }
+  return fc.constantFrom(...values);
+};
+
 describe("LAW: Strong profunctor (Arrow IR) laws", () => {
-  const genFn = () => fc.constantFrom(...functionPool);
-  const genPair = () => fc.tuple(fc.integer({ min: -3, max: 3 }), fc.integer({ min: -3, max: 3 })).map((value) => [value[0], value[1]] as const);
-  const genTriple = () =>
-    fc
-      .tuple(fc.integer({ min: -2, max: 2 }), fc.integer({ min: -2, max: 2 }), fc.integer({ min: -2, max: 2 }))
-      .map((value) => [[value[0], value[1]] as const, value[2]] as const);
+  const genFn = (): Arbitrary<NumFn> => fc.constantFrom(...functionPool);
+  const genPair = (): Arbitrary<Pair> =>
+    mustMap(
+      fc.tuple(boundedIntegers(-3, 3), boundedIntegers(-3, 3)),
+      (value) => [value[0], value[1]] as const,
+    );
+  const genTriple = (): Arbitrary<Triple> =>
+    mustMap(
+      fc.tuple(boundedIntegers(-2, 2), boundedIntegers(-2, 2), boundedIntegers(-2, 2)),
+      (value) => [[value[0], value[1]] as const, value[2]] as const,
+    );
 
   it("Naturality", () => {
     fc.assert(
       fc.property(fc.tuple(genFn(), genFn(), genFn(), genPair()), ([base, pre, post, sample]) => {
         const prof = arrProfunctor(base);
-        const lhs = runProfunctor(firstProfunctor(dimapProfunctor(prof, pre, post)))(sample);
+        const lhs = runProfunctor(
+          firstProfunctor<number, number, number>(dimapProfunctor(prof, pre, post)),
+        )(sample);
         const rhs = runProfunctor(
-          dimapProfunctor(firstProfunctor(prof), liftPre(pre), liftPost(post)),
+          dimapProfunctor(
+            firstProfunctor<number, number, number>(prof),
+            liftPre(pre),
+            liftPost(post),
+          ),
         )(sample);
         return eqPair(lhs, rhs);
       }),
@@ -72,10 +100,18 @@ describe("LAW: Strong profunctor (Arrow IR) laws", () => {
       fc.property(fc.tuple(genFn(), genTriple()), ([base, sample]) => {
         const prof = arrProfunctor(base);
         const lhs = runProfunctor(
-          composeProfunctor(assoc, firstProfunctor(firstProfunctor(prof))),
+          composeProfunctor(
+            firstProfunctor<Pair, Pair, number>(
+              firstProfunctor<number, number, number>(prof),
+            ),
+            assoc,
+          ),
         )(sample);
         const rhs = runProfunctor(
-          composeProfunctor(firstProfunctor(prof), assoc),
+          composeProfunctor(
+            assoc,
+            firstProfunctor<number, number, Pair>(prof),
+          ),
         )(sample);
         return eqNested(lhs, rhs);
       }),
@@ -86,10 +122,13 @@ describe("LAW: Strong profunctor (Arrow IR) laws", () => {
     const unitor = arrProfunctor(introduceUnit);
 
     fc.assert(
-      fc.property(fc.tuple(genFn(), fc.integer({ min: -5, max: 5 })), ([base, sample]) => {
+      fc.property(fc.tuple(genFn(), boundedIntegers(-5, 5)), ([base, sample]) => {
         const prof = arrProfunctor(base);
         const lhs = runProfunctor(
-          composeProfunctor(unitor, firstProfunctor(prof)),
+          composeProfunctor(
+            unitor,
+            firstProfunctor<number, number, undefined>(prof),
+          ),
         )(sample);
         const rhs = runProfunctor(
           composeProfunctor(prof, unitor),

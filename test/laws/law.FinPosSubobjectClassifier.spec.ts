@@ -84,18 +84,25 @@ describe("FinPosSubobjectClassifier", () => {
     const reconstructed = FinPosSubobjectClassifier.subobjectFromCharacteristic(chi)
     expect(reconstructed.inclusion.dom).toBe(downSet.name)
     expect(reconstructed.inclusion.cod).toBe(ambient.name)
-    expect(
-      FinPosSubobjectClassifier.eq(reconstructed.inclusion, inclusion),
-    ).toBe(true)
-    expect(reconstructed.subobject.elems.sort()).toEqual(downSet.elems.sort())
+    const inclusionMatches =
+      FinPosSubobjectClassifier.equalMor?.(
+        reconstructed.inclusion,
+        inclusion,
+      ) ?? FinPosSubobjectClassifier.eq?.(reconstructed.inclusion, inclusion) ?? false
+    expect(inclusionMatches).toBe(true)
+    expect([...reconstructed.subobject.elems].sort()).toEqual(
+      [...downSet.elems].sort(),
+    )
   })
 
   it("derives negation from the false characteristic", () => {
     const negation = FinPosSubobjectClassifier.negation
     const falseCharacteristic = FinPos.characteristic(FinPos.falseArrow())
-    expect(
-      FinPosSubobjectClassifier.eq(negation, falseCharacteristic),
-    ).toBe(true)
+    const negationMatches =
+      FinPosSubobjectClassifier.equalMor?.(negation, falseCharacteristic) ??
+      FinPosSubobjectClassifier.eq?.(negation, falseCharacteristic) ??
+      false
+    expect(negationMatches).toBe(true)
     expect(negation.map("⊤")).toBe("⊤")
     expect(negation.map("⊥")).toBe("⊤")
   })

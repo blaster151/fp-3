@@ -2738,11 +2738,7 @@ const FinSetFalseArrowLazy = makeLazyArrow(() =>
   finsetCharacteristic(FinSet.initialArrow(FinSet.terminalObj)),
 )
 
-export const FinSetFalseArrow: FinSetMor = FinSetFalseArrowLazy
-
 const FinSetNegationLazy = makeLazyArrow(() => finsetCharacteristic(FinSetFalseArrowLazy))
-
-export const FinSetNegation: FinSetMor = FinSetNegationLazy
 
 export const finsetCharacteristicComplement = (characteristic: FinSetMor): FinSetMor => {
   if (characteristic.to !== FinSetTruthValues) {
@@ -2769,7 +2765,7 @@ export const finsetCharacteristicComplement = (characteristic: FinSetMor): FinSe
   return { from: characteristic.from, to: FinSetTruthValues, map }
 }
 
-export const finsetCharacteristicFalsePullback = (characteristic: FinSetMor) => {
+const finsetCharacteristicFalsePullbackLazy = (characteristic: FinSetMor) => {
   const { finsetCharacteristicPullback } = getFinSetPullbackHelpers()
   return finsetCharacteristicPullback(characteristic, FinSetFalseArrowLazy)
 }
@@ -2786,7 +2782,7 @@ export const finsetComplementSubobject = (monomorphism: FinSetMor): FinSetComple
   }
 
   const characteristic = finsetCharacteristic(monomorphism)
-  const falsePullback = finsetCharacteristicFalsePullback(characteristic)
+  const falsePullback = finsetCharacteristicFalsePullbackLazy(characteristic)
   const complement: FinSetSubobjectWitness = {
     subobject: falsePullback.subobject,
     inclusion: falsePullback.inclusion,
@@ -4182,7 +4178,7 @@ export interface FinSetComplementSubobjectWitness {
   readonly falsePullback: FinSetCharacteristicPullbackWitness
 }
 
-export const finsetComplementSubobject = (
+const finsetComplementSubobjectLazy = (
   monomorphism: FinSetMor,
 ): FinSetComplementSubobjectWitness => {
   if (!FinSet.isInjective(monomorphism)) {
@@ -4190,7 +4186,7 @@ export const finsetComplementSubobject = (
   }
 
   const characteristic = finsetCharacteristic(monomorphism)
-  const falsePullback = finsetCharacteristicFalsePullback(characteristic)
+  const falsePullback = finsetCharacteristicFalsePullbackLazy(characteristic)
   const complement: FinSetSubobjectWitness = {
     subobject: falsePullback.subobject,
     inclusion: falsePullback.inclusion,

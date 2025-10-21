@@ -1702,6 +1702,7 @@ export const FinPosSubobjectClassifier: CategoryLimits.SubobjectClassifierCatego
   cod: (arrow) => ensureRegistered(arrow.cod),
   terminalObj: FinPos.one(),
   terminate: (source: FinPosObj) => FinPos.terminate(source),
+  terminal: { obj: FinPos.one(), terminate: (source: FinPosObj) => FinPos.terminate(source) },
   initialObj: FinPos.zero(),
   initialArrow: (target: FinPosObj) => FinPos.initialArrow(target),
   truthValues: FinPos.truthValues(),

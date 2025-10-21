@@ -1,4 +1,5 @@
-import { arr, comp, denot, fanout as arrowFanout, first as arrowFirst, IR, leftArrow as arrowLeft, par as arrowPar, rightArrow as arrowRight, second as arrowSecond } from "./arrow-ir";
+import { arr, comp, denot, fanout as arrowFanout, first as arrowFirst, leftArrow as arrowLeft, par as arrowPar, rightArrow as arrowRight, second as arrowSecond } from "./arrow-ir";
+import type { IR } from "./arrow-ir";
 
 const identity = <T>(value: T): T => value;
 

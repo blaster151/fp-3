@@ -6,8 +6,7 @@
   "include": [
     "allTS.ts",
     "*.ts",
-    "**/*.ts",
-    "test/**/*.d.ts"
+    "**/*.ts"
   ],
   "exclude": [
     "dist",
