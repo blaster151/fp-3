@@ -258,8 +258,71 @@ export const powMat =
 
 export { makeSubcategory, makeFullSubcategory, isFullSubcategory } from "./subcategory"
 export { ProductCat, Pi1, Pi2, Pairing } from "./product-cat"
-export { Dual } from "./dual-cat"
-export { Contra, isContravariant } from "./contravariant"
+export { Dual, isInvolutive, oppositeCategoryWithWitness } from "./dual-cat"
+export {
+  Contra,
+  composeContravariantContravariant,
+  composeCovariantContravariant,
+  constructContravariantFunctorWithWitness,
+  contravariantToOppositeFunctor,
+  type ContravariantCompositionOptions,
+  homSetContravariantFunctorWithWitness,
+  isContravariant,
+  oppositeFunctorToContravariant,
+} from "./contravariant"
+export {
+  checkFunctorAssociativity,
+  checkFunctorLeftIdentity,
+  checkFunctorRightIdentity,
+  compareFunctors,
+  composeFunctors,
+  identityFunctorWithWitness,
+  makeFunctorWitness,
+  constructFunctorWithWitness,
+  type FunctorCheckSamples,
+  type FunctorComposablePair,
+  type FunctorWitness,
+  type FunctorWithWitness,
+  type FunctorComparisonOptions,
+  type FunctorComparisonReport,
+  type FunctorCompositionOptions,
+  type FunctorObjectMismatch,
+  type FunctorArrowMismatch,
+} from "./functor"
+export {
+  PowersetHelpers,
+  powersetFunctorWithWitness,
+  type PowersetFunctorOptions,
+  type PowersetFunctorToolkit,
+  type PowersetObject,
+} from "./functor-powerset"
+export {
+  covariantRepresentableFunctorWithWitness,
+  contravariantRepresentableFunctorWithWitness,
+  createRepresentableHomSetRegistry,
+  yonedaEmbeddingWithWitness,
+  yonedaLemmaWitness,
+  type CovariantRepresentableFunctorToolkit,
+  type ContravariantRepresentableFunctorToolkit,
+  type RepresentableFunctorOptions,
+  type RepresentableHomSetEntry,
+  type RepresentableHomSetRegistry,
+  type YonedaEmbeddingOptions,
+  type YonedaEmbeddingToolkit,
+  type YonedaElementRoundTrip,
+  type YonedaLemmaOptions,
+  type YonedaLemmaReport,
+  type YonedaLemmaWitness,
+  type YonedaTransformationRoundTrip,
+} from "./functor-representable"
+export {
+  enhancedVectSimpleCategory,
+} from "./enhanced-vect-simple-category"
+export {
+  finiteDimensionalDualFunctorWithWitness,
+  dualSimpleCategory,
+  type FiniteDimensionalDualToolkit,
+} from "./functor-dual"
 export {
   makeM2Object,
   makeM2Morphism,

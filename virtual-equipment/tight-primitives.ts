@@ -1,16 +1,16 @@
 import type { SimpleCat } from "../simple-cat";
 import type {
   Functor,
+  FunctorComposablePair,
   FunctorCompositionFailure,
   FunctorCompositionIgnoredPair,
   FunctorEndpointFailure,
   FunctorIdentityFailure,
+  FunctorLawReport as BaseFunctorLawReport,
+  FunctorCheckSamples,
+  FunctorWitness,
 } from "../functor";
-import {
-  checkFunctorComposition,
-  checkFunctorEndpointCompatibility,
-  checkFunctorIdentity,
-} from "../functor";
+import { isFunctor, makeFunctorWitness } from "../functor";
 import type {
   Adjunction,
   CatCompose,
@@ -108,47 +108,24 @@ export type TightCoreAdjunction<
  * A composable pair of arrows used when checking that a functor preserves
  * composition on a finite test suite.
  */
-export interface ComposablePair<Arr> {
-  readonly f: Arr;
-  readonly g: Arr;
-}
+export type ComposablePair<Arr> = FunctorComposablePair<Arr>;
 
 /**
  * Samples used to verify the functor laws against concrete carriers.  The
  * repository typically works with finite presentations, so a finite list of
  * objects and composable arrow pairs is sufficient for executability.
  */
-export interface FunctorCheckSamples<Obj, Arr> {
-  readonly objects: ReadonlyArray<Obj>;
-  readonly composablePairs: ReadonlyArray<ComposablePair<Arr>>;
-  readonly arrows?: ReadonlyArray<Arr>;
-}
-
 /**
  * Structured report describing whether a functor obeyed the identity and
  * composition laws on the supplied samples.  The `details` field records the
  * precise failures so oracles can surface actionable diagnostics.
  */
-export interface FunctorLawReport<
+export type FunctorLawReport<
   SrcObj = unknown,
   SrcArr = unknown,
   TgtObj = unknown,
   TgtArr = unknown,
-> {
-  readonly preservesIdentities: boolean;
-  readonly identityFailures: ReadonlyArray<
-    FunctorIdentityFailure<SrcObj, TgtArr, TgtObj>
-  >;
-  readonly preservesComposition: boolean;
-  readonly compositionFailures: ReadonlyArray<
-    FunctorCompositionFailure<SrcArr, TgtArr, TgtObj>
-  >;
-  readonly ignoredCompositionPairs: ReadonlyArray<FunctorCompositionIgnoredPair<SrcArr>>;
-  readonly respectsSourcesAndTargets: boolean;
-  readonly endpointFailures: ReadonlyArray<FunctorEndpointFailure<SrcArr, TgtObj>>;
-  readonly holds: boolean;
-  readonly details: ReadonlyArray<string>;
-}
+> = BaseFunctorLawReport<SrcObj, SrcArr, TgtObj, TgtArr>;
 
 /**
  * Check that a functor between {@link SimpleCat} instances satisfies the usual
@@ -165,94 +142,14 @@ export const checkFunctorAgainstSimpleCat = <
   functor: Functor<SrcObj, SrcArr, TgtObj, TgtArr>,
   samples: FunctorCheckSamples<SrcObj, SrcArr>,
 ): FunctorLawReport<SrcObj, SrcArr, TgtObj, TgtArr> => {
-  const arrowSet = new Set<SrcArr>();
-  const pushArrow = (arrow: SrcArr | undefined) => {
-    if (arrow !== undefined) {
-      arrowSet.add(arrow);
-    }
-  };
-
-  if (samples.arrows) {
-    for (const arrow of samples.arrows) {
-      pushArrow(arrow);
-    }
-  }
-  for (const pair of samples.composablePairs) {
-    pushArrow(pair.f);
-    pushArrow(pair.g);
-  }
-  if (arrowSet.size === 0) {
-    for (const object of samples.objects) {
-      pushArrow(source.id(object));
-    }
-  }
-
-  const arrowSamples = Array.from(arrowSet);
-
-  const objectSet = new Set<SrcObj>();
-  for (const object of samples.objects) {
-    objectSet.add(object);
-  }
-  for (const arrow of arrowSamples) {
-    objectSet.add(source.src(arrow));
-    objectSet.add(source.dst(arrow));
-  }
-
-  const identitySamples = Array.from(objectSet);
-
-  const identityResult = checkFunctorIdentity(source, target, functor, identitySamples);
-  const compositionResult = checkFunctorComposition(
+  const witness: FunctorWitness<SrcObj, SrcArr, TgtObj, TgtArr> = makeFunctorWitness(
     source,
     target,
     functor,
-    samples.composablePairs,
+    samples,
   );
-  const endpointResult = checkFunctorEndpointCompatibility(
-    source,
-    target,
-    functor,
-    arrowSamples,
-  );
-  const details: string[] = [];
-  const [identityFailure] = identityResult.failures;
-  if (!identityResult.holds && identityFailure) {
-    details.push(
-      `Functor failed to preserve identity at object ${String(
-        identityFailure.object,
-      )}: ${identityFailure.reason}.`,
-    );
-  }
-  const [compositionFailure] = compositionResult.failures;
-  if (!compositionResult.holds && compositionFailure) {
-    details.push(
-      `Functor failed to preserve composition on a sampled pair: ${compositionFailure.reason}.`,
-    );
-  }
-  if (compositionResult.ignoredPairs.length > 0) {
-    const ignored = compositionResult.ignoredPairs[0]!;
-    details.push(
-      compositionResult.ignoredPairs.length === 1
-        ? `Ignored a non-composable sample pair while checking composition: ${ignored.reason}.`
-        : `Ignored ${compositionResult.ignoredPairs.length} non-composable sample pairs while checking composition. First: ${ignored.reason}.`,
-    );
-  }
-  const [endpointFailure] = endpointResult.failures;
-  if (!endpointResult.holds && endpointFailure) {
-    details.push(
-      `Functor mapped a sampled arrow to mismatched endpoints: ${endpointFailure.reason}.`,
-    );
-  }
-  return {
-    preservesIdentities: identityResult.holds,
-    identityFailures: identityResult.failures,
-    preservesComposition: compositionResult.holds,
-    compositionFailures: compositionResult.failures,
-    ignoredCompositionPairs: compositionResult.ignoredPairs,
-    respectsSourcesAndTargets: endpointResult.holds,
-    endpointFailures: endpointResult.failures,
-    holds: identityResult.holds && compositionResult.holds && endpointResult.holds,
-    details,
-  };
+
+  return isFunctor(witness);
 };
 
 /**

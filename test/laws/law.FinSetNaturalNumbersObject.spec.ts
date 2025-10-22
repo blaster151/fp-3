@@ -3,11 +3,21 @@ import { describe, expect, it } from 'vitest'
 import {
   CategoryLimits,
   FinSet,
-  FinSetNaturalNumbersObject,
-  FinSetSubobjectClassifier,
+  FinSetElementaryToposWitness,
   type FinSetMor,
   type FinSetObj,
 } from '../../allTS'
+
+const {
+  naturalNumbersObject: FinSetNaturalNumbersObjectCandidate,
+  subobjectClassifier: FinSetSubobjectClassifier,
+} = FinSetElementaryToposWitness
+
+if (!FinSetNaturalNumbersObjectCandidate) {
+  throw new Error('FinSet elementary topos witness must expose a natural numbers object for law tests.')
+}
+
+const FinSetNaturalNumbersObject = FinSetNaturalNumbersObjectCandidate
 
 const eqFinSetMor = (left: FinSetMor, right: FinSetMor): boolean => {
   const verdict = FinSet.equalMor?.(left, right)
@@ -413,34 +423,26 @@ describe('FinSetNaturalNumbersObject', () => {
     expect(verdict.reason).toMatch(/commute/i)
   })
 
-  it('constructs addition via primitive recursion', () => {
-    const parameter = FinSetNaturalNumbersObject.carrier
-    const target = FinSetNaturalNumbersObject.carrier
-    const base = FinSet.id(parameter)
-    const product = FinSet.binaryProduct(target, parameter)
-    const step = FinSet.compose(FinSetNaturalNumbersObject.successor, product.proj1)
+  it('constructs addition via the helper', () => {
+    const addition = FinSetNaturalNumbersObject.addition({ label: 'addition' })
 
-    const recursion = FinSetNaturalNumbersObject.primitiveRecursion({
-      parameter,
-      target,
-      base,
-      step,
-      label: 'addition',
-    })
+    expect(addition.holds).toBe(true)
+    expect(addition.details).toMatch(/addition arrow/i)
+    expect(addition.primitive.details).toMatch(/primitive recursion/i)
+    expectEqualArrows(addition.primitive.compatibility.baseComposite, addition.base)
+    expectEqualArrows(
+      addition.primitive.compatibility.stepLeft,
+      addition.primitive.compatibility.stepRight,
+    )
 
-    expect(recursion.holds).toBe(true)
-    expect(recursion.details).toMatch(/primitive recursion/i)
-    expectEqualArrows(recursion.compatibility.baseComposite, base)
-    expectEqualArrows(recursion.compatibility.stepLeft, recursion.compatibility.stepRight)
-
-    const expected = product.obj.elements.map((tuple) => {
+    const expected = addition.product.obj.elements.map((tuple) => {
       const coordinates = tuple as ReadonlyArray<number>
       const left = coordinates[0] ?? 0
       const right = coordinates[1] ?? 0
       return iterateSuccessor(right, left)
     })
 
-    expect(recursion.mediator.map).toEqual(expected)
+    expect(addition.addition.map).toEqual(expected)
   })
 
   it('derives primitive recursion from exponential transposes', () => {
@@ -495,11 +497,7 @@ describe('FinSetNaturalNumbersObject', () => {
     const parameter = FinSetNaturalNumbersObject.carrier
     const target = FinSetNaturalNumbersObject.carrier
     const product = FinSet.binaryProduct(target, parameter)
-    const addition = FinSetNaturalNumbersObject.primitiveRecursion({
-      parameter,
-      target,
-      base: FinSet.id(parameter),
-      step: FinSet.compose(FinSetNaturalNumbersObject.successor, product.proj1),
+    const addition = FinSetNaturalNumbersObject.addition({
       label: 'addition for multiplication',
     })
 
@@ -513,7 +511,7 @@ describe('FinSetNaturalNumbersObject', () => {
       parameter,
       target,
       base,
-      step: addition.mediator,
+      step: addition.addition,
       label: 'multiplication',
     })
 
@@ -540,24 +538,17 @@ describe('FinSetNaturalNumbersObject', () => {
   })
 
   it('reports diagnostics when equality witnesses reject recursion compatibility', () => {
-    const parameter = FinSetNaturalNumbersObject.carrier
-    const target = FinSetNaturalNumbersObject.carrier
-    const base = FinSet.id(parameter)
-    const product = FinSet.binaryProduct(target, parameter)
-    const step = FinSet.compose(FinSetNaturalNumbersObject.successor, product.proj1)
-
-    const verdict = FinSetNaturalNumbersObject.primitiveRecursion({
-      parameter,
-      target,
-      base,
-      step,
+    const verdict = FinSetNaturalNumbersObject.addition({
       equalMor: () => false,
       label: 'addition diagnostics',
     })
 
     expect(verdict.holds).toBe(false)
     expect(verdict.reason).toMatch(/base/i)
-    expect(verdict.details).toMatch(/do not hold/i)
-    expectEqualArrows(verdict.compatibility.stepLeft, verdict.compatibility.stepRight)
+    expect(verdict.primitive.details).toMatch(/do not hold/i)
+    expectEqualArrows(
+      verdict.primitive.compatibility.stepLeft,
+      verdict.primitive.compatibility.stepRight,
+    )
   })
 })

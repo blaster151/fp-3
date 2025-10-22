@@ -8,6 +8,12 @@ import {
 import type { BinaryProductTuple } from "./category-limits-helpers";
 import type { FinSetCategory, FinSetName, FuncArr } from "./models/finset-cat";
 import type { PullbackCalculator } from "./pullback";
+import type {
+  Functor,
+  FunctorCheckSamples,
+  FunctorWithWitness,
+} from "./functor";
+import { constructFunctorWithWitness } from "./functor";
 
 export interface SliceObject<Obj, Arr> {
   readonly domain: Obj;
@@ -29,6 +35,36 @@ export interface CosliceArrow<Obj, Arr> {
   readonly src: CosliceObject<Obj, Arr>;
   readonly dst: CosliceObject<Obj, Arr>;
   readonly mediating: Arr;
+}
+
+export interface ConstantSliceFunctorResult<Obj, Arr>
+  extends FunctorWithWitness<Obj, Arr, SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>> {
+  readonly anchor: Obj;
+}
+
+export interface ConstantCosliceFunctorResult<Obj, Arr>
+  extends FunctorWithWitness<Obj, Arr, CosliceObject<Obj, Arr>, CosliceArrow<Obj, Arr>> {
+  readonly anchor: Obj;
+}
+
+export interface SliceForgetfulFunctorResult<Obj, Arr>
+  extends FunctorWithWitness<
+    SliceObject<Obj, Arr>,
+    SliceArrow<Obj, Arr>,
+    Obj,
+    Arr
+  > {
+  readonly anchor: Obj;
+}
+
+export interface CosliceForgetfulFunctorResult<Obj, Arr>
+  extends FunctorWithWitness<
+    CosliceObject<Obj, Arr>,
+    CosliceArrow<Obj, Arr>,
+    Obj,
+    Arr
+  > {
+  readonly anchor: Obj;
 }
 
 export interface SlicePostcomposeFunctor<Obj, Arr> {
@@ -333,6 +369,78 @@ export function makePostcomposeOnSlice<Obj, Arr>(
   return { F0, F1 };
 }
 
+export const constantSliceFunctorWithWitness = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  anchor: Obj,
+  slice: SliceCategory<Obj, Arr>,
+  samples: FunctorCheckSamples<Obj, Arr> = {},
+): ConstantSliceFunctorResult<Obj, Arr> => {
+  const terminal = makeTerminalSliceObject(base, anchor);
+  const constantObject =
+    slice.objects.find((object) => sliceObjectsEqual(base, object, terminal)) ?? terminal;
+  const constantArrow = slice.id(constantObject);
+  const functor: Functor<Obj, Arr, SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>> = {
+    F0: () => constantObject,
+    F1: () => constantArrow,
+  };
+  const metadata = [
+    `Δ_${String(anchor)} collapses each morphism to id_${String(anchor)} in C/${String(anchor)}.`,
+  ];
+  const result = constructFunctorWithWitness(base, slice, functor, samples, metadata);
+  return { ...result, anchor };
+};
+
+export const constantCosliceFunctorWithWitness = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  anchor: Obj,
+  coslice: CosliceCategory<Obj, Arr>,
+  samples: FunctorCheckSamples<Obj, Arr> = {},
+): ConstantCosliceFunctorResult<Obj, Arr> => {
+  const initial = makeInitialCosliceObject(base, anchor);
+  const constantObject =
+    coslice.objects.find((object) => cosliceObjectsEqual(base, object, initial)) ?? initial;
+  const constantArrow = coslice.id(constantObject);
+  const functor: Functor<Obj, Arr, CosliceObject<Obj, Arr>, CosliceArrow<Obj, Arr>> = {
+    F0: () => constantObject,
+    F1: () => constantArrow,
+  };
+  const metadata = [
+    `Δ^${String(anchor)} collapses each morphism to id_${String(anchor)} in ${String(anchor)}\\C.`,
+  ];
+  const result = constructFunctorWithWitness(base, coslice, functor, samples, metadata);
+  return { ...result, anchor };
+};
+
+export const sliceForgetfulFunctorWithWitness = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  slice: SliceCategory<Obj, Arr>,
+  anchor: Obj,
+  samples: FunctorCheckSamples<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>> = {},
+): SliceForgetfulFunctorResult<Obj, Arr> => {
+  const functor: Functor<SliceObject<Obj, Arr>, SliceArrow<Obj, Arr>, Obj, Arr> = {
+    F0: (object) => object.domain,
+    F1: (arrow) => arrow.mediating,
+  };
+  const metadata = [`Forgets the arrow-to-anchor structure in C/${String(anchor)}.`];
+  const result = constructFunctorWithWitness(slice, base, functor, samples, metadata);
+  return { ...result, anchor };
+};
+
+export const cosliceForgetfulFunctorWithWitness = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  coslice: CosliceCategory<Obj, Arr>,
+  anchor: Obj,
+  samples: FunctorCheckSamples<CosliceObject<Obj, Arr>, CosliceArrow<Obj, Arr>> = {},
+): CosliceForgetfulFunctorResult<Obj, Arr> => {
+  const functor: Functor<CosliceObject<Obj, Arr>, CosliceArrow<Obj, Arr>, Obj, Arr> = {
+    F0: (object) => object.codomain,
+    F1: (arrow) => arrow.mediating,
+  };
+  const metadata = [`Forgets the arrow-from-anchor structure in ${String(anchor)}\\C.`];
+  const result = constructFunctorWithWitness(coslice, base, functor, samples, metadata);
+  return { ...result, anchor };
+};
+
 const encodePair = (left: string, right: string) => JSON.stringify([left, right]);
 
 const decodePair = (value: string): readonly [string, string] => {
@@ -352,6 +460,12 @@ const sliceObjectsEqual = <Obj, Arr>(
   left: SliceObject<Obj, Arr>,
   right: SliceObject<Obj, Arr>,
 ) => left.domain === right.domain && base.eq(left.arrowToAnchor, right.arrowToAnchor);
+
+const cosliceObjectsEqual = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  left: CosliceObject<Obj, Arr>,
+  right: CosliceObject<Obj, Arr>,
+) => left.codomain === right.codomain && base.eq(left.arrowFromAnchor, right.arrowFromAnchor);
 
 const ensureSliceObjectLandsInAnchor = <Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
@@ -403,6 +517,14 @@ const makeTerminalSliceObject = <Obj, Arr>(
 ): SliceObject<Obj, Arr> => ({
   domain: anchor,
   arrowToAnchor: base.id(anchor),
+});
+
+const makeInitialCosliceObject = <Obj, Arr>(
+  base: FiniteCategory<Obj, Arr>,
+  anchor: Obj,
+): CosliceObject<Obj, Arr> => ({
+  codomain: anchor,
+  arrowFromAnchor: base.id(anchor),
 });
 
 const isTerminalSliceObject = <Obj, Arr>(
