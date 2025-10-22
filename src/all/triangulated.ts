@@ -4504,6 +4504,37 @@ const createFinSetNaturalNumbersObject = () => {
         ...(input.label !== undefined ? { label: input.label } : {}),
       })
     },
+    addition: (options?: {
+      readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+      readonly label?: string
+    }): CategoryLimits.NaturalNumbersAdditionResult<FinSetObj, FinSetMor> =>
+      CategoryLimits.naturalNumbersAddition({
+        category: FinSet,
+        natural: witness,
+        cartesianClosed: FinSetCCC,
+        equalMor: options?.equalMor ?? finsetNaturalNumbersEqualMor,
+        ...(options?.label !== undefined ? { label: options.label } : {}),
+      }),
+    integerCompletion: (options?: {
+      readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+      readonly label?: string
+    }): CategoryLimits.IntegerCompletionResult<FinSetObj, FinSetMor> => {
+      const addition = witness.addition({
+        equalMor: options?.equalMor ?? finsetNaturalNumbersEqualMor,
+        ...(options?.label !== undefined ? { label: options.label } : {}),
+      })
+
+      return CategoryLimits.integerCompletion({
+        category: FinSet,
+        natural: witness,
+        addition,
+        products: FinSetProductsWithTuple,
+        equalizers: FinSet,
+        coequalizers: FinSet,
+        equalMor: options?.equalMor ?? finsetNaturalNumbersEqualMor,
+        ...(options?.label !== undefined ? { label: options.label } : {}),
+      })
+    },
     primitiveRecursion: (input: {
       readonly parameter: FinSetObj
       readonly target: FinSetObj
@@ -4638,11 +4669,19 @@ const createFinSetNaturalNumbersObject = () => {
       readonly certifyInductiveSubobjectIsomorphism: (input: {
         readonly inclusion: FinSetMor
         readonly zeroLift: FinSetMor
-        readonly successorLift: FinSetMor
+      readonly successorLift: FinSetMor
+      readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+      readonly ensureMonomorphism?: (arrow: FinSetMor) => void
+      readonly label?: string
+    }) => CategoryLimits.NaturalNumbersInductionIsomorphismResult<FinSetMor>
+      readonly addition: (options?: {
         readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
-        readonly ensureMonomorphism?: (arrow: FinSetMor) => void
         readonly label?: string
-      }) => CategoryLimits.NaturalNumbersInductionIsomorphismResult<FinSetMor>
+      }) => CategoryLimits.NaturalNumbersAdditionResult<FinSetObj, FinSetMor>
+      readonly integerCompletion: (options?: {
+        readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean
+        readonly label?: string
+      }) => CategoryLimits.IntegerCompletionResult<FinSetObj, FinSetMor>
       readonly primitiveRecursion: (input: {
         readonly parameter: FinSetObj
         readonly target: FinSetObj
@@ -4679,6 +4718,24 @@ const createFinSetNaturalNumbersObject = () => {
 }
 
 export const FinSetNaturalNumbersObject = createFinSetNaturalNumbersObject()
+
+export const FinSetElementaryToposWitness: CategoryLimits.ElementaryToposWitness<
+  FinSetObj,
+  FinSetMor
+> = {
+  category: FinSet,
+  finiteLimits: FinSet,
+  exponentials: FinSetCCC,
+  subobjectClassifier: FinSetSubobjectClassifier,
+  naturalNumbersObject: FinSetNaturalNumbersObject,
+  metadata: {
+    label: 'FinSet elementary topos',
+    notes: [
+      'Finite limits via cartesian products, equalizers, and the terminal object exposed on FinSet.',
+      `Natural numbers object truncated at ${FINSET_NATURAL_NUMBERS_BOUND} for executable diagnostics.`,
+    ],
+  },
+}
 
 export type FinSetMonicObject = MonicObject<FinSetObj, FinSetMor>
 export type FinSetMonicMorphism = MonicMorphism<FinSetObj, FinSetMor>

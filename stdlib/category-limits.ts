@@ -32,7 +32,21 @@ import {
 } from "../category-limits-helpers"
 import { ArrowFamilies } from "./arrow-families"
 import { IndexedFamilies } from "./indexed-families"
-import type { CartesianClosedCategory, Category } from "./category"
+import type {
+  CartesianClosedCategory,
+  CartesianClosedExponentialWitness,
+  Category,
+} from "./category"
+import type { SimpleCat } from "../simple-cat"
+import type {
+  Functor,
+  FunctorCheckSamples,
+  FunctorComposablePair,
+  FunctorWithWitness,
+} from "../functor"
+import { constructFunctorWithWitness, identityFunctorWithWitness } from "../functor"
+import type { NaturalTransformationWithWitness } from "../natural-transformation"
+import { constructNaturalTransformationWithWitness } from "../natural-transformation"
 
 export namespace CategoryLimits {
   export interface HasSmallProducts<O, M> {
@@ -152,6 +166,828 @@ export namespace CategoryLimits {
     readonly pair: (domain: O, left: M, right: M) => M
   }
 
+  export interface ProductWithObjectFunctorInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly products: HasProductMediators<O, M>
+    readonly parameter: O
+    readonly samples?: FunctorCheckSamples<O, M>
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly label?: string
+  }
+
+  export interface ProductWithObjectFunctorProjectionWitness<M> {
+    readonly projection: 0 | 1
+    readonly expected: M
+    readonly actual: M
+    readonly holds: boolean
+  }
+
+  export interface ProductWithObjectFunctorArrowDiagnostics<O, M> {
+    readonly arrow: M
+    readonly source: O
+    readonly target: O
+    readonly image: M
+    readonly triangles: readonly [
+      ProductWithObjectFunctorProjectionWitness<M>,
+      ProductWithObjectFunctorProjectionWitness<M>,
+    ]
+    readonly holds: boolean
+  }
+
+  export interface ProductWithObjectFunctorIdentityDiagnostics<O, M> {
+    readonly object: O
+    readonly diagnostic: ProductWithObjectFunctorArrowDiagnostics<O, M>
+  }
+
+  export interface ProductWithObjectFunctorSequentialAgreement<M> {
+    readonly expected: M
+    readonly actual: M
+    readonly holds: boolean
+  }
+
+  export interface ProductWithObjectFunctorCompositionDiagnostics<O, M> {
+    readonly pair: FunctorComposablePair<M>
+    readonly composite: ProductWithObjectFunctorArrowDiagnostics<O, M>
+    readonly sequential: {
+      readonly image: M
+      readonly arrowAgreement: ProductWithObjectFunctorSequentialAgreement<M>
+      readonly projections: readonly [
+        ProductWithObjectFunctorSequentialAgreement<M>,
+        ProductWithObjectFunctorSequentialAgreement<M>,
+      ]
+      readonly holds: boolean
+    }
+  }
+
+  export interface ProductWithObjectFunctorDiagnostics<O, M> {
+    readonly parameter: O
+    readonly arrows: ReadonlyArray<ProductWithObjectFunctorArrowDiagnostics<O, M>>
+    readonly identities: ReadonlyArray<ProductWithObjectFunctorIdentityDiagnostics<O, M>>
+    readonly compositions: ReadonlyArray<ProductWithObjectFunctorCompositionDiagnostics<O, M>>
+    readonly holds: boolean
+    readonly details: string
+    readonly reason?: string
+  }
+
+  export interface ProductWithObjectFunctorResult<O, M> {
+    readonly functor: FunctorWithWitness<O, M, O, M>
+    readonly product: (object: O) => BinaryProductWithPairWitness<O, M>
+    readonly diagnostics: ProductWithObjectFunctorDiagnostics<O, M>
+  }
+
+  export interface TensorProductStructure<O, M> {
+    readonly onObjects: (left: O, right: O) => O
+    readonly onMorphisms: (left: M, right: M) => M
+  }
+
+  export interface TensorWithObjectFunctorInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly tensor: TensorProductStructure<O, M>
+    readonly parameter: O
+    readonly samples?: FunctorCheckSamples<O, M>
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly label?: string
+  }
+
+  export interface TensorWithObjectArrowDiagnostics<O, M> {
+    readonly arrow: M
+    readonly source: O
+    readonly target: O
+    readonly image: M
+    readonly expectedSource: O
+    readonly expectedTarget: O
+    readonly domainMatches: boolean
+    readonly codomainMatches: boolean
+  }
+
+  export interface TensorWithObjectIdentityDiagnostics<O, M> {
+    readonly object: O
+    readonly identity: M
+    readonly image: M
+    readonly expected: M
+    readonly holds: boolean
+  }
+
+  export interface TensorWithObjectCompositionDiagnostics<O, M> {
+    readonly pair: FunctorComposablePair<M>
+    readonly composite: M
+    readonly sequential: M
+    readonly holds: boolean
+  }
+
+  export interface TensorWithObjectFunctorDiagnostics<O, M> {
+    readonly parameter: O
+    readonly arrows: ReadonlyArray<TensorWithObjectArrowDiagnostics<O, M>>
+    readonly identities: ReadonlyArray<TensorWithObjectIdentityDiagnostics<O, M>>
+    readonly compositions: ReadonlyArray<TensorWithObjectCompositionDiagnostics<O, M>>
+    readonly holds: boolean
+    readonly details: string
+    readonly reason?: string
+  }
+
+  export interface TensorWithObjectFunctorResult<O, M> {
+    readonly functor: FunctorWithWitness<O, M, O, M>
+    readonly diagnostics: TensorWithObjectFunctorDiagnostics<O, M>
+  }
+
+  const defaultProductSamples = <O, M>(
+    category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
+    parameter: O,
+  ): FunctorCheckSamples<O, M> => {
+    const identity = category.id(parameter)
+    return {
+      objects: [parameter],
+      arrows: [identity],
+      composablePairs: [{ f: identity, g: identity }],
+    }
+  }
+
+  const describeProjection = (projection: 0 | 1): string => (projection === 0 ? "π₁" : "π₂")
+
+  export const productWithObjectFunctor = <O, M>({
+    category,
+    products,
+    parameter,
+    samples = defaultProductSamples(category, parameter),
+    equalMor,
+    label,
+  }: ProductWithObjectFunctorInput<O, M>): ProductWithObjectFunctorResult<O, M> => {
+    const eq =
+      equalMor ??
+      category.equalMor ??
+      category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    const labelPrefix = label
+      ? `CategoryLimits.productWithObjectFunctor(${label})`
+      : "CategoryLimits.productWithObjectFunctor"
+
+    const productCache = new Map<O, BinaryProductWithPairWitness<O, M>>()
+    const getProduct = (object: O): BinaryProductWithPairWitness<O, M> => {
+      const cached = productCache.get(object)
+      if (cached) {
+        return cached
+      }
+      const { obj, projections } = products.product([object, parameter])
+      if (projections.length !== 2) {
+        throw new Error(
+          "CategoryLimits.productWithObjectFunctor: binary product must supply exactly two projections.",
+        )
+      }
+      const witness: BinaryProductWithPairWitness<O, M> = {
+        obj,
+        projections: [projections[0]!, projections[1]!] as const,
+        pair: (domain: O, leftArrow: M, rightArrow: M) =>
+          products.tuple(domain, [leftArrow, rightArrow], obj),
+      }
+      productCache.set(object, witness)
+      return witness
+    }
+
+    const simpleCategory: SimpleCat<O, M> = {
+      id: (object) => category.id(object),
+      compose: (g, f) => category.compose(g, f),
+      src: (arrow) => category.dom(arrow),
+      dst: (arrow) => category.cod(arrow),
+    }
+
+    const functorData: Functor<O, M, O, M> = {
+      F0: (object) => getProduct(object).obj,
+      F1: (arrow) => {
+        const sourceProduct = getProduct(category.dom(arrow))
+        const targetProduct = getProduct(category.cod(arrow))
+        const leftLeg = category.compose(arrow, sourceProduct.projections[0])
+        const rightLeg = sourceProduct.projections[1]
+        return targetProduct.pair(sourceProduct.obj, leftLeg, rightLeg)
+      },
+    }
+
+    const metadata = [
+      `${labelPrefix}: object component pairs each input with the fixed parameter.`,
+      `${labelPrefix}: arrow component enforces π₁ and π₂ projection equations.`,
+    ]
+
+    const functor = constructFunctorWithWitness(
+      simpleCategory,
+      simpleCategory,
+      functorData,
+      samples,
+      metadata,
+    )
+
+    const checkArrow = (arrow: M): ProductWithObjectFunctorArrowDiagnostics<O, M> => {
+      const source = category.dom(arrow)
+      const target = category.cod(arrow)
+      const sourceProduct = getProduct(source)
+      const targetProduct = getProduct(target)
+      const image = functor.functor.F1(arrow)
+
+      const leftExpected = category.compose(arrow, sourceProduct.projections[0])
+      const leftActual = category.compose(targetProduct.projections[0], image)
+      const rightExpected = sourceProduct.projections[1]
+      const rightActual = category.compose(targetProduct.projections[1], image)
+
+      const leftTriangle: ProductWithObjectFunctorProjectionWitness<M> = {
+        projection: 0,
+        expected: leftExpected,
+        actual: leftActual,
+        holds: eq(leftActual, leftExpected),
+      }
+      const rightTriangle: ProductWithObjectFunctorProjectionWitness<M> = {
+        projection: 1,
+        expected: rightExpected,
+        actual: rightActual,
+        holds: eq(rightActual, rightExpected),
+      }
+
+      return {
+        arrow,
+        source,
+        target,
+        image,
+        triangles: [leftTriangle, rightTriangle],
+        holds: leftTriangle.holds && rightTriangle.holds,
+      }
+    }
+
+    const arrowDiagnostics = (samples.arrows ?? []).map(checkArrow)
+
+    const identityDiagnostics = (samples.objects ?? []).map((object) => ({
+      object,
+      diagnostic: checkArrow(category.id(object)),
+    }))
+
+    const compositionDiagnostics = (samples.composablePairs ?? []).map((pair) => {
+      const composite = category.compose(pair.g, pair.f)
+      const compositeDiagnostic = checkArrow(composite)
+      const sequentialImage = category.compose(
+        functor.functor.F1(pair.g),
+        functor.functor.F1(pair.f),
+      )
+      const targetProduct = getProduct(category.cod(pair.g))
+      const leftSequential = category.compose(targetProduct.projections[0], sequentialImage)
+      const rightSequential = category.compose(targetProduct.projections[1], sequentialImage)
+
+      const [leftTriangle, rightTriangle] = compositeDiagnostic.triangles
+
+      const leftAgreement: ProductWithObjectFunctorSequentialAgreement<M> = {
+        expected: leftTriangle.expected,
+        actual: leftSequential,
+        holds: eq(leftSequential, leftTriangle.expected),
+      }
+      const rightAgreement: ProductWithObjectFunctorSequentialAgreement<M> = {
+        expected: rightTriangle.expected,
+        actual: rightSequential,
+        holds: eq(rightSequential, rightTriangle.expected),
+      }
+      const arrowAgreement: ProductWithObjectFunctorSequentialAgreement<M> = {
+        expected: compositeDiagnostic.image,
+        actual: sequentialImage,
+        holds: eq(sequentialImage, compositeDiagnostic.image),
+      }
+
+      return {
+        pair,
+        composite: compositeDiagnostic,
+        sequential: {
+          image: sequentialImage,
+          arrowAgreement,
+          projections: [leftAgreement, rightAgreement] as const,
+          holds:
+            compositeDiagnostic.holds &&
+            leftAgreement.holds &&
+            rightAgreement.holds &&
+            arrowAgreement.holds,
+        },
+      }
+    })
+
+    const issues: string[] = []
+
+    for (const diagnostic of arrowDiagnostics) {
+      if (!diagnostic.holds) {
+        const failing = diagnostic.triangles.find((triangle) => !triangle.holds)
+        const projectionLabel = failing ? describeProjection(failing.projection) : "projection"
+        issues.push(`${labelPrefix}: arrow sample failed ${projectionLabel} compatibility.`)
+        break
+      }
+    }
+
+    if (issues.length === 0) {
+      for (const { object, diagnostic } of identityDiagnostics) {
+        if (!diagnostic.holds) {
+          const failing = diagnostic.triangles.find((triangle) => !triangle.holds)
+          const projectionLabel = failing ? describeProjection(failing.projection) : "projection"
+          issues.push(
+            `${labelPrefix}: identity on ${String(object)} failed ${projectionLabel} compatibility.`,
+          )
+          break
+        }
+      }
+    }
+
+    if (issues.length === 0) {
+      for (const diagnostic of compositionDiagnostics) {
+        if (!diagnostic.sequential.holds) {
+          const pieces: string[] = []
+          if (!diagnostic.sequential.arrowAgreement.holds) {
+            pieces.push("the functoriality equality F(g ∘ f) = F(g) ∘ F(f)")
+          }
+          diagnostic.sequential.projections.forEach((entry, index) => {
+            if (!entry.holds) {
+              pieces.push(`${describeProjection(index === 0 ? 0 : 1)} compatibility`)
+            }
+          })
+          const summary = pieces.length > 0 ? pieces.join(" and ") : "projection compatibility"
+          issues.push(`${labelPrefix}: composition sample failed ${summary}.`)
+          break
+        }
+      }
+    }
+
+    const holds = issues.length === 0
+    const details = holds
+      ? `${labelPrefix}: (- × •) satisfied projection diagnostics across ${arrowDiagnostics.length} arrow(s) and ${compositionDiagnostics.length} composable pair(s).`
+      : issues[0]!
+
+    const diagnostics: ProductWithObjectFunctorDiagnostics<O, M> = {
+      parameter,
+      arrows: arrowDiagnostics,
+      identities: identityDiagnostics,
+      compositions: compositionDiagnostics,
+      holds,
+      details,
+      ...(issues.length > 0 ? { reason: issues[0] } : {}),
+    }
+
+    return { functor, product: getProduct, diagnostics }
+  }
+
+  const defaultTensorSamples = <O, M>(
+    category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
+    parameter: O,
+  ): FunctorCheckSamples<O, M> => {
+    const identity = category.id(parameter)
+    return {
+      objects: [parameter],
+      arrows: [identity],
+      composablePairs: [{ f: identity, g: identity }],
+    }
+  }
+
+  export const tensorWithObjectFunctor = <O, M>({
+    category,
+    tensor,
+    parameter,
+    samples = defaultTensorSamples(category, parameter),
+    equalMor,
+    label,
+  }: TensorWithObjectFunctorInput<O, M>): TensorWithObjectFunctorResult<O, M> => {
+    const eq =
+      equalMor ??
+      category.equalMor ??
+      category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    const labelPrefix = label
+      ? `CategoryLimits.tensorWithObjectFunctor(${label})`
+      : "CategoryLimits.tensorWithObjectFunctor"
+
+    const idParameter = category.id(parameter)
+
+    const simpleCategory: SimpleCat<O, M> = {
+      id: (object) => category.id(object),
+      compose: (g, f) => category.compose(g, f),
+      src: (arrow) => category.dom(arrow),
+      dst: (arrow) => category.cod(arrow),
+    }
+
+    const functorData: Functor<O, M, O, M> = {
+      F0: (object) => tensor.onObjects(object, parameter),
+      F1: (arrow) => tensor.onMorphisms(arrow, idParameter),
+    }
+
+    const metadata = [
+      `${labelPrefix}: object component tensors each input with the fixed parameter.`,
+      `${labelPrefix}: arrow component applies the tensor bifunctor to (f, id).`,
+    ]
+
+    const functor = constructFunctorWithWitness(
+      simpleCategory,
+      simpleCategory,
+      functorData,
+      samples,
+      metadata,
+    )
+
+    const arrowDiagnostics: TensorWithObjectArrowDiagnostics<O, M>[] = (samples.arrows ?? []).map(
+      (arrow) => {
+        const source = category.dom(arrow)
+        const target = category.cod(arrow)
+        const image = functor.functor.F1(arrow)
+        const expectedSource = functor.functor.F0(source)
+        const expectedTarget = functor.functor.F0(target)
+        return {
+          arrow,
+          source,
+          target,
+          image,
+          expectedSource,
+          expectedTarget,
+          domainMatches: Object.is(category.dom(image), expectedSource),
+          codomainMatches: Object.is(category.cod(image), expectedTarget),
+        }
+      },
+    )
+
+    const identityDiagnostics: TensorWithObjectIdentityDiagnostics<O, M>[] = (samples.objects ?? []).map(
+      (object) => {
+        const identity = category.id(object)
+        const image = functor.functor.F1(identity)
+        const expected = category.id(functor.functor.F0(object))
+        return {
+          object,
+          identity,
+          image,
+          expected,
+          holds: eq(image, expected),
+        }
+      },
+    )
+
+    const compositionDiagnostics: TensorWithObjectCompositionDiagnostics<O, M>[] = (
+      samples.composablePairs ?? []
+    ).map((pair) => {
+      const composite = category.compose(pair.g, pair.f)
+      const image = functor.functor.F1(composite)
+      const sequential = category.compose(
+        functor.functor.F1(pair.g),
+        functor.functor.F1(pair.f),
+      )
+      return {
+        pair,
+        composite: image,
+        sequential,
+        holds: eq(sequential, image),
+      }
+    })
+
+    const issues: string[] = []
+
+    if (
+      arrowDiagnostics.some(
+        (diagnostic) => !diagnostic.domainMatches || !diagnostic.codomainMatches,
+      )
+    ) {
+      issues.push(
+        `${labelPrefix}: tensor image violated the expected domain or codomain alignment.`,
+      )
+    }
+
+    if (issues.length === 0) {
+      const failingIdentity = identityDiagnostics.find((diagnostic) => !diagnostic.holds)
+      if (failingIdentity) {
+        issues.push(
+          `${labelPrefix}: identity on ${String(
+            failingIdentity.object,
+          )} failed tensor identity preservation.`,
+        )
+      }
+    }
+
+    if (issues.length === 0) {
+      const failingComposition = compositionDiagnostics.find((diagnostic) => !diagnostic.holds)
+      if (failingComposition) {
+        issues.push(`${labelPrefix}: composition sample failed tensor functoriality.`)
+      }
+    }
+
+    const holds = issues.length === 0
+    const details = holds
+      ? `${labelPrefix}: (- ⊗ •) satisfied identity and composition diagnostics across ${identityDiagnostics.length} identity sample(s) and ${compositionDiagnostics.length} composable pair(s).`
+      : issues[0]!
+
+    const diagnostics: TensorWithObjectFunctorDiagnostics<O, M> = {
+      parameter,
+      arrows: arrowDiagnostics,
+      identities: identityDiagnostics,
+      compositions: compositionDiagnostics,
+      holds,
+      details,
+      ...(issues.length > 0 ? { reason: issues[0] } : {}),
+    }
+
+    return { functor, diagnostics }
+  }
+
+  export interface ExponentiateByObjectFunctorInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly cartesianClosed: CartesianClosedCategory<O, M>
+    readonly parameter: O
+    readonly samples?: FunctorCheckSamples<O, M>
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly label?: string
+  }
+
+  export interface ExponentiateByObjectNaturalityDiagnostics<M> {
+    readonly expected: M
+    readonly actual: M
+    readonly holds: boolean
+  }
+
+  export interface ExponentiateByObjectArrowDiagnostics<O, M> {
+    readonly arrow: M
+    readonly source: O
+    readonly target: O
+    readonly image: M
+    readonly expectedSource: O
+    readonly expectedTarget: O
+    readonly domainMatches: boolean
+    readonly codomainMatches: boolean
+    readonly naturality: ExponentiateByObjectNaturalityDiagnostics<M>
+  }
+
+  export interface ExponentiateByObjectIdentityDiagnostics<O, M> {
+    readonly object: O
+    readonly image: M
+    readonly expected: M
+    readonly holds: boolean
+  }
+
+  export interface ExponentiateByObjectCompositionDiagnostics<M> {
+    readonly pair: FunctorComposablePair<M>
+    readonly composite: M
+    readonly sequential: M
+    readonly holds: boolean
+  }
+
+  export interface ExponentiateByObjectFunctorDiagnostics<O, M> {
+    readonly parameter: O
+    readonly arrows: ReadonlyArray<ExponentiateByObjectArrowDiagnostics<O, M>>
+    readonly identities: ReadonlyArray<ExponentiateByObjectIdentityDiagnostics<O, M>>
+    readonly compositions: ReadonlyArray<ExponentiateByObjectCompositionDiagnostics<M>>
+    readonly holds: boolean
+    readonly details: string
+    readonly reason?: string
+  }
+
+  export interface ExponentiateByObjectFunctorResult<O, M> {
+    readonly functor: FunctorWithWitness<O, M, O, M>
+    readonly exponential: (object: O) => CartesianClosedExponentialWitness<O, M>
+    readonly diagnostics: ExponentiateByObjectFunctorDiagnostics<O, M>
+    readonly evaluation: NaturalTransformationWithWitness<O, M, O, M>
+  }
+
+  const defaultExponentiateSamples = <O, M>(
+    category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
+    parameter: O,
+  ): FunctorCheckSamples<O, M> => {
+    const identity = category.id(parameter)
+    return {
+      objects: [parameter],
+      arrows: [identity],
+      composablePairs: [{ f: identity, g: identity }],
+    }
+  }
+
+  export const exponentiateByObjectFunctor = <O, M>({
+    category,
+    cartesianClosed,
+    parameter,
+    samples = defaultExponentiateSamples(category, parameter),
+    equalMor,
+    label,
+  }: ExponentiateByObjectFunctorInput<O, M>): ExponentiateByObjectFunctorResult<O, M> => {
+    const eq =
+      equalMor ??
+      category.equalMor ??
+      category.eq ??
+      ((left: M, right: M) => Object.is(left, right))
+
+    const labelPrefix = label
+      ? `CategoryLimits.exponentiateByObjectFunctor(${label})`
+      : "CategoryLimits.exponentiateByObjectFunctor"
+
+    const exponentialCache = new Map<O, CartesianClosedExponentialWitness<O, M>>()
+    const getExponential = (object: O): CartesianClosedExponentialWitness<O, M> => {
+      const cached = exponentialCache.get(object)
+      if (cached) {
+        return cached
+      }
+      const witness = cartesianClosed.exponential(parameter, object)
+      exponentialCache.set(object, witness)
+      return witness
+    }
+
+    const simpleCategory: SimpleCat<O, M> & { eq: (left: M, right: M) => boolean } = {
+      id: (object) => category.id(object),
+      compose: (g, f) => category.compose(g, f),
+      src: (arrow) => category.dom(arrow),
+      dst: (arrow) => category.cod(arrow),
+      eq,
+    }
+
+    const functorData: Functor<O, M, O, M> = {
+      F0: (object) => getExponential(object).obj,
+      F1: (arrow) => {
+        const source = category.dom(arrow)
+        const target = category.cod(arrow)
+        const sourceExponential = getExponential(source)
+        const targetExponential = getExponential(target)
+        const evaluationComposite = category.compose(arrow, sourceExponential.evaluation)
+        return targetExponential.curry(sourceExponential.obj, evaluationComposite)
+      },
+    }
+
+    const metadata = [
+      `${labelPrefix}: object component exponentiates each input by the fixed parameter.`,
+      `${labelPrefix}: arrow component curries f ∘ ev₍source₎ to obtain the induced exponential arrow.`,
+    ]
+
+    const functor = constructFunctorWithWitness(
+      simpleCategory,
+      simpleCategory,
+      functorData,
+      samples,
+      metadata,
+    )
+
+    const evaluationSourceFunctor = constructFunctorWithWitness(
+      simpleCategory,
+      simpleCategory,
+      {
+        F0: (object) => getExponential(object).product.obj,
+        F1: (arrow) => {
+          const source = category.dom(arrow)
+          const target = category.cod(arrow)
+          const sourceExponential = getExponential(source)
+          const targetExponential = getExponential(target)
+          return targetExponential.product.pair(
+            sourceExponential.product.obj,
+            category.compose(functor.functor.F1(arrow), sourceExponential.product.proj1),
+            sourceExponential.product.proj2,
+          )
+        },
+      },
+      samples,
+      [
+        `${labelPrefix}: evaluation domain functor realises (-)^• × parameter.`,
+        `${labelPrefix}: arrow component pairs f^• with the preserved parameter projection.`,
+      ],
+    )
+
+    const identityFunctor = identityFunctorWithWitness(simpleCategory, samples)
+
+    const naturalTransformationSamples = {
+      ...(samples.objects ? { objects: samples.objects } : {}),
+      ...(samples.arrows ? { arrows: samples.arrows } : {}),
+    }
+
+    const evaluation = constructNaturalTransformationWithWitness(
+      evaluationSourceFunctor,
+      identityFunctor,
+      (object) => getExponential(object).evaluation,
+      {
+        samples: naturalTransformationSamples,
+        ...(eq ? { equalMor: eq } : {}),
+        metadata: [
+          `${labelPrefix}: evaluation components target X via the exponential witness.`,
+          `${labelPrefix}: evaluation naturality squares reuse the exponential pairing data.`,
+        ],
+      },
+    )
+
+    const arrowDiagnostics: ExponentiateByObjectArrowDiagnostics<O, M>[] = (samples.arrows ?? []).map(
+      (arrow) => {
+        const source = category.dom(arrow)
+        const target = category.cod(arrow)
+        const sourceExponential = getExponential(source)
+        const targetExponential = getExponential(target)
+        const image = functor.functor.F1(arrow)
+        const expectedSource = sourceExponential.obj
+        const expectedTarget = targetExponential.obj
+        const domainMatches = Object.is(category.dom(image), expectedSource)
+        const codomainMatches = Object.is(category.cod(image), expectedTarget)
+
+        const evaluationExpected = category.compose(arrow, sourceExponential.evaluation)
+        const naturalityPair = targetExponential.product.pair(
+          sourceExponential.product.obj,
+          category.compose(image, sourceExponential.product.proj1),
+          sourceExponential.product.proj2,
+        )
+        const evaluationActual = category.compose(
+          targetExponential.evaluation,
+          naturalityPair,
+        )
+
+        const naturality: ExponentiateByObjectNaturalityDiagnostics<M> = {
+          expected: evaluationExpected,
+          actual: evaluationActual,
+          holds: eq(evaluationExpected, evaluationActual),
+        }
+
+        return {
+          arrow,
+          source,
+          target,
+          image,
+          expectedSource,
+          expectedTarget,
+          domainMatches,
+          codomainMatches,
+          naturality,
+        }
+      },
+    )
+
+    const identityDiagnostics: ExponentiateByObjectIdentityDiagnostics<O, M>[] = (
+      samples.objects ?? []
+    ).map((object) => {
+      const identity = category.id(object)
+      const image = functor.functor.F1(identity)
+      const expected = category.id(functor.functor.F0(object))
+      return {
+        object,
+        image,
+        expected,
+        holds: eq(image, expected),
+      }
+    })
+
+    const compositionDiagnostics: ExponentiateByObjectCompositionDiagnostics<M>[] = (
+      samples.composablePairs ?? []
+    ).map((pair) => {
+      const composite = category.compose(pair.g, pair.f)
+      const image = functor.functor.F1(composite)
+      const sequential = category.compose(
+        functor.functor.F1(pair.g),
+        functor.functor.F1(pair.f),
+      )
+      return {
+        pair,
+        composite: image,
+        sequential,
+        holds: eq(sequential, image),
+      }
+    })
+
+    const issues: string[] = []
+
+    if (
+      arrowDiagnostics.some(
+        (diagnostic) => !diagnostic.domainMatches || !diagnostic.codomainMatches,
+      )
+    ) {
+      issues.push(
+        `${labelPrefix}: exponential image violated the expected domain or codomain alignment.`,
+      )
+    }
+
+    if (issues.length === 0) {
+      const failingNaturality = arrowDiagnostics.find((diagnostic) => !diagnostic.naturality.holds)
+      if (failingNaturality) {
+        issues.push(
+          `${labelPrefix}: evaluation naturality square failed for an arrow sample.`,
+        )
+      }
+    }
+
+    if (issues.length === 0) {
+      const failingIdentity = identityDiagnostics.find((diagnostic) => !diagnostic.holds)
+      if (failingIdentity) {
+        issues.push(
+          `${labelPrefix}: identity on ${String(
+            failingIdentity.object,
+          )} failed exponential identity preservation.`,
+        )
+      }
+    }
+
+    if (issues.length === 0) {
+      const failingComposition = compositionDiagnostics.find((diagnostic) => !diagnostic.holds)
+      if (failingComposition) {
+        issues.push(`${labelPrefix}: composition sample failed exponential functoriality.`)
+      }
+    }
+
+    const holds = issues.length === 0
+    const details = holds
+      ? `${labelPrefix}: (-)^• satisfied identity, composition, and evaluation diagnostics across ${identityDiagnostics.length} identity sample(s) and ${compositionDiagnostics.length} composable pair(s).`
+      : issues[0]!
+
+    const diagnostics: ExponentiateByObjectFunctorDiagnostics<O, M> = {
+      parameter,
+      arrows: arrowDiagnostics,
+      identities: identityDiagnostics,
+      compositions: compositionDiagnostics,
+      holds,
+      details,
+      ...(issues.length > 0 ? { reason: issues[0] } : {}),
+    }
+
+    return { functor, exponential: getExponential, diagnostics, evaluation }
+  }
+
   export interface PowerObjectClassificationInput<O, M> {
     readonly ambient: O
     readonly relation: M
@@ -211,6 +1047,20 @@ export namespace CategoryLimits {
     ) => { readonly subobject: O; readonly inclusion: M }
   }
 
+  export interface ElementaryToposWitnessMetadata {
+    readonly label?: string
+    readonly notes?: ReadonlyArray<string>
+  }
+
+  export interface ElementaryToposWitness<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly finiteLimits: HasFiniteProducts<O, M> & HasEqualizers<O, M> & HasTerminal<O, M>
+    readonly exponentials: CartesianClosedCategory<O, M>
+    readonly subobjectClassifier: SubobjectClassifierCategory<O, M>
+    readonly naturalNumbersObject?: NaturalNumbersObjectWitness<O, M>
+    readonly metadata?: ElementaryToposWitnessMetadata
+  }
+
   export interface NaturalNumbersObjectSequence<O, M> {
     readonly target: O
     readonly zero: M
@@ -247,6 +1097,63 @@ export namespace CategoryLimits {
       sequence: NaturalNumbersObjectSequence<O, M>,
       candidate: M,
     ) => NaturalNumbersObjectUniquenessWitness<M>
+    readonly bound?: number
+    readonly enumeratePoints?: () => ReadonlyArray<M>
+    readonly canonicalSelfEmbedding?: () => M
+    readonly certifyInductiveSubobject?: (input: {
+      readonly inclusion: M
+      readonly zeroLift: M
+      readonly successorLift: M
+      readonly equalMor?: (left: M, right: M) => boolean
+      readonly ensureMonomorphism?: (arrow: M) => void
+      readonly label?: string
+    }) => NaturalNumbersInductionResult<M>
+    readonly certifyInductiveSubobjectIsomorphism?: (input: {
+      readonly inclusion: M
+      readonly zeroLift: M
+      readonly successorLift: M
+      readonly equalMor?: (left: M, right: M) => boolean
+      readonly ensureMonomorphism?: (arrow: M) => void
+      readonly label?: string
+    }) => NaturalNumbersInductionIsomorphismResult<M>
+    readonly addition?: (options?: {
+      readonly equalMor?: (left: M, right: M) => boolean
+      readonly label?: string
+    }) => NaturalNumbersAdditionResult<O, M>
+    readonly integerCompletion?: (options?: {
+      readonly equalMor?: (left: M, right: M) => boolean
+      readonly label?: string
+    }) => IntegerCompletionResult<O, M>
+    readonly primitiveRecursion?: (input: {
+      readonly parameter: O
+      readonly target: O
+      readonly base: M
+      readonly step: M
+      readonly equalMor?: (left: M, right: M) => boolean
+      readonly label?: string
+    }) => NaturalNumbersPrimitiveRecursionResult<O, M>
+    readonly primitiveRecursionFromExponential?: (input: {
+      readonly parameter: O
+      readonly target: O
+      readonly base: M
+      readonly step: M
+      readonly equalMor?: (left: M, right: M) => boolean
+      readonly label?: string
+    }) => NaturalNumbersPrimitiveRecursionExponentialResult<O, M>
+    readonly initialAlgebra?: (input: {
+      readonly target: O
+      readonly algebra: M
+      readonly equalMor?: (left: M, right: M) => boolean
+      readonly label?: string
+    }) => NaturalNumbersInitialAlgebraResult<O, M>
+    readonly certifySuccessorZeroSeparation?: (options?: {
+      readonly equalMor?: (left: M, right: M) => boolean
+      readonly label?: string
+    }) => NaturalNumbersZeroSeparationResult<O, M>
+    readonly certifyPointInjective?: () => PointInjectiveResult<M>
+    readonly certifyPointSurjective?: () => PointSurjectiveResult<M>
+    readonly certifyPointInfinite?: () => PointInfiniteResult<M>
+    readonly certifyDedekindInfinite?: () => DedekindInfiniteResult<M>
   }
 
   export interface NaturalNumbersObjectCategory<O, M>
@@ -588,6 +1495,79 @@ export namespace CategoryLimits {
     readonly reason?: string
   }
 
+  export interface NaturalNumbersAdditionInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly natural: NaturalNumbersObjectWitness<O, M>
+    readonly cartesianClosed: CartesianClosedCategory<O, M>
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly label?: string
+  }
+
+  export interface NaturalNumbersAdditionWitness<O, M> {
+    readonly holds: boolean
+    readonly addition: M
+    readonly parameter: O
+    readonly target: O
+    readonly product: BinaryProductWithPairWitness<O, M>
+    readonly base: M
+    readonly step: M
+    readonly primitive: NaturalNumbersPrimitiveRecursionWitness<O, M>
+    readonly details: string
+    readonly reason?: string
+  }
+
+  export interface IntegerCompletionCrossedAdditionWitness<M> {
+    readonly left: M
+    readonly right: M
+    readonly leftPair: M
+    readonly rightPair: M
+  }
+
+  export interface IntegerCompletionRelationLegs<M> {
+    readonly left: M
+    readonly right: M
+  }
+
+  export interface IntegerCompletionCompositeWitness<M> {
+    readonly left: M
+    readonly right: M
+  }
+
+  export interface IntegerCompletionRelationWitness<O, M> {
+    readonly ambient: BinaryProductWithPairWitness<O, M>
+    readonly equalizer: { readonly obj: O; readonly inclusion: M }
+    readonly crossed: IntegerCompletionCrossedAdditionWitness<M>
+    readonly legs: IntegerCompletionRelationLegs<M>
+    readonly compatibility: IntegerCompletionCompositeWitness<M>
+  }
+
+  export interface IntegerCompletionQuotientWitness<O, M> {
+    readonly obj: O
+    readonly coequalize: M
+    readonly compatibility: IntegerCompletionCompositeWitness<M>
+  }
+
+  export interface IntegerCompletionInput<O, M> {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly natural: NaturalNumbersObjectWitness<O, M>
+    readonly addition: NaturalNumbersAdditionWitness<O, M>
+    readonly products: HasProductMediators<O, M>
+    readonly equalizers: HasEqualizers<O, M>
+    readonly coequalizers: HasCoequalizers<O, M>
+    readonly equalMor?: (left: M, right: M) => boolean
+    readonly label?: string
+  }
+
+  export interface IntegerCompletionWitness<O, M> {
+    readonly holds: boolean
+    readonly integers: O
+    readonly addition: NaturalNumbersAdditionWitness<O, M>
+    readonly relation: IntegerCompletionRelationWitness<O, M>
+    readonly quotient: IntegerCompletionQuotientWitness<O, M>
+    readonly details: string
+    readonly reason?: string
+  }
+
   export interface NaturalNumbersPrimitiveRecursionExponentialInput<O, M> {
     readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
     readonly natural: NaturalNumbersObjectWitness<O, M>
@@ -803,6 +1783,192 @@ export namespace CategoryLimits {
       curried,
       sequence,
       compatibility,
+      details,
+      ...(reason ? { reason } : {}),
+    }
+  }
+
+  export const naturalNumbersAddition = <O, M>({
+    category,
+    natural,
+    cartesianClosed,
+    equalMor,
+    label,
+  }: NaturalNumbersAdditionInput<O, M>): NaturalNumbersAdditionWitness<O, M> => {
+    const parameter = natural.carrier
+    const target = natural.carrier
+
+    const productWitness = cartesianClosed.binaryProduct(target, parameter)
+    const product: BinaryProductWithPairWitness<O, M> = {
+      obj: productWitness.obj,
+      projections: [productWitness.proj1, productWitness.proj2],
+      pair: (domain: O, left: M, right: M) =>
+        productWitness.pair(domain, left, right),
+    }
+
+    const base = category.id(parameter)
+    const step = category.compose(natural.successor, product.projections[0])
+
+    const primitive = naturalNumbersPrimitiveRecursion({
+      category,
+      natural,
+      cartesianClosed,
+      parameter,
+      target,
+      base,
+      step,
+      ...(equalMor ? { equalMor } : {}),
+      label: label ? `${label} addition` : "addition",
+    });
+
+    const holds = primitive.holds
+    const labelPrefix = label
+      ? `CategoryLimits.naturalNumbersAddition: ${label}`
+      : 'CategoryLimits.naturalNumbersAddition'
+
+    const details = holds
+      ? `${labelPrefix}: addition arrow satisfies primitive recursion.`
+      : `${labelPrefix}: addition arrow fails primitive recursion.`
+
+    return {
+      holds,
+      addition: primitive.mediator,
+      parameter,
+      target,
+      product,
+      base,
+      step,
+      primitive,
+      details,
+      ...(primitive.reason ? { reason: primitive.reason } : {}),
+    }
+  }
+
+  export const integerCompletion = <O, M>({
+    category,
+    natural,
+    addition,
+    products,
+    equalizers,
+    coequalizers,
+    equalMor,
+    label,
+  }: IntegerCompletionInput<O, M>): IntegerCompletionWitness<O, M> => {
+    const labelPrefix = label
+      ? `CategoryLimits.integerCompletion: ${label}`
+      : 'CategoryLimits.integerCompletion'
+
+    const relationProductRaw = products.product([
+      addition.product.obj,
+      addition.product.obj,
+    ])
+
+    if (relationProductRaw.projections.length !== 2) {
+      throw new Error(
+        `${labelPrefix}: expected binary product witness for (ℕ×ℕ)×(ℕ×ℕ).`,
+      )
+    }
+
+    const relationAmbient: BinaryProductWithPairWitness<O, M> = {
+      obj: relationProductRaw.obj,
+      projections: [
+        relationProductRaw.projections[0]!,
+        relationProductRaw.projections[1]!,
+      ],
+      pair: (domain: O, leftArrow: M, rightArrow: M) =>
+        products.tuple(domain, [leftArrow, rightArrow], relationProductRaw.obj),
+    }
+
+    const [ambientLeft, ambientRight] = relationAmbient.projections
+
+    const additionFirst = addition.product.projections[0]!
+    const additionSecond = addition.product.projections[1]!
+
+    const crossedLeftPair = addition.product.pair(
+      relationAmbient.obj,
+      category.compose(additionFirst, ambientLeft),
+      category.compose(additionSecond, ambientRight),
+    )
+
+    const crossedRightPair = addition.product.pair(
+      relationAmbient.obj,
+      category.compose(additionFirst, ambientRight),
+      category.compose(additionSecond, ambientLeft),
+    )
+
+    const crossedLeft = category.compose(addition.addition, crossedLeftPair)
+    const crossedRight = category.compose(addition.addition, crossedRightPair)
+
+    const equalizer = equalizers.equalizer(crossedLeft, crossedRight)
+
+    const relationLeftLeg = category.compose(ambientLeft, equalizer.equalize)
+    const relationRightLeg = category.compose(ambientRight, equalizer.equalize)
+
+    const quotient = coequalizers.coequalizer(relationLeftLeg, relationRightLeg)
+
+    const equalizerCompatibility: IntegerCompletionCompositeWitness<M> = {
+      left: category.compose(crossedLeft, equalizer.equalize),
+      right: category.compose(crossedRight, equalizer.equalize),
+    }
+
+    const quotientCompatibility: IntegerCompletionCompositeWitness<M> = {
+      left: category.compose(quotient.coequalize, relationLeftLeg),
+      right: category.compose(quotient.coequalize, relationRightLeg),
+    }
+
+    const equalityChecked = equalMor !== undefined
+
+    const relationAgrees = !equalMor
+      ? true
+      : equalMor(equalizerCompatibility.left, equalizerCompatibility.right)
+
+    const coequalizes = !equalMor
+      ? true
+      : equalMor(quotientCompatibility.left, quotientCompatibility.right)
+
+    const holds = addition.holds && relationAgrees && coequalizes
+
+    let reason: string | undefined
+    if (!addition.holds) {
+      reason =
+        addition.reason ??
+        `${labelPrefix}: addition witness failed to satisfy primitive recursion.`
+    } else if (equalMor && !relationAgrees) {
+      reason = `${labelPrefix}: crossed addition composites disagree on the equalizer inclusion.`
+    } else if (equalMor && !coequalizes) {
+      reason = `${labelPrefix}: quotient arrow does not coequalize the crossed addition relation.`
+    }
+
+    const details = holds
+      ? equalityChecked
+        ? `${labelPrefix}: integers object quotients ℕ×ℕ by the crossed addition relation.`
+        : `${labelPrefix}: integers object constructed without arrow-equality diagnostics.`
+      : reason ?? `${labelPrefix}: integer completion witness failed.`
+
+    return {
+      holds,
+      integers: quotient.obj,
+      addition,
+      relation: {
+        ambient: relationAmbient,
+        equalizer: { obj: equalizer.obj, inclusion: equalizer.equalize },
+        crossed: {
+          left: crossedLeft,
+          right: crossedRight,
+          leftPair: crossedLeftPair,
+          rightPair: crossedRightPair,
+        },
+        legs: {
+          left: relationLeftLeg,
+          right: relationRightLeg,
+        },
+        compatibility: equalizerCompatibility,
+      },
+      quotient: {
+        obj: quotient.obj,
+        coequalize: quotient.coequalize,
+        compatibility: quotientCompatibility,
+      },
       details,
       ...(reason ? { reason } : {}),
     }
@@ -4399,6 +5565,15 @@ export namespace CategoryLimits {
     NaturalNumbersPrimitiveRecursionExponentialWitness<O, M>
   export type NaturalNumbersPrimitiveRecursionCompatibilityResult<O, M> =
     NaturalNumbersPrimitiveRecursionCompatibility<O, M>
+  export type NaturalNumbersAdditionResult<O, M> =
+    NaturalNumbersAdditionWitness<O, M>
+  export type IntegerCompletionResult<O, M> = IntegerCompletionWitness<O, M>
+  export type ProductWithObjectFunctorDiagnosticsResult<O, M> =
+    ProductWithObjectFunctorDiagnostics<O, M>
+  export type ProductWithObjectFunctorOutput<O, M> = ProductWithObjectFunctorResult<O, M>
+  export type TensorWithObjectFunctorDiagnosticsResult<O, M> =
+    TensorWithObjectFunctorDiagnostics<O, M>
+  export type TensorWithObjectFunctorOutput<O, M> = TensorWithObjectFunctorResult<O, M>
   export type NaturalNumbersInitialAlgebraResult<O, M> =
     NaturalNumbersInitialAlgebraWitness<O, M>
   export type PointImage<M> = PointImageWitness<M>

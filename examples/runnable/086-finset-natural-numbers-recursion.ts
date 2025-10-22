@@ -1,8 +1,15 @@
-import { FinSet, FinSetNaturalNumbersObject, FinSetSubobjectClassifier } from "../../allTS"
+import { FinSet, FinSetElementaryToposWitness } from "../../allTS"
 import type { FinSetMor } from "../../allTS"
 import type { RunnableExample } from "./types"
 
-const natural = FinSetNaturalNumbersObject
+const { subobjectClassifier: FinSetSubobjectClassifier, naturalNumbersObject } =
+  FinSetElementaryToposWitness
+
+if (!naturalNumbersObject) {
+  throw new Error('FinSet elementary topos witness must expose a natural numbers object.')
+}
+
+const natural = naturalNumbersObject
 
 const equalArrow = (left: FinSetMor, right: FinSetMor): boolean => {
   const verdict = FinSet.equalMor?.(left, right)
@@ -36,11 +43,10 @@ const formatSuccessorSample = (count: number): readonly string[] => {
 }
 
 const describeAddition = (
-  recursion: ReturnType<typeof natural.primitiveRecursion>,
-  product: ReturnType<typeof FinSet.binaryProduct>,
+  addition: ReturnType<typeof natural.addition>,
   samples: ReadonlyArray<readonly [number, number]>,
 ): readonly string[] => {
-  const tuples = product.obj.elements as ReadonlyArray<ReadonlyArray<number>>
+  const tuples = addition.product.obj.elements as ReadonlyArray<ReadonlyArray<number>>
   const lines: string[] = []
   for (const [left, right] of samples) {
     const tupleIndex = tuples.findIndex(
@@ -51,7 +57,7 @@ const describeAddition = (
         `Requested addition sample (${left}, ${right}) not present in FinSet product carrier.`,
       )
     }
-    const imageIndex = recursion.mediator.map[tupleIndex]
+    const imageIndex = addition.addition.map[tupleIndex]
     if (imageIndex === undefined) {
       throw new Error("Primitive recursion mediator missing image for addition sample.")
     }
@@ -60,6 +66,70 @@ const describeAddition = (
       value === natural.carrier.elements[natural.carrier.elements.length - 1]
     lines.push(`${left} + ${right} = ${value}${saturates ? " (saturates)" : ""}`)
   }
+  return lines
+}
+
+const describeIntegerCompletion = (
+  completion: ReturnType<typeof natural.integerCompletion>,
+  addition: ReturnType<typeof natural.addition>,
+): readonly string[] => {
+  const lines: string[] = []
+
+  const relationAgrees = equalArrow(
+    completion.relation.compatibility.left,
+    completion.relation.compatibility.right,
+  )
+  const quotientAgrees = equalArrow(
+    completion.quotient.compatibility.left,
+    completion.quotient.compatibility.right,
+  )
+
+  lines.push(`Witness established → ${completion.holds}`)
+  lines.push(`Integers carrier size → ${completion.quotient.obj.elements.length}`)
+  lines.push(`Relation equalizer agrees → ${relationAgrees}`)
+  lines.push(`Coequalizer compatibility holds → ${quotientAgrees}`)
+
+  const tuples = addition.product.obj.elements as ReadonlyArray<ReadonlyArray<number>>
+  const quotientMap = completion.quotient.coequalize.map
+  const catalog = new Map<number, { difference: number; representative: readonly [number, number] }>()
+
+  quotientMap.forEach((classIndex, tupleIndex) => {
+    const tuple = tuples[tupleIndex]
+    if (!tuple) {
+      throw new Error('FinSet integer completion: tuple missing from ℕ×ℕ carrier.')
+    }
+    const [left, right] = tuple
+    if (!catalog.has(classIndex)) {
+      catalog.set(classIndex, { difference: left - right, representative: [left, right] as const })
+    }
+  })
+
+  const samples: Array<readonly [number, number]> = [
+    [2, 1],
+    [1, 4],
+    [6, 6],
+  ]
+  lines.push('Sample class summaries:')
+  for (const [left, right] of samples) {
+    const tupleIndex = tuples.findIndex(
+      (tuple) => tuple[0] === left && tuple[1] === right,
+    )
+    if (tupleIndex < 0) {
+      throw new Error(
+        `Integer completion sample (${left}, ${right}) not present in FinSet product carrier.`,
+      )
+    }
+    const classIndex = quotientMap[tupleIndex]
+    if (classIndex === undefined) {
+      throw new Error('Integer completion quotient map missing image for sample tuple.')
+    }
+    const descriptor = catalog.get(classIndex)
+    const summary = descriptor
+      ? `difference ${descriptor.difference} via [${descriptor.representative[0]}, ${descriptor.representative[1]}]`
+      : `class ${classIndex}`
+    lines.push(`  [${left}, ${right}] ↦ ${summary}`)
+  }
+
   return lines
 }
 
@@ -114,19 +184,7 @@ const runExample = (): readonly string[] => {
   lines.push("Successor samples:")
   lines.push(...formatSuccessorSample(6).map((entry) => `  ${entry}`))
 
-  const parameter = natural.carrier
-  const target = natural.carrier
-  const base = FinSet.id(parameter)
-  const product = FinSet.binaryProduct(target, parameter)
-  const step = FinSet.compose(natural.successor, product.proj1)
-
-  const addition = natural.primitiveRecursion({
-    parameter,
-    target,
-    base,
-    step,
-    label: "addition example",
-  })
+  const addition = natural.addition({ label: "addition example" })
 
   lines.push("", "== Primitive recursion: addition ==")
   lines.push(`Witness established → ${addition.holds}`)
@@ -144,13 +202,13 @@ const runExample = (): readonly string[] => {
     [16, 4],
   ]
   lines.push("Addition samples:")
-  lines.push(...describeAddition(addition, product, additionSamples).map((entry) => `  ${entry}`))
+  lines.push(...describeAddition(addition, additionSamples).map((entry) => `  ${entry}`))
 
   const exponential = natural.primitiveRecursionFromExponential({
-    parameter,
-    target,
-    base,
-    step,
+    parameter: addition.parameter,
+    target: addition.target,
+    base: addition.base,
+    step: addition.step,
     label: "addition via exponential",
   })
 
@@ -162,6 +220,14 @@ const runExample = (): readonly string[] => {
   )
   lines.push(`Evaluation composite matches step → ${evaluationMatchesStep}`)
   lines.push(`Details → ${exponential.details}`)
+
+  const integers = natural.integerCompletion({
+    label: "integer completion example",
+    equalMor: equalArrow,
+  })
+
+  lines.push("", "== Grothendieck integer completion ==")
+  lines.push(...describeIntegerCompletion(integers, addition))
 
   const dedekind = natural.certifyDedekindInfinite()
   lines.push("", "== Dedekind-infinite successor ==")
@@ -204,6 +270,6 @@ export const stage086FinSetNaturalNumbersRecursion: RunnableExample = {
   title: "FinSet natural numbers recursion and infinity",
   outlineReference: 86,
   summary:
-    "Derive addition from the FinSet natural-numbers object, compare exponential recursion, and certify the successor as Dedekind-infinite.",
+    "Derive addition from the FinSet natural-numbers object, compute the Grothendieck integer completion, compare exponential recursion, and certify the successor as Dedekind-infinite.",
   run: async () => ({ logs: runExample() }),
 }
