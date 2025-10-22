@@ -1,8 +1,10 @@
 # Set-theory semantics switch (future consideration)
 
-We plan to surface a configurable semantics layer for `SetCat` so the foundational rules
-that govern membership, equality, and iteration can be swapped without rewriting downstream
-consumers.
+`SetCat` now exposes explicit `SetCarrierSemantics` witnesses for every object, so
+universal constructions and helper modules already consult the registered membership,
+iteration, and equality behaviour. The remaining long-term question is whether we should
+support swapping in alternate foundational semantics (e.g., constructive or probabilistic
+interpretations) without rewriting downstream consumers.
 
 ## Motivation
 
@@ -12,19 +14,15 @@ consumers.
 
 ## Proposed steps
 
-1. Define a `SetSemantics` interface in `set-cat.ts` capturing:
-   * membership checks used by `createSetHom`.
-   * lazy iteration machinery for `LazySet`.
-   * equality/lookup hooks for product and coproduct carriers.
-2. Provide a default ZFC-aligned semantics implementation and expose a configuration API on
-   `SetCat` (for example `SetCat.configure(semantics)`), keeping the current behaviour as the
-   default.
-3. Update callers (`set-small-limits.ts`, `setmult-category.ts`, witnesses, and related laws)
-   to receive the configured semantics object so future alternates can slot in without
-   breaking type signatures.
-4. Expand the regression suite with witnesses covering both the default semantics and a mock
-   alternate semantics to ensure `isSetHom`, product/coproduct builders, and existing oracles
-   remain sound.
+1. Expose a configuration surface (e.g., `SetCat.configure(semantics)` or scoped builders)
+   that lets callers replace the default semantics factory while preserving compatibility
+   with existing helpers such as `SetSmallProducts` and the subobject classifier.
+2. Audit downstream modules (`set-small-limits.ts`, `setmult-category.ts`, witnesses, and
+   oracle suites) for places where they implicitly assume the default semantics rather than
+   consulting the registered witnesses.
+3. Develop regression coverage that exercises both the default semantics and at least one
+   alternate interpretation to ensure `isSetHom`, product/coproduct builders, and existing
+   oracles remain sound.
 
 These notes should be revisited when we are ready to introduce non-ZFC foundations or
-user-selectable set-theory modes.
+user-selectable set-theory modes on top of the current semantics infrastructure.

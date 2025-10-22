@@ -12,6 +12,8 @@ import {
   ensureSubsetMonomorphism,
   setCharacteristicOfSubset,
   setSubsetFromCharacteristic,
+  semanticsAwareEquals,
+  semanticsAwareHas,
   type ExponentialArrow,
   type SetHom,
   type SetObj,
@@ -64,8 +66,9 @@ const ensureSubsetEquality = (
   superset: AnySetObj,
   context: string,
 ): void => {
+  const supersetHas = semanticsAwareHas(superset as SetObj<unknown>);
   for (const element of subset) {
-    if (!superset.has(element)) {
+    if (!supersetHas(element)) {
       throw new Error(
         `${context}: element ${String(element)} must belong to the target subset when constructing the comparison iso.`,
       );
@@ -105,16 +108,23 @@ const makeEqualizer = (left: AnySetHom, right: AnySetHom): { obj: AnySetObj; equ
     );
   }
 
+  const codEquals = semanticsAwareEquals(left.cod as SetObj<unknown>);
+
   const subset: unknown[] = [];
   for (const value of left.dom) {
     const leftImage = left.map(value);
     const rightImage = right.map(value);
-    if (Object.is(leftImage, rightImage)) {
+    if (codEquals(leftImage, rightImage)) {
       subset.push(value);
     }
   }
 
-  const equalizerObj = SetCat.obj(subset);
+  const subsetSemantics = SetCat.createSubsetSemantics(left.dom as SetObj<unknown>, subset, {
+    tag: "SetSubobjectClassifier.equalizer",
+  });
+  const equalizerObj = SetCat.obj(subset, {
+    semantics: subsetSemantics,
+  });
   const inclusion = SetCat.hom(equalizerObj, left.dom as SetObj<unknown>, (value) => value);
 
   return { obj: equalizerObj as AnySetObj, equalize: inclusion as AnySetHom };

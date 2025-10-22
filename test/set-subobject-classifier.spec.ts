@@ -7,9 +7,11 @@ import {
   ensureSubsetMonomorphism,
   setCharacteristicOfSubset,
   setSubsetFromCharacteristic,
+  setZeroSubobject,
   SetSubobjectClassifier,
   SetPowerObject,
   SetPullbacks,
+  type AnySetHom,
 } from "../set-subobject-classifier";
 import { CategoryLimits } from "../stdlib/category-limits";
 import { equalSetHom } from "../set-pullbacks";
@@ -54,6 +56,88 @@ describe("set subobject classifier", () => {
       for (const element of ambient) {
         expect(reround.map(element)).toBe(characteristic.map(element));
       }
+    }
+  });
+
+  it("propagates ambient equality semantics to derived subsets", () => {
+    const equals = (left: { readonly id: number }, right: { readonly id: number }): boolean =>
+      left.id === right.id;
+    const ambient = SetCat.obj(
+      [
+        { id: 0 },
+        { id: 1 },
+        { id: 2 },
+      ] as const,
+      { equals, tag: "AmbientWithSemanticEquality" },
+    );
+
+    const [representative] = Array.from(ambient.values());
+    if (!representative) {
+      throw new Error("ambient must expose at least one representative element");
+    }
+
+    const subsetSeed = SetCat.obj([representative], { equals, tag: "SubsetSeed" });
+    const inclusion = SetCat.hom(subsetSeed, ambient, (value) => value);
+    const characteristic = setCharacteristicOfSubset(inclusion);
+    const { subset } = setSubsetFromCharacteristic(characteristic);
+
+    const zero = setZeroSubobject(ambient);
+
+    const subsetSemantics = SetCat.semantics(subset);
+    const zeroSemantics = SetCat.semantics(zero.subobject);
+
+    expect(subsetSemantics?.equals).toBe(equals);
+    expect(zeroSemantics?.equals).toBe(equals);
+
+    const freshRepresentative = { id: representative.id } as const;
+
+    expect(subsetSemantics?.has(freshRepresentative)).toBe(true);
+    expect(zeroSemantics?.has(freshRepresentative)).toBe(false);
+    expect(subsetSemantics?.tag).toBe("SetCat.subsetFromCharacteristic");
+    expect(zeroSemantics?.tag).toBe("SetSubobjectTools.zeroSubobject");
+  });
+
+  it("reuses codomain equality semantics when constructing equalizers", () => {
+    const equals = (left: { readonly id: number }, right: { readonly id: number }): boolean =>
+      left.id === right.id;
+    const domain = SetCat.obj(
+      [
+        { id: 0 },
+        { id: 1 },
+      ] as const,
+      { equals, tag: "EqualizerDomain" },
+    );
+    const codomain = SetCat.obj(
+      [
+        { id: 0 },
+        { id: 1 },
+        { id: 99 },
+      ] as const,
+      { equals, tag: "EqualizerCodomain" },
+    );
+
+    const left = SetCat.hom(domain, codomain, (value) => value);
+    const right = SetCat.hom(domain, codomain, (value) =>
+      value.id === 0 ? ({ id: 0 } as const) : ({ id: 99 } as const),
+    );
+
+    const equalizer = SetSubobjectClassifier.equalizer(
+      left as unknown as AnySetHom,
+      right as unknown as AnySetHom,
+    );
+
+    expect(equalizer.equalize.cod).toBe(domain);
+
+    const equalizerObj = equalizer.obj as SetObj<{ readonly id: number }>;
+    const equalizerSemantics = SetCat.semantics(equalizerObj);
+
+    expect(equalizerSemantics?.equals).toBe(equals);
+    expect(equalizerSemantics?.tag).toBe("SetSubobjectClassifier.equalizer");
+    expect(equalizerSemantics?.has({ id: 0 })).toBe(true);
+    expect(equalizerSemantics?.has({ id: 1 })).toBe(false);
+
+    for (const element of equalizerObj) {
+      expect(equalizer.equalize.map(element)).toBe(element);
     }
   });
 

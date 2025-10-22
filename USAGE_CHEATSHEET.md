@@ -498,6 +498,32 @@ const { object: initial, initialize } = SetCat.initial();
 console.log(initialize(B).dom === initial); // unique map out of 0
 ```
 
+### **Custom carrier semantics**
+
+```typescript
+import { SetCat } from "./set-cat";
+
+const lowercase = SetCat.createMaterializedSemantics(
+  ["a", "b", "c"],
+  {
+    equals: (left, right) => left.toLowerCase() === right.toLowerCase(),
+    tag: "lowercase-set",
+  },
+);
+
+const Letters = SetCat.obj(["A", "b", "C"], { semantics: lowercase });
+
+console.log(SetCat.semantics(Letters)?.has("a")); // true – semantics drive membership
+console.log(SetCat.semantics(Letters)?.equals("A", "a")); // true – equality ignores case
+
+const classifier = SetCat.subobjectClassifier();
+const { subset } = classifier.subobjectFromCharacteristic(
+  SetCat.hom(Letters, classifier.truthValues, (value) => value.toLowerCase() !== "b"),
+);
+
+console.log([...subset]); // ['A', 'C'] with semantics inherited from Letters
+```
+
 ### **Quick Set Law Checks**
 ```typescript
 import { SetOracles } from "./oracles/set-oracles";

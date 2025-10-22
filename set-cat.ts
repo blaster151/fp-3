@@ -13,6 +13,74 @@ export type SetObj<A> = Set<A>;
  */
 export type AnySet<A> = ReadonlySet<A>;
 
+export interface SetCarrierSemantics<A> {
+  readonly iterate: () => IterableIterator<A>;
+  readonly has: (value: A) => boolean;
+  readonly equals?: (left: A, right: A) => boolean;
+  readonly cardinality?: number;
+  readonly tag?: string;
+}
+
+export type CarrierInstantiation<A> = (semantics: SetCarrierSemantics<A>) => SetObj<A>;
+
+export interface CarrierOptions<A> {
+  readonly semantics?: SetCarrierSemantics<A>;
+  readonly instantiate?: CarrierInstantiation<A>;
+}
+
+export interface SetObjectOptions<A> extends CarrierOptions<A> {
+  readonly equals?: (left: A, right: A) => boolean;
+  readonly tag?: string;
+}
+
+export type MaterializedSemanticsOptions<A> = Pick<SetObjectOptions<A>, "equals" | "tag">;
+
+export type SubsetSemanticsOptions<A> = MaterializedSemanticsOptions<A>;
+
+const carrierSemanticsRegistry = new WeakMap<SetObj<unknown>, SetCarrierSemantics<unknown>>();
+
+const registerCarrierSemantics = <A>(
+  carrier: SetObj<A>,
+  semantics: SetCarrierSemantics<A>,
+): void => {
+  const existing = carrierSemanticsRegistry.get(carrier as SetObj<unknown>);
+  if (existing !== undefined && existing !== semantics) {
+    throw new Error(
+      "SetCat: carrier already has registered semantics; refusing to overwrite with a different witness.",
+    );
+  }
+  carrierSemanticsRegistry.set(
+    carrier as SetObj<unknown>,
+    semantics as SetCarrierSemantics<unknown>,
+  );
+};
+
+export const getCarrierSemantics = <A>(carrier: SetObj<A>): SetCarrierSemantics<A> | undefined =>
+  carrierSemanticsRegistry.get(carrier as SetObj<unknown>) as SetCarrierSemantics<A> | undefined;
+
+export const attachCarrierSemantics = <A>(
+  carrier: SetObj<A>,
+  semantics: SetCarrierSemantics<A>,
+): void => {
+  registerCarrierSemantics(carrier, semantics);
+};
+
+export const semanticsAwareHas = <A>(carrier: SetObj<A>): ((value: A) => boolean) => {
+  const semantics = getCarrierSemantics(carrier);
+  if (semantics) {
+    return (value: A) => semantics.has(value);
+  }
+  return (value: A) => carrier.has(value);
+};
+
+export const semanticsAwareEquals = <A>(carrier: SetObj<A>): ((left: A, right: A) => boolean) => {
+  const semantics = getCarrierSemantics(carrier);
+  if (semantics?.equals) {
+    return semantics.equals;
+  }
+  return (left: A, right: A) => Object.is(left, right);
+};
+
 export interface SetHom<A, B> {
   readonly dom: SetObj<A>;
   readonly cod: SetObj<B>;
@@ -31,19 +99,32 @@ export interface SetOmegaWitness {
 }
 
 export interface SetSubobjectClassifierWitness {
-  readonly obj: <A>(elements: Iterable<A>) => SetObj<A>;
+  readonly obj: <A>(elements: Iterable<A>, options?: SetObjectOptions<A>) => SetObj<A>;
   readonly lazyObj: <A>(options: LazySetOptions<A>) => SetObj<A>;
   readonly id: typeof idSet;
   readonly hom: typeof createSetHom;
   readonly compose: typeof composeSet;
   readonly isHom: typeof isSetHom;
   readonly isLazy: typeof isLazySet;
+  readonly semantics: typeof getCarrierSemantics;
+  readonly attachSemantics: typeof attachCarrierSemantics;
+  readonly createMaterializedSemantics: typeof createMaterializedSemantics;
+  readonly createSubsetSemantics: typeof createSubsetSemantics;
+  readonly semanticsFromSet: typeof createSemanticsFromSet;
   readonly knownFiniteCardinality: typeof knownFiniteCardinality;
   readonly product: typeof buildProductData;
-  readonly coproduct: <A, B>(left: SetObj<A>, right: SetObj<B>) => CoproductData<A, B>;
+  readonly coproduct: <A, B>(
+    left: SetObj<A>,
+    right: SetObj<B>,
+    options?: CoproductCarrierOptions<A, B>,
+  ) => CoproductData<A, B>;
   readonly terminal: () => TerminalData;
   readonly initial: () => InitialData;
-  readonly exponential: <A, B>(base: SetObj<A>, codomain: SetObj<B>) => ExponentialData<A, B>;
+  readonly exponential: <A, B>(
+    base: SetObj<A>,
+    codomain: SetObj<B>,
+    options?: ExponentialCarrierOptions<A, B>,
+  ) => ExponentialData<A, B>;
   readonly dom: <A, B>(hom: SetHom<A, B>) => SetObj<A>;
   readonly cod: <A, B>(hom: SetHom<A, B>) => SetObj<B>;
   readonly terminalObj: SetObj<SetTerminalObject>;
@@ -81,6 +162,8 @@ interface ProductCarrier<A, B> {
   readonly lookup: (a: A, b: B) => Pair<A, B>;
 }
 
+export type ProductCarrierOptions<A, B> = CarrierOptions<Pair<A, B>>;
+
 interface CoproductInjections<A, B> {
   readonly inl: SetHom<A, Coproduct<A, B>>;
   readonly inr: SetHom<B, Coproduct<A, B>>;
@@ -100,6 +183,8 @@ interface CoproductCarrier<A, B> {
   readonly inlLookup: (value: A) => Coproduct<A, B>;
   readonly inrLookup: (value: B) => Coproduct<A, B>;
 }
+
+export type CoproductCarrierOptions<A, B> = CarrierOptions<Coproduct<A, B>>;
 
 export interface ProductData<A, B> {
   readonly object: SetObj<Pair<A, B>>;
@@ -160,8 +245,9 @@ const initialObj: SetObj<never> = new Set();
 
 export function isSetHom<A, B>(h: SetHom<A, B>): boolean {
   const { dom, cod, map } = h;
+  const codHas = semanticsAwareHas(cod);
   for (const a of dom) {
-    if (!cod.has(map(a))) {
+    if (!codHas(map(a))) {
       return false;
     }
   }
@@ -184,8 +270,6 @@ const createSetHom = <A, B>(
   return morphism;
 };
 
-const LAZY_CUTOFF = 10_000;
-
 const getDom = <A, B>(hom: SetHom<A, B>): SetObj<A> => hom.dom;
 
 const getCod = <A, B>(hom: SetHom<A, B>): SetObj<B> => hom.cod;
@@ -203,6 +287,16 @@ function buildSetPowerObject<A>(anchor: SetObj<A>): SetPowerObjectWitness<A> {
   if (finiteCardinality !== undefined) {
     const evidence = SetLaws.powerSetEvidence(anchor);
     const powerObj = evidence.characteristicCarrier as Set<CharacteristicHom<A>>;
+    if (!getCarrierSemantics(powerObj)) {
+      attachCarrierSemantics(
+        powerObj,
+        createSemanticsFromSet(powerObj, {
+          equals: (left, right) => left === right,
+          tag: "SetCatFinitePowerObject",
+        }),
+      );
+    }
+    const powerObjHas = semanticsAwareHas(powerObj);
     setPowerObjectRegistry.set(
       anchor as SetObj<unknown>,
       powerObj as Set<CharacteristicHom<unknown>>,
@@ -212,7 +306,7 @@ function buildSetPowerObject<A>(anchor: SetObj<A>): SetPowerObjectWitness<A> {
       membershipProduct.object,
       SetOmega,
       ([characteristic, element]) => {
-        if (!powerObj.has(characteristic)) {
+        if (!powerObjHas(characteristic)) {
           throw new Error("SetCat.powerObject: characteristic must belong to Ω^A.");
         }
         return characteristic.map(element);
@@ -228,36 +322,40 @@ function buildSetPowerObject<A>(anchor: SetObj<A>): SetPowerObjectWitness<A> {
 
   const known = new Set<CharacteristicHom<A>>();
   const powerObj = new LazySet<CharacteristicHom<A>>({
-    iterate: function* (): IterableIterator<CharacteristicHom<A>> {
-      for (const characteristic of known) {
-        yield characteristic;
-      }
+    semantics: {
+      iterate: function* (): IterableIterator<CharacteristicHom<A>> {
+        for (const characteristic of known) {
+          yield characteristic;
+        }
+      },
+      has: (candidate) => {
+        if (
+          candidate.dom !== anchor ||
+          candidate.cod !== SetOmega ||
+          !isSetHom(candidate)
+        ) {
+          return false;
+        }
+        if (!known.has(candidate)) {
+          known.add(candidate);
+        }
+        return true;
+      },
+      equals: (left, right) => left === right,
+      tag: "SetCatPowerObject",
     },
-    has: (candidate) => {
-      if (
-        candidate.dom !== anchor ||
-        candidate.cod !== SetOmega ||
-        !isSetHom(candidate)
-      ) {
-        return false;
-      }
-      if (!known.has(candidate)) {
-        known.add(candidate);
-      }
-      return true;
-    },
-    tag: "SetCatPowerObject",
   });
   setPowerObjectRegistry.set(
     anchor as SetObj<unknown>,
     known as Set<CharacteristicHom<unknown>>,
   );
   const membershipProduct = buildProductData(powerObj, anchor);
+  const powerObjHas = semanticsAwareHas(powerObj);
   const membership = createSetHom(
     membershipProduct.object,
     SetOmega,
     ([characteristic, element]) => {
-      if (!powerObj.has(characteristic)) {
+      if (!powerObjHas(characteristic)) {
         throw new Error("SetCat.powerObject: characteristic must belong to Ω^A.");
       }
       return characteristic.map(element);
@@ -301,28 +399,46 @@ let omegaWitnessCache: SetOmegaWitness;
 
 let subobjectClassifierWitnessCache: SetSubobjectClassifierWitness;
 
-export type LazySetOptions<A> = {
+type LazySetSemanticsOptions<A> = {
+  readonly semantics: SetCarrierSemantics<A>;
+  readonly tag?: string;
+};
+
+type LegacyLazySetOptions<A> = {
   readonly iterate: () => IterableIterator<A>;
   readonly has: (value: A) => boolean;
   readonly cardinality?: number;
+  readonly equals?: (left: A, right: A) => boolean;
   readonly tag?: string;
 };
+
+export type LazySetOptions<A> = LazySetSemanticsOptions<A> | LegacyLazySetOptions<A>;
 
 const LAZY_SET_MARKER = Symbol.for("SetCat.LazySet");
 
 class LazySet<A> implements Set<A> {
-  private readonly iterateFn: () => IterableIterator<A>;
-  private readonly membership: (value: A) => boolean;
-  private readonly knownCardinality: number | undefined;
-  private readonly seen = new Set<A>();
+  private readonly semantics: SetCarrierSemantics<A>;
+  private readonly equals: (left: A, right: A) => boolean;
+  private readonly seen: A[] = [];
 
   public readonly [LAZY_SET_MARKER] = true;
 
   public constructor(options: LazySetOptions<A>) {
-    this.iterateFn = options.iterate;
-    this.membership = options.has;
-    this.knownCardinality = options.cardinality;
-    this.tagLabel = options.tag ?? "LazySet";
+    const semantics: SetCarrierSemantics<A> = "semantics" in options
+      ? options.semantics
+      : {
+          iterate: options.iterate,
+          has: options.has,
+          ...(options.equals !== undefined ? { equals: options.equals } : {}),
+          ...(options.cardinality !== undefined
+            ? { cardinality: options.cardinality }
+            : {}),
+          ...(options.tag !== undefined ? { tag: options.tag } : {}),
+        };
+    this.semantics = semantics;
+    this.equals = semantics.equals ?? ((left, right) => Object.is(left, right));
+    this.tagLabel = options.tag ?? semantics.tag ?? "LazySet";
+    registerCarrierSemantics(this, semantics);
   }
 
   private readonly tagLabel: string;
@@ -332,23 +448,23 @@ class LazySet<A> implements Set<A> {
   }
 
   public get size(): number {
-    if (this.knownCardinality !== undefined) {
-      return this.knownCardinality;
+    if (this.semantics.cardinality !== undefined) {
+      return this.semantics.cardinality;
     }
     return Number.POSITIVE_INFINITY;
   }
 
   public get cardinality(): number | undefined {
-    return this.knownCardinality;
+    return this.semantics.cardinality;
   }
 
   public has(value: A): boolean {
-    if (this.seen.has(value)) {
+    if (this.hasSeen(value)) {
       return true;
     }
-    const result = this.membership(value);
+    const result = this.semantics.has(value);
     if (result) {
-      this.seen.add(value);
+      this.memoize(value);
     }
     return result;
   }
@@ -384,11 +500,11 @@ class LazySet<A> implements Set<A> {
   }
 
   public [Symbol.iterator](): IterableIterator<A> {
-    const iterator = this.iterateFn();
-    const seen = this.seen;
+    const iterator = this.semantics.iterate();
+    const memoize = (value: A) => this.memoize(value);
     return (function* iterate() {
       for (const value of iterator) {
-        seen.add(value);
+        memoize(value);
         yield value;
       }
     })();
@@ -402,6 +518,16 @@ class LazySet<A> implements Set<A> {
       }
     })();
   }
+
+  private hasSeen(value: A): boolean {
+    return this.seen.some((candidate) => this.equals(candidate, value));
+  }
+
+  private memoize(value: A): void {
+    if (!this.hasSeen(value)) {
+      this.seen.push(value);
+    }
+  }
 }
 
 export function isLazySet<A>(value: SetObj<A>): value is LazySet<A>;
@@ -410,9 +536,135 @@ export function isLazySet<A>(value: unknown): value is LazySet<A> {
   return typeof value === "object" && value !== null && (value as { [LAZY_SET_MARKER]?: boolean })[LAZY_SET_MARKER] === true;
 }
 
+const defaultInstantiateCarrier = <A>(semantics: SetCarrierSemantics<A>): SetObj<A> =>
+  new LazySet<A>({ semantics });
+
+export const instantiateMaterializedCarrier = <A>(semantics: SetCarrierSemantics<A>): SetObj<A> => {
+  const equality = semantics.equals ?? ((left: A, right: A) => Object.is(left, right));
+  const elements: A[] = [];
+  for (const value of semantics.iterate()) {
+    if (!elements.some((candidate) => equality(candidate, value))) {
+      elements.push(value);
+    }
+  }
+  const materialized = new Set(elements);
+  registerCarrierSemantics(materialized, semantics);
+  return materialized;
+};
+
+const realizeCarrier = <A>(
+  semanticsFactory: () => SetCarrierSemantics<A>,
+  options: CarrierOptions<A> = {},
+): { readonly semantics: SetCarrierSemantics<A>; readonly object: SetObj<A> } => {
+  const semantics = options.semantics ?? semanticsFactory();
+  const instantiate = options.instantiate ?? defaultInstantiateCarrier<A>;
+  const object = instantiate(semantics);
+  registerCarrierSemantics(object, semantics);
+  return { semantics, object };
+};
+
 type MaybeFinite = number | undefined;
 
+const defaultCarrierEquality = <A>(left: A, right: A): boolean => Object.is(left, right);
+
+const collectDistinctValues = <A>(
+  source: Iterable<A>,
+  equals: (left: A, right: A) => boolean,
+): A[] => {
+  const distinct: A[] = [];
+  for (const value of source) {
+    if (!distinct.some((candidate) => equals(candidate, value))) {
+      distinct.push(value);
+    }
+  }
+  return distinct;
+};
+
+export function createMaterializedSemantics<A>(
+  elements: Iterable<A>,
+  options: MaterializedSemanticsOptions<A> = {},
+): SetCarrierSemantics<A> {
+  const equals = options.equals ?? defaultCarrierEquality;
+  const distinct = collectDistinctValues(elements, equals);
+  return {
+    iterate: function* iterate(): IterableIterator<A> {
+      for (const value of distinct) {
+        yield value;
+      }
+    },
+    has: (candidate) => {
+      for (const value of distinct) {
+        if (equals(value, candidate)) {
+          return true;
+        }
+      }
+      return false;
+    },
+    equals,
+    cardinality: distinct.length,
+    ...(options.tag !== undefined ? { tag: options.tag } : {}),
+  };
+}
+
+export function createSemanticsFromSet<A>(
+  carrier: SetObj<A>,
+  options: MaterializedSemanticsOptions<A> = {},
+): SetCarrierSemantics<A> {
+  const equals = options.equals ?? defaultCarrierEquality;
+  const iterate = function* iterate(): IterableIterator<A> {
+    for (const value of carrier) {
+      yield value;
+    }
+  };
+  const has = (candidate: A): boolean => {
+    if (options.equals === undefined) {
+      return carrier.has(candidate);
+    }
+    for (const value of carrier) {
+      if (equals(value, candidate)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const cardinality = Number.isFinite(carrier.size) ? carrier.size : undefined;
+  return {
+    iterate,
+    has,
+    equals,
+    ...(cardinality !== undefined ? { cardinality } : {}),
+    ...(options.tag !== undefined ? { tag: options.tag } : {}),
+  };
+}
+
+export const createSubsetSemantics = <A>(
+  ambient: SetObj<A>,
+  elements: Iterable<A>,
+  options: SubsetSemanticsOptions<A> = {},
+): SetCarrierSemantics<A> => {
+  const ambientSemantics = getCarrierSemantics(ambient);
+  const equals = options.equals ?? ambientSemantics?.equals ?? defaultCarrierEquality<A>;
+  return createMaterializedSemantics(elements, {
+    ...options,
+    equals,
+  });
+};
+
+const terminalSemantics = createMaterializedSemantics([terminalValue], {
+  tag: "SetCat.terminal",
+});
+attachCarrierSemantics(terminalObj, terminalSemantics);
+
+const initialSemantics = createMaterializedSemantics<never>([], {
+  tag: "SetCat.initial",
+});
+attachCarrierSemantics(initialObj, initialSemantics);
+
 const knownFiniteCardinality = <A>(carrier: SetObj<A>): MaybeFinite => {
+  const semantics = getCarrierSemantics(carrier);
+  if (semantics?.cardinality !== undefined && Number.isFinite(semantics.cardinality)) {
+    return semantics.cardinality;
+  }
   if (isLazySet(carrier)) {
     const { cardinality } = carrier;
     if (cardinality !== undefined && Number.isFinite(cardinality)) {
@@ -446,48 +698,26 @@ const addCardinality = <A, B>(left: SetObj<A>, right: SetObj<B>): number | undef
   return Number.isFinite(sum) ? sum : undefined;
 };
 
-const shouldMaterializeProduct = <A, B>(left: SetObj<A>, right: SetObj<B>): boolean => {
-  const productSize = multiplyCardinality(left, right);
-  if (productSize === undefined) {
-    return false;
-  }
-  return productSize <= LAZY_CUTOFF;
-};
-
-const shouldMaterializeCoproduct = <A, B>(left: SetObj<A>, right: SetObj<B>): boolean => {
-  const sumSize = addCardinality(left, right);
-  if (sumSize === undefined) {
-    return false;
-  }
-  return sumSize <= LAZY_CUTOFF;
-};
-
-const shouldMaterializeExponential = <A, B>(base: SetObj<A>, codomain: SetObj<B>): boolean => {
-  const baseSize = knownFiniteCardinality(base);
-  const codSize = knownFiniteCardinality(codomain);
-  if (baseSize === undefined || codSize === undefined) {
-    return false;
-  }
-  let combinations = 1;
-  for (let i = 0; i < baseSize; i += 1) {
-    combinations *= codSize;
-    if (!Number.isFinite(combinations) || combinations > LAZY_CUTOFF) {
-      return false;
-    }
-  }
-  return combinations <= LAZY_CUTOFF;
-};
-
 const isPair = <A, B>(value: unknown): value is Pair<A, B> =>
   Array.isArray(value) && value.length === 2;
 
-const cartesianProduct = <A, B>(left: SetObj<A>, right: SetObj<B>): ProductCarrier<A, B> => {
+const cartesianProduct = <A, B>(
+  left: SetObj<A>,
+  right: SetObj<B>,
+  options: CarrierOptions<Pair<A, B>> = {},
+): ProductCarrier<A, B> => {
   const lookup = new Map<A, Map<B, Pair<A, B>>>();
+  const leftHas = semanticsAwareHas(left);
+  const rightHas = semanticsAwareHas(right);
+  const leftEquals = semanticsAwareEquals(left);
+  const rightEquals = semanticsAwareEquals(right);
+  const pairEquals = (leftPair: Pair<A, B>, rightPair: Pair<A, B>): boolean =>
+    leftEquals(leftPair[0], rightPair[0]) && rightEquals(leftPair[1], rightPair[1]);
   const ensurePair = (a: A, b: B): Pair<A, B> => {
-    if (!left.has(a)) {
+    if (!leftHas(a)) {
       throw new Error("SetCat: product pairing referenced an element outside the left factor");
     }
-    if (!right.has(b)) {
+    if (!rightHas(b)) {
       throw new Error("SetCat: product pairing referenced an element outside the right factor");
     }
     let column = lookup.get(a);
@@ -503,43 +733,37 @@ const cartesianProduct = <A, B>(left: SetObj<A>, right: SetObj<B>): ProductCarri
     return pair;
   };
 
-  if (shouldMaterializeProduct(left, right)) {
-    const pairs = new Set<Pair<A, B>>();
-    for (const a of left) {
-      for (const b of right) {
-        pairs.add(ensurePair(a, b));
-      }
-    }
-    return {
-      object: pairs,
-      lookup: ensurePair,
-    };
-  }
-
-  const iterate = function* (): IterableIterator<Pair<A, B>> {
-    for (const a of left) {
-      for (const b of right) {
-        yield ensurePair(a, b);
-      }
-    }
-  };
-
   const cardinality = multiplyCardinality(left, right);
 
-  const object = new LazySet<Pair<A, B>>({
-    iterate,
+  const semanticsFactory = (): SetCarrierSemantics<Pair<A, B>> => ({
+    iterate: function* (): IterableIterator<Pair<A, B>> {
+      for (const a of left) {
+        for (const b of right) {
+          yield ensurePair(a, b);
+        }
+      }
+    },
     has: (value) => {
       if (!isPair<A, B>(value)) {
         return false;
       }
       const [a, b] = value;
-      if (!left.has(a) || !right.has(b)) {
+      if (!leftHas(a) || !rightHas(b)) {
         return false;
       }
-      return ensurePair(a, b) === value;
+      const canonical = ensurePair(a, b);
+      return canonical === value || pairEquals(canonical, value);
     },
+    equals: (leftPair, rightPair) => leftPair === rightPair || pairEquals(leftPair, rightPair),
     ...(cardinality !== undefined ? { cardinality } : {}),
-    tag: "SetCatLazyProduct",
+    tag: "SetCatProductCarrier",
+  });
+
+  const instantiate: CarrierInstantiation<Pair<A, B>> = options.instantiate
+    ?? (cardinality !== undefined ? instantiateMaterializedCarrier : defaultInstantiateCarrier);
+  const { object } = realizeCarrier(semanticsFactory, {
+    ...options,
+    instantiate,
   });
 
   return {
@@ -548,8 +772,12 @@ const cartesianProduct = <A, B>(left: SetObj<A>, right: SetObj<B>): ProductCarri
   };
 };
 
-const buildProductData = <A, B>(left: SetObj<A>, right: SetObj<B>): ProductData<A, B> => {
-  const carrier = cartesianProduct(left, right);
+const buildProductData = <A, B>(
+  left: SetObj<A>,
+  right: SetObj<B>,
+  options: ProductCarrierOptions<A, B> = {},
+): ProductData<A, B> => {
+  const carrier = cartesianProduct(left, right, options);
   const projections: ProductProjections<A, B> = {
     fst: createSetHom(carrier.object, left, (pair) => pair[0]),
     snd: createSetHom(carrier.object, right, (pair) => pair[1]),
@@ -573,9 +801,10 @@ const buildProductData = <A, B>(left: SetObj<A>, right: SetObj<B>): ProductData<
 const createExponentialFunction = <A, B>(
   base: SetObj<A>,
   assignments: Map<A, B>,
-): ExponentialArrow<A, B> =>
-  (value: A) => {
-    if (!base.has(value)) {
+): ExponentialArrow<A, B> => {
+  const baseHas = semanticsAwareHas(base);
+  return (value: A) => {
+    if (!baseHas(value)) {
       throw new Error("SetCat: exponential function applied outside the declared base set");
     }
     if (!assignments.has(value)) {
@@ -583,22 +812,25 @@ const createExponentialFunction = <A, B>(
     }
     return assignments.get(value) as B;
   };
+};
 
 const createLazyExponentialFunction = <A, B>(
   base: SetObj<A>,
   codomain: SetObj<B>,
   evaluate: (value: A) => B,
 ): ExponentialArrow<A, B> => {
+  const baseHas = semanticsAwareHas(base);
+  const codomainHas = semanticsAwareHas(codomain);
   const cache = new Map<A, B>();
   return (value: A) => {
-    if (!base.has(value)) {
+    if (!baseHas(value)) {
       throw new Error("SetCat: exponential function applied outside the declared base set");
     }
     if (cache.has(value)) {
       return cache.get(value) as B;
     }
     const result = evaluate(value);
-    if (!codomain.has(result)) {
+    if (!codomainHas(result)) {
       throw new Error("SetCat: exponential function produced a value outside the declared codomain");
     }
     cache.set(value, result);
@@ -616,21 +848,63 @@ interface ExponentialCarrier<A, B> {
   readonly register: (assignment: (value: A) => B) => ExponentialArrow<A, B>;
 }
 
+export type ExponentialRegisterInput<A, B> = {
+  readonly assignment: (value: A) => B;
+  readonly base: SetObj<A>;
+  readonly codomain: SetObj<B>;
+  readonly semantics: SetCarrierSemantics<ExponentialArrow<A, B>>;
+};
+
+export interface ExponentialCarrierOptions<A, B> extends CarrierOptions<ExponentialArrow<A, B>> {
+  readonly register?: (input: ExponentialRegisterInput<A, B>) => ExponentialArrow<A, B>;
+}
+
 const enumerateExponentialCarrier = <A, B>(
   base: SetObj<A>,
   codomain: SetObj<B>,
+  options: ExponentialCarrierOptions<A, B> = {},
 ): ExponentialCarrier<A, B> => {
-  if (!shouldMaterializeExponential(base, codomain)) {
+  if (options.semantics) {
+    const instantiate: CarrierInstantiation<ExponentialArrow<A, B>> =
+      options.instantiate ?? defaultInstantiateCarrier;
+    const object = instantiate(options.semantics);
+    const registerFactory: (input: ExponentialRegisterInput<A, B>) => ExponentialArrow<A, B> =
+      options.register ?? ((input) => createLazyExponentialFunction(base, codomain, input.assignment));
+    return {
+      object,
+      register: (assignment) =>
+        registerFactory({
+          assignment,
+          base,
+          codomain,
+          semantics: options.semantics as SetCarrierSemantics<ExponentialArrow<A, B>>,
+        }),
+    };
+  }
+
+  const baseSize = knownFiniteCardinality(base);
+  const codomainSize = knownFiniteCardinality(codomain);
+  const isFinite = baseSize !== undefined && codomainSize !== undefined;
+
+  if (!isFinite) {
     const known = new Set<ExponentialArrow<A, B>>();
-    const object: SetObj<ExponentialArrow<A, B>> = new LazySet({
+    const semanticsFactory = (): SetCarrierSemantics<ExponentialArrow<A, B>> => ({
       iterate: function* (): IterableIterator<ExponentialArrow<A, B>> {
         for (const fn of known) {
           yield fn;
         }
       },
       has: (fn) => known.has(fn),
+      equals: (left, right) => left === right,
       tag: "SetCatLazyExponential",
     });
+    const instantiate: CarrierInstantiation<ExponentialArrow<A, B>> =
+      options.instantiate ?? defaultInstantiateCarrier;
+    const carrierOptions: CarrierOptions<ExponentialArrow<A, B>> =
+      options.semantics !== undefined
+        ? { semantics: options.semantics, instantiate }
+        : { instantiate };
+    const { object } = realizeCarrier(semanticsFactory, carrierOptions);
 
     const register = (assignment: (value: A) => B): ExponentialArrow<A, B> => {
       const fn = createLazyExponentialFunction(base, codomain, assignment);
@@ -638,7 +912,10 @@ const enumerateExponentialCarrier = <A, B>(
       return fn;
     };
 
-    return { object, register };
+    return {
+      object,
+      register,
+    };
   }
 
   const baseElements = Array.from(base.values());
@@ -689,7 +966,36 @@ const enumerateExponentialCarrier = <A, B>(
     build(0, root);
   }
 
-  const object: SetObj<ExponentialArrow<A, B>> = new Set(functions);
+  const computeCardinality = (): number => {
+    if (baseSize === undefined || codomainSize === undefined) {
+      return functions.length;
+    }
+    let total = 1;
+    for (let i = 0; i < baseSize; i += 1) {
+      total *= codomainSize;
+    }
+    return total;
+  };
+
+  const semanticsFactory = (): SetCarrierSemantics<ExponentialArrow<A, B>> => ({
+    iterate: function* (): IterableIterator<ExponentialArrow<A, B>> {
+      for (const fn of functions) {
+        yield fn;
+      }
+    },
+    has: (fn) => functions.includes(fn),
+    equals: (left, right) => left === right,
+    cardinality: computeCardinality(),
+    tag: "SetCatFiniteExponential",
+  });
+
+  const instantiate: CarrierInstantiation<ExponentialArrow<A, B>> =
+    options.instantiate ?? instantiateMaterializedCarrier;
+  const carrierOptions: CarrierOptions<ExponentialArrow<A, B>> =
+    options.semantics !== undefined
+      ? { semantics: options.semantics, instantiate }
+      : { instantiate };
+  const { object } = realizeCarrier(semanticsFactory, carrierOptions);
 
   const retrieve = (outputs: ReadonlyArray<B>): ExponentialArrow<A, B> => {
     if (outputs.length !== baseElements.length) {
@@ -712,9 +1018,10 @@ const enumerateExponentialCarrier = <A, B>(
   };
 
   const register = (assignment: (value: A) => B): ExponentialArrow<A, B> => {
+    const codomainHas = semanticsAwareHas(codomain);
     const outputs = baseElements.map((element) => {
       const value = assignment(element);
-      if (!codomain.has(value)) {
+      if (!codomainHas(value)) {
         throw new Error("SetCat: exponential function produced a value outside the declared codomain");
       }
       return value;
@@ -728,12 +1035,29 @@ const enumerateExponentialCarrier = <A, B>(
 const buildCoproductCarrier = <A, B>(
   left: SetObj<A>,
   right: SetObj<B>,
+  options: CoproductCarrierOptions<A, B> = {},
 ): CoproductCarrier<A, B> => {
   const inlMap = new Map<A, Coproduct<A, B>>();
   const inrMap = new Map<B, Coproduct<A, B>>();
+  const leftHas = semanticsAwareHas(left);
+  const rightHas = semanticsAwareHas(right);
+  const leftEquals = semanticsAwareEquals(left);
+  const rightEquals = semanticsAwareEquals(right);
+  const coproductEquals = (leftValue: Coproduct<A, B>, rightValue: Coproduct<A, B>): boolean => {
+    if (leftValue.tag !== rightValue.tag) {
+      return false;
+    }
+    if (leftValue.tag === "inl" && rightValue.tag === "inl") {
+      return leftEquals(leftValue.value, rightValue.value);
+    }
+    if (leftValue.tag === "inr" && rightValue.tag === "inr") {
+      return rightEquals(leftValue.value, rightValue.value);
+    }
+    return false;
+  };
 
   const ensureInl = (value: A): Coproduct<A, B> => {
-    if (!left.has(value)) {
+    if (!leftHas(value)) {
       throw new Error("SetCat: coproduct injection referenced an element outside the left summand");
     }
     let tagged = inlMap.get(value);
@@ -745,7 +1069,7 @@ const buildCoproductCarrier = <A, B>(
   };
 
   const ensureInr = (value: B): Coproduct<A, B> => {
-    if (!right.has(value)) {
+    if (!rightHas(value)) {
       throw new Error("SetCat: coproduct injection referenced an element outside the right summand");
     }
     let tagged = inrMap.get(value);
@@ -756,51 +1080,44 @@ const buildCoproductCarrier = <A, B>(
     return tagged;
   };
 
-  if (shouldMaterializeCoproduct(left, right)) {
-    const elements = new Set<Coproduct<A, B>>();
-    for (const value of left) {
-      elements.add(ensureInl(value));
-    }
-    for (const value of right) {
-      elements.add(ensureInr(value));
-    }
-    return {
-      object: elements,
-      inlLookup: ensureInl,
-      inrLookup: ensureInr,
-    };
-  }
-
-  const iterate = function* (): IterableIterator<Coproduct<A, B>> {
-    for (const value of left) {
-      yield ensureInl(value);
-    }
-    for (const value of right) {
-      yield ensureInr(value);
-    }
-  };
-
   const cardinality = addCardinality(left, right);
 
-  const object = new LazySet<Coproduct<A, B>>({
-    iterate,
+  const semanticsFactory = (): SetCarrierSemantics<Coproduct<A, B>> => ({
+    iterate: function* (): IterableIterator<Coproduct<A, B>> {
+      for (const value of left) {
+        yield ensureInl(value);
+      }
+      for (const value of right) {
+        yield ensureInr(value);
+      }
+    },
     has: (value) => {
       if (value.tag === "inl") {
-        if (!left.has(value.value)) {
+        if (!leftHas(value.value)) {
           return false;
         }
-        return ensureInl(value.value) === value;
+        const canonical = ensureInl(value.value);
+        return canonical === value || coproductEquals(canonical, value);
       }
       if (value.tag === "inr") {
-        if (!right.has(value.value)) {
+        if (!rightHas(value.value)) {
           return false;
         }
-        return ensureInr(value.value) === value;
+        const canonical = ensureInr(value.value);
+        return canonical === value || coproductEquals(canonical, value);
       }
       return false;
     },
+    equals: (leftValue, rightValue) => leftValue === rightValue || coproductEquals(leftValue, rightValue),
     ...(cardinality !== undefined ? { cardinality } : {}),
-    tag: "SetCatLazyCoproduct",
+    tag: "SetCatCoproductCarrier",
+  });
+
+  const instantiate: CarrierInstantiation<Coproduct<A, B>> = options.instantiate
+    ?? (cardinality !== undefined ? instantiateMaterializedCarrier : defaultInstantiateCarrier);
+  const { object } = realizeCarrier(semanticsFactory, {
+    ...options,
+    instantiate,
   });
 
   return {
@@ -822,7 +1139,22 @@ export function composeSet<A, B, C>(g: SetHom<B, C>, f: SetHom<A, B>): SetHom<A,
 }
 
 export const SetCat = {
-  obj: <A>(elements: Iterable<A>): SetObj<A> => new Set(elements),
+  obj: <A>(elements: Iterable<A>, options: SetObjectOptions<A> = {}): SetObj<A> => {
+    if (options.semantics) {
+      const instantiate = options.instantiate ?? defaultInstantiateCarrier<A>;
+      const object = instantiate(options.semantics);
+      registerCarrierSemantics(object, options.semantics);
+      return object;
+    }
+    const semantics = createMaterializedSemantics(elements, {
+      ...(options.equals !== undefined ? { equals: options.equals } : {}),
+      tag: options.tag ?? "SetCat.materialized",
+    });
+    const instantiate = options.instantiate ?? instantiateMaterializedCarrier;
+    const object = instantiate(semantics);
+    registerCarrierSemantics(object, semantics);
+    return object;
+  },
   lazyObj: <A>(options: LazySetOptions<A>): SetObj<A> => new LazySet<A>(options),
   id: idSet,
   hom: createSetHom,
@@ -831,10 +1163,19 @@ export const SetCat = {
   cod: getCod,
   isHom: isSetHom,
   isLazy: isLazySet,
+  semantics: getCarrierSemantics,
+  attachSemantics: attachCarrierSemantics,
+  createMaterializedSemantics,
+  createSubsetSemantics,
+  semanticsFromSet: createSemanticsFromSet,
   knownFiniteCardinality: knownFiniteCardinality,
   product: buildProductData,
-  coproduct: <A, B>(left: SetObj<A>, right: SetObj<B>): CoproductData<A, B> => {
-    const carrier = buildCoproductCarrier(left, right);
+  coproduct: <A, B>(
+    left: SetObj<A>,
+    right: SetObj<B>,
+    options: CoproductCarrierOptions<A, B> = {},
+  ): CoproductData<A, B> => {
+    const carrier = buildCoproductCarrier(left, right, options);
     const injections: CoproductInjections<A, B> = {
       inl: createSetHom(left, carrier.object, (value) => carrier.inlLookup(value)),
       inr: createSetHom(right, carrier.object, (value) => carrier.inrLookup(value)),
@@ -862,8 +1203,12 @@ export const SetCat = {
     initialize: <A>(cod: SetObj<A>): SetHom<never, A> =>
       createSetHom(initialObj, cod, (value) => value),
   }),
-  exponential: <A, B>(base: SetObj<A>, codomain: SetObj<B>): ExponentialData<A, B> => {
-    const enumeration = enumerateExponentialCarrier(base, codomain);
+  exponential: <A, B>(
+    base: SetObj<A>,
+    codomain: SetObj<B>,
+    options: ExponentialCarrierOptions<A, B> = {},
+  ): ExponentialData<A, B> => {
+    const enumeration = enumerateExponentialCarrier(base, codomain, options);
     const evaluationProduct = buildProductData(enumeration.object, base);
     const evaluation = createSetHom(
       evaluationProduct.object,
@@ -893,19 +1238,23 @@ export const SetCat = {
       }
 
       const assignments = new Map<X, ExponentialArrow<A, B>>();
+      const domainHas = semanticsAwareHas(domain);
+      const baseHas = semanticsAwareHas(base);
+      const domainEquals = semanticsAwareEquals(domain);
+      const baseEquals = semanticsAwareEquals(base);
 
       const lookupPair = (x: X, a: A): Pair<X, A> => {
-        if (!domain.has(x)) {
+        if (!domainHas(x)) {
           throw new Error("SetCat: curry evaluated on an element outside the declared domain");
         }
-        if (!base.has(a)) {
+        if (!baseHas(a)) {
           throw new Error("SetCat: curry evaluated on an element outside the declared base set");
         }
         if (productData.lookup) {
           return productData.lookup(x, a);
         }
         for (const candidate of productData.object) {
-          if (candidate[0] === x && candidate[1] === a) {
+          if (domainEquals(candidate[0], x) && baseEquals(candidate[1], a)) {
             return candidate;
           }
         }
@@ -1013,19 +1362,21 @@ export const ensureSubsetMonomorphism = <A>(
   if (inclusion.cod === undefined || inclusion.dom === undefined) {
     throw new Error(`${label}: inclusion must provide a domain and codomain.`);
   }
+  const ambientHas = semanticsAwareHas(inclusion.cod);
+  const ambientEquals = semanticsAwareEquals(inclusion.cod);
   for (const element of inclusion.dom) {
-    if (!inclusion.cod.has(element)) {
+    if (!ambientHas(element)) {
       throw new Error(
         `${label}: domain element ${String(element)} must belong to the ambient set to define a subset inclusion.`,
       );
     }
     const image = inclusion.map(element);
-    if (!inclusion.cod.has(image)) {
+    if (!ambientHas(image)) {
       throw new Error(
         `${label}: inclusion image ${String(image)} must belong to the ambient set.`,
       );
     }
-    if (image !== element) {
+    if (!ambientEquals(image, element)) {
       throw new Error(
         `${label}: subset inclusion must map each element to itself (expected ${String(element)}, found ${String(image)}).`,
       );
@@ -1037,7 +1388,8 @@ export const setCharacteristicOfSubset = <A>(inclusion: SetHom<A, A>): SetHom<A,
   ensureSubsetMonomorphism(inclusion, "setCharacteristicOfSubset");
   const ambient = inclusion.cod;
   const subset = inclusion.dom;
-  const characteristic = SetCat.hom(ambient, SetOmega, (value) => subset.has(value));
+  const subsetHas = semanticsAwareHas(subset);
+  const characteristic = SetCat.hom(ambient, SetOmega, (value) => subsetHas(value));
   registerPowerObjectCharacteristic(ambient, characteristic);
   return characteristic;
 };
@@ -1062,7 +1414,10 @@ export const setSubsetFromCharacteristic = <A>(
       members.push(element);
     }
   }
-  const subset = SetCat.obj(members);
+  const subsetSemantics = createSubsetSemantics(ambient, members, {
+    tag: "SetCat.subsetFromCharacteristic",
+  });
+  const subset = instantiateMaterializedCarrier(subsetSemantics);
   const inclusion = SetCat.hom(subset, ambient, (value) => value);
   ensureSubsetMonomorphism(inclusion, "setSubsetFromCharacteristic");
   return { subset, inclusion };
@@ -1087,6 +1442,11 @@ subobjectClassifierWitnessCache = {
   compose: SetCat.compose,
   isHom: SetCat.isHom,
   isLazy: SetCat.isLazy,
+  semantics: SetCat.semantics,
+  attachSemantics: SetCat.attachSemantics,
+  createMaterializedSemantics: SetCat.createMaterializedSemantics,
+  createSubsetSemantics: SetCat.createSubsetSemantics,
+  semanticsFromSet: SetCat.semanticsFromSet,
   knownFiniteCardinality: SetCat.knownFiniteCardinality,
   product: SetCat.product,
   coproduct: SetCat.coproduct,

@@ -29,6 +29,8 @@ const expectSetEqual = <A>(left: ReadonlySet<A>, right: ReadonlySet<A>) => {
 
 const toAny = <A, B>(hom: SetHom<A, B>): AnySetHom => hom as unknown as AnySetHom;
 
+type WithId = { readonly id: number };
+
 describe("Set subobject toolbox", () => {
   it("enumerates canonical subobjects of finite ambients", () => {
     const ambient = SetCat.obj(["a0"]);
@@ -109,6 +111,44 @@ describe("Set subobject toolbox", () => {
     const failure = setSubobjectLeq(toAny(includeMedium), toAny(includeSmall));
     expect(failure.holds).toBe(false);
     expect(failure.reason).toMatch(/lower subobject/i);
+  });
+
+  it("respects registered semantics when comparing subobject membership", () => {
+    const equals = (left: WithId, right: WithId): boolean => left.id === right.id;
+    const ambientSeed: ReadonlyArray<WithId> = [{ id: 0 }, { id: 1 }];
+    const ambient = SetCat.obj<WithId>(ambientSeed, { equals, tag: "SemanticAmbient" });
+
+    const [representative] = Array.from(ambient);
+    if (!representative) {
+      throw new Error("Semantic ambient must expose at least one element.");
+    }
+
+    const upperSeed: ReadonlyArray<WithId> = [representative];
+    const upper = SetCat.obj<WithId>(upperSeed, { equals, tag: "SemanticUpper" });
+    const lowerSeed: ReadonlyArray<WithId> = [{ id: representative.id }];
+    const lower = SetCat.obj<WithId>(lowerSeed, { equals, tag: "SemanticLower" });
+
+    const includeUpper = SetCat.hom<WithId, WithId>(upper, ambient, (value) => value);
+    const includeLower = SetCat.hom<WithId, WithId>(lower, ambient, (value) => ({
+      id: value.id,
+    } as WithId));
+
+    const verdict = setSubobjectLeq(toAny(includeLower), toAny(includeUpper));
+    expect(verdict.holds).toBe(true);
+    expect(verdict.mediator).toBeDefined();
+
+    const mediator = verdict.mediator as SetHom<WithId, WithId>;
+    const recomposed = SetCat.compose(includeUpper, mediator);
+    const ambientSemantics = SetCat.semantics(ambient);
+    for (const element of lower) {
+      const recomposedImage = recomposed.map(element);
+      const originalImage = includeLower.map(element);
+      if (!ambientSemantics?.equals) {
+        expect(recomposedImage).toBe(originalImage);
+      } else {
+        expect(ambientSemantics.equals(recomposedImage, originalImage)).toBe(true);
+      }
+    }
   });
 
   it("builds the subobject partial order isomorphism when inclusions factor both ways", () => {
@@ -202,6 +242,50 @@ describe("Set subobject toolbox", () => {
     const rightComposite = SetCat.compose(witness.forward, witness.backward);
     expect(rightComposite.dom).toBe(codomain);
     expect(rightComposite.cod).toBe(codomain);
+  });
+
+  it("inverts bijections using codomain equality semantics", () => {
+    const equals = (left: WithId, right: WithId): boolean => left.id === right.id;
+
+    const domainSeed: ReadonlyArray<WithId> = [{ id: 0 }, { id: 1 }];
+    const codomainSeed: ReadonlyArray<WithId> = [{ id: 0 }, { id: 1 }];
+
+    const domain = SetCat.obj<WithId>(domainSeed, { equals, tag: "SemanticIsoDomain" });
+    const codomain = SetCat.obj<WithId>(codomainSeed, { equals, tag: "SemanticIsoCodomain" });
+
+    const bijection = SetCat.hom<WithId, WithId>(domain, codomain, (value) =>
+      ({ id: value.id === 0 ? 1 : 0 } as WithId),
+    );
+
+    const verdict = setMonicEpicIso(toAny(bijection));
+    expect(verdict.found).toBe(true);
+    const witness = verdict.witness!;
+
+    const backward = witness.backward as SetHom<WithId, WithId>;
+    const forward = witness.forward as SetHom<WithId, WithId>;
+
+    const codSemantics = SetCat.semantics(codomain);
+    const domainSemantics = SetCat.semantics(domain);
+
+    for (const element of codomain) {
+      const preimage = backward.map(element);
+      const roundTrip = forward.map(preimage);
+      if (!codSemantics?.equals) {
+        expect(roundTrip).toBe(element);
+      } else {
+        expect(codSemantics.equals(roundTrip, element)).toBe(true);
+      }
+    }
+
+    for (const element of domain) {
+      const image = forward.map(element);
+      const recovered = backward.map(image);
+      if (!domainSemantics?.equals) {
+        expect(recovered).toBe(element);
+      } else {
+        expect(domainSemantics.equals(recovered, element)).toBe(true);
+      }
+    }
   });
 
   it("rejects non-epic monomorphisms", () => {

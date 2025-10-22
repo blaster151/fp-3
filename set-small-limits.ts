@@ -2,7 +2,15 @@ import { CategoryLimits } from "./stdlib/category-limits";
 import { ArrowFamilies } from "./stdlib/arrow-families";
 import { IndexedFamilies } from "./stdlib/indexed-families";
 import type { Category } from "./stdlib/category";
-import { SetCat, type SetHom, type SetObj } from "./set-cat";
+import {
+  SetCat,
+  instantiateMaterializedCarrier,
+  semanticsAwareEquals,
+  semanticsAwareHas,
+  type SetCarrierSemantics,
+  type SetHom,
+  type SetObj,
+} from "./set-cat";
 import {
   createSetMultInfObj,
   setMultObjFromSet,
@@ -17,7 +25,8 @@ type AnySetHom = SetHom<unknown, unknown>;
 type ProductMetadata = {
   readonly kind: "finite";
   readonly arity: number;
-  readonly lookup: Map<string, ReadonlyArray<unknown>>;
+  readonly tuples: ReadonlyArray<ReadonlyArray<unknown>>;
+  readonly equals: (left: ReadonlyArray<unknown>, right: ReadonlyArray<unknown>) => boolean;
 };
 
 type InfiniteProductMetadata = {
@@ -40,20 +49,16 @@ type TupleBuilder = (
 const widenHom = <A, B>(hom: SetHom<A, B>): AnySetHom => hom as unknown as AnySetHom;
 const widenObj = <A>(obj: SetObj<A>): AnySetObj => obj as unknown as AnySetObj;
 
-const buildKey = (coordinates: ReadonlyArray<unknown>): string => JSON.stringify(coordinates);
-
 const createProductMetadata = (): { buildProduct: ProductBuilder; tuple: TupleBuilder } => {
   const metadata = new WeakMap<AnySetObj, ProductMetadata>();
 
   const buildProduct: ProductBuilder = (objects) => {
     const tuples: Array<ReadonlyArray<unknown>> = [];
-    const lookup = new Map<string, ReadonlyArray<unknown>>();
 
     const build = (prefix: unknown[], index: number) => {
       if (index === objects.length) {
         const tuple = Object.freeze(prefix.slice()) as ReadonlyArray<unknown>;
         tuples.push(tuple);
-        lookup.set(buildKey(tuple), tuple);
         return;
       }
 
@@ -69,9 +74,28 @@ const createProductMetadata = (): { buildProduct: ProductBuilder; tuple: TupleBu
     };
 
     build([], 0);
-    const rawCarrier = SetCat.obj(tuples);
+    const coordinateEquals = objects.map((object) => semanticsAwareEquals(object));
+    const tupleEquals = (left: ReadonlyArray<unknown>, right: ReadonlyArray<unknown>): boolean => {
+      if (left.length !== objects.length || right.length !== objects.length) {
+        return false;
+      }
+      return coordinateEquals.every((equals, position) => equals(left[position], right[position]));
+    };
+    const semantics = SetCat.createMaterializedSemantics(tuples, {
+      equals: tupleEquals,
+      tag: "SetSmallFiniteProduct",
+    });
+    const rawCarrier = SetCat.obj(tuples, {
+      semantics,
+      instantiate: instantiateMaterializedCarrier,
+    });
     const carrier = widenObj(rawCarrier);
-    metadata.set(carrier, { kind: "finite", arity: objects.length, lookup });
+    metadata.set(carrier, {
+      kind: "finite",
+      arity: objects.length,
+      tuples,
+      equals: tupleEquals,
+    });
 
     const projections = objects.map((object, position) =>
       widenHom(
@@ -100,8 +124,7 @@ const createProductMetadata = (): { buildProduct: ProductBuilder; tuple: TupleBu
 
     return SetCat.hom<unknown, unknown>(domain, product, (value: unknown) => {
       const coordinates = legs.map((leg) => leg.map(value));
-      const key = buildKey(coordinates);
-      const tupleValue = data.lookup.get(key);
+      const tupleValue = data.tuples.find((candidate) => data.equals(candidate, coordinates));
       if (!tupleValue) {
         throw new Error("Set small product tuple: legs do not land in the recorded product tuple");
       }
@@ -142,15 +165,18 @@ const buildInfiniteProduct = <I>(
   const product = createSetMultInfObj(setMultFamily as SetMultIndexedFamily<I, unknown>);
   const knownTuples = new Set<SetMultTuple<I, unknown>>();
 
-  const carrierObj = SetCat.lazyObj<SetMultTuple<I, unknown>>({
-    iterate: function* (): IterableIterator<SetMultTuple<I, unknown>> {
+  const semantics: SetCarrierSemantics<SetMultTuple<I, unknown>> = {
+    iterate: function* iterate(): IterableIterator<SetMultTuple<I, unknown>> {
       for (const tuple of knownTuples) {
         yield tuple;
       }
     },
-    has: (tuple) => knownTuples.has(tuple as SetMultTuple<I, unknown>),
+    has: (tuple) => knownTuples.has(tuple),
+    equals: (left, right) => left === right,
     tag: "SetSmallInfiniteProduct",
-  });
+  };
+
+  const carrierObj = SetCat.lazyObj<SetMultTuple<I, unknown>>({ semantics });
 
   const carrier = widenObj(carrierObj);
   const projectionIndex = new WeakMap<AnySetHom, I>();
@@ -293,15 +319,23 @@ export const SetSmallEqualizers: CategoryLimits.HasSmallEqualizers<AnySetObj, An
     }
 
     const subset: unknown[] = [];
+    const codEquals = semanticsAwareEquals(left.cod);
     for (const value of left.dom) {
       const leftImage = left.map(value);
       const rightImage = right.map(value);
-      if (Object.is(leftImage, rightImage)) {
+      if (codEquals(leftImage, rightImage)) {
         subset.push(value);
       }
     }
 
-    const equalizerObj = widenObj(SetCat.obj(subset));
+    const subsetSemantics = SetCat.createSubsetSemantics(left.dom as SetObj<unknown>, subset, {
+      tag: "SetSmallEqualizers.equalizer",
+    });
+    const equalizerObj = widenObj(
+      SetCat.obj(subset, {
+        semantics: subsetSemantics,
+      }),
+    );
     const inclusion = widenHom(SetCat.hom(equalizerObj, left.dom, (value: unknown) => value));
     const equalizeFamily: IndexedFamilies.SmallFamily<I, AnySetHom> = () => inclusion;
 
@@ -314,13 +348,12 @@ export const equalSetHom = <A, B>(left: SetHom<A, B>, right: SetHom<A, B>): bool
     return false;
   }
 
+  const codEquals = semanticsAwareEquals(left.cod as AnySetObj);
+
   for (const value of left.dom) {
-    if (!right.dom.has(value)) {
-      return false;
-    }
     const leftImage = left.map(value);
     const rightImage = right.map(value);
-    if (!Object.is(leftImage, rightImage)) {
+    if (!codEquals(leftImage, rightImage)) {
       return false;
     }
   }
@@ -345,9 +378,10 @@ export const factorThroughSetEqualizer: CategoryLimits.EqualizerFactorizer<AnySe
   }
 
   const apex = inclusion.dom;
+  const apexHas = semanticsAwareHas(apex as AnySetObj);
   const mediator = SetCat.hom(fork.dom, apex, (value) => {
     const image = fork.map(value);
-    if (!apex.has(image)) {
+    if (!apexHas(image)) {
       throw new Error("Set small limit: fork does not land in the equalizing subset");
     }
     return image;
