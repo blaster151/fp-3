@@ -1,7 +1,14 @@
 import { CategoryLimits } from "./stdlib/category-limits";
 import { ArrowFamilies } from "./stdlib/arrow-families";
 import type { Category } from "./stdlib/category";
-import { SetCat, type SetHom, type SetObj, type SetTerminalObject } from "./set-cat";
+import {
+  SetCat,
+  semanticsAwareHas,
+  type SetCarrierSemantics,
+  type SetHom,
+  type SetObj,
+  type SetTerminalObject,
+} from "./set-cat";
 
 type AnySetObj = SetObj<unknown>;
 type AnySetHom = SetHom<unknown, unknown>;
@@ -21,7 +28,7 @@ const terminalPoint: SetTerminalObject = (() => {
   return iterator.value as SetTerminalObject;
 })();
 
-const naturalNumbersCarrier: SetObj<number> = SetCat.lazyObj<number>({
+const naturalNumbersSemantics: SetCarrierSemantics<number> = {
   iterate: function* iterate(): IterableIterator<number> {
     let index = 0;
     while (true) {
@@ -29,8 +36,14 @@ const naturalNumbersCarrier: SetObj<number> = SetCat.lazyObj<number>({
       index += 1;
     }
   },
-  has: value => Number.isInteger(value) && value >= 0,
+  has: (value) => Number.isInteger(value) && value >= 0,
+  equals: (left, right) => left === right,
+  cardinality: Number.POSITIVE_INFINITY,
   tag: NATURAL_NUMBERS_TAG,
+};
+
+const naturalNumbersCarrier: SetObj<number> = SetCat.lazyObj<number>({
+  semantics: naturalNumbersSemantics,
 });
 
 const ensureNatural = (value: number, context: string): number => {
@@ -72,9 +85,10 @@ const validateSequence = (sequence: NaturalNumbersSequence): void => {
 const buildMediatorMap = (sequence: NaturalNumbersSequence): ((index: number) => unknown) => {
   const { target, zero, successor } = sequence;
   const cache = new Map<number, unknown>();
+  const targetHas = semanticsAwareHas(target);
 
   const zeroImage = zero.map(terminalPoint);
-  if (!target.has(zeroImage)) {
+  if (!targetHas(zeroImage)) {
     throw new Error("SetNaturalNumbersObject.induce: zero image must belong to the target carrier.");
   }
   cache.set(0, zeroImage);
@@ -88,7 +102,7 @@ const buildMediatorMap = (sequence: NaturalNumbersSequence): ((index: number) =>
 
     const predecessor = compute(step - 1);
     const image = successor.map(predecessor);
-    if (!target.has(image)) {
+    if (!targetHas(image)) {
       throw new Error(
         "SetNaturalNumbersObject.induce: successor image must remain within the target carrier.",
       );
@@ -103,20 +117,23 @@ const buildMediatorMap = (sequence: NaturalNumbersSequence): ((index: number) =>
 const createMediator = (
   sequence: NaturalNumbersSequence,
   map: (index: number) => unknown,
-): SetHom<number, unknown> => ({
-  dom: naturalNumbersCarrier,
-  cod: sequence.target,
-  map: value => {
-    const input = ensureNatural(value, "SetNaturalNumbersObject.mediator");
-    const image = map(input);
-    if (!sequence.target.has(image)) {
-      throw new Error(
-        "SetNaturalNumbersObject.induce: mediator image must land in the declared target.",
-      );
-    }
-    return image;
-  },
-});
+): SetHom<number, unknown> => {
+  const targetHas = semanticsAwareHas(sequence.target);
+  return {
+    dom: naturalNumbersCarrier,
+    cod: sequence.target,
+    map: value => {
+      const input = ensureNatural(value, "SetNaturalNumbersObject.mediator");
+      const image = map(input);
+      if (!targetHas(image)) {
+        throw new Error(
+          "SetNaturalNumbersObject.induce: mediator image must land in the declared target.",
+        );
+      }
+      return image;
+    },
+  };
+};
 
 const naturalNumbersWitness: CategoryLimits.NaturalNumbersObjectWitness<AnySetObj, AnySetHom> = {
   carrier: naturalNumbersCarrier as AnySetObj,

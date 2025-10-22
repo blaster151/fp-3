@@ -5,7 +5,14 @@ import type {
   PullbackConeFactorResult,
   PullbackData,
 } from "./pullback";
-import { SetCat, type SetHom, type SetObj } from "./set-cat";
+import {
+  SetCat,
+  semanticsAwareEquals,
+  semanticsAwareHas,
+  type SetCarrierSemantics,
+  type SetHom,
+  type SetObj,
+} from "./set-cat";
 
 const LAZY_PAIR_TAG = "SetPullbackApex";
 
@@ -20,6 +27,16 @@ type SetPullbackMetadata = {
   readonly apex: AnySetObj;
   readonly pairLookup: PairLookup;
   readonly register: (first: unknown, second: unknown) => Pair | undefined;
+};
+
+const createPairEquality = (
+  domain: AnySetObj,
+  anchor: AnySetObj,
+): ((left: Pair, right: Pair) => boolean) => {
+  const domainEquals = semanticsAwareEquals(domain);
+  const anchorEquals = semanticsAwareEquals(anchor);
+  return (left: Pair, right: Pair) =>
+    domainEquals(left[0], right[0]) && anchorEquals(left[1], right[1]);
 };
 
 const metadataByPullback = new WeakMap<PullbackData<AnySetObj, AnySetHom>, SetPullbackMetadata>();
@@ -65,14 +82,34 @@ const createLazyApex = (
 ): { apex: AnySetObj; metadata: SetPullbackMetadata } => {
   const knownPairs = new Set<Pair>();
   const pairLookup: PairLookup = new Map();
+  const pairEquals = createPairEquality(domain, anchor);
 
-  const register = (first: unknown, second: unknown): Pair | undefined => {
+  const ensureBucket = (first: unknown): Map<unknown, Pair> => {
     let bucket = pairLookup.get(first);
     if (!bucket) {
       bucket = new Map();
       pairLookup.set(first, bucket);
     }
-    const existing = bucket.get(second);
+    return bucket;
+  };
+
+  const locateRegistered = (first: unknown, second: unknown): Pair | undefined => {
+    const bucket = pairLookup.get(first);
+    const direct = bucket?.get(second);
+    if (direct) {
+      return direct;
+    }
+    for (const candidate of knownPairs) {
+      if (pairEquals(candidate, [first, second] as Pair)) {
+        ensureBucket(candidate[0]).set(candidate[1], candidate);
+        return candidate;
+      }
+    }
+    return undefined;
+  };
+
+  const register = (first: unknown, second: unknown): Pair | undefined => {
+    const existing = locateRegistered(first, second);
     if (existing) {
       return existing;
     }
@@ -80,13 +117,13 @@ const createLazyApex = (
       return undefined;
     }
     const pair = Object.freeze([first, second]) as Pair;
-    bucket.set(second, pair);
+    ensureBucket(first).set(second, pair);
     knownPairs.add(pair);
     return pair;
   };
 
-  const apex = SetCat.lazyObj<Pair>({
-    iterate: function* (): IterableIterator<Pair> {
+  const semantics: SetCarrierSemantics<Pair> = {
+    iterate: function* iterate(): IterableIterator<Pair> {
       for (const pair of knownPairs) {
         yield pair;
       }
@@ -97,10 +134,13 @@ const createLazyApex = (
       }
       const [first, second] = candidate as Pair;
       const registered = register(first, second);
-      return registered === candidate;
+      return registered !== undefined && pairEquals(registered, candidate as Pair);
     },
+    equals: pairEquals,
     tag: LAZY_PAIR_TAG,
-  });
+  };
+
+  const apex = SetCat.lazyObj<Pair>({ semantics });
 
   const metadata: SetPullbackMetadata = {
     apex,
@@ -118,13 +158,18 @@ const collectCanonicalPairs = (
 ): { apex: AnySetObj; metadata: SetPullbackMetadata } => {
   const knownPairs: Pair[] = [];
   const pairLookup: PairLookup = new Map();
+  const pairEquals = createPairEquality(domain, anchor);
 
   for (const first of domain) {
-    let bucket = pairLookup.get(first);
-    if (!bucket) {
-      bucket = new Map();
-      pairLookup.set(first, bucket);
-    }
+    const bucket = (() => {
+      let existing = pairLookup.get(first);
+      if (existing) {
+        return existing;
+      }
+      existing = new Map();
+      pairLookup.set(first, existing);
+      return existing;
+    })();
     for (const second of anchor) {
       if (!relation(first, second)) {
         continue;
@@ -135,11 +180,40 @@ const collectCanonicalPairs = (
     }
   }
 
-  const apex = SetCat.obj(knownPairs);
+  const semantics = SetCat.createMaterializedSemantics(knownPairs, {
+    equals: pairEquals,
+    tag: "SetPullbacks.canonicalApex",
+  });
+  const apex = SetCat.obj(knownPairs, { semantics });
+  const ensureBucket = (first: unknown): Map<unknown, Pair> => {
+    let bucket = pairLookup.get(first);
+    if (!bucket) {
+      bucket = new Map();
+      pairLookup.set(first, bucket);
+    }
+    return bucket;
+  };
+
+  const register = (first: unknown, second: unknown): Pair | undefined => {
+    const bucket = pairLookup.get(first);
+    const direct = bucket?.get(second);
+    if (direct) {
+      return direct;
+    }
+    for (const candidate of apex) {
+      const pair = candidate as Pair;
+      if (pairEquals(pair, [first, second] as Pair)) {
+        ensureBucket(pair[0]).set(pair[1], pair);
+        return pair;
+      }
+    }
+    return undefined;
+  };
+
   const metadata: SetPullbackMetadata = {
     apex,
     pairLookup,
-    register: (first, second) => pairLookup.get(first)?.get(second),
+    register,
   };
 
   return { apex, metadata };
@@ -149,10 +223,11 @@ const equalHom = (left: AnySetHom, right: AnySetHom): boolean => {
   if (left.dom !== right.dom || left.cod !== right.cod) {
     return false;
   }
+  const codEquals = semanticsAwareEquals(left.cod);
   for (const value of left.dom) {
     const leftImage = left.map(value);
     const rightImage = right.map(value);
-    if (!Object.is(leftImage, rightImage)) {
+    if (!codEquals(leftImage, rightImage)) {
       return false;
     }
   }
@@ -165,14 +240,17 @@ const buildCanonicalPullback = (
 ): { pullback: PullbackData<AnySetObj, AnySetHom>; metadata: SetPullbackMetadata } => {
   const domain = f.dom;
   const anchor = h.dom;
+  const domainHas = semanticsAwareHas(domain);
+  const anchorHas = semanticsAwareHas(anchor);
+  const codEquals = semanticsAwareEquals(f.cod as AnySetObj);
 
   const relation = (first: unknown, second: unknown): boolean => {
-    if (!domain.has(first) || !anchor.has(second)) {
+    if (!domainHas(first) || !anchorHas(second)) {
       return false;
     }
     const left = f.map(first);
     const right = h.map(second);
-    return Object.is(left, right);
+    return codEquals(left, right);
   };
 
   const domainCard = SetCat.knownFiniteCardinality(domain);

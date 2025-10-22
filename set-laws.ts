@@ -1,11 +1,25 @@
-import type { AnySet, SetHom, SetObj } from "./set-cat";
+import {
+  SetCat,
+  semanticsAwareHas,
+  type AnySet,
+  type SetHom,
+  type SetObj,
+} from "./set-cat";
 
 import { ensureSubsetMonomorphism, SetOmega } from "./set-subobject-classifier";
 
 const EMPTY = new Set<never>();
 
 function cloneToSet<A>(source: AnySet<A>): SetObj<A> {
-  return source instanceof Set ? (source as SetObj<A>) : (new Set(source) as SetObj<A>);
+  const candidateSemantics = source instanceof Set
+    ? SetCat.semantics(source as SetObj<A>)
+    : undefined;
+  const equals = candidateSemantics?.equals;
+  const tag = "SetLaws.cloneToSet";
+  return SetCat.obj(source, {
+    ...(equals !== undefined ? { equals } : {}),
+    tag,
+  });
 }
 
 type CharacteristicWitness<A> = {
@@ -30,7 +44,15 @@ function enumerateSubsetWitnesses<A>(ambient: SetObj<A>): CharacteristicWitness<
     current = next;
   });
 
-  return current.map(entry => buildCharacteristicWitness(entry.subset, ambient));
+  return current.map(entry => {
+    const subsetSemantics = SetCat.createSubsetSemantics(ambient, entry.subset, {
+      tag: "SetLaws.enumerateSubsetWitness",
+    });
+    const subset = SetCat.obj(entry.subset, {
+      semantics: subsetSemantics,
+    });
+    return buildCharacteristicWitness(subset, ambient);
+  });
 }
 
 function homCount<X, Y>(domain: AnySet<X>, codomain: AnySet<Y>): number {
@@ -63,10 +85,15 @@ export type PowerSetEvidence<A> = {
 function powerSetEvidence<A>(source: AnySet<A>): PowerSetEvidence<A> {
   const ambient = cloneToSet(source);
   const subsets = enumerateSubsetWitnesses(ambient);
-  const subsetCarrier = new Set(subsets.map(({ subset }) => subset)) as SetObj<SetObj<A>>;
-  const characteristicCarrier = new Set(subsets.map(({ characteristic }) => characteristic)) as SetObj<
-    SetHom<A, boolean>
-  >;
+  const subsetCarrier = SetCat.obj<SetObj<A>>(subsets.map(({ subset }) => subset), {
+    tag: "SetLaws.powerSet.subsets",
+  });
+  const characteristicCarrier = SetCat.obj<SetHom<A, boolean>>(
+    subsets.map(({ characteristic }) => characteristic),
+    {
+      tag: "SetLaws.powerSet.characteristics",
+    },
+  );
   return { ambient, subsetCarrier, characteristicCarrier, subsets };
 }
 
@@ -88,10 +115,11 @@ function buildCharacteristicWitness<A>(
 ): CharacteristicWitness<A> {
   const inclusion: SetHom<A, A> = { dom: subset, cod: ambient, map: (value) => value };
   ensureSubsetMonomorphism(inclusion, "SetLaws.buildCharacteristicWitness");
+  const subsetHas = semanticsAwareHas(subset);
   const characteristic: SetHom<A, boolean> = {
     dom: ambient,
     cod: SetOmega as SetObj<boolean>,
-    map: (value) => subset.has(value),
+    map: (value) => subsetHas(value),
   };
   return { subset, inclusion, characteristic };
 }

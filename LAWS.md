@@ -1090,6 +1090,8 @@ so failures can be traced to sub-lemmas.
 - **Morphisms:** total functions between those sets.
 - **Identities/Composition:** usual identity maps and function composition.
 - **In code:** `set-cat.ts` exposes `SetCat` with `obj`, `id`, `hom`, `compose`, and `isHom` helpers for small carriers.
+- **Carrier semantics:** Every `Set` object now stores an explicit `SetCarrierSemantics` witness describing membership, iteration, and equality behaviour. Constructors such as `SetCat.obj`, `SetCat.lazyObj`, and the universal builders (`product`, `coproduct`, `exponential`, power objects, small limits) require or synthesise these semantics via helpers including `createMaterializedSemantics`, `createSubsetSemantics`, and `createSemanticsFromSet`. Downstream tooling (equalizers, pullbacks, small products, the natural numbers object, etc.) consults the registered semantics when checking membership or equality, so infinite carriers and custom equality relations behave predictably.
+- **Diagnostics:** Semantics-aware guards power `SetCat.isSetHom`, subset validation, characteristic maps, and the universal property witnesses. Regression suites such as `test/set-lazy-carriers.spec.ts`, `test/set-subobject-classifier.spec.ts`, `test/set-small-products-semantics.spec.ts`, and the natural-numbers/pullback/equalizer semantics specs assert that semantics metadata follows derived carriers.
 - **Tests:** `test/set-cat.spec.ts` covers identity construction, composition, and codomain validation failures.
 
 ### Set basics via hom-set counts

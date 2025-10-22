@@ -7,6 +7,8 @@ import {
   ensureSubsetMonomorphism,
   setCharacteristicOfSubset,
   setSubsetFromCharacteristic,
+  semanticsAwareEquals,
+  semanticsAwareHas,
   type SetHom,
   type SetObj,
 } from "./set-cat";
@@ -189,8 +191,10 @@ export const setSubobjectLeq = (lower: AnySetHom, upper: AnySetHom): SetSubobjec
   ensureSubsetMonomorphism(lower, "setSubobjectLeq (lower)");
   ensureSubsetMonomorphism(upper, "setSubobjectLeq (upper)");
 
+  const upperHas = semanticsAwareHas(upper.dom);
+
   for (const value of lower.dom) {
-    if (!upper.dom.has(value)) {
+    if (!upperHas(value)) {
       return {
         holds: false,
         reason: "setSubobjectLeq: lower subobject does not land in the upper domain.",
@@ -249,7 +253,13 @@ export const setIdentitySubobject = (ambient: AnySetObj): SetSubobjectWitness =>
 });
 
 export const setZeroSubobject = (ambient: AnySetObj): SetSubobjectWitness => {
-  const empty = SetCat.obj(Array.from(ambient).filter(() => false));
+  const elements = Array.from(ambient).filter(() => false);
+  const subsetSemantics = SetCat.createSubsetSemantics(ambient, elements, {
+    tag: "SetSubobjectTools.zeroSubobject",
+  });
+  const empty = SetCat.obj(elements, {
+    semantics: subsetSemantics,
+  });
   return {
     subobject: empty,
     inclusion: asAnySetHom(SetCat.hom(empty, ambient, (value) => value)),
@@ -310,28 +320,43 @@ export const setComplementSubobject = (monomorphism: AnySetHom): SetComplementSu
   };
 };
 
-const ensureMonomorphism = (arrow: AnySetHom, context: string): Map<unknown, unknown> => {
-  const mapping = new Map<unknown, unknown>();
+interface MonomorphismImageLookup {
+  readonly get: (image: unknown) => unknown | undefined;
+}
+
+const ensureMonomorphism = (arrow: AnySetHom, context: string): MonomorphismImageLookup => {
+  const codHas = semanticsAwareHas(arrow.cod);
+  const codEquals = semanticsAwareEquals(arrow.cod);
+  const mapping: Array<{ readonly image: unknown; readonly preimage: unknown }> = [];
   for (const value of arrow.dom) {
     const image = arrow.map(value);
-    if (!arrow.cod.has(image)) {
+    if (!codHas(image)) {
       throw new Error(`${context}: arrow image must belong to the codomain.`);
     }
-    if (mapping.has(image)) {
+    if (mapping.some((entry) => codEquals(entry.image, image))) {
       throw new Error(`${context}: arrow fails injectivity.`);
     }
-    mapping.set(image, value);
+    mapping.push({ image, preimage: value });
   }
-  return mapping;
+  return {
+    get: (candidate: unknown) =>
+      mapping.find((entry) => codEquals(entry.image, candidate))?.preimage,
+  };
 };
 
 const characteristicOfMonomorphism = (arrow: AnySetHom): SetHom<unknown, boolean> => {
   const codomain = arrow.cod;
-  const image = new Set<unknown>();
+  const codEquals = semanticsAwareEquals(codomain);
+  const image: unknown[] = [];
   for (const value of arrow.dom) {
-    image.add(arrow.map(value));
+    const mapped = arrow.map(value);
+    if (!image.some((candidate) => codEquals(candidate, mapped))) {
+      image.push(mapped);
+    }
   }
-  return SetCat.hom(codomain, SetOmega, (candidate) => image.has(candidate));
+  return SetCat.hom(codomain, SetOmega, (candidate) =>
+    image.some((value) => codEquals(value, candidate)),
+  );
 };
 
 export const setMonomorphismEqualizer = (
@@ -434,9 +459,10 @@ export const setMonomorphismEqualizer = (
         };
       }
 
+      const canonicalHas = semanticsAwareHas(canonicalSubset);
       const mediator = SetCat.hom(fork.dom, canonicalSubset, (value) => {
         const image = fork.map(value);
-        if (!canonicalSubset.has(image)) {
+        if (!canonicalHas(image)) {
           throw new Error(
             "setMonomorphismEqualizer: fork lands outside the canonical subobject.",
           );
@@ -529,7 +555,7 @@ export const setMonomorphismEqualizer = (
 const terminalData = SetCat.terminal();
 
 export const setMonicEpicIso = (arrow: AnySetHom): SetMonicEpicIsoResult => {
-  let imageToDomain: Map<unknown, unknown>;
+  let imageToDomain: MonomorphismImageLookup;
   try {
     imageToDomain = ensureMonomorphism(arrow, "setMonicEpicIso");
   } catch (error) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { SetCat } from "../set-cat";
+import { SetCat, type SetCarrierSemantics } from "../set-cat";
+import { SetLaws } from "../set-laws";
 
 describe("SetCat lazy carriers", () => {
   const makeRange = (size: number): ReadonlyArray<number> => Array.from({ length: size }, (_, index) => index);
@@ -94,5 +95,72 @@ describe("SetCat lazy carriers", () => {
     expect(first.done).toBe(false);
     expect(first.value).toEqual([0, false]);
     expect(second.value).toEqual([0, true]);
+  });
+
+  it("registers semantics witnesses provided to lazy carriers", () => {
+    const semantics: SetCarrierSemantics<number> = {
+      iterate: function* iterate(): IterableIterator<number> {
+        yield 2;
+        yield 4;
+      },
+      has: (value) => value === 2 || value === 4,
+      equals: (left, right) => left === right,
+      cardinality: 2,
+      tag: "EvenPair",
+    };
+
+    const carrier = SetCat.lazyObj<number>({ semantics });
+    const retrieved = SetCat.semantics(carrier);
+
+    expect(retrieved).toBe(semantics);
+    expect(Array.from(retrieved?.iterate() ?? [])).toEqual([2, 4]);
+    expect(retrieved?.has(2)).toBe(true);
+    expect(retrieved?.has(3)).toBe(false);
+    expect(retrieved?.equals?.(2, 2)).toBe(true);
+  });
+
+  it("attaches semantics to power set evidence carriers", () => {
+    const ambient = SetCat.obj(["a", "b"] as const);
+    const evidence = SetLaws.powerSetEvidence(ambient);
+
+    const ambientSemantics = SetCat.semantics(evidence.ambient);
+    expect(ambientSemantics?.tag).toBe("SetLaws.cloneToSet");
+
+    const subsetCarrierSemantics = SetCat.semantics(evidence.subsetCarrier);
+    expect(subsetCarrierSemantics?.tag).toBe("SetLaws.powerSet.subsets");
+
+    const characteristicCarrierSemantics = SetCat.semantics(evidence.characteristicCarrier);
+    expect(characteristicCarrierSemantics?.tag).toBe("SetLaws.powerSet.characteristics");
+
+    evidence.subsets.forEach(({ subset }) => {
+      const subsetSemantics = SetCat.semantics(subset);
+      expect(subsetSemantics?.tag).toBe("SetLaws.enumerateSubsetWitness");
+    });
+  });
+
+  it("derives subset semantics that inherit ambient equality", () => {
+    const ambient = SetCat.obj(
+      [
+        { id: 1, label: "one" },
+        { id: 2, label: "two" },
+        { id: 3, label: "three" },
+      ] as const,
+      {
+        equals: (left, right) => left.id === right.id,
+        tag: "AmbientById",
+      },
+    );
+
+    const subsetElements = [{ id: 2, label: "duplicate" }];
+    const subsetSemantics = SetCat.createSubsetSemantics(ambient, subsetElements, {
+      tag: "SubsetById",
+    });
+    const subset = SetCat.obj(subsetElements, { semantics: subsetSemantics });
+    const retrieved = SetCat.semantics(subset);
+
+    expect(retrieved?.tag).toBe("SubsetById");
+    expect(retrieved?.equals?.({ id: 2 }, { id: 2 })).toBe(true);
+    expect(retrieved?.has({ id: 2, label: "two" })).toBe(true);
+    expect(retrieved?.has({ id: 4, label: "four" })).toBe(false);
   });
 });
