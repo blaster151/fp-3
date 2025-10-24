@@ -1,0 +1,21 @@
+# TODO Remediation Plan
+
+- [x] Bridge classical adjunction helpers into the equipment & relative layers
+  - Inspect the existing virtual-equipment and relative adjunction analyzers to understand the data they expect.
+  - Introduce adapters that can convert between `CoreAdjunction` values from `stdlib/category.ts` and `RelativeAdjunctionData` / `RelativeAdjunctionSectionWitness` instances from `relative/relative-adjunctions.ts`.
+  - Re-export the bridge helpers from `stdlib/category.ts` and replace the stale TODO comments that previously pointed contributors toward future integration work.
+  - Add regression coverage that round-trips a small adjunction through the bridge to confirm the equipment analyzers accept the translated data.
+  - Extend the virtual equipment documentation to advertise the new bridge entry point.
+- [ ] Teach stub generator to emit functioning oracle skeletons
+  - Inventory existing oracle expectations and update the generator to emit pending-aware stubs.
+  - Add refresh tooling, update generated outputs, and document the new workflow.
+- [ ] Replace trivial Street-action probe with registry-driven validation
+  - Load Street-action data from the registry, adjust the validator pipeline, and update the associated smoke tests and documentation.
+- [ ] Promote `scripts/generate-virtual-equipment.mjs` from an outline to an executable generator
+  - Teach the script to load category adapters, emit TypeScript modules for companions/conjoints, and update the virtual-equipment barrel exports.
+  - Add a `--dry-run` mode with snapshot coverage so contributors can verify the generated scaffolding before writing to disk.
+  - Extend the virtual-equipment documentation to describe the generator workflow and how to register new equipments with the oracle layer.
+- [ ] Replace the relative monad action placeholders with real Street composites
+  - Flesh out `relative/relative-monad.ts` so `relativeExtend`/`relativeKleisli` compute the Street action using the virtual-equipment calculus instead of returning pending markers.
+  - Capture regression coverage that exercises the new composites on a small equipment (e.g., the two-object demo) to ensure whiskering/vertical composition behave as expected.
+  - Update `RELATIVE-MONAD-LAYER.md` with guidance on the concrete Street calculations and how analyzers consume the results.
