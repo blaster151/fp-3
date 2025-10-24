@@ -13,8 +13,11 @@ import {
   type FunctorWithWitness,
 } from "./functor";
 import { Dual } from "./dual-cat";
+import { CategoryLimits } from "./stdlib/category-limits";
 import { SetCat, type ExponentialData, type SetHom, type SetObj } from "./set-cat";
 import { setSimpleCategory } from "./set-simple-category";
+import type { FiniteDimensionalDualToolkit } from "./functor-dual";
+import { finiteDimensionalDualFunctorWithWitness } from "./functor-dual";
 
 export type ContravariantFunctor<SrcObj, SrcArr, TgtObj, TgtArr> = Functor<
   SrcObj,
@@ -156,13 +159,32 @@ export const constructContravariantFunctorWithWitness = <SrcObj, SrcArr, TgtObj,
   return { functor, witness, report };
 };
 
+export interface FiniteDimensionalDualContravariantToolkit
+  extends Pick<
+    FiniteDimensionalDualToolkit,
+    "contravariant" | "opposite" | "doubleDual" | "evaluation" | "coevaluation" | "objectOf" | "transposeOf"
+  > {}
+
+export const finiteDimensionalDualContravariantFunctorWithWitness = (): FiniteDimensionalDualContravariantToolkit => {
+  const toolkit = finiteDimensionalDualFunctorWithWitness();
+  return {
+    contravariant: toolkit.contravariant,
+    opposite: toolkit.opposite,
+    doubleDual: toolkit.doubleDual,
+    evaluation: toolkit.evaluation,
+    coevaluation: toolkit.coevaluation,
+    objectOf: toolkit.objectOf,
+    transposeOf: toolkit.transposeOf,
+  };
+};
+
 export interface ContravariantCompositionOptions<SrcObj, SrcArr> {
   readonly samples?: FunctorCheckSamples<SrcObj, SrcArr>;
   readonly metadata?: ReadonlyArray<string>;
 }
 
-const contravariantWitnessSamples = <SrcObj, SrcArr>(
-  witness: ContravariantFunctorWitness<SrcObj, SrcArr, unknown, unknown>,
+const contravariantWitnessSamples = <SrcObj, SrcArr, TgtObj, TgtArr>(
+  witness: ContravariantFunctorWitness<SrcObj, SrcArr, TgtObj, TgtArr>,
 ): FunctorCheckSamples<SrcObj, SrcArr> => ({
   objects: witness.objectGenerators,
   arrows: witness.arrowGenerators,
@@ -283,9 +305,9 @@ const defaultHomContravariantSamples = (): FunctorCheckSamples<
   SetObj<unknown>,
   SetHom<unknown, unknown>
 > => {
-  const numbers = SetCat.obj([0, 1]) as SetObj<unknown>;
-  const booleans = SetCat.obj([false, true]) as SetObj<unknown>;
-  const strings = SetCat.obj(["a", "b"]) as SetObj<unknown>;
+  const numbers = SetCat.obj([0, 1]);
+  const booleans = SetCat.obj([false, true]);
+  const strings = SetCat.obj(["a", "b"]);
 
   const arrows: SetHom<unknown, unknown>[] = [
     SetCat.hom(numbers, numbers, (value: number) => (value + 1) % 2) as SetHom<unknown, unknown>,
@@ -294,7 +316,11 @@ const defaultHomContravariantSamples = (): FunctorCheckSamples<
     SetCat.hom(strings, numbers, (value: string) => (value === "a" ? 0 : 1)) as SetHom<unknown, unknown>,
   ];
 
-  const objects: ReadonlyArray<SetObj<unknown>> = [numbers, booleans, strings];
+  const objects: ReadonlyArray<SetObj<unknown>> = [
+    numbers as SetObj<unknown>,
+    booleans as SetObj<unknown>,
+    strings as SetObj<unknown>,
+  ];
 
   const composablePairs: FunctorComposablePair<SetHom<unknown, unknown>>[] = [];
   for (const f of arrows) {
@@ -339,8 +365,8 @@ export const homSetContravariantFunctorWithWitness = (
       const domain = exponentialFor(arrow.cod as SetObj<unknown>);
       const codomain = exponentialFor(arrow.dom as SetObj<unknown>);
       return SetCat.hom(
-        domain.object as SetObj<unknown>,
-        codomain.object as SetObj<unknown>,
+        domain.object as SetObj<(value: unknown) => unknown>,
+        codomain.object as SetObj<(value: unknown) => unknown>,
         (map: (value: unknown) => unknown) =>
           codomain.register((input: unknown) => map(arrow.map(input))),
       ) as SetHom<unknown, unknown>;
@@ -365,6 +391,94 @@ export const homSetContravariantFunctorWithWitness = (
   ): ((value: unknown) => unknown) => exponentialFor(base).register(assignment);
 
   return { functor: functorWithWitness, register };
+};
+
+export interface PowerObjectContravariantOptions<O, M> {
+  readonly samples?: FunctorCheckSamples<O, M>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface PowerObjectContravariantToolkit<O, M> {
+  readonly functor: ContravariantFunctorWithWitness<O, M, O, M>;
+  readonly opposite: FunctorWithWitness<O, M, O, M>;
+  readonly objectOf: (object: O) => O;
+  readonly membershipOf: (
+    object: O,
+  ) => CategoryLimits.PowerObjectMembershipWitness<O, M>;
+}
+
+export const powerObjectInverseImageContravariantWithWitness = <O, M>(
+  witness: CategoryLimits.ElementaryToposWitness<O, M>,
+  options: PowerObjectContravariantOptions<O, M> = {},
+): PowerObjectContravariantToolkit<O, M> => {
+  const powerObjectBuilder = witness.subobjectClassifier.powerObject;
+  if (!powerObjectBuilder) {
+    throw new Error("powerObjectInverseImageContravariantWithWitness requires a power object witness.");
+  }
+
+  const cache = new Map<O, CategoryLimits.PowerObjectWitness<O, M>>();
+  const getPower = (object: O): CategoryLimits.PowerObjectWitness<O, M> => {
+    const cached = cache.get(object);
+    if (cached) {
+      return cached;
+    }
+    const witnessForObject = powerObjectBuilder(object);
+    cache.set(object, witnessForObject);
+    return witnessForObject;
+  };
+
+  const objectOf = (object: O): O => getPower(object).powerObj;
+  const membershipOf = (object: O): CategoryLimits.PowerObjectMembershipWitness<O, M> =>
+    getPower(object).membership;
+
+  const { category, exponentials, subobjectClassifier } = witness;
+
+  const functor: ContravariantFunctor<O, M, O, M> = {
+    F0: objectOf,
+    F1: (arrow) => {
+      const domain = category.dom(arrow);
+      const codomain = category.cod(arrow);
+      const sourcePower = getPower(codomain);
+
+      const product = exponentials.binaryProduct(sourcePower.powerObj, domain);
+      const intoMembership = sourcePower.membership.product.pair(
+        product.obj,
+        product.proj1,
+        category.compose(arrow, product.proj2),
+      );
+      const evaluation = category.compose(sourcePower.membership.evaluation, intoMembership);
+      const exponential = exponentials.exponential(domain, subobjectClassifier.truthValues);
+      return exponential.curry(sourcePower.powerObj, evaluation);
+    },
+  };
+
+  const samples = options.samples ?? {};
+  const label = witness.metadata?.label ?? "elementary topos";
+  const metadata =
+    options.metadata ??
+    [`Power object inverse image contravariant functor induced by the subobject classifier on ${label}.`];
+
+  const simpleCategory: SimpleCat<O, M> = {
+    id: (object) => witness.category.id(object),
+    compose: (g, f) => witness.category.compose(g, f),
+    src: (arrow) => witness.category.dom(arrow),
+    dst: (arrow) => witness.category.cod(arrow),
+  };
+
+  const functorWithWitness = constructContravariantFunctorWithWitness(
+    simpleCategory,
+    simpleCategory,
+    functor,
+    samples,
+    metadata,
+  );
+
+  return {
+    functor: functorWithWitness,
+    opposite: contravariantToOppositeFunctor(functorWithWitness),
+    objectOf,
+    membershipOf,
+  };
 };
 
 export const Contra = <CO, CA, DO, DA>(
