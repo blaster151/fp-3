@@ -249,6 +249,9 @@ describe("Set oracles", () => {
       SetNaturalNumbersObject.carrier,
       SetSubobjectClassifier.terminalObj,
     );
+    if (!product.lookup) {
+      throw new Error("Set oracles test: product object must expose a lookup.");
+    }
     const threePair = product.lookup(3, terminalPoint);
     expect(recursion.mediator.map(threePair)).toBe(3);
 

@@ -1,4 +1,12 @@
 import type { SimpleCat } from "./simple-cat";
+import type {
+  AnyFunctorPropertyAnalysis,
+  AnyFunctorPropertyOracle,
+} from "./functor-property-types";
+import {
+  attachFunctorProperties,
+  makeIsomorphismPreservationOracle,
+} from "./functor-property";
 
 export interface Functor<SrcObj, SrcArr, TgtObj, TgtArr> {
   readonly F0: (object: SrcObj) => TgtObj;
@@ -98,6 +106,7 @@ export interface FunctorWithWitness<SrcObj, SrcArr, TgtObj, TgtArr> {
   readonly witness: FunctorWitness<SrcObj, SrcArr, TgtObj, TgtArr>;
   readonly report: FunctorLawReport<SrcObj, SrcArr, TgtObj, TgtArr>;
   readonly metadata?: ReadonlyArray<string>;
+  readonly properties?: ReadonlyArray<AnyFunctorPropertyAnalysis<SrcObj, SrcArr, TgtObj, TgtArr>>;
 }
 
 const normalizeSamples = <SrcObj, SrcArr>(
@@ -164,9 +173,18 @@ export const constructFunctorWithWitness = <SrcObj, SrcArr, TgtObj, TgtArr>(
 ): FunctorWithWitness<SrcObj, SrcArr, TgtObj, TgtArr> => {
   const witness = makeFunctorWitness(source, target, functor, samples);
   const report = isFunctor(witness);
-  return metadata && metadata.length > 0
-    ? { functor, witness, report, metadata }
-    : { functor, witness, report };
+  const base: FunctorWithWitness<SrcObj, SrcArr, TgtObj, TgtArr> =
+    metadata && metadata.length > 0
+      ? { functor, witness, report, metadata }
+      : { functor, witness, report };
+  const isomorphismOracle =
+    makeIsomorphismPreservationOracle<SrcObj, SrcArr, TgtObj, TgtArr>() as AnyFunctorPropertyOracle<
+      SrcObj,
+      SrcArr,
+      TgtObj,
+      TgtArr
+    >;
+  return attachFunctorProperties(base, [isomorphismOracle]);
 };
 
 export const identityFunctorWithWitness = <Obj, Arr>(

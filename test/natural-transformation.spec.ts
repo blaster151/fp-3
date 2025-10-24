@@ -14,8 +14,16 @@ import {
   whiskerNaturalTransformationLeft,
   whiskerNaturalTransformationRight,
 } from "../natural-transformation"
+import type { SimpleCat } from "../simple-cat"
 import type { FinSetMor, FinSetObj } from "../src/all/triangulated"
 import { FinSet, makeFinSetObj } from "../src/all/triangulated"
+
+const FinSetSimple: SimpleCat<FinSetObj, FinSetMor> = {
+  id: (object) => FinSet.id(object),
+  compose: (g, f) => FinSet.compose(g, f),
+  src: (arrow) => arrow.from,
+  dst: (arrow) => arrow.to,
+}
 
 const buildSamples = (arrow: FinSetMor): FunctorCheckSamples<FinSetObj, FinSetMor> => {
   const idDomain = FinSet.id(arrow.from)
@@ -33,27 +41,31 @@ const buildSamples = (arrow: FinSetMor): FunctorCheckSamples<FinSetObj, FinSetMo
 const collapseToTerminal = (object: FinSetObj): FinSetMor => FinSet.terminate(object)
 
 const chooseCanonicalGlobal = (object: FinSetObj): FinSetMor => {
-  const [first] = FinSet.globals(object)
-  if (!first) {
-    throw new Error("Expected FinSet.globals to expose a canonical element.")
+  const [first] = object.elements
+  if (first === undefined) {
+    throw new Error("Expected FinSet object to contain at least one element for canonical global selection.")
   }
-  return first
+  const index = object.elements.indexOf(first)
+  if (index < 0) {
+    throw new Error("Canonical element missing from FinSet carrier during global selection.")
+  }
+  return { from: FinSet.terminalObj, to: object, map: [index] }
 }
 
 describe("natural transformation calculus", () => {
   test("constructors, whiskering, and vertical composition respect naturality", () => {
     const source = makeFinSetObj(["0", "1"])
     const target = makeFinSetObj(["x", "y"])
-    const collapse: FinSetMor = { from: source, to: target, map: ["x", "x"] }
+    const collapse: FinSetMor = { from: source, to: target, map: [0, 0] }
     const samples = buildSamples(collapse)
 
-    const identity = identityFunctorWithWitness(FinSet, samples)
+    const identity = identityFunctorWithWitness(FinSetSimple, samples)
     const terminalArrow = collapseToTerminal(source)
     const terminal = terminalArrow.to
 
     const constant = constructFunctorWithWitness(
-      FinSet,
-      FinSet,
+      FinSetSimple,
+      FinSetSimple,
       {
         F0: () => terminal,
         F1: () => FinSet.id(terminal),
@@ -62,9 +74,16 @@ describe("natural transformation calculus", () => {
       ["Constant functor collapsing every object to the terminal set."],
     )
 
+    const naturalitySamples: FunctorCheckSamples<FinSetObj, FinSetMor> | undefined =
+      samples.objects || samples.arrows
+        ? {
+            ...(samples.objects ? { objects: samples.objects } : {}),
+            ...(samples.arrows ? { arrows: samples.arrows } : {}),
+          }
+        : undefined
     const naturalityOptions = {
-      samples: { objects: samples.objects, arrows: samples.arrows },
-      equalMor: FinSet.equalMor,
+      ...(naturalitySamples ? { samples: naturalitySamples } : {}),
+      ...(FinSet.equalMor ? { equalMor: FinSet.equalMor } : {}),
     }
 
     const alpha = constructNaturalTransformationWithWitness(
@@ -114,14 +133,14 @@ describe("natural transformation calculus", () => {
   test("horizontal/vertical composition satisfy the interchange law", () => {
     const source = makeFinSetObj(["0", "1"])
     const target = makeFinSetObj(["x", "y"])
-    const collapse: FinSetMor = { from: source, to: target, map: ["x", "x"] }
+    const collapse: FinSetMor = { from: source, to: target, map: [0, 0] }
     const samples = buildSamples(collapse)
 
-    const identity = identityFunctorWithWitness(FinSet, samples)
+    const identity = identityFunctorWithWitness(FinSetSimple, samples)
     const terminal = collapseToTerminal(source).to
     const constant = constructFunctorWithWitness(
-      FinSet,
-      FinSet,
+      FinSetSimple,
+      FinSetSimple,
       {
         F0: () => terminal,
         F1: () => FinSet.id(terminal),
@@ -130,9 +149,16 @@ describe("natural transformation calculus", () => {
       ["Constant functor collapsing every object to the terminal set."],
     )
 
+    const naturalitySamples: FunctorCheckSamples<FinSetObj, FinSetMor> | undefined =
+      samples.objects || samples.arrows
+        ? {
+            ...(samples.objects ? { objects: samples.objects } : {}),
+            ...(samples.arrows ? { arrows: samples.arrows } : {}),
+          }
+        : undefined
     const naturalityOptions = {
-      samples: { objects: samples.objects, arrows: samples.arrows },
-      equalMor: FinSet.equalMor,
+      ...(naturalitySamples ? { samples: naturalitySamples } : {}),
+      ...(FinSet.equalMor ? { equalMor: FinSet.equalMor } : {}),
     }
 
     const alpha = constructNaturalTransformationWithWitness(
@@ -176,14 +202,14 @@ describe("natural transformation calculus", () => {
   test("functor category packages identity and composition", () => {
     const source = makeFinSetObj(["0", "1"])
     const target = makeFinSetObj(["x", "y"])
-    const collapse: FinSetMor = { from: source, to: target, map: ["x", "x"] }
+    const collapse: FinSetMor = { from: source, to: target, map: [0, 0] }
     const samples = buildSamples(collapse)
 
-    const identity = identityFunctorWithWitness(FinSet, samples)
+    const identity = identityFunctorWithWitness(FinSetSimple, samples)
     const terminal = collapseToTerminal(source).to
     const constant = constructFunctorWithWitness(
-      FinSet,
-      FinSet,
+      FinSetSimple,
+      FinSetSimple,
       {
         F0: () => terminal,
         F1: () => FinSet.id(terminal),
@@ -192,9 +218,18 @@ describe("natural transformation calculus", () => {
       ["Constant functor collapsing every object to the terminal set."],
     )
 
+    const naturalitySamples: FunctorCheckSamples<FinSetObj, FinSetMor> | undefined =
+      samples.objects || samples.arrows
+        ? {
+            ...(samples.objects ? { objects: samples.objects } : {}),
+            ...(samples.arrows ? { arrows: samples.arrows } : {}),
+          }
+        : undefined
+    const equalMor =
+      FinSet.equalMor ?? ((left: FinSetMor, right: FinSetMor) => Object.is(left, right))
     const naturalityOptions = {
-      samples: { objects: samples.objects, arrows: samples.arrows },
-      equalMor: FinSet.equalMor,
+      ...(naturalitySamples ? { samples: naturalitySamples } : {}),
+      equalMor,
     }
 
     const alpha = constructNaturalTransformationWithWitness(
@@ -219,7 +254,7 @@ describe("natural transformation calculus", () => {
     expect(composed.report.holds).toBe(true)
 
     const manual = verticalCompositeNaturalTransformations(alpha, gamma, naturalityOptions)
-    const eq = FinSet.equalMor ?? ((left: FinSetMor, right: FinSetMor) => Object.is(left, right))
+    const eq = equalMor
     for (const object of samples.objects ?? []) {
       expect(eq(composed.transformation.component(object), manual.transformation.component(object))).toBe(true)
     }

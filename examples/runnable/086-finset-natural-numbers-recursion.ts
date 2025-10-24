@@ -11,6 +11,26 @@ if (!naturalNumbersObject) {
 
 const natural = naturalNumbersObject
 
+const {
+  addition: buildAddition,
+  primitiveRecursionFromExponential,
+  integerCompletion: buildIntegerCompletion,
+  certifyDedekindInfinite,
+  certifySuccessorZeroSeparation,
+  initialAlgebra: buildInitialAlgebra,
+} = natural
+
+if (
+  !buildAddition ||
+  !primitiveRecursionFromExponential ||
+  !buildIntegerCompletion ||
+  !certifyDedekindInfinite ||
+  !certifySuccessorZeroSeparation ||
+  !buildInitialAlgebra
+) {
+  throw new Error('FinSet natural numbers object must expose recursion and certification helpers for this example.')
+}
+
 const equalArrow = (left: FinSetMor, right: FinSetMor): boolean => {
   const verdict = FinSet.equalMor?.(left, right)
   if (typeof verdict === "boolean") {
@@ -29,11 +49,17 @@ const formatSuccessorSample = (count: number): readonly string[] => {
   const lines: string[] = []
   for (let index = 0; index < Math.min(count, natural.carrier.elements.length); index += 1) {
     const source = natural.carrier.elements[index]
+    if (source === undefined) {
+      throw new Error("FinSet carrier missing element during successor sample generation.")
+    }
     const imageIndex = natural.successor.map[index]
     if (imageIndex === undefined) {
       throw new Error("FinSet successor map missing image during runnable example generation.")
     }
     const image = natural.carrier.elements[imageIndex]
+    if (image === undefined) {
+      throw new Error("FinSet successor image index outside carrier bounds during example generation.")
+    }
     lines.push(`${source} ↦ ${image}`)
     if (index + 1 >= count) {
       break
@@ -43,7 +69,7 @@ const formatSuccessorSample = (count: number): readonly string[] => {
 }
 
 const describeAddition = (
-  addition: ReturnType<typeof natural.addition>,
+  addition: ReturnType<typeof buildAddition>,
   samples: ReadonlyArray<readonly [number, number]>,
 ): readonly string[] => {
   const tuples = addition.product.obj.elements as ReadonlyArray<ReadonlyArray<number>>
@@ -57,11 +83,18 @@ const describeAddition = (
         `Requested addition sample (${left}, ${right}) not present in FinSet product carrier.`,
       )
     }
+    const tuple = tuples[tupleIndex]
+    if (tuple === undefined) {
+      throw new Error("Addition tuple lookup produced an out-of-range index.")
+    }
     const imageIndex = addition.addition.map[tupleIndex]
     if (imageIndex === undefined) {
       throw new Error("Primitive recursion mediator missing image for addition sample.")
     }
     const value = natural.carrier.elements[imageIndex]
+    if (value === undefined) {
+      throw new Error("Addition result index outside FinSet carrier bounds during runnable example generation.")
+    }
     const saturates =
       value === natural.carrier.elements[natural.carrier.elements.length - 1]
     lines.push(`${left} + ${right} = ${value}${saturates ? " (saturates)" : ""}`)
@@ -70,8 +103,8 @@ const describeAddition = (
 }
 
 const describeIntegerCompletion = (
-  completion: ReturnType<typeof natural.integerCompletion>,
-  addition: ReturnType<typeof natural.addition>,
+  completion: ReturnType<typeof buildIntegerCompletion>,
+  addition: ReturnType<typeof buildAddition>,
 ): readonly string[] => {
   const lines: string[] = []
 
@@ -98,7 +131,11 @@ const describeIntegerCompletion = (
     if (!tuple) {
       throw new Error('FinSet integer completion: tuple missing from ℕ×ℕ carrier.')
     }
-    const [left, right] = tuple
+    const left = tuple[0]
+    const right = tuple[1]
+    if (left === undefined || right === undefined) {
+      throw new Error("FinSet integer completion tuple missing coordinates.")
+    }
     if (!catalog.has(classIndex)) {
       catalog.set(classIndex, { difference: left - right, representative: [left, right] as const })
     }
@@ -134,7 +171,7 @@ const describeIntegerCompletion = (
 }
 
 const describeDedekind = (
-  verdict: ReturnType<typeof natural.certifyDedekindInfinite>,
+  verdict: ReturnType<typeof certifyDedekindInfinite>,
 ): readonly string[] => {
   const details = [
     `Point-infinite witness: ${verdict.pointInfinite.details}`,
@@ -150,7 +187,7 @@ const describeDedekind = (
 }
 
 const describeZeroSeparation = (
-  verdict: ReturnType<typeof natural.certifySuccessorZeroSeparation>,
+  verdict: ReturnType<typeof certifySuccessorZeroSeparation>,
 ): readonly string[] => [
   `Separated? ${verdict.separated}`,
   `Characteristic equals false → ${verdict.equalsFalse}`,
@@ -159,7 +196,7 @@ const describeZeroSeparation = (
 ]
 
 const describeInitialAlgebra = (
-  verdict: ReturnType<typeof natural.initialAlgebra>,
+  verdict: ReturnType<typeof buildInitialAlgebra>,
 ): readonly string[] => {
   const lines = [`Initial algebra holds? ${verdict.holds}`, `Details: ${verdict.details}`]
   if (verdict.reason) {
@@ -177,14 +214,22 @@ const runExample = (): readonly string[] => {
   const lines: string[] = []
 
   const bound = natural.carrier.elements[natural.carrier.elements.length - 1]
+  if (bound === undefined) {
+    throw new Error("FinSet natural numbers carrier missing terminal element during runnable example generation.")
+  }
   lines.push("== FinSet ℕ witness ==")
   lines.push(`Carrier size → ${natural.carrier.elements.length}`)
   lines.push(`Largest element represented → ${bound}`)
-  lines.push(`Zero global point maps to → ${natural.zero.map[0]}`)
+  const zeroImage = natural.zero.map[0]
+  if (zeroImage === undefined) {
+    throw new Error("FinSet natural numbers zero map missing base image during runnable example generation.")
+  }
+  lines.push(`Zero global point maps to → ${zeroImage}`)
   lines.push("Successor samples:")
   lines.push(...formatSuccessorSample(6).map((entry) => `  ${entry}`))
 
-  const addition = natural.addition({ label: "addition example" })
+  const addition = buildAddition({ label: "addition example" })
+  const target = addition.target
 
   lines.push("", "== Primitive recursion: addition ==")
   lines.push(`Witness established → ${addition.holds}`)
@@ -204,7 +249,7 @@ const runExample = (): readonly string[] => {
   lines.push("Addition samples:")
   lines.push(...describeAddition(addition, additionSamples).map((entry) => `  ${entry}`))
 
-  const exponential = natural.primitiveRecursionFromExponential({
+  const exponential = primitiveRecursionFromExponential({
     parameter: addition.parameter,
     target: addition.target,
     base: addition.base,
@@ -221,7 +266,7 @@ const runExample = (): readonly string[] => {
   lines.push(`Evaluation composite matches step → ${evaluationMatchesStep}`)
   lines.push(`Details → ${exponential.details}`)
 
-  const integers = natural.integerCompletion({
+  const integers = buildIntegerCompletion({
     label: "integer completion example",
     equalMor: equalArrow,
   })
@@ -229,11 +274,11 @@ const runExample = (): readonly string[] => {
   lines.push("", "== Grothendieck integer completion ==")
   lines.push(...describeIntegerCompletion(integers, addition))
 
-  const dedekind = natural.certifyDedekindInfinite()
+  const dedekind = certifyDedekindInfinite()
   lines.push("", "== Dedekind-infinite successor ==")
   lines.push(...describeDedekind(dedekind))
 
-  const separation = natural.certifySuccessorZeroSeparation()
+  const separation = certifySuccessorZeroSeparation()
   lines.push("", "== Zero is not a successor image ==")
   lines.push(...describeZeroSeparation(separation))
   lines.push(
@@ -253,7 +298,7 @@ const runExample = (): readonly string[] => {
     ),
   }
 
-  const initial = natural.initialAlgebra({
+  const initial = buildInitialAlgebra({
     target,
     algebra,
     label: "canonical FinSet 1+ℕ-algebra",

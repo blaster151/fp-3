@@ -3376,6 +3376,44 @@ export namespace CategoryLimits {
     readonly onMorphisms: (arrow: A) => M
   }
 
+  export interface DiagramArrowDiagnostic<I, A, O, M> {
+    readonly arrow: A
+    readonly sourceIndex: I
+    readonly targetIndex: I
+    readonly morphism: M
+    readonly expectedDomain: O
+    readonly expectedCodomain: O
+    readonly actualDomain: O
+    readonly actualCodomain: O
+    readonly holds: boolean
+    readonly reason?: string
+  }
+
+  export interface DiagramIdentityDiagnostic<I, O, M> {
+    readonly index: I
+    readonly expectedIdentity: M
+    readonly actualIdentity: M
+    readonly holds: boolean
+    readonly reason?: string
+  }
+
+  export interface DiagramCompositionDiagnostic<A, M> {
+    readonly first: A
+    readonly second: A
+    readonly composite: A
+    readonly expected: M
+    readonly actual: M
+    readonly holds: boolean
+    readonly reason?: string
+  }
+
+  export interface DiagramNaturalityAnalysis<I, A, O, M> {
+    readonly identityDiagnostics: ReadonlyArray<DiagramIdentityDiagnostic<I, O, M>>
+    readonly arrowDiagnostics: ReadonlyArray<DiagramArrowDiagnostic<I, A, O, M>>
+    readonly compositionDiagnostics: ReadonlyArray<DiagramCompositionDiagnostic<A, M>>
+    readonly holds: boolean
+  }
+
   export const makeFiniteDiagram = <I, A, O, M>(input: {
     readonly shape: FiniteCategoryT<I, A>
     readonly onObjects: IndexedFamilies.Family<I, O>
@@ -3389,6 +3427,621 @@ export namespace CategoryLimits {
       onMorphisms(arrow)
     })
     return { shape, onObjects, onMorphisms }
+  }
+
+  const morphismEquality = <O, M>(
+    category: Category<O, M>,
+    eq?: (a: M, b: M) => boolean,
+  ): ((a: M, b: M) => boolean) => {
+    if (typeof eq === "function") {
+      return eq
+    }
+    if (typeof category.equalMor === "function") {
+      return (left: M, right: M) => category.equalMor!(left, right)
+    }
+    if (typeof category.eq === "function") {
+      return (left: M, right: M) => category.eq!(left, right)
+    }
+    return (left: M, right: M) => Object.is(left, right)
+  }
+
+  const enumerateShapeObjects = <I, A>(
+    diagram: FiniteDiagram<I, A, unknown, unknown> | SmallDiagram<I, A, unknown, unknown>,
+  ): ReadonlyArray<I> => {
+    if ((diagram as FiniteDiagram<I, A, unknown, unknown>).shape.objects) {
+      return (diagram as FiniteDiagram<I, A, unknown, unknown>).shape.objects
+    }
+    return Array.from((diagram as SmallDiagram<I, A, unknown, unknown>).shape.objects)
+  }
+
+  const enumerateShapeArrows = <I, A>(
+    diagram: FiniteDiagram<I, A, unknown, unknown> | SmallDiagram<I, A, unknown, unknown>,
+  ): ReadonlyArray<A> => {
+    if ((diagram as FiniteDiagram<I, A, unknown, unknown>).shape.arrows) {
+      return (diagram as FiniteDiagram<I, A, unknown, unknown>).shape.arrows
+    }
+    return Array.from((diagram as SmallDiagram<I, A, unknown, unknown>).shape.arrows)
+  }
+
+  export const analyzeDiagramNaturality = <I, A, O, M>(input: {
+    readonly base: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly diagram: FiniteDiagram<I, A, O, M> | SmallDiagram<I, A, O, M>
+    readonly eq?: (a: M, b: M) => boolean
+  }): DiagramNaturalityAnalysis<I, A, O, M> => {
+    const { base, diagram, eq } = input
+    const equality = morphismEquality(base, eq)
+    const objects = enumerateShapeObjects(diagram)
+    const arrows = enumerateShapeArrows(diagram)
+
+    const identityDiagnostics: DiagramIdentityDiagnostic<I, O, M>[] = []
+    for (const object of objects) {
+      const assigned = diagram.onObjects(object)
+      const actual = diagram.onMorphisms(diagram.shape.id(object))
+      const expected = base.id(assigned)
+      const holds =
+        equality(actual, expected) &&
+        Object.is(base.dom(actual), assigned) &&
+        Object.is(base.cod(actual), assigned)
+      identityDiagnostics.push(
+        holds
+          ? { index: object, expectedIdentity: expected, actualIdentity: actual, holds }
+          : {
+              index: object,
+              expectedIdentity: expected,
+              actualIdentity: actual,
+              holds,
+              reason: `identity mismatch at ${String(object)}`,
+            },
+      )
+    }
+
+    const arrowDiagnostics: DiagramArrowDiagnostic<I, A, O, M>[] = []
+    for (const arrow of arrows) {
+      const sourceIndex = diagram.shape.src(arrow)
+      const targetIndex = diagram.shape.dst(arrow)
+      const morphism = diagram.onMorphisms(arrow)
+      const expectedDomain = diagram.onObjects(sourceIndex)
+      const expectedCodomain = diagram.onObjects(targetIndex)
+      const actualDomain = base.dom(morphism)
+      const actualCodomain = base.cod(morphism)
+      const holds = Object.is(actualDomain, expectedDomain) && Object.is(actualCodomain, expectedCodomain)
+      arrowDiagnostics.push(
+        holds
+          ? {
+              arrow,
+              sourceIndex,
+              targetIndex,
+              morphism,
+              expectedDomain,
+              expectedCodomain,
+              actualDomain,
+              actualCodomain,
+              holds,
+            }
+          : {
+              arrow,
+              sourceIndex,
+              targetIndex,
+              morphism,
+              expectedDomain,
+              expectedCodomain,
+              actualDomain,
+              actualCodomain,
+              holds,
+              reason: `domain/codomain mismatch for ${String(sourceIndex)}→${String(targetIndex)}`,
+            },
+      )
+    }
+
+    const compositionDiagnostics: DiagramCompositionDiagnostic<A, M>[] = []
+    for (const first of arrows) {
+      for (const second of arrows) {
+        if (!Object.is(diagram.shape.dst(first), diagram.shape.src(second))) continue
+        const composite = diagram.shape.compose(second, first)
+        const expected = base.compose(diagram.onMorphisms(second), diagram.onMorphisms(first))
+        const actual = diagram.onMorphisms(composite)
+        const holds = equality(actual, expected)
+        compositionDiagnostics.push(
+          holds
+            ? { first, second, composite, expected, actual, holds }
+            : {
+                first,
+                second,
+                composite,
+                expected,
+                actual,
+                holds,
+                reason: `composition mismatch along ${String(diagram.shape.src(first))}→${String(
+                  diagram.shape.dst(second),
+                )}`,
+              },
+        )
+      }
+    }
+
+    const holds =
+      identityDiagnostics.every((diagnostic) => diagnostic.holds) &&
+      arrowDiagnostics.every((diagnostic) => diagnostic.holds) &&
+      compositionDiagnostics.every((diagnostic) => diagnostic.holds)
+
+    return { identityDiagnostics, arrowDiagnostics, compositionDiagnostics, holds }
+  }
+
+  export interface FunctorToDiagramResult<I, A, O, M> {
+    readonly diagram: SmallDiagram<I, A, O, M>
+    readonly objectIndex: IndexedFamilies.FiniteIndex<I>
+    readonly arrowIndex: IndexedFamilies.FiniteIndex<A>
+  }
+
+  export interface FunctorToDiagramInput<I, A, O, M> {
+    readonly functor: FunctorWithWitness<I, A, O, M>
+    readonly source: SmallCategory<I, A>
+    readonly indices?: IndexedFamilies.SmallIndex<I>
+    readonly arrows?: IndexedFamilies.SmallIndex<A>
+  }
+
+  export const functorToDiagram = <I, A, O, M>(
+    input: FunctorToDiagramInput<I, A, O, M>,
+  ): FunctorToDiagramResult<I, A, O, M> => {
+    const { functor, source } = input
+    const objectCarrier = input.indices
+      ? IndexedFamilies.ensureFiniteIndex(input.indices)
+      : IndexedFamilies.finiteIndex(Array.from(source.objects))
+    const arrowCarrier = input.arrows
+      ? IndexedFamilies.ensureFiniteIndex(input.arrows)
+      : IndexedFamilies.finiteIndex(Array.from(source.arrows))
+
+    const diagram: SmallDiagram<I, A, O, M> = {
+      shape: source,
+      objectIndex: objectCarrier,
+      onObjects: (index) => functor.functor.F0(index),
+      arrowIndex: arrowCarrier,
+      onMorphisms: (arrow) => functor.functor.F1(arrow),
+    }
+
+    return { diagram, objectIndex: objectCarrier, arrowIndex: arrowCarrier }
+  }
+
+  export interface DiagramToFunctorOptions {
+    readonly metadata?: ReadonlyArray<string>
+    readonly eq?: (a: unknown, b: unknown) => boolean
+  }
+
+  export interface DiagramFunctorizationResult<I, A, O, M> {
+    readonly functor: FunctorWithWitness<I, A, O, M>
+    readonly analysis: DiagramNaturalityAnalysis<I, A, O, M>
+  }
+
+  export const diagramToFunctorWitness = <I, A, O, M>(input: {
+    readonly base: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly diagram: FiniteDiagram<I, A, O, M> | SmallDiagram<I, A, O, M>
+    readonly options?: DiagramToFunctorOptions
+  }): DiagramFunctorizationResult<I, A, O, M> => {
+    const { base, diagram, options } = input
+    const objects = enumerateShapeObjects(diagram)
+    const arrows = enumerateShapeArrows(diagram)
+    const composablePairs: FunctorComposablePair<A>[] = []
+    for (const first of arrows) {
+      for (const second of arrows) {
+        if (Object.is(diagram.shape.dst(first), diagram.shape.src(second))) {
+          composablePairs.push({ f: first, g: second })
+        }
+      }
+    }
+
+    const samples: FunctorCheckSamples<I, A> = {
+      objects,
+      arrows,
+      composablePairs,
+    }
+
+    const functorStructure: Functor<I, A, O, M> = {
+      F0: (object) => diagram.onObjects(object),
+      F1: (arrow) => diagram.onMorphisms(arrow),
+    }
+
+    const functor = constructFunctorWithWitness(
+      diagram.shape,
+      base,
+      functorStructure,
+      samples,
+      options?.metadata,
+    )
+
+    const analysis = analyzeDiagramNaturality({
+      base,
+      diagram,
+      eq: options?.eq as ((a: M, b: M) => boolean) | undefined,
+    })
+
+    return { functor, analysis }
+  }
+
+  export const constantDiagram = <I, A, O, M>(input: {
+    readonly shape: SmallCategory<I, A>
+    readonly base: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly object: O
+  }): SmallDiagram<I, A, O, M> => {
+    const objectIndex = IndexedFamilies.finiteIndex(Array.from(input.shape.objects))
+    const arrowIndex = IndexedFamilies.finiteIndex(Array.from(input.shape.arrows))
+    return {
+      shape: input.shape,
+      objectIndex,
+      onObjects: () => input.object,
+      arrowIndex,
+      onMorphisms: () => input.base.id(input.object),
+    }
+  }
+
+  const requireSmallCategory = <O, A>(
+    category: SimpleCat<O, A>,
+    context: string,
+  ): SmallCategory<O, A> => {
+    const candidate = category as Partial<SmallCategory<O, A>>
+    if (
+      candidate &&
+      candidate.objects &&
+      typeof (candidate.objects as ReadonlySet<O>).forEach === 'function' &&
+      candidate.arrows &&
+      typeof (candidate.arrows as ReadonlySet<A>).forEach === 'function'
+    ) {
+      return candidate as SmallCategory<O, A>
+    }
+    throw new Error(`${context}: change-of-shape functor must expose a small category structure`)
+  }
+
+  const diagramHasObject = <I, A, O, M>(
+    diagram: FiniteDiagram<I, A, O, M> | SmallDiagram<I, A, O, M>,
+    object: I,
+  ): boolean => {
+    if (isFiniteDiagram(diagram)) {
+      return diagram.shape.objects.some((candidate) => Object.is(candidate, object))
+    }
+    if (isSmallDiagram(diagram)) {
+      return diagram.shape.objects.has(object)
+    }
+    return false
+  }
+
+  const diagramHasArrow = <I, A, O, M>(
+    diagram: FiniteDiagram<I, A, O, M> | SmallDiagram<I, A, O, M>,
+    arrow: A,
+  ): boolean => {
+    if (isFiniteDiagram(diagram)) {
+      return diagram.shape.arrows.some((candidate) => Object.is(candidate, arrow))
+    }
+    if (isSmallDiagram(diagram)) {
+      return diagram.shape.arrows.has(arrow)
+    }
+    return false
+  }
+
+  export interface ReindexDiagramOptions {
+    readonly guard?: {
+      readonly objects?: number
+      readonly arrows?: number
+    }
+  }
+
+  export interface RestrictedConeResult<I, O, M> {
+    readonly cone: Cone<I, O, M>
+    readonly analysis: ConeNaturalityAnalysis<I, O, M>
+  }
+
+  export interface RestrictedCoconeResult<I, O, M> {
+    readonly cocone: Cocone<I, O, M>
+    readonly analysis: CoconeNaturalityAnalysis<I, O, M>
+  }
+
+  export interface ReindexDiagramResult<I, A, J, B, O, M> {
+    readonly diagram: SmallDiagram<I, A, O, M>
+    readonly objectIndex: IndexedFamilies.FiniteIndex<I>
+    readonly arrowIndex: IndexedFamilies.FiniteIndex<A>
+    readonly restrictCone: (cone: Cone<J, O, M>) => RestrictedConeResult<I, O, M>
+    readonly restrictCocone: (cocone: Cocone<J, O, M>) => RestrictedCoconeResult<I, O, M>
+  }
+
+  export const reindexDiagram = <I, A, J, B, O, M>(input: {
+    readonly base: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly changeOfShape: FunctorWithWitness<I, A, J, B>
+    readonly diagram: FiniteDiagram<J, B, O, M> | SmallDiagram<J, B, O, M>
+    readonly eq?: (a: M, b: M) => boolean
+    readonly options?: ReindexDiagramOptions
+  }): ReindexDiagramResult<I, A, J, B, O, M> => {
+    const { base, changeOfShape, diagram, options } = input
+    const eq = input.eq ?? base.eq ?? ((left: M, right: M) => Object.is(left, right))
+
+    const sourceShape = requireSmallCategory(
+      changeOfShape.witness.source,
+      'CategoryLimits.reindexDiagram',
+    )
+    const targetShape = requireSmallCategory(
+      changeOfShape.witness.target,
+      'CategoryLimits.reindexDiagram',
+    )
+
+    if (isFiniteDiagram(diagram) || isSmallDiagram(diagram)) {
+      for (const object of sourceShape.objects) {
+        const mapped = changeOfShape.functor.F0(object)
+        if (!diagramHasObject(diagram, mapped)) {
+          throw new Error(
+            `CategoryLimits.reindexDiagram: object ${String(mapped)} is missing from the target diagram`,
+          )
+        }
+      }
+      for (const arrow of sourceShape.arrows) {
+        const mapped = changeOfShape.functor.F1(arrow)
+        if (!diagramHasArrow(diagram, mapped)) {
+          throw new Error(
+            `CategoryLimits.reindexDiagram: arrow ${String(mapped)} is missing from the target diagram`,
+          )
+        }
+      }
+    }
+
+    for (const object of targetShape.objects) {
+      if (!diagramHasObject(diagram, object)) {
+        throw new Error(
+          `CategoryLimits.reindexDiagram: change-of-shape target references object ${String(object)} absent from the supplied diagram`,
+        )
+      }
+    }
+
+    const guardObjects = options?.guard?.objects
+    const guardArrows = options?.guard?.arrows
+
+    const objectCarrier = Array.from(sourceShape.objects)
+    if (guardObjects !== undefined && objectCarrier.length > guardObjects) {
+      throw new Error(
+        `CategoryLimits.reindexDiagram: source category exposes ${objectCarrier.length} objects which exceeds the configured guard ${guardObjects}`,
+      )
+    }
+
+    const arrowCarrier = Array.from(sourceShape.arrows)
+    if (guardArrows !== undefined && arrowCarrier.length > guardArrows) {
+      throw new Error(
+        `CategoryLimits.reindexDiagram: source category exposes ${arrowCarrier.length} arrows which exceeds the configured guard ${guardArrows}`,
+      )
+    }
+
+    const objectIndex = IndexedFamilies.finiteIndex(objectCarrier)
+    const arrowIndex = IndexedFamilies.finiteIndex(arrowCarrier)
+
+    const reindexedDiagram: SmallDiagram<I, A, O, M> = {
+      shape: sourceShape,
+      objectIndex,
+      onObjects: (object) => diagram.onObjects(changeOfShape.functor.F0(object)),
+      arrowIndex,
+      onMorphisms: (arrow) => diagram.onMorphisms(changeOfShape.functor.F1(arrow)),
+    }
+
+    const onObjects: IndexedFamilies.Family<I, O> = (index) => reindexedDiagram.onObjects(index)
+
+    const restrictCone = (cone: Cone<J, O, M>): RestrictedConeResult<I, O, M> => {
+      const restricted: Cone<I, O, M> = {
+        tip: cone.tip,
+        legs: (index: I) => cone.legs(changeOfShape.functor.F0(index)),
+        diagram: reindexedDiagram,
+      }
+      const analysis = analyzeConeNaturality({
+        category: base,
+        eq,
+        indices: objectIndex,
+        onObjects,
+        cone: restricted,
+      })
+      return { cone: restricted, analysis }
+    }
+
+    const restrictCocone = (cocone: Cocone<J, O, M>): RestrictedCoconeResult<I, O, M> => {
+      const restricted: Cocone<I, O, M> = {
+        coTip: cocone.coTip,
+        legs: (index: I) => cocone.legs(changeOfShape.functor.F0(index)),
+        diagram: reindexedDiagram,
+      }
+      const analysis = analyzeCoconeNaturality({
+        category: base,
+        eq,
+        indices: objectIndex,
+        onObjects,
+        cocone: restricted,
+      })
+      return { cocone: restricted, analysis }
+    }
+
+    return { diagram: reindexedDiagram, objectIndex, arrowIndex, restrictCone, restrictCocone }
+  }
+
+  export interface ChangeOfShapeFinalityWitness {
+    readonly holds: boolean
+    readonly reason?: string
+    readonly metadata?: ReadonlyArray<string>
+  }
+
+  export interface LimitComparisonAlongResult<I, A, J, B, O, M> {
+    readonly reindexing: ReindexDiagramResult<I, A, J, B, O, M>
+    readonly restrictedCone: Cone<I, O, M>
+    readonly restrictionAnalysis: ConeNaturalityAnalysis<I, O, M>
+    readonly factorization: { holds: boolean; mediator?: M; reason?: string }
+    readonly comparison?: {
+      readonly mediator: M
+      readonly isomorphism: boolean
+      readonly reason?: string
+      readonly finality?: ChangeOfShapeFinalityWitness
+    }
+  }
+
+  export const limitComparisonAlong = <I, A, J, B, O, M>(input: {
+    readonly base: FiniteCategoryT<O, M> & Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly changeOfShape: FunctorWithWitness<I, A, J, B>
+    readonly diagram: FiniteDiagram<J, B, O, M> | SmallDiagram<J, B, O, M>
+    readonly originalLimit: LimitOfDiagramResult<J, O, M>
+    readonly reindexedLimit: LimitOfDiagramResult<I, O, M>
+    readonly eq?: (a: M, b: M) => boolean
+    readonly options?: ReindexDiagramOptions
+    readonly finality?: ChangeOfShapeFinalityWitness
+  }): LimitComparisonAlongResult<I, A, J, B, O, M> => {
+    const { base, changeOfShape, diagram, originalLimit, reindexedLimit, finality } = input
+    if (!base.eq && !input.eq) {
+      throw new Error(
+        'CategoryLimits.limitComparisonAlong: base category must provide arrow equality to test comparison isomorphisms',
+      )
+    }
+    const reindexing = reindexDiagram<I, A, J, B, O, M>({
+      base,
+      changeOfShape,
+      diagram,
+      eq: input.eq ?? base.eq,
+      options: input.options,
+    })
+    const restriction = reindexing.restrictCone(originalLimit.cone)
+    if (!restriction.analysis.holds) {
+      return {
+        reindexing,
+        restrictedCone: restriction.cone,
+        restrictionAnalysis: restriction.analysis,
+        factorization: {
+          holds: false,
+          reason:
+            'CategoryLimits.limitComparisonAlong: restricted cone fails the naturality checks required for D ∘ u',
+        },
+      }
+    }
+
+    const factor = reindexedLimit.factor(restriction.cone)
+    if (!factor.holds || !factor.mediator) {
+      return {
+        reindexing,
+        restrictedCone: restriction.cone,
+        restrictionAnalysis: restriction.analysis,
+        factorization: {
+          holds: false,
+          reason:
+            factor.reason ??
+            'CategoryLimits.limitComparisonAlong: limit of D ∘ u declined to factor the restricted cone',
+        },
+      }
+    }
+
+    const mediator = factor.mediator
+    const iso = isIso(base, mediator)
+    const reason = iso
+      ? undefined
+      : finality
+        ? finality.holds
+          ? finality.reason
+          : finality.reason ??
+            'CategoryLimits.limitComparisonAlong: change-of-shape functor reported non-finality, so the comparison may fail to be an isomorphism'
+        : 'CategoryLimits.limitComparisonAlong: comparison map is not an isomorphism and no finality witness was supplied'
+
+    return {
+      reindexing,
+      restrictedCone: restriction.cone,
+      restrictionAnalysis: restriction.analysis,
+      factorization: { holds: true, mediator },
+      comparison: {
+        mediator,
+        isomorphism: iso,
+        ...(reason ? { reason } : {}),
+        ...(finality ? { finality } : {}),
+      },
+    }
+  }
+
+  export interface ChangeOfShapeCofinalityWitness {
+    readonly holds: boolean
+    readonly reason?: string
+    readonly metadata?: ReadonlyArray<string>
+  }
+
+  export interface ColimitComparisonAlongResult<I, A, J, B, O, M> {
+    readonly reindexing: ReindexDiagramResult<I, A, J, B, O, M>
+    readonly restrictedCocone: Cocone<I, O, M>
+    readonly restrictionAnalysis: CoconeNaturalityAnalysis<I, O, M>
+    readonly factorization: { factored: boolean; mediator?: M; reason?: string }
+    readonly comparison?: {
+      readonly mediator: M
+      readonly isomorphism: boolean
+      readonly reason?: string
+      readonly cofinality?: ChangeOfShapeCofinalityWitness
+    }
+  }
+
+  export const colimitComparisonAlong = <I, A, J, B, O, M>(input: {
+    readonly base: FiniteCategoryT<O, M> & Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly changeOfShape: FunctorWithWitness<I, A, J, B>
+    readonly diagram: FiniteDiagram<J, B, O, M> | SmallDiagram<J, B, O, M>
+    readonly originalColimit: FiniteColimitFromCoproductsAndCoequalizersWitness<J, O, M>
+    readonly reindexedColimit: FiniteColimitFromCoproductsAndCoequalizersWitness<I, O, M>
+    readonly eq?: (a: M, b: M) => boolean
+    readonly options?: ReindexDiagramOptions
+    readonly cofinality?: ChangeOfShapeCofinalityWitness
+  }): ColimitComparisonAlongResult<I, A, J, B, O, M> => {
+    const { base, changeOfShape, diagram, originalColimit, reindexedColimit, cofinality } = input
+    if (!base.eq && !input.eq) {
+      throw new Error(
+        'CategoryLimits.colimitComparisonAlong: base category must provide arrow equality to test comparison isomorphisms',
+      )
+    }
+    const reindexing = reindexDiagram<I, A, J, B, O, M>({
+      base,
+      changeOfShape,
+      diagram,
+      eq: input.eq ?? base.eq,
+      options: input.options,
+    })
+    const restriction = reindexing.restrictCocone(originalColimit.cocone)
+    if (!restriction.analysis.holds) {
+      return {
+        reindexing,
+        restrictedCocone: restriction.cocone,
+        restrictionAnalysis: restriction.analysis,
+        factorization: {
+          factored: false,
+          reason:
+            'CategoryLimits.colimitComparisonAlong: restricted cocone fails the naturality checks required for D ∘ u',
+        },
+      }
+    }
+
+    const factor = reindexedColimit.factor(restriction.cocone)
+    if (!factor.factored || !factor.mediator) {
+      return {
+        reindexing,
+        restrictedCocone: restriction.cocone,
+        restrictionAnalysis: restriction.analysis,
+        factorization: {
+          factored: false,
+          reason:
+            factor.reason ??
+            'CategoryLimits.colimitComparisonAlong: colimit of D ∘ u declined to factor the restricted cocone',
+        },
+      }
+    }
+
+    const mediator = factor.mediator
+    const iso = isIso(base, mediator)
+    const reason = iso
+      ? undefined
+      : cofinality
+        ? cofinality.holds
+          ? cofinality.reason
+          : cofinality.reason ??
+            'CategoryLimits.colimitComparisonAlong: change-of-shape functor reported non-cofinality, so the comparison may fail to be an isomorphism'
+        : 'CategoryLimits.colimitComparisonAlong: comparison map is not an isomorphism and no cofinality witness was supplied'
+
+    return {
+      reindexing,
+      restrictedCocone: restriction.cocone,
+      restrictionAnalysis: restriction.analysis,
+      factorization: { factored: true, mediator },
+      comparison: {
+        mediator,
+        isomorphism: iso,
+        ...(reason ? { reason } : {}),
+        ...(cofinality ? { cofinality } : {}),
+      },
+    }
   }
 
   interface DiscreteDiagramArrow<I> {
@@ -3705,6 +4358,43 @@ export namespace CategoryLimits {
     readonly source: Cone<I, O, M>
     readonly target: Cone<I, O, M>
     readonly mediator: M
+  }
+
+  export interface ConeObjectDiagnostic<I, O> {
+    readonly index: I
+    readonly expected?: O
+    readonly actual?: O
+    readonly present: boolean
+    readonly holds: boolean
+    readonly reason?: string
+  }
+
+  export interface ConeLegDiagnostic<I, O, M> {
+    readonly index: I
+    readonly leg: M
+    readonly actualDomain: O
+    readonly actualCodomain: O
+    readonly expectedDomain: O
+    readonly expectedCodomain: O
+    readonly holds: boolean
+    readonly reason?: string
+  }
+
+  export interface ConeArrowNaturality<I, M> {
+    readonly sourceIndex: I
+    readonly targetIndex: I
+    readonly transported: M
+    readonly targetLeg: M
+    readonly arrow: DiagramArrow<I, M>
+    readonly holds: boolean
+    readonly reason?: string
+  }
+
+  export interface ConeNaturalityAnalysis<I, O, M> {
+    readonly objectDiagnostics: ReadonlyArray<ConeObjectDiagnostic<I, O>>
+    readonly legDiagnostics: ReadonlyArray<ConeLegDiagnostic<I, O, M>>
+    readonly arrowDiagnostics: ReadonlyArray<ConeArrowNaturality<I, M>>
+    readonly holds: boolean
   }
 
   export interface ConeCategoryResult<I, O, M> {
@@ -4909,6 +5599,43 @@ export namespace CategoryLimits {
     diagram: DiagramLike<I, O, M>
   }
 
+  export interface CoconeObjectDiagnostic<I, O> {
+    readonly index: I
+    readonly expected?: O
+    readonly actual?: O
+    readonly present: boolean
+    readonly holds: boolean
+    readonly reason?: string
+  }
+
+  export interface CoconeLegDiagnostic<I, O, M> {
+    readonly index: I
+    readonly leg: M
+    readonly actualDomain: O
+    readonly actualCodomain: O
+    readonly expectedDomain: O
+    readonly expectedCodomain: O
+    readonly holds: boolean
+    readonly reason?: string
+  }
+
+  export interface CoconeArrowNaturality<I, M> {
+    readonly sourceIndex: I
+    readonly targetIndex: I
+    readonly transported: M
+    readonly sourceLeg: M
+    readonly arrow: DiagramArrow<I, M>
+    readonly holds: boolean
+    readonly reason?: string
+  }
+
+  export interface CoconeNaturalityAnalysis<I, O, M> {
+    readonly objectDiagnostics: ReadonlyArray<CoconeObjectDiagnostic<I, O>>
+    readonly legDiagnostics: ReadonlyArray<CoconeLegDiagnostic<I, O, M>>
+    readonly arrowDiagnostics: ReadonlyArray<CoconeArrowNaturality<I, M>>
+    readonly holds: boolean
+  }
+
   export interface CoconeMorphism<I, O, M> {
     readonly source: Cocone<I, O, M>
     readonly target: Cocone<I, O, M>
@@ -5225,6 +5952,141 @@ export namespace CategoryLimits {
     readonly reason?: string
   }
 
+  export const analyzeConeNaturality = <I, O, M>(input: {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly eq: (a: M, b: M) => boolean
+    readonly indices: IndexedFamilies.FiniteIndex<I>
+    readonly onObjects: IndexedFamilies.Family<I, O>
+    readonly cone: Cone<I, O, M>
+  }): ConeNaturalityAnalysis<I, O, M> => {
+    const { category: C, eq, indices, onObjects, cone } = input
+    const diagram = cone.diagram
+    const carrier = indices.carrier
+    const includesIndex = (index: I): boolean => carrier.some((candidate) => candidate === index)
+
+    const objectDiagnostics: ConeObjectDiagnostic<I, O>[] = []
+    if (isFiniteDiagram(diagram)) {
+      for (const object of diagram.shape.objects) {
+        if (!includesIndex(object)) {
+          objectDiagnostics.push({
+            index: object,
+            present: false,
+            holds: false,
+            reason: `diagram references ${String(object)} outside the supplied index set`,
+          })
+          continue
+        }
+        const advertised = onObjects(object)
+        const assigned = diagram.onObjects(object)
+        const holds = Object.is(advertised, assigned)
+        objectDiagnostics.push(
+          holds
+            ? { index: object, expected: advertised, actual: assigned, present: true, holds }
+            : {
+                index: object,
+                expected: advertised,
+                actual: assigned,
+                present: true,
+                holds,
+                reason: `diagram object ${String(object)} disagrees with supplied family`,
+              },
+        )
+      }
+      for (const index of carrier) {
+        if (!diagram.shape.objects.some((candidate) => candidate === index)) {
+          objectDiagnostics.push({
+            index,
+            expected: onObjects(index),
+            present: false,
+            holds: false,
+            reason: `index ${String(index)} missing from diagram objects`,
+          })
+        }
+      }
+    }
+
+    const legDiagnostics: ConeLegDiagnostic<I, O, M>[] = []
+    for (const index of carrier) {
+      const leg = cone.legs(index)
+      const actualDomain = C.dom(leg)
+      const actualCodomain = C.cod(leg)
+      const expectedDomain = cone.tip
+      const expectedCodomain = onObjects(index)
+      const holds = Object.is(actualDomain, expectedDomain) && Object.is(actualCodomain, expectedCodomain)
+      legDiagnostics.push(
+        holds
+          ? { index, leg, actualDomain, actualCodomain, expectedDomain, expectedCodomain, holds }
+          : {
+              index,
+              leg,
+              actualDomain,
+              actualCodomain,
+              expectedDomain,
+              expectedCodomain,
+              holds,
+              reason: !Object.is(actualDomain, expectedDomain)
+                ? `leg ${String(index)} has domain ${String(actualDomain)} instead of ${String(expectedDomain)}`
+                : `leg ${String(index)} targets ${String(actualCodomain)} rather than ${String(expectedCodomain)}`,
+            },
+      )
+    }
+
+    const arrowDiagnostics: ConeArrowNaturality<I, M>[] = []
+    for (const arrow of enumerateDiagramArrows(diagram)) {
+      if (!includesIndex(arrow.source) || !includesIndex(arrow.target)) {
+        arrowDiagnostics.push({
+          sourceIndex: arrow.source,
+          targetIndex: arrow.target,
+          transported: arrow.morphism,
+          targetLeg: cone.legs(arrow.target),
+          arrow,
+          holds: false,
+          reason: `arrow ${String(arrow.source)}→${String(arrow.target)} leaves the supplied index set`,
+        })
+        continue
+      }
+      const expectedDom = onObjects(arrow.source)
+      const expectedCod = onObjects(arrow.target)
+      if (!Object.is(C.dom(arrow.morphism), expectedDom) || !Object.is(C.cod(arrow.morphism), expectedCod)) {
+        arrowDiagnostics.push({
+          sourceIndex: arrow.source,
+          targetIndex: arrow.target,
+          transported: arrow.morphism,
+          targetLeg: cone.legs(arrow.target),
+          arrow,
+          holds: false,
+          reason: `morphism ${String(arrow.source)}→${String(arrow.target)} has mismatched endpoints`,
+        })
+        continue
+      }
+      const transported = C.compose(arrow.morphism, cone.legs(arrow.source))
+      const targetLeg = cone.legs(arrow.target)
+      const holds = eq(transported, targetLeg)
+      arrowDiagnostics.push(
+        holds
+          ? { sourceIndex: arrow.source, targetIndex: arrow.target, transported, targetLeg, arrow, holds }
+          : {
+              sourceIndex: arrow.source,
+              targetIndex: arrow.target,
+              transported,
+              targetLeg,
+              arrow,
+              holds,
+              reason: `leg ${String(arrow.target)} does not commute with arrow ${String(arrow.source)}→${String(
+                arrow.target,
+              )}`,
+            },
+      )
+    }
+
+    const holds =
+      objectDiagnostics.every((diagnostic) => diagnostic.holds) &&
+      legDiagnostics.every((diagnostic) => diagnostic.holds) &&
+      arrowDiagnostics.every((diagnostic) => diagnostic.holds)
+
+    return { objectDiagnostics, legDiagnostics, arrowDiagnostics, holds }
+  }
+
   export const validateConeAgainstDiagram = <I, O, M>(input: {
     readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
     readonly eq: (a: M, b: M) => boolean
@@ -5232,93 +6094,176 @@ export namespace CategoryLimits {
     readonly onObjects: IndexedFamilies.Family<I, O>
     readonly cone: Cone<I, O, M>
   }): ConeValidationResult => {
-    const { category: C, eq, indices, onObjects, cone } = input
-    const { diagram } = cone
-    const carrier = indices.carrier
+    const analysis = analyzeConeNaturality(input)
+    if (analysis.holds) {
+      return { valid: true }
+    }
 
-    const includesIndex = (index: I): boolean => carrier.some((candidate) => candidate === index)
-
-    if (isFiniteDiagram(diagram)) {
-      for (const object of diagram.shape.objects) {
-        if (!includesIndex(object)) {
-          return {
-            valid: false,
-            reason: `validateConeAgainstDiagram: diagram references object ${String(object)} outside the supplied index set`,
-          }
-        }
-        const advertised = onObjects(object)
-        const assigned = diagram.onObjects(object)
-        if (!Object.is(advertised, assigned)) {
-          return {
-            valid: false,
-            reason: `validateConeAgainstDiagram: diagram object ${String(object)} disagrees with supplied family`,
-          }
-        }
+    const firstObjectIssue = analysis.objectDiagnostics.find((diagnostic) => !diagnostic.holds)
+    if (firstObjectIssue) {
+      return {
+        valid: false,
+        reason: `validateConeAgainstDiagram: ${firstObjectIssue.reason ?? 'diagram object mismatch'}`,
       }
     }
 
-    for (const index of carrier) {
-      const leg = cone.legs(index)
-      if (C.dom(leg) !== cone.tip) {
-        return {
-          valid: false,
-          reason: `validateConeAgainstDiagram: leg ${String(index)} has domain ${String(C.dom(leg))} instead of the cone tip`,
-        }
-      }
-      const expectedCodomain = onObjects(index)
-      if (C.cod(leg) !== expectedCodomain) {
-        return {
-          valid: false,
-          reason: `validateConeAgainstDiagram: leg ${String(index)} targets ${String(C.cod(leg))} rather than ${String(
-            expectedCodomain,
-          )}`,
-        }
+    const firstLegIssue = analysis.legDiagnostics.find((diagnostic) => !diagnostic.holds)
+    if (firstLegIssue) {
+      return {
+        valid: false,
+        reason: `validateConeAgainstDiagram: ${firstLegIssue.reason ?? 'cone leg mismatch'}`,
       }
     }
 
-    for (const { source, target, morphism } of enumerateDiagramArrows(diagram)) {
-      if (!includesIndex(source) || !includesIndex(target)) {
-        return {
-          valid: false,
-          reason: `validateConeAgainstDiagram: arrow ${String(source)}→${String(target)} leaves the supplied index set`,
-        }
-      }
-      const expectedDom = onObjects(source)
-      const expectedCod = onObjects(target)
-      if (!Object.is(C.dom(morphism), expectedDom)) {
-        return {
-          valid: false,
-          reason: `validateConeAgainstDiagram: morphism ${String(source)}→${String(target)} has domain ${String(
-            C.dom(morphism),
-          )} instead of ${String(expectedDom)}`,
-        }
-      }
-      if (!Object.is(C.cod(morphism), expectedCod)) {
-        return {
-          valid: false,
-          reason: `validateConeAgainstDiagram: morphism ${String(source)}→${String(target)} has codomain ${String(
-            C.cod(morphism),
-          )} instead of ${String(expectedCod)}`,
-        }
-      }
-      const transported = C.compose(morphism, cone.legs(source))
-      const targetLeg = cone.legs(target)
-      if (!eq(transported, targetLeg)) {
-        return {
-          valid: false,
-          reason: `validateConeAgainstDiagram: leg ${String(target)} does not commute with arrow ${String(
-            source,
-          )}→${String(target)}`,
-        }
+    const firstArrowIssue = analysis.arrowDiagnostics.find((diagnostic) => !diagnostic.holds)
+    if (firstArrowIssue) {
+      return {
+        valid: false,
+        reason: `validateConeAgainstDiagram: ${firstArrowIssue.reason ?? 'naturality failure'}`,
       }
     }
 
-    return { valid: true }
+    return { valid: false, reason: 'validateConeAgainstDiagram: unknown failure' }
   }
 
   export interface CoconeValidationResult {
     readonly valid: boolean
     readonly reason?: string
+  }
+
+  export const analyzeCoconeNaturality = <I, O, M>(input: {
+    readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+    readonly eq: (a: M, b: M) => boolean
+    readonly indices: IndexedFamilies.FiniteIndex<I>
+    readonly onObjects: IndexedFamilies.Family<I, O>
+    readonly cocone: Cocone<I, O, M>
+  }): CoconeNaturalityAnalysis<I, O, M> => {
+    const { category: C, eq, indices, onObjects, cocone } = input
+    const diagram = cocone.diagram
+    const carrier = indices.carrier
+    const includesIndex = (index: I): boolean => carrier.some((candidate) => candidate === index)
+
+    const objectDiagnostics: CoconeObjectDiagnostic<I, O>[] = []
+    if (isFiniteDiagram(diagram)) {
+      for (const object of diagram.shape.objects) {
+        if (!includesIndex(object)) {
+          objectDiagnostics.push({
+            index: object,
+            present: false,
+            holds: false,
+            reason: `diagram references ${String(object)} outside the supplied index set`,
+          })
+          continue
+        }
+        const advertised = onObjects(object)
+        const assigned = diagram.onObjects(object)
+        const holds = Object.is(advertised, assigned)
+        objectDiagnostics.push(
+          holds
+            ? { index: object, expected: advertised, actual: assigned, present: true, holds }
+            : {
+                index: object,
+                expected: advertised,
+                actual: assigned,
+                present: true,
+                holds,
+                reason: `diagram object ${String(object)} disagrees with supplied family`,
+              },
+        )
+      }
+      for (const index of carrier) {
+        if (!diagram.shape.objects.some((candidate) => candidate === index)) {
+          objectDiagnostics.push({
+            index,
+            expected: onObjects(index),
+            present: false,
+            holds: false,
+            reason: `index ${String(index)} missing from diagram objects`,
+          })
+        }
+      }
+    }
+
+    const legDiagnostics: CoconeLegDiagnostic<I, O, M>[] = []
+    for (const index of carrier) {
+      const leg = cocone.legs(index)
+      const actualDomain = C.dom(leg)
+      const actualCodomain = C.cod(leg)
+      const expectedDomain = onObjects(index)
+      const expectedCodomain = cocone.coTip
+      const holds = Object.is(actualDomain, expectedDomain) && Object.is(actualCodomain, expectedCodomain)
+      legDiagnostics.push(
+        holds
+          ? { index, leg, actualDomain, actualCodomain, expectedDomain, expectedCodomain, holds }
+          : {
+              index,
+              leg,
+              actualDomain,
+              actualCodomain,
+              expectedDomain,
+              expectedCodomain,
+              holds,
+              reason: !Object.is(actualDomain, expectedDomain)
+                ? `leg ${String(index)} has domain ${String(actualDomain)} instead of ${String(expectedDomain)}`
+                : `leg ${String(index)} targets ${String(actualCodomain)} instead of the cocone cotip`,
+            },
+      )
+    }
+
+    const arrowDiagnostics: CoconeArrowNaturality<I, M>[] = []
+    for (const arrow of enumerateDiagramArrows(diagram)) {
+      if (!includesIndex(arrow.source) || !includesIndex(arrow.target)) {
+        arrowDiagnostics.push({
+          sourceIndex: arrow.source,
+          targetIndex: arrow.target,
+          transported: arrow.morphism,
+          sourceLeg: cocone.legs(arrow.source),
+          arrow,
+          holds: false,
+          reason: `arrow ${String(arrow.source)}→${String(arrow.target)} leaves the supplied index set`,
+        })
+        continue
+      }
+      const expectedDom = onObjects(arrow.source)
+      const expectedCod = onObjects(arrow.target)
+      if (!Object.is(C.dom(arrow.morphism), expectedDom) || !Object.is(C.cod(arrow.morphism), expectedCod)) {
+        arrowDiagnostics.push({
+          sourceIndex: arrow.source,
+          targetIndex: arrow.target,
+          transported: arrow.morphism,
+          sourceLeg: cocone.legs(arrow.source),
+          arrow,
+          holds: false,
+          reason: `morphism ${String(arrow.source)}→${String(arrow.target)} has mismatched endpoints`,
+        })
+        continue
+      }
+      const transported = C.compose(cocone.legs(arrow.target), arrow.morphism)
+      const sourceLeg = cocone.legs(arrow.source)
+      const holds = eq(transported, sourceLeg)
+      arrowDiagnostics.push(
+        holds
+          ? { sourceIndex: arrow.source, targetIndex: arrow.target, transported, sourceLeg, arrow, holds }
+          : {
+              sourceIndex: arrow.source,
+              targetIndex: arrow.target,
+              transported,
+              sourceLeg,
+              arrow,
+              holds,
+              reason: `leg ${String(arrow.source)} does not commute with arrow ${String(arrow.source)}→${String(
+                arrow.target,
+              )}`,
+            },
+      )
+    }
+
+    const holds =
+      objectDiagnostics.every((diagnostic) => diagnostic.holds) &&
+      legDiagnostics.every((diagnostic) => diagnostic.holds) &&
+      arrowDiagnostics.every((diagnostic) => diagnostic.holds)
+
+    return { objectDiagnostics, legDiagnostics, arrowDiagnostics, holds }
   }
 
   export const validateCoconeAgainstDiagram = <I, O, M>(input: {
@@ -5328,88 +6273,36 @@ export namespace CategoryLimits {
     readonly onObjects: IndexedFamilies.Family<I, O>
     readonly cocone: Cocone<I, O, M>
   }): CoconeValidationResult => {
-    const { category: C, eq, indices, onObjects, cocone } = input
-    const { diagram } = cocone
-    const carrier = indices.carrier
+    const analysis = analyzeCoconeNaturality(input)
+    if (analysis.holds) {
+      return { valid: true }
+    }
 
-    const includesIndex = (index: I): boolean => carrier.some((candidate) => candidate === index)
-
-    if (isFiniteDiagram(diagram)) {
-      for (const object of diagram.shape.objects) {
-        if (!includesIndex(object)) {
-          return {
-            valid: false,
-            reason: `validateCoconeAgainstDiagram: diagram references object ${String(object)} outside the supplied index set`,
-          }
-        }
-        const advertised = onObjects(object)
-        const assigned = diagram.onObjects(object)
-        if (!Object.is(advertised, assigned)) {
-          return {
-            valid: false,
-            reason: `validateCoconeAgainstDiagram: diagram object ${String(object)} disagrees with supplied family`,
-          }
-        }
+    const firstObjectIssue = analysis.objectDiagnostics.find((diagnostic) => !diagnostic.holds)
+    if (firstObjectIssue) {
+      return {
+        valid: false,
+        reason: `validateCoconeAgainstDiagram: ${firstObjectIssue.reason ?? 'diagram object mismatch'}`,
       }
     }
 
-    for (const index of carrier) {
-      const leg = cocone.legs(index)
-      const expectedDomain = onObjects(index)
-      if (C.dom(leg) !== expectedDomain) {
-        return {
-          valid: false,
-          reason: `validateCoconeAgainstDiagram: leg ${String(index)} has domain ${String(C.dom(leg))} instead of ${String(
-            expectedDomain,
-          )}`,
-        }
-      }
-      if (C.cod(leg) !== cocone.coTip) {
-        return {
-          valid: false,
-          reason: `validateCoconeAgainstDiagram: leg ${String(index)} targets ${String(C.cod(leg))} instead of the cocone cotip`,
-        }
+    const firstLegIssue = analysis.legDiagnostics.find((diagnostic) => !diagnostic.holds)
+    if (firstLegIssue) {
+      return {
+        valid: false,
+        reason: `validateCoconeAgainstDiagram: ${firstLegIssue.reason ?? 'cocone leg mismatch'}`,
       }
     }
 
-    for (const { source, target, morphism } of enumerateDiagramArrows(diagram)) {
-      if (!includesIndex(source) || !includesIndex(target)) {
-        return {
-          valid: false,
-          reason: `validateCoconeAgainstDiagram: arrow ${String(source)}→${String(target)} leaves the supplied index set`,
-        }
-      }
-      const expectedDom = onObjects(source)
-      const expectedCod = onObjects(target)
-      if (!Object.is(C.dom(morphism), expectedDom)) {
-        return {
-          valid: false,
-          reason: `validateCoconeAgainstDiagram: morphism ${String(source)}→${String(target)} has domain ${String(
-            C.dom(morphism),
-          )} instead of ${String(expectedDom)}`,
-        }
-      }
-      if (!Object.is(C.cod(morphism), expectedCod)) {
-        return {
-          valid: false,
-          reason: `validateCoconeAgainstDiagram: morphism ${String(source)}→${String(target)} has codomain ${String(
-            C.cod(morphism),
-          )} instead of ${String(expectedCod)}`,
-        }
-      }
-      const transported = C.compose(cocone.legs(target), morphism)
-      const sourceLeg = cocone.legs(source)
-      if (!eq(transported, sourceLeg)) {
-        return {
-          valid: false,
-          reason: `validateCoconeAgainstDiagram: leg ${String(source)} does not commute with arrow ${String(
-            source,
-          )}→${String(target)}`,
-        }
+    const firstArrowIssue = analysis.arrowDiagnostics.find((diagnostic) => !diagnostic.holds)
+    if (firstArrowIssue) {
+      return {
+        valid: false,
+        reason: `validateCoconeAgainstDiagram: ${firstArrowIssue.reason ?? 'naturality failure'}`,
       }
     }
 
-    return { valid: true }
+    return { valid: false, reason: 'validateCoconeAgainstDiagram: unknown failure' }
   }
 
   export const extendConeToClosure = <I, O, M>(input: {
@@ -5454,10 +6347,26 @@ export namespace CategoryLimits {
       morphism: closed.onMorphisms(arrow),
     }))
 
+    const closureShape: FiniteCategoryT<I, typeof closureArrows[number]> = {
+      objects: closed.shape.objects.slice(),
+      arrows: closureArrows.slice(),
+      id: (object) => closed.shape.id(object),
+      compose: (g, f) => closed.shape.compose(g, f),
+      src: (arrow) => closed.shape.dom(arrow),
+      dst: (arrow) => closed.shape.cod(arrow),
+      eq: (left, right) => Object.is(left, right),
+    }
+
+    const closureDiagram = makeFiniteDiagram<I, typeof closureArrows[number], O, M>({
+      shape: closureShape,
+      onObjects: (object) => closed.onObjects(object),
+      onMorphisms: (arrow) => closed.onMorphisms(arrow),
+    })
+
     const extendedCone: Cone<I, O, M> = {
       tip: cone.tip,
       legs: cone.legs,
-      diagram: { arrows: closureArrows },
+      diagram: closureDiagram,
     }
 
     const validation = validateConeAgainstDiagram({ category: C, eq, indices, onObjects, cone: extendedCone })
@@ -5513,10 +6422,26 @@ export namespace CategoryLimits {
       morphism: closed.onMorphisms(arrow),
     }))
 
+    const closureShape: FiniteCategoryT<I, typeof closureArrows[number]> = {
+      objects: closed.shape.objects.slice(),
+      arrows: closureArrows.slice(),
+      id: (object) => closed.shape.id(object),
+      compose: (g, f) => closed.shape.compose(g, f),
+      src: (arrow) => closed.shape.dom(arrow),
+      dst: (arrow) => closed.shape.cod(arrow),
+      eq: (left, right) => Object.is(left, right),
+    }
+
+    const closureDiagram = makeFiniteDiagram<I, typeof closureArrows[number], O, M>({
+      shape: closureShape,
+      onObjects: (object) => closed.onObjects(object),
+      onMorphisms: (arrow) => closed.onMorphisms(arrow),
+    })
+
     const extendedCocone: Cocone<I, O, M> = {
       coTip: cocone.coTip,
       legs: cocone.legs,
-      diagram: { arrows: closureArrows },
+      diagram: closureDiagram,
     }
 
     const validation = validateCoconeAgainstDiagram({ category: C, eq, indices, onObjects, cocone: extendedCocone })

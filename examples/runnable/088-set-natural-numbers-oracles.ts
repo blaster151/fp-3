@@ -53,6 +53,9 @@ const describePrimitiveRecursion = (): readonly string[] => {
     SetNaturalNumbersObject.carrier,
     SetSubobjectClassifier.terminalObj,
   );
+  if (!product.lookup) {
+    throw new Error("SetCat.product must expose a lookup when generating primitive recursion samples.");
+  }
   const star = terminalPoint();
   const samples = [0, 1, 2, 3, 4];
   lines.push("Mediator samples:");

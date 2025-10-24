@@ -10,6 +10,11 @@ import {
   type FunctorWithWitness,
 } from "./functor";
 import {
+  concretizeForgetfulFunctor,
+  concreteMonoidDescriptor,
+  type ConcreteCategoryWitness,
+} from "./concrete-category";
+import {
   constructNaturalTransformationWithWitness,
   type NaturalTransformationWithWitness,
 } from "./natural-transformation";
@@ -533,6 +538,7 @@ export const forgetfulMonoidFunctorWithWitness = (
   const samples = options.samples ?? defaultForgetfulMonoidSamples();
   const metadata = options.metadata ?? [
     "Forgetful functor sends a monoid to its underlying set and a homomorphism to its underlying function.",
+    "Counterexample helpers witness how the forgetful functor collapses monoid coequalizers and coproducts after forgetting.",
   ];
 
   const witness = constructFunctorWithWitness(
@@ -987,6 +993,12 @@ export interface FreeForgetfulAdjunctionToolkit {
     MonoidHom<unknown, unknown>
   >;
   readonly listMonad: ListMonadToolkit;
+  readonly concrete?: ConcreteCategoryWitness<
+    Monoid<unknown>,
+    MonoidHom<unknown, unknown>,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >;
 }
 
 const defaultSetSamples = (): ReadonlyArray<SetObj<unknown>> => [
@@ -1000,7 +1012,10 @@ export const freeForgetfulAdjunctionWithWitness = (
   const listToolkit = free.listToolkit;
 
   const setSamples = options.setSamples ?? defaultSetSamples();
-  const monoidSamples = options.monoidSamples ?? [makeBooleanMonoid() as Monoid<unknown>];
+  const monoidSamples: ReadonlyArray<Monoid<unknown>> =
+    (options.monoidSamples as ReadonlyArray<Monoid<unknown>> | undefined) ?? [
+      makeBooleanMonoid() as Monoid<unknown>,
+    ];
 
   const combinedCarrierFor = (monoid: Monoid<unknown>): SetObj<unknown> | undefined =>
     free.carrierOf(monoid as Monoid<ReadonlyArray<unknown>>) ??
@@ -1013,6 +1028,16 @@ export const freeForgetfulAdjunctionWithWitness = (
 
   const forgetful = forgetfulMonoidFunctorWithWitness(forgetfulOptions);
 
+  const concrete = concretizeForgetfulFunctor(
+    forgetful.functor as FunctorWithWitness<
+      Monoid<unknown>,
+      MonoidHom<unknown, unknown>,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >,
+    concreteMonoidDescriptor,
+  );
+
   const setArrows = setSamples.map((set) => SetCat.id(set) as SetHom<unknown, unknown>);
   const setFunctorSamples: FunctorCheckSamples<SetObj<unknown>, SetHom<unknown, unknown>> = {
     objects: setSamples,
@@ -1020,7 +1045,9 @@ export const freeForgetfulAdjunctionWithWitness = (
     composablePairs: setArrows.map((arrow) => ({ f: arrow, g: arrow })),
   };
 
-  const monoidArrows = monoidSamples.map((monoid) => MonCat.id(monoid) as MonoidHom<unknown, unknown>);
+  const monoidArrows = monoidSamples.map(
+    (monoid) => MonCat.id(monoid as Monoid<unknown>) as MonoidHom<unknown, unknown>,
+  );
   const monoidFunctorSamples: FunctorCheckSamples<Monoid<unknown>, MonoidHom<unknown, unknown>> = {
     objects: monoidSamples,
     arrows: monoidArrows,
@@ -1146,7 +1173,7 @@ export const freeForgetfulAdjunctionWithWitness = (
     },
   );
 
-  return { free, forgetful, adjunction, listMonad };
+  return { free, forgetful, adjunction, listMonad, concrete };
 };
 
 
@@ -1477,7 +1504,7 @@ export const groupActionAsFunctorWithWitness = <Element, Point>(
   const monoid: Monoid<Element> = {
     e: action.group.identity,
     op: (a, b) => action.group.combine(a, b),
-    elements: action.group.elements,
+    ...(action.group.elements ? { elements: action.group.elements } : {}),
   };
   const sourceCategory = MonoidCat(monoid);
   const functor: Functor<

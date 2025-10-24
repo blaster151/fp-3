@@ -221,6 +221,7 @@ export interface ExponentialData<A, B> {
   readonly evaluationProduct: ProductData<ExponentialArrow<A, B>, A>;
   readonly curry: <X>(input: CurryInput<X, A, B>) => SetHom<X, ExponentialArrow<A, B>>;
   readonly uncurry: <X>(input: UncurryInput<X, A, B>) => SetHom<Pair<X, A>, B>;
+  readonly register: (assignment: (value: A) => B) => ExponentialArrow<A, B>;
 }
 
 export interface TerminalData {
@@ -1298,6 +1299,7 @@ export const SetCat = {
       evaluationProduct,
       curry,
       uncurry,
+      register: enumeration.register,
     };
   },
   omega: (): SetOmegaWitness => omegaWitnessCache,

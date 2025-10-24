@@ -110,6 +110,7 @@ export {
   GraphWitnesses,
 } from "./graph-subobject-classifier"
 export * from "./set-subobject-classifier"
+export * from "./adjoint-functor-theorem"
 
 // Aggregated exports for the emerging virtual equipment and relative layers.
 export * from "./src/all/virtual-equipment-relative"
@@ -272,6 +273,24 @@ export {
   oppositeFunctorToContravariant,
 } from "./contravariant"
 export {
+  concretizeForgetfulFunctor,
+  detectConcreteObstruction,
+  buildConcreteFinSetWitness,
+  buildConcreteMonoidWitness,
+  buildConcreteGroupWitness,
+  buildConcreteRingWitness,
+  buildConcretePreorderWitness,
+  buildConcretePointedSetWitness,
+  buildExoticSubsetConcreteWitness,
+  concreteCategoryCatalogue,
+  concreteMonoidDescriptor,
+  buildConcreteGroupDescriptor,
+  type ConcreteCategoryStructureDescriptor,
+  type ConcreteCategoryWitness,
+  type ConcreteCategoryOptions,
+  type ConcreteObstructionReport,
+} from "./concrete-category"
+export {
   checkFunctorAssociativity,
   checkFunctorLeftIdentity,
   checkFunctorRightIdentity,
@@ -290,6 +309,32 @@ export {
   type FunctorObjectMismatch,
   type FunctorArrowMismatch,
 } from "./functor"
+export {
+  checkIsomorphism,
+  describeArrow,
+  type IsomorphismCheckers,
+} from "./functor-isomorphism"
+export {
+  isConservativeFunctor,
+  type ConservativityFailure,
+  type ConservativityReport,
+  type ConservativityOptions,
+} from "./functor-conservative"
+export {
+  collapseCategory,
+  collapseFunctorToPoint,
+  type CollapseArrow,
+  type CollapseFunctorOptions,
+  type CollapseObject,
+} from "./functor-collapse"
+export {
+  preservesPullbacksImpliesMonomorphisms,
+  preservesPushoutsImpliesEpimorphisms,
+  type PullbackPreservationEvidence,
+  type PushoutPreservationEvidence,
+  type PullbackSpan,
+  type PushoutCospan,
+} from "./functor-preservation-implications"
 export {
   PowersetHelpers,
   powersetFunctorWithWitness,
@@ -641,6 +686,145 @@ export {
   type ProductToolkit,
   type SubcategoryToolkit,
 } from "./textbook-toolkit"
+export {
+  textbookFunctorGallery,
+  type GalleryEntry,
+  type GalleryPropertyReports,
+} from "./textbook-functor-gallery"
+export {
+  buildEquivalenceWitness,
+  checkEssentialInjectivityOnObjects,
+  checkFaithfulFunctor,
+  checkFullFunctor,
+  essentialInjectiveFromFullyFaithful,
+  isEssentiallySurjective,
+  type EquivalencePrerequisites,
+  type EssentialInjectivityReport,
+  type FaithfulnessReport,
+  type FullnessWitness,
+  type FunctorEquivalenceWitness,
+  type EssentialInjectivityFromFullFaithfulnessOptions,
+  type EssentialSurjectivityReport,
+} from "./functor-equivalence"
+export {
+  computeSkeleton,
+  skeletonEquivalenceWitness,
+  restrictFunctorToSkeleton,
+  compareFunctorsModuloSkeleton,
+  analyzeEssentialInjectivityModuloTargetSkeleton,
+  projectFunctorThroughSkeleton,
+  type IsoSearch,
+  type SkeletonAssignment,
+  type SkeletonClass,
+  type SkeletonComputationResult,
+  type SkeletonEquivalenceResult,
+  type SkeletonFunctorComparisonOptions,
+  type SkeletonFunctorComparisonResult,
+  type SkeletonNaturalIsomorphism,
+  type SkeletonNaturalIsomorphismFailure,
+  type EssentialInjectivitySkeletonAnalysis,
+  type EssentialInjectivitySkeletonClassification,
+  type EssentialInjectivitySkeletonOptions,
+} from "./skeleton"
+export {
+  findIdempotents,
+  karoubiEnvelope,
+  analyzeKaroubiEquivalence,
+  type IdempotentSearchOptions,
+  type IdempotentClassification,
+  type IdempotentSearchReport,
+  type KaroubiObject,
+  type KaroubiMorphism,
+  type KaroubiEnvelopeResult,
+  type KaroubiEnvelopeOptions,
+  type KaroubiSplittingWitness,
+  type KaroubiEquivalenceAnalysis,
+  type KaroubiEquivalenceOptions,
+} from "./karoubi-envelope"
+export {
+  localizeCategory,
+  localizationUniversalProperty,
+  type CalculusOfFractionsData,
+  type CalculusOfFractionsDiagnostics,
+  type LocalizationArrow,
+  type LocalizationResult,
+  type LocalizationUniversalPropertyReport,
+} from "./localization"
+
+export {
+  buildFactorizationSystem,
+  buildFinGrpImageKernelFactorization,
+  buildFinSetRegularFactorization,
+  buildSetSurjectionInjectionFactorization,
+  attachFactorizationSystemProperties,
+  analyzeFactorizationSystemFunctor,
+  type Factorization,
+  type FactorizationClass,
+  type FactorizationClassFunctorReport,
+  type FactorizationClassFunctorSettings,
+  type FactorizationClosureReport,
+  type FactorizationSystemInput,
+  type FactorizationSystemReport,
+  type FactorizationSystemSamples,
+  type FactorizationSystemWitness,
+  type FactorizationSystemFunctorAnalysis,
+  type FactorizationSystemFunctorOptions,
+  type FactorizationSystemFunctorResult,
+  type OrthogonalityResult,
+  type OrthogonalitySquare,
+  type OrthogonalityWitness,
+} from "./factorization-system"
+export {
+  makeFreeGroup,
+  reduceWord,
+  multiplyWords,
+  inverseWord,
+  wordEquals,
+  wordFromGenerator,
+  showWord,
+  emptyWord,
+  isIdentityWord,
+  type FreeGroup,
+  type FreeGroupLetter,
+  type FreeGroupWord,
+} from "./free-group"
+export {
+  type CWEdge,
+  type EdgePath,
+  type PointedCWComplex,
+  type PointedCWMap,
+  type PointedCWCategory,
+  validatePointedCWComplex,
+  validatePointedCWMap,
+  applyEdgePath,
+  identityPointedCWMap,
+  composePointedCWMaps,
+  pointedCWCategory,
+  pointedCWSamples,
+  circleCW,
+  diskCW,
+  annulusCW,
+  circleIntoAnnulusInclusion,
+  annulusRetractionToCircle,
+  circleIntoDiskInclusion,
+  diskRadialRetractionToCircle,
+} from "./pointed-cw-complex"
+export {
+  computeFundamentalGroup,
+  buildFundamentalGroupFunctor,
+  makeGroupCategory,
+  retractionObstructionFromPi1,
+  brouwerFixedPointFromNoRetraction,
+  fundamentalGroupDemoCategory,
+  type FundamentalGroupData,
+  type FundamentalGroupGenerator,
+  type FundamentalGroupFunctorResult,
+  type GroupCategory,
+  type GroupObject,
+  type GroupHomArrow,
+  type RetractionObstructionResult,
+  type BrouwerFixedPointResult,
+} from "./fundamental-group"
 export {
   LeftInverseImpliesMono,
   RightInverseImpliesEpi,

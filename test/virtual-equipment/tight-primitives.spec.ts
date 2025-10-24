@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { composeFun } from "../../allTS";
-import type { Functor } from "../../functor";
+import type { Functor, FunctorCheckSamples } from "../../functor";
 import type {
   Equipment2Cell,
   EquipmentProarrow,
@@ -9,7 +9,6 @@ import type {
   TightCategory,
   TightCellEvidence,
   VirtualEquipment,
-  FunctorCheckSamples,
 } from "../../virtual-equipment";
 import {
   analyzeLooseMonoidShape,
