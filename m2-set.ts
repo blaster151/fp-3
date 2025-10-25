@@ -420,7 +420,8 @@ const buildM2Exponential = <B, C>(input: {
       if (!witness) {
         throw new Error('M2.exponential.curry: assignment does not yield an equivariant map');
       }
-      assignments.set(element, witness);
+      const canonicalWitness = normaliseElement(object, witness);
+      assignments.set(element, canonicalWitness);
     }
 
     return makeM2Morphism({

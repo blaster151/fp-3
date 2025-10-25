@@ -391,7 +391,6 @@ export type { SimpleCat } from "./simple-cat"
 export {
   makeFinitePullbackCalculator,
   makePullbackFromProductsAndEqualizers,
-  makeFinSetPullbackCalculator,
   type PullbackCalculator,
   type PullbackData,
   type PullbackConeFactorResult,
@@ -404,10 +403,6 @@ export {
   productFromPullbacks,
   type ProductFromPullbackWitness,
   type ProductFromPullbackInput,
-  finsetProductFromPullback,
-  type FinSetProductFromPullbackWitness,
-  finsetCharacteristicPullback,
-  type FinSetCharacteristicPullbackWitness,
   equalizerFromPullback,
   type EqualizerFromPullbackWitness,
   type EqualizerFromPullbackFactorResult,
@@ -427,6 +422,15 @@ export {
   type PullbackLemmaInput,
   type PullbackLemmaResult,
 } from "./pullback"
+export {
+  configureFinSetPullbacks,
+  makeFinSetPullbackCalculator,
+  finsetProductFromPullback,
+  finsetCharacteristicPullback,
+  type FinSetProductFromPullbackWitness,
+  type FinSetCharacteristicPullbackWitness,
+  type FinSetPullbackDependencies,
+} from "./finset-pullback"
 export {
   finsetFactorThroughEqualizer,
   finsetEqualizerComparison,
