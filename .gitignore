@@ -1,4 +1,5 @@
 node_modules/
+!node_modules/.bin/
 !node_modules/vitest/
 !node_modules/@vitest/
 !node_modules/vite/
@@ -7,6 +8,7 @@ node_modules/
 !node_modules/tinypool/
 !node_modules/tinybench/
 !node_modules/tinyspy/
+!node_modules/tinyexec/
 !node_modules/@vitest/utils/
 !node_modules/@vitest/snapshot/
 !node_modules/@vitest/expect/
