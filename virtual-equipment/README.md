@@ -122,6 +122,12 @@ machinery into the equipment setting.
   j-absolute witnesses alongside the existing companion/conjoint scaffolding.
 - `index.ts` re-exports the public surface so downstream files can import from
   `virtual-equipment/` without worrying about file layout churn.
+- `core-adjunction-bridge.ts` links the `CoreAdjunction` utilities from
+  `stdlib/category.ts` with the relative layer by validating a
+  `RelativeAdjunctionData`/`RelativeAdjunctionSectionWitness` pair before
+  packaging it alongside the classical adjunction.  The helper surfaces a
+  triangle-identity check so tests can round-trip adjunctions through the bridge
+  without re-implementing the Definition 5.1 analyzers.
 
 The folder now acts as the dedicated module boundary for the equipment layer.
 Later steps will start filling in the placeholder constructors and oracles while

@@ -9,24 +9,11 @@ import { promises as fs } from "fs";
 import { TwoObjectCategory } from "../two-object-cat";
 import { virtualizeFiniteCategory } from "../virtual-equipment/adapters";
 import {
-  analyzeADTPolynomialRelativeStreet,
-  rollupADTPolynomialRelativeStreet,
-  type ADTPolynomialRelativeStreetInput,
-} from "../relative/adt-polynomial-relative";
-import {
   describeTrivialRelativeMonad,
   enumerateRelativeMonadOracles,
   RelativeMonadLawRegistry,
+  loadPolynomialStreetRegistryEntry,
 } from "../relative";
-import {
-  defineADT,
-  primitiveStrictEqualsWitness,
-  witnessFromEquals,
-  type ADTValue,
-  type ADTConstructor,
-  type ADTField,
-  type RecursiveAlgebraicDataType,
-} from "../src/algebra/adt/adt";
 import type { RelativeMonadOracleResult } from "../relative/relative-oracles";
 
 type AggregatedStreetRollupAnalyzerReport = {
@@ -109,114 +96,10 @@ const parseCliArgs = (argv: ReadonlyArray<string>): CliParseResult => {
 const isAbsolutePath = (filePath: string): boolean =>
   filePath.startsWith("/") || /^[A-Za-z]:[\\/]/.test(filePath);
 
-const resolveOutputPath = (filePath: string): string =>
+const resolveOutputPath = (filePath: string, cwd: string): string =>
   isAbsolutePath(filePath)
     ? filePath
-    : `${process.cwd().replace(/[\\/]+$/, "")}/${filePath.replace(/^[\\/]+/, "")}`;
-
-const writeAggregatedJson = async (
-  aggregated: RelativeMonadOracleResult,
-  outputPath: string,
-): Promise<void> => {
-  const resolved = resolveOutputPath(outputPath);
-  const payload = JSON.stringify(aggregated, null, 2);
-  await fs.writeFile(resolved, `${payload}\n`, "utf8");
-  console.log(
-    `validate-relative-monads: wrote aggregated Street roll-up JSON to ${resolved}`,
-  );
-};
-
-const NumericList = defineADT({
-  typeName: "AggregatedStreetList",
-  constructors: [
-    { name: "Nil", fields: [] },
-    {
-      name: "Cons",
-      fields: [
-        { name: "head", witness: primitiveStrictEqualsWitness<number>() },
-        {
-          name: "tail",
-          witness: witnessFromEquals<unknown>(() => true),
-          recursion: "self",
-        },
-      ],
-    },
-  ] as const,
-});
-
-type ListConstructors = typeof NumericList.constructorsList;
-type ListValue = ADTValue<ListConstructors>;
-
-const { Nil, Cons } = NumericList.constructors;
-
-const RecursiveNumericList = NumericList as RecursiveAlgebraicDataType<
-  typeof NumericList.typeName,
-  ListConstructors
->;
-
-type GeneralConstructors = ReadonlyArray<
-  ADTConstructor<string, readonly ADTField<string, any>[]>
->;
-
-const samples: ReadonlyArray<ListValue> = [
-  Nil(),
-  Cons({ head: 1, tail: Nil() }),
-  Cons({ head: 2, tail: Cons({ head: 1, tail: Nil() }) }),
-];
-
-const identityAlgebra = {
-  Nil: () => Nil(),
-  Cons: ({ head, tail }: { readonly head: number; readonly tail: ListValue }) =>
-    Cons({ head, tail }),
-};
-
-const appendZeroAlgebra = {
-  Nil: () => Cons({ head: 0, tail: Nil() }),
-  Cons: ({ head, tail }: { readonly head: number; readonly tail: ListValue }) =>
-    Cons({ head, tail }),
-};
-
-const doubleAlgebra = {
-  Nil: () => Nil(),
-  Cons: ({ head, tail }: { readonly head: number; readonly tail: ListValue }) =>
-    Cons({ head: head * 2, tail }),
-};
-
-const streetInput = {
-  adt: RecursiveNumericList,
-  extensions: [
-    {
-      id: "identity-extension",
-      algebra: identityAlgebra,
-      witness: witnessFromEquals(NumericList.equals),
-      samples,
-      expected: (value: ListValue) => value,
-    },
-  ],
-  kleisli: [
-    {
-      id: "append-zero-then-double",
-      first: doubleAlgebra,
-      second: appendZeroAlgebra,
-      witness: witnessFromEquals(NumericList.equals),
-      samples,
-      expected: ({
-        value,
-        extendFirst,
-        extendSecond,
-      }: {
-        readonly value: ListValue;
-        readonly extendFirst: (value: ListValue) => ListValue;
-        readonly extendSecond: (value: ListValue) => ListValue;
-      }) => extendFirst(extendSecond(value)),
-    },
-  ],
-} as const;
-
-const typedStreetInput = streetInput as unknown as ADTPolynomialRelativeStreetInput<
-  typeof NumericList.typeName,
-  GeneralConstructors
->;
+    : `${cwd.replace(/[\\/]+$/, "")}/${filePath.replace(/^[\\/]+/, "")}`;
 
 const formatAnalyzerReport = (
   label: string,
@@ -263,6 +146,79 @@ const describeAggregatedStreetRollups = (
   return lines;
 };
 
+export interface ValidateRelativeMonadsRunOptions {
+  readonly aggregatedJsonPath?: string;
+  readonly log?: (line: string) => void;
+  readonly cwd?: string;
+  readonly writeFile?: (filePath: string, contents: string) => Promise<void>;
+}
+
+export interface ValidateRelativeMonadsRunResult {
+  readonly results: ReadonlyArray<RelativeMonadOracleResult>;
+  readonly aggregated?: RelativeMonadOracleResult;
+}
+
+export const run = async (
+  options: ValidateRelativeMonadsRunOptions = {},
+): Promise<ValidateRelativeMonadsRunResult> => {
+  const log = options.log ?? ((line: string) => console.log(line));
+  const cwd = options.cwd ?? process.cwd();
+  const writeFile =
+    options.writeFile ??
+    (async (filePath: string, contents: string) => {
+      await fs.writeFile(filePath, contents, "utf8");
+    });
+
+  log("validate-relative-monads: loading Street presentations from registry");
+  const { harness, report, rollup } = loadPolynomialStreetRegistryEntry();
+
+  log("validate-relative-monads: constructing trivial relative monad");
+  const equipment = virtualizeFiniteCategory(TwoObjectCategory);
+  const rootObject = TwoObjectCategory.objects[0] ?? "•";
+  const trivial = describeTrivialRelativeMonad(equipment, rootObject);
+
+  log("validate-relative-monads: enumerating relative monad oracles");
+  const results = enumerateRelativeMonadOracles(trivial, {
+    polynomialStreetHarness: harness,
+    polynomialStreetReport: report,
+    polynomialStreetRollup: rollup,
+  });
+
+  const aggregatedPath =
+    RelativeMonadLawRegistry.polynomialStreetRollupAggregation.registryPath;
+  let aggregatedEntry: RelativeMonadOracleResult | undefined;
+  for (const entry of results) {
+    log(`- ${entry.registryPath}: pending=${entry.pending} holds=${entry.holds}`);
+    if (entry.registryPath === aggregatedPath) {
+      aggregatedEntry = entry;
+      const summaryLines = describeAggregatedStreetRollups(entry);
+      for (const line of summaryLines) {
+        log(line);
+      }
+    }
+  }
+
+  if (options.aggregatedJsonPath) {
+    if (!aggregatedEntry) {
+      throw new Error(
+        "Aggregated Street roll-up entry not found in enumeration results.",
+      );
+    }
+    const resolved = resolveOutputPath(options.aggregatedJsonPath, cwd);
+    const payload = JSON.stringify(aggregatedEntry, null, 2);
+    await writeFile(resolved, `${payload}\n`);
+    log(
+      `validate-relative-monads: wrote aggregated Street roll-up JSON to ${resolved}`,
+    );
+  }
+
+  log(
+    "validate-relative-monads: aggregated Street roll-up summary surfaced alongside analyzer verdicts.",
+  );
+
+  return { results, aggregated: aggregatedEntry };
+};
+
 async function main(): Promise<void> {
   const parsed = parseCliArgs(process.argv.slice(2));
   if (!parsed.ok) {
@@ -274,50 +230,7 @@ async function main(): Promise<void> {
     process.exitCode = parsed.exitCode;
     return;
   }
-  const options = parsed.options;
-  console.log("validate-relative-monads: constructing trivial relative monad");
-  const equipment = virtualizeFiniteCategory(TwoObjectCategory);
-  const rootObject = TwoObjectCategory.objects[0] ?? "•";
-  const trivial = describeTrivialRelativeMonad(equipment, rootObject);
-
-  const streetReport = analyzeADTPolynomialRelativeStreet(typedStreetInput);
-  const streetRollup = rollupADTPolynomialRelativeStreet(typedStreetInput, streetReport);
-
-  const results = enumerateRelativeMonadOracles(trivial, {
-    polynomialStreetHarness: typedStreetInput,
-    polynomialStreetReport: streetReport,
-    polynomialStreetRollup: streetRollup,
-  });
-
-  const aggregatedPath =
-    RelativeMonadLawRegistry.polynomialStreetRollupAggregation.registryPath;
-  let aggregatedEntry: RelativeMonadOracleResult | undefined;
-  for (const entry of results) {
-    console.log(`- ${entry.registryPath}: pending=${entry.pending} holds=${entry.holds}`);
-    if (entry.registryPath === aggregatedPath) {
-      aggregatedEntry = entry;
-      const summaryLines = describeAggregatedStreetRollups(entry);
-      for (const line of summaryLines) {
-        console.log(line);
-      }
-    }
-  }
-
-  if (options.aggregatedJsonPath) {
-    if (!aggregatedEntry) {
-      throw new Error(
-        "Aggregated Street roll-up entry not found in enumeration results.",
-      );
-    }
-    await writeAggregatedJson(aggregatedEntry, options.aggregatedJsonPath);
-  }
-
-  console.log(
-    "validate-relative-monads: aggregated Street roll-up summary surfaced alongside analyzer verdicts.",
-  );
-  console.log(
-    "TODO(relative): replace the trivial probe with registered Street-action presentations.",
-  );
+  await run(parsed.options);
 }
 
 main().catch((error) => {
