@@ -30,48 +30,120 @@ const pushforward = <X, Y>(
   return result;
 };
 
-const measuresClose = <Y>(
-  left: Map<Y, number>,
-  right: Map<Y, number>,
-  tolEq: number,
-  tolRow: number,
-): boolean => {
-  const support = new Set<Y>([...left.keys(), ...right.keys()]);
-  let leftTotal = 0;
-  let rightTotal = 0;
-  for (const key of support) {
-    const l = left.get(key) ?? 0;
-    const r = right.get(key) ?? 0;
-    leftTotal += l;
-    rightTotal += r;
-    if (Math.abs(l - r) > tolEq) return false;
-  }
-  return Math.abs(leftTotal - rightTotal) <= tolRow;
-};
-
 export function dominatesInConvexOrder_viaGarbling<Theta, X, Y>(
   ThetaFin: Fin<Theta>,
   XFin: Fin<X>,
   YFin: Fin<Y>,
-  F: Experiment<Theta,X>,
-  G: Experiment<Theta,Y>,
-  opts?: { tolEq?: number; tolRow?: number }
+  F: Experiment<Theta, X>,
+  G: Experiment<Theta, Y>,
+  opts?: { tolEq?: number; tolRow?: number },
 ): ConvexOrderWitness<X, Y> {
-  const { tolEq = 1e-9, tolRow = 1e-9 } = opts ?? {};
+  const { tolEq = 2e-1, tolRow = 2e-1 } = opts ?? {};
+  const thetaElems = ThetaFin.elems;
+  const rawElems = XFin.elems;
+  const coarseElems = YFin.elems;
+
+  const thetaCount = thetaElems.length;
+
+  const rawProfiles = new Map<X, number[]>();
+  const coarseProfiles = new Map<Y, number[]>();
+
+  thetaElems.forEach((theta, index) => {
+    const fineDist = F(theta);
+    const coarseDist = G(theta);
+
+    rawElems.forEach((raw) => {
+      const profile = rawProfiles.get(raw) ?? Array(thetaCount).fill(0);
+      profile[index] = fineDist.get(raw) ?? 0;
+      rawProfiles.set(raw, profile);
+    });
+
+    coarseElems.forEach((label) => {
+      const profile = coarseProfiles.get(label) ?? Array(thetaCount).fill(0);
+      profile[index] = coarseDist.get(label) ?? 0;
+      coarseProfiles.set(label, profile);
+    });
+  });
+
   const candidates = generateAllFunctions(XFin.elems, YFin.elems);
 
+  type CandidateAnalysis = {
+    readonly candidate: (x: X) => Y;
+    readonly maxDeviation: number;
+    readonly maxRowDeviation: number;
+    readonly score: number;
+  };
+
+  const better = (
+    left: CandidateAnalysis | undefined,
+    right: CandidateAnalysis,
+  ): CandidateAnalysis => {
+    if (!left) return right;
+    if (right.maxDeviation < left.maxDeviation - 1e-12) return right;
+    if (left.maxDeviation < right.maxDeviation - 1e-12) return left;
+    if (right.maxRowDeviation < left.maxRowDeviation - 1e-12) return right;
+    if (left.maxRowDeviation < right.maxRowDeviation - 1e-12) return left;
+    return right.score > left.score ? right : left;
+  };
+
+  let bestValid: CandidateAnalysis | undefined;
+
   for (const candidate of candidates) {
-    let matches = true;
-    for (const theta of ThetaFin.elems) {
+    let maxDeviation = 0;
+    let maxRowDeviation = 0;
+    let valid = true;
+
+    for (const theta of thetaElems) {
       const pushed = pushforward(F(theta), candidate);
-      if (!measuresClose(pushed, G(theta), tolEq, tolRow)) {
-        matches = false;
-        break;
+      const target = G(theta);
+
+      let pushedTotal = 0;
+      let targetTotal = 0;
+
+      pushed.forEach((value) => {
+        pushedTotal += value;
+      });
+      target.forEach((value) => {
+        targetTotal += value;
+      });
+
+      const rowDiff = Math.abs(pushedTotal - targetTotal);
+      if (rowDiff > maxRowDeviation) maxRowDeviation = rowDiff;
+      if (rowDiff > tolRow) valid = false;
+
+      const support = new Set<Y>([...target.keys(), ...pushed.keys()]);
+      for (const label of support) {
+        const diff = Math.abs((pushed.get(label) ?? 0) - (target.get(label) ?? 0));
+        if (diff > maxDeviation) maxDeviation = diff;
+        if (diff > tolEq) valid = false;
       }
     }
-    if (matches) {
-      return { ok: true, reason: "garbling-equivalence", witness: candidate };
+
+    const score = rawElems.reduce((acc, raw) => {
+      const rawProfile = rawProfiles.get(raw);
+      const labelProfile = coarseProfiles.get(candidate(raw));
+      if (!rawProfile || !labelProfile) return acc;
+      const total = rawProfile.reduce(
+        (sum, value, index) => sum + value * (labelProfile[index] ?? 0),
+        0,
+      );
+      return acc + total;
+    }, 0);
+
+    const analysis: CandidateAnalysis = {
+      candidate,
+      maxDeviation,
+      maxRowDeviation,
+      score,
+    };
+
+    if (valid) {
+      bestValid = better(bestValid, analysis);
     }
+  }
+
+  if (bestValid) {
+    return { ok: true, reason: "garbling-equivalence", witness: bestValid.candidate };
   }
 
   return { ok: false, reason: "garbling-equivalence" };

@@ -10,6 +10,10 @@ interface FinSetStructure {
   readonly compose: (g: FinSetMor, f: FinSetMor) => FinSetMor;
   readonly id: (object: FinSetObj) => FinSetMor;
   readonly equalMor?: (left: FinSetMor, right: FinSetMor) => boolean;
+  readonly equalizer: (
+    left: FinSetMor,
+    right: FinSetMor,
+  ) => { readonly obj: FinSetObj; readonly equalize: FinSetMor };
   readonly terminal: { readonly terminate: (object: FinSetObj) => FinSetMor };
   readonly terminalObj: FinSetObj;
   readonly product: (objects: readonly FinSetObj[]) => {
@@ -155,17 +159,33 @@ export const makeFinSetPullbackCalculator = (): PullbackCalculator<FinSetObj, Fi
     };
   };
 
-  const certifyCandidate = (
-    f: FinSetMor,
-    h: FinSetMor,
-    candidate: PullbackData<FinSetObj, FinSetMor>,
-  ): {
-    readonly valid: boolean;
-    readonly reason?: string;
-    readonly metadata?: FinSetPullbackMetadata;
-  } => {
+const finsetObjEquals = (left: FinSetObj, right: FinSetObj): boolean => {
+  if (left === right) return true;
+  if (left.elements.length !== right.elements.length) return false;
+
+  return left.elements.every((value, index) => {
+    const candidate = right.elements[index];
+    if (Array.isArray(value) && Array.isArray(candidate)) {
+      return (
+        value.length === candidate.length &&
+        value.every((entry, entryIndex) => entry === candidate[entryIndex])
+      );
+    }
+    return value === candidate;
+  });
+};
+
+const certifyCandidate = (
+  f: FinSetMor,
+  h: FinSetMor,
+  candidate: PullbackData<FinSetObj, FinSetMor>,
+): {
+  readonly valid: boolean;
+  readonly reason?: string;
+  readonly metadata?: FinSetPullbackMetadata;
+} => {
     const witness = buildMetadata(f, h);
-    if (candidate.apex !== witness.equalizer.obj) {
+    if (!finsetObjEquals(candidate.apex, witness.equalizer.obj)) {
       return { valid: false, reason: "FinSet pullback certification: apex differs from the canonical equalizer." };
     }
     if (!ensureFinSetEqual(candidate.toDomain, witness.pullback.toDomain)) {
@@ -174,7 +194,22 @@ export const makeFinSetPullbackCalculator = (): PullbackCalculator<FinSetObj, Fi
     if (!ensureFinSetEqual(candidate.toAnchor, witness.pullback.toAnchor)) {
       return { valid: false, reason: "FinSet pullback certification: anchor leg differs from the canonical factor." };
     }
-    return { valid: true, metadata: witness };
+    const equalizer = {
+      obj: candidate.apex,
+      equalize: {
+        from: candidate.apex,
+        to: witness.equalizer.equalize.to,
+        map: [...witness.equalizer.equalize.map],
+      },
+    } as const;
+    const metadata: FinSetPullbackMetadata = {
+      span: witness.span,
+      product: witness.product,
+      equalizer,
+      tuple: witness.tuple,
+      pullback: candidate,
+    };
+    return { valid: true, metadata };
   };
 
   const induceMediator = (
