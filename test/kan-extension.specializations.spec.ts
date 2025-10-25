@@ -12,7 +12,7 @@ import {
   constructNaturalTransformationWithWitness,
   identityNaturalTransformation,
 } from "../natural-transformation";
-import { SetCat, type SetHom } from "../set-cat";
+import { SetCat, type SetHom, type SetObj } from "../set-cat";
 
 const equalsSetHom = (left: SetHom<unknown, unknown>, right: SetHom<unknown, unknown>): boolean => {
   if (!Object.is(left.dom, right.dom) || !Object.is(left.cod, right.cod)) {
@@ -43,15 +43,13 @@ describe("Discrete Kan extension specializations", () => {
           : ["γ"],
     });
 
-    const lanA = Array.from(inclusion.extension.functor.F0("A")).map((element) => [
-      element.source,
-      element.value,
-    ] as const);
+    type LanFiberElement = { readonly source: "A" | "C"; readonly value: string };
+    const lanElements = (object: "A" | "B" | "C"): ReadonlyArray<LanFiberElement> =>
+      Array.from(inclusion.extension.functor.F0(object) as ReadonlySet<LanFiberElement>);
+
+    const lanA = lanElements("A").map((element) => [element.source, element.value] as const);
     const lanB = Array.from(inclusion.extension.functor.F0("B"));
-    const lanC = Array.from(inclusion.extension.functor.F0("C")).map((element) => [
-      element.source,
-      element.value,
-    ] as const);
+    const lanC = lanElements("C").map((element) => [element.source, element.value] as const);
 
     expect(lanA).toEqual([
       ["A", "α"],
@@ -134,13 +132,16 @@ describe("Discrete Kan extension specializations", () => {
       left.diagram,
       left.pullback,
       (object) => {
-        const domain = left.diagram.functor.F0(object);
-        const codomain = left.pullback.functor.F0(object);
-        const representative = Array.from(codomain)[0];
+        type MediatingLanElement = { readonly source: number; readonly value: string };
+        const domain = left.diagram.functor.F0(object) as SetObj<string>;
+        const codomain = left.pullback.functor.F0(object) as SetObj<MediatingLanElement>;
+        const representative = Array.from<MediatingLanElement>(codomain)[0];
         if (!representative) {
-          return SetCat.hom(domain, codomain, (value: unknown) => value);
+          return SetCat.hom(domain, codomain, () => {
+            throw new Error("Unexpected evaluation of sabotaged Kan unit on empty carrier");
+          }) as SetHom<unknown, unknown>;
         }
-        return SetCat.hom(domain, codomain, () => representative);
+        return SetCat.hom(domain, codomain, () => representative) as SetHom<unknown, unknown>;
       },
       {
         samples: {

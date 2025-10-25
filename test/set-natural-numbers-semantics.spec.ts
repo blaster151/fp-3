@@ -6,7 +6,25 @@ import {
   type SetObj,
   type SetTerminalObject,
 } from "../set-cat";
-import { SetNaturalNumbersObject } from "../set-subobject-classifier";
+import {
+  SetNaturalNumbersObject,
+  type AnySetHom,
+  type AnySetObj,
+} from "../set-subobject-classifier";
+
+const widenObj = <A>(obj: SetObj<A>): AnySetObj => obj as unknown as AnySetObj;
+
+const widenHom = <A, B>(hom: SetHom<A, B>): AnySetHom => ({
+  dom: hom.dom as SetObj<unknown>,
+  cod: hom.cod as SetObj<unknown>,
+  map: (value: unknown) => hom.map(value as A),
+});
+
+const reinterpretHom = <A, B>(hom: AnySetHom): SetHom<A, B> => ({
+  dom: hom.dom as SetObj<A>,
+  cod: hom.cod as SetObj<B>,
+  map: (value: A) => hom.map(value) as B,
+});
 
 describe("SetNaturalNumbersObject semantics", () => {
   it("respects target semantics when inducing mediators", () => {
@@ -32,9 +50,14 @@ describe("SetNaturalNumbersObject semantics", () => {
       map: (input) => ({ value: input.value + 1 }),
     };
 
-    const witness = SetNaturalNumbersObject.induce({ target, zero, successor });
+    const witness = SetNaturalNumbersObject.induce({
+      target: widenObj(target),
+      zero: widenHom(zero),
+      successor: widenHom(successor),
+    });
 
-    const third = witness.mediator.map(3);
+    const mediator = reinterpretHom<number, Wrapper>(witness.mediator);
+    const third = mediator.map(3);
     expect(third).toEqual({ value: 3 });
 
     const targetSemantics = SetCat.semantics(target);

@@ -17,14 +17,17 @@ describe("functor conservativity diagnostics", () => {
     expect(report.details.join(" ")).toMatch(/Surveyed/);
   });
 
-  it("detects collapse functors that fail to reflect isomorphisms", () => {
-    const functor = collapseFunctorToPoint(TwoObjectCategory);
-    const report = isConservativeFunctor(functor);
-    expect(report.holds).toBe(false);
-    expect(report.failures).not.toHaveLength(0);
-    const [failure] = report.failures;
-    expect(failure.reason).toMatch(/invertible/);
-    expect(failure.arrow).toBe(nonIdentity);
+    it("detects collapse functors that fail to reflect isomorphisms", () => {
+      const functor = collapseFunctorToPoint(TwoObjectCategory);
+      const report = isConservativeFunctor(functor);
+      expect(report.holds).toBe(false);
+      expect(report.failures).not.toHaveLength(0);
+      const failure = report.failures[0];
+      if (!failure) {
+        throw new Error("expected conservativity failure for collapsing functor");
+      }
+      expect(failure.reason).toMatch(/invertible/);
+      expect(failure.arrow).toBe(nonIdentity);
+    });
   });
-});
 

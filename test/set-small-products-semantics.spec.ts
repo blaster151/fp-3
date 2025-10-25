@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { SetCat, semanticsAwareEquals, semanticsAwareHas } from "../set-cat";
+import {
+  SetCat,
+  semanticsAwareEquals,
+  semanticsAwareHas,
+  type SetHom,
+  type SetObj,
+} from "../set-cat";
 import { SetSmallProducts } from "../set-small-limits";
+import { type AnySetHom, type AnySetObj } from "../set-subobject-classifier";
+
+const toAnySetObj = <A>(obj: SetObj<A>): AnySetObj => obj as unknown as AnySetObj;
+const toAnySetHom = <A, B>(hom: SetHom<A, B>): AnySetHom =>
+  ({
+    dom: hom.dom as SetObj<unknown>,
+    cod: hom.cod as SetObj<unknown>,
+    map: (value: unknown) => hom.map(value as A),
+  });
 
 interface WithId {
   readonly id: number;
@@ -31,7 +46,7 @@ describe("SetSmallProducts semantics integration", () => {
     });
     const right = SetCat.obj(rightSeed, { semantics: rightSemantics });
 
-    const product = SetSmallProducts.product([left, right]);
+    const product = SetSmallProducts.product([left, right].map(toAnySetObj));
     const productSemantics = SetCat.semantics(product.obj);
     expect(productSemantics).toBeDefined();
     expect(productSemantics?.tag).toBe("SetSmallFiniteProduct");
@@ -52,7 +67,11 @@ describe("SetSmallProducts semantics integration", () => {
     const domain = SetCat.obj(domainSeed);
     const firstLeg = SetCat.hom(domain, left, () => ({ id: 2, label: "domain-left" }));
     const secondLeg = SetCat.hom(domain, right, () => ({ id: 4, label: "domain-right" }));
-    const tuple = SetSmallProducts.tuple(domain, [firstLeg, secondLeg], product.obj);
+    const tuple = SetSmallProducts.tuple(
+      toAnySetObj(domain),
+      [firstLeg, secondLeg].map(toAnySetHom),
+      product.obj,
+    );
     const source = domainSeed[0];
     const tupleImage = tuple.map(source) as ReadonlyArray<WithId>;
 

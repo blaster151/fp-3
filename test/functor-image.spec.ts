@@ -11,6 +11,7 @@ import {
   makeTerminalObjectOracle,
 } from "../functor-property";
 import type {
+  AnyFunctorPropertyOracle,
   CategoryPropertyCheck,
   FunctorPropertyAnalysis,
 } from "../functor-property-types";
@@ -18,6 +19,7 @@ import {
   constructFunctorWithWitness,
   type FunctorWithWitness,
 } from "../functor";
+import type { SimpleCat } from "../simple-cat";
 import type { SmallCategory } from "../subcategory";
 
 interface Arrow {
@@ -144,7 +146,7 @@ const makeCollapsingFunctor = (): ExampleFunctor =>
   );
 
 const identityArrowCheck = <O, A extends { src: O }>(
-  category: SmallCategory<O, A>,
+  category: SimpleCat<O, A>,
   arrow: A,
 ): CategoryPropertyCheck<undefined> => {
   const id = category.id(category.src(arrow));
@@ -158,7 +160,7 @@ const identityArrowCheck = <O, A extends { src: O }>(
 };
 
 const terminalObjectCheck = <O, A>(
-  _category: SmallCategory<O, A>,
+  _category: SimpleCat<O, A>,
   object: O,
 ): CategoryPropertyCheck<undefined> => ({
   holds: Object.is(object, "C" as O),
@@ -214,7 +216,14 @@ describe("imageSubcategoryFactorization", () => {
 });
 
 describe("functor property oracles", () => {
-  const identityOracle = makeArrowPropertyOracle({
+  const identityOracle = makeArrowPropertyOracle<
+    Obj,
+    Arrow,
+    Obj,
+    Arrow,
+    undefined,
+    undefined
+  >({
     property: "identity arrow",
     mode: "both",
     sourceEvaluate: identityArrowCheck,
@@ -222,7 +231,14 @@ describe("functor property oracles", () => {
     details: ["Identity arrows should be preserved and reflected."],
   });
 
-  const terminalOracle = makeTerminalObjectOracle(
+  const terminalOracle = makeTerminalObjectOracle<
+    Obj,
+    Arrow,
+    Obj,
+    Arrow,
+    undefined,
+    undefined
+  >(
     terminalObjectCheck,
     terminalObjectCheck,
     "both",
@@ -231,8 +247,24 @@ describe("functor property oracles", () => {
 
   it("confirms preservation and reflection for the identity functor", () => {
     const functor = makeIdentityFunctor();
-    const identityAnalysis = evaluateFunctorProperty(functor, identityOracle);
-    const terminalAnalysis = evaluateFunctorProperty(functor, terminalOracle);
+    const identityAnalysis = evaluateFunctorProperty<
+      Obj,
+      Arrow,
+      Obj,
+      Arrow,
+      "arrow",
+      undefined,
+      undefined
+    >(functor, identityOracle);
+    const terminalAnalysis = evaluateFunctorProperty<
+      Obj,
+      Arrow,
+      Obj,
+      Arrow,
+      "object",
+      undefined,
+      undefined
+    >(functor, terminalOracle);
     expect(identityAnalysis.holds).toBe(true);
     expect(identityAnalysis.preservationFailures).toHaveLength(0);
     expect(identityAnalysis.reflectionFailures).toHaveLength(0);
@@ -241,7 +273,15 @@ describe("functor property oracles", () => {
 
   it("detects reflection failures when the image collapses arrows", () => {
     const functor = makeCollapsingFunctor();
-    const identityAnalysis = evaluateFunctorProperty(functor, identityOracle);
+    const identityAnalysis = evaluateFunctorProperty<
+      Obj,
+      Arrow,
+      Obj,
+      Arrow,
+      "arrow",
+      undefined,
+      undefined
+    >(functor, identityOracle);
     expect(identityAnalysis.holds).toBe(false);
     expect(identityAnalysis.reflectionFailures).not.toHaveLength(0);
     expect(identityAnalysis.preservationFailures).toHaveLength(0);
@@ -261,7 +301,10 @@ describe("functor property oracles", () => {
   it("merges additional property analyses with the automatic metadata", () => {
     const functor = makeIdentityFunctor();
     const initialCount = functor.properties?.length ?? 0;
-    const enriched = attachFunctorProperties(functor, [identityOracle]);
+    const enriched = attachFunctorProperties<Obj, Arrow, Obj, Arrow>(
+      functor,
+      [identityOracle as AnyFunctorPropertyOracle<Obj, Arrow, Obj, Arrow>],
+    );
     expect(enriched.properties).toBeDefined();
     expect(enriched.properties?.length).toBe(initialCount + 1);
     const custom = enriched.properties?.find(

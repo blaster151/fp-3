@@ -39,15 +39,17 @@ describe("Set surjection/injection factorization", () => {
   });
 
   it("rejects non-commuting squares in orthogonality checks", () => {
-    const [first] = witness.orthogonality;
-    if (!first) throw new Error("expected at least one orthogonality witness");
-    const square = first.squareSamples?.[0];
+    const [firstWitness] = witness.orthogonality;
+    if (!firstWitness) throw new Error("expected at least one orthogonality witness");
+    const square = firstWitness.squareSamples?.[0];
     if (!square) throw new Error("expected square sample");
-    const [first, second = first] = Array.from(square.bottom.dom);
+    const [firstValue, secondValue = firstValue] = Array.from(square.bottom.dom);
     const sabotagedBottom = SetCat.hom(square.bottom.dom, square.bottom.cod, (value) =>
-      value === first ? square.bottom.map(value) : square.bottom.map(first === value ? second : first),
+      value === firstValue
+        ? square.bottom.map(value)
+        : square.bottom.map(firstValue === value ? secondValue : firstValue),
     );
-    const result = first.hasLifting({ top: square.top, bottom: sabotagedBottom });
+    const result = firstWitness.hasLifting({ top: square.top, bottom: sabotagedBottom });
     expect(result.holds).toBe(false);
   });
 });
@@ -65,13 +67,18 @@ describe("FinSet regular epi–mono factorization", () => {
     if (!arrow) throw new Error("expected at least one FinSet arrow sample");
     const factor = witness.factor(arrow);
     const recomposed = witness.category.compose(factor.right, factor.left);
-    expect(witness.category.eq(recomposed, arrow)).toBe(true);
+    const equality = (witness.category as {
+      eq?: (left: typeof recomposed, right: typeof recomposed) => boolean;
+    }).eq;
+    if (!equality) {
+      throw new Error("expected equality comparison for FinSet arrows");
+    }
+    expect(equality(recomposed, arrow)).toBe(true);
   });
 
   it("flags arrows outside the surjection class", () => {
-    const nonsurjection = witness.samples.arrows.find((candidate) =>
-      Array.from(witness.category.carrier(candidate.cod)).length >
-      Array.from(witness.category.carrier(candidate.dom)).length,
+    const nonsurjection = witness.samples.arrows.find(
+      (candidate) => !witness.leftClass.membership(candidate),
     );
     if (!nonsurjection) throw new Error("expected a non-surjection sample");
     expect(witness.leftClass.membership(nonsurjection)).toBe(false);
@@ -96,19 +103,25 @@ describe("Finite group image–kernel factorization", () => {
     expect(zeroImage).toBe("0");
     expect(oneImage).toBe("1");
     const recomposed = witness.category.compose(factor.right, factor.left);
-    expect(witness.category.eq(recomposed, mod2)).toBe(true);
+    const equality = (witness.category as {
+      eq?: (left: typeof recomposed, right: typeof recomposed) => boolean;
+    }).eq;
+    if (!equality) {
+      throw new Error("expected equality comparison for finite group arrows");
+    }
+    expect(equality(recomposed, mod2)).toBe(true);
   });
 
   it("detects orthogonality failures when the square is sabotaged", () => {
-    const [first] = witness.orthogonality as readonly OrthogonalityWitness<unknown, any>[];
-    if (!first) throw new Error("expected orthogonality witness");
-    const square = first.squareSamples?.[0];
+    const [firstWitness] = witness.orthogonality as readonly OrthogonalityWitness<unknown, any>[];
+    if (!firstWitness) throw new Error("expected orthogonality witness");
+    const square = firstWitness.squareSamples?.[0];
     if (!square) throw new Error("expected square sample");
     const sabotagedTop = {
       ...square.top,
       map: (value: string) => square.top.map(value === "0" ? "1" : value),
     };
-    const result = first.hasLifting({ top: sabotagedTop, bottom: square.bottom });
+    const result = firstWitness.hasLifting({ top: sabotagedTop, bottom: square.bottom });
     expect(result.holds).toBe(false);
   });
 });

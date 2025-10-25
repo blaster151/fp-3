@@ -86,9 +86,10 @@ const evaluateProperties = <SrcObj, SrcArr, TgtObj, TgtArr>(
   };
 };
 
-const collectComposablePairs = <Arr>(arrows: ReadonlyArray<Arr>, category: SimpleCat<unknown, Arr>): ReadonlyArray<
-  Readonly<{ readonly f: Arr; readonly g: Arr }>
-> => {
+const collectComposablePairs = <Obj, Arr>(
+  arrows: ReadonlyArray<Arr>,
+  category: SimpleCat<Obj, Arr>,
+): ReadonlyArray<Readonly<{ readonly f: Arr; readonly g: Arr }>> => {
   const pairs: Array<{ readonly f: Arr; readonly g: Arr }> = [];
   for (const g of arrows) {
     for (const f of arrows) {
@@ -155,25 +156,22 @@ const makeMonoid = <A>(
 const booleanAndMonoid = makeMonoid("Bool∧", [false, true], (left, right) => left && right, true);
 const booleanOrMonoid = makeMonoid("Bool∨", [false, true], (left, right) => left || right, false);
 
-const monoidCategory: FiniteCategory<Monoid<unknown>, MonoidHom<unknown, unknown>> = {
+const monoidCategory: FiniteCategory<Monoid<boolean>, MonoidHom<boolean, boolean>> = {
   objects: [booleanAndMonoid, booleanOrMonoid],
   arrows: [
-    MonCat.id(booleanAndMonoid) as MonoidHom<unknown, unknown>,
-    MonCat.id(booleanOrMonoid) as MonoidHom<unknown, unknown>,
-    MonCat.hom(booleanOrMonoid, booleanAndMonoid, (value: boolean) => !value) as MonoidHom<
-      unknown,
-      unknown
-    >,
+    MonCat.id(booleanAndMonoid),
+    MonCat.id(booleanOrMonoid),
+    MonCat.hom(booleanOrMonoid, booleanAndMonoid, (value) => !value),
   ],
-  id: (monoid) => MonCat.id(monoid) as MonoidHom<unknown, unknown>,
-  compose: (g, f) => MonCat.compose(g, f) as MonoidHom<unknown, unknown>,
-  src: (arrow) => arrow.dom as Monoid<unknown>,
-  dst: (arrow) => arrow.cod as Monoid<unknown>,
+  id: (monoid) => MonCat.id(monoid),
+  compose: (g, f) => MonCat.compose(g, f),
+  src: (arrow) => arrow.dom,
+  dst: (arrow) => arrow.cod,
   eq: (left, right) => {
     if (!Object.is(left.dom, right.dom) || !Object.is(left.cod, right.cod)) {
       return false;
     }
-    const elements = (left.dom as Monoid<unknown>).elements;
+    const elements = left.dom.elements;
     if (!elements) {
       return Object.is(left.map, right.map);
     }
@@ -186,7 +184,7 @@ const monoidCategory: FiniteCategory<Monoid<unknown>, MonoidHom<unknown, unknown
   },
 };
 
-const monoidSamples: FunctorCheckSamples<Monoid<unknown>, MonoidHom<unknown, unknown>> = {
+const monoidSamples: FunctorCheckSamples<Monoid<boolean>, MonoidHom<boolean, boolean>> = {
   objects: monoidCategory.objects,
   arrows: monoidCategory.arrows,
   composablePairs: collectComposablePairs(monoidCategory.arrows, monoidCategory),
@@ -194,14 +192,19 @@ const monoidSamples: FunctorCheckSamples<Monoid<unknown>, MonoidHom<unknown, unk
 
 const buildForgetfulMonoidFunctor = (
   setCategory: FiniteCategory<SetObj<string>, SetHom<string, string>>,
-): FunctorWithWitness<Monoid<unknown>, MonoidHom<unknown, unknown>, SetObj<string>, SetHom<string, string>> => {
-  const functor: Functor<Monoid<unknown>, MonoidHom<unknown, unknown>, SetObj<string>, SetHom<string, string>> = {
-    F0: (monoid) => SetCat.obj((monoid.elements ?? []) as string[]),
+): FunctorWithWitness<Monoid<boolean>, MonoidHom<boolean, boolean>, SetObj<string>, SetHom<string, string>> => {
+  const encodeBoolean = (value: boolean): string => (value ? "true" : "false");
+  const decodeBoolean = (label: string): boolean => label === "true";
+  const carrierFrom = (elements: ReadonlyArray<boolean> | undefined): SetObj<string> =>
+    SetCat.obj((elements ?? []).map(encodeBoolean));
+
+  const functor: Functor<Monoid<boolean>, MonoidHom<boolean, boolean>, SetObj<string>, SetHom<string, string>> = {
+    F0: (monoid) => carrierFrom(monoid.elements),
     F1: (arrow) =>
       SetCat.hom(
-        SetCat.obj((arrow.dom.elements ?? []) as string[]),
-        SetCat.obj((arrow.cod.elements ?? []) as string[]),
-        arrow.map as (value: string) => string,
+        carrierFrom(arrow.dom.elements),
+        carrierFrom(arrow.cod.elements),
+        (label) => encodeBoolean(arrow.map(decodeBoolean(label))),
       ),
   };
   return constructFunctorWithWitness(
@@ -240,13 +243,21 @@ const z4: FinGrpObj = {
   inv: (value) => ((4 - Number(value)) % 4).toString(),
 };
 
+const toBitPair = (value: string): readonly [string, string] => {
+  const digits = value.split("");
+  if (digits.length !== 2) {
+    throw new Error(`Expected a pair of bits, received ${value}`);
+  }
+  return [digits[0]!, digits[1]!];
+};
+
 const v4: FinGrpObj = {
   name: "V₄",
   elems: ["00", "01", "10", "11"],
   e: "00",
   mul: (left, right) => {
-    const [la, lb] = left.split("") as readonly [string, string];
-    const [ra, rb] = right.split("") as readonly [string, string];
+    const [la, lb] = toBitPair(left);
+    const [ra, rb] = toBitPair(right);
     const first = ((Number(la) + Number(ra)) % 2).toString();
     const second = ((Number(lb) + Number(rb)) % 2).toString();
     return `${first}${second}`;
@@ -647,8 +658,18 @@ const thinInclusionFunctor = (): FunctorWithWitness<
   );
 };
 
-const collapseTerminal = PointedSet.singleton("𝟙⋆");
-const collapseShadow = PointedSet.singleton("𝟙◦");
+const collapseTerminal = PointedSet.create<string>({
+  label: "𝟙⋆",
+  elems: ["⋆"],
+  basepoint: "⋆",
+  eq: Object.is,
+});
+const collapseShadow = PointedSet.create<string>({
+  label: "𝟙◦",
+  elems: ["⋆"],
+  basepoint: "⋆",
+  eq: Object.is,
+});
 
 const collapseCategory: FiniteCategory<PointedSetObj<string>, PointedSetHom<string, string>> = {
   objects: [collapseTerminal, collapseShadow],

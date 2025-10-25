@@ -190,16 +190,20 @@ describe("checkFaithfulFunctor", () => {
     expect(report.failures).toHaveLength(0);
   });
 
-  it("detects when distinct arrows collapse", () => {
-    const functor = makeCollapsingFunctor();
-    const report = checkFaithfulFunctor(functor);
-    expect(report.holds).toBe(false);
-    expect(report.failures).not.toHaveLength(0);
-    const [{ first, second }] = report.failures;
-    expect(first).toBe(alt);
-    expect(second).toBe(h);
+    it("detects when distinct arrows collapse", () => {
+      const functor = makeCollapsingFunctor();
+      const report = checkFaithfulFunctor(functor);
+      expect(report.holds).toBe(false);
+      expect(report.failures).not.toHaveLength(0);
+      const failure = report.failures[0];
+      if (!failure) {
+        throw new Error("expected faithfulness failure for collapsing functor");
+      }
+      const { first, second } = failure;
+      expect(first).toBe(alt);
+      expect(second).toBe(h);
+    });
   });
-});
 
 describe("checkFullFunctor", () => {
   it("confirms the identity functor is full", () => {

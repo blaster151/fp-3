@@ -137,9 +137,10 @@ export const evaluateFunctorProperty = <
 > => {
   const samples = (
     oracle.samples ?? defaultSamples(functor.witness, oracle.kind)
-  ).filter((sample) => sample.kind === oracle.kind) as ReadonlyArray<
-    FunctorPropertySample<SrcObj, SrcArr>
-  >;
+  ).filter(
+    (sample): sample is FunctorPropertySample<SrcObj, SrcArr> =>
+      sample.kind === oracle.kind,
+  );
 
   const preservationFailures: FunctorPropertyFailure<
     SrcObj,
@@ -231,26 +232,44 @@ export const evaluateFunctorProperty = <
   };
 
   if (oracle.kind === "object") {
+    const objectOracle = oracle as FunctorPropertyOracle<
+      SrcObj,
+      SrcArr,
+      TgtObj,
+      TgtArr,
+      "object",
+      SrcWitness,
+      TgtWitness
+    >;
     const objectSamples = samples as ReadonlyArray<ObjectPropertySample<SrcObj>>;
     for (const sample of objectSamples) {
-      const sourceResult = oracle.source.evaluate(
+      const sourceResult = objectOracle.source.evaluate(
         functor.witness.source,
         sample.object,
       );
-      const targetResult = oracle.target.evaluate(
+      const targetResult = objectOracle.target.evaluate(
         functor.witness.target,
         functor.functor.F0(sample.object),
       );
       processSample(sample, sourceResult, targetResult);
     }
   } else {
+    const arrowOracle = oracle as FunctorPropertyOracle<
+      SrcObj,
+      SrcArr,
+      TgtObj,
+      TgtArr,
+      "arrow",
+      SrcWitness,
+      TgtWitness
+    >;
     const arrowSamples = samples as ReadonlyArray<ArrowPropertySample<SrcArr>>;
     for (const sample of arrowSamples) {
-      const sourceResult = oracle.source.evaluate(
+      const sourceResult = arrowOracle.source.evaluate(
         functor.witness.source,
         sample.arrow,
       );
-      const targetResult = oracle.target.evaluate(
+      const targetResult = arrowOracle.target.evaluate(
         functor.witness.target,
         functor.functor.F1(sample.arrow),
       );
@@ -506,7 +525,7 @@ export const makeMonomorphismPreservationOracle = <
     mode: "preserves",
     sourceEvaluate,
     targetEvaluate,
-    details,
+    ...(details ? { details } : {}),
     ...(samples ? { samples } : {}),
   });
 
@@ -534,7 +553,7 @@ export const makeEpimorphismReflectionOracle = <
     mode: "reflects",
     sourceEvaluate,
     targetEvaluate,
-    details,
+    ...(details ? { details } : {}),
     ...(samples ? { samples } : {}),
   });
 
@@ -562,7 +581,7 @@ export const makeEpimorphismPreservationOracle = <
     mode: "preserves",
     sourceEvaluate,
     targetEvaluate,
-    details,
+    ...(details ? { details } : {}),
     ...(samples ? { samples } : {}),
   });
 
@@ -662,5 +681,5 @@ export const makeTerminalObjectOracle = <
     mode,
     sourceEvaluate,
     targetEvaluate,
-    details,
+    ...(details ? { details } : {}),
   });

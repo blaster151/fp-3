@@ -1,6 +1,7 @@
 import type { FunctorComposablePair, FunctorWithWitness } from "./functor";
 import { composeFunctors, constructFunctorWithWitness } from "./functor";
 import type {
+  NaturalTransformationCheckSamples,
   NaturalTransformationConstructionOptions,
   NaturalTransformationWithWitness,
 } from "./natural-transformation";
@@ -126,16 +127,16 @@ interface Workspace<J, I, X> {
   readonly setCategory: SimpleCat<AnySetObj, AnySetHom>;
   readonly reindexing: FunctorWithWitness<J, DiscreteArrow<J>, I, DiscreteArrow<I>>;
   readonly diagram: FunctorWithWitness<J, DiscreteArrow<J>, AnySetObj, AnySetHom>;
-  readonly diagramObjects: ReadonlyMap<J, AnySetObj>;
+  readonly diagramObjects: ReadonlyMap<J, SetObj<X>>;
   readonly fiberOrder: ReadonlyMap<I, ReadonlyArray<J>>;
   readonly fiberValues: ReadonlyMap<J, ReadonlyArray<X>>;
   readonly fiberIndex: ReadonlyMap<J, ReadonlyMap<X, number>>;
   readonly lanElements: ReadonlyMap<I, ReadonlyArray<LanElement<J, X>>>;
   readonly lanLookup: ReadonlyMap<I, ReadonlyMap<J, ReadonlyMap<X, LanElement<J, X>>>>;
-  readonly lanObjects: ReadonlyMap<I, AnySetObj>;
+  readonly lanObjects: ReadonlyMap<I, SetObj<LanElement<J, X>>>;
   readonly ranElements: ReadonlyMap<I, ReadonlyArray<RanElement<J, X>>>;
   readonly ranLookup: ReadonlyMap<I, ReadonlyMap<string, RanElement<J, X>>>;
-  readonly ranObjects: ReadonlyMap<I, AnySetObj>;
+  readonly ranObjects: ReadonlyMap<I, SetObj<RanElement<J, X>>>;
 }
 
 const prepareWorkspace = <J, I, X>(
@@ -172,7 +173,7 @@ const prepareWorkspace = <J, I, X>(
     fiberIndex.set(object, lookup);
   }
 
-  const diagramObjects = new Map<J, AnySetObj>();
+  const diagramObjects = new Map<J, SetObj<X>>();
   for (const object of source.objects) {
     const values = fiberValues.get(object) ?? [];
     diagramObjects.set(object, SetCat.obj(values));
@@ -204,7 +205,7 @@ const prepareWorkspace = <J, I, X>(
 
   const lanElements = new Map<I, ReadonlyArray<LanElement<J, X>>>();
   const lanLookup = new Map<I, ReadonlyMap<J, ReadonlyMap<X, LanElement<J, X>>>>();
-  const lanObjects = new Map<I, AnySetObj>();
+  const lanObjects = new Map<I, SetObj<LanElement<J, X>>>();
   for (const targetObject of target.objects) {
     const fiber = fiberOrder.get(targetObject) ?? [];
     const elements: LanElement<J, X>[] = [];
@@ -226,7 +227,7 @@ const prepareWorkspace = <J, I, X>(
 
   const ranElements = new Map<I, ReadonlyArray<RanElement<J, X>>>();
   const ranLookup = new Map<I, ReadonlyMap<string, RanElement<J, X>>>();
-  const ranObjects = new Map<I, AnySetObj>();
+  const ranObjects = new Map<I, SetObj<RanElement<J, X>>>();
   for (const targetObject of target.objects) {
     const fiber = fiberOrder.get(targetObject) ?? [];
     const components: RanElement<J, X>[] = [];
@@ -998,20 +999,26 @@ export const buildDiscreteRightKanExtensionToTerminal = <J, X>(
 export const collectDiscreteLeftKanColimit = <J, X>(
   left: DiscreteLeftKanExtensionResult<J, DiscreteTerminalObject, X>,
 ): ReadonlyArray<readonly [J, X]> =>
-  Array.from(left.extension.functor.F0(DISCRETE_TERMINAL_OBJECT)).map((element) =>
-    [element.source, element.value] as const,
+  Array.from<
+    LanElement<J, X>
+  >(left.extension.functor.F0(DISCRETE_TERMINAL_OBJECT) as SetObj<LanElement<J, X>>).map(
+    (element) => [element.source, element.value] as const,
   );
 
 export const collectDiscreteRightKanLimit = <J, X>(
   right: DiscreteRightKanExtensionResult<J, DiscreteTerminalObject, X>,
 ): ReadonlyArray<ReadonlyMap<J, X>> =>
-  Array.from(right.extension.functor.F0(DISCRETE_TERMINAL_OBJECT)).map((bundle) => {
-    const map = new Map<J, X>();
-    for (const component of bundle.components) {
-      map.set(component.source, component.value);
-    }
-    return map;
-  });
+  Array.from<
+    RanElement<J, X>
+  >(right.extension.functor.F0(DISCRETE_TERMINAL_OBJECT) as SetObj<RanElement<J, X>>).map(
+    (bundle) => {
+      const map = new Map<J, X>();
+      for (const component of bundle.components) {
+        map.set(component.source, component.value);
+      }
+      return map;
+    },
+  );
 
 const collectDomainObjects = <J>(
   ...collections: ReadonlyArray<ReadonlyArray<J>>
@@ -1086,19 +1093,21 @@ export const induceNaturalTransformationFromLeftKan = <J, I, X>(
     ...(options.mediating?.metadata ?? []),
     "Induced natural transformation from the left Kan extension via universal property.",
   ];
+  const mediatingSamples: NaturalTransformationCheckSamples<I, DiscreteArrow<I>> =
+    options.mediating?.samples ?? { objects: left.extension.witness.objectGenerators };
   const mediating = constructNaturalTransformationWithWitness(
     left.extension,
     target,
     (object) => {
-      const domain = left.extension.functor.F0(object);
-      const codomain = target.functor.F0(object);
+      const domain = left.extension.functor.F0(object) as SetObj<LanElement<J, X>>;
+      const codomain = target.functor.F0(object) as SetObj<unknown>;
       return SetCat.hom(domain, codomain, (element: LanElement<J, X>) => {
         const component = candidate.transformation.component(element.source);
         return component.map(element.value);
       }) as AnySetHom;
     },
     {
-      samples: options.mediating?.samples ?? { objects: left.extension.witness.objectGenerators },
+      samples: mediatingSamples,
       equalMor: options.mediating?.equalMor ?? equalsSetHom,
       metadata: mediatorMetadata,
     },
@@ -1108,21 +1117,23 @@ export const induceNaturalTransformationFromLeftKan = <J, I, X>(
     ...(options.whisker?.metadata ?? []),
     "Right whiskering the induced map along the reindexing functor.",
   ];
-  const whiskered = whiskerNaturalTransformationRight(mediating, left.reindexing, {
-    samples: options.whisker?.samples,
+  const whiskerOptions: NaturalTransformationConstructionOptions<J, DiscreteArrow<J>, AnySetHom> = {
     equalMor: options.whisker?.equalMor ?? equalsSetHom,
     metadata: whiskerMetadata,
-  });
+    ...(options.whisker?.samples ? { samples: options.whisker.samples } : {}),
+  };
+  const whiskered = whiskerNaturalTransformationRight(mediating, left.reindexing, whiskerOptions);
 
   const comparisonMetadata = [
     ...(options.comparison?.metadata ?? []),
     "Composite transformation expected to match the supplied triangle witness.",
   ];
-  const comparison = verticalCompositeNaturalTransformations(left.unit, whiskered, {
-    samples: options.comparison?.samples,
+  const comparisonOptions: NaturalTransformationConstructionOptions<J, DiscreteArrow<J>, AnySetHom> = {
     equalMor: options.comparison?.equalMor ?? equalsSetHom,
     metadata: comparisonMetadata,
-  });
+    ...(options.comparison?.samples ? { samples: options.comparison.samples } : {}),
+  };
+  const comparison = verticalCompositeNaturalTransformations(left.unit, whiskered, comparisonOptions);
 
   const objects = collectDomainObjects(
     left.unit.witness.objectSamples,
@@ -1181,13 +1192,15 @@ export const induceNaturalTransformationToRightKan = <J, I, X>(
     ...(options.mediating?.metadata ?? []),
     "Induced natural transformation into the right Kan extension via universal property.",
   ];
+  const mediatingSamples: NaturalTransformationCheckSamples<I, DiscreteArrow<I>> =
+    options.mediating?.samples ?? { objects: targets };
   const mediating = constructNaturalTransformationWithWitness(
     target,
     right.extension,
     (object) => {
-      const domain = target.functor.F0(object);
-      const codomain = right.extension.functor.F0(object);
-      const families = Array.from(codomain);
+      const domain = target.functor.F0(object) as SetObj<unknown>;
+      const codomain = right.extension.functor.F0(object) as SetObj<RanElement<J, X>>;
+      const families = Array.from<RanElement<J, X>>(codomain);
       const canonical = families[0];
       if (!canonical) {
         throw new Error("Right Kan induction: Ran carrier has no representatives.");
@@ -1225,7 +1238,7 @@ export const induceNaturalTransformationToRightKan = <J, I, X>(
       }) as AnySetHom;
     },
     {
-      samples: options.mediating?.samples ?? { objects: targets },
+      samples: mediatingSamples,
       equalMor: options.mediating?.equalMor ?? equalsSetHom,
       metadata: mediatorMetadata,
     },
@@ -1235,21 +1248,27 @@ export const induceNaturalTransformationToRightKan = <J, I, X>(
     ...(options.whisker?.metadata ?? []),
     "Right whiskering the induced map into Ran along the reindexing functor.",
   ];
-  const whiskered = whiskerNaturalTransformationRight(mediating, right.reindexing, {
-    samples: options.whisker?.samples,
+  const whiskerOptions: NaturalTransformationConstructionOptions<J, DiscreteArrow<J>, AnySetHom> = {
     equalMor: options.whisker?.equalMor ?? equalsSetHom,
     metadata: whiskerMetadata,
-  });
+    ...(options.whisker?.samples ? { samples: options.whisker.samples } : {}),
+  };
+  const whiskered = whiskerNaturalTransformationRight(mediating, right.reindexing, whiskerOptions);
 
   const comparisonMetadata = [
     ...(options.comparison?.metadata ?? []),
     "Composite transformation expected to reproduce the supplied couniversal witness.",
   ];
-  const comparison = verticalCompositeNaturalTransformations(whiskered, right.counit, {
-    samples: options.comparison?.samples,
+  const comparisonOptions: NaturalTransformationConstructionOptions<J, DiscreteArrow<J>, AnySetHom> = {
     equalMor: options.comparison?.equalMor ?? equalsSetHom,
     metadata: comparisonMetadata,
-  });
+    ...(options.comparison?.samples ? { samples: options.comparison.samples } : {}),
+  };
+  const comparison = verticalCompositeNaturalTransformations(
+    whiskered,
+    right.counit,
+    comparisonOptions,
+  );
 
   const objects = collectDomainObjects(
     right.counit.witness.objectSamples,

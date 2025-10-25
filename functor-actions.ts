@@ -16,6 +16,7 @@ import {
 } from "./concrete-category";
 import {
   constructNaturalTransformationWithWitness,
+  type NaturalTransformationCheckSamples,
   type NaturalTransformationWithWitness,
 } from "./natural-transformation";
 import {
@@ -111,7 +112,7 @@ const listObjectFor = <A>(base: SetObj<A>): SetObj<ReadonlyArray<A>> => {
   const listSet = SetCat.lazyObj<ReadonlyArray<A>>({
     iterate,
     has,
-    cardinality: elements.length === 0 ? 1 : undefined,
+    ...(elements.length === 0 ? { cardinality: 1 } : {}),
     tag: `List(${String((base as { tag?: string }).tag ?? "Set")})`,
   });
 
@@ -152,8 +153,9 @@ const flattenLists = <A>(lists: ReadonlyArray<ReadonlyArray<A>>): ReadonlyArray<
 };
 
 const defaultListSamples = (): FunctorCheckSamples<SetObj<unknown>, SetHom<unknown, unknown>> => {
-  const empty = SetCat.obj<never>([]);
-  const id = SetCat.id(empty) as SetHom<unknown, unknown>;
+  const emptyElements: unknown[] = [];
+  const empty = SetCat.obj<unknown>(emptyElements);
+  const id = SetCat.id(empty);
   return {
     objects: [empty],
     arrows: [id],
@@ -214,19 +216,19 @@ export const listEndofunctorWithWitness = (
   };
 };
 
-const monCatSimpleCategory: SimpleCat<
-  Monoid<unknown>,
-  MonoidHom<unknown, unknown>
+const makeMonCatSimpleCategory = <Carrier>(): SimpleCat<
+  Monoid<Carrier>,
+  MonoidHom<Carrier, Carrier>
 > & {
   readonly eq: (
-    left: MonoidHom<unknown, unknown>,
-    right: MonoidHom<unknown, unknown>,
+    left: MonoidHom<Carrier, Carrier>,
+    right: MonoidHom<Carrier, Carrier>,
   ) => boolean;
-} = {
-  id: (monoid) => MonCat.id(monoid) as MonoidHom<unknown, unknown>,
-  compose: (g, f) => MonCat.compose(g, f) as MonoidHom<unknown, unknown>,
-  src: (arrow) => arrow.dom as Monoid<unknown>,
-  dst: (arrow) => arrow.cod as Monoid<unknown>,
+} => ({
+  id: (monoid) => MonCat.id(monoid),
+  compose: (g, f) => MonCat.compose(g, f),
+  src: (arrow) => arrow.dom,
+  dst: (arrow) => arrow.cod,
   eq: (left, right) => {
     if (!Object.is(left.dom, right.dom) || !Object.is(left.cod, right.cod)) {
       return false;
@@ -242,7 +244,10 @@ const monCatSimpleCategory: SimpleCat<
     }
     return true;
   },
-};
+});
+
+const monCatSimpleCategory = makeMonCatSimpleCategory<unknown>();
+const listMonCatSimpleCategory = makeMonCatSimpleCategory<ReadonlyArray<unknown>>();
 
 const defaultFreeMonoidListSamples = <A>(
   base: SetObj<A>,
@@ -427,7 +432,7 @@ export const freeMonoidFunctorWithWitness = (
 
   const witness = constructFunctorWithWitness(
     setSimpleCategory,
-    monCatSimpleCategory,
+    listMonCatSimpleCategory,
     functor,
     samples,
     [
@@ -651,18 +656,42 @@ const buildListSamples = (base: SetObj<unknown>, maxElements: number): ListSampl
   return { lists, listOfLists, listOfListOfLists };
 };
 
-const makeListCollectionSet = (
-  listSet: SetObj<ReadonlyArray<unknown>>,
-  collections: ReadonlyArray<ReadonlyArray<ReadonlyArray<unknown>>>,
+const makeListCollectionSet = <A>(
+  listSet: SetObj<ReadonlyArray<A>>,
+  collections: ReadonlyArray<ReadonlyArray<ReadonlyArray<A>>>,
   tag: string,
-): SetObj<ReadonlyArray<ReadonlyArray<unknown>>> =>
+): SetObj<ReadonlyArray<ReadonlyArray<A>>> =>
   SetCat.lazyObj({
     iterate: iterateOver(collections),
-    has: (value): boolean =>
+    has: (value: ReadonlyArray<ReadonlyArray<A>>): boolean =>
       Array.isArray(value) && value.every((inner) => listSet.has(inner)),
     tag,
     cardinality: collections.length,
   });
+
+const asGenericSetHom = <Dom, Cod>(hom: SetHom<Dom, Cod>): SetHom<unknown, unknown> =>
+  hom as unknown as SetHom<unknown, unknown>;
+
+const expectSetHom = <Dom, Cod>(
+  hom: SetHom<unknown, unknown>,
+  dom: SetObj<Dom>,
+  cod: SetObj<Cod>,
+  label: string,
+): SetHom<Dom, Cod> => {
+  if (hom.dom !== dom || hom.cod !== cod) {
+    throw new Error(
+      `${label}: component domain/codomain mismatch with expected objects.`,
+    );
+  }
+  return hom as unknown as SetHom<Dom, Cod>;
+};
+
+const asGenericMonoid = <Carrier>(monoid: Monoid<Carrier>): Monoid<unknown> =>
+  monoid as unknown as Monoid<unknown>;
+
+const asGenericMonoidHom = <Dom, Cod>(
+  hom: MonoidHom<Dom, Cod>,
+): MonoidHom<unknown, unknown> => hom as unknown as MonoidHom<unknown, unknown>;
 
 const checkListMonadLaws = (
   listToolkit: ListEndofunctorToolkit,
@@ -706,16 +735,31 @@ const checkListMonadLaws = (
     associativitySamples += listOfListOfLists.length;
 
     const listSet = listToolkit.listObject(base) as SetObj<ReadonlyArray<unknown>>;
-    const unitComponent = unit.transformation.component(base) as SetHom<unknown, unknown>;
-    const listUnit = listToolkit.functor.functor.F1(unitComponent) as SetHom<
-      ReadonlyArray<unknown>,
+    const listListSet = listToolkit.listObject(listSet) as SetObj<
       ReadonlyArray<ReadonlyArray<unknown>>
     >;
-    const multiplicationComponent = multiplication.transformation.component(base) as SetHom<
-      ReadonlyArray<ReadonlyArray<unknown>>,
-      ReadonlyArray<unknown>
+    const listListListSet = listToolkit.listObject(listListSet) as SetObj<
+      ReadonlyArray<ReadonlyArray<ReadonlyArray<unknown>>>
     >;
-    const leftComposite = setSimpleCategory.compose(
+    const unitComponent = expectSetHom(
+      unit.transformation.component(base),
+      base,
+      listSet,
+      "List monad unit",
+    );
+    const listUnit = expectSetHom(
+      listToolkit.functor.functor.F1(asGenericSetHom(unitComponent)),
+      listSet,
+      listListSet,
+      "List monad lifted unit",
+    );
+    const multiplicationComponent = expectSetHom(
+      multiplication.transformation.component(base),
+      listListSet,
+      listSet,
+      "List monad multiplication",
+    );
+    const leftComposite = SetCat.compose(
       multiplicationComponent,
       listUnit,
     ) as SetHom<ReadonlyArray<unknown>, ReadonlyArray<unknown>>;
@@ -728,16 +772,13 @@ const checkListMonadLaws = (
     }
 
     const listSetTag = (listSet as { readonly tag?: string }).tag ?? "List";
-    const listOfListsSet = makeListCollectionSet(
+    const etaList = expectSetHom(
+      unit.transformation.component(listSet),
       listSet,
-      listOfLists,
-      `List(List(${listSetTag}))`,
+      listListSet,
+      "List monad unit@List",
     );
-    const etaList = unit.transformation.component(listSet) as SetHom<
-      ReadonlyArray<unknown>,
-      ReadonlyArray<ReadonlyArray<unknown>>
-    >;
-    const rightComposite = setSimpleCategory.compose(
+    const rightComposite = SetCat.compose(
       multiplicationComponent,
       etaList,
     ) as SetHom<ReadonlyArray<unknown>, ReadonlyArray<unknown>>;
@@ -749,24 +790,26 @@ const checkListMonadLaws = (
       }
     }
 
-    const listMu = listToolkit.functor.functor.F1(
-      multiplicationComponent,
-    ) as SetHom<
-      ReadonlyArray<ReadonlyArray<ReadonlyArray<unknown>>>,
-      ReadonlyArray<ReadonlyArray<unknown>>
-    >;
-    const muList = multiplication.transformation.component(listSet) as SetHom<
-      ReadonlyArray<ReadonlyArray<ReadonlyArray<unknown>>>,
-      ReadonlyArray<ReadonlyArray<unknown>>
-    >;
-    const leftAssoc = setSimpleCategory.compose(
+    const listMu = expectSetHom(
+      listToolkit.functor.functor.F1(asGenericSetHom(multiplicationComponent)),
+      listListListSet,
+      listListSet,
+      "List monad lifted multiplication",
+    );
+    const muList = expectSetHom(
+      multiplication.transformation.component(listSet),
+      listListListSet,
+      listListSet,
+      "List monad multiplication@List",
+    );
+    const leftAssoc = SetCat.compose(
       multiplicationComponent,
       listMu,
     ) as SetHom<
       ReadonlyArray<ReadonlyArray<ReadonlyArray<unknown>>>,
       ReadonlyArray<ReadonlyArray<unknown>>
     >;
-    const rightAssoc = setSimpleCategory.compose(
+    const rightAssoc = SetCat.compose(
       multiplicationComponent,
       muList,
     ) as SetHom<
@@ -884,7 +927,7 @@ export const buildListMonadToolkit = (
         listSet,
         listOfLists,
         `List(List(${String((base as { tag?: string }).tag ?? "Set")}))`,
-      ) as SetObj<unknown>;
+      );
     },
     F1: (arrow) => {
       const baseDomain = arrow.dom as SetObj<unknown>;
@@ -894,7 +937,7 @@ export const buildListMonadToolkit = (
         domainListSet,
         domainSamples.listOfLists,
         `List(List(${String((baseDomain as { tag?: string }).tag ?? "Set")}) domain)`,
-      ) as SetObj<unknown>;
+      );
       const baseCodomain = arrow.cod as SetObj<unknown>;
       const codomainSamples = buildListSamples(baseCodomain, maxElements);
       const codomainListSet = listToolkit.listObject(baseCodomain) as SetObj<ReadonlyArray<unknown>>;
@@ -902,7 +945,7 @@ export const buildListMonadToolkit = (
         codomainListSet,
         codomainSamples.listOfLists,
         `List(List(${String((baseCodomain as { tag?: string }).tag ?? "Set")}) codomain)`,
-      ) as SetObj<unknown>;
+      );
       return SetCat.hom(
         domain,
         codomain,
@@ -922,11 +965,21 @@ export const buildListMonadToolkit = (
     ["List∘List endofunctor for list monad multiplication."],
   );
 
-  const multiplication = constructNaturalTransformationWithWitness(
-    listSquaredWitness,
-    functor,
-    (object) => {
-      const base = object as SetObj<unknown>;
+    const transformationSamples: NaturalTransformationCheckSamples<
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    > = {
+      objects: samples,
+      ...(functorSamples.arrows !== undefined
+        ? { arrows: functorSamples.arrows }
+        : {}),
+    };
+
+    const multiplication = constructNaturalTransformationWithWitness(
+      listSquaredWitness,
+      functor,
+      (object) => {
+        const base = object as SetObj<unknown>;
       const { listOfLists, listOfListOfLists } = buildListSamples(base, maxElements);
       const listSet = listToolkit.listObject(base) as SetObj<ReadonlyArray<unknown>>;
       const listOfListsSet = makeListCollectionSet(
@@ -940,11 +993,11 @@ export const buildListMonadToolkit = (
         (lists: ReadonlyArray<ReadonlyArray<unknown>>) => flattenLists(lists),
       ) as SetHom<unknown, unknown>;
     },
-    {
-      samples: { objects: samples, arrows: functorSamples.arrows },
-      metadata: options.metadata ?? ["List monad multiplication flattens nested finite lists."],
-    },
-  );
+      {
+        samples: transformationSamples,
+        metadata: options.metadata ?? ["List monad multiplication flattens nested finite lists."],
+      },
+    );
 
   const report = checkListMonadLaws(listToolkit, unit, multiplication, samples, maxElements);
 
@@ -1017,9 +1070,15 @@ export const freeForgetfulAdjunctionWithWitness = (
       makeBooleanMonoid() as Monoid<unknown>,
     ];
 
-  const combinedCarrierFor = (monoid: Monoid<unknown>): SetObj<unknown> | undefined =>
-    free.carrierOf(monoid as Monoid<ReadonlyArray<unknown>>) ??
-    options.forgetfulOptions?.carrierFor?.(monoid);
+    const combinedCarrierFor = (monoid: Monoid<unknown>): SetObj<unknown> | undefined => {
+      const fromFree = free.carrierOf(
+        monoid as unknown as Monoid<ReadonlyArray<unknown>>,
+      );
+      if (fromFree) {
+        return fromFree as SetObj<unknown>;
+      }
+      return options.forgetfulOptions?.carrierFor?.(monoid);
+    };
 
   const forgetfulOptions: ForgetfulMonoidFunctorOptions = {
     ...options.forgetfulOptions,
@@ -1060,10 +1119,14 @@ export const freeForgetfulAdjunctionWithWitness = (
     SetObj<unknown>,
     SetHom<unknown, unknown>
   > = {
-    F0: (object) =>
-      forgetful.functor.functor.F0(free.functor.functor.F0(object)) as SetObj<unknown>,
-    F1: (arrow) =>
-      forgetful.functor.functor.F1(free.functor.functor.F1(arrow)) as SetHom<unknown, unknown>,
+    F0: (object) => {
+      const freeMonoid = free.functor.functor.F0(object);
+      return forgetful.functor.functor.F0(asGenericMonoid(freeMonoid));
+    },
+    F1: (arrow) => {
+      const freeArrow = free.functor.functor.F1(arrow);
+      return forgetful.functor.functor.F1(asGenericMonoidHom(freeArrow));
+    },
   };
 
   const UFWithWitness = constructFunctorWithWitness(
@@ -1080,10 +1143,14 @@ export const freeForgetfulAdjunctionWithWitness = (
     Monoid<unknown>,
     MonoidHom<unknown, unknown>
   > = {
-    F0: (monoid) =>
-      free.functor.functor.F0(forgetful.functor.functor.F0(monoid)) as Monoid<unknown>,
-    F1: (arrow) =>
-      free.functor.functor.F1(forgetful.functor.functor.F1(arrow)) as MonoidHom<unknown, unknown>,
+    F0: (monoid) => {
+      const underlyingSet = forgetful.functor.functor.F0(monoid);
+      return asGenericMonoid(free.functor.functor.F0(underlyingSet));
+    },
+    F1: (arrow) => {
+      const underlyingArrow = forgetful.functor.functor.F1(arrow);
+      return asGenericMonoidHom(free.functor.functor.F1(underlyingArrow));
+    },
   };
 
   const FUWithWitness = constructFunctorWithWitness(

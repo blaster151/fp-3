@@ -17,20 +17,22 @@ import type { TwoArrow, TwoObject } from "../two-object-cat"
 
 const idArrow = TwoObjectCategory.id
 
-const trivialConeDiagram = {} as CompletenessSample<never, TwoObject, TwoArrow>["diagram"]
-const trivialCoconeDiagram = {} as CocompletenessSample<never, TwoObject, TwoArrow>["diagram"]
+const DOT: TwoObject = "•"
+
+const trivialConeDiagram = {} as CompletenessSample<unknown, TwoObject, TwoArrow>["diagram"]
+const trivialCoconeDiagram = {} as CocompletenessSample<unknown, TwoObject, TwoArrow>["diagram"]
 
 describe("adjoint-functor-theorem infrastructure", () => {
   it("analyzes completeness witnesses built from terminal cones", () => {
     const terminalCone = {
-      tip: "•" as const,
+      tip: DOT,
       legs: () => {
         throw new Error("legs should not be evaluated for the empty diagram")
       },
       diagram: trivialConeDiagram,
     }
 
-    const sample: CompletenessSample<never, TwoObject, TwoArrow> = {
+    const sample: CompletenessSample<unknown, TwoObject, TwoArrow> = {
       indices: [],
       diagram: terminalCone.diagram,
       limit: terminalCone,
@@ -51,7 +53,7 @@ describe("adjoint-functor-theorem infrastructure", () => {
     const analysis = analyzeCompletenessWitness(witness)
     expect(analysis.holds).toBe(true)
     expect(analysis.samples).toHaveLength(1)
-    expect(analysis.samples[0]?.witnesses[0]?.mediator).toEqual(idArrow("•"))
+    expect(analysis.samples[0]?.witnesses[0]?.mediator).toEqual(idArrow(DOT))
   })
 
   it("reports completeness failures when no cones are supplied", () => {
@@ -62,7 +64,7 @@ describe("adjoint-functor-theorem infrastructure", () => {
           indices: [],
           diagram: trivialConeDiagram,
           limit: {
-            tip: "•",
+            tip: DOT,
             legs: () => {
               throw new Error("unexpected leg access")
             },
@@ -81,24 +83,29 @@ describe("adjoint-functor-theorem infrastructure", () => {
 
   it("verifies solution-set coverage for the identity functor", () => {
     const identity = identityFunctorWithWitness(TwoObjectCategory)
-    const candidateArrow = idArrow("•")
+    const candidateArrow = idArrow(DOT)
 
-    const witness = solutionSetCondition({
+    const witness = solutionSetCondition<
+      TwoObject,
+      TwoArrow,
+      TwoObject,
+      TwoArrow
+    >({
       functor: identity,
-      target: "•",
+      target: DOT,
       candidates: [
         {
-          object: "•",
+          object: DOT,
           arrow: candidateArrow,
           factor: ({ arrow, source }) =>
-            arrow === candidateArrow && source === "•"
-              ? { factored: true, mediator: idArrow("•") }
+            arrow === candidateArrow && source === DOT
+              ? { factored: true, mediator: idArrow(DOT) }
               : { factored: false, reason: "sample mismatch" },
         },
       ],
       tests: [
         {
-          source: "•",
+          source: DOT,
           arrow: candidateArrow,
           label: "identity arrow test",
         },
@@ -107,26 +114,31 @@ describe("adjoint-functor-theorem infrastructure", () => {
 
     expect(witness.holds).toBe(true)
     expect(witness.verifications[0]?.ok).toBe(true)
-    expect(witness.verifications[0]?.chosen?.object).toBe("•")
+    expect(witness.verifications[0]?.chosen?.object).toBe(DOT)
   })
 
   it("detects solution-set failures when mediators do not compose", () => {
     const identity = identityFunctorWithWitness(TwoObjectCategory)
-    const candidateArrow = idArrow("•")
+    const candidateArrow = idArrow(DOT)
 
-    const witness = solutionSetCondition({
+    const witness = solutionSetCondition<
+      TwoObject,
+      TwoArrow,
+      TwoObject,
+      TwoArrow
+    >({
       functor: identity,
-      target: "•",
+      target: DOT,
       candidates: [
         {
-          object: "•",
+          object: DOT,
           arrow: candidateArrow,
           factor: () => ({ factored: true, mediator: TwoObjectCategory.id("★") }),
         },
       ],
       tests: [
         {
-          source: "•",
+          source: DOT,
           arrow: candidateArrow,
         },
       ],
@@ -138,22 +150,26 @@ describe("adjoint-functor-theorem infrastructure", () => {
 
   it("aggregates solution-set witnesses into adjoint feasibility reports", () => {
     const identity = identityFunctorWithWitness(TwoObjectCategory)
-    const candidateArrow = idArrow("•")
+    const candidateArrow = idArrow(DOT)
 
-    const solutionWitness: SolutionSetConditionWitness<TwoObject, TwoArrow, TwoObject, TwoArrow> =
-      solutionSetCondition({
+    const solutionWitness: SolutionSetConditionWitness<
+      TwoObject,
+      TwoArrow,
+      TwoObject,
+      TwoArrow
+    > = solutionSetCondition({
         functor: identity,
-        target: "•",
+        target: DOT,
         candidates: [
           {
-            object: "•",
+            object: DOT,
             arrow: candidateArrow,
-            factor: () => ({ factored: true, mediator: idArrow("•") }),
+            factor: () => ({ factored: true, mediator: idArrow(DOT) }),
           },
         ],
         tests: [
           {
-            source: "•",
+            source: DOT,
             arrow: candidateArrow,
           },
         ],
@@ -166,16 +182,16 @@ describe("adjoint-functor-theorem infrastructure", () => {
           indices: [],
           diagram: trivialConeDiagram,
           limit: {
-            tip: "•",
+            tip: DOT,
             legs: () => {
               throw new Error("unused")
             },
             diagram: trivialConeDiagram,
           },
-          factor: () => ({ factored: true, mediator: idArrow("•") }),
+          factor: () => ({ factored: true, mediator: idArrow(DOT) }),
           cones: [
             {
-              tip: "•",
+              tip: DOT,
               legs: () => {
                 throw new Error("unused")
               },
@@ -193,28 +209,28 @@ describe("adjoint-functor-theorem infrastructure", () => {
     })
 
     expect(result.possible).toBe(true)
-    expect(result.assignments).toEqual([{ target: "•", object: "•" }])
+    expect(result.assignments).toEqual([{ target: DOT, object: DOT }])
   })
 
   it("evaluates Special Adjoint Functor Theorem hypotheses", () => {
     const identity = identityFunctorWithWitness(TwoObjectCategory)
-    const candidateArrow = idArrow("•")
+    const candidateArrow = idArrow(DOT)
 
-    const cocone: CocompletenessSample<never, TwoObject, TwoArrow>["colimit"] = {
-      coTip: "•",
+    const cocone: CocompletenessSample<unknown, TwoObject, TwoArrow>["colimit"] = {
+      coTip: DOT,
       legs: () => {
         throw new Error("no legs for empty diagram")
       },
       diagram: trivialCoconeDiagram,
     }
 
-    const cocompletenessSample: CocompletenessSample<never, TwoObject, TwoArrow> = {
+    const cocompletenessSample: CocompletenessSample<unknown, TwoObject, TwoArrow> = {
       indices: [],
       diagram: trivialCoconeDiagram,
       colimit: cocone,
       factor: (candidate) =>
-        candidate.coTip === "•"
-          ? { factored: true, mediator: idArrow("•") }
+        candidate.coTip === DOT
+          ? { factored: true, mediator: idArrow(DOT) }
           : { factored: false, reason: "coTips differ" },
       cocones: [cocone],
     }
@@ -224,19 +240,24 @@ describe("adjoint-functor-theorem infrastructure", () => {
       samples: [cocompletenessSample],
     }
 
-    const solutionWitness = solutionSetCondition({
+    const solutionWitness = solutionSetCondition<
+      TwoObject,
+      TwoArrow,
+      TwoObject,
+      TwoArrow
+    >({
       functor: identity,
-      target: "•",
+      target: DOT,
       candidates: [
         {
-          object: "•",
+          object: DOT,
           arrow: candidateArrow,
-          factor: () => ({ factored: true, mediator: idArrow("•") }),
+          factor: () => ({ factored: true, mediator: idArrow(DOT) }),
         },
       ],
       tests: [
         {
-          source: "•",
+          source: DOT,
           arrow: candidateArrow,
         },
       ],
@@ -248,7 +269,12 @@ describe("adjoint-functor-theorem infrastructure", () => {
       reason: "Finite sets provide the canonical small example.",
     }
 
-    const result = specialAdjointFunctorTheorem({
+    const result = specialAdjointFunctorTheorem<
+      TwoObject,
+      TwoArrow,
+      TwoObject,
+      TwoArrow
+    >({
       functor: identity,
       cocomplete: cocompleteWitness,
       locallySmall,

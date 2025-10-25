@@ -2,15 +2,30 @@ import { describe, expect, test } from "vitest"
 import type { FunctorCheckSamples } from "../functor"
 import { CategoryLimits } from "../stdlib/category-limits"
 import type { FinSetMor, FinSetObj } from "../src/all/triangulated"
-import { FinSet, makeFinSetObj } from "../src/all/triangulated"
+import { FinSet, FinSetFinitelyCocomplete, makeFinSetObj } from "../src/all/triangulated"
+
+const encodePairKey = (leftIndex: number, rightIndex: number): string => `${leftIndex}|${rightIndex}`
 
 const buildTensorStructure = () => {
-  const cache = new WeakMap<
-    FinSetObj,
-    WeakMap<FinSetObj, { readonly obj: FinSetObj; readonly projections: readonly [FinSetMor, FinSetMor] }>
-  >()
+  type ProductCacheEntry = {
+    readonly obj: FinSetObj
+    readonly tupleIndex: (leftIndex: number, rightIndex: number) => number
+    readonly tuples: ReadonlyArray<readonly [number, number]>
+  }
 
-  const lookup = (left: FinSetObj, right: FinSetObj) => {
+  const cache = new WeakMap<FinSetObj, WeakMap<FinSetObj, ProductCacheEntry>>()
+
+  const readTuple = (tuple: unknown): readonly [number, number] => {
+    const coordinates = tuple as ReadonlyArray<number>
+    const leftIndex = coordinates[0]
+    const rightIndex = coordinates[1]
+    if (typeof leftIndex !== "number" || typeof rightIndex !== "number") {
+      throw new Error("FinSet tensor: encountered malformed product tuple")
+    }
+    return [leftIndex, rightIndex]
+  }
+
+  const lookup = (left: FinSetObj, right: FinSetObj): ProductCacheEntry => {
     let inner = cache.get(left)
     if (!inner) {
       inner = new WeakMap()
@@ -20,8 +35,25 @@ const buildTensorStructure = () => {
     if (cached) {
       return cached
     }
-    const { obj, projections } = FinSet.product([left, right])
-    const entry = { obj, projections: [projections[0]!, projections[1]!] as const }
+    const { obj } = FinSet.product([left, right])
+    const tupleKeys = new Map<string, number>()
+    const tuples = obj.elements.map((tuple, index) => {
+      const coordinates = readTuple(tuple)
+      tupleKeys.set(encodePairKey(coordinates[0], coordinates[1]), index)
+      return coordinates
+    })
+    const entry: ProductCacheEntry = {
+      obj,
+      tuples,
+      tupleIndex: (leftIndex, rightIndex) => {
+        const key = encodePairKey(leftIndex, rightIndex)
+        const target = tupleKeys.get(key)
+        if (target === undefined) {
+          throw new Error(`FinSet tensor: missing coordinate (${leftIndex}, ${rightIndex}) in product carrier`)
+        }
+        return target
+      },
+    }
     inner.set(right, entry)
     return entry
   }
@@ -31,9 +63,15 @@ const buildTensorStructure = () => {
     onMorphisms: (left: FinSetMor, right: FinSetMor): FinSetMor => {
       const source = lookup(left.from, right.from)
       const target = lookup(left.to, right.to)
-      const leftLeg = FinSet.compose(left, source.projections[0])
-      const rightLeg = FinSet.compose(right, source.projections[1])
-      return FinSet.tuple(source.obj, [leftLeg, rightLeg], target.obj)
+      const map = source.tuples.map(([leftIndex, rightIndex]) => {
+        const leftImage = left.map[leftIndex]
+        const rightImage = right.map[rightIndex]
+        if (leftImage === undefined || rightImage === undefined) {
+          throw new Error("FinSet tensor: morphism legs missing image data")
+        }
+        return target.tupleIndex(leftImage, rightImage)
+      })
+      return { from: source.obj, to: target.obj, map }
     },
   }
 }
@@ -56,7 +94,7 @@ describe("CategoryLimits.productWithObjectFunctor", () => {
 
     const result = CategoryLimits.productWithObjectFunctor({
       category: FinSet,
-      products: FinSet,
+      products: FinSetFinitelyCocomplete,
       parameter,
       samples,
       label: "FinSet",

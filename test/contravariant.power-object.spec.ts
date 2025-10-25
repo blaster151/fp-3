@@ -48,7 +48,8 @@ describe("power object contravariant functor", () => {
     );
     const rightEvaluation = FinSet.compose(membershipBooleans.evaluation, rightPair);
 
-    expect(FinSet.equalMor(leftEvaluation, rightEvaluation)).toBe(true);
+    expect(FinSet.equalMor).toBeDefined();
+    expect(FinSet.equalMor!(leftEvaluation, rightEvaluation)).toBe(true);
     expect(inverseImage.from).toBe(powerBooleans);
     expect(inverseImage.to).toBe(powerNumbers);
   });

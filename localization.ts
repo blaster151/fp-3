@@ -23,6 +23,7 @@ interface ArrowIndexing<Obj, Arr> {
   readonly indexOf: (arrow: Arr) => number;
   readonly src: (index: number) => Obj;
   readonly dst: (index: number) => Obj;
+  readonly arrowAt: (index: number, context?: string) => Arr;
 }
 
 const makeArrowIndexing = <Obj, Arr>(
@@ -31,7 +32,11 @@ const makeArrowIndexing = <Obj, Arr>(
   const { arrows, eq, src, dst } = category;
   const indexMap = new Map<Arr, number>();
   for (let i = 0; i < arrows.length; i += 1) {
-    indexMap.set(arrows[i], i);
+    const arrow = arrows[i];
+    if (arrow === undefined) {
+      throw new Error("Finite category witness listed an undefined arrow.");
+    }
+    indexMap.set(arrow, i);
   }
 
   const indexOf = (arrow: Arr): number => {
@@ -40,7 +45,8 @@ const makeArrowIndexing = <Obj, Arr>(
       return byReference;
     }
     for (let i = 0; i < arrows.length; i += 1) {
-      if (eq(arrows[i], arrow)) {
+      const candidate = arrows[i];
+      if (candidate !== undefined && eq(candidate, arrow)) {
         indexMap.set(arrow, i);
         return i;
       }
@@ -48,11 +54,22 @@ const makeArrowIndexing = <Obj, Arr>(
     throw new Error("Encountered arrow that is not listed in the finite category witness.");
   };
 
+  const arrowAt = (index: number, context = "arrow lookup"): Arr => {
+    const arrow = arrows[index];
+    if (arrow === undefined) {
+      throw new Error(
+        `Failed to resolve arrow at index ${index} during ${context}.`,
+      );
+    }
+    return arrow;
+  };
+
   return {
     arrows,
     indexOf,
-    src: (index: number) => src(arrows[index]),
-    dst: (index: number) => dst(arrows[index]),
+    src: (index: number) => src(arrowAt(index, "source lookup")),
+    dst: (index: number) => dst(arrowAt(index, "target lookup")),
+    arrowAt,
   };
 };
 
@@ -107,18 +124,18 @@ const computeClosure = <Obj, Arr>(
     seen.add(key);
     results.push([denominator, numerator]);
 
-    const apex = category.src(indexing.arrows[denominator]);
+    const apex = category.src(indexing.arrowAt(denominator, "closure apex"));
     for (const candidate of denominatorIndices) {
-      if (category.dst(indexing.arrows[candidate]) !== apex) {
+      if (category.dst(indexing.arrowAt(candidate, "closure candidate")) !== apex) {
         continue;
       }
       const refinedDenominator = category.compose(
-        indexing.arrows[denominator],
-        indexing.arrows[candidate],
+        indexing.arrowAt(denominator, "closure denominator"),
+        indexing.arrowAt(candidate, "closure candidate denominator"),
       );
       const refinedNumerator = category.compose(
-        indexing.arrows[numerator],
-        indexing.arrows[candidate],
+        indexing.arrowAt(numerator, "closure numerator"),
+        indexing.arrowAt(candidate, "closure candidate numerator"),
       );
       const refinedDenominatorIndex = indexing.indexOf(refinedDenominator);
       const refinedNumeratorIndex = indexing.indexOf(refinedNumerator);
@@ -144,7 +161,23 @@ const normalizePair = <Obj, Arr>(
     numerator,
   );
   const sorted = [...closure].sort(comparePairs);
-  return sorted[0];
+  const canonical = sorted[0];
+  if (!canonical) {
+    throw new Error("Failed to normalize localization fraction pair.");
+  }
+  return canonical;
+};
+
+const requireArrow = <Arr>(
+  arrows: ReadonlyArray<Arr>,
+  index: number,
+  context: string,
+): Arr => {
+  const arrow = arrows[index];
+  if (arrow === undefined) {
+    throw new Error(`Missing arrow at index ${index} during ${context}.`);
+  }
+  return arrow;
 };
 
 interface LocalizedArrowInternal<Obj, Arr> {
@@ -262,7 +295,11 @@ const buildArrowRegistry = <Obj, Arr>(
   for (const denominator of denominatorIndices) {
     const apex = indexing.src(denominator);
     for (let i = 0; i < category.arrows.length; i += 1) {
-      const numeratorArrow = category.arrows[i];
+      const numeratorArrow = requireArrow(
+        category.arrows,
+        i,
+        "localization numerator enumeration",
+      );
       if (category.src(numeratorArrow) !== apex) {
         continue;
       }
@@ -275,21 +312,28 @@ const buildArrowRegistry = <Obj, Arr>(
       );
       const key = pairKey(canonical[0], canonical[1]);
       if (!registry.has(key)) {
-        const denominatorArrow = indexing.arrows[canonical[0]];
-        const numerator = indexing.arrows[canonical[1]];
-        pairByKey.set(key, canonical);
-        registry.set(key, {
-          key,
-          source: category.dst(denominatorArrow),
-          target: category.dst(numerator),
-          apex: category.src(denominatorArrow),
-          numerator,
-          denominator: denominatorArrow,
-          numeratorIndex: canonical[1],
-          denominatorIndex: canonical[0],
-        });
+          const [canonicalDenominator, canonicalNumerator] = canonical;
+          const denominatorArrow = indexing.arrowAt(
+            canonicalDenominator,
+            "registry denominator",
+          );
+          const numerator = indexing.arrowAt(
+            canonicalNumerator,
+            "registry numerator",
+          );
+          pairByKey.set(key, canonical);
+          registry.set(key, {
+            key,
+            source: category.dst(denominatorArrow),
+            target: category.dst(numerator),
+            apex: category.src(denominatorArrow),
+            numerator,
+            denominator: denominatorArrow,
+            numeratorIndex: canonicalNumerator,
+            denominatorIndex: canonicalDenominator,
+          });
+        }
       }
-    }
   }
 
   for (const [key, canonical] of pairByKey.entries()) {
@@ -340,7 +384,8 @@ const composeLocalized = <Obj, Arr>(
         leftDenominator,
         rightNumerator,
       );
-      const key = pairKey(canonical[0], canonical[1]);
+      const [canonicalDenominator, canonicalNumerator] = canonical;
+      const key = pairKey(canonicalDenominator, canonicalNumerator);
       const existing = registry.arrowsByKey.get(key);
       if (!existing) {
         throw new Error("Composite fraction not present in registry.");
@@ -408,13 +453,13 @@ export const localizeCategory = <Obj, Arr>(
     readonly composite: Arr;
     readonly reason: string;
   }> = [];
-  for (const leftIndex of denominatorIndices) {
-    for (const rightIndex of denominatorIndices) {
-      const leftArrow = indexing.arrows[leftIndex];
-      const rightArrow = indexing.arrows[rightIndex];
-      if (category.dst(rightArrow) !== category.src(leftArrow)) {
-        continue;
-      }
+    for (const leftIndex of denominatorIndices) {
+      for (const rightIndex of denominatorIndices) {
+        const leftArrow = indexing.arrowAt(leftIndex, "denominator closure left");
+        const rightArrow = indexing.arrowAt(rightIndex, "denominator closure right");
+        if (category.dst(rightArrow) !== category.src(leftArrow)) {
+          continue;
+        }
       const composite = category.compose(leftArrow, rightArrow);
       const compositeIndex = indexing.indexOf(composite);
       if (!denominatorIndices.includes(compositeIndex)) {
@@ -467,7 +512,8 @@ export const localizeCategory = <Obj, Arr>(
         denominator,
         numerator,
       );
-      const key = pairKey(canonical[0], canonical[1]);
+      const [canonicalDenominator, canonicalNumerator] = canonical;
+      const key = pairKey(canonicalDenominator, canonicalNumerator);
       const arrow = arrowsByKey.get(key);
       if (!arrow) {
         throw new Error("Identity fraction missing from localization.");
@@ -501,7 +547,8 @@ export const localizeCategory = <Obj, Arr>(
           denominator,
           numerator,
         );
-        const key = pairKey(canonical[0], canonical[1]);
+        const [canonicalDenominator, canonicalNumerator] = canonical;
+        const key = pairKey(canonicalDenominator, canonicalNumerator);
         const localized = arrowsByKey.get(key);
         if (!localized) {
           throw new Error("Failed to locate canonical fraction for arrow.");
@@ -594,7 +641,11 @@ const computeExpectedImage = <Obj, Arr, TgtObj, TgtArr>(
   iso: IsoWitness<TgtArr>,
 ): TgtArr => {
   const target = baseFunctor.witness.target;
-  const numerator = result.baseCategory.arrows[arrow.numeratorIndex];
+    const numerator = requireArrow(
+      result.baseCategory.arrows,
+      arrow.numeratorIndex,
+      "localization numerator image",
+    );
   const numeratorImage = baseFunctor.functor.F1(numerator);
   return target.compose(numeratorImage, iso.inverse);
 };
@@ -656,19 +707,19 @@ export const localizationUniversalProperty = <
 
   if (finiteTarget) {
     for (const arrow of result.localizedCategory.arrows) {
-      const iso = denominatorWitnesses.get(arrow.denominatorIndex);
-      if (!iso) {
-        fractionFailures.push({
-          arrow,
-          expected: liftedFunctor.functor.F1(arrow),
-          actual: liftedFunctor.functor.F1(arrow),
-          reason:
-            "Missing isomorphism witness for denominator prevents reconstructing the expected image.",
-        });
-        continue;
-      }
-      const expected = computeExpectedImage(result, baseFunctor, arrow, iso);
-      const actual = liftedFunctor.functor.F1(arrow);
+        const iso = denominatorWitnesses.get(arrow.denominatorIndex);
+        if (!iso) {
+          fractionFailures.push({
+            arrow,
+            expected: liftedFunctor.functor.F1(arrow),
+            actual: liftedFunctor.functor.F1(arrow),
+            reason:
+              "Missing isomorphism witness for denominator prevents reconstructing the expected image.",
+          });
+          continue;
+        }
+        const expected = computeExpectedImage(result, baseFunctor, arrow, iso);
+        const actual = liftedFunctor.functor.F1(arrow);
       const matches = eq ? eq(actual, expected) : Object.is(actual, expected);
       if (!matches) {
         fractionFailures.push({
@@ -679,11 +730,14 @@ export const localizationUniversalProperty = <
         });
       }
     }
-  } else if (result.localizedCategory.arrows.length > 0) {
-    const representative = result.localizedCategory.arrows[0];
-    const image = liftedFunctor.functor.F1(representative);
-    fractionFailures.push({
-      arrow: representative,
+    } else if (result.localizedCategory.arrows.length > 0) {
+      const representative = result.localizedCategory.arrows[0];
+      if (!representative) {
+        throw new Error("Localization produced arrows but representative was missing.");
+      }
+      const image = liftedFunctor.functor.F1(representative);
+      fractionFailures.push({
+        arrow: representative,
       expected: image,
       actual: image,
       reason:

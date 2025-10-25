@@ -19,6 +19,36 @@ if (!FinSetNaturalNumbersObjectCandidate) {
 
 const FinSetNaturalNumbersObject = FinSetNaturalNumbersObjectCandidate
 
+const requireWitness = <K extends keyof typeof FinSetNaturalNumbersObject>(
+  key: K,
+): NonNullable<(typeof FinSetNaturalNumbersObject)[K]> => {
+  const value = FinSetNaturalNumbersObject[key]
+  if (value === undefined) {
+    throw new Error(
+      `FinSet natural numbers object witness must expose ${String(
+        key,
+      )} for law tests.`,
+    )
+  }
+  return value as NonNullable<(typeof FinSetNaturalNumbersObject)[K]>
+}
+
+const certifySuccessorZeroSeparation = requireWitness('certifySuccessorZeroSeparation')
+const certifyInductiveSubobject = requireWitness('certifyInductiveSubobject')
+const certifyInductiveSubobjectIsomorphism = requireWitness(
+  'certifyInductiveSubobjectIsomorphism',
+)
+const certifyPointInjective = requireWitness('certifyPointInjective')
+const certifyPointSurjective = requireWitness('certifyPointSurjective')
+const certifyPointInfinite = requireWitness('certifyPointInfinite')
+const certifyDedekindInfinite = requireWitness('certifyDedekindInfinite')
+const enumeratePoints = requireWitness('enumeratePoints')
+const initialAlgebra = requireWitness('initialAlgebra')
+const additionWitness = requireWitness('addition')
+const primitiveRecursionFromExponential = requireWitness('primitiveRecursionFromExponential')
+const primitiveRecursion = requireWitness('primitiveRecursion')
+const checkCandidate = requireWitness('checkCandidate')
+
 const eqFinSetMor = (left: FinSetMor, right: FinSetMor): boolean => {
   const verdict = FinSet.equalMor?.(left, right)
   if (typeof verdict === 'boolean') {
@@ -176,7 +206,7 @@ describe('FinSetNaturalNumbersObject', () => {
 
     expect(witness.mediator.map).toEqual(expected)
 
-    const uniqueness = FinSetNaturalNumbersObject.checkCandidate(sequence, witness.mediator)
+    const uniqueness = checkCandidate(sequence, witness.mediator)
     expect(uniqueness.agrees).toBe(true)
 
     const flawed: FinSetMor = {
@@ -185,7 +215,7 @@ describe('FinSetNaturalNumbersObject', () => {
       map: expected.map((value, index) => (index === 3 ? Math.max(0, value - 1) : value)),
     }
 
-    const verdict = FinSetNaturalNumbersObject.checkCandidate(sequence, flawed)
+    const verdict = checkCandidate(sequence, flawed)
     expect(verdict.agrees).toBe(false)
     expect(verdict.reason).toMatch(/candidate/i)
     expectEqualArrows(verdict.compatibility.zeroComposite, zero)
@@ -203,7 +233,7 @@ describe('FinSetNaturalNumbersObject', () => {
 
     expectEqualArrows(characteristic, FinSetSubobjectClassifier.falseArrow)
 
-    const verdict = FinSetNaturalNumbersObject.certifySuccessorZeroSeparation()
+    const verdict = certifySuccessorZeroSeparation()
     expect(verdict.separated).toBe(true)
     expectEqualArrows(verdict.characteristic, FinSetSubobjectClassifier.falseArrow)
     expectEqualArrows(verdict.equalizer.equalize, equalizer.equalize)
@@ -229,7 +259,7 @@ describe('FinSetNaturalNumbersObject', () => {
       ),
     }
 
-    const witness = FinSetNaturalNumbersObject.initialAlgebra({
+    const witness = initialAlgebra({
       target,
       algebra,
       label: 'canonical initial algebra',
@@ -259,7 +289,7 @@ describe('FinSetNaturalNumbersObject', () => {
       ),
     }
 
-    const verdict = FinSetNaturalNumbersObject.initialAlgebra({
+    const verdict = initialAlgebra({
       target,
       algebra,
       equalMor: () => false,
@@ -275,7 +305,7 @@ describe('FinSetNaturalNumbersObject', () => {
   })
 
   it('enumerates global points on the natural numbers carrier', () => {
-    const points = FinSetNaturalNumbersObject.enumeratePoints()
+    const points = enumeratePoints()
     expect(points.length).toBe(FinSetNaturalNumbersObject.carrier.elements.length)
 
     points.forEach((point, index) => {
@@ -286,24 +316,24 @@ describe('FinSetNaturalNumbersObject', () => {
   })
 
   it('certifies that successor is injective but not point-surjective', () => {
-    const injective = FinSetNaturalNumbersObject.certifyPointInjective()
+    const injective = certifyPointInjective()
     expect(injective.holds).toBe(true)
     expect(injective.images.length).toBe(FinSetNaturalNumbersObject.carrier.elements.length)
 
-    const [zeroPoint] = FinSetNaturalNumbersObject.enumeratePoints()
-    const surjective = FinSetNaturalNumbersObject.certifyPointSurjective()
+    const [zeroPoint] = enumeratePoints()
+    const surjective = certifyPointSurjective()
     expect(surjective.holds).toBe(false)
     expect(surjective.missing).toEqual(zeroPoint)
     expect(surjective.details).toMatch(/misses/i)
   })
 
   it('witnesses Dedekind infiniteness via the successor embedding', () => {
-    const pointInfinite = FinSetNaturalNumbersObject.certifyPointInfinite()
+    const pointInfinite = certifyPointInfinite()
     expect(pointInfinite.holds).toBe(true)
     expect(pointInfinite.surjective.holds).toBe(false)
     expect(pointInfinite.injective.holds).toBe(true)
 
-    const dedekind = FinSetNaturalNumbersObject.certifyDedekindInfinite()
+    const dedekind = certifyDedekindInfinite()
     expect(dedekind.holds).toBe(true)
     expect(dedekind.pointInfinite.holds).toBe(true)
     expect(dedekind.monomorphismCertified).toBe(true)
@@ -312,7 +342,7 @@ describe('FinSetNaturalNumbersObject', () => {
 
   it('collapses inductive subobjects onto the canonical natural numbers object', () => {
     const inclusion = FinSet.id(FinSetNaturalNumbersObject.carrier)
-    const verdict = FinSetNaturalNumbersObject.certifyInductiveSubobject({
+    const verdict = certifyInductiveSubobject({
       inclusion,
       zeroLift: FinSetNaturalNumbersObject.zero,
       successorLift: FinSetNaturalNumbersObject.successor,
@@ -343,7 +373,7 @@ describe('FinSetNaturalNumbersObject', () => {
       verdict.compatibility.zeroComposite,
     )
 
-    const convenience = FinSetNaturalNumbersObject.certifyInductiveSubobjectIsomorphism({
+    const convenience = certifyInductiveSubobjectIsomorphism({
       inclusion,
       zeroLift: FinSetNaturalNumbersObject.zero,
       successorLift: FinSetNaturalNumbersObject.successor,
@@ -370,7 +400,7 @@ describe('FinSetNaturalNumbersObject', () => {
       ),
     }
 
-    const verdict = FinSetNaturalNumbersObject.certifyInductiveSubobject({
+    const verdict = certifyInductiveSubobject({
       inclusion,
       zeroLift,
       successorLift,
@@ -390,13 +420,12 @@ describe('FinSetNaturalNumbersObject', () => {
     expect(isoWitness.reason).toMatch(/zero/i)
     expect(isoWitness.metadata.compatibility.zeroComposite.map[0]).toBe(1)
 
-    const convenience =
-      FinSetNaturalNumbersObject.certifyInductiveSubobjectIsomorphism({
-        inclusion,
-        zeroLift,
-        successorLift,
-        label: 'zero-free subobject convenience',
-      })
+    const convenience = certifyInductiveSubobjectIsomorphism({
+      inclusion,
+      zeroLift,
+      successorLift,
+      label: 'zero-free subobject convenience',
+    })
 
     expect(convenience.found).toBe(false)
     expect(convenience.reason).toMatch(/zero/i)
@@ -411,7 +440,7 @@ describe('FinSetNaturalNumbersObject', () => {
       map: object.elements.map(() => Math.min(1, object.elements.length - 1)),
     }
 
-    const verdict = FinSetNaturalNumbersObject.certifyInductiveSubobject({
+    const verdict = certifyInductiveSubobject({
       inclusion,
       zeroLift,
       successorLift,
@@ -424,7 +453,7 @@ describe('FinSetNaturalNumbersObject', () => {
   })
 
   it('constructs addition via the helper', () => {
-    const addition = FinSetNaturalNumbersObject.addition({ label: 'addition' })
+    const addition = additionWitness({ label: 'addition' })
 
     expect(addition.holds).toBe(true)
     expect(addition.details).toMatch(/addition arrow/i)
@@ -449,7 +478,7 @@ describe('FinSetNaturalNumbersObject', () => {
     const { parameter, target, base, step } = buildAdditionExponentialData()
     const product = FinSet.binaryProduct(target, parameter)
 
-    const recursion = FinSetNaturalNumbersObject.primitiveRecursionFromExponential({
+    const recursion = primitiveRecursionFromExponential({
       parameter,
       target,
       base,
@@ -475,7 +504,7 @@ describe('FinSetNaturalNumbersObject', () => {
   it('records diagnostics when exponential recursion equality checks fail', () => {
     const { parameter, target, base, step } = buildAdditionExponentialData()
 
-    const verdict = FinSetNaturalNumbersObject.primitiveRecursionFromExponential({
+    const verdict = primitiveRecursionFromExponential({
       parameter,
       target,
       base,
@@ -497,7 +526,7 @@ describe('FinSetNaturalNumbersObject', () => {
     const parameter = FinSetNaturalNumbersObject.carrier
     const target = FinSetNaturalNumbersObject.carrier
     const product = FinSet.binaryProduct(target, parameter)
-    const addition = FinSetNaturalNumbersObject.addition({
+    const addition = additionWitness({
       label: 'addition for multiplication',
     })
 
@@ -507,7 +536,7 @@ describe('FinSetNaturalNumbersObject', () => {
       map: parameter.elements.map(() => 0),
     }
 
-    const multiplication = FinSetNaturalNumbersObject.primitiveRecursion({
+    const multiplication = primitiveRecursion({
       parameter,
       target,
       base,
@@ -538,7 +567,7 @@ describe('FinSetNaturalNumbersObject', () => {
   })
 
   it('reports diagnostics when equality witnesses reject recursion compatibility', () => {
-    const verdict = FinSetNaturalNumbersObject.addition({
+    const verdict = additionWitness({
       equalMor: () => false,
       label: 'addition diagnostics',
     })

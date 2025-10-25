@@ -133,24 +133,22 @@ const collectTargetObjects = <SrcObj, SrcArr, TgtObj, TgtArr>(
   for (const object of functor.witness.objectGenerators) {
     fallbackObjects.push(functor.functor.F0(object));
   }
-  const options: ObjectListOptions<TgtObj> = { fallback: fallbackObjects };
-  if (explicit) {
-    options.explicit = explicit;
-  }
-  return collectObjects(options);
+  return collectObjects(
+    explicit
+      ? { fallback: fallbackObjects, explicit }
+      : { fallback: fallbackObjects },
+  );
 };
 
 const collectSourceObjects = <SrcObj, SrcArr, TgtObj, TgtArr>(
   functor: FunctorWithWitness<SrcObj, SrcArr, TgtObj, TgtArr>,
   explicit?: ReadonlyArray<SrcObj>,
 ): ReadonlyArray<SrcObj> => {
-  const options: ObjectListOptions<SrcObj> = {
-    fallback: functor.witness.objectGenerators,
-  };
-  if (explicit) {
-    options.explicit = explicit;
-  }
-  return collectObjects(options);
+  return collectObjects(
+    explicit
+      ? { fallback: functor.witness.objectGenerators, explicit }
+      : { fallback: functor.witness.objectGenerators },
+  );
 };
 
 export interface FaithfulnessFailure<SrcObj, SrcArr, TgtArr> {

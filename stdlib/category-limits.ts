@@ -3612,6 +3612,15 @@ export namespace CategoryLimits {
     readonly analysis: DiagramNaturalityAnalysis<I, A, O, M>
   }
 
+  const simpleFromCategory = <O, M>(
+    category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>,
+  ): SimpleCat<O, M> => ({
+    id: (object) => category.id(object),
+    compose: (g, f) => category.compose(g, f),
+    src: (arrow) => category.dom(arrow),
+    dst: (arrow) => category.cod(arrow),
+  })
+
   export const diagramToFunctorWitness = <I, A, O, M>(input: {
     readonly base: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
     readonly diagram: FiniteDiagram<I, A, O, M> | SmallDiagram<I, A, O, M>
@@ -3642,7 +3651,7 @@ export namespace CategoryLimits {
 
     const functor = constructFunctorWithWitness(
       diagram.shape,
-      base,
+      simpleFromCategory(base),
       functorStructure,
       samples,
       options?.metadata,
@@ -3651,7 +3660,7 @@ export namespace CategoryLimits {
     const analysis = analyzeDiagramNaturality({
       base,
       diagram,
-      eq: options?.eq as ((a: M, b: M) => boolean) | undefined,
+      ...(options?.eq ? { eq: options.eq } : {}),
     })
 
     return { functor, analysis }
@@ -3891,8 +3900,8 @@ export namespace CategoryLimits {
       base,
       changeOfShape,
       diagram,
-      eq: input.eq ?? base.eq,
-      options: input.options,
+      ...(input.eq ? { eq: input.eq } : {}),
+      ...(input.options ? { options: input.options } : {}),
     })
     const restriction = reindexing.restrictCone(originalLimit.cone)
     if (!restriction.analysis.holds) {
@@ -3987,8 +3996,8 @@ export namespace CategoryLimits {
       base,
       changeOfShape,
       diagram,
-      eq: input.eq ?? base.eq,
-      options: input.options,
+      ...(input.eq ? { eq: input.eq } : {}),
+      ...(input.options ? { options: input.options } : {}),
     })
     const restriction = reindexing.restrictCocone(originalColimit.cocone)
     if (!restriction.analysis.holds) {

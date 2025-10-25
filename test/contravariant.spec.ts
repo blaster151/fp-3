@@ -70,23 +70,25 @@ describe("contravariant functor", () => {
   });
 
   it("packages the Set-based Hom(-, X) contravariant functor", () => {
-    const booleans = SetCat.obj([false, true]) as SetObj<unknown>;
-    const toolkit = homSetContravariantFunctorWithWitness(booleans);
+    const booleans = SetCat.obj([false, true]);
+    const toolkit = homSetContravariantFunctorWithWitness(booleans as SetObj<unknown>);
 
     expect(toolkit.functor.report.holds).toBe(true);
 
-    const numbers = SetCat.obj([0, 1]) as SetObj<unknown>;
+    const numbers = SetCat.obj([0, 1]);
     const swap = SetCat.hom(
       numbers,
       numbers,
       (value: number) => (value + 1) % 2,
-    ) as SetHom<unknown, unknown>;
+    );
 
-    const domain = toolkit.functor.functor.F0(swap.cod as SetObj<unknown>);
-    const codomain = toolkit.functor.functor.F0(swap.dom as SetObj<unknown>);
+    const widenedSwap = swap as SetHom<unknown, unknown>;
 
-    const select = toolkit.register(swap.cod as SetObj<unknown>, (value: unknown) => value === 0);
-    const mapped = toolkit.functor.functor.F1(swap).map(select);
+    const domain = toolkit.functor.functor.F0(widenedSwap.cod as SetObj<unknown>);
+    const codomain = toolkit.functor.functor.F0(widenedSwap.dom as SetObj<unknown>);
+
+    const select = toolkit.register(widenedSwap.cod as SetObj<unknown>, (value: unknown) => value === 0);
+    const mapped = toolkit.functor.functor.F1(widenedSwap).map(select);
 
     expect(domain.has(select)).toBe(true);
     expect(codomain.has(mapped)).toBe(true);

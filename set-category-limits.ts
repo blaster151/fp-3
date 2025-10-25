@@ -1,4 +1,5 @@
 import { CategoryLimits } from "./stdlib/category-limits";
+import type { CartesianClosedCategory } from "./stdlib/category";
 import {
   SetCat,
   SetFalseArrow,
@@ -227,10 +228,13 @@ const setCoproductsWithCotuple: CategoryLimits.HasCoproductMediators<AnySetObj, 
       );
     }
 
-    const [left, right] = objects;
-    const data = SetCat.coproduct(left as SetObj<unknown>, right as SetObj<unknown>);
-    binaryCoproductMetadata.set(data.object as AnySetObj, { left, right });
-    return {
+      const [left, right] = objects;
+      if (left === undefined || right === undefined) {
+        throw new Error("Set coproducts: binary coproduct must provide both summands.");
+      }
+      const data = SetCat.coproduct(left as SetObj<unknown>, right as SetObj<unknown>);
+      binaryCoproductMetadata.set(data.object as AnySetObj, { left, right });
+      return {
       obj: data.object as AnySetObj,
       injections: [data.injections.inl as AnySetHom, data.injections.inr as AnySetHom],
     };
@@ -277,10 +281,8 @@ const setCoproductsWithCotuple: CategoryLimits.HasCoproductMediators<AnySetObj, 
   },
 };
 
-export const SetCartesianClosed = cartesianClosedSetClassifier as CategoryLimits.CartesianClosedCategory<
-  AnySetObj,
-  AnySetHom
->;
+export const SetCartesianClosed =
+  cartesianClosedSetClassifier as CartesianClosedCategory<AnySetObj, AnySetHom>;
 
 export const SetCoproductsWithCotuple = setCoproductsWithCotuple;
 
