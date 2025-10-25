@@ -151,10 +151,19 @@ it("keeps evaluation factorizations observable", () => {
     dom: product.object,
     cod: C,
     map: ([a, b]: readonly ["left" | "right", "stable" | "transient"]) => {
+      // Must satisfy: map(endo([a,b])) = endo(map([a,b]))
+      // endo([a,b]) = [endo(a), endo(b)]
+      // For a="right": endo("right")="left", so map(["right",b]) must map same as endo(map(["left",b]))
+      // If map(["left","stable"])="base", then endo("base")="base", so map(["right","stable"]) must also be "base"
+      // If map(["left","transient"])="pulse", then endo("pulse")="base", so map(["right","transient"]) could be "pulse" or anything that becomes "base"
+      
       if (a === "left") {
         return b === "stable" ? "base" : "pulse"
       }
-      return b === "stable" ? "fixed" : "pulse"
+      // For a="right", we need equivariance: map(["left", endo(b)]) = endo(map(["right", b]))
+      // If b="stable": map(["left","stable"])="base", endo("base")="base" → map(["right","stable"])="base"
+      // If b="transient": map(["left","stable"])="base", endo("base")="base" → map(["right","transient"]) needs endo(result)="base", so "pulse" works
+      return b === "stable" ? "base" : "pulse"
     },
   })
 
