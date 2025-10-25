@@ -9,7 +9,11 @@ import {
   vcat,
 } from "./semiring-linear"
 import type { Mat, Ring, Semiring, Vec } from "./semiring-linear"
-import { makeFinSetPullbackCalculator, finsetCharacteristicPullback } from "../../pullback"
+import {
+  makeFinSetPullbackCalculator,
+  finsetCharacteristicPullback,
+  configureFinSetPullbacks,
+} from "../../finset-pullback"
 import { FinSetProductsWithTuple, FinSetCoproductsWithCotuple } from "./finset-tools"
 import {
   VectView as VectViewNS,
@@ -4153,6 +4157,12 @@ export const FinSetFalseArrow: FinSetMor = finsetCharacteristic(
 )
 
 export const FinSetNegation: FinSetMor = finsetCharacteristic(FinSetFalseArrow)
+
+configureFinSetPullbacks({
+  FinSet,
+  FinSetTruthArrow,
+  FinSetTruthValues,
+})
 
 export const finsetCharacteristicFalsePullback = (
   characteristic: FinSetMor,
