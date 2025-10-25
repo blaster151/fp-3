@@ -6,7 +6,7 @@
   - Re-export the bridge helpers from `stdlib/category.ts` and replace the stale TODO comments that previously pointed contributors toward future integration work.
   - Add regression coverage that round-trips a small adjunction through the bridge to confirm the equipment analyzers accept the translated data.
   - Extend the virtual equipment documentation to advertise the new bridge entry point.
-- [ ] Teach stub generator to emit functioning oracle skeletons
+- [x] Teach stub generator to emit functioning oracle skeletons
   - Inventory existing oracle expectations and update the generator to emit pending-aware stubs.
   - Add refresh tooling, update generated outputs, and document the new workflow.
 - [ ] Replace trivial Street-action probe with registry-driven validation

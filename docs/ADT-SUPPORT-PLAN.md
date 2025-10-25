@@ -267,7 +267,7 @@ down into staged deliveries:
 ## 5. Testing and Quality Strategy
 - Use Vitest for deterministic behavioural checks.
 - Future phases will add property-based suites (via `fast-check`) once recursion and functorial features land.
-- Each oracle introduced later will be registered through `scripts/gen-oracle-stubs.ts` to remain compatible with CI automation.
+- Each oracle introduced later will be registered through `scripts/gen-oracle-stubs.ts` to remain compatible with CI automation. The generator now emits pending-aware skeletons instead of throwing stubs and supports `--refresh` to update existing auto-generated files.
 
 ## 6. Open Questions (for later exploration)
 - How to encode dependent indices (GADTs) while preserving exhaustiveness checking in TypeScript’s structural type system?
