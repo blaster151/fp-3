@@ -132,8 +132,9 @@ export function generateProbeDists<R, A>(
   }
   
   // Add some mixed distributions (for numeric semirings)
-  if (isNumericRig(R) && domain.length >= 2) {
-    // Probability-like semiring
+  // Add mixed distributions for numeric rigs (but not Ghost semiring which uses 0,1,2)
+  if (isNumericRig(R) && domain.length >= 2 && R.one !== 2) {
+    // Probability-like semiring (exclude GhostRig which has one=2)
     const w1 = new Map<A, R>();
     const w2 = new Map<A, R>();
 

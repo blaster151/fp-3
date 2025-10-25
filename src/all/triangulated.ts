@@ -10,6 +10,7 @@ import {
 } from "./semiring-linear"
 import type { Mat, Ring, Semiring, Vec } from "./semiring-linear"
 import { makeFinSetPullbackCalculator, finsetCharacteristicPullback } from "../../pullback"
+import { FinSetProductsWithTuple, FinSetCoproductsWithCotuple } from "./finset-tools"
 import {
   VectView as VectViewNS,
   applyRepAsLin as applyRepAsLinFn,
@@ -4220,8 +4221,6 @@ export const FinSetPowerObject = CategoryLimits.makePowerObjectFromSubobjectClas
 })
 
 export const FinSetCCC: CartesianClosedCategory<FinSetObj, FinSetMor> = FinSet
-
-const { FinSetProductsWithTuple, FinSetCoproductsWithCotuple } = require("./finset-tools") as typeof import("./finset-tools")
 
 export const FinSetPullbacksFromEqualizer = finsetPullbackCalculator
 
