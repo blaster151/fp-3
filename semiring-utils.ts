@@ -102,8 +102,16 @@ const gMul: Record<Ghost, Record<Ghost, Ghost>> = {
 export const GhostRig: CSRig<Ghost> = {
   zero: G0,
   one: G1,
-  add: (a, b) => gAdd[a][b],
-  mul: (a, b) => gMul[a][b],
+  add: (a, b) => {
+    if (!(a in gAdd)) throw new Error(`Invalid Ghost value for add: ${a}`);
+    if (!(b in gAdd[a])) throw new Error(`Invalid Ghost value for add: ${b}`);
+    return gAdd[a][b];
+  },
+  mul: (a, b) => {
+    if (!(a in gMul)) throw new Error(`Invalid Ghost value for mul: ${a}`);
+    if (!(b in gMul[a])) throw new Error(`Invalid Ghost value for mul: ${b}`);
+    return gMul[a][b];
+  },
   eq: (a, b) => a === b,
   isZero: a => a === G0,
   isOne: a => a === G1,
