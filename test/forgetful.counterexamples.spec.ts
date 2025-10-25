@@ -87,6 +87,10 @@ describe("forgetful functor counterexamples", () => {
       }
     }
 
-    expect(extensions[0](disagreement)).not.toBe(extensions[1](disagreement));
+    const [firstExtension, secondExtension] = extensions;
+    if (!firstExtension || !secondExtension) {
+      throw new Error("expected at least two coproduct extensions");
+    }
+    expect(firstExtension(disagreement)).not.toBe(secondExtension(disagreement));
   });
 });

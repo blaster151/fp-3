@@ -6,13 +6,30 @@ import {
   type FinSetMor,
 } from '../../allTS'
 
-const { naturalNumbersObject } = FinSetElementaryToposWitness
+const natural = (() => {
+  const candidate = FinSetElementaryToposWitness.naturalNumbersObject
+  if (!candidate) {
+    throw new Error(
+      'FinSet elementary topos witness must expose a natural numbers object for integer completion tests.',
+    )
+  }
+  return candidate
+})()
 
-if (!naturalNumbersObject) {
-  throw new Error('FinSet elementary topos witness must expose a natural numbers object for integer completion tests.')
+const requireNaturalWitness = <K extends keyof typeof natural>(
+  key: K,
+): NonNullable<(typeof natural)[K]> => {
+  const value = natural[key]
+  if (value === undefined) {
+    throw new Error(
+      `FinSet natural numbers object witness must expose ${String(key)} for integer completion tests.`,
+    )
+  }
+  return value as NonNullable<(typeof natural)[K]>
 }
 
-const natural = naturalNumbersObject
+const integerCompletionWitness = requireNaturalWitness('integerCompletion')
+const naturalBound = requireNaturalWitness('bound')
 
 const eqFinSetMor = (left: FinSetMor, right: FinSetMor): boolean => {
   const verdict = FinSet.equalMor?.(left, right)
@@ -32,7 +49,7 @@ const eqFinSetMor = (left: FinSetMor, right: FinSetMor): boolean => {
 }
 
 describe('FinSet integer completion', () => {
-  const completion = natural.integerCompletion({
+  const completion = integerCompletionWitness({
     equalMor: eqFinSetMor,
     label: 'law suite Grothendieck completion',
   })
@@ -104,7 +121,7 @@ describe('FinSet integer completion', () => {
     expect(differenceClass.get(0)).toBeDefined()
 
     const integersCardinality = completion.quotient.obj.elements.length
-    expect(integersCardinality).toBe(2 * natural.bound + 1)
+    expect(integersCardinality).toBe(2 * naturalBound + 1)
   })
 
   it('records balanced tuples inside the relation equalizer', () => {

@@ -159,7 +159,12 @@ describe("SetCat lazy carriers", () => {
     const retrieved = SetCat.semantics(subset);
 
     expect(retrieved?.tag).toBe("SubsetById");
-    expect(retrieved?.equals?.({ id: 2 }, { id: 2 })).toBe(true);
+    expect(
+      retrieved?.equals?.(
+        { id: 2, label: "duplicate" },
+        { id: 2, label: "duplicate" },
+      ),
+    ).toBe(true);
     expect(retrieved?.has({ id: 2, label: "two" })).toBe(true);
     expect(retrieved?.has({ id: 4, label: "four" })).toBe(false);
   });

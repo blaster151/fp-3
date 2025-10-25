@@ -21,17 +21,18 @@ describe("Discrete Kan extension builders", () => {
     family,
   };
 
+  type DiscreteLanFiberElement = { readonly source: number; readonly value: string };
+  type DiscreteRanComponent = { readonly source: number; readonly value: string };
+  type DiscreteRanBundle = { readonly components: ReadonlyArray<DiscreteRanComponent> };
+
   it("constructs the discrete left Kan extension with unit diagnostics", () => {
     const left = buildDiscreteLeftKanExtension(input);
 
-    const lan0 = Array.from(left.extension.functor.F0(0)).map((element) => [
-      element.source,
-      element.value,
-    ]);
-    const lan1 = Array.from(left.extension.functor.F0(1)).map((element) => [
-      element.source,
-      element.value,
-    ]);
+    const lanElements = (object: number): ReadonlyArray<DiscreteLanFiberElement> =>
+      Array.from(left.extension.functor.F0(object) as ReadonlySet<DiscreteLanFiberElement>);
+
+    const lan0 = lanElements(0).map((element) => [element.source, element.value]);
+    const lan1 = lanElements(1).map((element) => [element.source, element.value]);
 
     expect(lan0).toEqual([
       [0, "A"],
@@ -45,8 +46,8 @@ describe("Discrete Kan extension builders", () => {
     const unit0 = left.unit.transformation.component(0);
     const unit1 = left.unit.transformation.component(1);
 
-    const lan0Object = Array.from(left.extension.functor.F0(0));
-    const lan1Object = Array.from(left.extension.functor.F0(1));
+    const lan0Object = lanElements(0);
+    const lan1Object = lanElements(1);
 
     expect(unit0.map("A")).toEqual(lan0Object[0]);
     expect(unit1.map("B")).toEqual(lan1Object[0]);
@@ -59,10 +60,13 @@ describe("Discrete Kan extension builders", () => {
   it("constructs the discrete right Kan extension with counit diagnostics", () => {
     const right = buildDiscreteRightKanExtension(input);
 
-    const ran0 = Array.from(right.extension.functor.F0(0)).map((bundle) =>
+    const ranElements = (object: number): ReadonlyArray<DiscreteRanBundle> =>
+      Array.from(right.extension.functor.F0(object) as ReadonlySet<DiscreteRanBundle>);
+
+    const ran0 = ranElements(0).map((bundle) =>
       bundle.components.map((component) => [component.source, component.value]),
     );
-    const ran1 = Array.from(right.extension.functor.F0(1)).map((bundle) =>
+    const ran1 = ranElements(1).map((bundle) =>
       bundle.components.map((component) => [component.source, component.value]),
     );
 
@@ -80,7 +84,9 @@ describe("Discrete Kan extension builders", () => {
     ]);
 
     const counit0 = right.counit.transformation.component(0);
-    const ran0Element = right.extension.functor.F0(0).values().next().value;
+    const ran0Element = (right.extension.functor.F0(0) as ReadonlySet<DiscreteRanBundle>)
+      .values()
+      .next().value;
     expect(counit0.map(ran0Element)).toBe("A");
 
     expect(right.counit.report.holds).toBe(true);
@@ -99,7 +105,7 @@ describe("Discrete Kan extension builders", () => {
     for (const object of left.extension.witness.objectGenerators) {
       const mediated = induction.mediating.transformation.component(object);
       const expected = identity.transformation.component(object);
-      for (const element of left.extension.functor.F0(object)) {
+      for (const element of left.extension.functor.F0(object) as ReadonlySet<DiscreteLanFiberElement>) {
         expect(mediated.map(element)).toBe(expected.map(element));
       }
     }
@@ -116,7 +122,7 @@ describe("Discrete Kan extension builders", () => {
     for (const object of right.extension.witness.objectGenerators) {
       const mediated = induction.mediating.transformation.component(object);
       const expected = identity.transformation.component(object);
-      for (const element of right.extension.functor.F0(object)) {
+      for (const element of right.extension.functor.F0(object) as ReadonlySet<DiscreteRanBundle>) {
         expect(mediated.map(element)).toBe(expected.map(element));
       }
     }

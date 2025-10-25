@@ -330,13 +330,23 @@ export const buildReflectiveSubcategoryWitness = <
     },
   );
 
-  const adjunction = constructAdjunctionWithWitness(reflector, inclusion, unit, counit, {
-    samples: options.adjunctionSamples,
-    metadata: [
-      ...(options.metadata ?? []),
-      "Reflective subcategory adjunction L ⊣ J verified against supplied samples.",
-    ],
-  });
+    const adjunctionOptions = {
+      metadata: [
+        ...(options.metadata ?? []),
+        "Reflective subcategory adjunction L ⊣ J verified against supplied samples.",
+      ],
+      ...(options.adjunctionSamples
+        ? { samples: options.adjunctionSamples }
+        : {}),
+    };
+
+    const adjunction = constructAdjunctionWithWitness(
+      reflector,
+      inclusion,
+      unit,
+      counit,
+      adjunctionOptions,
+    );
 
   const unitReport = analyzeReflectiveUnit(inclusion, reflector, unit);
   const counitReport = analyzeReflectiveCounit(inclusion, reflector, counit);
@@ -644,13 +654,23 @@ export const buildCoreflectiveSubcategoryWitness = <
     },
   );
 
-  const adjunction = constructAdjunctionWithWitness(inclusion, coreflector, unit, counit, {
-    samples: options.adjunctionSamples,
-    metadata: [
-      ...(options.metadata ?? []),
-      "Coreflective subcategory adjunction J ⊣ R verified against supplied samples.",
-    ],
-  });
+    const adjunctionOptions = {
+      metadata: [
+        ...(options.metadata ?? []),
+        "Coreflective subcategory adjunction J ⊣ R verified against supplied samples.",
+      ],
+      ...(options.adjunctionSamples
+        ? { samples: options.adjunctionSamples }
+        : {}),
+    };
+
+    const adjunction = constructAdjunctionWithWitness(
+      inclusion,
+      coreflector,
+      unit,
+      counit,
+      adjunctionOptions,
+    );
 
   const unitReport = analyzeCoreflectiveUnit(inclusion, coreflector, unit);
   const counitReport = analyzeCoreflectiveCounit(inclusion, coreflector, counit);

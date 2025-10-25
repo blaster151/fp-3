@@ -21,9 +21,10 @@ interface HomSetEnumerator<Obj, Arr> {
   (source: Obj, target: Obj): ReadonlyArray<Arr>;
 }
 
-interface FiniteLikeCategory<Obj, Arr> extends FiniteCategory<Obj, Arr> {
+type FiniteLikeCategory<Obj, Arr> = FiniteCategory<Obj, Arr> & {
   readonly objects?: ReadonlyArray<Obj>;
-}
+  readonly arrows?: ReadonlyArray<Arr>;
+};
 
 const ensureArrowEquality = <Obj, Arr>(
   category: FiniteCategory<Obj, Arr>,
@@ -127,28 +128,30 @@ export const findIdempotents = <Obj, Arr>(
   const idempotents: IdempotentClassification<Obj, Arr>[] = [];
   const failures: IdempotentClassification<Obj, Arr>[] = [];
 
-  for (const arrow of candidates) {
-    const source = category.src(arrow);
-    const target = category.dst(arrow);
-    if (!Object.is(source, target)) {
-      const failure: IdempotentClassification<Obj, Arr> = {
-        arrow,
+    for (const arrow of candidates) {
+      const source = category.src(arrow);
+      const target = category.dst(arrow);
+      if (!Object.is(source, target)) {
+        const failure: IdempotentClassification<Obj, Arr> = {
+          arrow,
         holds: false,
         reason: "Arrow is not an endomorphism; idempotents must share source and target.",
       };
       classifications.push(failure);
       failures.push(failure);
       continue;
-    }
-    const composite = category.compose(arrow, arrow);
-    const holds = eq(composite, arrow);
-    const classification: IdempotentClassification<Obj, Arr> = {
-      arrow,
-      object: source,
-      composite,
-      holds,
-      reason: holds ? undefined : "Squaring the arrow did not reproduce the original arrow.",
-    };
+      }
+      const composite = category.compose(arrow, arrow);
+      const holds = eq(composite, arrow);
+      const classification: IdempotentClassification<Obj, Arr> = holds
+        ? { arrow, object: source, composite, holds }
+        : {
+            arrow,
+            object: source,
+            composite,
+            holds,
+            reason: "Squaring the arrow did not reproduce the original arrow.",
+          };
     classifications.push(classification);
     if (holds) {
       idempotents.push(classification);
@@ -504,7 +507,7 @@ export const analyzeKaroubiEquivalence = <Obj, Arr>(
   const essentialSurjectivity = isEssentiallySurjective(result.inclusion, {
     targetObjects: options.targetObjects ?? result.envelope.objects,
     sourceCandidates: options.sourceObjects ?? result.baseCategory.objects,
-    targetIsoSearch: options.targetIsoSearch,
+    ...(options.targetIsoSearch ? { targetIsoSearch: options.targetIsoSearch } : {}),
   });
 
   const prerequisites: EquivalencePrerequisites<
@@ -537,7 +540,7 @@ export const analyzeKaroubiEquivalence = <Obj, Arr>(
     fullness,
     essentialSurjectivity,
     prerequisites,
-    equivalence,
+    ...(equivalence ? { equivalence } : {}),
     diagnostics,
   };
 };

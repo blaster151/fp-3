@@ -45,8 +45,12 @@ const ONE = new Set([null]);
 const homCount = <X, Y>(domain: AnySet<X>, codomain: AnySet<Y>): number =>
   Math.pow(codomain.size, domain.size);
 
-type SetObject = AnySet<unknown>;
+type SetObject = SetObj<unknown>;
 type SetMorphism = SetHom<any, any>;
+
+const setSubobjectClassifierWithEqualizers =
+  SetSubobjectClassifier as typeof SetSubobjectClassifier &
+    CategoryLimits.HasEqualizers<SetObject, SetMorphism>;
 
 const ensureSetObj = <T>(carrier: AnySet<T>, context: string): SetObj<T> => {
   if (typeof (carrier as SetObj<T>).has !== "function" || typeof (carrier as SetObj<T>)[Symbol.iterator] !== "function") {
@@ -84,7 +88,7 @@ const setCategoryForComponentwise = {
 
 const setNaturalNumbersZeroSeparation = () =>
   CategoryLimits.certifyNaturalNumbersZeroSeparation({
-    category: SetSubobjectClassifier,
+    category: setSubobjectClassifierWithEqualizers,
     natural: SetNaturalNumbersObject,
     classifier: SetSubobjectClassifier,
     equalMor: equalSetMorphisms,
@@ -94,7 +98,7 @@ const setNaturalNumbersZeroSeparation = () =>
 const setNaturalNumbersInduction = () => {
   const inclusion = SetCat.id(SetNaturalNumbersObject.carrier) as SetMorphism;
   return CategoryLimits.certifyNaturalNumbersInduction({
-    category: SetSubobjectClassifier,
+    category: setSubobjectClassifierWithEqualizers,
     natural: SetNaturalNumbersObject,
     inclusion,
     zeroLift: SetNaturalNumbersObject.zero as SetMorphism,
@@ -114,14 +118,19 @@ const setNaturalNumbersPrimitiveRecursion = () => {
     const [current] = pair as readonly [number, unknown];
     return SetNaturalNumbersObject.successor.map(current);
   });
+  const baseArrow = SetCat.hom(
+    parameter as SetObj<unknown>,
+    target as SetObj<number>,
+    (point) => SetNaturalNumbersObject.zero.map(point as SetTerminalObject),
+  );
 
-  return CategoryLimits.naturalNumbersPrimitiveRecursion({
-    category: SetSubobjectClassifier,
+  return CategoryLimits.naturalNumbersPrimitiveRecursion<SetObject, SetMorphism>({
+    category: setSubobjectClassifierWithEqualizers,
     natural: SetNaturalNumbersObject,
     cartesianClosed: SetCartesianClosed,
     parameter,
     target,
-    base: SetNaturalNumbersObject.zero as SetMorphism,
+    base: baseArrow as unknown as SetMorphism,
     step: step as SetMorphism,
     equalMor: equalSetMorphisms,
     label: "Set ℕ primitive recursion",
@@ -132,13 +141,18 @@ const setNaturalNumbersInitialAlgebra = () => {
   const target = SetNaturalNumbersObject.carrier as SetObject;
   const terminal = SetSubobjectClassifier.terminalObj as SetObject;
   const canonical = SetCat.coproduct(terminal as SetObj<unknown>, target as SetObj<number>);
+  const zeroLift = SetCat.hom(
+    terminal as SetObj<unknown>,
+    target as SetObj<number>,
+    (point) => SetNaturalNumbersObject.zero.map(point as SetTerminalObject),
+  );
   const algebra = canonical.copair(
-    SetNaturalNumbersObject.zero as SetHom<SetTerminalObject, number>,
+    zeroLift,
     SetNaturalNumbersObject.successor,
   );
 
   return CategoryLimits.naturalNumbersInitialAlgebra({
-    category: SetSubobjectClassifier,
+    category: setSubobjectClassifierWithEqualizers,
     natural: SetNaturalNumbersObject,
     coproducts: SetCoproductsWithCotuple,
     target,

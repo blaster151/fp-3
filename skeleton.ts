@@ -444,15 +444,16 @@ export const analyzeEssentialInjectivityModuloTargetSkeleton = <SrcObj, SrcArr, 
   targetSkeleton: SkeletonEquivalenceResult<TgtObj, TgtArr>,
   options: EssentialInjectivitySkeletonOptions<SrcObj, SrcArr> = {},
 ): EssentialInjectivitySkeletonAnalysis<SrcObj, SrcArr, TgtObj, TgtArr> => {
-  const original = checkEssentialInjectivityOnObjects(functor, {
-    objectPairs: options.originalPairs,
-  });
+    const original = checkEssentialInjectivityOnObjects(functor, {
+      ...(options.originalPairs ? { objectPairs: options.originalPairs } : {}),
+    });
   const projectedFunctor = composeFunctors(targetSkeleton.equivalence.quasiInverse, functor, {
     metadata: ["Projected onto codomain skeleton for essential-injectivity diagnostics."],
   });
-  const projected = checkEssentialInjectivityOnObjects(projectedFunctor, {
-    objectPairs: options.projectedPairs ?? options.originalPairs,
-  });
+    const projectedPairs = options.projectedPairs ?? options.originalPairs;
+    const projected = checkEssentialInjectivityOnObjects(projectedFunctor, {
+      ...(projectedPairs ? { objectPairs: projectedPairs } : {}),
+    });
 
   const assignments = targetSkeleton.computation.representativeMap;
   const classifications = classifyEssentialInjectivityFailures(original.failures, assignments);

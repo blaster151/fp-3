@@ -14,6 +14,7 @@ import {
   type SetHom,
   type SetObj,
 } from "../set-cat";
+import { setSimpleCategory } from "../set-simple-category";
 
 type Index = "•";
 type Arrow = "id_•";
@@ -46,7 +47,7 @@ const makeIdentityLimit = (object: SetObj<unknown>) => {
     if (index !== "•") {
       throw new Error(`makeIdentityLimit: unexpected index ${String(index)}`);
     }
-    return SetCat.id(object);
+    return SetCat.id(object) as SetHom<unknown, unknown>;
   };
   return { diagram, cone: { tip: object, legs, diagram } };
 };
@@ -57,7 +58,7 @@ const makeIdentityColimit = (object: SetObj<unknown>) => {
     if (index !== "•") {
       throw new Error(`makeIdentityColimit: unexpected index ${String(index)}`);
     }
-    return SetCat.id(object);
+    return SetCat.id(object) as SetHom<unknown, unknown>;
   };
   return { diagram, cocone: { coTip: object, legs, diagram } };
 };
@@ -119,8 +120,8 @@ const constantArrow = (
 
 describe("constructAdjunctionWithWitness – preservation metadata", () => {
   it("derives limit and colimit preservation analyses from supplied samples", () => {
-    const left = identityFunctorWithWitness(SetCat);
-    const right = identityFunctorWithWitness(SetCat);
+    const left = identityFunctorWithWitness(setSimpleCategory);
+    const right = identityFunctorWithWitness(setSimpleCategory);
     const unit = identityNaturalTransformation(left);
     const counit = identityNaturalTransformation(right);
 
@@ -150,7 +151,7 @@ describe("constructAdjunctionWithWitness – preservation metadata", () => {
         },
         {
           tip: baseObject,
-          legs: () => SetCat.id(baseObject),
+          legs: () => SetCat.id(baseObject) as SetHom<unknown, unknown>,
           diagram: limitDiagram,
         },
       ],
@@ -212,7 +213,7 @@ describe("constructAdjunctionWithWitness – preservation metadata", () => {
       sourceCocones: [
         {
           coTip: baseObject,
-          legs: () => SetCat.id(baseObject),
+          legs: () => SetCat.id(baseObject) as SetHom<unknown, unknown>,
           diagram: colimitDiagram,
         },
       ],
@@ -243,10 +244,40 @@ describe("constructAdjunctionWithWitness – preservation metadata", () => {
 
     const adjunction = constructAdjunctionWithWitness(left, right, unit, counit, {
       limitPreservation: {
-        samples: [limitSample, sabotagedLimitSample],
+        samples: [
+          limitSample as unknown as AdjunctionLimitPreservationSample<
+            unknown,
+            SetObj<unknown>,
+            SetHom<unknown, unknown>,
+            SetObj<unknown>,
+            SetHom<unknown, unknown>
+          >,
+          sabotagedLimitSample as unknown as AdjunctionLimitPreservationSample<
+            unknown,
+            SetObj<unknown>,
+            SetHom<unknown, unknown>,
+            SetObj<unknown>,
+            SetHom<unknown, unknown>
+          >,
+        ],
       },
       colimitPreservation: {
-        samples: [colimitSample, sabotagedColimitSample],
+        samples: [
+          colimitSample as unknown as AdjunctionColimitPreservationSample<
+            unknown,
+            SetObj<unknown>,
+            SetHom<unknown, unknown>,
+            SetObj<unknown>,
+            SetHom<unknown, unknown>
+          >,
+          sabotagedColimitSample as unknown as AdjunctionColimitPreservationSample<
+            unknown,
+            SetObj<unknown>,
+            SetHom<unknown, unknown>,
+            SetObj<unknown>,
+            SetHom<unknown, unknown>
+          >,
+        ],
       },
     });
 
@@ -279,9 +310,28 @@ describe("constructAdjunctionWithWitness – preservation metadata", () => {
     expect(sabotagedColimit?.details.some((line) => line.includes("Sabotaged mediator"))).toBe(true);
 
     const metadata = adjunction.preservation!;
-    const [recordedLimit] = metadata.rightPreservesLimits!;
+    const rightPreservesLimits = metadata.rightPreservesLimits;
+    expect(rightPreservesLimits).toBeDefined();
+    if (!rightPreservesLimits) {
+      throw new Error("Expected right adjoint preservation metadata.");
+    }
+    const [recordedLimit] = rightPreservesLimits;
+    expect(recordedLimit).toBeDefined();
+    if (!recordedLimit) {
+      throw new Error("Expected right adjoint limit preservation analysis.");
+    }
     expect(recordedLimit.analysis.property).toContain("identity-diagram");
-    const [recordedColimit] = metadata.leftPreservesColimits!;
+
+    const leftPreservesColimits = metadata.leftPreservesColimits;
+    expect(leftPreservesColimits).toBeDefined();
+    if (!leftPreservesColimits) {
+      throw new Error("Expected left adjoint preservation metadata.");
+    }
+    const [recordedColimit] = leftPreservesColimits;
+    expect(recordedColimit).toBeDefined();
+    if (!recordedColimit) {
+      throw new Error("Expected left adjoint colimit preservation analysis.");
+    }
     expect(recordedColimit.analysis.property).toContain("identity-colimit");
   });
 });

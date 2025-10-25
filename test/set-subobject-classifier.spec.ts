@@ -12,12 +12,32 @@ import {
   SetPowerObject,
   SetPullbacks,
   type AnySetHom,
+  type AnySetObj,
 } from "../set-subobject-classifier";
 import { CategoryLimits } from "../stdlib/category-limits";
 import { equalSetHom } from "../set-pullbacks";
 
 const toSortedArray = (values: ReadonlySet<number>): ReadonlyArray<number> =>
   [...values].sort((left, right) => left - right);
+
+const requireEqualizer = () => {
+  const classifier = SetSubobjectClassifier as typeof SetSubobjectClassifier & {
+    equalizer?: (left: AnySetHom, right: AnySetHom) => {
+      readonly obj: AnySetObj;
+      readonly equalize: AnySetHom;
+    };
+  };
+
+  if (!classifier.equalizer) {
+    throw new Error(
+      "Set subobject classifier witness must expose equalizer for semantics tests.",
+    );
+  }
+
+  return classifier.equalizer;
+};
+
+const setClassifierEqualizer = requireEqualizer();
 
 describe("set subobject classifier", () => {
   it("round-trips subset inclusions through Ω", () => {
@@ -121,7 +141,7 @@ describe("set subobject classifier", () => {
       value.id === 0 ? ({ id: 0 } as const) : ({ id: 99 } as const),
     );
 
-    const equalizer = SetSubobjectClassifier.equalizer(
+    const equalizer = setClassifierEqualizer(
       left as unknown as AnySetHom,
       right as unknown as AnySetHom,
     );
