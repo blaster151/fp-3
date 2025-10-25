@@ -433,7 +433,8 @@ const buildM2Exponential = <B, C>(input: {
         if (!func) {
           throw new Error('M2.exponential.curry: mediator undefined on the provided element');
         }
-        return func;
+        const stabilised = object.endo(func);
+        return normaliseElement(object, stabilised);
       },
     });
   };

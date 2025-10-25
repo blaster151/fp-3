@@ -13,6 +13,7 @@ import {
   makeFinSetPullbackCalculator,
   finsetCharacteristicPullback,
   configureFinSetPullbacks,
+  type FinSetCharacteristicPullbackWitness,
 } from "../../finset-pullback"
 import { FinSetProductsWithTuple, FinSetCoproductsWithCotuple } from "./finset-tools"
 import {
@@ -66,12 +67,7 @@ import {
   type SliceArrow,
   type SliceObject,
 } from "../../slice-cat"
-import type {
-  PullbackCalculator,
-  PullbackConeFactorResult,
-  PullbackData,
-  FinSetCharacteristicPullbackWitness,
-} from "../../pullback"
+import type { PullbackCalculator, PullbackConeFactorResult, PullbackData } from "../../pullback"
 import {
   makeMonicCategory,
   type MonicCategory,
