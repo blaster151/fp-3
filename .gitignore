@@ -19,6 +19,7 @@ node_modules/
 !node_modules/magic-string/
 !node_modules/pathe/
 !node_modules/picocolors/
+!node_modules/picomatch/
 !node_modules/std-env/
 !node_modules/strip-literal/
 !node_modules/tinyrainbow/
