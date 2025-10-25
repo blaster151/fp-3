@@ -361,8 +361,7 @@ const buildM2Exponential = <B, C>(input: {
       if (!table) {
         throw new Error('M2.exponential: encountered an untracked function element');
       }
-      const transported = table.map((value) => normaliseElement(codomain, codomain.endo(value)));
-      const signature = signatureFromOutputs(codomain, transported);
+      const signature = signatureFromOutputs(codomain, table);
       const image = lookupBySignature.get(signature);
       if (!image) {
         throw new Error('M2.exponential: endomorphism does not preserve the exponential carrier');
@@ -433,8 +432,7 @@ const buildM2Exponential = <B, C>(input: {
         if (!func) {
           throw new Error('M2.exponential.curry: mediator undefined on the provided element');
         }
-        const stabilised = object.endo(func);
-        return normaliseElement(object, stabilised);
+        return normaliseElement(object, func);
       },
     });
   };

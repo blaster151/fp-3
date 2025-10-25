@@ -54,9 +54,25 @@ const getFinsetTruthPullbacks = (): PullbackCalculator<FinSetObj, FinSetMor> => 
   return finsetTruthPullbacksInstance;
 };
 
+const finsetObjEquals = (left: FinSetObj, right: FinSetObj): boolean => {
+  if (left === right) return true;
+  if (left.elements.length !== right.elements.length) return false;
+
+  return left.elements.every((value, index) => {
+    const candidate = right.elements[index];
+    if (Array.isArray(value) && Array.isArray(candidate)) {
+      return (
+        value.length === candidate.length &&
+        value.every((entry, entryIndex) => entry === candidate[entryIndex])
+      );
+    }
+    return value === candidate;
+  });
+};
+
 const finsetMorEq = (left: FinSetMor, right: FinSetMor): boolean =>
-  left.from === right.from &&
-  left.to === right.to &&
+  finsetObjEquals(left.from, right.from) &&
+  finsetObjEquals(left.to, right.to) &&
   left.map.length === right.map.length &&
   left.map.every((value, index) => value === right.map[index]);
 
@@ -134,8 +150,11 @@ interface FinSetPullbackMetadata {
 const ensureFinSetEqual = (left: FinSetMor, right: FinSetMor): boolean => {
   const FinSet = getFinSet();
   const verdict = FinSet.equalMor?.(left, right);
-  if (typeof verdict === "boolean") {
-    return verdict;
+  if (verdict === true) {
+    return true;
+  }
+  if (verdict === false) {
+    return finsetMorEq(left, right);
   }
   return finsetMorEq(left, right);
 };
@@ -158,22 +177,6 @@ export const makeFinSetPullbackCalculator = (): PullbackCalculator<FinSetObj, Fi
       pullback: witness.pullback,
     };
   };
-
-const finsetObjEquals = (left: FinSetObj, right: FinSetObj): boolean => {
-  if (left === right) return true;
-  if (left.elements.length !== right.elements.length) return false;
-
-  return left.elements.every((value, index) => {
-    const candidate = right.elements[index];
-    if (Array.isArray(value) && Array.isArray(candidate)) {
-      return (
-        value.length === candidate.length &&
-        value.every((entry, entryIndex) => entry === candidate[entryIndex])
-      );
-    }
-    return value === candidate;
-  });
-};
 
 const certifyCandidate = (
   f: FinSetMor,
