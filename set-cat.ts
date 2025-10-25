@@ -482,16 +482,16 @@ class LazySet<A> implements Set<A> {
     return false;
   }
 
-  public entries(): IterableIterator<[A, A]> {
-    return this.iterateMapped((value) => [value, value] as const);
+  public entries(): SetIterator<[A, A]> {
+    return this.iterateMapped((value) => [value, value] as const) as SetIterator<[A, A]>;
   }
 
-  public keys(): IterableIterator<A> {
-    return this[Symbol.iterator]();
+  public keys(): SetIterator<A> {
+    return this[Symbol.iterator]() as SetIterator<A>;
   }
 
-  public values(): IterableIterator<A> {
-    return this[Symbol.iterator]();
+  public values(): SetIterator<A> {
+    return this[Symbol.iterator]() as SetIterator<A>;
   }
 
   public forEach(callbackfn: (value: A, value2: A, set: Set<A>) => void, thisArg?: unknown): void {
@@ -500,7 +500,7 @@ class LazySet<A> implements Set<A> {
     }
   }
 
-  public [Symbol.iterator](): IterableIterator<A> {
+  public [Symbol.iterator](): SetIterator<A> {
     const iterator = this.semantics.iterate();
     const memoize = (value: A) => this.memoize(value);
     return (function* iterate() {
@@ -508,7 +508,7 @@ class LazySet<A> implements Set<A> {
         memoize(value);
         yield value;
       }
-    })();
+    })() as SetIterator<A>;
   }
 
   private iterateMapped<T>(map: (value: A) => T): IterableIterator<T> {
