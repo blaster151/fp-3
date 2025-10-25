@@ -9,8 +9,10 @@
 - [x] Teach stub generator to emit functioning oracle skeletons
   - Inventory existing oracle expectations and update the generator to emit pending-aware stubs.
   - Add refresh tooling, update generated outputs, and document the new workflow.
-- [ ] Replace trivial Street-action probe with registry-driven validation
-  - Load Street-action data from the registry, adjust the validator pipeline, and update the associated smoke tests and documentation.
+- [x] Replace trivial Street-action probe with registry-driven validation
+  - Added `relative/polynomial-street-registry.ts` so the Street harness, report, and roll-up live alongside the registry entries.
+  - Updated `scripts/validate-relative-monads.ts` to consume the registry bundle, expose a reusable `run` helper, and cover the CLI workflow with Vitest.
+  - Documented the new CLI behaviour in `RELATIVE-MONAD-LAYER.md` and checked off the remediation checklist.
 - [ ] Promote `scripts/generate-virtual-equipment.mjs` from an outline to an executable generator
   - Teach the script to load category adapters, emit TypeScript modules for companions/conjoints, and update the virtual-equipment barrel exports.
   - Add a `--dry-run` mode with snapshot coverage so contributors can verify the generated scaffolding before writing to disk.
