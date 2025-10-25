@@ -9,6 +9,7 @@ import {
   vcat,
 } from "./semiring-linear"
 import type { Mat, Ring, Semiring, Vec } from "./semiring-linear"
+import { makeFinSetPullbackCalculator, finsetCharacteristicPullback } from "../../pullback"
 import {
   VectView as VectViewNS,
   applyRepAsLin as applyRepAsLinFn,
@@ -2677,15 +2678,6 @@ export interface FinSetBottomSubobjectWitness {
   readonly subordinate: (candidate: FinSetMor) => FinSetSubobjectLeqResult
 }
 
-let cachedFinSetPullbackHelpers: typeof import("../../pullback") | undefined
-
-const getFinSetPullbackHelpers = (): typeof import("../../pullback") => {
-  if (!cachedFinSetPullbackHelpers) {
-    cachedFinSetPullbackHelpers = require("../../pullback") as typeof import("../../pullback")
-  }
-  return cachedFinSetPullbackHelpers
-}
-
 export const finsetCharacteristic = (monomorphism: FinSetMor): FinSetMor => {
   const domain = monomorphism.from
   const codomain = monomorphism.to
@@ -2766,7 +2758,6 @@ export const finsetCharacteristicComplement = (characteristic: FinSetMor): FinSe
 }
 
 const finsetCharacteristicFalsePullbackLazy = (characteristic: FinSetMor) => {
-  const { finsetCharacteristicPullback } = getFinSetPullbackHelpers()
   return finsetCharacteristicPullback(characteristic, FinSetFalseArrowLazy)
 }
 
@@ -2830,7 +2821,6 @@ const manualSubobjectFromCharacteristic = (
 }
 
 export const finsetSubobjectFromCharacteristic = (characteristic: FinSetMor): FinSetSubobjectWitness => {
-  const { finsetCharacteristicPullback } = getFinSetPullbackHelpers()
   try {
     const witness = finsetCharacteristicPullback(characteristic)
     return { subobject: witness.subobject, inclusion: witness.inclusion }
@@ -3241,7 +3231,6 @@ export const finsetSubobjectIntersection = (
   assertMonomorphism(left, 'finsetSubobjectIntersection (left mono)')
   assertMonomorphism(right, 'finsetSubobjectIntersection (right mono)')
 
-  const { makeFinSetPullbackCalculator } = getFinSetPullbackHelpers()
   const calculator = makeFinSetPullbackCalculator()
   const pullback = calculator.pullback(left, right)
 
@@ -3354,7 +3343,6 @@ export const compareFinSetSubobjectIntersections = (
   assertIntersectionWitness(left, right, first, 'compareFinSetSubobjectIntersections (first witness)')
   assertIntersectionWitness(left, right, second, 'compareFinSetSubobjectIntersections (second witness)')
 
-  const { makeFinSetPullbackCalculator } = getFinSetPullbackHelpers()
   const calculator = makeFinSetPullbackCalculator()
   const mediators = calculator.comparison(left, right, first.pullback, second.pullback)
 
@@ -4168,7 +4156,6 @@ export const FinSetNegation: FinSetMor = finsetCharacteristic(FinSetFalseArrow)
 export const finsetCharacteristicFalsePullback = (
   characteristic: FinSetMor,
 ): FinSetCharacteristicPullbackWitness => {
-  const { finsetCharacteristicPullback } = getFinSetPullbackHelpers()
   return finsetCharacteristicPullback(characteristic, FinSetFalseArrow)
 }
 
@@ -4212,7 +4199,6 @@ const FinSetClassifierForPowerObject: CategoryLimits.SubobjectClassifierCategory
   subobjectFromCharacteristic: manualSubobjectFromCharacteristic,
 }
 
-const { makeFinSetPullbackCalculator } = getFinSetPullbackHelpers()
 const finsetPullbackCalculator = makeFinSetPullbackCalculator()
 
 export const FinSetPowerObject = CategoryLimits.makePowerObjectFromSubobjectClassifier({
