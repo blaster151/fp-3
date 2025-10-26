@@ -60,6 +60,7 @@ import {
 import { checkPrimeSpectrum, checkPrimeStalks } from "./src/schemes/prime-spectrum";
 import { checkStructureSheaf } from "./src/schemes/structure-sheaf";
 import { checkSchemeGluing, checkSchemeFiberProduct } from "./src/schemes/global-schemes";
+import { checkFiberedCategory, checkStackDescent } from "./src/schemes/stacks";
 
 export interface RelativeMonadLawCheckResult<Obj, Arr, Payload, Evidence> {
   readonly holds: boolean;
@@ -101,6 +102,10 @@ export const AlgebraOracles = {
     structureSheaf: checkStructureSheaf,
     schemeGluing: checkSchemeGluing,
     schemeFiberProduct: checkSchemeFiberProduct,
+  },
+  moduli: {
+    fiberedCategory: checkFiberedCategory,
+    descentDatum: checkStackDescent,
   },
   causality: {
     counterexampleScenario: buildCRingPlusCausalityScenario,

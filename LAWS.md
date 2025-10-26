@@ -148,6 +148,20 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Check:** `AlgebraOracles.scheme.schemeFiberProduct`
 - **Implementation Notes:** Metadata reports how many fibre-product squares were validated and how many failed, keeping witness limits aligned with the underlying affine diagnostics.
 
+### Fibered-category cartesian lift checks
+
+- **Registry Path:** `algebra.moduli.fiberedCategory`
+- **Witness Builder:** `checkFiberedCategory(data, samples, options)` inspects each sampled base arrow/target pair, demands a cartesian lift, and verifies factorisation witnesses together with any supplied uniqueness alternatives.
+- **Check:** `AlgebraOracles.moduli.fiberedCategory`
+- **Implementation Notes:** Metadata tracks sample counts, comparison checks, and recorded witnesses so stack-style analyses can budget search envelopes across multiple atlases. Regression coverage: `test/moduli-stacks.spec.ts`.
+
+### Descent datum and stack gluing diagnostics
+
+- **Registry Path:** `algebra.moduli.descentDatum`
+- **Witness Builder:** `checkStackDescent(datum, options)` pulls back local objects along overlap arrows, verifies transition isomorphisms, checks cocycle compositions, and confirms optional glue witnesses align with the supplied local trivialisations.
+- **Check:** `AlgebraOracles.moduli.descentDatum`
+- **Implementation Notes:** Witnesses surface missing local data, restriction failures, inverse mismatches, and cocycle violations, highlighting precisely which overlap caused trouble. Regression coverage: `test/moduli-stacks.spec.ts`.
+
 ## Category-theoretic scaffolding
 
 ### Subcategories and fullness

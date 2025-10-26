@@ -24,5 +24,7 @@
 
 ## Stage 5 – Extend toward advanced topics and tooling
 - [x] Explore derived functors (cohomology) and relate chain complexes to sheaf cohomology computations.
-- [ ] Draft moduli/stack scaffolding with fibered categories and descent data.
-- [ ] Enhance documentation, visualization, and automated tests for algebraic-geometry workflows.
+- [x] Draft moduli/stack scaffolding with fibered categories and descent data.
+  - Added fibered-category and descent-datum oracles with witness-rich metadata for stack-style validation.
+- [x] Enhance documentation, visualization, and automated tests for algebraic-geometry workflows.
+  - Documented the new moduli oracles in LAWS.md and added Vitest coverage for cartesian lifts and descent gluing scenarios.
