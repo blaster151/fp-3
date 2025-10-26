@@ -92,6 +92,20 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Check:** `AlgebraOracles.sheaf.etaleCover`
 - **Implementation Notes:** Metadata highlights stalk samples and Jacobian witnesses to help refine étale atlases.
 
+### Chain complex derived-functor diagnostics
+
+- **Registry Path:** `algebra.derived.chainComplex`
+- **Witness Builder:** `checkChainComplex(complex, options)` ensures consecutive differentials compose to zero while capturing composition counterexamples with the originating cochain.
+- **Check:** `AlgebraOracles.derived.chainComplex`
+- **Implementation Notes:** Metadata reports the number of differentials, sampled cochains, and recorded witnesses so higher Čech constructions can budget search envelopes.
+
+### Two-open Čech cohomology checks
+
+- **Registry Path:** `algebra.derived.cechTwoOpen`
+- **Witness Builder:** `checkTwoOpenCechCohomology(setup, options)` builds the two-open Čech complex from sheaf restriction data, validates the differential square, and returns cohomology coset representatives.
+- **Check:** `AlgebraOracles.derived.cechTwoOpen`
+- **Implementation Notes:** Results expose coset counts via `analyzeCohomology`, surfaced at `AlgebraOracles.derived.cohomologyAnalysis`, so downstream derived-functor tooling can reuse the same kernel/image analysis.
+
 ### Prime spectrum and stalk checks
 
 - **Registry Path:** `algebra.scheme.primeSpectrum` / `algebra.scheme.primeStalks`

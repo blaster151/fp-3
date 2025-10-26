@@ -49,6 +49,11 @@ import {
   checkZariskiPrincipalOpenCover,
 } from "./src/sheaves/grothendieck-topologies";
 import {
+  analyzeCohomology,
+  checkChainComplex,
+  checkTwoOpenCechCohomology,
+} from "./src/sheaves/cech-cohomology";
+import {
   checkAffineSchemeMorphism,
   checkAffineSchemePullbackSquare,
 } from "./src/schemes/affine-morphisms";
@@ -82,6 +87,11 @@ export const AlgebraOracles = {
     grothendieckTopology: checkGrothendieckTopology,
     zariskiPrincipalOpen: checkZariskiPrincipalOpenCover,
     etaleCover: checkEtaleCover,
+  },
+  derived: {
+    chainComplex: checkChainComplex,
+    cechTwoOpen: checkTwoOpenCechCohomology,
+    cohomologyAnalysis: analyzeCohomology,
   },
   scheme: {
     affineMorphism: checkAffineSchemeMorphism,

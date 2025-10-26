@@ -23,6 +23,6 @@
 - [x] Develop example workflows and tests demonstrating affine/projective schemes and morphism compositions.
 
 ## Stage 5 – Extend toward advanced topics and tooling
-- [ ] Explore derived functors (cohomology) and relate chain complexes to sheaf cohomology computations.
+- [x] Explore derived functors (cohomology) and relate chain complexes to sheaf cohomology computations.
 - [ ] Draft moduli/stack scaffolding with fibered categories and descent data.
 - [ ] Enhance documentation, visualization, and automated tests for algebraic-geometry workflows.
