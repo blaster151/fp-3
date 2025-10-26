@@ -54,6 +54,7 @@ import {
 } from "./src/schemes/affine-morphisms";
 import { checkPrimeSpectrum, checkPrimeStalks } from "./src/schemes/prime-spectrum";
 import { checkStructureSheaf } from "./src/schemes/structure-sheaf";
+import { checkSchemeGluing, checkSchemeFiberProduct } from "./src/schemes/global-schemes";
 
 export interface RelativeMonadLawCheckResult<Obj, Arr, Payload, Evidence> {
   readonly holds: boolean;
@@ -88,6 +89,8 @@ export const AlgebraOracles = {
     primeSpectrum: checkPrimeSpectrum,
     primeStalks: checkPrimeStalks,
     structureSheaf: checkStructureSheaf,
+    schemeGluing: checkSchemeGluing,
+    schemeFiberProduct: checkSchemeFiberProduct,
   },
   causality: {
     counterexampleScenario: buildCRingPlusCausalityScenario,

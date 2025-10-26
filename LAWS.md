@@ -120,6 +120,20 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Check:** `AlgebraOracles.scheme.affinePullback`
 - **Implementation Notes:** Metadata exposes prime failures, base-agreement mismatches, and matching-pair coverage so tensor-product and base-change utilities can reuse the same diagnostic envelope.
 
+### Global scheme gluing atlases
+
+- **Registry Path:** `algebra.scheme.schemeGluing`
+- **Witness Builder:** `checkSchemeGluing(atlas, options)` runs each affine chart through the spectrum and structure-sheaf oracles, verifies referenced gluing morphisms in both directions, and checks that the supplied inverses identify matching primes on sample sets.
+- **Check:** `AlgebraOracles.scheme.schemeGluing`
+- **Implementation Notes:** Metadata surfaces ring mismatches, forward/backward morphism failures, inverse sample counts, and flags whether the atlas is quasi-compact and separated on the checked samples.
+
+### Scheme fiber products and base change
+
+- **Registry Path:** `algebra.scheme.schemeFiberProduct`
+- **Witness Builder:** `checkSchemeFiberProduct(diagram, options)` delegates to `checkAffineSchemePullbackSquare` for each affine patch in a proposed base-change diagram and aggregates any violations.
+- **Check:** `AlgebraOracles.scheme.schemeFiberProduct`
+- **Implementation Notes:** Metadata reports how many fibre-product squares were validated and how many failed, keeping witness limits aligned with the underlying affine diagnostics.
+
 ## Category-theoretic scaffolding
 
 ### Subcategories and fullness

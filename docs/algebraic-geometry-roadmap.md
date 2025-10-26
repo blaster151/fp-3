@@ -18,9 +18,9 @@
 - [x] Provide utilities for morphisms of affine schemes derived from ring maps, verifying pullbacks and pushouts.
 
 ## Stage 4 – Assemble global schemes and workflows
-- [ ] Glue affine schemes along overlaps using categorical pushouts/pullbacks.
-- [ ] Formalize fiber products, base change, and scheme-level properties (separated, quasi-compact).
-- [ ] Develop example workflows and tests demonstrating affine/projective schemes and morphism compositions.
+- [x] Glue affine schemes along overlaps using categorical pushouts/pullbacks.
+- [x] Formalize fiber products, base change, and scheme-level properties (separated, quasi-compact).
+- [x] Develop example workflows and tests demonstrating affine/projective schemes and morphism compositions.
 
 ## Stage 5 – Extend toward advanced topics and tooling
 - [ ] Explore derived functors (cohomology) and relate chain complexes to sheaf cohomology computations.

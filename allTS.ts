@@ -40,6 +40,7 @@ export * from "./src/sheaves/grothendieck-topologies"
 export * from "./src/schemes/affine-morphisms"
 export * from "./src/schemes/prime-spectrum"
 export * from "./src/schemes/structure-sheaf"
+export * from "./src/schemes/global-schemes"
 export * from "./monic-category"
 export type {
   Coring,
