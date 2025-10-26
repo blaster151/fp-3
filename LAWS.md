@@ -13,6 +13,113 @@ This document catalogs the algebraic laws that our functional programming constr
 
 > **Notation:** We use “source/target” (aka domain/codomain) and write composition as \(g \circ f = \texttt{compose(g, f)}\); identity morphisms appear as \(\mathrm{id}_A\) in prose and `id(A)` in code.
 
+## Commutative algebra and scheme scaffolding
+
+### Prime ideal witnesses with structured counterexamples
+
+- **Registry Path:** `algebra.ring.primeIdeal`
+- **Witness Builder:** `checkPrimeIdeal(ideal, options)` verifies properness, unit exclusion, and multiplicative closure, recording unit witnesses, candidate samples, and counterexample metadata for downstream use.
+- **Check:** `AlgebraOracles.ring.primeIdeal`
+- **Implementation Notes:** Failure reports enumerate violating pairs/products so spectrum and localization diagnostics can surface the exact offending elements.
+
+### Multiplicative sets for localization denominators
+
+- **Registry Path:** `algebra.ring.multiplicativeSet`
+- **Witness Builder:** `checkMultiplicativeSet(set, options)` ensures samples include `1`, exclude `0`, and remain closed under multiplication while capturing witness limits and counterexamples.
+- **Check:** `AlgebraOracles.ring.multiplicativeSet`
+- **Implementation Notes:** Metadata summarises distinct samples and witness slots so localization and stalk oracles can reuse the same search envelopes.
+
+### Localization rings as fraction oracles
+
+- **Registry Path:** `algebra.ring.localization`
+- **Witness Builder:** `checkLocalizationRing(data, options)` enumerates fractions, searches equality witnesses, and validates ring laws with multiplier evidence for every addition and multiplication comparison.
+- **Check:** `AlgebraOracles.ring.localization`
+- **Implementation Notes:** Witnesses expose the clearing multipliers used to certify fraction equalities, enabling structure sheaf restrictions to reuse the same normalization logic.
+
+### Finitely generated module diagnostics
+
+- **Registry Path:** `algebra.ring.finitelyGeneratedModule`
+- **Witness Builder:** `checkFinitelyGeneratedModule(module, options)` searches linear combinations, reports generation witnesses, and surfaces minimal counterexamples when spanning fails.
+- **Check:** `AlgebraOracles.ring.finitelyGeneratedModule`
+- **Implementation Notes:** Metadata tracks sample sizes and successful generators so tensor-product witnesses can reuse the same basis lists.
+
+### Bilinear and tensor product checks
+
+- **Registry Path:** `algebra.ring.bilinearMap` / `algebra.ring.tensorProduct`
+- **Witness Builders:** `checkBilinearMap(map, options)` and `checkTensorProduct(structure, options)` confirm additivity in each variable and enforce universal property witnesses with explicit sample traces.
+- **Check:** `AlgebraOracles.ring.bilinearMap`, `AlgebraOracles.ring.tensorProduct`
+- **Implementation Notes:** The tensor product oracle records mediating morphisms and their action on samples, allowing future scheme morphism utilities to cite the same data.
+
+### Covering families on sites
+
+- **Registry Path:** `algebra.sheaf.coveringFamily`
+- **Witness Builder:** `checkCoveringFamily(covering, options)` validates targets and duplicate suppression while emitting witness arrows when mismatches appear.
+- **Check:** `AlgebraOracles.sheaf.coveringFamily`
+- **Implementation Notes:** Distinct-arrow counts and witness limits align with the discrete site tests in `test/sheaf-infrastructure.spec.ts`.
+
+### Presheaf restriction diagnostics
+
+- **Registry Path:** `algebra.sheaf.presheaf`
+- **Witness Builder:** `checkPresheaf(presheaf, options)` checks closure under restriction, identities, and composition, reporting violating arrows with captured sections.
+- **Check:** `AlgebraOracles.sheaf.presheaf`
+- **Implementation Notes:** Metadata records sampled objects/arrows and section limits so sheaf gluing checks can be configured consistently.
+
+### Sheaf gluing witnesses
+
+- **Registry Path:** `algebra.sheaf.sheafGluing`
+- **Witness Builder:** `checkSheafGluing(sheaf, samples, options)` enforces overlap agreement and gluing existence, collecting witness assignments whenever compatibility fails.
+- **Check:** `AlgebraOracles.sheaf.sheafGluing`
+- **Implementation Notes:** Witness entries track which covering and overlap triggered a violation, matching the examples in `test/sheaf-infrastructure.spec.ts`.
+
+### Grothendieck topology and cover specialists
+
+- **Registry Path:** `algebra.sheaf.grothendieckTopology`
+- **Witness Builder:** `checkGrothendieckTopology(topology, samples, options)` evaluates isomorphism stability, refinement closure, and pullback behaviour with explicit covering witnesses.
+- **Check:** `AlgebraOracles.sheaf.grothendieckTopology`
+- **Implementation Notes:** The oracle reports which axioms fail and the witness coverings involved, supporting both Zariski and étale specialisations.
+
+### Zariski principal-open cover oracle
+
+- **Registry Path:** `algebra.sheaf.zariskiPrincipalOpen`
+- **Witness Builder:** `checkZariskiPrincipalOpenCover(ring, cover, options)` validates that principal opens cover the spectrum by testing sample primes and localization witnesses.
+- **Check:** `AlgebraOracles.sheaf.zariskiPrincipalOpen`
+- **Implementation Notes:** Coverage diagnostics reuse multiplicative-set witnesses to demonstrate that denominators land in the expected complements.
+
+### Étale cover diagnostics
+
+- **Registry Path:** `algebra.sheaf.etaleCover`
+- **Witness Builder:** `checkEtaleCover(data, options)` inspects fibre products and local isomorphism witnesses, reporting failures with the exact covering pieces.
+- **Check:** `AlgebraOracles.sheaf.etaleCover`
+- **Implementation Notes:** Metadata highlights stalk samples and Jacobian witnesses to help refine étale atlases.
+
+### Prime spectrum and stalk checks
+
+- **Registry Path:** `algebra.scheme.primeSpectrum` / `algebra.scheme.primeStalks`
+- **Witness Builders:** `checkPrimeSpectrum(spectrum, options)` and `checkPrimeStalks(spectrum, options)` ensure every listed ideal is prime and that complements/localizations supply valid stalks.
+- **Check:** `AlgebraOracles.scheme.primeSpectrum`, `AlgebraOracles.scheme.primeStalks`
+- **Implementation Notes:** Prime violations surface the underlying `checkPrimeIdeal` metadata, while stalk failures expose the multiplicative-set or localization witness that breaks.
+
+### Structure sheaf localization oracle
+
+- **Registry Path:** `algebra.scheme.structureSheaf`
+- **Witness Builder:** `checkStructureSheaf(data, options)` validates each localization, restriction, and ring law preservation across arrows, recording offending fractions and denominators when failures appear.
+- **Check:** `AlgebraOracles.scheme.structureSheaf`
+- **Implementation Notes:** Metadata counts localization and restriction checks so future affine-morphism tooling can budget additional samples consistently.
+
+### Affine scheme morphism diagnostics
+
+- **Registry Path:** `algebra.scheme.affineMorphism`
+- **Witness Builder:** `checkAffineSchemeMorphism(morphism, options)` pulls back primes along a ring map, confirms they remain prime, locates image points in the codomain spectrum, and verifies principal-open behaviour using supplied generators.
+- **Check:** `AlgebraOracles.scheme.affineMorphism`
+- **Implementation Notes:** Witness records track the computed preimage ideals, matched codomain points, and any failing generators so localisation data can be reused when extending to global gluing.
+
+### Affine scheme pullback squares
+
+- **Registry Path:** `algebra.scheme.affinePullback`
+- **Witness Builder:** `checkAffineSchemePullbackSquare(square, options)` inspects the pushout diagram of rings, ensures each apex prime pulls back to primes on both legs, and checks that the induced base ideals agree while covering requested matching pairs.
+- **Check:** `AlgebraOracles.scheme.affinePullback`
+- **Implementation Notes:** Metadata exposes prime failures, base-agreement mismatches, and matching-pair coverage so tensor-product and base-change utilities can reuse the same diagnostic envelope.
+
 ## Category-theoretic scaffolding
 
 ### Subcategories and fullness

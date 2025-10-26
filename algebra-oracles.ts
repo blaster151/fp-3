@@ -35,6 +35,25 @@ import {
   type ADTPolynomialRelativeMonadInput,
   type ADTPolynomialRelativeStreetInput,
 } from "./relative/adt-polynomial-relative";
+import { checkPrimeIdeal } from "./src/algebra/ring/prime-ideals";
+import { checkMultiplicativeSet } from "./src/algebra/ring/multiplicative-sets";
+import { checkLocalizationRing } from "./src/algebra/ring/localizations";
+import { checkFinitelyGeneratedModule } from "./src/algebra/ring/finitely-generated-modules";
+import { checkBilinearMap, checkTensorProduct } from "./src/algebra/ring/tensor-products";
+import { checkCoveringFamily } from "./src/sheaves/sites";
+import { checkPresheaf } from "./src/sheaves/presheaves";
+import { checkSheafGluing } from "./src/sheaves/sheaves";
+import {
+  checkEtaleCover,
+  checkGrothendieckTopology,
+  checkZariskiPrincipalOpenCover,
+} from "./src/sheaves/grothendieck-topologies";
+import {
+  checkAffineSchemeMorphism,
+  checkAffineSchemePullbackSquare,
+} from "./src/schemes/affine-morphisms";
+import { checkPrimeSpectrum, checkPrimeStalks } from "./src/schemes/prime-spectrum";
+import { checkStructureSheaf } from "./src/schemes/structure-sheaf";
 
 export interface RelativeMonadLawCheckResult<Obj, Arr, Payload, Evidence> {
   readonly holds: boolean;
@@ -46,6 +65,29 @@ export interface RelativeMonadLawCheckResult<Obj, Arr, Payload, Evidence> {
 export const AlgebraOracles = {
   semicartesian: {
     cringPlusInitialUnit: checkCRingPlusInitialSemicartesian,
+  },
+  ring: {
+    primeIdeal: checkPrimeIdeal,
+    multiplicativeSet: checkMultiplicativeSet,
+    localization: checkLocalizationRing,
+    finitelyGeneratedModule: checkFinitelyGeneratedModule,
+    bilinearMap: checkBilinearMap,
+    tensorProduct: checkTensorProduct,
+  },
+  sheaf: {
+    coveringFamily: checkCoveringFamily,
+    presheaf: checkPresheaf,
+    sheafGluing: checkSheafGluing,
+    grothendieckTopology: checkGrothendieckTopology,
+    zariskiPrincipalOpen: checkZariskiPrincipalOpenCover,
+    etaleCover: checkEtaleCover,
+  },
+  scheme: {
+    affineMorphism: checkAffineSchemeMorphism,
+    affinePullback: checkAffineSchemePullbackSquare,
+    primeSpectrum: checkPrimeSpectrum,
+    primeStalks: checkPrimeStalks,
+    structureSheaf: checkStructureSheaf,
   },
   causality: {
     counterexampleScenario: buildCRingPlusCausalityScenario,
