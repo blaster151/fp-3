@@ -8,6 +8,12 @@ import {
   checkRing,
   checkRingHomomorphism,
   checkIdeal,
+  checkPrimeIdeal,
+  checkMultiplicativeSet,
+  checkLocalizationRing,
+  checkFinitelyGeneratedModule,
+  checkBilinearMap,
+  checkTensorProduct,
   checkModule,
   checkModuleHomomorphism,
   buildQuotientRing,
@@ -16,7 +22,13 @@ import {
   type Ring,
   type Semiring,
   type RingIdeal,
+  type MultiplicativeSet,
+  type LocalizationRingData,
+  type LocalizationFraction,
   type Module,
+  type FinitelyGeneratedModule,
+  type BilinearMap,
+  type TensorProductStructure,
   type ModuleHomomorphism,
   type QuotientConstruction,
 } from "../allTS"
@@ -54,6 +66,153 @@ describe("ring infrastructure", () => {
 
     expect(result.holds).toBe(true)
     expect(result.metadata.checkedRingElements).toBeGreaterThan(0)
+  })
+
+  it("verifies that (5) is a prime ideal of ℤ", () => {
+    const ideal: RingIdeal<bigint> = {
+      ring: RingInteger,
+      contains: (value) => value % 5n === 0n,
+      name: "(5)",
+    }
+
+    const samples = [-10n, -5n, -1n, 0n, 1n, 2n, 3n, 4n, 5n, 6n]
+    const result = checkPrimeIdeal(ideal, { ringSamples: samples })
+
+    expect(result.holds).toBe(true)
+    expect(result.metadata.distinctRingSamples).toBe(samples.length)
+    expect(result.metadata.ringSampleCandidates).toBe(samples.length)
+    expect(result.witnesses).toHaveLength(0)
+  })
+
+  it("confirms the 5-localization multiplicative set", () => {
+    const multiplicativeSet: MultiplicativeSet<bigint> = {
+      ring: RingInteger,
+      contains: (value) => value === 1n || (value % 5n === 0n && value !== 0n),
+      label: "S = {1, 5, 10, …}",
+    }
+
+    const samples = [1n, 5n, 10n, 25n]
+    const result = checkMultiplicativeSet(multiplicativeSet, {
+      ringSamples: samples,
+    })
+
+    expect(result.holds).toBe(true)
+    expect(result.metadata.distinctRingSamples).toBe(samples.length)
+    expect(result.metadata.requireOne).toBe(true)
+    expect(result.metadata.forbidZero).toBe(true)
+    expect(result.violations).toHaveLength(0)
+  })
+
+  it("detects closure failures in multiplicative sets", () => {
+    const flawedSet: MultiplicativeSet<bigint> = {
+      ring: RingInteger,
+      contains: (value) => value === 1n || value === 2n,
+      label: "{1, 2}",
+    }
+
+    const samples = [1n, 2n]
+    const result = checkMultiplicativeSet(flawedSet, {
+      ringSamples: samples,
+      witnessLimit: 3,
+    })
+
+    expect(result.holds).toBe(false)
+    expect(result.metadata.witnessLimit).toBe(3)
+    expect(result.metadata.witnessesRecorded).toBeGreaterThan(0)
+    expect(result.violations.some(violation => violation.kind === "notClosed")).toBe(true)
+    expect(result.details).toContain("violations")
+  })
+
+  it("verifies localization ring laws for powers-of-5 denominators", () => {
+    const multiplicativeSet: MultiplicativeSet<bigint> = {
+      ring: RingInteger,
+      contains: (value) => value === 1n || (value % 5n === 0n && value !== 0n),
+      label: "S = {1, 5, 25, …}",
+    }
+
+    const data: LocalizationRingData<bigint> = {
+      base: RingInteger,
+      multiplicativeSet,
+    }
+
+    const fractionSamples: ReadonlyArray<LocalizationFraction<bigint>> = [
+      { numerator: 1n, denominator: 5n },
+      { numerator: 2n, denominator: 25n },
+    ]
+
+    const result = checkLocalizationRing(data, {
+      numeratorSamples: [-2n, -1n, 0n, 1n, 2n],
+      denominatorSamples: [1n, 5n, 25n],
+      multiplierSamples: [5n, 25n],
+      fractionSamples,
+      witnessLimit: 6,
+    })
+
+    expect(result.holds).toBe(true)
+    expect(result.metadata.fractionSamples).toBeGreaterThan(fractionSamples.length)
+    expect(result.witnesses.length).toBeGreaterThan(0)
+  })
+
+  it("detects localization denominators outside the multiplicative set", () => {
+    const multiplicativeSet: MultiplicativeSet<bigint> = {
+      ring: RingInteger,
+      contains: (value) => value === 1n || (value % 5n === 0n && value !== 0n),
+      label: "S = {1, 5, 25, …}",
+    }
+
+    const data: LocalizationRingData<bigint> = {
+      base: RingInteger,
+      multiplicativeSet,
+    }
+
+    const result = checkLocalizationRing(data, {
+      numeratorSamples: [1n],
+      denominatorSamples: [3n],
+      multiplierSamples: [1n, 5n],
+    })
+
+    expect(result.holds).toBe(false)
+    expect(result.violations.some((violation) => violation.kind === "denominatorOutsideSet")).toBe(true)
+    expect(result.metadata.denominatorSamples).toBe(1)
+  })
+
+  it("detects that (6) is not a prime ideal of ℤ", () => {
+    const ideal: RingIdeal<bigint> = {
+      ring: RingInteger,
+      contains: (value) => value % 6n === 0n,
+      name: "(6)",
+    }
+
+    const samples = [-6n, -3n, -2n, -1n, 0n, 1n, 2n, 3n, 4n, 6n]
+    const result = checkPrimeIdeal(ideal, { ringSamples: samples, witnessLimit: 2 })
+
+    expect(result.holds).toBe(false)
+    expect(result.violations.some((violation) => violation.kind === "absorbsProduct")).toBe(true)
+    expect(result.witnesses.length).toBeGreaterThan(0)
+    const witness = result.witnesses[0]
+    expect(ideal.contains(witness.product)).toBe(true)
+    expect(ideal.contains(witness.factors[0])).toBe(false)
+    expect(ideal.contains(witness.factors[1])).toBe(false)
+    expect(result.metadata.witnessLimit).toBe(2)
+    expect(result.metadata.witnessesRecorded).toBeGreaterThan(0)
+  })
+
+  it("flags improper ideals when requireProper is true", () => {
+    const improperIdeal: RingIdeal<bigint> = {
+      ring: RingInteger,
+      contains: () => true,
+      name: "whole ring",
+    }
+
+    const result = checkPrimeIdeal(improperIdeal, {
+      ringSamples: [0n, 1n, 2n],
+      requireProper: true,
+    })
+
+    expect(result.holds).toBe(false)
+    expect(result.violations.some((violation) => violation.kind === "unit")).toBe(true)
+    expect(result.metadata.distinctRingSamples).toBeGreaterThan(0)
+    expect(result.metadata.requireProper).toBe(true)
   })
 
   it("validates ℤ as a ring", () => {
@@ -171,6 +330,25 @@ describe("ring infrastructure", () => {
       name: "ℤ",
     }
 
+    const finitelyGenerated: FinitelyGeneratedModule<bigint, bigint> = {
+      module,
+      generators: [1n],
+      label: "ℤ as ⟨1⟩",
+    }
+
+    const generationResult = checkFinitelyGeneratedModule(finitelyGenerated, {
+      vectorSamples: [-2n, -1n, 0n, 1n, 2n],
+      coefficientSamples: [-2n, -1n, 0n, 1n, 2n],
+      witnessLimit: 2,
+    })
+
+    expect(generationResult.holds).toBe(true)
+    expect(generationResult.metadata.generatorCount).toBe(1)
+    expect(generationResult.metadata.distinctVectorSamples).toBe(5)
+    expect(generationResult.metadata.combinationsTested).toBeGreaterThan(0)
+    expect(generationResult.witnesses.length).toBeGreaterThan(0)
+    expect(generationResult.witnesses[0].coefficients[0]).toBe(-2n)
+
     const result = checkModule(module, {
       scalarSamples: [-2n, -1n, 0n, 1n, 2n],
       vectorSamples: [-3n, -1n, 0n, 1n, 3n],
@@ -179,6 +357,208 @@ describe("ring infrastructure", () => {
     expect(result.holds).toBe(true)
     expect(result.metadata.scalarSamples).toBe(5)
     expect(result.violations).toHaveLength(0)
+  })
+
+  it("detects failures of generating sets", () => {
+    const module: Module<bigint, bigint> = {
+      ring: RingInteger,
+      zero: 0n,
+      add: (left, right) => left + right,
+      neg: (value) => -value,
+      scalar: (scalar, value) => scalar * value,
+      eq: (left, right) => left === right,
+      name: "ℤ",
+    }
+
+    const finitelyGenerated: FinitelyGeneratedModule<bigint, bigint> = {
+      module,
+      generators: [2n],
+      label: "2ℤ", 
+    }
+
+    const generationResult = checkFinitelyGeneratedModule(finitelyGenerated, {
+      vectorSamples: [0n, 1n, 2n],
+      coefficientSamples: [-1n, 0n, 1n],
+      witnessLimit: 1,
+    })
+
+    expect(generationResult.holds).toBe(false)
+    expect(generationResult.violations.some(violation => violation.kind === "notGenerated")).toBe(true)
+    expect(generationResult.metadata.witnessesRecorded).toBe(0)
+    expect(generationResult.metadata.combinationLimit).toBeGreaterThan(0)
+    expect(generationResult.details).toContain("violations")
+  })
+
+  it("validates ℤ-bilinear multiplication", () => {
+    const module: Module<bigint, bigint> = {
+      ring: RingInteger,
+      zero: 0n,
+      add: (left, right) => left + right,
+      neg: (value) => -value,
+      scalar: (scalar, value) => scalar * value,
+      eq: (left, right) => left === right,
+      name: "ℤ",
+    }
+
+    const bilinear: BilinearMap<bigint, bigint, bigint, bigint> = {
+      left: module,
+      right: module,
+      target: module,
+      map: (left, right) => left * right,
+      label: "multiplication",
+    }
+
+    const result = checkBilinearMap(bilinear, {
+      leftSamples: [-2n, -1n, 0n, 1n, 2n],
+      rightSamples: [-1n, 0n, 2n],
+      scalarSamples: [-1n, 0n, 1n, 2n],
+      witnessLimit: 2,
+    })
+
+    expect(result.holds).toBe(true)
+    expect(result.metadata.distinctLeftSamples).toBe(5)
+    expect(result.metadata.distinctRightSamples).toBe(3)
+    expect(result.metadata.distinctScalarSamples).toBe(4)
+    expect(result.witnesses.length).toBeGreaterThan(0)
+    expect(result.details).toContain("verified")
+  })
+
+  it("detects non-bilinear maps", () => {
+    const module: Module<bigint, bigint> = {
+      ring: RingInteger,
+      zero: 0n,
+      add: (left, right) => left + right,
+      neg: (value) => -value,
+      scalar: (scalar, value) => scalar * value,
+      eq: (left, right) => left === right,
+      name: "ℤ",
+    }
+
+    const failing: BilinearMap<bigint, bigint, bigint, bigint> = {
+      left: module,
+      right: module,
+      target: module,
+      map: (left, right) => left + right,
+      label: "sum",
+    }
+
+    const result = checkBilinearMap(failing, {
+      leftSamples: [0n, 1n, 2n],
+      rightSamples: [0n, 1n],
+      scalarSamples: [0n, 1n],
+    })
+
+    expect(result.holds).toBe(false)
+    expect(result.violations.some(violation => violation.kind === "rightAdditive" || violation.kind === "leftAdditive")).toBe(true)
+    expect(result.details).toContain("failed")
+  })
+
+  it("verifies the ℤ tensor product universal property", () => {
+    const module: Module<bigint, bigint> = {
+      ring: RingInteger,
+      zero: 0n,
+      add: (left, right) => left + right,
+      neg: (value) => -value,
+      scalar: (scalar, value) => scalar * value,
+      eq: (left, right) => left === right,
+      name: "ℤ",
+    }
+
+    const tensor: TensorProductStructure<bigint, bigint, bigint, bigint> = {
+      left: module,
+      right: module,
+      tensor: module,
+      pureTensor: (left, right) => left * right,
+      induce: (bilinear) => {
+        const generatorImage = bilinear.map(1n, 1n)
+        return {
+          source: module,
+          target: bilinear.target,
+          map: (value) => bilinear.target.scalar(value, generatorImage),
+          label: `⟨${bilinear.label ?? "β"}⟩`,
+        }
+      },
+      label: "ℤ ⊗ ℤ",
+    }
+
+    const bilinearMaps: ReadonlyArray<BilinearMap<bigint, bigint, bigint, bigint>> = [
+      {
+        left: module,
+        right: module,
+        target: module,
+        map: (left, right) => left * right,
+        label: "ab",
+      },
+      {
+        left: module,
+        right: module,
+        target: module,
+        map: (left, right) => 2n * left * right,
+        label: "2ab",
+      },
+    ]
+
+    const result = checkTensorProduct(tensor, {
+      leftSamples: [-1n, 0n, 1n, 2n],
+      rightSamples: [-1n, 0n, 2n],
+      scalarSamples: [-1n, 0n, 1n, 2n],
+      tensorSamples: [0n, 1n, 2n],
+      bilinearMaps,
+      witnessLimit: 3,
+    })
+
+    expect(result.holds).toBe(true)
+    expect(result.metadata.bilinearMapsChecked).toBe(2)
+    expect(result.metadata.universalPairChecks).toBe(12)
+    expect(result.witnesses.length).toBeGreaterThan(0)
+    expect(result.details).toContain("verified")
+  })
+
+  it("detects tensor product universal property failures", () => {
+    const module: Module<bigint, bigint> = {
+      ring: RingInteger,
+      zero: 0n,
+      add: (left, right) => left + right,
+      neg: (value) => -value,
+      scalar: (scalar, value) => scalar * value,
+      eq: (left, right) => left === right,
+      name: "ℤ",
+    }
+
+    const flawed: TensorProductStructure<bigint, bigint, bigint, bigint> = {
+      left: module,
+      right: module,
+      tensor: module,
+      pureTensor: (left, right) => left * right,
+      induce: (bilinear) => ({
+        source: module,
+        target: bilinear.target,
+        map: () => bilinear.target.zero,
+        label: `0∘${bilinear.label ?? "β"}`,
+      }),
+      label: "degenerate ℤ ⊗ ℤ",
+    }
+
+    const bilinear: BilinearMap<bigint, bigint, bigint, bigint> = {
+      left: module,
+      right: module,
+      target: module,
+      map: (left, right) => left * right,
+      label: "ab",
+    }
+
+    const result = checkTensorProduct(flawed, {
+      leftSamples: [0n, 1n, 2n],
+      rightSamples: [0n, 1n],
+      scalarSamples: [0n, 1n],
+      bilinearMaps: [bilinear],
+      tensorSamples: [0n, 1n, 2n],
+    })
+
+    expect(result.holds).toBe(false)
+    expect(result.violations.some(violation => violation.kind === "universalMismatch")).toBe(true)
+    expect(result.metadata.bilinearMapsChecked).toBe(1)
+    expect(result.details).toContain("violations")
   })
 
   it("validates the identity module homomorphism on ℤ", () => {
