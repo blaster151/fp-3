@@ -1,5 +1,9 @@
 # Finite group subrepresentations via coordinate kernels
 
+> For a higher-level tour of the full representation toolkit—including
+> intertwiners, invariant vectors, and functor packaging—see
+> [`representation-tooling.md`](./representation-tooling.md).
+
 We now expose a concrete workflow for locating and certifying coordinate
 subrepresentations of finite-dimensional modules.  The core utilities live in
 [`models/fingroup-subrepresentation.ts`](../models/fingroup-subrepresentation.ts)

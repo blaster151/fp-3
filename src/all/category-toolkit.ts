@@ -5,9 +5,11 @@ export {
   pushCoaction,
   actionToChain,
   coactionToChain,
+  intertwinerSpace,
+  invariantSubspace,
 } from "../../stdlib/vect-view"
 
-export type { Representation, Coaction } from "../../stdlib/vect-view"
+export type { Representation, Coaction, IntertwinerSpace, InvariantSubspace } from "../../stdlib/vect-view"
 
 export {
   makeFinGrpRepresentationFunctor,
@@ -19,6 +21,18 @@ export type {
   FinGrpRepresentationFunctor,
   RepMor as FinGrpRepresentationMorphism,
 } from "../../models/fingroup-representation"
+
+export {
+  makePrimeField,
+  enumerateCoordinateSubrepresentationWitnesses,
+  assembleCoordinateDirectSum,
+} from "../../models/fingroup-subrepresentation"
+
+export type {
+  SubrepresentationWitness,
+  DifferenceWitness as FinGrpSubrepresentationDifferenceWitness,
+  FiniteGroupRepresentation,
+} from "../../models/fingroup-subrepresentation"
 
 export { Pretty } from "../../stdlib/pretty"
 export { DiagramClosure } from "../../stdlib/diagram-closure"

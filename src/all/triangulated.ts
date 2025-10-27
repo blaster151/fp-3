@@ -23,6 +23,8 @@ import {
   pushCoaction as pushCoactionFn,
   actionToChain as actionToChainFn,
   coactionToChain as coactionToChainFn,
+  intertwinerSpace as intertwinerSpaceFn,
+  invariantSubspace as invariantSubspaceFn,
 } from "../../stdlib/vect-view"
 import { IndexedFamilies } from "../../stdlib/indexed-families"
 import type {
@@ -5531,6 +5533,8 @@ export const Algebra = {
   pushCoaction: pushCoactionFn,
   actionToChain: actionToChainFn,
   coactionToChain: coactionToChainFn,
+  intertwinerSpace: intertwinerSpaceFn,
+  invariantSubspace: invariantSubspaceFn,
   makePrimeField,
   enumerateCoordinateSubrepresentationWitnesses,
   assembleCoordinateDirectSum,
