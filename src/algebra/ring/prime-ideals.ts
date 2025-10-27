@@ -1,3 +1,15 @@
+import type { PrimeSpectrumPoint } from "../../schemes/prime-spectrum"
+import type {
+  MultiplicativeSet,
+  MultiplicativeSetCheckOptions,
+  MultiplicativeSetCheckResult,
+} from "./multiplicative-sets"
+import { checkMultiplicativeSet } from "./multiplicative-sets"
+import type {
+  LocalizationRingCheckOptions,
+  LocalizationRingCheckResult,
+} from "./localizations"
+import { buildPrimeLocalizationData, checkLocalizationRing } from "./localizations"
 import type { RingIdeal } from "./ideals"
 import type { Ring } from "./structures"
 
@@ -126,3 +138,190 @@ export const checkPrimeIdeal = <A>(
     },
   }
 }
+
+export interface PrimeLocalizationCheckOptions<A> {
+  readonly ringSamples?: ReadonlyArray<A>
+  readonly prime?: PrimeIdealCheckOptions<A>
+  readonly multiplicativeSet?: MultiplicativeSetCheckOptions<A>
+  readonly localization?: LocalizationRingCheckOptions<A>
+}
+
+export type PrimeLocalizationCheckViolation<A> =
+  | {
+      readonly kind: "primeIdealFailure"
+      readonly point: PrimeSpectrumPoint<A>
+      readonly result: PrimeIdealCheckResult<A>
+    }
+  | {
+      readonly kind: "multiplicativeSetFailure"
+      readonly point: PrimeSpectrumPoint<A>
+      readonly result: MultiplicativeSetCheckResult<A>
+    }
+  | {
+      readonly kind: "multiplicativeSetRingMismatch"
+      readonly point: PrimeSpectrumPoint<A>
+      readonly multiplicativeSet: MultiplicativeSet<A>
+    }
+  | {
+      readonly kind: "localizationFailure"
+      readonly point: PrimeSpectrumPoint<A>
+      readonly result: LocalizationRingCheckResult<A>
+    }
+
+export interface PrimeLocalizationCheckResult<A> {
+  readonly point: PrimeSpectrumPoint<A>
+  readonly holds: boolean
+  readonly prime: PrimeIdealCheckResult<A>
+  readonly multiplicativeSet?: MultiplicativeSetCheckResult<A>
+  readonly localization?: LocalizationRingCheckResult<A>
+  readonly violations: ReadonlyArray<PrimeLocalizationCheckViolation<A>>
+  readonly details: string
+  readonly metadata: {
+    readonly ringSampleCandidates: number
+    readonly primeChecked: boolean
+    readonly multiplicativeSetChecked: boolean
+    readonly localizationChecked: boolean
+  }
+}
+
+export type PrimeLocalizationCheck<A> = (
+  options?: PrimeLocalizationCheckOptions<A>,
+) => PrimeLocalizationCheckResult<A>
+
+/**
+ * Compose prime, multiplicative-set, and localization diagnostics around a
+ * {@link PrimeSpectrumPoint}. Sample catalogues in `examples/runnable/092-commutative-ring-sample-library.ts`
+ * provide ready-to-use inputs for this harness via bundled prime entries.
+ */
+export const buildPrimeLocalizationCheck = <A>(
+  point: PrimeSpectrumPoint<A>,
+  multiplicativeSet: MultiplicativeSet<A>,
+): PrimeLocalizationCheck<A> => {
+  const describeViolation = (
+    violation: PrimeLocalizationCheckViolation<A>,
+  ): string => {
+    switch (violation.kind) {
+      case "primeIdealFailure":
+        return "prime ideal check failed"
+      case "multiplicativeSetFailure":
+        return "multiplicative set complement failed"
+      case "multiplicativeSetRingMismatch":
+        return "multiplicative set ring mismatch"
+      case "localizationFailure":
+        return "localization ring laws failed"
+      default:
+        return "localization harness failure"
+    }
+  }
+
+  return (options = {}) => {
+    const label = point.label ?? "prime point"
+    const sampleCandidates = options.ringSamples ?? point.samples ?? []
+    const primeOverrides = options.prime ?? {}
+    const primeOptions: PrimeIdealCheckOptions<A> = {
+      ringSamples: primeOverrides.ringSamples ?? sampleCandidates,
+      requireProper: primeOverrides.requireProper ?? true,
+      ...(primeOverrides.witnessLimit === undefined
+        ? {}
+        : { witnessLimit: primeOverrides.witnessLimit }),
+    }
+
+    const primeResult = checkPrimeIdeal(point.ideal, primeOptions)
+    const violations: PrimeLocalizationCheckViolation<A>[] = []
+    let multiplicativeSetChecked = false
+    let localizationChecked = false
+    let multiplicativeResult: MultiplicativeSetCheckResult<A> | undefined
+    let localizationResult: LocalizationRingCheckResult<A> | undefined
+
+    const finalize = (holds: boolean, details: string): PrimeLocalizationCheckResult<A> => ({
+      point,
+      holds,
+      prime: primeResult,
+      ...(multiplicativeResult ? { multiplicativeSet: multiplicativeResult } : {}),
+      ...(localizationResult ? { localization: localizationResult } : {}),
+      violations,
+      details,
+      metadata: {
+        ringSampleCandidates: sampleCandidates.length,
+        primeChecked: true,
+        multiplicativeSetChecked,
+        localizationChecked,
+      },
+    })
+
+    if (!primeResult.holds) {
+      violations.push({ kind: "primeIdealFailure", point, result: primeResult })
+      const details = `${label} localization failed: ${violations
+        .map(describeViolation)
+        .join("; ")}.`
+      return finalize(false, details)
+    }
+
+    const multiplicativeOverrides = options.multiplicativeSet ?? {}
+    const multiplicativeOptions: MultiplicativeSetCheckOptions<A> = {
+      ringSamples: multiplicativeOverrides.ringSamples ?? sampleCandidates,
+      requireOne: multiplicativeOverrides.requireOne ?? true,
+      forbidZero: multiplicativeOverrides.forbidZero ?? true,
+      ...(multiplicativeOverrides.witnessLimit === undefined
+        ? {}
+        : { witnessLimit: multiplicativeOverrides.witnessLimit }),
+    }
+
+    multiplicativeResult = checkMultiplicativeSet(multiplicativeSet, multiplicativeOptions)
+    multiplicativeSetChecked = true
+
+    if (!multiplicativeResult.holds) {
+      violations.push({ kind: "multiplicativeSetFailure", point, result: multiplicativeResult })
+      const details = `${label} localization failed: ${violations
+        .map(describeViolation)
+        .join("; ")}.`
+      return finalize(false, details)
+    }
+
+    const built = buildPrimeLocalizationData(point, multiplicativeSet)
+    if (built.kind !== "success") {
+      violations.push({ kind: "multiplicativeSetRingMismatch", point, multiplicativeSet })
+      const details = `${label} localization failed: ${violations
+        .map(describeViolation)
+        .join("; ")}.`
+      return finalize(false, details)
+    }
+
+    const localizationOverrides = options.localization ?? {}
+    const localizationFallback = sampleCandidates
+    const localizationOptions: LocalizationRingCheckOptions<A> = {
+      numeratorSamples: localizationOverrides.numeratorSamples ?? localizationFallback,
+      denominatorSamples: localizationOverrides.denominatorSamples ?? localizationFallback,
+      multiplierSamples: localizationOverrides.multiplierSamples ?? localizationFallback,
+      ...(localizationOverrides.fractionSamples
+        ? { fractionSamples: localizationOverrides.fractionSamples }
+        : {}),
+      ...(localizationOverrides.witnessLimit === undefined
+        ? {}
+        : { witnessLimit: localizationOverrides.witnessLimit }),
+    }
+
+    localizationResult = checkLocalizationRing(built.data, localizationOptions)
+    localizationChecked = true
+
+    if (!localizationResult.holds) {
+      violations.push({ kind: "localizationFailure", point, result: localizationResult })
+    }
+
+    const holds = violations.length === 0
+    const successFractions = localizationResult?.metadata.fractionSamples ?? 0
+    const details = holds
+      ? `${label} localization succeeded across ${successFractions} sampled fraction${
+          successFractions === 1 ? "" : "s"
+        }.`
+      : `${label} localization failed: ${violations.map(describeViolation).join("; ")}.`
+
+    return finalize(holds, details)
+  }
+}
+
+export const checkLocalRingAtPrime = <A>(
+  point: PrimeSpectrumPoint<A>,
+  multiplicativeSet: MultiplicativeSet<A>,
+  options?: PrimeLocalizationCheckOptions<A>,
+): PrimeLocalizationCheckResult<A> => buildPrimeLocalizationCheck(point, multiplicativeSet)(options)

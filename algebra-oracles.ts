@@ -35,15 +35,25 @@ import {
   type ADTPolynomialRelativeMonadInput,
   type ADTPolynomialRelativeStreetInput,
 } from "./relative/adt-polynomial-relative";
-import { checkPrimeIdeal } from "./src/algebra/ring/prime-ideals";
+import { checkPrimeIdeal, checkLocalRingAtPrime } from "./src/algebra/ring/prime-ideals";
 import { checkMultiplicativeSet } from "./src/algebra/ring/multiplicative-sets";
 import { checkLocalizationRing } from "./src/algebra/ring/localizations";
-import { checkFinitelyGeneratedModule } from "./src/algebra/ring/finitely-generated-modules";
-import { checkBilinearMap, checkTensorProduct } from "./src/algebra/ring/tensor-products";
+import {
+  checkFinitelyGeneratedModule,
+  checkNoetherianModule,
+} from "./src/algebra/ring/finitely-generated-modules";
+import {
+  checkBilinearMap,
+  checkTensorProduct,
+  checkFlatModuleOnSamples,
+} from "./src/algebra/ring/tensor-products";
 import { checkCoveringFamily } from "./src/sheaves/sites";
 import { checkPresheaf } from "./src/sheaves/presheaves";
-import { checkSheafGluing } from "./src/sheaves/sheaves";
+import { checkPresheafMorphism, checkSheafMorphism } from "./src/sheaves/morphisms";
+import { buildMatchingFamily, checkSheafGluing } from "./src/sheaves/sheaves";
 import {
+  buildEtaleDescentSample,
+  buildZariskiSiteTopology,
   checkEtaleCover,
   checkGrothendieckTopology,
   checkZariskiPrincipalOpenCover,
@@ -54,6 +64,7 @@ import {
   checkTwoOpenCechCohomology,
 } from "./src/sheaves/cech-cohomology";
 import {
+  buildAffineFiberProduct,
   checkAffineSchemeMorphism,
   checkAffineSchemePullbackSquare,
 } from "./src/schemes/affine-morphisms";
@@ -61,6 +72,7 @@ import { checkPrimeSpectrum, checkPrimeStalks } from "./src/schemes/prime-spectr
 import { checkStructureSheaf } from "./src/schemes/structure-sheaf";
 import { checkSchemeGluing, checkSchemeFiberProduct } from "./src/schemes/global-schemes";
 import { checkFiberedCategory, checkStackDescent } from "./src/schemes/stacks";
+import { AffineSchemeExamples } from "./examples/runnable/093-affine-scheme-example-catalogue";
 
 export interface RelativeMonadLawCheckResult<Obj, Arr, Payload, Evidence> {
   readonly holds: boolean;
@@ -77,17 +89,27 @@ export const AlgebraOracles = {
     primeIdeal: checkPrimeIdeal,
     multiplicativeSet: checkMultiplicativeSet,
     localization: checkLocalizationRing,
+    localRing: checkLocalRingAtPrime,
     finitelyGeneratedModule: checkFinitelyGeneratedModule,
+    // Ascending-chain harness layered on finitely generated module checks
+    noetherianModule: checkNoetherianModule,
     bilinearMap: checkBilinearMap,
     tensorProduct: checkTensorProduct,
+    flatness: checkFlatModuleOnSamples,
   },
   sheaf: {
     coveringFamily: checkCoveringFamily,
     presheaf: checkPresheaf,
+    // Morphism validators compose the presheaf/sheaf harnesses for reuse by downstream callers.
+    presheafMorphism: checkPresheafMorphism,
     sheafGluing: checkSheafGluing,
+    sheafMorphism: checkSheafMorphism,
+    buildMatchingFamily,
+    zariskiSite: buildZariskiSiteTopology,
     grothendieckTopology: checkGrothendieckTopology,
     zariskiPrincipalOpen: checkZariskiPrincipalOpenCover,
     etaleCover: checkEtaleCover,
+    etaleDescentSamples: buildEtaleDescentSample,
   },
   derived: {
     chainComplex: checkChainComplex,
@@ -97,11 +119,13 @@ export const AlgebraOracles = {
   scheme: {
     affineMorphism: checkAffineSchemeMorphism,
     affinePullback: checkAffineSchemePullbackSquare,
+    affineFiberProduct: buildAffineFiberProduct,
     primeSpectrum: checkPrimeSpectrum,
     primeStalks: checkPrimeStalks,
     structureSheaf: checkStructureSheaf,
     schemeGluing: checkSchemeGluing,
     schemeFiberProduct: checkSchemeFiberProduct,
+    examples: AffineSchemeExamples,
   },
   moduli: {
     fiberedCategory: checkFiberedCategory,

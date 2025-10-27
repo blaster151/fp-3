@@ -397,3 +397,599 @@ export const checkTensorProduct = <R, Left, Right, Tensor>(
   }
 }
 
+export interface ShortExactSequenceWitness<Left, Middle, Right> {
+  readonly kernelWitnesses: ReadonlyArray<{ readonly middle: Middle; readonly preimage: Left }>
+  readonly surjectionWitnesses: ReadonlyArray<{ readonly right: Right; readonly lift: Middle }>
+  readonly injectWitnesses?: ReadonlyArray<Left>
+}
+
+export type ShortExactSequenceSample<Left, Middle, Right> =
+  | { readonly kind: "kernel"; readonly middle: Middle; readonly preimage?: Left }
+  | { readonly kind: "surjection"; readonly right: Right; readonly lift?: Middle }
+  | { readonly kind: "inject"; readonly left: Left }
+
+export interface ShortExactSequence<R, Left, Middle, Right> {
+  readonly left: Module<R, Left>
+  readonly middle: Module<R, Middle>
+  readonly right: Module<R, Right>
+  readonly include: ModuleHomomorphism<R, Left, Middle>
+  readonly project: ModuleHomomorphism<R, Middle, Right>
+  readonly witnesses: ShortExactSequenceWitness<Left, Middle, Right>
+  readonly label?: string
+}
+
+export interface FlatTensorStructures<
+  R,
+  Left,
+  Middle,
+  Right,
+  Candidate,
+  LeftTensor,
+  MiddleTensor,
+  RightTensor,
+> {
+  readonly left: TensorProductStructure<R, Left, Candidate, LeftTensor>
+  readonly middle: TensorProductStructure<R, Middle, Candidate, MiddleTensor>
+  readonly right: TensorProductStructure<R, Right, Candidate, RightTensor>
+}
+
+export interface FlatModuleWitness<Left, Middle, Right, Candidate> {
+  readonly kind: "kernel" | "surjection" | "composition"
+  readonly candidate: Candidate
+  readonly left?: Left
+  readonly middle?: Middle
+  readonly right?: Right
+}
+
+export type FlatModuleViolation<Left, Middle, Right, Candidate> =
+  | { readonly kind: "missingCandidateSamples" }
+  | { readonly kind: "tensorProduct"; readonly stage: "left" | "middle" | "right"; readonly details: string }
+  | { readonly kind: "bilinear"; readonly stage: "include" | "project"; readonly details: string }
+  | { readonly kind: "witnessInconsistent"; readonly stage: "kernel" | "surjection" | "inject"; readonly details: string }
+  | {
+      readonly kind: "kernelWitness"
+      readonly candidate: Candidate
+      readonly middle: Middle
+      readonly preimage: Left
+    }
+  | {
+      readonly kind: "surjectionWitness"
+      readonly candidate: Candidate
+      readonly right: Right
+      readonly lift: Middle
+    }
+  | { readonly kind: "compositionWitness"; readonly candidate: Candidate; readonly left: Left }
+  | { readonly kind: "kernelSample"; readonly candidate: Candidate; readonly middle: Middle }
+  | { readonly kind: "kernelSampleMissingPreimage"; readonly candidate: Candidate; readonly middle: Middle }
+  | { readonly kind: "surjectionSample"; readonly candidate: Candidate; readonly right: Right }
+  | { readonly kind: "surjectionSampleMissingLift"; readonly candidate: Candidate; readonly right: Right }
+  | { readonly kind: "injectSample"; readonly candidate: Candidate; readonly left: Left }
+
+export interface FlatModuleSampleOptions<
+  R,
+  Left,
+  Middle,
+  Right,
+  Candidate,
+  LeftTensor,
+  MiddleTensor,
+  RightTensor,
+> {
+  readonly scalarSamples?: ReadonlyArray<R>
+  readonly candidateSamples?: ReadonlyArray<Candidate>
+  readonly leftSamples?: ReadonlyArray<Left>
+  readonly middleSamples?: ReadonlyArray<Middle>
+  readonly rightSamples?: ReadonlyArray<Right>
+  readonly leftTensorOptions?: TensorProductCheckOptions<R, Left, Candidate, LeftTensor>
+  readonly middleTensorOptions?: TensorProductCheckOptions<R, Middle, Candidate, MiddleTensor>
+  readonly rightTensorOptions?: TensorProductCheckOptions<R, Right, Candidate, RightTensor>
+  readonly sequenceSamples?: ReadonlyArray<ShortExactSequenceSample<Left, Middle, Right>>
+  readonly witnessLimit?: number
+}
+
+export interface FlatModuleCheckResult<Left, Middle, Right, Candidate> {
+  readonly holds: boolean
+  readonly violations: ReadonlyArray<FlatModuleViolation<Left, Middle, Right, Candidate>>
+  readonly witnesses: ReadonlyArray<FlatModuleWitness<Left, Middle, Right, Candidate>>
+  readonly details: string
+  readonly metadata: {
+    readonly candidateSampleCandidates: number
+    readonly distinctCandidateSamples: number
+    readonly leftSamples: number
+    readonly middleSamples: number
+    readonly rightSamples: number
+    readonly kernelWitnesses: number
+    readonly surjectionWitnesses: number
+    readonly injectWitnesses: number
+    readonly additionalKernelSamples: number
+    readonly additionalSurjectionSamples: number
+    readonly additionalInjectSamples: number
+    readonly kernelSampleChecks: number
+    readonly surjectionSampleChecks: number
+    readonly injectSampleChecks: number
+    readonly witnessLimit: number
+    readonly witnessesRecorded: number
+    readonly bilinearIncludeHolds: boolean
+    readonly bilinearProjectHolds: boolean
+    readonly tensorLeftHolds: boolean
+    readonly tensorMiddleHolds: boolean
+    readonly tensorRightHolds: boolean
+  }
+}
+
+const mergeSamples = <A>(
+  provided: ReadonlyArray<A> | undefined,
+  extra: ReadonlyArray<A>,
+  eq: Equality<A>,
+): A[] => {
+  if (!provided || provided.length === 0) {
+    return dedupe(extra, eq)
+  }
+  return dedupe([...provided, ...extra], eq)
+}
+
+const buildPureTensorSamples = <R, Left, Right, Tensor>(
+  structure: TensorProductStructure<R, Left, Right, Tensor>,
+  leftSamples: ReadonlyArray<Left>,
+  rightSamples: ReadonlyArray<Right>,
+  eq: Equality<Tensor>,
+): Tensor[] => {
+  const tensors: Tensor[] = []
+  for (const left of leftSamples) {
+    for (const right of rightSamples) {
+      const tensor = structure.pureTensor(left, right)
+      if (!tensors.some(existing => eq(existing, tensor))) {
+        tensors.push(tensor)
+      }
+    }
+  }
+  return tensors
+}
+
+const dedupeKernelWitnesses = <Left, Middle>(
+  witnesses: ReadonlyArray<{ readonly middle: Middle; readonly preimage: Left }>,
+  leftEq: Equality<Left>,
+  middleEq: Equality<Middle>,
+): Array<{ readonly middle: Middle; readonly preimage: Left }> => {
+  const result: Array<{ readonly middle: Middle; readonly preimage: Left }> = []
+  for (const witness of witnesses) {
+    if (
+      !result.some(
+        existing => leftEq(existing.preimage, witness.preimage) && middleEq(existing.middle, witness.middle),
+      )
+    ) {
+      result.push(witness)
+    }
+  }
+  return result
+}
+
+const dedupeSurjectionWitnesses = <Middle, Right>(
+  witnesses: ReadonlyArray<{ readonly right: Right; readonly lift: Middle }>,
+  middleEq: Equality<Middle>,
+  rightEq: Equality<Right>,
+): Array<{ readonly right: Right; readonly lift: Middle }> => {
+  const result: Array<{ readonly right: Right; readonly lift: Middle }> = []
+  for (const witness of witnesses) {
+    if (
+      !result.some(
+        existing => rightEq(existing.right, witness.right) && middleEq(existing.lift, witness.lift),
+      )
+    ) {
+      result.push(witness)
+    }
+  }
+  return result
+}
+
+const dedupeInjectWitnesses = <Left>(
+  witnesses: ReadonlyArray<Left>,
+  leftEq: Equality<Left>,
+): Left[] => dedupe(witnesses, leftEq)
+
+export const checkFlatModuleOnSamples = <
+  R,
+  Left,
+  Middle,
+  Right,
+  Candidate,
+  LeftTensor,
+  MiddleTensor,
+  RightTensor,
+>(
+  input: {
+    readonly sequence: ShortExactSequence<R, Left, Middle, Right>
+    readonly candidate: Module<R, Candidate>
+    readonly tensors: FlatTensorStructures<R, Left, Middle, Right, Candidate, LeftTensor, MiddleTensor, RightTensor>
+  },
+  options: FlatModuleSampleOptions<R, Left, Middle, Right, Candidate, LeftTensor, MiddleTensor, RightTensor> = {},
+): FlatModuleCheckResult<Left, Middle, Right, Candidate> => {
+  const { sequence, candidate, tensors } = input
+  const scalarSampleCandidates =
+    options.scalarSamples ?? defaultScalarSamples<R>(sequence.left as Module<R, unknown>)
+  const candidateSampleCandidates = options.candidateSamples ?? []
+  const leftSampleCandidates = options.leftSamples ?? []
+  const middleSampleCandidates = options.middleSamples ?? []
+  const rightSampleCandidates = options.rightSamples ?? []
+
+  const scalarEq = withEquality(sequence.left.ring.eq)
+  const candidateEq = withEquality(candidate.eq)
+  const leftEq = withEquality(sequence.left.eq)
+  const middleEq = withEquality(sequence.middle.eq)
+  const rightEq = withEquality(sequence.right.eq)
+  const leftTensorEq = withEquality(tensors.left.tensor.eq)
+  const middleTensorEq = withEquality(tensors.middle.tensor.eq)
+  const rightTensorEq = withEquality(tensors.right.tensor.eq)
+
+  const scalarSamples = dedupe(scalarSampleCandidates, scalarEq)
+  const candidateSamples = dedupe(candidateSampleCandidates, candidateEq)
+  const leftSamples = dedupe(leftSampleCandidates, leftEq)
+  const middleSamples = dedupe(middleSampleCandidates, middleEq)
+  const rightSamples = dedupe(rightSampleCandidates, rightEq)
+
+  const kernelWitnessCandidates = [...sequence.witnesses.kernelWitnesses]
+  const surjectionWitnessCandidates = [...sequence.witnesses.surjectionWitnesses]
+  const injectWitnessCandidates = sequence.witnesses.injectWitnesses
+    ? [...sequence.witnesses.injectWitnesses]
+    : []
+  const kernelSamplesWithoutPreimage: Middle[] = []
+  const surjectionSamplesWithoutLift: Right[] = []
+  const injectSamplesNonKernel: Left[] = []
+
+  for (const sample of options.sequenceSamples ?? []) {
+    if (sample.kind === "kernel") {
+      if (sample.preimage !== undefined) {
+        kernelWitnessCandidates.push({ middle: sample.middle, preimage: sample.preimage })
+      } else {
+        kernelSamplesWithoutPreimage.push(sample.middle)
+      }
+    } else if (sample.kind === "surjection") {
+      if (sample.lift !== undefined) {
+        surjectionWitnessCandidates.push({ right: sample.right, lift: sample.lift })
+      } else {
+        surjectionSamplesWithoutLift.push(sample.right)
+      }
+    } else {
+      const includeImage = sequence.include.map(sample.left)
+      if (middleEq(includeImage, sequence.middle.zero)) {
+        injectWitnessCandidates.push(sample.left)
+      } else {
+        injectSamplesNonKernel.push(sample.left)
+      }
+    }
+  }
+
+  const kernelWitnesses = dedupeKernelWitnesses(kernelWitnessCandidates, leftEq, middleEq)
+  const surjectionWitnesses = dedupeSurjectionWitnesses(surjectionWitnessCandidates, middleEq, rightEq)
+  const injectWitnesses = dedupeInjectWitnesses(injectWitnessCandidates, leftEq)
+  const surjectionLiftCandidates = dedupe(
+    surjectionWitnesses.map(witness => witness.lift).concat(middleSamples),
+    middleEq,
+  )
+
+  const witnessLimit = options.witnessLimit ?? 6
+  const violations: FlatModuleViolation<Left, Middle, Right, Candidate>[] = []
+  const witnesses: FlatModuleWitness<Left, Middle, Right, Candidate>[] = []
+  let kernelSampleChecks = 0
+  let surjectionSampleChecks = 0
+  let injectSampleChecks = 0
+
+  if (candidateSamples.length === 0) {
+    violations.push({ kind: "missingCandidateSamples" })
+  }
+
+  const includeBilinear: BilinearMap<R, Left, Candidate, MiddleTensor> = {
+    left: sequence.left,
+    right: candidate,
+    target: tensors.middle.tensor,
+    map: (left, module) => tensors.middle.pureTensor(sequence.include.map(left), module),
+    label: `${sequence.label ?? "SES"}⊗ι`,
+  }
+
+  const projectBilinear: BilinearMap<R, Middle, Candidate, RightTensor> = {
+    left: sequence.middle,
+    right: candidate,
+    target: tensors.right.tensor,
+    map: (middle, module) => tensors.right.pureTensor(sequence.project.map(middle), module),
+    label: `${sequence.label ?? "SES"}⊗π`,
+  }
+
+  const includeBilinearCheck = checkBilinearMap(includeBilinear, {
+    leftSamples,
+    rightSamples: candidateSamples,
+    scalarSamples,
+    witnessLimit,
+  })
+
+  if (!includeBilinearCheck.holds) {
+    violations.push({ kind: "bilinear", stage: "include", details: includeBilinearCheck.details })
+  }
+
+  const projectBilinearCheck = checkBilinearMap(projectBilinear, {
+    leftSamples: middleSamples,
+    rightSamples: candidateSamples,
+    scalarSamples,
+    witnessLimit,
+  })
+
+  if (!projectBilinearCheck.holds) {
+    violations.push({ kind: "bilinear", stage: "project", details: projectBilinearCheck.details })
+  }
+
+  const leftTensorOptions = options.leftTensorOptions ?? {}
+  const middleTensorOptions = options.middleTensorOptions ?? {}
+  const rightTensorOptions = options.rightTensorOptions ?? {}
+
+  const leftTensorPure = buildPureTensorSamples(tensors.left, leftSamples, candidateSamples, leftTensorEq)
+  const middleTensorPure = buildPureTensorSamples(tensors.middle, middleSamples, candidateSamples, middleTensorEq)
+  const rightTensorPure = buildPureTensorSamples(tensors.right, rightSamples, candidateSamples, rightTensorEq)
+
+  const leftTensorCheck = checkTensorProduct(tensors.left, {
+    ...leftTensorOptions,
+    leftSamples: mergeSamples(leftTensorOptions.leftSamples, leftSamples, leftEq),
+    rightSamples: mergeSamples(leftTensorOptions.rightSamples, candidateSamples, candidateEq),
+    scalarSamples: mergeSamples(leftTensorOptions.scalarSamples, scalarSamples, scalarEq),
+    tensorSamples: mergeSamples(leftTensorOptions.tensorSamples, leftTensorPure, leftTensorEq),
+  })
+
+  if (!leftTensorCheck.holds) {
+    violations.push({ kind: "tensorProduct", stage: "left", details: leftTensorCheck.details })
+  }
+
+  const middleTensorCheck = checkTensorProduct(tensors.middle, {
+    ...middleTensorOptions,
+    leftSamples: mergeSamples(middleTensorOptions.leftSamples, middleSamples, middleEq),
+    rightSamples: mergeSamples(middleTensorOptions.rightSamples, candidateSamples, candidateEq),
+    scalarSamples: mergeSamples(middleTensorOptions.scalarSamples, scalarSamples, scalarEq),
+    tensorSamples: mergeSamples(middleTensorOptions.tensorSamples, middleTensorPure, middleTensorEq),
+  })
+
+  if (!middleTensorCheck.holds) {
+    violations.push({ kind: "tensorProduct", stage: "middle", details: middleTensorCheck.details })
+  }
+
+  const rightTensorCheck = checkTensorProduct(tensors.right, {
+    ...rightTensorOptions,
+    leftSamples: mergeSamples(rightTensorOptions.leftSamples, rightSamples, rightEq),
+    rightSamples: mergeSamples(rightTensorOptions.rightSamples, candidateSamples, candidateEq),
+    scalarSamples: mergeSamples(rightTensorOptions.scalarSamples, scalarSamples, scalarEq),
+    tensorSamples: mergeSamples(rightTensorOptions.tensorSamples, rightTensorPure, rightTensorEq),
+  })
+
+  if (!rightTensorCheck.holds) {
+    violations.push({ kind: "tensorProduct", stage: "right", details: rightTensorCheck.details })
+  }
+
+  const includeTensor = tensors.left.induce(includeBilinear)
+  const projectTensor = tensors.middle.induce(projectBilinear)
+
+  const recordWitness = (witness: FlatModuleWitness<Left, Middle, Right, Candidate>) => {
+    if (witnesses.length < witnessLimit) {
+      witnesses.push(witness)
+    }
+  }
+
+  for (const kernelWitness of kernelWitnesses) {
+    const mapped = sequence.include.map(kernelWitness.preimage)
+    if (!middleEq(mapped, kernelWitness.middle)) {
+      violations.push({
+        kind: "witnessInconsistent",
+        stage: "kernel",
+        details: "inclusion witness does not land in supplied kernel sample",
+      })
+      continue
+    }
+    const projected = sequence.project.map(kernelWitness.middle)
+    if (!rightEq(projected, sequence.right.zero)) {
+      violations.push({
+        kind: "witnessInconsistent",
+        stage: "kernel",
+        details: "kernel witness does not map to zero under projection",
+      })
+      continue
+    }
+
+    for (const sample of candidateSamples) {
+      const tensorImage = includeTensor.map(tensors.left.pureTensor(kernelWitness.preimage, sample))
+      const expectedMiddle = tensors.middle.pureTensor(kernelWitness.middle, sample)
+      if (!middleTensorEq(tensorImage, expectedMiddle)) {
+        violations.push({
+          kind: "kernelWitness",
+          candidate: sample,
+          middle: kernelWitness.middle,
+          preimage: kernelWitness.preimage,
+        })
+      } else {
+        const projectedTensor = projectTensor.map(expectedMiddle)
+        const expectedProjected = tensors.right.pureTensor(projected, sample)
+        if (!rightTensorEq(projectedTensor, expectedProjected)) {
+          violations.push({
+            kind: "kernelWitness",
+            candidate: sample,
+            middle: kernelWitness.middle,
+            preimage: kernelWitness.preimage,
+          })
+        } else {
+          recordWitness({
+            kind: "kernel",
+            candidate: sample,
+            middle: kernelWitness.middle,
+            left: kernelWitness.preimage,
+          })
+        }
+      }
+    }
+  }
+
+  for (const surjectionWitness of surjectionWitnesses) {
+    const mapped = sequence.project.map(surjectionWitness.lift)
+    if (!rightEq(mapped, surjectionWitness.right)) {
+      violations.push({
+        kind: "witnessInconsistent",
+        stage: "surjection",
+        details: "surjection witness lift does not map to supplied target",
+      })
+      continue
+    }
+
+    for (const sample of candidateSamples) {
+      const tensorLift = tensors.middle.pureTensor(surjectionWitness.lift, sample)
+      const projectedTensor = projectTensor.map(tensorLift)
+      const expectedTensor = tensors.right.pureTensor(surjectionWitness.right, sample)
+      if (!rightTensorEq(projectedTensor, expectedTensor)) {
+        violations.push({
+          kind: "surjectionWitness",
+          candidate: sample,
+          right: surjectionWitness.right,
+          lift: surjectionWitness.lift,
+        })
+      } else {
+        recordWitness({
+          kind: "surjection",
+          candidate: sample,
+          middle: surjectionWitness.lift,
+          right: surjectionWitness.right,
+        })
+      }
+    }
+  }
+
+  for (const injectWitness of injectWitnesses) {
+    const mapped = sequence.include.map(injectWitness)
+    if (!middleEq(mapped, sequence.middle.zero)) {
+      violations.push({
+        kind: "witnessInconsistent",
+        stage: "inject",
+        details: "injectivity witness does not map to zero in middle module",
+      })
+      continue
+    }
+
+    for (const sample of candidateSamples) {
+      const tensorImage = includeTensor.map(tensors.left.pureTensor(injectWitness, sample))
+      if (!middleTensorEq(tensorImage, tensors.middle.tensor.zero)) {
+        violations.push({ kind: "compositionWitness", candidate: sample, left: injectWitness })
+      } else {
+        recordWitness({ kind: "composition", candidate: sample, left: injectWitness })
+      }
+    }
+  }
+
+  for (const middleSample of kernelSamplesWithoutPreimage) {
+    for (const candidateSample of candidateSamples) {
+      kernelSampleChecks++
+      const tensorMiddle = tensors.middle.pureTensor(middleSample, candidateSample)
+      const projected = projectTensor.map(tensorMiddle)
+      if (!rightTensorEq(projected, tensors.right.tensor.zero)) {
+        violations.push({ kind: "kernelSample", candidate: candidateSample, middle: middleSample })
+        continue
+      }
+
+      const generatedByLeftSample = leftSamples.some(leftSample =>
+        middleTensorEq(
+          includeTensor.map(tensors.left.pureTensor(leftSample, candidateSample)),
+          tensorMiddle,
+        ),
+      )
+
+      const generatedByWitness = kernelWitnesses.some(witness =>
+        middleTensorEq(
+          includeTensor.map(tensors.left.pureTensor(witness.preimage, candidateSample)),
+          tensorMiddle,
+        ),
+      )
+
+      if (!generatedByLeftSample && !generatedByWitness) {
+        violations.push({
+          kind: "kernelSampleMissingPreimage",
+          candidate: candidateSample,
+          middle: middleSample,
+        })
+      }
+    }
+  }
+
+  for (const rightSample of surjectionSamplesWithoutLift) {
+    for (const candidateSample of candidateSamples) {
+      surjectionSampleChecks++
+      const targetTensor = tensors.right.pureTensor(rightSample, candidateSample)
+      const hasLift = surjectionLiftCandidates.some(liftCandidate => {
+        const tensorLift = tensors.middle.pureTensor(liftCandidate, candidateSample)
+        const projected = projectTensor.map(tensorLift)
+        return rightTensorEq(projected, targetTensor)
+      })
+
+      if (!hasLift) {
+        violations.push({
+          kind: "surjectionSampleMissingLift",
+          candidate: candidateSample,
+          right: rightSample,
+        })
+      }
+    }
+  }
+
+  for (const injectSample of injectSamplesNonKernel) {
+    for (const candidateSample of candidateSamples) {
+      injectSampleChecks++
+      const tensorImage = includeTensor.map(tensors.left.pureTensor(injectSample, candidateSample))
+      if (middleTensorEq(tensorImage, tensors.middle.tensor.zero)) {
+        violations.push({ kind: "injectSample", candidate: candidateSample, left: injectSample })
+      }
+    }
+  }
+
+  if (candidateSamples.length > 0) {
+    for (const leftSample of leftSamples) {
+      for (const sample of candidateSamples) {
+        const composed = projectTensor.map(
+          includeTensor.map(tensors.left.pureTensor(leftSample, sample)),
+        )
+        const expected = tensors.right.pureTensor(
+          sequence.project.map(sequence.include.map(leftSample)),
+          sample,
+        )
+        if (!rightTensorEq(composed, expected)) {
+          violations.push({ kind: "compositionWitness", candidate: sample, left: leftSample })
+        }
+      }
+    }
+  }
+
+  const holds = violations.length === 0
+  const label = sequence.label ?? "short exact sequence"
+  const details = holds
+    ? `${label} remains exact across ${candidateSamples.length} tensor sample(s).`
+    : `${label} failed flatness witnesses on supplied samples.`
+
+  return {
+    holds,
+    violations,
+    witnesses,
+    details,
+    metadata: {
+      candidateSampleCandidates: candidateSampleCandidates.length,
+      distinctCandidateSamples: candidateSamples.length,
+      leftSamples: leftSamples.length,
+      middleSamples: middleSamples.length,
+      rightSamples: rightSamples.length,
+      kernelWitnesses: kernelWitnesses.length,
+      surjectionWitnesses: surjectionWitnesses.length,
+      injectWitnesses: injectWitnesses.length,
+      additionalKernelSamples: kernelSamplesWithoutPreimage.length,
+      additionalSurjectionSamples: surjectionSamplesWithoutLift.length,
+      additionalInjectSamples: injectSamplesNonKernel.length,
+      kernelSampleChecks,
+      surjectionSampleChecks,
+      injectSampleChecks,
+      witnessLimit,
+      witnessesRecorded: witnesses.length,
+      bilinearIncludeHolds: includeBilinearCheck.holds,
+      bilinearProjectHolds: projectBilinearCheck.holds,
+      tensorLeftHolds: leftTensorCheck.holds,
+      tensorMiddleHolds: middleTensorCheck.holds,
+      tensorRightHolds: rightTensorCheck.holds,
+    },
+  }
+}
+

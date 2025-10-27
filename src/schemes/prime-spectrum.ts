@@ -17,6 +17,13 @@ import type {
 import { checkPrimeIdeal } from "../algebra/ring/prime-ideals"
 import type { Ring } from "../algebra/ring/structures"
 
+/**
+ * Prime ideal sample for affine scheme diagnostics.
+ *
+ * Curated catalogues such as `CommutativeRingSamples` expose ready-to-use
+ * {@link PrimeSpectrumPoint} instances together with multiplicative-set and
+ * localization data in `examples/runnable/092-commutative-ring-sample-library.ts`.
+ */
 export interface PrimeSpectrumPoint<A> {
   readonly ideal: RingIdeal<A>
   readonly label?: string

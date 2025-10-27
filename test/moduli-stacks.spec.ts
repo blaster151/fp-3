@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest"
 import {
+  buildEtaleDescentSample,
+  buildFiberedSamplesFromEtaleDescent,
   checkFiberedCategory,
   checkStackDescent,
   type CartesianComparison,
+  type CoveringFamily,
   type DescentDatum,
   type DescentTransition,
   type FiberedCategory,
   type FiberedCategorySample,
+  type GrothendieckTopology,
   type Site,
-  type CoveringFamily,
 } from "../allTS"
 import type { SimpleCat } from "../simple-cat"
 
@@ -50,6 +53,14 @@ const buildSite = (): Site<OpenSet, Inclusion> => {
   }
   return site
 }
+
+const buildEtaleTopology = (
+  site: Site<OpenSet, Inclusion>,
+): GrothendieckTopology<OpenSet, Inclusion> => ({
+  site,
+  coverings: (object) => site.coverings(object),
+  label: "Two-open étale topology",
+})
 
 interface Bundle {
   readonly base: OpenSet
@@ -233,6 +244,37 @@ const buildDescentDatum = (
   }
 }
 
+const buildEtaleDescent = (
+  topology: GrothendieckTopology<OpenSet, Inclusion>,
+  covering: CoveringFamily<OpenSet, Inclusion>,
+) => {
+  const pullbacks = covering.arrows.map((arrow, index) => {
+    const source = topology.site.category.src(arrow)
+    const identity = topology.site.category.id(source)
+    return {
+      arrow,
+      pullback: {
+        site: topology.site,
+        target: source,
+        arrows: [identity],
+        label: `${covering.label ?? "covering"} pullback ${index + 1}`,
+      },
+      lifts: [
+        {
+          original: arrow,
+          lift: identity,
+        },
+      ],
+    }
+  })
+
+  return buildEtaleDescentSample(topology, {
+    covering,
+    pullbacks,
+    label: `${covering.label ?? "covering"} étale descent`,
+  })
+}
+
 describe("moduli and stack scaffolding", () => {
   const site = buildSite()
   const covering = site.coverings("UV")[0]
@@ -240,6 +282,7 @@ describe("moduli and stack scaffolding", () => {
     throw new Error("Expected two-open covering for UV")
   }
   const fibered = buildFiberedCategory()
+  const topology = buildEtaleTopology(site)
 
   it("validates cartesian lifts for the trivial bundle stack", () => {
     const sample = buildFiberedSample(covering, fibered)
@@ -310,6 +353,57 @@ describe("moduli and stack scaffolding", () => {
     const result = checkStackDescent(brokenDatum)
     expect(result.holds).toBe(false)
     expect(result.violations.some(v => v.kind === "transitionInverseFailure")).toBe(true)
+  })
+
+  it("assembles fibered samples from étale descent data", () => {
+    const descentSample = buildEtaleDescent(topology, covering)
+    const target = makeBundle("UV", "L")
+    const firstPullback = descentSample.pullbackSamples[0]
+    if (!firstPullback) {
+      throw new Error("Expected pullback sample from étale descent")
+    }
+    const lift = fibered.pullback(firstPullback.arrow, target)
+    if (!lift.exists || !lift.object || !lift.lift) {
+      throw new Error("Expected cartesian lift from étale descent pullback")
+    }
+
+    const comparisons: ReadonlyArray<CartesianComparison<Bundle, BundleArrow>> = [
+      {
+        from: lift.object,
+        arrow: lift.lift,
+        factorization: idArrow(lift.object),
+        label: "Identity factorization",
+      },
+    ]
+
+    const fiberedSamples = buildFiberedSamplesFromEtaleDescent(descentSample, [
+      {
+        pullbackIndex: 0,
+        target,
+        comparisons,
+        label: "Lift along U → UV",
+      },
+    ])
+
+    const result = checkFiberedCategory(fibered, fiberedSamples)
+    expect(result.holds).toBe(true)
+    expect(result.metadata.samplesTested).toBe(1)
+  })
+
+  it("detects target mismatches in étale descent fibered samples", () => {
+    const descentSample = buildEtaleDescent(topology, covering)
+    const badSamples = buildFiberedSamplesFromEtaleDescent(descentSample, [
+      {
+        pullbackIndex: 0,
+        target: makeBundle("U", "broken"),
+        comparisons: [] as ReadonlyArray<CartesianComparison<Bundle, BundleArrow>>,
+        label: "Broken lift",
+      },
+    ])
+
+    const result = checkFiberedCategory(fibered, badSamples)
+    expect(result.holds).toBe(false)
+    expect(result.violations.some(v => v.kind === "targetBaseMismatch")).toBe(true)
   })
 })
 

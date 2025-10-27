@@ -104,21 +104,50 @@ const sampleSections = <Obj, Arr, Section>(
   return dedupe(candidates, eq)
 }
 
-export const checkPresheaf = <Obj, Arr, Section>(
+export interface PresheafSamplingPlan<Obj, Arr, Section> {
+  readonly objects: ReadonlyArray<Obj>
+  readonly arrows: ReadonlyArray<Arr>
+  readonly objectSampleCandidates: number
+  readonly arrowSampleCandidates: number
+  readonly sectionSampleLimit: number
+  readonly sampleSections: (object: Obj) => ReadonlyArray<Section>
+}
+
+export const buildPresheafSamplingPlan = <Obj, Arr, Section>(
   presheaf: Presheaf<Obj, Arr, Section>,
   options: PresheafCheckOptions<Obj, Arr> = {},
-): PresheafCheckResult<Obj, Arr, Section> => {
+): PresheafSamplingPlan<Obj, Arr, Section> => {
   const objectSampleCandidates = options.objectSamples ?? []
   const objectEq = withEquality(presheaf.site.objectEq)
   const objects = dedupe(objectSampleCandidates, objectEq)
   const sectionSampleLimit = options.sectionSampleLimit ?? 5
-  const witnessLimit = options.witnessLimit ?? 3
 
   const coverageArrows = collectCoveringArrows(presheaf.site, objects)
   const arrowSampleCandidates = options.arrowSamples ?? coverageArrows
   const arrowEq = withEquality(presheaf.site.arrowEq)
   const arrows = dedupe(arrowSampleCandidates, arrowEq)
 
+  return {
+    objects,
+    arrows,
+    objectSampleCandidates: objectSampleCandidates.length,
+    arrowSampleCandidates: arrowSampleCandidates.length,
+    sectionSampleLimit,
+    sampleSections: (object: Obj) => sampleSections(presheaf, object, sectionSampleLimit),
+  }
+}
+
+export const checkPresheaf = <Obj, Arr, Section>(
+  presheaf: Presheaf<Obj, Arr, Section>,
+  options: PresheafCheckOptions<Obj, Arr> = {},
+): PresheafCheckResult<Obj, Arr, Section> => {
+  const plan = buildPresheafSamplingPlan(presheaf, options)
+  const objects = plan.objects
+  const arrows = plan.arrows
+  const sectionSampleLimit = plan.sectionSampleLimit
+  const witnessLimit = options.witnessLimit ?? 3
+
+  const objectEq = withEquality(presheaf.site.objectEq)
   const violations: PresheafViolation<Obj, Arr, Section>[] = []
   const witnesses: PresheafWitness<Obj, Arr, Section>[] = []
 
@@ -129,8 +158,8 @@ export const checkPresheaf = <Obj, Arr, Section>(
   for (const arrow of arrows) {
     const target = category.dst(arrow)
     const domain = category.src(arrow)
-    const targetSections = sampleSections(presheaf, target, sectionSampleLimit)
-    const domainSections = sampleSections(presheaf, domain, sectionSampleLimit)
+    const targetSections = plan.sampleSections(target)
+    const domainSections = plan.sampleSections(domain)
 
     for (const section of targetSections) {
       restrictionChecks += 1
@@ -153,7 +182,7 @@ export const checkPresheaf = <Obj, Arr, Section>(
   let identityChecks = 0
   for (const object of objects) {
     const id = category.id(object)
-    const sections = sampleSections(presheaf, object, sectionSampleLimit)
+    const sections = plan.sampleSections(object)
     for (const section of sections) {
       identityChecks += 1
       const restricted = presheaf.restrict(id, section)
@@ -182,7 +211,7 @@ export const checkPresheaf = <Obj, Arr, Section>(
       }
       const composite = category.compose(second, first)
       const target = category.dst(second)
-      const targetSections = sampleSections(presheaf, target, sectionSampleLimit)
+      const targetSections = plan.sampleSections(target)
       for (const section of targetSections) {
         compositionChecks += 1
         const sequential = presheaf.restrict(first, presheaf.restrict(second, section))
@@ -218,9 +247,9 @@ export const checkPresheaf = <Obj, Arr, Section>(
     witnesses,
     details,
     metadata: {
-      objectSampleCandidates: objectSampleCandidates.length,
+      objectSampleCandidates: plan.objectSampleCandidates,
       distinctObjectSamples: objects.length,
-      arrowSampleCandidates: arrowSampleCandidates.length,
+      arrowSampleCandidates: plan.arrowSampleCandidates,
       distinctArrowSamples: arrows.length,
       sectionSampleLimit,
       restrictionChecks,

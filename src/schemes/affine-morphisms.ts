@@ -3,6 +3,7 @@ import type { PrimeIdealCheckOptions, PrimeIdealCheckResult } from "../algebra/r
 import { checkPrimeIdeal } from "../algebra/ring/prime-ideals"
 import type { RingHomomorphism } from "../algebra/ring/structures"
 import type { PrimeSpectrum, PrimeSpectrumPoint } from "./prime-spectrum"
+import type { SchemeChart } from "./global-schemes"
 
 const withEquality = <A>(eq?: (left: A, right: A) => boolean): ((left: A, right: A) => boolean) =>
   eq ?? ((left, right) => Object.is(left, right))
@@ -663,6 +664,71 @@ export const checkAffineSchemePullbackSquare = <Base, Left, Right, Apex>(
       witnessLimit,
       witnessesRecorded: witnesses.length,
     },
+  }
+}
+
+export interface AffineFiberProductComputation<Base, Left, Right, Apex> {
+  readonly chart: SchemeChart<Apex>
+  readonly result: AffineSchemePullbackCheckResult<Base, Left, Right, Apex>
+}
+
+export type AffineFiberProductCheck<Base, Left, Right, Apex> = (
+  options?: AffineSchemePullbackCheckOptions<Base, Left, Right, Apex>,
+) => AffineFiberProductComputation<Base, Left, Right, Apex>
+
+export interface AffineFiberProductBuilderOptions<Apex> {
+  readonly chart: SchemeChart<Apex>
+}
+
+export const buildAffineFiberProduct = <Base, Left, Right, Apex>(
+  square: AffineSchemePullbackSquare<Base, Left, Right, Apex>,
+  builderOptions: AffineFiberProductBuilderOptions<Apex>,
+): AffineFiberProductCheck<Base, Left, Right, Apex> => {
+  const baseEq = withEquality(square.base.ring.eq)
+  const leftEq = withEquality(square.left.spectrum.ring.eq)
+  const rightEq = withEquality(square.right.spectrum.ring.eq)
+  const apexEq = withEquality(square.apex.spectrum.ring.eq)
+
+  const defaultBaseSamples = gatherSamples(undefined, square.base.points, baseEq)
+  const defaultLeftSamples = gatherSamples(undefined, square.left.spectrum.points, leftEq)
+  const defaultRightSamples = gatherSamples(undefined, square.right.spectrum.points, rightEq)
+  const defaultApexSamples = gatherSamples(undefined, square.apex.spectrum.points, apexEq)
+
+  const providedChart = builderOptions.chart
+  const chart: SchemeChart<Apex> = {
+    ...providedChart,
+    options: {
+      ...(providedChart.options ?? {}),
+      spectrum: {
+        ...(providedChart.options?.spectrum ?? {}),
+        ringSamples: defaultApexSamples,
+      },
+    },
+  }
+
+  return (options = {}) => {
+    const baseSamples =
+      options.baseSamples === undefined
+        ? defaultBaseSamples
+        : gatherSamples(options.baseSamples, square.base.points, baseEq)
+    const leftSamples =
+      options.leftSamples === undefined
+        ? defaultLeftSamples
+        : gatherSamples(options.leftSamples, square.left.spectrum.points, leftEq)
+    const rightSamples =
+      options.rightSamples === undefined
+        ? defaultRightSamples
+        : gatherSamples(options.rightSamples, square.right.spectrum.points, rightEq)
+
+    const derivedOptions: AffineSchemePullbackCheckOptions<Base, Left, Right, Apex> = {
+      ...options,
+      baseSamples,
+      leftSamples,
+      rightSamples,
+    }
+
+    const result = checkAffineSchemePullbackSquare(square, derivedOptions)
+    return { chart, result }
   }
 }
 

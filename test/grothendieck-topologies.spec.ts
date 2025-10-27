@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
+  CommutativeRingSamples,
+  buildZariskiSiteTopology,
   checkEtaleCover,
   checkGrothendieckTopology,
   checkZariskiPrincipalOpenCover,
@@ -13,6 +15,7 @@ import {
   type TransitivitySample,
   type Ring,
   type RingHomomorphism,
+  type ZariskiInclusion,
 } from "../allTS"
 import type { SimpleCat } from "../simple-cat"
 
@@ -186,6 +189,99 @@ describe("Grothendieck topologies", () => {
 
     expect(flawedResult.holds).toBe(false)
     expect(flawedResult.violations.some(v => v.kind === "identityMissing")).toBe(true)
+  })
+})
+
+describe("Zariski site topology builder", () => {
+  const integerSample = CommutativeRingSamples.integers.ring
+  const spectrum = {
+    ring: integerSample.ring,
+    points: integerSample.primeSpectrum,
+    label: integerSample.label,
+  }
+
+  const topologyResult = buildZariskiSiteTopology(spectrum, {
+    maxCoverSize: 2,
+    principalCoverOptions: {
+      coefficientSamples: [-2n, -1n, 0n, 1n, 2n],
+    },
+  })
+
+  const eq = integerSample.ring.eq ?? ((left: bigint, right: bigint) => left === right)
+
+  it("derives principal open coverings and enriches the Grothendieck topology", () => {
+    const specOpen = topologyResult.site.opens.find(open => open.id === "Spec")!
+
+    expect(topologyResult.principalCoverings.length).toBeGreaterThan(0)
+
+    const specCovering = topologyResult.principalCoverings.find(cover => {
+      if (cover.target.id !== specOpen.id || cover.generators.length !== 2) {
+        return false
+      }
+      const has2 = cover.generators.some(generator => eq(generator, 2n))
+      const has3 = cover.generators.some(generator => eq(generator, 3n))
+      return has2 && has3
+    })
+
+    expect(specCovering).toBeDefined()
+    expect(specCovering?.validation.holds).toBe(true)
+    expect(specCovering?.covering.arrows.length).toBe(2)
+
+    const specCoverings = topologyResult.topology.coverings(specOpen)
+    expect(specCoverings).toContain(specCovering!.covering)
+  })
+
+  it("validates the enriched topology using sampled Grothendieck axioms", () => {
+    const specOpen = topologyResult.site.opens.find(open => open.id === "Spec")!
+
+    const specCovering = topologyResult.principalCoverings.find(cover => cover.target.id === specOpen.id && cover.covering.arrows.length === 2)
+    expect(specCovering).toBeDefined()
+
+    const identitySamples: IdentitySample<typeof specOpen>[] = [{ object: specOpen }]
+
+    const pullbackSamples: PullbackSample<typeof specOpen, ZariskiInclusion<bigint>>[] = [
+      {
+        arrow: topologyResult.site.category.id(specOpen),
+        covering: specCovering!.covering,
+        pullback: specCovering!.covering,
+        lifts: specCovering!.covering.arrows.map(arrow => ({ original: arrow, lift: arrow })),
+      },
+    ]
+
+    const transitivitySamples: TransitivitySample<typeof specOpen, ZariskiInclusion<bigint>>[] = [
+      {
+        covering: specCovering!.covering,
+        refinements: specCovering!.covering.arrows.map(arrow => {
+          const identity = topologyResult.site.category.id(arrow.from)
+          return {
+            original: arrow,
+            covering: {
+              site: topologyResult.site,
+              target: arrow.from,
+              arrows: [identity],
+              label: `${arrow.from.label ?? arrow.from.id} identity`,
+            },
+            composites: [
+              {
+                refined: identity,
+                composite: arrow,
+              },
+            ],
+          }
+        }),
+        composite: specCovering!.covering,
+      },
+    ]
+
+    const result = checkGrothendieckTopology(topologyResult.topology, {
+      identitySamples,
+      pullbackSamples,
+      transitivitySamples,
+    })
+
+    expect(result.holds).toBe(true)
+    expect(result.metadata.pullbackSamples).toBe(pullbackSamples.length)
+    expect(result.metadata.transitivitySamples).toBe(transitivitySamples.length)
   })
 })
 

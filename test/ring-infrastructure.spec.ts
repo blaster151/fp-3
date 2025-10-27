@@ -11,22 +11,24 @@ import {
   checkPrimeIdeal,
   checkMultiplicativeSet,
   checkLocalizationRing,
+  checkLocalRingAtPrime,
   checkFinitelyGeneratedModule,
+  checkNoetherianModule,
   checkBilinearMap,
   checkTensorProduct,
   checkModule,
   checkModuleHomomorphism,
   buildQuotientRing,
   checkQuotientRing,
+  CommutativeRingSamples,
   type RingHomomorphism,
   type Ring,
   type Semiring,
   type RingIdeal,
   type MultiplicativeSet,
-  type LocalizationRingData,
-  type LocalizationFraction,
   type Module,
   type FinitelyGeneratedModule,
+  type AscendingChain,
   type BilinearMap,
   type TensorProductStructure,
   type ModuleHomomorphism,
@@ -34,6 +36,27 @@ import {
 } from "../allTS"
 
 describe("ring infrastructure", () => {
+  const integerCatalog = CommutativeRingSamples.integers
+  const integerRing = integerCatalog.ring.ring
+  const integerRingSamples = integerCatalog.ring.ringSamples
+
+  const requireIntegerPrime = (label: string) => {
+    const prime = integerCatalog.ring.primePoints.find((entry) => entry.point.label === label)
+    if (!prime) {
+      throw new Error(`Missing integer prime sample: ${label}`)
+    }
+    return prime
+  }
+
+  const requireIntegerMultiplicativeSet = (label: string) => {
+    const sets = integerCatalog.ring.multiplicativeSets ?? []
+    const sample = sets.find((entry) => entry.label === label)
+    if (!sample) {
+      throw new Error(`Missing integer multiplicative set sample: ${label}`)
+    }
+    return sample
+  }
+
   it("validates canonical quotient homomorphism", () => {
     const modulus = 5n
     const quotient = createModuloRing(modulus)
@@ -53,15 +76,11 @@ describe("ring infrastructure", () => {
   })
 
   it("certifies the principal ideal (5)", () => {
-    const modulus = 5n
-    const ideal: RingIdeal<bigint> = {
-      ring: RingInteger,
-      contains: (value) => value % modulus === 0n,
-      name: "(5)",
-    }
+    const prime = requireIntegerPrime("(5)")
+    const samples = prime.point.samples ?? integerRingSamples
 
-    const result = checkIdeal(ideal, {
-      ringSamples: [-10n, -5n, -2n, -1n, 0n, 1n, 2n, 5n, 10n],
+    const result = checkIdeal(prime.point.ideal, {
+      ringSamples: samples,
     })
 
     expect(result.holds).toBe(true)
@@ -69,14 +88,9 @@ describe("ring infrastructure", () => {
   })
 
   it("verifies that (5) is a prime ideal of ℤ", () => {
-    const ideal: RingIdeal<bigint> = {
-      ring: RingInteger,
-      contains: (value) => value % 5n === 0n,
-      name: "(5)",
-    }
-
-    const samples = [-10n, -5n, -1n, 0n, 1n, 2n, 3n, 4n, 5n, 6n]
-    const result = checkPrimeIdeal(ideal, { ringSamples: samples })
+    const prime = requireIntegerPrime("(5)")
+    const samples = prime.point.samples ?? integerRingSamples
+    const result = checkPrimeIdeal(prime.point.ideal, { ringSamples: samples })
 
     expect(result.holds).toBe(true)
     expect(result.metadata.distinctRingSamples).toBe(samples.length)
@@ -85,34 +99,22 @@ describe("ring infrastructure", () => {
   })
 
   it("confirms the 5-localization multiplicative set", () => {
-    const multiplicativeSet: MultiplicativeSet<bigint> = {
-      ring: RingInteger,
-      contains: (value) => value === 1n || (value % 5n === 0n && value !== 0n),
-      label: "S = {1, 5, 10, …}",
-    }
-
-    const samples = [1n, 5n, 10n, 25n]
-    const result = checkMultiplicativeSet(multiplicativeSet, {
-      ringSamples: samples,
+    const sample = requireIntegerMultiplicativeSet("powersOf5")
+    const result = checkMultiplicativeSet(sample.set, {
+      ringSamples: sample.ringSamples,
     })
 
     expect(result.holds).toBe(true)
-    expect(result.metadata.distinctRingSamples).toBe(samples.length)
+    expect(result.metadata.distinctRingSamples).toBe(sample.ringSamples.length)
     expect(result.metadata.requireOne).toBe(true)
     expect(result.metadata.forbidZero).toBe(true)
     expect(result.violations).toHaveLength(0)
   })
 
   it("detects closure failures in multiplicative sets", () => {
-    const flawedSet: MultiplicativeSet<bigint> = {
-      ring: RingInteger,
-      contains: (value) => value === 1n || value === 2n,
-      label: "{1, 2}",
-    }
-
-    const samples = [1n, 2n]
-    const result = checkMultiplicativeSet(flawedSet, {
-      ringSamples: samples,
+    const sample = requireIntegerMultiplicativeSet("pairNotClosed")
+    const result = checkMultiplicativeSet(sample.set, {
+      ringSamples: sample.ringSamples,
       witnessLimit: 3,
     })
 
@@ -124,56 +126,87 @@ describe("ring infrastructure", () => {
   })
 
   it("verifies localization ring laws for powers-of-5 denominators", () => {
-    const multiplicativeSet: MultiplicativeSet<bigint> = {
-      ring: RingInteger,
-      contains: (value) => value === 1n || (value % 5n === 0n && value !== 0n),
-      label: "S = {1, 5, 25, …}",
+    const sample = requireIntegerMultiplicativeSet("powersOf5")
+    const localization = sample.localization
+    if (!localization) {
+      throw new Error("powersOf5 multiplicative set missing localization hint")
     }
 
-    const data: LocalizationRingData<bigint> = {
-      base: RingInteger,
-      multiplicativeSet,
-    }
-
-    const fractionSamples: ReadonlyArray<LocalizationFraction<bigint>> = [
-      { numerator: 1n, denominator: 5n },
-      { numerator: 2n, denominator: 25n },
-    ]
-
-    const result = checkLocalizationRing(data, {
-      numeratorSamples: [-2n, -1n, 0n, 1n, 2n],
-      denominatorSamples: [1n, 5n, 25n],
-      multiplierSamples: [5n, 25n],
-      fractionSamples,
+    const result = checkLocalizationRing(localization.data, {
+      ...localization.options,
       witnessLimit: 6,
     })
 
     expect(result.holds).toBe(true)
-    expect(result.metadata.fractionSamples).toBeGreaterThan(fractionSamples.length)
+    expect(result.metadata.fractionSamples).toBeGreaterThan(
+      localization.options.fractionSamples?.length ?? 0,
+    )
     expect(result.witnesses.length).toBeGreaterThan(0)
   })
 
   it("detects localization denominators outside the multiplicative set", () => {
-    const multiplicativeSet: MultiplicativeSet<bigint> = {
-      ring: RingInteger,
-      contains: (value) => value === 1n || (value % 5n === 0n && value !== 0n),
-      label: "S = {1, 5, 25, …}",
+    const sample = requireIntegerMultiplicativeSet("powersOf5")
+    const localization = sample.localization
+    if (!localization) {
+      throw new Error("powersOf5 multiplicative set missing localization hint")
     }
 
-    const data: LocalizationRingData<bigint> = {
-      base: RingInteger,
-      multiplicativeSet,
-    }
-
-    const result = checkLocalizationRing(data, {
-      numeratorSamples: [1n],
+    const result = checkLocalizationRing(localization.data, {
+      numeratorSamples: localization.options.numeratorSamples ?? [],
       denominatorSamples: [3n],
-      multiplierSamples: [1n, 5n],
+      multiplierSamples: localization.options.multiplierSamples ?? [],
     })
 
     expect(result.holds).toBe(false)
     expect(result.violations.some((violation) => violation.kind === "denominatorOutsideSet")).toBe(true)
     expect(result.metadata.denominatorSamples).toBe(1)
+  })
+
+  it("certifies the local ring of ℤ at the prime (5)", () => {
+    const prime = requireIntegerPrime("(5)")
+    const localization = prime.localization
+    if (!localization) {
+      throw new Error("prime (5) missing localization hint")
+    }
+
+    const result = checkLocalRingAtPrime(prime.point, prime.complement, {
+      ringSamples: prime.point.samples ?? integerRingSamples,
+      localization: localization.options,
+    })
+
+    expect(result.holds).toBe(true)
+    expect(result.prime.holds).toBe(true)
+    expect(result.multiplicativeSet?.holds).toBe(true)
+    expect(result.localization?.holds).toBe(true)
+    expect(result.localization?.metadata.fractionSamples ?? 0).toBeGreaterThan(0)
+    expect(result.details).toContain("succeeded")
+  })
+
+  it("flags multiplicative sets that omit the unit in local ring checks", () => {
+    const prime = requireIntegerPrime("(5)")
+    const localization = prime.localization
+    if (!localization) {
+      throw new Error("prime (5) missing localization hint")
+    }
+
+    const flawedSet: MultiplicativeSet<bigint> = {
+      ...prime.complement,
+      contains: (value) => value !== 1n && prime.complement.contains(value),
+      label: `${prime.complement.label} without 1`,
+    }
+
+    const result = checkLocalRingAtPrime(prime.point, flawedSet, {
+      ringSamples: prime.point.samples ?? integerRingSamples,
+      multiplicativeSet: { witnessLimit: 2 },
+      localization: localization.options,
+    })
+
+    expect(result.holds).toBe(false)
+    expect(result.prime.holds).toBe(true)
+    expect(result.multiplicativeSet?.holds).toBe(false)
+    expect(result.multiplicativeSet?.violations.some(violation => violation.kind === "missingOne")).toBe(true)
+    expect(result.violations.some(violation => violation.kind === "multiplicativeSetFailure")).toBe(true)
+    expect(result.details).toContain("multiplicative set")
   })
 
   it("detects that (6) is not a prime ideal of ℤ", () => {
@@ -219,22 +252,18 @@ describe("ring infrastructure", () => {
   })
 
   it("validates ℤ as a ring", () => {
-    const samples = [-2n, -1n, 0n, 1n, 2n]
-
-    const result = checkRing(RingInteger, { samples })
+    const result = checkRing(integerRing, { samples: integerRingSamples })
 
     expect(result.holds).toBe(true)
-    expect(result.metadata.sampleCount).toBe(samples.length)
+    expect(result.metadata.sampleCount).toBe(integerRingSamples.length)
     expect(result.violations).toHaveLength(0)
   })
 
   it("validates ℤ as a semiring", () => {
-    const samples = [-2n, -1n, 0n, 1n, 2n]
-
-    const result = checkSemiring(RingInteger, { samples })
+    const result = checkSemiring(integerRing, { samples: integerRingSamples })
 
     expect(result.holds).toBe(true)
-    expect(result.metadata.sampleCount).toBe(samples.length)
+    expect(result.metadata.sampleCount).toBe(integerRingSamples.length)
     expect(result.violations).toHaveLength(0)
   })
 
@@ -368,6 +397,109 @@ describe("ring infrastructure", () => {
     expect(result.holds).toBe(true)
     expect(result.metadata.scalarSamples).toBe(5)
     expect(result.violations).toHaveLength(0)
+  })
+
+  it("detects stabilization in sampled ascending chains over ℤ", () => {
+    const module: Module<bigint, bigint> = {
+      ring: RingInteger,
+      zero: 0n,
+      add: (left, right) => left + right,
+      neg: (value) => -value,
+      scalar: (scalar, value) => scalar * value,
+      eq: (left, right) => left === right,
+      name: "ℤ",
+    }
+
+    const chain: AscendingChain<bigint, bigint> = {
+      module,
+      generatorSamples: [[2n], [2n, 1n], [2n, 1n, 3n]],
+      label: "ℤ",
+    }
+
+    const result = checkNoetherianModule(chain, {
+      vectorSamples: [0n, 1n, 2n],
+      coefficientSamples: [-1n, 0n, 1n, 2n],
+    })
+
+    expect(result.holds).toBe(true)
+    expect(result.metadata.stabilized).toBe(true)
+    expect(result.metadata.stagesTested).toBe(2)
+    expect(result.metadata.stabilizationIndex).toBe(1)
+    const lastStage = result.stages[result.stages.length - 1]
+    if (!lastStage) {
+      throw new Error("Expected final stage for Noetherian chain test")
+    }
+    expect(lastStage.missingVectors).toHaveLength(0)
+    expect(result.details).toContain("stabilized")
+  })
+
+  it("flags sampled chains that fail to stabilize", () => {
+    const module: Module<bigint, bigint> = {
+      ring: RingInteger,
+      zero: 0n,
+      add: (left, right) => left + right,
+      neg: (value) => -value,
+      scalar: (scalar, value) => scalar * value,
+      eq: (left, right) => left === right,
+      name: "ℤ",
+    }
+
+    const chain: AscendingChain<bigint, bigint> = {
+      module,
+      generatorSamples: [[2n], [3n], [5n]],
+      label: "ℤ",
+    }
+
+    const result = checkNoetherianModule(chain, {
+      vectorSamples: [2n, 3n, 5n],
+      coefficientSamples: [-1n, 0n, 1n],
+    })
+
+    expect(result.holds).toBe(false)
+    expect(result.metadata.stabilized).toBe(false)
+    expect(result.metadata.exhaustedChain).toBe(true)
+    expect(result.violations.some(violation => violation.kind === "chainDidNotStabilize")).toBe(
+      true,
+    )
+    const lastStage = result.stages[result.stages.length - 1]
+    if (!lastStage) {
+      throw new Error("Expected final stage for non-stabilizing chain test")
+    }
+    expect(lastStage.missingVectors.length).toBeGreaterThan(0)
+  })
+
+  it("reports stabilization without covering sampled generators", () => {
+    const module: Module<bigint, bigint> = {
+      ring: RingInteger,
+      zero: 0n,
+      add: (left, right) => left + right,
+      neg: (value) => -value,
+      scalar: (scalar, value) => scalar * value,
+      eq: (left, right) => left === right,
+      name: "ℤ",
+    }
+
+    const chain: AscendingChain<bigint, bigint> = {
+      module,
+      generatorSamples: [[2n], [2n, 4n], [2n, 4n, 6n]],
+      label: "ℤ",
+    }
+
+    const result = checkNoetherianModule(chain, {
+      vectorSamples: [0n, 1n, 2n],
+      coefficientSamples: [-1n, 0n, 1n],
+    })
+
+    expect(result.holds).toBe(false)
+    expect(result.metadata.stabilized).toBe(true)
+    expect(
+      result.violations.some(violation => violation.kind === "stabilizedWithMissingVectors"),
+    ).toBe(true)
+    const finalStage = result.stages[result.stages.length - 1]
+    if (!finalStage) {
+      throw new Error("Expected final stage for stabilization-with-missing test")
+    }
+    expect(finalStage.missingVectors.some(vector => vector === 1n)).toBe(true)
   })
 
   it("detects failures of generating sets", () => {

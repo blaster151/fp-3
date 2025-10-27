@@ -1,6 +1,8 @@
 import { checkRingHomomorphism } from "../algebra/ring/structures"
 import type { Ring, RingHomomorphism } from "../algebra/ring/structures"
-import type { CoveringFamily, Site } from "./sites"
+import type { PrimeSpectrum } from "../schemes/prime-spectrum"
+import { buildZariskiSiteFromSpectrum } from "./sites"
+import type { CoveringFamily, Site, ZariskiInclusion, ZariskiOpen, ZariskiSite } from "./sites"
 
 type Equality<A> = (left: A, right: A) => boolean
 
@@ -408,6 +410,197 @@ export const checkZariskiPrincipalOpenCover = <A>(
   }
 }
 
+interface PrincipalOpenCandidate<A> {
+  readonly generator: A
+  readonly open: ZariskiOpen<A>
+  readonly arrow: ZariskiInclusion<A>
+}
+
+const dedupePrincipalCandidates = <A>(
+  candidates: ReadonlyArray<PrincipalOpenCandidate<A>>,
+  eq: Equality<A>,
+): PrincipalOpenCandidate<A>[] => {
+  const deduped: PrincipalOpenCandidate<A>[] = []
+  for (const candidate of candidates) {
+    if (
+      !deduped.some(
+        existing =>
+          existing.open.id === candidate.open.id && eq(existing.generator, candidate.generator),
+      )
+    ) {
+      deduped.push(candidate)
+    }
+  }
+  return deduped
+}
+
+const enumerateCandidateCombos = <A>(
+  candidates: ReadonlyArray<PrincipalOpenCandidate<A>>,
+  maxSize: number,
+): PrincipalOpenCandidate<A>[][] => {
+  const combos: PrincipalOpenCandidate<A>[][] = []
+  const upperBound = Math.max(1, maxSize)
+
+  const helper = (start: number, buffer: PrincipalOpenCandidate<A>[]) => {
+    if (buffer.length > 0) {
+      combos.push([...buffer])
+    }
+    if (buffer.length >= upperBound) {
+      return
+    }
+    for (let index = start; index < candidates.length; index += 1) {
+      buffer.push(candidates[index]!)
+      helper(index + 1, buffer)
+      buffer.pop()
+    }
+  }
+
+  helper(0, [])
+  return combos
+}
+
+export interface ZariskiPrincipalOpenCovering<A> {
+  readonly target: ZariskiOpen<A>
+  readonly generators: ReadonlyArray<A>
+  readonly covering: CoveringFamily<ZariskiOpen<A>, ZariskiInclusion<A>>
+  readonly validation: PrincipalOpenCoverResult<A>
+}
+
+export interface ZariskiGrothendieckTopologyOptions<A> {
+  readonly maxCoverSize?: number
+  readonly principalCoverOptions?: PrincipalOpenCoverOptions<A>
+}
+
+export interface ZariskiSiteTopology<A> {
+  readonly site: ZariskiSite<A>
+  readonly topology: GrothendieckTopology<ZariskiOpen<A>, ZariskiInclusion<A>>
+  readonly principalCoverings: ReadonlyArray<ZariskiPrincipalOpenCovering<A>>
+}
+
+export const buildZariskiSiteTopology = <A>(
+  spectrum: PrimeSpectrum<A>,
+  options: ZariskiGrothendieckTopologyOptions<A> = {},
+): ZariskiSiteTopology<A> => {
+  const site = buildZariskiSiteFromSpectrum(spectrum)
+  const eq = withEquality(spectrum.ring.eq)
+  const maxCoverSize = Math.max(1, options.maxCoverSize ?? 3)
+
+  const openById = new Map(site.opens.map(open => [open.id, open] as const))
+  const inclusionsByTarget = new Map<string, ZariskiInclusion<A>[]>()
+  site.inclusions.forEach(inclusion => {
+    const list = inclusionsByTarget.get(inclusion.to.id)
+    if (list) {
+      list.push(inclusion)
+    } else {
+      inclusionsByTarget.set(inclusion.to.id, [inclusion])
+    }
+  })
+
+  const usedKeysByTarget = new Map<string, Set<string>>()
+  const principalCoverings: ZariskiPrincipalOpenCovering<A>[] = []
+
+  for (const target of site.opens) {
+    const canonicalTarget = openById.get(target.id) ?? target
+    if (canonicalTarget.points.length === 0) {
+      continue
+    }
+
+    const identityArrow = site.category.id(canonicalTarget)
+    const identityCandidates = canonicalTarget.generators.map<PrincipalOpenCandidate<A>>(
+      generator => ({ generator, open: canonicalTarget, arrow: identityArrow }),
+    )
+
+    const inbound = inclusionsByTarget.get(canonicalTarget.id) ?? []
+    const inboundCandidates = inbound.flatMap<PrincipalOpenCandidate<A>>(inclusion =>
+      inclusion.from.generators
+        .filter(generator => inclusion.from.points.length > 0)
+        .map(generator => ({ generator, open: inclusion.from, arrow: inclusion })),
+    )
+
+    const candidates = dedupePrincipalCandidates(
+      [...identityCandidates, ...inboundCandidates].filter(candidate => candidate.open.points.length > 0),
+      eq,
+    )
+    if (candidates.length === 0) {
+      continue
+    }
+
+    const combos = enumerateCandidateCombos(candidates, maxCoverSize)
+    for (const combo of combos) {
+      if (combo.some(candidate => candidate.arrow === identityArrow) && combo.length > 1) {
+        continue
+      }
+
+      const generatorList = dedupe(combo.map(candidate => candidate.generator), eq)
+      if (generatorList.length === 0) {
+        continue
+      }
+
+      const validation = checkZariskiPrincipalOpenCover(
+        { ring: spectrum.ring, generators: generatorList },
+        options.principalCoverOptions,
+      )
+      if (!validation.holds) {
+        continue
+      }
+
+      const key = combo
+        .map(candidate => candidate.arrow.id)
+        .sort()
+        .join("|")
+      let usedKeys = usedKeysByTarget.get(canonicalTarget.id)
+      if (!usedKeys) {
+        usedKeys = new Set<string>()
+        usedKeysByTarget.set(canonicalTarget.id, usedKeys)
+      }
+      if (usedKeys.has(key)) {
+        continue
+      }
+      usedKeys.add(key)
+
+      const label = `${canonicalTarget.label ?? canonicalTarget.id} principal cover by ${combo
+        .map(candidate => candidate.open.label ?? candidate.open.id)
+        .join(", ")}`
+      const covering: CoveringFamily<ZariskiOpen<A>, ZariskiInclusion<A>> = {
+        site,
+        target: canonicalTarget,
+        arrows: combo.map(candidate => candidate.arrow),
+        label,
+      }
+
+      principalCoverings.push({
+        target: canonicalTarget,
+        generators: generatorList,
+        covering,
+        validation,
+      })
+    }
+  }
+
+  const additionalByTarget = new Map<string, CoveringFamily<ZariskiOpen<A>, ZariskiInclusion<A>>[]>()
+  principalCoverings.forEach(entry => {
+    const existing = additionalByTarget.get(entry.target.id)
+    if (existing) {
+      existing.push(entry.covering)
+    } else {
+      additionalByTarget.set(entry.target.id, [entry.covering])
+    }
+  })
+
+  const topology: GrothendieckTopology<ZariskiOpen<A>, ZariskiInclusion<A>> = {
+    site,
+    coverings: (object) => {
+      const canonical = openById.get(object.id) ?? object
+      const base = site.coverings(canonical)
+      const extras = additionalByTarget.get(canonical.id)
+      return extras && extras.length > 0 ? [...base, ...extras] : base
+    },
+    label: site.label ? `${site.label} Grothendieck topology` : "Zariski Grothendieck topology",
+  }
+
+  return { site, topology, principalCoverings }
+}
+
 export interface EtaleMap<Domain, Codomain> {
   readonly hom: RingHomomorphism<Domain, Codomain>
   readonly section?: (value: Codomain) => Domain
@@ -543,5 +736,99 @@ export const checkEtaleCover = <Domain, Codomain>(
       witnessLimit,
       witnessesRecorded: witnesses.length,
     },
+  }
+}
+
+export interface EtaleDescentPullback<Obj, Arr> {
+  readonly arrow: Arr
+  readonly pullback: CoveringFamily<Obj, Arr>
+  readonly lifts: ReadonlyArray<PullbackLift<Arr>>
+  readonly label?: string
+}
+
+export interface EtaleDescentTransitivity<Obj, Arr> {
+  readonly refinements: ReadonlyArray<RefinementSample<Obj, Arr>>
+  readonly composite: CoveringFamily<Obj, Arr>
+  readonly label?: string
+}
+
+export interface EtaleDescentConfiguration<Obj, Arr> {
+  readonly covering: CoveringFamily<Obj, Arr>
+  readonly identities?: ReadonlyArray<IdentitySample<Obj>>
+  readonly pullbacks?: ReadonlyArray<EtaleDescentPullback<Obj, Arr>>
+  readonly transitivity?: ReadonlyArray<EtaleDescentTransitivity<Obj, Arr>>
+  readonly label?: string
+}
+
+export interface EtaleDescentSample<Obj, Arr> {
+  readonly covering: CoveringFamily<Obj, Arr>
+  readonly identitySamples: ReadonlyArray<IdentitySample<Obj>>
+  readonly pullbackSamples: ReadonlyArray<PullbackSample<Obj, Arr>>
+  readonly transitivitySamples: ReadonlyArray<TransitivitySample<Obj, Arr>>
+  readonly label?: string
+}
+
+export const buildEtaleDescentSample = <Obj, Arr>(
+  topology: GrothendieckTopology<Obj, Arr>,
+  configuration: EtaleDescentConfiguration<Obj, Arr>,
+): EtaleDescentSample<Obj, Arr> => {
+  const objectEq = withEquality(topology.site.objectEq)
+  const covering = configuration.covering
+  const baseLabel = configuration.label ?? covering.label
+
+  const identityCandidates = configuration.identities ?? [
+    baseLabel === undefined ? { object: covering.target } : { object: covering.target, label: `${baseLabel} identity` },
+  ]
+
+  const identitySamples: IdentitySample<Obj>[] = []
+  identityCandidates.forEach(candidate => {
+    if (!identitySamples.some(existing => objectEq(existing.object, candidate.object))) {
+      identitySamples.push(candidate)
+    }
+  })
+
+  const pullbackSamples: PullbackSample<Obj, Arr>[] = []
+  configuration.pullbacks?.forEach(pullback => {
+    const arrowCodomain = topology.site.category.dst(pullback.arrow)
+    if (!objectEq(arrowCodomain, covering.target)) {
+      throw new Error("Pullback arrow codomain must match covering target in étale descent sample")
+    }
+
+    const arrowDomain = topology.site.category.src(pullback.arrow)
+    if (!objectEq(arrowDomain, pullback.pullback.target)) {
+      throw new Error("Pullback covering target must match base arrow source in étale descent sample")
+    }
+
+    const label = pullback.label ?? (baseLabel === undefined ? undefined : `${baseLabel} pullback`)
+    pullbackSamples.push({
+      arrow: pullback.arrow,
+      covering,
+      pullback: pullback.pullback,
+      lifts: pullback.lifts,
+      ...(label === undefined ? {} : { label }),
+    })
+  })
+
+  const transitivitySamples: TransitivitySample<Obj, Arr>[] = []
+  configuration.transitivity?.forEach(entry => {
+    if (!objectEq(entry.composite.target, covering.target)) {
+      throw new Error("Composite covering target must match étale covering target in descent sample")
+    }
+
+    const label = entry.label ?? (baseLabel === undefined ? undefined : `${baseLabel} refinement`)
+    transitivitySamples.push({
+      covering,
+      refinements: entry.refinements,
+      composite: entry.composite,
+      ...(label === undefined ? {} : { label }),
+    })
+  })
+
+  return {
+    covering,
+    identitySamples,
+    pullbackSamples,
+    transitivitySamples,
+    ...(baseLabel === undefined ? {} : { label: baseLabel }),
   }
 }
