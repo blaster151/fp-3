@@ -25,7 +25,7 @@ type CanonicalEndofunctor<F> = Exclude<NormalizeEndofunctor<F>, EndofunctorK1<un
 
 export type EndofunctorValue<F, A> =
   CanonicalEndofunctor<F> extends infer NF
-    ? NF extends any
+    ? NF extends unknown
       ? NF extends EndofunctorK1<infer Tag> ? EndofunctorValue<Tag, A> :
         NF extends ['Sum', infer FL, infer FR] ? SumValInternal<FL, FR, A> :
         NF extends ['Prod', infer FL, infer FR] ? ProdValInternal<FL, FR, A> :

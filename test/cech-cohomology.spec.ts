@@ -175,7 +175,11 @@ const sectionModule = (site: Site<OpenSet, Inclusion>): Module<number, Section> 
 describe("Čech cohomology oracles", () => {
   const site = buildSite()
   const sheaf = buildSheaf(site)
-  const covering: CoveringFamily<OpenSet, Inclusion> = site.coverings("UV")[0]
+  const coveringCandidate = site.coverings("UV")[0]
+  if (!coveringCandidate) {
+    throw new Error("Expected two-open covering for Čech cohomology tests")
+  }
+  const covering: CoveringFamily<OpenSet, Inclusion> = coveringCandidate
   const intersectionArrow = {
     object: "I" as const,
     toFirst: makeInclusion("I", "U"),
@@ -230,14 +234,23 @@ describe("Čech cohomology oracles", () => {
     }) as ChainComplex<number>
 
     const level1 = complex.levels[1]
+    const differential1 = complex.differentials[1]
+    if (!level1 || !differential1) {
+      throw new Error("Expected level and differential in two-open complex")
+    }
     const badDifferential = {
-      ...complex.differentials[1],
+      ...differential1,
       map: (value: Section) => value,
+    }
+
+    const differential0 = complex.differentials[0]
+    if (!differential0) {
+      throw new Error("Expected initial differential in two-open complex")
     }
 
     const failing: ChainComplex<number> = {
       ...complex,
-      differentials: [complex.differentials[0], badDifferential],
+      differentials: [differential0, badDifferential],
     }
 
     const check = checkChainComplex(failing, { witnessLimit: 1 })

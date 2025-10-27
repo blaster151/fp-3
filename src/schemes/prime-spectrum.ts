@@ -104,7 +104,7 @@ export const checkPrimeSpectrum = <A>(
     const primeOptions: PrimeIdealCheckOptions<A> = {
       ringSamples: samples,
       requireProper,
-      witnessLimit: options.witnessLimit,
+      ...(options.witnessLimit === undefined ? {} : { witnessLimit: options.witnessLimit }),
     }
 
     const result = checkPrimeIdeal(point.ideal, primeOptions)
@@ -113,14 +113,14 @@ export const checkPrimeSpectrum = <A>(
       violations.push({ kind: "idealNotPrime", index, point, result })
       if (witnesses.length < witnessLimit) {
         const violation = result.violations[0]
-        witnesses.push({ index, point, violation })
+        witnesses.push(violation ? { index, point, violation } : { index, point })
       }
       return
     }
 
     if (result.witnesses.length > 0 && witnesses.length < witnessLimit) {
       const witness = result.witnesses[0]
-      witnesses.push({ index, point, witness })
+      witnesses.push(witness ? { index, point, witness } : { index, point })
     }
   })
 
@@ -208,21 +208,22 @@ const mergeMultiplicativeSetOptions = <A>(
   point: PrimeSpectrumPoint<A>,
   options: PrimeStalkCheckOptions<A>,
 ): MultiplicativeSetCheckOptions<A> => {
-  const ringSamples = point.samples && point.samples.length > 0 ? point.samples : options.ringSamples
+  const ringSamples =
+    point.samples && point.samples.length > 0 ? point.samples : options.ringSamples ?? []
   const base: MultiplicativeSetCheckOptions<A> = {
     ringSamples,
     requireOne: true,
     forbidZero: true,
   }
-  if (!options.multiplicativeSet) {
+  const overrides = options.multiplicativeSet
+  if (!overrides) {
     return base
   }
   return {
-    ...base,
-    ...options.multiplicativeSet,
-    ringSamples: options.multiplicativeSet.ringSamples ?? base.ringSamples,
-    requireOne: options.multiplicativeSet.requireOne ?? true,
-    forbidZero: options.multiplicativeSet.forbidZero ?? true,
+    ringSamples: overrides.ringSamples ?? ringSamples,
+    requireOne: overrides.requireOne ?? true,
+    forbidZero: overrides.forbidZero ?? true,
+    ...(overrides.witnessLimit === undefined ? {} : { witnessLimit: overrides.witnessLimit }),
   }
 }
 
@@ -230,7 +231,7 @@ const mergeLocalizationOptions = <A>(
   point: PrimeSpectrumPoint<A>,
   options: PrimeStalkCheckOptions<A>,
 ): LocalizationRingCheckOptions<A> => {
-  const fallback = point.samples ?? options.ringSamples ?? []
+  const fallback = point.samples && point.samples.length > 0 ? point.samples : options.ringSamples ?? []
   if (!options.localization) {
     return {
       numeratorSamples: fallback,
@@ -242,8 +243,12 @@ const mergeLocalizationOptions = <A>(
     numeratorSamples: options.localization.numeratorSamples ?? fallback,
     denominatorSamples: options.localization.denominatorSamples ?? fallback,
     multiplierSamples: options.localization.multiplierSamples ?? fallback,
-    fractionSamples: options.localization.fractionSamples,
-    witnessLimit: options.localization.witnessLimit,
+    ...(options.localization.fractionSamples
+      ? { fractionSamples: options.localization.fractionSamples }
+      : {}),
+    ...(options.localization.witnessLimit === undefined
+      ? {}
+      : { witnessLimit: options.localization.witnessLimit }),
   }
 }
 
@@ -280,7 +285,8 @@ export const checkPrimeStalks = <A>(
       multiplicativeSetFailures += 1
       violations.push({ kind: "multiplicativeSetFailure", index, point, result: multiplicativeResult })
       if (multiplicativeResult.witnesses.length > 0 && witnesses.length < witnessLimit) {
-        witnesses.push({ index, point, multiplicativeSetWitness: multiplicativeResult.witnesses[0] })
+        const witness = multiplicativeResult.witnesses[0]
+        witnesses.push(witness ? { index, point, multiplicativeSetWitness: witness } : { index, point })
       }
       return
     }
@@ -297,7 +303,8 @@ export const checkPrimeStalks = <A>(
       localizationFailures += 1
       violations.push({ kind: "localizationFailure", index, point, result: localizationResult })
       if (localizationResult.witnesses.length > 0 && witnesses.length < witnessLimit) {
-        witnesses.push({ index, point, localizationWitness: localizationResult.witnesses[0] })
+        const witness = localizationResult.witnesses[0]
+        witnesses.push(witness ? { index, point, localizationWitness: witness } : { index, point })
       }
       return
     }

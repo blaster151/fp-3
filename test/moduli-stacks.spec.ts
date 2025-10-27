@@ -138,6 +138,9 @@ const buildFiberedSample = (
 ): FiberedCategorySample<OpenSet, Inclusion, Bundle, BundleArrow> => {
   const target = makeBundle("UV", "L")
   const baseArrow = covering.arrows[0]
+  if (!baseArrow) {
+    throw new Error("Expected covering arrow for sample setup")
+  }
   const lift = fibered.pullback(baseArrow, target)
   if (!lift.exists || !lift.object || !lift.lift) {
     throw new Error("Expected cartesian lift in sample setup")
@@ -162,15 +165,23 @@ const buildDescentDatum = (
   covering: CoveringFamily<OpenSet, Inclusion>,
   fibered: FiberedCategory<OpenSet, Inclusion, Bundle, BundleArrow>,
 ): DescentDatum<OpenSet, Inclusion, Bundle, BundleArrow> => {
+  if (covering.arrows.length < 2) {
+    throw new Error("Expected two covering arrows for descent datum")
+  }
   const localObjects = covering.arrows.map(arrow => makeBundle(arrow.from, `L|${arrow.from}`))
+  const leftLocal = localObjects[0]
+  const rightLocal = localObjects[1]
+  if (!leftLocal || !rightLocal) {
+    throw new Error("Expected local bundles for descent datum")
+  }
   const transitions: DescentTransition<OpenSet, Inclusion, Bundle, BundleArrow>[] = []
 
   const overlap = "I"
   const toU = makeInclusion(overlap, "U")
   const toV = makeInclusion(overlap, "V")
 
-  const leftRestriction = fibered.pullback(toU, localObjects[0])
-  const rightRestriction = fibered.pullback(toV, localObjects[1])
+  const leftRestriction = fibered.pullback(toU, leftLocal)
+  const rightRestriction = fibered.pullback(toV, rightLocal)
   if (!leftRestriction.exists || !leftRestriction.object || !rightRestriction.exists || !rightRestriction.object) {
     throw new Error("Expected restrictions to exist for descent datum")
   }
@@ -214,8 +225,8 @@ const buildDescentDatum = (
       exists: true,
       object: makeBundle("UV", "L"),
       arrows: [
-        { index: 0, arrow: makeArrow(localObjects[0], makeBundle("UV", "L"), "glue-U") },
-        { index: 1, arrow: makeArrow(localObjects[1], makeBundle("UV", "L"), "glue-V") },
+        { index: 0, arrow: makeArrow(leftLocal, makeBundle("UV", "L"), "glue-U") },
+        { index: 1, arrow: makeArrow(rightLocal, makeBundle("UV", "L"), "glue-V") },
       ],
     }),
     label: "Trivial line bundle descent",
@@ -225,6 +236,9 @@ const buildDescentDatum = (
 describe("moduli and stack scaffolding", () => {
   const site = buildSite()
   const covering = site.coverings("UV")[0]
+  if (!covering) {
+    throw new Error("Expected two-open covering for UV")
+  }
   const fibered = buildFiberedCategory()
 
   it("validates cartesian lifts for the trivial bundle stack", () => {
@@ -244,11 +258,19 @@ describe("moduli and stack scaffolding", () => {
 
   it("detects non-unique factorisations", () => {
     const sample = buildFiberedSample(covering, fibered)
+    const comparisons = sample.comparisons
+    if (!comparisons || comparisons.length === 0) {
+      throw new Error("Expected comparison witness in sample")
+    }
+    const firstComparison = comparisons[0]
+    if (!firstComparison) {
+      throw new Error("Expected first comparison in sample")
+    }
     const badComparison: CartesianComparison<Bundle, BundleArrow> = {
-      from: sample.comparisons![0].from,
-      arrow: sample.comparisons![0].arrow,
-      factorization: sample.comparisons![0].factorization,
-      alternatives: [makeArrow(sample.comparisons![0].from, sample.comparisons![0].from, "twist")],
+      from: firstComparison.from,
+      arrow: firstComparison.arrow,
+      factorization: firstComparison.factorization,
+      alternatives: [makeArrow(firstComparison.from, firstComparison.from, "twist")],
     }
     const result = checkFiberedCategory(
       fibered,
@@ -273,9 +295,13 @@ describe("moduli and stack scaffolding", () => {
 
   it("detects transition mismatches in descent data", () => {
     const datum = buildDescentDatum(covering, fibered)
+    const firstTransition = datum.transitions[0]
+    if (!firstTransition) {
+      throw new Error("Expected transition in descent datum")
+    }
     const brokenTransition: DescentTransition<OpenSet, Inclusion, Bundle, BundleArrow> = {
-      ...datum.transitions[0],
-      inverse: makeArrow(datum.transitions[0].transition.source, datum.transitions[0].transition.target, "not inverse"),
+      ...firstTransition,
+      inverse: makeArrow(firstTransition.transition.source, firstTransition.transition.target, "not inverse"),
     }
     const brokenDatum: DescentDatum<OpenSet, Inclusion, Bundle, BundleArrow> = {
       ...datum,

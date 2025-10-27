@@ -13,6 +13,7 @@ import {
   type RingIdeal,
   type SchemeAtlas,
   type SchemeChart,
+  type SchemeChartOptions,
   type SchemeFiberProductDiagram,
   type StructureSheafData,
   type StructureSheafArrow,
@@ -248,27 +249,29 @@ describe("global scheme infrastructure", () => {
   const baseSpectrum = spectrumZ()
   const structureSheaf = buildStructureSheafData()
 
+  const chartOptions: SchemeChartOptions<bigint> = {
+    spectrum: { ringSamples },
+    structureSheaf: {
+      localization: {
+        numeratorSamples: ringSamples,
+        denominatorSamples: ringSamples,
+        multiplierSamples: ringSamples,
+      },
+    },
+  }
+
   const baseChart: SchemeChart<bigint> = {
     spectrum: baseSpectrum,
     structureSheaf,
     label: "Chart U",
-    options: {
-      spectrum: { ringSamples },
-      structureSheaf: {
-        localization: {
-          numeratorSamples: ringSamples,
-          denominatorSamples: ringSamples,
-          multiplierSamples: ringSamples,
-        },
-      },
-    },
+    options: chartOptions,
   }
 
   const secondChart: SchemeChart<bigint> = {
     spectrum: spectrumZ(),
     structureSheaf: buildStructureSheafData(),
     label: "Chart V",
-    options: baseChart.options,
+    options: chartOptions,
   }
 
   const identity: RingHomomorphism<bigint, bigint> = {
@@ -336,6 +339,11 @@ describe("global scheme infrastructure", () => {
       codomain: truncatedSpectrum,
     }
 
+    const baseGluing = atlas.gluings[0]
+    if (!baseGluing) {
+      throw new Error("Expected base gluing for atlas test")
+    }
+
     const faultyAtlas: SchemeAtlas = {
       ...atlas,
       charts: [baseChart, faultyChart],
@@ -345,9 +353,9 @@ describe("global scheme infrastructure", () => {
           rightChart: 1,
           forward: faultyForward,
           backward: faultyBackward,
-          forwardOptions: atlas.gluings[0]?.forwardOptions,
-          backwardOptions: atlas.gluings[0]?.backwardOptions,
-          compatibility: atlas.gluings[0]?.compatibility,
+          ...(baseGluing.forwardOptions ? { forwardOptions: baseGluing.forwardOptions } : {}),
+          ...(baseGluing.backwardOptions ? { backwardOptions: baseGluing.backwardOptions } : {}),
+          ...(baseGluing.compatibility ? { compatibility: baseGluing.compatibility } : {}),
         },
       ],
     }

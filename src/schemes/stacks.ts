@@ -167,15 +167,21 @@ export const checkFiberedCategory = <BaseObj, BaseArr, Obj, Arr>(
       const violation: FiberedCategoryViolation<BaseObj, Obj, Arr> = {
         kind: "pullbackFailed",
         sampleIndex,
-        details: lift.details,
+        ...(lift.details === undefined ? {} : { details: lift.details }),
       }
       violations.push(violation)
       recordWitness(witnesses, witnessLimit, { sampleIndex, violation })
       return
     }
 
-    const liftSource = fibered.fiber.src(lift.lift)
-    const liftTarget = fibered.fiber.dst(lift.lift)
+    const liftObject = lift.object
+    const liftArrow = lift.lift
+    if (!liftObject || !liftArrow) {
+      return
+    }
+
+    const liftSource = fibered.fiber.src(liftArrow)
+    const liftTarget = fibered.fiber.dst(liftArrow)
 
     if (!objectEq(liftTarget, sample.target)) {
       const violation: FiberedCategoryViolation<BaseObj, Obj, Arr> = {
@@ -186,7 +192,7 @@ export const checkFiberedCategory = <BaseObj, BaseArr, Obj, Arr>(
       recordWitness(witnesses, witnessLimit, { sampleIndex, violation })
     }
 
-    if (!objectEq(liftSource, lift.object)) {
+    if (!objectEq(liftSource, liftObject)) {
       const violation: FiberedCategoryViolation<BaseObj, Obj, Arr> = {
         kind: "liftSourceMismatch",
         sampleIndex,
@@ -196,7 +202,7 @@ export const checkFiberedCategory = <BaseObj, BaseArr, Obj, Arr>(
     }
 
     const expectedSourceBase = fibered.base.src(sample.baseArrow)
-    const actualSourceBase = fibered.baseOfObject(lift.object)
+    const actualSourceBase = fibered.baseOfObject(liftObject)
     if (!baseEq(expectedSourceBase, actualSourceBase)) {
       const violation: FiberedCategoryViolation<BaseObj, Obj, Arr> = {
         kind: "liftBaseMismatch",
@@ -236,7 +242,7 @@ export const checkFiberedCategory = <BaseObj, BaseArr, Obj, Arr>(
 
       const factorizationSource = fibered.fiber.src(comparison.factorization)
       const factorizationTarget = fibered.fiber.dst(comparison.factorization)
-      if (!objectEq(factorizationSource, comparison.from) || !objectEq(factorizationTarget, lift.object)) {
+      if (!objectEq(factorizationSource, comparison.from) || !objectEq(factorizationTarget, liftObject)) {
       const violation: FiberedCategoryViolation<BaseObj, Obj, Arr> = {
         kind: "comparisonFactorizationMismatch",
         sampleIndex,
@@ -247,7 +253,7 @@ export const checkFiberedCategory = <BaseObj, BaseArr, Obj, Arr>(
         return
       }
 
-      const composed = fibered.fiber.compose(lift.lift, comparison.factorization)
+      const composed = fibered.fiber.compose(liftArrow, comparison.factorization)
       if (!composed || !arrowEq(composed, comparison.arrow)) {
       const violation: FiberedCategoryViolation<BaseObj, Obj, Arr> = {
         kind: "comparisonCompositionMismatch",
@@ -483,7 +489,7 @@ export const checkStackDescent = <BaseObj, BaseArr, Obj, Arr>(
         kind: "transitionRestrictionFailure",
         transitionIndex: index,
         side: "left",
-        details: leftRestriction.details,
+        ...(leftRestriction.details === undefined ? {} : { details: leftRestriction.details }),
       })
       return
     }
@@ -494,19 +500,25 @@ export const checkStackDescent = <BaseObj, BaseArr, Obj, Arr>(
         kind: "transitionRestrictionFailure",
         transitionIndex: index,
         side: "right",
-        details: rightRestriction.details,
+        ...(rightRestriction.details === undefined ? {} : { details: rightRestriction.details }),
       })
       return
     }
 
+    const leftObject = leftRestriction.object
+    const rightObject = rightRestriction.object
+    if (!leftObject || !rightObject) {
+      return
+    }
+
     const transitionSource = datum.fibered.fiber.src(transition.transition)
-    if (!objectEq(transitionSource, leftRestriction.object)) {
+    if (!objectEq(transitionSource, leftObject)) {
       record({ kind: "transitionSourceMismatch", transitionIndex: index })
       return
     }
 
     const transitionTarget = datum.fibered.fiber.dst(transition.transition)
-    if (!objectEq(transitionTarget, rightRestriction.object)) {
+    if (!objectEq(transitionTarget, rightObject)) {
       record({ kind: "transitionTargetMismatch", transitionIndex: index })
       return
     }
@@ -514,13 +526,13 @@ export const checkStackDescent = <BaseObj, BaseArr, Obj, Arr>(
     if (transition.inverse) {
       const inverseSource = datum.fibered.fiber.src(transition.inverse)
       const inverseTarget = datum.fibered.fiber.dst(transition.inverse)
-      if (!objectEq(inverseSource, rightRestriction.object) || !objectEq(inverseTarget, leftRestriction.object)) {
+      if (!objectEq(inverseSource, rightObject) || !objectEq(inverseTarget, leftObject)) {
         record({ kind: "transitionInverseFailure", transitionIndex: index, direction: "forward" })
       } else {
         const forwardRoundTrip = datum.fibered.fiber.compose(transition.inverse, transition.transition)
         const backwardRoundTrip = datum.fibered.fiber.compose(transition.transition, transition.inverse)
-        const leftId = datum.fibered.fiber.id(leftRestriction.object)
-        const rightId = datum.fibered.fiber.id(rightRestriction.object)
+        const leftId = datum.fibered.fiber.id(leftObject)
+        const rightId = datum.fibered.fiber.id(rightObject)
         if (!forwardRoundTrip || !arrowEq(forwardRoundTrip, rightId)) {
           record({ kind: "transitionInverseFailure", transitionIndex: index, direction: "forward" })
         }
@@ -543,8 +555,12 @@ export const checkStackDescent = <BaseObj, BaseArr, Obj, Arr>(
   if (datum.glue) {
     const result = datum.glue()
     if (!result.exists || !result.object) {
-      record({ kind: "glueFailure", details: result.details })
+      record({
+        kind: "glueFailure",
+        ...(result.details === undefined ? {} : { details: result.details }),
+      })
     } else {
+      const gluedObject = result.object
       result.arrows?.forEach(glueArrow => {
         const targetLocal = datum.localObjects[glueArrow.index]
         if (!targetLocal) {
@@ -553,7 +569,7 @@ export const checkStackDescent = <BaseObj, BaseArr, Obj, Arr>(
         }
         const source = datum.fibered.fiber.src(glueArrow.arrow)
         const target = datum.fibered.fiber.dst(glueArrow.arrow)
-        if (!objectEq(source, targetLocal) || !objectEq(target, result.object)) {
+        if (!objectEq(source, targetLocal) || !objectEq(target, gluedObject)) {
           record({ kind: "glueFailure", details: "Glue arrow domain/codomain mismatch." })
         }
       })

@@ -8,6 +8,8 @@ import {
   buildStructureSheafSite,
   type StructureSheafData,
   type StructureSheafArrow,
+  type StructureSheafCovering,
+  type StructureSheafOpen,
   type LocalizationFraction,
   type MatchingFamilySample,
 } from "../allTS"
@@ -216,7 +218,7 @@ const buildStructureSheafData = (): StructureSheafData<bigint> => {
 
 const buildGluingSample = (data: StructureSheafData<bigint>): MatchingFamilySample<string, StructureSheafArrow<bigint>, LocalizationFraction<bigint>> => {
   const site = buildStructureSheafSite(data)
-  const covering = site.coverings("D(1)")[0]
+  const covering = site.coverings("D(1)")[0]!
   const assignments = [
     { arrow: covering.arrows[0]!, section: covering.arrows[0]!.map(fraction(3n, 1n)) },
     { arrow: covering.arrows[1]!, section: covering.arrows[1]!.map(fraction(3n, 1n)) },

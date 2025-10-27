@@ -361,7 +361,12 @@ export const checkZariskiPrincipalOpenCover = <A>(
     combinationsTested += 1
     let sum = cover.ring.zero
     for (let index = 0; index < generators.length; index += 1) {
-      const term = cover.ring.mul(coefficients[index], generators[index])
+      const coefficient = coefficients[index]
+      const generator = generators[index]
+      if (coefficient === undefined || generator === undefined) {
+        continue
+      }
+      const term = cover.ring.mul(coefficient, generator)
       sum = cover.ring.add(sum, term)
     }
     if (eq(sum, cover.ring.one)) {
@@ -478,18 +483,24 @@ export const checkEtaleCover = <Domain, Codomain>(
 
   for (const map of cover.maps) {
     if (map.hom.source !== cover.base) {
-      violations.push({ kind: "sourceMismatch", label: map.label })
+      const label = map.label
+      violations.push(label === undefined ? { kind: "sourceMismatch" } : { kind: "sourceMismatch", label })
       continue
     }
 
     const evaluation = checkRingHomomorphism(map.hom, {
       samples: domainSamples,
-      includeNegation: options.includeNegation,
+      ...(options.includeNegation === undefined ? {} : { includeNegation: options.includeNegation }),
     })
     homomorphismsChecked += 1
 
     if (!evaluation.holds) {
-      violations.push({ kind: "homomorphismViolation", label: map.label, details: evaluation.details })
+      const label = map.label
+      violations.push(
+        label === undefined
+          ? { kind: "homomorphismViolation", details: evaluation.details }
+          : { kind: "homomorphismViolation", label, details: evaluation.details },
+      )
       continue
     }
 
@@ -499,9 +510,15 @@ export const checkEtaleCover = <Domain, Codomain>(
         const lifted = map.section(sample)
         const mapped = map.hom.map(lifted)
         if (!codomainEq(mapped, sample)) {
-          violations.push({ kind: "sectionMismatch", label: map.label, sample, mapped })
+          const label = map.label
+          violations.push(
+            label === undefined
+              ? { kind: "sectionMismatch", sample, mapped }
+              : { kind: "sectionMismatch", label, sample, mapped },
+          )
         } else if (witnesses.length < witnessLimit) {
-          witnesses.push({ label: map.label, sample })
+          const label = map.label
+          witnesses.push(label === undefined ? { sample } : { label, sample })
         }
       }
     }

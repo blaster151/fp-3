@@ -93,13 +93,17 @@ const searchLinearCombination = <R, M>(
     if (index === generators.length) {
       state.combinationsTested += 1
       if (eq(current, target)) {
+        const linearCombination = generators.map(
+          (generator, idx): { readonly generator: M; readonly coefficient: R } => ({
+            generator,
+            coefficient: coefficients[idx]!,
+          }),
+        )
+
         return {
           target,
           coefficients: coefficients.slice(),
-          linearCombination: generators.map((generator, idx) => ({
-            generator,
-            coefficient: coefficients[idx],
-          })),
+          linearCombination,
         }
       }
       return undefined
@@ -111,7 +115,8 @@ const searchLinearCombination = <R, M>(
       }
 
       coefficients[index] = coefficient
-      const contribution = module.scalar(coefficient, generators[index])
+      const generator = generators[index]!
+      const contribution = module.scalar(coefficient, generator)
       const next = module.add(current, contribution)
       const witness = explore(index + 1, next)
       if (witness) {
