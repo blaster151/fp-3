@@ -53,9 +53,21 @@ import type { FiniteCategory as BaseFiniteCategory } from "../../finite-cat"
 import {
   FinGrp as FinGrpModel,
   createFinGrpProductMetadataStore,
+  type FinGrpFiniteProductWitness,
   type FinGrpObj as FinGrpObjModel,
   type Hom as FinGrpHomModel,
 } from "../../models/fingroup-cat"
+import {
+  finGrpKernelEqualizer,
+  type FinGrpKernelEqualizerWitness,
+} from "../../models/fingroup-equalizer"
+import {
+  enumerateCoordinateSubrepresentationWitnesses,
+  makePrimeField,
+  type FiniteGroupRepresentation,
+  type DifferenceWitness,
+  type SubrepresentationWitness,
+} from "../../models/fingroup-subrepresentation"
 import {
   createSliceProductToolkit,
   makeFiniteSliceProduct,
@@ -5352,6 +5364,66 @@ export const FinGrpProductsWithTuple: CategoryLimits.HasProductMediators<FinGrpO
     FinGrpModel.tupleMany(finGrpProductsStore, domain, legs, product),
 }
 
+export interface CoordinateDirectSumWitness {
+  readonly product: FinGrpFiniteProductWitness
+  readonly split: FinGrpHomModel
+  readonly combine: FinGrpHomModel
+  readonly splitKernel: FinGrpKernelEqualizerWitness
+  readonly combineKernel: FinGrpKernelEqualizerWitness
+}
+
+export const assembleCoordinateDirectSum = (
+  witness: SubrepresentationWitness,
+  options: {
+    readonly productName?: string
+    readonly splitName?: string
+    readonly combineName?: string
+  } = {},
+): CoordinateDirectSumWitness => {
+  const { subspace, complement, ambient } = witness
+  const productWitness = FinGrpModel.productMany(
+    [subspace.context.group, complement.context.group],
+    finGrpProductsStore,
+    options.productName ? { name: options.productName } : undefined,
+  )
+
+  const rawSplit = FinGrpProductsWithTuple.tuple(
+    ambient.group,
+    [subspace.projectionHom, complement.projectionHom],
+    productWitness.object,
+  )
+  const split: FinGrpHomModel =
+    options.splitName !== undefined ? { ...rawSplit, name: options.splitName } : rawSplit
+
+  const combineName = options.combineName ?? `${productWitness.object.name}⇒${ambient.group.name}`
+  const combine: FinGrpHomModel = {
+    name: combineName,
+    dom: productWitness.object.name,
+    cod: ambient.group.name,
+    map: (value) => {
+      const components = productWitness.decompose(value)
+      if (components.length !== 2) {
+        throw new Error(
+          `assembleCoordinateDirectSum: expected binary product element, received ${components.length} coordinates.`,
+        )
+      }
+      const [left, right] = components as readonly [string, string]
+      const leftImage = subspace.inclusionHom.map(left)
+      const rightImage = complement.inclusionHom.map(right)
+      return ambient.group.mul(leftImage, rightImage)
+    },
+  }
+
+  const splitKernel = finGrpKernelEqualizer(ambient.group, productWitness.object, split)
+  const combineKernel = finGrpKernelEqualizer(
+    productWitness.object,
+    ambient.group,
+    combine,
+  )
+
+  return { product: productWitness, split, combine, splitKernel, combineKernel }
+}
+
 type SliceObjModel = SliceObjectModel<FinSetNameModel, FuncArrModel>
 type SliceArrModel = SliceArrowModel<FinSetNameModel, FuncArrModel>
 
@@ -5459,6 +5531,9 @@ export const Algebra = {
   pushCoaction: pushCoactionFn,
   actionToChain: actionToChainFn,
   coactionToChain: coactionToChainFn,
+  makePrimeField,
+  enumerateCoordinateSubrepresentationWitnesses,
+  assembleCoordinateDirectSum,
 }
 export const Chain = {
   compose: composeChainMap, 
@@ -5473,4 +5548,10 @@ export const Exactness = {
   runLesConeProps,
   checkLongExactConeSegment
 }
+
+export type {
+  SubrepresentationWitness,
+  DifferenceWitness as FinGrpSubrepresentationDifferenceWitness,
+  FiniteGroupRepresentation,
+} from "../../models/fingroup-subrepresentation"
 

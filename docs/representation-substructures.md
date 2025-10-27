@@ -1,0 +1,48 @@
+# Finite group subrepresentations via coordinate kernels
+
+We now expose a concrete workflow for locating and certifying coordinate
+subrepresentations of finite-dimensional modules.  The core utilities live in
+[`models/fingroup-subrepresentation.ts`](../models/fingroup-subrepresentation.ts)
+and leverage the kernel-equalizer machinery already available for finite
+groups.
+
+## Prime-field vector spaces as additive groups
+
+`makePrimeField` constructs the finite field \(\mathbb{F}_p\) together with
+arithmetic in characteristic `p`.  From there `makeVectorGroupContext` turns a
+finite-dimensional vector space into an additive `FinGrp` object whose elements
+are encoded coordinate tuples.  This lets us reuse the existing categorical
+infrastructure—kernels, products, and equalizers—without introducing bespoke
+linear-algebra primitives.
+
+## Searching for stable coordinate subspaces
+
+`enumerateCoordinateSubrepresentationWitnesses` consumes a finite group
+representation `ρ : G → GL(V)` and tests every coordinate subspace for
+stability.  For each candidate it:
+
+1. builds inclusion/projection matrices for the chosen coordinates,
+2. computes the restricted action and complementary quotient matrices, and
+3. forms the difference homomorphisms
+   \(Δ_g = ρ(g)·ι - ι·ρ_{|W}(g) : W → V\).
+
+Each difference map is a `FinGrp` homomorphism whose kernel is produced by
+`finGrpKernelEqualizer`.  When the kernel coincides with the entire subspace,
+the candidate is promoted to a `SubrepresentationWitness` containing the
+restricted matrices, quotient data, and the `FinGrp` witnesses required to build
+quotients.
+
+## Direct-sum assembly with product mediators
+
+Once a stable coordinate subspace is known, `assembleCoordinateDirectSum`
+realises the ambient representation as a direct sum of the subrepresentation and
+its coordinate complement.  It uses the shared `FinGrpProductsWithTuple`
+metadata store to build the binary product, constructs the splitting map via the
+universal property of the product, and combines the components by adding their
+inclusions inside the ambient additive group.  Kernels of both the splitting
+and combining maps are provided so downstream code can confirm the decomposition
+is an isomorphism.
+
+These helpers are re-exported through the `Algebra` namespace in
+[`src/all/triangulated.ts`](../src/all/triangulated.ts), making them available to
+example code, tests, and downstream consumers.

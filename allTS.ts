@@ -652,6 +652,17 @@ export {
   type FinGrpKernelEqualizerComparison,
 } from "./models/fingroup-equalizer"
 export {
+  makePrimeField,
+  makeVectorGroupContext,
+  enumerateCoordinateSubrepresentationWitnesses,
+  type FiniteField,
+  type VectorGroupContext,
+  type FiniteGroupRepresentation,
+  type DifferenceWitness as FinGrpSubrepDifferenceWitness,
+  type SubrepresentationWitness as FinGrpSubrepresentationWitness,
+  type SubrepresentationSearchOptions as FinGrpSubrepresentationSearchOptions,
+} from "./models/fingroup-subrepresentation"
+export {
   inverse,
   isIso,
   isoWitness,
