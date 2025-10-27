@@ -1,4 +1,5 @@
 import type { SimpleCat } from "../../simple-cat"
+import type { EtaleDescentSample } from "../sheaves/grothendieck-topologies"
 import type { CoveringFamily } from "../sheaves/sites"
 
 type Equality<A> = (left: A, right: A) => boolean
@@ -596,5 +597,48 @@ export const checkStackDescent = <BaseObj, BaseArr, Obj, Arr>(
       witnessLimit,
     },
   }
+}
+
+export interface EtaleFiberedSampleSpec<BaseObj, BaseArr, Obj, Arr> {
+  readonly pullbackIndex: number
+  readonly target: Obj
+  readonly comparisons?: ReadonlyArray<CartesianComparison<Obj, Arr>>
+  readonly label?: string
+  readonly liftIndex?: number
+}
+
+export const buildFiberedSamplesFromEtaleDescent = <BaseObj, BaseArr, Obj, Arr>(
+  sample: EtaleDescentSample<BaseObj, BaseArr>,
+  specifications: ReadonlyArray<EtaleFiberedSampleSpec<BaseObj, BaseArr, Obj, Arr>>,
+): FiberedCategorySample<BaseObj, BaseArr, Obj, Arr>[] => {
+  const results: FiberedCategorySample<BaseObj, BaseArr, Obj, Arr>[] = []
+
+  specifications.forEach(spec => {
+    const pullback = sample.pullbackSamples[spec.pullbackIndex]
+    if (!pullback) {
+      throw new Error(`Missing étale pullback sample at index ${spec.pullbackIndex}`)
+    }
+
+    if (spec.liftIndex !== undefined) {
+      const lift = pullback.lifts[spec.liftIndex]
+      if (!lift) {
+        throw new Error(
+          `Missing étale pullback lift at index ${spec.liftIndex} for pullback sample ${spec.pullbackIndex}`,
+        )
+      }
+      void lift
+    }
+
+    const label = spec.label ?? pullback.label ?? sample.label ?? sample.covering.label
+
+    results.push({
+      baseArrow: pullback.arrow,
+      target: spec.target,
+      comparisons: spec.comparisons ?? [],
+      ...(label === undefined ? {} : { label }),
+    })
+  })
+
+  return results
 }
 

@@ -3,12 +3,15 @@ import {
   checkCoveringFamily,
   checkPresheaf,
   checkSheafGluing,
+  buildZariskiMatchingFamily,
+  type GrothendieckTopology,
   type CoveringFamily,
   type MatchingFamilySample,
   type Presheaf,
   type Sheaf,
   type Site,
 } from "../allTS"
+import { AlgebraOracles } from "../algebra-oracles"
 import type { SimpleCat } from "../simple-cat"
 
 type OpenSet = "U" | "V" | "UV" | "I"
@@ -71,13 +74,15 @@ const restrictSection = (arrow: Inclusion, section: Section): Section => {
   return { values }
 }
 
-const zeroSection = (open: OpenSet): Section => {
+const constantSection = (open: OpenSet, value: number): Section => {
   const values: Record<string, number> = {}
   for (const point of pointsByOpen[open]) {
-    values[point] = 0
+    values[point] = value
   }
   return { values }
 }
+
+const zeroSection = (open: OpenSet): Section => constantSection(open, 0)
 
 const buildSite = (): Site<OpenSet, Inclusion> => {
   const site: Site<OpenSet, Inclusion> = {
@@ -101,6 +106,14 @@ const buildSite = (): Site<OpenSet, Inclusion> => {
   }
   return site
 }
+
+const buildTopology = (
+  site: Site<OpenSet, Inclusion>,
+): GrothendieckTopology<OpenSet, Inclusion> => ({
+  site,
+  coverings: site.coverings,
+  label: "Two-open Grothendieck topology",
+})
 
 const sectionsByOpen: Record<OpenSet, Section[]> = {
   U: enumerateSections(pointsByOpen.U),
@@ -147,41 +160,60 @@ const buildSheaf = (site: Site<OpenSet, Inclusion>): Sheaf<OpenSet, Inclusion, S
 
 describe("sheaf infrastructure", () => {
   const site = buildSite()
+  const topology = buildTopology(site)
   const presheaf = buildPresheaf(site)
   const sheaf = buildSheaf(site)
   const uvCover = site.coverings("UV")[0]!
 
-  const matchingSample: MatchingFamilySample<OpenSet, Inclusion, Section> = {
-    covering: uvCover,
-    assignments: [
-      { arrow: uvCover.arrows[0]!, section: sectionsByOpen.U[3]! },
-      { arrow: uvCover.arrows[1]!, section: sectionsByOpen.V[3]! },
-    ],
-    overlaps: [
-      {
-        leftIndex: 0,
-        rightIndex: 1,
-        leftRestriction: makeInclusion("I", "U"),
-        rightRestriction: makeInclusion("I", "V"),
-      },
-    ],
+  const canonicalFamilies = buildZariskiMatchingFamily(
+    topology,
+    (object) => sectionsByOpen[object],
+    {
+      coverings: [uvCover],
+      sectionSampleLimit: 4,
+      combinationLimit: 16,
+    },
+  )
+
+  const selectSample = (
+    predicate: (sample: MatchingFamilySample<OpenSet, Inclusion, Section>) => boolean,
+  ): MatchingFamilySample<OpenSet, Inclusion, Section> => {
+    const sample = canonicalFamilies.find(predicate)
+    if (!sample) {
+      throw new Error("Expected matching family sample was not generated")
+    }
+    return sample
   }
 
-  const incompatibleSample: MatchingFamilySample<OpenSet, Inclusion, Section> = {
-    covering: uvCover,
-    assignments: [
-      { arrow: uvCover.arrows[0]!, section: sectionsByOpen.U[0]! },
-      { arrow: uvCover.arrows[1]!, section: sectionsByOpen.V[1]! },
-    ],
-    overlaps: [
-      {
-        leftIndex: 0,
-        rightIndex: 1,
-        leftRestriction: makeInclusion("I", "U"),
-        rightRestriction: makeInclusion("I", "V"),
-      },
-    ],
-  }
+  const matchingSample = (): MatchingFamilySample<OpenSet, Inclusion, Section> =>
+    selectSample((sample) =>
+      sample.overlaps.every((overlap) => {
+        const leftSection = sheaf.restrict(
+          overlap.leftRestriction,
+          sample.assignments[overlap.leftIndex]!.section,
+        )
+        const rightSection = sheaf.restrict(
+          overlap.rightRestriction,
+          sample.assignments[overlap.rightIndex]!.section,
+        )
+        return sectionEq(leftSection, rightSection)
+      }),
+    )
+
+  const incompatibleSample = (): MatchingFamilySample<OpenSet, Inclusion, Section> =>
+    selectSample((sample) =>
+      sample.overlaps.some((overlap) => {
+        const leftSection = sheaf.restrict(
+          overlap.leftRestriction,
+          sample.assignments[overlap.leftIndex]!.section,
+        )
+        const rightSection = sheaf.restrict(
+          overlap.rightRestriction,
+          sample.assignments[overlap.rightIndex]!.section,
+        )
+        return !sectionEq(leftSection, rightSection)
+      }),
+    )
 
   it("validates the standard two-open covering", () => {
     const result = checkCoveringFamily(uvCover)
@@ -235,17 +267,134 @@ describe("sheaf infrastructure", () => {
     expect(result.witnesses.length).toBeGreaterThan(0)
   })
 
+  it("validates presheaf morphisms that preserve restrictions", () => {
+    const identityMorphism = {
+      source: presheaf,
+      target: presheaf,
+      map: (_object: OpenSet, section: Section) => section,
+      label: "identity presheaf morphism",
+    }
+    const result = AlgebraOracles.sheaf.presheafMorphism(identityMorphism, {
+      objectSamples: ["U", "V", "UV"] as const,
+      arrowSamples: uvCover.arrows,
+      sectionSampleLimit: 3,
+    })
+    expect(result.holds).toBe(true)
+    expect(result.metadata.naturalityChecks).toBeGreaterThan(0)
+    expect(result.source.holds).toBe(true)
+    expect(result.target.holds).toBe(true)
+  })
+
+  it("detects presheaf morphisms that break naturality", () => {
+    const inconsistentMorphism = {
+      source: presheaf,
+      target: presheaf,
+      map: (object: OpenSet, _section: Section) =>
+        object === "UV" ? constantSection("UV", 1) : zeroSection(object),
+      label: "inconsistent presheaf morphism",
+    }
+    const result = AlgebraOracles.sheaf.presheafMorphism(inconsistentMorphism, {
+      objectSamples: ["UV", "U"] as const,
+      arrowSamples: uvCover.arrows,
+      sectionSampleLimit: 2,
+      witnessLimit: 1,
+    })
+    expect(result.holds).toBe(false)
+    expect(result.violations.some((violation) => violation.kind === "naturality")).toBe(true)
+    expect(result.witnesses.length).toBeGreaterThan(0)
+  })
+
   it("certifies sheaf gluing for matching families", () => {
-    const result = checkSheafGluing(sheaf, [matchingSample], { witnessLimit: 1 })
+    const result = checkSheafGluing(sheaf, [matchingSample()], { witnessLimit: 1 })
     expect(result.holds).toBe(true)
     expect(result.metadata.gluingChecks).toBe(1)
     expect(result.metadata.restrictionChecks).toBeGreaterThan(0)
   })
 
   it("detects incompatible sheaf data on overlaps", () => {
-    const result = checkSheafGluing(sheaf, [incompatibleSample], { witnessLimit: 2 })
+    const result = checkSheafGluing(sheaf, [incompatibleSample()], { witnessLimit: 2 })
     expect(result.holds).toBe(false)
     expect(result.violations.some((violation) => violation.kind === "overlapMismatch")).toBe(true)
     expect(result.witnesses.length).toBeGreaterThan(0)
+  })
+
+  it("confirms sheaf morphisms respect gluing", () => {
+    const morphism = {
+      source: sheaf,
+      target: sheaf,
+      map: (_object: OpenSet, section: Section) => section,
+      label: "identity sheaf morphism",
+    }
+    const result = AlgebraOracles.sheaf.sheafMorphism(
+      morphism,
+      [matchingSample()],
+      {
+        objectSamples: ["U", "V", "UV"] as const,
+        arrowSamples: uvCover.arrows,
+        sectionSampleLimit: 3,
+        witnessLimit: 1,
+        sheaf: { witnessLimit: 1 },
+      },
+    )
+    expect(result.holds).toBe(true)
+    expect(result.presheaf.holds).toBe(true)
+    expect(result.sourceSheaf.holds).toBe(true)
+    expect(result.targetSheaf.holds).toBe(true)
+    expect(result.metadata.compatibilityChecks).toBeGreaterThan(0)
+  })
+
+  it("flags sheaf morphisms whose mapped families fail to glue", () => {
+    const obstructedSheaf: Sheaf<OpenSet, Inclusion, Section> = {
+      ...sheaf,
+      label: "obstructed sheaf",
+      glue: (covering, assignments) => {
+        const hasNonZero = assignments.some((assignment) =>
+          Object.values(assignment.section.values).some((value) => value !== 0),
+        )
+        if (hasNonZero) {
+          return { exists: false, details: "reject non-zero sections" }
+        }
+        return sheaf.glue(covering, assignments)
+      },
+    }
+    const morphism = {
+      source: sheaf,
+      target: obstructedSheaf,
+      map: (_object: OpenSet, section: Section) => section,
+      label: "obstructed sheaf morphism",
+    }
+    const canonical = matchingSample()
+    const nonZeroSample: MatchingFamilySample<OpenSet, Inclusion, Section> = {
+      covering: canonical.covering,
+      overlaps: canonical.overlaps,
+      assignments: canonical.covering.arrows.map((arrow) => ({
+        arrow,
+        section: constantSection(arrow.from, 1),
+      })),
+    }
+    const result = AlgebraOracles.sheaf.sheafMorphism(
+      morphism,
+      [nonZeroSample],
+      {
+        objectSamples: ["U", "V", "UV"] as const,
+        arrowSamples: uvCover.arrows,
+        sectionSampleLimit: 3,
+        witnessLimit: 1,
+        sheaf: { witnessLimit: 1 },
+      },
+    )
+    expect(result.holds).toBe(false)
+    expect(result.presheaf.holds).toBe(true)
+    expect(result.violations.some((violation) => violation.kind === "mappedGluingFailed")).toBe(
+      true,
+    )
+    expect(result.witnesses.length).toBeGreaterThan(0)
+  })
+
+  it("generates canonical Zariski matching families for the two-open cover", () => {
+    expect(canonicalFamilies.length).toBeGreaterThan(0)
+    const sample = matchingSample()
+    expect(sample.covering).toBe(uvCover)
+    expect(sample.overlaps.length).toBeGreaterThan(0)
   })
 })

@@ -1,3 +1,4 @@
+import type { PrimeSpectrumPoint } from "../../schemes/prime-spectrum"
 import type { MultiplicativeSet } from "./multiplicative-sets"
 import type { Ring } from "./structures"
 
@@ -280,6 +281,34 @@ export const checkLocalizationRing = <A>(
       equalityChecks,
       witnessLimit,
       witnessesRecorded: witnesses.length,
+    },
+  }
+}
+
+export type PrimeLocalizationData<A> =
+  | {
+      readonly kind: "success"
+      readonly data: LocalizationRingData<A>
+    }
+  | {
+      readonly kind: "multiplicativeSetRingMismatch"
+      readonly point: PrimeSpectrumPoint<A>
+      readonly multiplicativeSet: MultiplicativeSet<A>
+    }
+
+export const buildPrimeLocalizationData = <A>(
+  point: PrimeSpectrumPoint<A>,
+  multiplicativeSet: MultiplicativeSet<A>,
+): PrimeLocalizationData<A> => {
+  const base = point.ideal.ring
+  if (multiplicativeSet.ring !== base) {
+    return { kind: "multiplicativeSetRingMismatch", point, multiplicativeSet }
+  }
+  return {
+    kind: "success",
+    data: {
+      base,
+      multiplicativeSet,
     },
   }
 }

@@ -35,6 +35,15 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Witness Builder:** `checkLocalizationRing(data, options)` enumerates fractions, searches equality witnesses, and validates ring laws with multiplier evidence for every addition and multiplication comparison.
 - **Check:** `AlgebraOracles.ring.localization`
 - **Implementation Notes:** Witnesses expose the clearing multipliers used to certify fraction equalities, enabling structure sheaf restrictions to reuse the same normalization logic.
+- **See Also:** [Stage 1 roadmap – ring oracle how-to](docs/algebraic-geometry-roadmap.md#ring-oracle-how-to).
+
+### Local ring diagnostics at prime spectrum points
+
+- **Registry Path:** `algebra.ring.localRing`
+- **Witness Builder:** `checkLocalRingAtPrime(point, multiplicativeSet, options)` composes prime-ideal and multiplicative-set checks via `buildPrimeLocalizationCheck` before validating the localized ring structure returned from `buildPrimeLocalizationData`.
+- **Check:** `AlgebraOracles.ring.localRing`
+- **Implementation Notes:** Results bundle the localized ring, denominators, and witness metadata so structure-sheaf and stalk computations can reuse the fraction data without re-running spectrum searches.
+- **See Also:** [Stage 1 roadmap – ring oracle how-to](docs/algebraic-geometry-roadmap.md#ring-oracle-how-to).
 
 ### Finitely generated module diagnostics
 
@@ -42,6 +51,15 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Witness Builder:** `checkFinitelyGeneratedModule(module, options)` searches linear combinations, reports generation witnesses, and surfaces minimal counterexamples when spanning fails.
 - **Check:** `AlgebraOracles.ring.finitelyGeneratedModule`
 - **Implementation Notes:** Metadata tracks sample sizes and successful generators so tensor-product witnesses can reuse the same basis lists.
+- **See Also:** [Stage 1 roadmap – ring oracle how-to](docs/algebraic-geometry-roadmap.md#ring-oracle-how-to).
+
+### Noetherian module chain stabilization
+
+- **Registry Path:** `algebra.ring.noetherianModule`
+- **Witness Builder:** `checkNoetherianModule(chain, options)` iteratively calls `checkFinitelyGeneratedModule` along the ascending chain produced by `searchAscendingChain`, reporting stabilization points and counterexamples when chains grow indefinitely.
+- **Check:** `AlgebraOracles.ring.noetherianModule`
+- **Implementation Notes:** Metadata records the sampled chain, stabilization index, and any failing generator witnesses so ideal-search routines can reuse the same modules.
+- **See Also:** [Stage 1 roadmap – ring oracle how-to](docs/algebraic-geometry-roadmap.md#ring-oracle-how-to).
 
 ### Bilinear and tensor product checks
 
@@ -49,6 +67,15 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Witness Builders:** `checkBilinearMap(map, options)` and `checkTensorProduct(structure, options)` confirm additivity in each variable and enforce universal property witnesses with explicit sample traces.
 - **Check:** `AlgebraOracles.ring.bilinearMap`, `AlgebraOracles.ring.tensorProduct`
 - **Implementation Notes:** The tensor product oracle records mediating morphisms and their action on samples, allowing future scheme morphism utilities to cite the same data.
+- **See Also:** [Stage 1 roadmap – ring oracle how-to](docs/algebraic-geometry-roadmap.md#ring-oracle-how-to).
+
+### Flat module witnesses via tensoring short exact sequences
+
+- **Registry Path:** `algebra.ring.flatness`
+- **Witness Builder:** `checkFlatModuleOnSamples(sequenceWitnesses, options)` tensors supplied short exact sequence samples against the candidate module, reusing the bilinear and tensor-product oracles to detect Tor obstructions.
+- **Check:** `AlgebraOracles.ring.flatness`
+- **Implementation Notes:** Violations surface the exact sequence, tensor outputs, and comparison witnesses that failed, enabling targeted repairs or alternate module choices.
+- **See Also:** [Stage 1 roadmap – ring oracle how-to](docs/algebraic-geometry-roadmap.md#ring-oracle-how-to).
 
 ### Covering families on sites
 
@@ -56,6 +83,7 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Witness Builder:** `checkCoveringFamily(covering, options)` validates targets and duplicate suppression while emitting witness arrows when mismatches appear.
 - **Check:** `AlgebraOracles.sheaf.coveringFamily`
 - **Implementation Notes:** Distinct-arrow counts and witness limits align with the discrete site tests in `test/sheaf-infrastructure.spec.ts`.
+- **See Also:** [Stage 2 roadmap – sheaf tooling how-to](docs/algebraic-geometry-roadmap.md#sheaf-tooling-how-to).
 
 ### Presheaf restriction diagnostics
 
@@ -63,6 +91,7 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Witness Builder:** `checkPresheaf(presheaf, options)` checks closure under restriction, identities, and composition, reporting violating arrows with captured sections.
 - **Check:** `AlgebraOracles.sheaf.presheaf`
 - **Implementation Notes:** Metadata records sampled objects/arrows and section limits so sheaf gluing checks can be configured consistently.
+- **See Also:** [Stage 2 roadmap – sheaf tooling how-to](docs/algebraic-geometry-roadmap.md#sheaf-tooling-how-to).
 
 ### Sheaf gluing witnesses
 
@@ -70,6 +99,7 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Witness Builder:** `checkSheafGluing(sheaf, samples, options)` enforces overlap agreement and gluing existence, collecting witness assignments whenever compatibility fails.
 - **Check:** `AlgebraOracles.sheaf.sheafGluing`
 - **Implementation Notes:** Witness entries track which covering and overlap triggered a violation, matching the examples in `test/sheaf-infrastructure.spec.ts`.
+- **See Also:** [Stage 2 roadmap – sheaf tooling how-to](docs/algebraic-geometry-roadmap.md#sheaf-tooling-how-to).
 
 ### Grothendieck topology and cover specialists
 
@@ -77,6 +107,7 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Witness Builder:** `checkGrothendieckTopology(topology, samples, options)` evaluates isomorphism stability, refinement closure, and pullback behaviour with explicit covering witnesses.
 - **Check:** `AlgebraOracles.sheaf.grothendieckTopology`
 - **Implementation Notes:** The oracle reports which axioms fail and the witness coverings involved, supporting both Zariski and étale specialisations.
+- **See Also:** [Stage 2 roadmap – sheaf tooling how-to](docs/algebraic-geometry-roadmap.md#sheaf-tooling-how-to).
 
 ### Zariski principal-open cover oracle
 

@@ -105,4 +105,6 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 88. **Set natural numbers oracles** – Evaluate the Set natural-numbers object via zero/successor separation, certify the identity inductive subobject, demonstrate primitive recursion samples, and inspect the canonical 1 + ℕ initial-algebra mediator. (examples/runnable/088-set-natural-numbers-oracles.ts)
 
+89. **Commutative ring oracle samples** – Reuse the curated ℤ, ℤ[ε]/(ε²), and ℤ/2ℤ fixtures to run localization-at-prime, Noetherian ascending-chain, and flatness diagnostics, highlighting both successful witnesses and sampled counterexamples. (examples/runnable/091-commutative-ring-oracle-samples.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.
