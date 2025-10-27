@@ -9,6 +9,17 @@ export {
 
 export type { Representation, Coaction } from "../../stdlib/vect-view"
 
+export {
+  makeFinGrpRepresentationFunctor,
+  makeFinGrpProductRepresentation,
+  functorToFinGrpRepresentation,
+} from "../../models/fingroup-representation"
+
+export type {
+  FinGrpRepresentationFunctor,
+  RepMor as FinGrpRepresentationMorphism,
+} from "../../models/fingroup-representation"
+
 export { Pretty } from "../../stdlib/pretty"
 export { DiagramClosure } from "../../stdlib/diagram-closure"
 export { DiagramLaws } from "../../stdlib/diagram-laws"
