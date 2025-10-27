@@ -265,7 +265,9 @@ export const analyzeCohomology = <R>(complex: ChainComplex<R>): CohomologyAnalys
     const zero = level.module.zero
     image.push(zero)
     if (incoming) {
-      for (const element of incoming.source.elements) {
+      const sourceLevel = levelByDegree.get(incoming.sourceDegree)
+      const sourceElements = sourceLevel?.elements ?? []
+      for (const element of sourceElements) {
         const mapped = incoming.map(element)
         if (!image.some(existing => eqLevel(existing, mapped))) {
           image.push(mapped)
@@ -371,6 +373,9 @@ export const buildTwoOpenCechComplex = <Obj, Arr, Section, R>(
   const site = sheaf.site
   const firstArrow = covering.arrows[0]
   const secondArrow = covering.arrows[1]
+  if (!firstArrow || !secondArrow) {
+    throw new Error("Two-open Čech complex requires two covering arrows.")
+  }
   const firstDomain = site.category.src(firstArrow)
   const secondDomain = site.category.src(secondArrow)
 

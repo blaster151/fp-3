@@ -141,7 +141,7 @@ export const checkSheafGluing = <Obj, Arr, Section>(
       const violation: SheafViolation<Obj, Arr, Section> = {
         kind: "gluingFailed",
         covering,
-        details: gluing.details,
+        ...(gluing.details === undefined ? {} : { details: gluing.details }),
       }
       violations.push(violation)
       if (witnesses.length < witnessLimit) {

@@ -37,8 +37,16 @@ describe("Continuous-map registry", () => {
     const quotientClassifier = report.find((entry) => entry.tag === "Top/cont/quotient:classify-parity");
     expect(quotientClassifier?.witness?.preimages.length).toBeGreaterThan(0);
     const parityOpen = quotientClassifier?.witness?.preimages.find((record) => record.open.includes(0));
-    expect(parityOpen?.preimage.length).toBe(1);
-    expect(parityOpen?.preimage[0].includes(0)).toBe(true);
+    if (!parityOpen) {
+      throw new Error("expected a parity-open witness record");
+    }
+    const parityPreimage = parityOpen.preimage;
+    if (!parityPreimage.every((value): value is number => typeof value === "number")) {
+      throw new Error("expected numeric preimage witnesses");
+    }
+    expect(parityPreimage.length).toBe(1);
+    expect(parityPreimage[0]).toBe(0);
+    expect(parityPreimage.includes(0)).toBe(true);
 
     const pullbackProj = report.find((entry) => entry.tag === "Top/cont/pullback:π₁");
     expect(pullbackProj?.failures.length).toBe(0);

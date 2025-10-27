@@ -149,13 +149,13 @@ describe("sheaf infrastructure", () => {
   const site = buildSite()
   const presheaf = buildPresheaf(site)
   const sheaf = buildSheaf(site)
-  const uvCover = site.coverings("UV")[0]
+  const uvCover = site.coverings("UV")[0]!
 
   const matchingSample: MatchingFamilySample<OpenSet, Inclusion, Section> = {
     covering: uvCover,
     assignments: [
-      { arrow: uvCover.arrows[0], section: sectionsByOpen.U[3] },
-      { arrow: uvCover.arrows[1], section: sectionsByOpen.V[3] },
+      { arrow: uvCover.arrows[0]!, section: sectionsByOpen.U[3]! },
+      { arrow: uvCover.arrows[1]!, section: sectionsByOpen.V[3]! },
     ],
     overlaps: [
       {
@@ -170,8 +170,8 @@ describe("sheaf infrastructure", () => {
   const incompatibleSample: MatchingFamilySample<OpenSet, Inclusion, Section> = {
     covering: uvCover,
     assignments: [
-      { arrow: uvCover.arrows[0], section: sectionsByOpen.U[0] },
-      { arrow: uvCover.arrows[1], section: sectionsByOpen.V[1] },
+      { arrow: uvCover.arrows[0]!, section: sectionsByOpen.U[0]! },
+      { arrow: uvCover.arrows[1]!, section: sectionsByOpen.V[1]! },
     ],
     overlaps: [
       {
@@ -204,7 +204,7 @@ describe("sheaf infrastructure", () => {
 
   it("confirms presheaf identity and composition laws", () => {
     const result = checkPresheaf(presheaf, {
-      objectSamples: ["U", "V", "UV"],
+      objectSamples: ["U", "V", "UV"] as const,
       arrowSamples: uvCover.arrows,
       sectionSampleLimit: 4,
     })
@@ -225,7 +225,7 @@ describe("sheaf infrastructure", () => {
       label: "Errant presheaf",
     }
     const result = checkPresheaf(errant, {
-      objectSamples: ["U"],
+      objectSamples: ["U"] as const,
       arrowSamples: [makeInclusion("U", "U")],
       sectionSampleLimit: 2,
       witnessLimit: 1,

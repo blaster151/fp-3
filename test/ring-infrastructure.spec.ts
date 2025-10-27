@@ -190,6 +190,9 @@ describe("ring infrastructure", () => {
     expect(result.violations.some((violation) => violation.kind === "absorbsProduct")).toBe(true)
     expect(result.witnesses.length).toBeGreaterThan(0)
     const witness = result.witnesses[0]
+    if (!witness) {
+      throw new Error("Expected multiplicative witness for (6)")
+    }
     expect(ideal.contains(witness.product)).toBe(true)
     expect(ideal.contains(witness.factors[0])).toBe(false)
     expect(ideal.contains(witness.factors[1])).toBe(false)
@@ -347,7 +350,15 @@ describe("ring infrastructure", () => {
     expect(generationResult.metadata.distinctVectorSamples).toBe(5)
     expect(generationResult.metadata.combinationsTested).toBeGreaterThan(0)
     expect(generationResult.witnesses.length).toBeGreaterThan(0)
-    expect(generationResult.witnesses[0].coefficients[0]).toBe(-2n)
+    const firstWitness = generationResult.witnesses[0]
+    if (!firstWitness) {
+      throw new Error("Expected generation witness for ℤ module test")
+    }
+    const firstCoefficient = firstWitness.coefficients[0]
+    if (firstCoefficient === undefined) {
+      throw new Error("Expected generation witness coefficient for ℤ module test")
+    }
+    expect(firstCoefficient).toBe(-2n)
 
     const result = checkModule(module, {
       scalarSamples: [-2n, -1n, 0n, 1n, 2n],

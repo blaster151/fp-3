@@ -9,8 +9,8 @@ export type ContReportEntry = {
   readonly tag: string;
   readonly holds: boolean;
   readonly verified: boolean;
-  readonly failures: ReadonlyArray<ContinuityWitnessEntry<any, any>>;
-  readonly witness?: ContinuityWitnessPayload<any, any>;
+  readonly failures: ReadonlyArray<ContinuityWitnessEntry<unknown, unknown>>;
+  readonly witness?: ContinuityWitnessPayload<unknown, unknown>;
 };
 
 export type ContSummary = {
@@ -23,7 +23,7 @@ export type ContSummary = {
 export type ContRegistry = {
   readonly register: <A, B>(entry: ContEntry<A, B>) => void;
   readonly clear: () => void;
-  readonly all: () => ReadonlyArray<ContEntry<any, any>>;
+  readonly all: () => ReadonlyArray<ContEntry<unknown, unknown>>;
   readonly runAll: () => ReadonlyArray<ContReportEntry>;
   readonly summarize: (report?: ReadonlyArray<ContReportEntry>) => ContSummary;
   readonly toJson: (report?: ReadonlyArray<ContReportEntry>) => string;
@@ -31,17 +31,22 @@ export type ContRegistry = {
 };
 
 export function createContRegistry(): ContRegistry {
-  const entries: ContEntry<any, any>[] = [];
+  const entries: ContEntry<unknown, unknown>[] = [];
+
+  const widenEntry = <A, B>(entry: ContEntry<A, B>): ContEntry<unknown, unknown> => ({
+    tag: entry.tag,
+    morphism: entry.morphism as unknown as ContinuousMap<unknown, unknown>,
+  });
 
   const register = <A, B>(entry: ContEntry<A, B>): void => {
-    entries.push(entry);
+    entries.push(widenEntry(entry));
   };
 
   const clear = (): void => {
     entries.length = 0;
   };
 
-  const all = (): ReadonlyArray<ContEntry<any, any>> => entries.slice();
+  const all = (): ReadonlyArray<ContEntry<unknown, unknown>> => entries.slice();
 
   const runAll = (): ReadonlyArray<ContReportEntry> => {
     return all().map((entry) => {

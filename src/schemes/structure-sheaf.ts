@@ -190,13 +190,16 @@ export const buildStructureSheafSite = <A>(data: StructureSheafData<A>): Site<st
       label: `id_${object}`,
       map: (section) => ({ ...section }),
     }),
-    compose: (g, f) => ({
-      id: `${f.id};${g.id}`,
-      from: f.from,
-      to: g.to,
-      label: f.label && g.label ? `${f.label} ∘ ${g.label}` : undefined,
-      map: (section) => f.map(g.map(section)),
-    }),
+    compose: (g, f) => {
+      const composedLabel = f.label && g.label ? `${f.label} ∘ ${g.label}` : undefined
+      return {
+        id: `${f.id};${g.id}`,
+        from: f.from,
+        to: g.to,
+        ...(composedLabel === undefined ? {} : { label: composedLabel }),
+        map: (section) => f.map(g.map(section)),
+      }
+    },
     src: (arrow) => arrow.from,
     dst: (arrow) => arrow.to,
   }
@@ -211,7 +214,7 @@ export const buildStructureSheafSite = <A>(data: StructureSheafData<A>): Site<st
         arrows: covering.arrowIds
           .map(id => resolveArrow(data, id))
           .filter((arrow): arrow is StructureSheafArrow<A> => arrow !== undefined),
-        label: covering.label,
+        ...(covering.label === undefined ? {} : { label: covering.label }),
       }))
     },
     objectEq: (left, right) => left === right,

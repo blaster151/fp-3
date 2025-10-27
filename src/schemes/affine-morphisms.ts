@@ -37,11 +37,14 @@ export const pullbackIdeal = <Source, Target>(
   homomorphism: RingHomomorphism<Source, Target>,
   ideal: RingIdeal<Target>,
   label?: string,
-): RingIdeal<Source> => ({
-  ring: homomorphism.source,
-  contains: (value: Source) => ideal.contains(homomorphism.map(value)),
-  name: label ?? (ideal.name ? `${ideal.name}^*` : undefined),
-})
+): RingIdeal<Source> => {
+  const name = label ?? (ideal.name ? `${ideal.name}^*` : undefined)
+  return {
+    ring: homomorphism.source,
+    contains: (value: Source) => ideal.contains(homomorphism.map(value)),
+    ...(name === undefined ? {} : { name }),
+  }
+}
 
 export interface AffineSchemeMorphism<Source, Target> {
   readonly ringMap: RingHomomorphism<Source, Target>
@@ -121,6 +124,9 @@ const locateMatchingPoint = <A>(
 ): { readonly point: PrimeSpectrumPoint<A>; readonly index: number } | undefined => {
   for (let index = 0; index < spectrum.points.length; index += 1) {
     const point = spectrum.points[index]
+    if (!point) {
+      continue
+    }
     if (point.ideal.ring !== spectrum.ring) {
       continue
     }
@@ -155,11 +161,21 @@ export const checkAffineSchemeMorphism = <Source, Target>(
   let imageMatches = 0
 
   if (morphism.domain.ring !== morphism.ringMap.target) {
-    violations.push({ kind: "domainSpectrumMismatch", ringLabel: morphism.domain.label })
+    const ringLabel = morphism.domain.label
+    violations.push(
+      ringLabel === undefined
+        ? { kind: "domainSpectrumMismatch" }
+        : { kind: "domainSpectrumMismatch", ringLabel },
+    )
   }
 
   if (morphism.codomain.ring !== morphism.ringMap.source) {
-    violations.push({ kind: "codomainSpectrumMismatch", ringLabel: morphism.codomain.label })
+    const ringLabel = morphism.codomain.label
+    violations.push(
+      ringLabel === undefined
+        ? { kind: "codomainSpectrumMismatch" }
+        : { kind: "codomainSpectrumMismatch", ringLabel },
+    )
   }
 
   morphism.codomain.points.forEach((point, index) => {
@@ -410,19 +426,39 @@ export const checkAffineSchemePullbackSquare = <Base, Left, Right, Apex>(
   let baseAgreementFailures = 0
 
   if (square.base.ring !== square.left.map.source || square.base.ring !== square.right.map.source) {
-    violations.push({ kind: "baseSpectrumMismatch", ringLabel: square.base.label })
+    const ringLabel = square.base.label
+    violations.push(
+      ringLabel === undefined
+        ? { kind: "baseSpectrumMismatch" }
+        : { kind: "baseSpectrumMismatch", ringLabel },
+    )
   }
   if (square.left.spectrum.ring !== square.left.map.target) {
-    violations.push({ kind: "leftSpectrumMismatch", ringLabel: square.left.spectrum.label })
+    const ringLabel = square.left.spectrum.label
+    violations.push(
+      ringLabel === undefined
+        ? { kind: "leftSpectrumMismatch" }
+        : { kind: "leftSpectrumMismatch", ringLabel },
+    )
   }
   if (square.right.spectrum.ring !== square.right.map.target) {
-    violations.push({ kind: "rightSpectrumMismatch", ringLabel: square.right.spectrum.label })
+    const ringLabel = square.right.spectrum.label
+    violations.push(
+      ringLabel === undefined
+        ? { kind: "rightSpectrumMismatch" }
+        : { kind: "rightSpectrumMismatch", ringLabel },
+    )
   }
   if (
     square.apex.spectrum.ring !== square.apex.leftMap.target ||
     square.apex.spectrum.ring !== square.apex.rightMap.target
   ) {
-    violations.push({ kind: "apexSpectrumMismatch", ringLabel: square.apex.spectrum.label })
+    const ringLabel = square.apex.spectrum.label
+    violations.push(
+      ringLabel === undefined
+        ? { kind: "apexSpectrumMismatch" }
+        : { kind: "apexSpectrumMismatch", ringLabel },
+    )
   }
 
   square.left.spectrum.points.forEach((point, index) => {
@@ -540,8 +576,8 @@ export const checkAffineSchemePullbackSquare = <Base, Left, Right, Apex>(
         apexPoint: point,
         leftPreimage: baseFromLeft,
         rightPreimage: baseFromRight,
-        leftIndex: leftMatch?.index,
-        rightIndex: rightMatch?.index,
+        ...(leftMatch ? { leftIndex: leftMatch.index } : {}),
+        ...(rightMatch ? { rightIndex: rightMatch.index } : {}),
       }
       violations.push(violation)
       if (witnesses.length < witnessLimit) {
@@ -552,8 +588,8 @@ export const checkAffineSchemePullbackSquare = <Base, Left, Right, Apex>(
           rightPreimage,
           baseLeftPreimage: baseFromLeft,
           baseRightPreimage: baseFromRight,
-          leftPoint: leftMatch,
-          rightPoint: rightMatch,
+          ...(leftMatch ? { leftPoint: leftMatch } : {}),
+          ...(rightMatch ? { rightPoint: rightMatch } : {}),
           violation,
         })
       }

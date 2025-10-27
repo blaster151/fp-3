@@ -69,7 +69,7 @@ const findMatchingPoint = <A>(
 
   for (let index = 0; index < spectrum.points.length; index += 1) {
     const candidate = spectrum.points[index]
-    if (candidate.ideal.ring !== spectrum.ring) {
+    if (!candidate || candidate.ideal.ring !== spectrum.ring) {
       continue
     }
     const pointSamples: A[] = []
