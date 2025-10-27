@@ -104,6 +104,9 @@ export const FP_CATALOG = {
   pushCoaction: 'Push linear map across coaction: (id⊗g)∘δ',
   actionToChain: 'Convert action to chain map at degree n',
   coactionToChain: 'Convert coaction to chain map at degree n',
+  makeFinGrpRepresentationFunctor: 'Treat a finite-group representation as a CatFunctor-compatible action.',
+  makeFinGrpProductRepresentation: 'Assemble product-group representations with tuple-aware block-diagonal actions.',
+  functorToFinGrpRepresentation: 'Recover representation matrices from functor data with generator-law validation.',
 
   // Diagram closure and validation
   'DiagramClosure.saturate': 'Auto-synthesize composite arrows from covers',
