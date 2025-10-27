@@ -1,5 +1,3 @@
-import { SetLaws } from "./set-laws";
-
 export type SetObj<A> = Set<A>;
 
 /**
@@ -155,6 +153,18 @@ export interface SetPowerObjectWitness<A> {
   readonly membership: SetHom<readonly [CharacteristicHom<A>, A], boolean>;
 }
 
+type ExponentialCarrierSemantics<A, B> = SetCarrierSemantics<ExponentialArrow<A, B>> & {
+  registerAssignment?: (assignment: (value: A) => B) => ExponentialArrow<A, B>;
+  snapshotAssignments?: () => ReadonlyArray<ExponentialArrow<A, B>>;
+  base?: SetObj<A>;
+  codomain?: SetObj<B>;
+};
+
+type PowerObjectSemantics<A> = SetCarrierSemantics<CharacteristicHom<A>> & {
+  registerCharacteristic: (candidate: CharacteristicHom<A>) => CharacteristicHom<A>;
+  snapshotCharacteristics: () => ReadonlyArray<CharacteristicHom<A>>;
+};
+
 type Pair<A, B> = readonly [A, B];
 
 interface ProductCarrier<A, B> {
@@ -277,79 +287,77 @@ const getCod = <A, B>(hom: SetHom<A, B>): SetObj<B> => hom.cod;
 
 const setPowerObjectCache = new WeakMap<SetObj<unknown>, SetPowerObjectWitness<unknown>>();
 
-const setPowerObjectRegistry = new WeakMap<
+const setPowerObjectSemanticsRegistry = new WeakMap<
   SetObj<unknown>,
-  Set<CharacteristicHom<unknown>>
+  PowerObjectSemantics<unknown>
 >();
 
 function buildSetPowerObject<A>(anchor: SetObj<A>): SetPowerObjectWitness<A> {
-  const finiteCardinality = knownFiniteCardinality(anchor);
+  const exponential = SetCat.exponential(anchor, SetOmega);
+  const exponentialSemantics = getCarrierSemantics(exponential.object) as
+    | ExponentialCarrierSemantics<A, boolean>
+    | undefined;
 
-  if (finiteCardinality !== undefined) {
-    const evidence = SetLaws.powerSetEvidence(anchor);
-    const powerObj = evidence.characteristicCarrier as Set<CharacteristicHom<A>>;
-    if (!getCarrierSemantics(powerObj)) {
-      attachCarrierSemantics(
-        powerObj,
-        createSemanticsFromSet(powerObj, {
-          equals: (left, right) => left === right,
-          tag: "SetCatFinitePowerObject",
-        }),
-      );
-    }
-    const powerObjHas = semanticsAwareHas(powerObj);
-    setPowerObjectRegistry.set(
-      anchor as SetObj<unknown>,
-      powerObj as Set<CharacteristicHom<unknown>>,
-    );
-    const membershipProduct = buildProductData(powerObj, anchor);
-    const membership = createSetHom(
-      membershipProduct.object,
-      SetOmega,
-      ([characteristic, element]) => {
-        if (!powerObjHas(characteristic)) {
-          throw new Error("SetCat.powerObject: characteristic must belong to Ω^A.");
-        }
-        return characteristic.map(element);
-      },
-    );
-    return {
-      anchor,
-      powerObj,
-      membershipProduct,
-      membership,
-    };
+  const registerAssignment = exponentialSemantics?.registerAssignment;
+  if (!registerAssignment) {
+    throw new Error("SetCat.powerObject: exponential semantics must expose registerAssignment metadata.");
   }
 
-  const known = new Set<CharacteristicHom<A>>();
-  const powerObj = new LazySet<CharacteristicHom<A>>({
-    semantics: {
-      iterate: function* (): IterableIterator<CharacteristicHom<A>> {
-        for (const characteristic of known) {
-          yield characteristic;
-        }
-      },
-      has: (candidate) => {
-        if (
-          candidate.dom !== anchor ||
-          candidate.cod !== SetOmega ||
-          !isSetHom(candidate)
-        ) {
-          return false;
-        }
-        if (!known.has(candidate)) {
-          known.add(candidate);
-        }
-        return true;
-      },
-      equals: (left, right) => left === right,
-      tag: "SetCatPowerObject",
+  const canonicalByFunction = new Map<ExponentialArrow<A, boolean>, CharacteristicHom<A>>();
+  const knownCharacteristics = new Set<CharacteristicHom<A>>();
+
+  const ensureCharacteristicFromFunction = (
+    fn: ExponentialArrow<A, boolean>,
+  ): CharacteristicHom<A> => {
+    let canonical = canonicalByFunction.get(fn);
+    if (!canonical) {
+      const characteristic = createSetHom(anchor, SetOmega, (value) => fn(value));
+      canonicalByFunction.set(fn, characteristic);
+      knownCharacteristics.add(characteristic);
+      canonical = characteristic;
+    }
+    return canonical;
+  };
+
+  const snapshot = exponentialSemantics.snapshotAssignments?.() ?? [];
+  for (const fn of snapshot) {
+    ensureCharacteristicFromFunction(fn as ExponentialArrow<A, boolean>);
+  }
+
+  const registerCharacteristic = (candidate: CharacteristicHom<A>): CharacteristicHom<A> => {
+    if (
+      candidate.dom !== anchor ||
+      candidate.cod !== SetOmega ||
+      !isSetHom(candidate)
+    ) {
+      throw new Error("SetCat.powerObject: characteristic must belong to Ω^A.");
+    }
+    const canonicalFn = registerAssignment((value: A) => candidate.map(value));
+    return ensureCharacteristicFromFunction(canonicalFn);
+  };
+
+  const semantics: PowerObjectSemantics<A> = {
+    iterate: function* (): IterableIterator<CharacteristicHom<A>> {
+      for (const fn of exponentialSemantics.iterate()) {
+        yield ensureCharacteristicFromFunction(fn as ExponentialArrow<A, boolean>);
+      }
     },
-  });
-  setPowerObjectRegistry.set(
+    has: (candidate) => knownCharacteristics.has(candidate),
+    equals: (left, right) => left === right,
+    tag: "SetCatPowerObject",
+    ...(exponentialSemantics.cardinality !== undefined
+      ? { cardinality: exponentialSemantics.cardinality }
+      : {}),
+    registerCharacteristic,
+    snapshotCharacteristics: () => Array.from(knownCharacteristics),
+  };
+
+  const powerObj = new LazySet<CharacteristicHom<A>>({ semantics });
+  setPowerObjectSemanticsRegistry.set(
     anchor as SetObj<unknown>,
-    known as Set<CharacteristicHom<unknown>>,
+    semantics as PowerObjectSemantics<unknown>,
   );
+
   const membershipProduct = buildProductData(powerObj, anchor);
   const powerObjHas = semanticsAwareHas(powerObj);
   const membership = createSetHom(
@@ -362,6 +370,7 @@ function buildSetPowerObject<A>(anchor: SetObj<A>): SetPowerObjectWitness<A> {
       return characteristic.map(element);
     },
   );
+
   return {
     anchor,
     powerObj,
@@ -383,17 +392,15 @@ function getSetPowerObject<A>(anchor: SetObj<A>): SetPowerObjectWitness<A> {
 function registerPowerObjectCharacteristic<A>(
   anchor: SetObj<A>,
   characteristic: CharacteristicHom<A>,
-): void {
-  let registry = setPowerObjectRegistry.get(anchor as SetObj<unknown>);
-  if (!registry) {
-    const witness = getSetPowerObject(anchor);
-    registry =
-      setPowerObjectRegistry.get(witness.anchor as SetObj<unknown>) ??
-      setPowerObjectRegistry.get(anchor as SetObj<unknown>);
+): CharacteristicHom<A> {
+  const witness = getSetPowerObject(anchor);
+  const semantics =
+    setPowerObjectSemanticsRegistry.get(anchor as SetObj<unknown>) ??
+    setPowerObjectSemanticsRegistry.get(witness.anchor as SetObj<unknown>);
+  if (!semantics) {
+    throw new Error("SetCat.powerObject: semantics registry missing for requested anchor.");
   }
-  if (registry) {
-    (registry as Set<CharacteristicHom<A>>).add(characteristic);
-  }
+  return (semantics as PowerObjectSemantics<A>).registerCharacteristic(characteristic);
 }
 
 let omegaWitnessCache: SetOmegaWitness;
@@ -773,7 +780,15 @@ const cartesianProduct = <A, B>(
   };
 };
 
-const buildProductData = <A, B>(
+const productDataCache = new WeakMap<
+  SetObj<unknown>,
+  WeakMap<SetObj<unknown>, ProductData<unknown, unknown>>
+>();
+
+const shouldBypassProductCache = <A, B>(options: ProductCarrierOptions<A, B>): boolean =>
+  options.instantiate !== undefined || options.semantics !== undefined;
+
+const createProductData = <A, B>(
   left: SetObj<A>,
   right: SetObj<B>,
   options: ProductCarrierOptions<A, B> = {},
@@ -797,6 +812,50 @@ const buildProductData = <A, B>(
     );
   };
   return { object: carrier.object, projections, pair, lookup: carrier.lookup };
+};
+
+const getCachedProductData = <A, B>(
+  left: SetObj<A>,
+  right: SetObj<B>,
+): ProductData<A, B> | undefined => {
+  const byLeft = productDataCache.get(left as SetObj<unknown>);
+  const cached = byLeft?.get(right as SetObj<unknown>);
+  return cached as ProductData<A, B> | undefined;
+};
+
+const cacheProductData = <A, B>(
+  left: SetObj<A>,
+  right: SetObj<B>,
+  data: ProductData<A, B>,
+): void => {
+  let byLeft = productDataCache.get(left as SetObj<unknown>);
+  if (!byLeft) {
+    byLeft = new WeakMap();
+    productDataCache.set(left as SetObj<unknown>, byLeft);
+  }
+  byLeft.set(right as SetObj<unknown>, data as ProductData<unknown, unknown>);
+};
+
+const buildProductData = <A, B>(
+  left: SetObj<A>,
+  right: SetObj<B>,
+  options: ProductCarrierOptions<A, B> = {},
+): ProductData<A, B> => {
+  const useCache = !shouldBypassProductCache(options);
+  if (useCache) {
+    const cached = getCachedProductData(left, right);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  const data = createProductData(left, right, options);
+
+  if (useCache) {
+    cacheProductData(left, right, data);
+  }
+
+  return data;
 };
 
 const createExponentialFunction = <A, B>(
@@ -846,6 +905,7 @@ interface ExponentialTrieNode<A, B> {
 
 interface ExponentialCarrier<A, B> {
   readonly object: SetObj<ExponentialArrow<A, B>>;
+  readonly semantics: ExponentialCarrierSemantics<A, B>;
   readonly register: (assignment: (value: A) => B) => ExponentialArrow<A, B>;
 }
 
@@ -865,22 +925,44 @@ const enumerateExponentialCarrier = <A, B>(
   codomain: SetObj<B>,
   options: ExponentialCarrierOptions<A, B> = {},
 ): ExponentialCarrier<A, B> => {
+  const attachExponentialMetadata = (
+    semantics: SetCarrierSemantics<ExponentialArrow<A, B>>,
+    register: (assignment: (value: A) => B) => ExponentialArrow<A, B>,
+    snapshot?: () => ReadonlyArray<ExponentialArrow<A, B>>,
+  ): ExponentialCarrierSemantics<A, B> => {
+    const typed = semantics as ExponentialCarrierSemantics<A, B>;
+    typed.registerAssignment = register;
+    typed.base ??= base;
+    typed.codomain ??= codomain;
+    if (snapshot) {
+      typed.snapshotAssignments = snapshot;
+    } else if (!typed.snapshotAssignments) {
+      typed.snapshotAssignments = () => [];
+    }
+    return typed;
+  };
+
   if (options.semantics) {
+    const semantics = options.semantics as ExponentialCarrierSemantics<A, B>;
     const instantiate: CarrierInstantiation<ExponentialArrow<A, B>> =
       options.instantiate ?? defaultInstantiateCarrier;
-    const object = instantiate(options.semantics);
+    const object = instantiate(semantics);
+    registerCarrierSemantics(object, semantics);
+    const known = new Set<ExponentialArrow<A, B>>();
     const registerFactory: (input: ExponentialRegisterInput<A, B>) => ExponentialArrow<A, B> =
       options.register ?? ((input) => createLazyExponentialFunction(base, codomain, input.assignment));
-    return {
-      object,
-      register: (assignment) =>
-        registerFactory({
-          assignment,
-          base,
-          codomain,
-          semantics: options.semantics as SetCarrierSemantics<ExponentialArrow<A, B>>,
-        }),
+    const register = (assignment: (value: A) => B): ExponentialArrow<A, B> => {
+      const fn = registerFactory({
+        assignment,
+        base,
+        codomain,
+        semantics,
+      });
+      known.add(fn);
+      return fn;
     };
+    const typed = attachExponentialMetadata(semantics, register, () => Array.from(known));
+    return { object, semantics: typed, register };
   }
 
   const baseSize = knownFiniteCardinality(base);
@@ -889,7 +971,7 @@ const enumerateExponentialCarrier = <A, B>(
 
   if (!isFinite) {
     const known = new Set<ExponentialArrow<A, B>>();
-    const semanticsFactory = (): SetCarrierSemantics<ExponentialArrow<A, B>> => ({
+    const semanticsFactory = (): ExponentialCarrierSemantics<A, B> => ({
       iterate: function* (): IterableIterator<ExponentialArrow<A, B>> {
         for (const fn of known) {
           yield fn;
@@ -898,25 +980,20 @@ const enumerateExponentialCarrier = <A, B>(
       has: (fn) => known.has(fn),
       equals: (left, right) => left === right,
       tag: "SetCatLazyExponential",
+      snapshotAssignments: () => Array.from(known),
+      base,
+      codomain,
     });
     const instantiate: CarrierInstantiation<ExponentialArrow<A, B>> =
       options.instantiate ?? defaultInstantiateCarrier;
-    const carrierOptions: CarrierOptions<ExponentialArrow<A, B>> =
-      options.semantics !== undefined
-        ? { semantics: options.semantics, instantiate }
-        : { instantiate };
-    const { object } = realizeCarrier(semanticsFactory, carrierOptions);
-
+    const { semantics, object } = realizeCarrier(semanticsFactory, { instantiate });
     const register = (assignment: (value: A) => B): ExponentialArrow<A, B> => {
       const fn = createLazyExponentialFunction(base, codomain, assignment);
       known.add(fn);
       return fn;
     };
-
-    return {
-      object,
-      register,
-    };
+    const typed = attachExponentialMetadata(semantics, register, () => Array.from(known));
+    return { object, semantics: typed, register };
   }
 
   const baseElements = Array.from(base.values());
@@ -996,7 +1073,7 @@ const enumerateExponentialCarrier = <A, B>(
     options.semantics !== undefined
       ? { semantics: options.semantics, instantiate }
       : { instantiate };
-  const { object } = realizeCarrier(semanticsFactory, carrierOptions);
+  const { semantics, object } = realizeCarrier(semanticsFactory, carrierOptions);
 
   const retrieve = (outputs: ReadonlyArray<B>): ExponentialArrow<A, B> => {
     if (outputs.length !== baseElements.length) {
@@ -1030,7 +1107,138 @@ const enumerateExponentialCarrier = <A, B>(
     return retrieve(outputs);
   };
 
-  return { object, register };
+  const typed = attachExponentialMetadata(semantics, register, () => functions.slice());
+
+  return { object, semantics: typed, register };
+};
+
+const exponentialDataCache = new WeakMap<
+  SetObj<unknown>,
+  WeakMap<SetObj<unknown>, ExponentialData<unknown, unknown>>
+>();
+
+const shouldBypassExponentialCache = <A, B>(options: ExponentialCarrierOptions<A, B>): boolean =>
+  options.instantiate !== undefined || options.semantics !== undefined || options.register !== undefined;
+
+const getCachedExponentialData = <A, B>(
+  base: SetObj<A>,
+  codomain: SetObj<B>,
+): ExponentialData<A, B> | undefined => {
+  const byBase = exponentialDataCache.get(base as SetObj<unknown>);
+  const cached = byBase?.get(codomain as SetObj<unknown>);
+  return cached as ExponentialData<A, B> | undefined;
+};
+
+const cacheExponentialData = <A, B>(
+  base: SetObj<A>,
+  codomain: SetObj<B>,
+  data: ExponentialData<A, B>,
+): void => {
+  let byBase = exponentialDataCache.get(base as SetObj<unknown>);
+  if (!byBase) {
+    byBase = new WeakMap();
+    exponentialDataCache.set(base as SetObj<unknown>, byBase);
+  }
+  byBase.set(codomain as SetObj<unknown>, data as ExponentialData<unknown, unknown>);
+};
+
+const createExponentialData = <A, B>(
+  base: SetObj<A>,
+  codomain: SetObj<B>,
+  options: ExponentialCarrierOptions<A, B>,
+): ExponentialData<A, B> => {
+  const enumeration = enumerateExponentialCarrier(base, codomain, options);
+  const evaluationProduct = buildProductData(enumeration.object, base);
+  const evaluation = createSetHom(
+    evaluationProduct.object,
+    codomain,
+    (pair) => {
+      const fn = pair[0];
+      const argument = pair[1];
+      return fn(argument);
+    },
+  );
+
+  const curry = <X>(input: CurryInput<X, A, B>): SetHom<X, ExponentialArrow<A, B>> => {
+    const { domain, morphism } = input;
+    const productData = input.product ?? buildProductData(domain, base);
+
+    if (productData.object !== morphism.dom) {
+      throw new Error("SetCat: curry expects the supplied morphism to originate from the provided product");
+    }
+    if (productData.projections.fst.cod !== domain) {
+      throw new Error("SetCat: curry requires the product projections to land in the declared domain");
+    }
+    if (productData.projections.snd.cod !== base) {
+      throw new Error("SetCat: curry requires the product projections to land in the declared base set");
+    }
+    if (morphism.cod !== codomain) {
+      throw new Error("SetCat: curry expects a morphism landing in the declared codomain");
+    }
+
+    const assignments = new Map<X, ExponentialArrow<A, B>>();
+    const domainHas = semanticsAwareHas(domain);
+    const baseHas = semanticsAwareHas(base);
+    const domainEquals = semanticsAwareEquals(domain);
+    const baseEquals = semanticsAwareEquals(base);
+
+    const lookupPair = (x: X, a: A): Pair<X, A> => {
+      if (!domainHas(x)) {
+        throw new Error("SetCat: curry evaluated on an element outside the declared domain");
+      }
+      if (!baseHas(a)) {
+        throw new Error("SetCat: curry evaluated on an element outside the declared base set");
+      }
+      if (productData.lookup) {
+        return productData.lookup(x, a);
+      }
+      for (const candidate of productData.object) {
+        if (domainEquals(candidate[0], x) && baseEquals(candidate[1], a)) {
+          return candidate;
+        }
+      }
+      throw new Error("SetCat: curry could not locate the required product element");
+    };
+
+    return createSetHom(domain, enumeration.object, (x) => {
+      const existing = assignments.get(x);
+      if (existing) {
+        return existing;
+      }
+      const fn = enumeration.register((a) => morphism.map(lookupPair(x, a)));
+      assignments.set(x, fn);
+      return fn;
+    });
+  };
+
+  const uncurry = <X>(input: UncurryInput<X, A, B>): SetHom<Pair<X, A>, B> => {
+    const { morphism } = input;
+    if (morphism.cod !== enumeration.object) {
+      throw new Error("SetCat: uncurry expects a morphism landing in the exponential object");
+    }
+    const domain = morphism.dom as SetObj<X>;
+    const productData = input.product ?? buildProductData(domain, base);
+    if (productData.projections.fst.cod !== domain) {
+      throw new Error("SetCat: uncurry requires the supplied product to project onto the morphism domain");
+    }
+    if (productData.projections.snd.cod !== base) {
+      throw new Error("SetCat: uncurry requires the supplied product to project onto the base set");
+    }
+
+    return createSetHom(productData.object, codomain, (pair) => {
+      const fn = morphism.map(pair[0]);
+      return fn(pair[1]);
+    });
+  };
+
+  return {
+    object: enumeration.object,
+    evaluation,
+    evaluationProduct,
+    curry,
+    uncurry,
+    register: enumeration.register,
+  };
 };
 
 const buildCoproductCarrier = <A, B>(
@@ -1128,6 +1336,60 @@ const buildCoproductCarrier = <A, B>(
   };
 };
 
+const coproductDataCache = new WeakMap<
+  SetObj<unknown>,
+  WeakMap<SetObj<unknown>, CoproductData<unknown, unknown>>
+>();
+
+const shouldBypassCoproductCache = <A, B>(options: CoproductCarrierOptions<A, B>): boolean =>
+  options.instantiate !== undefined || options.semantics !== undefined;
+
+const createCoproductData = <A, B>(
+  left: SetObj<A>,
+  right: SetObj<B>,
+  options: CoproductCarrierOptions<A, B> = {},
+): CoproductData<A, B> => {
+  const carrier = buildCoproductCarrier(left, right, options);
+  const injections: CoproductInjections<A, B> = {
+    inl: createSetHom(left, carrier.object, (value) => carrier.inlLookup(value)),
+    inr: createSetHom(right, carrier.object, (value) => carrier.inrLookup(value)),
+  };
+  const copair = <X>(f: SetHom<A, X>, g: SetHom<B, X>): SetHom<Coproduct<A, B>, X> => {
+    if (f.cod !== g.cod) {
+      throw new Error("SetCat: coproduct copairing requires a shared codomain");
+    }
+    if (f.dom !== left || g.dom !== right) {
+      throw new Error("SetCat: coproduct copairing expects morphisms from the declared summands");
+    }
+    return createSetHom(carrier.object, f.cod, (tagged) =>
+      tagged.tag === "inl" ? f.map(tagged.value) : g.map(tagged.value),
+    );
+  };
+  return { object: carrier.object, injections, copair };
+};
+
+const getCachedCoproductData = <A, B>(
+  left: SetObj<A>,
+  right: SetObj<B>,
+): CoproductData<A, B> | undefined => {
+  const byLeft = coproductDataCache.get(left as SetObj<unknown>);
+  const cached = byLeft?.get(right as SetObj<unknown>);
+  return cached as CoproductData<A, B> | undefined;
+};
+
+const cacheCoproductData = <A, B>(
+  left: SetObj<A>,
+  right: SetObj<B>,
+  data: CoproductData<A, B>,
+): void => {
+  let byLeft = coproductDataCache.get(left as SetObj<unknown>);
+  if (!byLeft) {
+    byLeft = new WeakMap();
+    coproductDataCache.set(left as SetObj<unknown>, byLeft);
+  }
+  byLeft.set(right as SetObj<unknown>, data as CoproductData<unknown, unknown>);
+};
+
 export function composeSet<A, B, C>(g: SetHom<B, C>, f: SetHom<A, B>): SetHom<A, C> {
   if (f.cod !== g.dom) {
     throw new Error('SetCat: domain/codomain mismatch');
@@ -1176,23 +1438,21 @@ export const SetCat = {
     right: SetObj<B>,
     options: CoproductCarrierOptions<A, B> = {},
   ): CoproductData<A, B> => {
-    const carrier = buildCoproductCarrier(left, right, options);
-    const injections: CoproductInjections<A, B> = {
-      inl: createSetHom(left, carrier.object, (value) => carrier.inlLookup(value)),
-      inr: createSetHom(right, carrier.object, (value) => carrier.inrLookup(value)),
-    };
-    const copair = <X>(f: SetHom<A, X>, g: SetHom<B, X>): SetHom<Coproduct<A, B>, X> => {
-      if (f.cod !== g.cod) {
-        throw new Error("SetCat: coproduct copairing requires a shared codomain");
+    const useCache = !shouldBypassCoproductCache(options);
+    if (useCache) {
+      const cached = getCachedCoproductData(left, right);
+      if (cached) {
+        return cached;
       }
-      if (f.dom !== left || g.dom !== right) {
-        throw new Error("SetCat: coproduct copairing expects morphisms from the declared summands");
-      }
-      return createSetHom(carrier.object, f.cod, (tagged) =>
-        tagged.tag === "inl" ? f.map(tagged.value) : g.map(tagged.value),
-      );
-    };
-    return { object: carrier.object, injections, copair };
+    }
+
+    const data = createCoproductData(left, right, options);
+
+    if (useCache) {
+      cacheCoproductData(left, right, data);
+    }
+
+    return data;
   },
   terminal: (): TerminalData => ({
     object: terminalObj,
@@ -1209,98 +1469,21 @@ export const SetCat = {
     codomain: SetObj<B>,
     options: ExponentialCarrierOptions<A, B> = {},
   ): ExponentialData<A, B> => {
-    const enumeration = enumerateExponentialCarrier(base, codomain, options);
-    const evaluationProduct = buildProductData(enumeration.object, base);
-    const evaluation = createSetHom(
-      evaluationProduct.object,
-      codomain,
-      (pair) => {
-        const fn = pair[0];
-        const argument = pair[1];
-        return fn(argument);
-      },
-    );
-
-    const curry = <X>(input: CurryInput<X, A, B>): SetHom<X, ExponentialArrow<A, B>> => {
-      const { domain, morphism } = input;
-      const productData = input.product ?? buildProductData(domain, base);
-
-      if (productData.object !== morphism.dom) {
-        throw new Error("SetCat: curry expects the supplied morphism to originate from the provided product");
+    const useCache = !shouldBypassExponentialCache(options);
+    if (useCache) {
+      const cached = getCachedExponentialData(base, codomain);
+      if (cached) {
+        return cached;
       }
-      if (productData.projections.fst.cod !== domain) {
-        throw new Error("SetCat: curry requires the product projections to land in the declared domain");
-      }
-      if (productData.projections.snd.cod !== base) {
-        throw new Error("SetCat: curry requires the product projections to land in the declared base set");
-      }
-      if (morphism.cod !== codomain) {
-        throw new Error("SetCat: curry expects a morphism landing in the declared codomain");
-      }
+    }
 
-      const assignments = new Map<X, ExponentialArrow<A, B>>();
-      const domainHas = semanticsAwareHas(domain);
-      const baseHas = semanticsAwareHas(base);
-      const domainEquals = semanticsAwareEquals(domain);
-      const baseEquals = semanticsAwareEquals(base);
+    const data = createExponentialData(base, codomain, options);
 
-      const lookupPair = (x: X, a: A): Pair<X, A> => {
-        if (!domainHas(x)) {
-          throw new Error("SetCat: curry evaluated on an element outside the declared domain");
-        }
-        if (!baseHas(a)) {
-          throw new Error("SetCat: curry evaluated on an element outside the declared base set");
-        }
-        if (productData.lookup) {
-          return productData.lookup(x, a);
-        }
-        for (const candidate of productData.object) {
-          if (domainEquals(candidate[0], x) && baseEquals(candidate[1], a)) {
-            return candidate;
-          }
-        }
-        throw new Error("SetCat: curry could not locate the required product element");
-      };
+    if (useCache) {
+      cacheExponentialData(base, codomain, data);
+    }
 
-      return createSetHom(domain, enumeration.object, (x) => {
-        const existing = assignments.get(x);
-        if (existing) {
-          return existing;
-        }
-        const fn = enumeration.register((a) => morphism.map(lookupPair(x, a)));
-        assignments.set(x, fn);
-        return fn;
-      });
-    };
-
-    const uncurry = <X>(input: UncurryInput<X, A, B>): SetHom<Pair<X, A>, B> => {
-      const { morphism } = input;
-      if (morphism.cod !== enumeration.object) {
-        throw new Error("SetCat: uncurry expects a morphism landing in the exponential object");
-      }
-      const domain = morphism.dom as SetObj<X>;
-      const productData = input.product ?? buildProductData(domain, base);
-      if (productData.projections.fst.cod !== domain) {
-        throw new Error("SetCat: uncurry requires the supplied product to project onto the morphism domain");
-      }
-      if (productData.projections.snd.cod !== base) {
-        throw new Error("SetCat: uncurry requires the supplied product to project onto the base set");
-      }
-
-      return createSetHom(productData.object, codomain, (pair) => {
-        const fn = morphism.map(pair[0]);
-        return fn(pair[1]);
-      });
-    };
-
-    return {
-      object: enumeration.object,
-      evaluation,
-      evaluationProduct,
-      curry,
-      uncurry,
-      register: enumeration.register,
-    };
+    return data;
   },
   omega: (): SetOmegaWitness => omegaWitnessCache,
   subobjectClassifier: (): SetSubobjectClassifierWitness => subobjectClassifierWitnessCache,
@@ -1392,8 +1575,7 @@ export const setCharacteristicOfSubset = <A>(inclusion: SetHom<A, A>): SetHom<A,
   const subset = inclusion.dom;
   const subsetHas = semanticsAwareHas(subset);
   const characteristic = SetCat.hom(ambient, SetOmega, (value) => subsetHas(value));
-  registerPowerObjectCharacteristic(ambient, characteristic);
-  return characteristic;
+  return registerPowerObjectCharacteristic(ambient, characteristic);
 };
 
 export const setSubsetFromCharacteristic = <A>(
@@ -1403,10 +1585,10 @@ export const setSubsetFromCharacteristic = <A>(
     throw new Error("setSubsetFromCharacteristic: characteristic must land in Ω.");
   }
   const ambient = characteristic.dom;
-  registerPowerObjectCharacteristic(ambient, characteristic);
+  const canonical = registerPowerObjectCharacteristic(ambient, characteristic);
   const members: A[] = [];
   for (const element of ambient) {
-    const classification = characteristic.map(element);
+    const classification = canonical.map(element);
     if (classification !== true && classification !== false) {
       throw new Error(
         "setSubsetFromCharacteristic: characteristic must classify elements as either true or false.",
