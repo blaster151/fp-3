@@ -1,16 +1,20 @@
-import type { LocalizationFraction } from "../algebra/ring/localizations"
-import { buildPrimeLocalizationData } from "../algebra/ring/localizations"
-import type { PrimePointSample, RingSample } from "../algebra/ring/samples"
-import { CommutativeRingSamples } from "../algebra/ring/samples"
-import type { Ring } from "../algebra/ring/structures"
-import type { SchemeChart } from "./global-schemes"
-import type { PrimeSpectrum } from "./prime-spectrum"
+import type { RunnableExample, RunnableOutcome } from "./types"
+import type { LocalizationFraction } from "../../src/algebra/ring/localizations"
+import { buildPrimeLocalizationData } from "../../src/algebra/ring/localizations"
+import type { Ring } from "../../src/algebra/ring/structures"
+import type { SchemeChart } from "../../src/schemes/global-schemes"
+import type { PrimeSpectrum } from "../../src/schemes/prime-spectrum"
 import type {
   StructureSheafArrow,
   StructureSheafCovering,
   StructureSheafData,
   StructureSheafOpen,
-} from "./structure-sheaf"
+} from "../../src/schemes/structure-sheaf"
+import {
+  CommutativeRingSamples,
+  type PrimePointSample,
+  type RingSample,
+} from "./092-commutative-ring-sample-library"
 
 type Equality<A> = (left: A, right: A) => boolean
 
@@ -274,4 +278,42 @@ export const AffineSchemeExamples = {
     "Finite field spectrum realised as the single-point affine scheme Spec 𝔽₅.",
   ),
 } as const satisfies AffineSchemeLibrary
+
+const describeAffineSample = (
+  key: string,
+  entry: AffineSchemeSample<any>,
+): readonly string[] => {
+  const pointCount = entry.chart.spectrum.points.length
+  const openCount = entry.chart.structureSheaf.opens.length
+  const coveringCount = entry.chart.structureSheaf.coverings.length
+
+  return [
+    `${key}: ${entry.label} — ${entry.description}`,
+    `  spectrum points: ${pointCount}, opens: ${openCount}, coverings: ${coveringCount}`,
+  ]
+}
+
+const runAffineSchemeCatalogue = (): RunnableOutcome => {
+  const logs: string[] = [
+    "== Affine scheme catalogue ==",
+    ...describeAffineSample("Spec ℤ", AffineSchemeExamples.specIntegers),
+    "",
+    ...describeAffineSample("Spec ℤ[ε]/(ε²)", AffineSchemeExamples.specDualNumbers),
+    "",
+    ...describeAffineSample("Spec 𝔽₅", AffineSchemeExamples.specFiniteField5),
+  ]
+
+  return { logs }
+}
+
+export const stage093AffineSchemeExampleCatalogue: RunnableExample = {
+  id: "093",
+  title: "Affine scheme example catalogue",
+  outlineReference: 91,
+  summary:
+    "Packages Spec ℤ, Spec ℤ[ε]/(ε²), and Spec 𝔽₅ charts with localisation data for atlas and gluing diagnostics.",
+  async run() {
+    return runAffineSchemeCatalogue()
+  },
+}
 

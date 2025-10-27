@@ -15,7 +15,7 @@
 
 ### How to reuse the ring oracle suite during Stage 1 builds
 
-1. **Choose spectrum data.** Start from a `PrimeSpectrumPoint` and its complement multiplicative set—`src/algebra/ring/samples.ts` bundles canonical choices for ℤ, ℤ[ε]/(ε²), and finite fields so localization attempts begin with consistent generators.
+1. **Choose spectrum data.** Start from a `PrimeSpectrumPoint` and its complement multiplicative set—`examples/runnable/092-commutative-ring-sample-library.ts` bundles canonical choices for ℤ, ℤ[ε]/(ε²), and finite fields so localization attempts begin with consistent generators.
 2. **Assemble the local ring harness.** Call `buildPrimeLocalizationCheck` from [`prime-ideals.ts`](../src/algebra/ring/prime-ideals.ts) to run prime and multiplicative-set validation before delegating to `checkLocalRingAtPrime` in [`localizations.ts`](../src/algebra/ring/localizations.ts). The helper returns the localized ring data that the structure-sheaf tooling expects.
 3. **Layer Noetherian chain sampling.** Feed ideal chains through `searchAscendingChain`/`checkNoetherianModule` in [`finitely-generated-modules.ts`](../src/algebra/ring/finitely-generated-modules.ts) to detect stabilization while reusing the finitely generated module oracle.
 4. **Probe flatness witnesses.** Supply short exact sequence samples to `checkFlatModuleOnSamples` in [`tensor-products.ts`](../src/algebra/ring/tensor-products.ts); it tensors the sequences against your module and raises violations whenever Tor-vanishing fails.

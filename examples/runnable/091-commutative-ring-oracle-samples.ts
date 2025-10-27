@@ -12,7 +12,7 @@ import {
   CommutativeRingSamples,
   type ModuleSample,
   type DualNumber,
-} from "../../src/algebra/ring/samples";
+} from "./092-commutative-ring-sample-library";
 import type { RunnableExample } from "./types";
 
 const mod2 = (value: bigint): bigint => {

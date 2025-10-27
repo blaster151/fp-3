@@ -190,7 +190,7 @@ export type PrimeLocalizationCheck<A> = (
 
 /**
  * Compose prime, multiplicative-set, and localization diagnostics around a
- * {@link PrimeSpectrumPoint}. Sample catalogues in `src/algebra/ring/samples.ts`
+ * {@link PrimeSpectrumPoint}. Sample catalogues in `examples/runnable/092-commutative-ring-sample-library.ts`
  * provide ready-to-use inputs for this harness via bundled prime entries.
  */
 export const buildPrimeLocalizationCheck = <A>(

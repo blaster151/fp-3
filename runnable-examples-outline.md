@@ -107,4 +107,8 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 89. **Commutative ring oracle samples** – Reuse the curated ℤ, ℤ[ε]/(ε²), and ℤ/2ℤ fixtures to run localization-at-prime, Noetherian ascending-chain, and flatness diagnostics, highlighting both successful witnesses and sampled counterexamples. (examples/runnable/091-commutative-ring-oracle-samples.ts)
 
+90. **Commutative ring sample library** – Publish canonical ℤ, ℤ[ε]/(ε²), and 𝔽₅ samples with multiplicative sets, localization hints, and module generators for downstream diagnostics. (examples/runnable/092-commutative-ring-sample-library.ts)
+
+91. **Affine scheme example catalogue** – Package Spec ℤ, Spec ℤ[ε]/(ε²), and Spec 𝔽₅ charts using the shared ring library so atlas and gluing tests can import consistent fixtures. (examples/runnable/093-affine-scheme-example-catalogue.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.

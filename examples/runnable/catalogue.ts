@@ -94,6 +94,8 @@ import { stage088AdtPolynomialEnrichedAdapters } from "./088-adt-polynomial-enri
 import { stage089AdtPolynomialEnrichedHigherOrder } from "./089-adt-polynomial-enriched-higher-order";
 import { stage090AdtPolynomialEnrichedStreetRollups } from "./090-adt-polynomial-enriched-street-rollups";
 import { stage091CommutativeRingOracleSamples } from "./091-commutative-ring-oracle-samples";
+import { stage092CommutativeRingSampleLibrary } from "./092-commutative-ring-sample-library";
+import { stage093AffineSchemeExampleCatalogue } from "./093-affine-scheme-example-catalogue";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -191,4 +193,6 @@ export const registry: RunnableRegistry = [
   stage089AdtPolynomialEnrichedHigherOrder,
   stage090AdtPolynomialEnrichedStreetRollups,
   stage091CommutativeRingOracleSamples,
+  stage092CommutativeRingSampleLibrary,
+  stage093AffineSchemeExampleCatalogue,
 ];

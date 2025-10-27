@@ -72,7 +72,7 @@ import { checkPrimeSpectrum, checkPrimeStalks } from "./src/schemes/prime-spectr
 import { checkStructureSheaf } from "./src/schemes/structure-sheaf";
 import { checkSchemeGluing, checkSchemeFiberProduct } from "./src/schemes/global-schemes";
 import { checkFiberedCategory, checkStackDescent } from "./src/schemes/stacks";
-import { AffineSchemeExamples } from "./src/schemes/examples";
+import { AffineSchemeExamples } from "./examples/runnable/093-affine-scheme-example-catalogue";
 
 export interface RelativeMonadLawCheckResult<Obj, Arr, Payload, Evidence> {
   readonly holds: boolean;

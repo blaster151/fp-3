@@ -1,11 +1,18 @@
-import { normalizeMod, createModuloRing, RingInteger } from "./instances"
-import type { RingIdeal } from "./ideals"
-import type { Module } from "./modules"
-import type { Ring } from "./structures"
-import type { AscendingChain, FinitelyGeneratedModule } from "./finitely-generated-modules"
-import type { PrimeSpectrumPoint } from "../../schemes/prime-spectrum"
-import type { MultiplicativeSet } from "./multiplicative-sets"
-import type { LocalizationRingCheckOptions, LocalizationRingData } from "./localizations"
+import type { RunnableExample, RunnableOutcome } from "./types"
+import { normalizeMod, createModuloRing, RingInteger } from "../../src/algebra/ring/instances"
+import type { RingIdeal } from "../../src/algebra/ring/ideals"
+import type { Module } from "../../src/algebra/ring/modules"
+import type { Ring } from "../../src/algebra/ring/structures"
+import type {
+  AscendingChain,
+  FinitelyGeneratedModule,
+} from "../../src/algebra/ring/finitely-generated-modules"
+import type { PrimeSpectrumPoint } from "../../src/schemes/prime-spectrum"
+import type { MultiplicativeSet } from "../../src/algebra/ring/multiplicative-sets"
+import type {
+  LocalizationRingCheckOptions,
+  LocalizationRingData,
+} from "../../src/algebra/ring/localizations"
 
 export interface RingSample<A> {
   readonly ring: Ring<A>
@@ -641,3 +648,41 @@ export const CommutativeRingSamples = {
     modules: FiniteFieldModuleSamples,
   },
 } as const satisfies RingSampleLibrary
+
+const summarizeRingEntry = (
+  label: string,
+  entry: RingLibraryEntry<any>,
+): readonly string[] => {
+  const multiplicativeSets = entry.ring.multiplicativeSets?.length ?? 0
+  const primePoints = entry.ring.primePoints.length
+  const modules = entry.modules.length
+
+  return [
+    `${label}: ${entry.ring.label} — ${entry.ring.description}`,
+    `  multiplicative sets: ${multiplicativeSets}, prime points: ${primePoints}, module samples: ${modules}`,
+  ]
+}
+
+const runCommutativeRingSampleLibrary = (): RunnableOutcome => {
+  const logs: string[] = [
+    "== Commutative ring sample library ==",
+    ...summarizeRingEntry("ℤ", CommutativeRingSamples.integers),
+    "",
+    ...summarizeRingEntry("ℤ[ε]/(ε²)", CommutativeRingSamples.dualNumbersOverZ),
+    "",
+    ...summarizeRingEntry("𝔽₅", CommutativeRingSamples.finiteField5),
+  ]
+
+  return { logs }
+}
+
+export const stage092CommutativeRingSampleLibrary: RunnableExample = {
+  id: "092",
+  title: "Commutative ring sample library",
+  outlineReference: 90,
+  summary:
+    "Publishes reusable ℤ, ℤ[ε]/(ε²), and 𝔽₅ ring/module samples, including multiplicative sets and localization hints.",
+  async run() {
+    return runCommutativeRingSampleLibrary()
+  },
+}
