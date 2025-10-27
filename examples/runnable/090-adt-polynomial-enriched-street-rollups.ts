@@ -1,121 +1,24 @@
 import type { RunnableExample } from "./types";
-import { TwoObjectCategory } from "../../two-object-cat";
-import { virtualizeFiniteCategory } from "../../virtual-equipment/adapters";
 import {
-  analyzeADTPolynomialRelativeStreet,
-  buildADTPolynomialRelativeStreetEnrichedBundle,
-  rollupADTPolynomialRelativeStreet,
-  type ADTPolynomialRelativeStreetInput,
-} from "../../relative/adt-polynomial-relative";
+  buildTrivialAggregatedStreetArtifacts,
+} from "../../relative/adt-polynomial-street-trivial";
 import {
-  analyzeRelativeEnrichedStreetRollups,
-  describeRelativeEnrichedEilenbergMooreAlgebraWitness,
-  describeRelativeEnrichedKleisliInclusionWitness,
-  describeRelativeEnrichedMonadWitness,
-  describeRelativeEnrichedVCatMonadWitness,
-  describeRelativeEnrichedYonedaDistributorWitness,
-  describeRelativeEnrichedYonedaWitness,
-  describeTrivialRelativeMonad,
-} from "../../relative/relative-monads";
-import { RelativeMonadOracles } from "../../relative/relative-oracles";
-import {
-  defineADT,
-  primitiveStrictEqualsWitness,
-  witnessFromEquals,
-  type ADTValue,
-} from "../../src/algebra/adt/adt";
+  aggregatedStreetRollup,
+  aggregatedStreetRollupVerdict,
+  describeAggregatedStreetRollupPayload,
+  describeAggregatedStreetRollupSummary,
+  listAggregatedStreetRollupIssues,
+  recordedAggregatedStreetArtifacts,
+  selectAggregatedStreetAdapters,
+  summarizeAggregatedStreetRollupAnalyzers,
+} from "../../relative/generated/adt-polynomial-aggregated-street";
 
-const NumericList = defineADT({
-  typeName: "AggregatedStreetList",
-  constructors: [
-    { name: "Nil", fields: [] },
-    {
-      name: "Cons",
-      fields: [
-        { name: "head", witness: primitiveStrictEqualsWitness<number>() },
-        {
-          name: "tail",
-          witness: witnessFromEquals<unknown>(() => true),
-          recursion: "self",
-        },
-      ],
-    },
-  ] as const,
-});
-
-type ListConstructors = typeof NumericList.constructorsList;
-type ListValue = ADTValue<ListConstructors>;
-
-const { Nil, Cons } = NumericList.constructors;
-
-const samples: ReadonlyArray<ListValue> = [
-  Nil(),
-  Cons({ head: 1, tail: Nil() }),
-  Cons({ head: 2, tail: Cons({ head: 1, tail: Nil() }) }),
-];
-
-const identityAlgebra = {
-  Nil: () => Nil(),
-  Cons: ({ head, tail }: { readonly head: number; readonly tail: ListValue }) =>
-    Cons({ head, tail }),
-};
-
-const appendZeroAlgebra = {
-  Nil: () => Cons({ head: 0, tail: Nil() }),
-  Cons: ({ head, tail }: { readonly head: number; readonly tail: ListValue }) =>
-    Cons({ head, tail }),
-};
-
-const doubleAlgebra = {
-  Nil: () => Nil(),
-  Cons: ({ head, tail }: { readonly head: number; readonly tail: ListValue }) =>
-    Cons({ head: head * 2, tail }),
-};
-
-const streetInput: ADTPolynomialRelativeStreetInput<
-  typeof NumericList.typeName,
-  ListConstructors
-> = {
-  adt: NumericList,
-  extensions: [
-    {
-      id: "identity-extension",
-      algebra: identityAlgebra,
-      witness: witnessFromEquals(NumericList.equals),
-      samples,
-      expected: (value: ListValue) => value,
-    },
-  ],
-  kleisli: [
-    {
-      id: "append-zero-then-double",
-      first: doubleAlgebra,
-      second: appendZeroAlgebra,
-      witness: witnessFromEquals(NumericList.equals),
-      samples,
-      expected: ({ value, extendFirst, extendSecond }) =>
-        extendFirst(extendSecond(value)),
-    },
-  ],
-};
-
-const makeTrivialWitnesses = () => {
-  const equipment = virtualizeFiniteCategory(TwoObjectCategory);
-  const trivial = describeTrivialRelativeMonad(equipment, "•");
-  const enriched = describeRelativeEnrichedMonadWitness(trivial);
-  const yoneda = describeRelativeEnrichedYonedaWitness(enriched);
-  return {
-    trivial,
-    enriched,
-    witnesses: {
-      yoneda,
-      yonedaDistributor: describeRelativeEnrichedYonedaDistributorWitness(yoneda),
-      eilenbergMoore: describeRelativeEnrichedEilenbergMooreAlgebraWitness(enriched),
-      kleisli: describeRelativeEnrichedKleisliInclusionWitness(enriched),
-      vcat: describeRelativeEnrichedVCatMonadWitness(enriched),
-    },
-  } as const;
-};
+const describeGuardOutcome = (verdict: string): string =>
+  verdict === "ready"
+    ? "Adapters can be emitted immediately."
+    : verdict === "pending"
+      ? "Hold emission behind a pending guard."
+      : "Adapters are blocked until Street roll-ups hold.";
 
 export const stage090AdtPolynomialEnrichedStreetRollups: RunnableExample = {
   id: "090",
@@ -124,37 +27,25 @@ export const stage090AdtPolynomialEnrichedStreetRollups: RunnableExample = {
   summary:
     "Aggregate Street roll-ups for a list ADT and run all enriched analyzers with the shared diagnostics payload.",
   async run() {
-    const streetReport = analyzeADTPolynomialRelativeStreet(streetInput);
-    const streetRollup = rollupADTPolynomialRelativeStreet(streetInput, streetReport);
-    const bundle = buildADTPolynomialRelativeStreetEnrichedBundle(
+    const guardNarrative = selectAggregatedStreetAdapters({
+      onReady: () => "Aggregated Street roll-ups hold — emit enriched adapters.",
+      onPending: () => "Aggregated Street roll-ups pending — emit adapters behind guards.",
+      onBlocked: () => "Aggregated Street roll-ups blocked — investigate before emitting adapters.",
+    });
+
+    const recordedSummary = describeAggregatedStreetRollupSummary();
+    const recordedIssues = listAggregatedStreetRollupIssues();
+    const recordedAnalyzerSummaries = summarizeAggregatedStreetRollupAnalyzers();
+    const recordedPayload = describeAggregatedStreetRollupPayload();
+
+    const {
       streetInput,
-      streetReport,
-      streetRollup,
-    );
+      bundle,
+      analysis,
+      aggregated: runtimeAggregated,
+    } = buildTrivialAggregatedStreetArtifacts();
 
-    const { trivial, enriched, witnesses } = makeTrivialWitnesses();
-
-    const aggregated = RelativeMonadOracles.polynomialStreetRollupAggregation(
-      trivial,
-      streetInput,
-      streetReport,
-      streetRollup,
-      {
-        enrichedWitness: enriched,
-        yonedaWitness: witnesses.yoneda,
-        yonedaDistributorWitness: witnesses.yonedaDistributor,
-        enrichedEilenbergMooreWitness: witnesses.eilenbergMoore,
-        enrichedKleisliWitness: witnesses.kleisli,
-        enrichedVCatWitness: witnesses.vcat,
-      },
-    );
-
-    const analysis = analyzeRelativeEnrichedStreetRollups(
-      witnesses,
-      bundle.options,
-    );
-
-    const analyzerSummaries = (
+    const runtimeAnalyzerSummaries = (
       [
         { label: "Yoneda", report: analysis.reports.yoneda },
         { label: "Yoneda distributor", report: analysis.reports.yonedaDistributor },
@@ -168,23 +59,40 @@ export const stage090AdtPolynomialEnrichedStreetRollups: RunnableExample = {
       })`,
     );
 
-    const pendingSummary = aggregated.pending
+    const runtimePendingSummary = runtimeAggregated.pending
       ? "⧗ Some enriched analyzers are pending on Street roll-ups."
-      : aggregated.holds
+      : runtimeAggregated.holds
         ? "✔ All enriched analyzers discharged the supplied Street roll-ups."
         : "✘ Aggregated Street roll-up analysis reported issues.";
 
-    const aggregatedIssues = aggregated.issues ?? [];
+    const recordedPayloadLines = recordedPayload
+      ? [
+          `Pending: ${recordedPayload.pending ? "yes" : "no"}`,
+          `Holds: ${recordedPayload.holds ? "yes" : "no"}`,
+          `Extensions recorded: ${recordedPayload.extensions}`,
+          `Kleisli recorded: ${recordedPayload.kleisli}`,
+        ]
+      : ["No Street roll-up payload recorded in generated module."];
 
     const logs = [
-      "== Aggregated Street roll-ups ==",
-      aggregated.details,
-      pendingSummary,
-      ...(aggregatedIssues.length > 0
-        ? ["Issues:", ...aggregatedIssues.map((issue) => `   - ${issue}`)]
-        : []),
-      "== Analyzer statuses ==",
-      ...analyzerSummaries,
+      "== Generated aggregated Street module ==",
+      `Summary: ${recordedSummary}`,
+      `Recorded verdict: ${aggregatedStreetRollupVerdict}`,
+      `Guard decision: ${guardNarrative} (${describeGuardOutcome(aggregatedStreetRollupVerdict)})`,
+      ...(recordedIssues.length > 0
+        ? ["Issues:", ...recordedIssues.map((issue) => `   - ${issue}`)]
+        : ["Issues: none recorded in generated module."]),
+      "== Analyzer statuses (recorded) ==",
+      ...(recordedAnalyzerSummaries.length > 0
+        ? recordedAnalyzerSummaries
+        : ["No analyzer reports were captured."]),
+      "== Recorded Street roll-up payload ==",
+      ...recordedPayloadLines,
+      "== Runtime Street harness recomputation ==",
+      runtimeAggregated.details,
+      runtimePendingSummary,
+      "== Analyzer statuses (runtime recomputation) ==",
+      ...runtimeAnalyzerSummaries,
       "== Captured Street roll-up artifacts ==",
       `Extension scenarios: ${streetInput.extensions?.length ?? 0}`,
       `Extension roll-ups: ${bundle.rollup.extensions.length}`,
@@ -195,12 +103,24 @@ export const stage090AdtPolynomialEnrichedStreetRollups: RunnableExample = {
     return {
       logs,
       metadata: {
-        pending: analysis.pending,
-        issues: analysis.issues,
+        generatedVerdict: aggregatedStreetRollupVerdict,
+        guardNarrative,
+        recordedIssues,
+        recordedAnalyzerCount: recordedAnalyzerSummaries.length,
+        recordedPayload,
+        runtimePending: analysis.pending,
+        runtimeIssues: analysis.issues,
         streetRollupPending: analysis.streetRollups?.pending ?? false,
-        aggregatedPending: aggregated.pending,
-        aggregatedIssues: aggregatedIssues,
+        recordedArtifacts: recordedAggregatedStreetArtifacts,
+        recomputedVerdict: describeGuardOutcome(
+          runtimeAggregated.pending
+            ? "pending"
+            : runtimeAggregated.holds
+              ? "ready"
+              : "blocked",
+        ),
+        recordedRollup: aggregatedStreetRollup,
       },
-    };
+    } as const;
   },
 };
