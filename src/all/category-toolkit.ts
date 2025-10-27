@@ -5,9 +5,19 @@ export {
   pushCoaction,
   actionToChain,
   coactionToChain,
+  intertwinerSpace,
+  invariantSubspace,
+  fixedVectors,
 } from "../../stdlib/vect-view"
 
-export type { Representation, Coaction } from "../../stdlib/vect-view"
+export type {
+  Representation,
+  Coaction,
+  IntertwinerSpace,
+  IntertwinerOptions,
+  FixedVectorSpace,
+  InvariantOptions,
+} from "../../stdlib/vect-view"
 
 export { Pretty } from "../../stdlib/pretty"
 export { DiagramClosure } from "../../stdlib/diagram-closure"

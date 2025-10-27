@@ -104,6 +104,9 @@ export const FP_CATALOG = {
   pushCoaction: 'Push linear map across coaction: (id⊗g)∘δ',
   actionToChain: 'Convert action to chain map at degree n',
   coactionToChain: 'Convert coaction to chain map at degree n',
+  intertwinerSpace: 'Solve ρ₂(g)·T = T·ρ₁(g) for a basis of intertwiners',
+  invariantSubspace: 'Intersect kernels of ρ(g)−I to compute fixed vectors',
+  fixedVectors: 'Alias for invariantSubspace with finite-group short circuits',
 
   // Diagram closure and validation
   'DiagramClosure.saturate': 'Auto-synthesize composite arrows from covers',
