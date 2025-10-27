@@ -104,9 +104,14 @@ export const FP_CATALOG = {
   pushCoaction: 'Push linear map across coaction: (id⊗g)∘δ',
   actionToChain: 'Convert action to chain map at degree n',
   coactionToChain: 'Convert coaction to chain map at degree n',
-  makeFinGrpRepresentationFunctor: 'Treat a finite-group representation as a CatFunctor-compatible action.',
+  intertwinerSpace: 'Solve ρ₂(g)·T = T·ρ₁(g) for a basis of intertwiners via Kronecker/nullspace search.',
+  invariantSubspace: 'Extract generators for the fixed-point subspace using additive difference constraints.',
+  makeFinGrpRepresentationFunctor: 'Lift a representation (G ⊲ V) to an executable FinGrp→Vect functor with mediator support.',
   makeFinGrpProductRepresentation: 'Assemble product-group representations with tuple-aware block-diagonal actions.',
   functorToFinGrpRepresentation: 'Recover representation matrices from functor data with generator-law validation.',
+  makePrimeField: 'Construct the finite field 𝔽_p with arithmetic for coordinate subrepresentation searches.',
+  enumerateCoordinateSubrepresentationWitnesses: 'Search coordinate subspaces for FinGrp-stable representations via kernel equalizers.',
+  assembleCoordinateDirectSum: 'Split ambient representations into direct sums using FinGrp product mediators and kernels.',
 
   // Diagram closure and validation
   'DiagramClosure.saturate': 'Auto-synthesize composite arrows from covers',

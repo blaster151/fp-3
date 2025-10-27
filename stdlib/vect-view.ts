@@ -1,5 +1,5 @@
 import type { ChainMap, Field, FinitePoset, PosetDiagram, Ring } from "../allTS"
-import { kron, matMul } from "../allTS"
+import { kron, matMul, matAdd, matNeg, idMat, nullspace } from "../allTS"
 
 export namespace VectView {
   export type VectorSpace<R> = {
@@ -77,11 +77,98 @@ export type Representation<A, R> = {
   mat: (a: A) => R[][]
 }
 
+export type IntertwinerSpace<R> = {
+  readonly basis: ReadonlyArray<ReadonlyArray<ReadonlyArray<R>>>
+  readonly dim: number
+}
+
+export type InvariantSubspace<R> = {
+  readonly basis: ReadonlyArray<ReadonlyArray<R>>
+  readonly dim: number
+}
+
+const transpose = <R>(M: ReadonlyArray<ReadonlyArray<R>>): R[][] =>
+  (M[0]?.map((_, j) => M.map(row => row[j]!)) ?? [])
+
+const columnMajorMatrixSafe = <R>(vector: ReadonlyArray<R>, rows: number, cols: number, zero: R): R[][] => {
+  const matrix: R[][] = []
+  for (let r = 0; r < rows; r++) {
+    const row: R[] = []
+    for (let c = 0; c < cols; c++) {
+      row.push(vector[c * rows + r] ?? zero)
+    }
+    matrix.push(row)
+  }
+  return matrix
+}
+
+const standardMatrixBasis = <R>(rows: number, cols: number, zero: R, one: R): R[][][] => {
+  const basis: R[][][] = []
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      const matrix: R[][] = []
+      for (let i = 0; i < rows; i++) {
+        const row: R[] = []
+        for (let j = 0; j < cols; j++) {
+          row.push(i === r && j === c ? one : zero)
+        }
+        matrix.push(row)
+      }
+      basis.push(matrix)
+    }
+  }
+  return basis
+}
+
+const standardVectorBasis = <R>(dim: number, zero: R, one: R): R[][] =>
+  Array.from({ length: dim }, (_, i) =>
+    Array.from({ length: dim }, (_, j) => (i === j ? one : zero))
+  )
+
 export const applyRepAsLin =
   <A, R>(F: Field<R>) =>
   (ρ: Representation<A, R>, a: A): LinMap<R> => {
     const V = VectView.VS(F)(ρ.dimV)
     return { F, dom: V, cod: V, M: ρ.mat(a) }
+  }
+
+export const intertwinerSpace =
+  <A, R>(F: Field<R>) =>
+  (ρ1: Representation<A, R>, ρ2: Representation<A, R>, generators: ReadonlyArray<A>): IntertwinerSpace<R> => {
+    const dimDom = ρ1.dimV
+    const dimCod = ρ2.dimV
+
+    if (dimDom === 0 || dimCod === 0) {
+      return { basis: [], dim: 0 }
+    }
+
+    if (generators.length === 0) {
+      const basis = standardMatrixBasis(dimCod, dimDom, F.zero, F.one)
+      return { basis, dim: basis.length }
+    }
+
+    const kronF = kron(F)
+    const add = matAdd(F)
+    const neg = matNeg(F)
+    const IdDom = idMat(dimDom, F)
+    const IdCod = idMat(dimCod, F)
+    const constraints: R[][] = []
+
+    for (const g of generators) {
+      const left = kronF(IdDom, ρ2.mat(g))
+      const right = kronF(transpose(ρ1.mat(g)), IdCod)
+      const diff = add(left, neg(right))
+      constraints.push(...diff)
+    }
+
+    if (constraints.length === 0 || (constraints[0]?.length ?? 0) === 0) {
+      const basis = standardMatrixBasis(dimCod, dimDom, F.zero, F.one)
+      return { basis, dim: basis.length }
+    }
+
+    const nullBasis = nullspace(F)(constraints)
+    const basis = nullBasis.map(v => columnMajorMatrixSafe(v, dimCod, dimDom, F.zero))
+    return { basis, dim: basis.length }
   }
 
 /** Right C-comodule structure δ: V → V ⊗ C */
@@ -121,6 +208,40 @@ export const actionToChain =
     const V = VectView.VS(F)(ρ.dimV)
     const linMap: LinMap<R> = { F, dom: V, cod: V, M: ρ.mat(a) }
     return VectView.linToChain(F)(n, linMap)
+  }
+
+export const invariantSubspace =
+  <A, R>(F: Field<R>) =>
+  (ρ: Representation<A, R>, generators: ReadonlyArray<A>): InvariantSubspace<R> => {
+    const dim = ρ.dimV
+
+    if (dim === 0) {
+      return { basis: [], dim: 0 }
+    }
+
+    if (generators.length === 0) {
+      const basis = standardVectorBasis(dim, F.zero, F.one)
+      return { basis, dim: basis.length }
+    }
+
+    const add = matAdd(F)
+    const neg = matNeg(F)
+    const Id = idMat(dim, F)
+    const constraints: R[][] = []
+
+    for (const g of generators) {
+      const diff = add(ρ.mat(g), neg(Id))
+      constraints.push(...diff)
+    }
+
+    if (constraints.length === 0) {
+      const basis = standardVectorBasis(dim, F.zero, F.one)
+      return { basis, dim: basis.length }
+    }
+
+    const nullBasis = nullspace(F)(constraints)
+    const basis = nullBasis.map(v => v.slice(0, dim))
+    return { basis, dim: basis.length }
   }
 
 /** Convert coaction to chain map at degree n */
