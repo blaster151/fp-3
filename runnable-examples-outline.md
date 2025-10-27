@@ -111,4 +111,6 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 91. **Affine scheme example catalogue** – Package Spec ℤ, Spec ℤ[ε]/(ε²), and Spec 𝔽₅ charts using the shared ring library so atlas and gluing tests can import consistent fixtures. (examples/runnable/093-affine-scheme-example-catalogue.ts)
 
+92. **Finite-group representation diagnostics** – Package permutation actions, enumerate intertwiners, compute invariant bases, and certify candidate decompositions via the representation toolkit and FinGrp equaliser workflow. (docs/representation-tooling.md, test/representation-toolkit.spec.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.

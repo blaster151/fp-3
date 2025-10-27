@@ -7,7 +7,22 @@ export {
   coactionToChain,
 } from "../../stdlib/vect-view"
 
+export {
+  packagePermutationRepresentation,
+  enumerateIntertwiners,
+  representationInvariants,
+  analyzeSubrepresentation,
+} from "../../stdlib/representation-toolkit"
+
 export type { Representation, Coaction } from "../../stdlib/vect-view"
+export type {
+  PermutationRepresentationPackage,
+  RepresentationPermutationAction,
+  IntertwinerResult,
+  RepresentationInvariantResult,
+  SubrepresentationFailure,
+  SubrepresentationAnalysis,
+} from "../../stdlib/representation-toolkit"
 
 export { Pretty } from "../../stdlib/pretty"
 export { DiagramClosure } from "../../stdlib/diagram-closure"

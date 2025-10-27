@@ -104,6 +104,14 @@ export const FP_CATALOG = {
   pushCoaction: 'Push linear map across coaction: (id⊗g)∘δ',
   actionToChain: 'Convert action to chain map at degree n',
   coactionToChain: 'Convert coaction to chain map at degree n',
+  packagePermutationRepresentation:
+    'Package FinGrp actions into permutation representations with matrix functor witnesses',
+  enumerateIntertwiners:
+    'Solve σ(g)T = Tρ(g) to enumerate intertwiners between representations',
+  representationInvariants:
+    'Compute invariant subspace bases by stacking (ρ(g)−I) kernel conditions',
+  analyzeSubrepresentation:
+    'Diagnose candidate subrepresentations and record induced action matrices',
 
   // Diagram closure and validation
   'DiagramClosure.saturate': 'Auto-synthesize composite arrows from covers',
