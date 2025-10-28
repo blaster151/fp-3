@@ -1,8 +1,24 @@
 import { pipe } from "../../core"
 import type { Option } from "../../option"
-import { None, Some, flatMapO, getOrElseO, isSome, mapO } from "../../option"
+import { None, Some, getOrElseO, isSome, mapO } from "../../option"
 import type { Result } from "../../result"
 import { Err, Ok, isErr, isOk } from "../../result"
+import type { LensLike, PrismLike } from "./profunctor"
+import {
+  composeLensLike,
+  composePrismLike,
+  fromLens,
+  fromPrism,
+  toLens,
+  toPrism,
+} from "./profunctor"
+import {
+  attachPrismWitness,
+  makePrismWitnessBundle,
+  readPrismWitness,
+  type PrismWitnessBundle,
+  type PrismWitnessCarrier,
+} from "./witness"
 
 /** Lens and Prism abstractions extracted from allTS.ts. */
 export type Lens<S, A> = {
@@ -12,10 +28,15 @@ export type Lens<S, A> = {
 
 export const Lens = Symbol.for("Lens")
 
-export const lens = <S, A>(get: (s: S) => A, set: (a: A, s: S) => S): Lens<S, A> => ({
-  get,
-  set: (a: A) => (s: S) => set(a, s),
-})
+export const lens = <S, A>(get: (s: S) => A, set: (a: A, s: S) => S): Lens<S, A> => {
+  const optic: LensLike<S, S, A, A> = (P) => (pab) =>
+    P.dimap(
+      P.first(pab),
+      (s: S) => [get(s), s] as const,
+      ([a, s]: readonly [A, S]) => set(a, s),
+    )
+  return toLens(optic)
+}
 
 export const lensProp = <S>() => <K extends keyof S>(k: K): Lens<S, S[K]> =>
   lens(
@@ -23,10 +44,8 @@ export const lensProp = <S>() => <K extends keyof S>(k: K): Lens<S, S[K]> =>
     (a, s) => ({ ...s, [k]: a }) as S,
   )
 
-export const composeLens = <S, A, B>(ab: Lens<A, B>) => (sa: Lens<S, A>): Lens<S, B> => ({
-  get: (s) => ab.get(sa.get(s)),
-  set: (b) => (s) => sa.set(ab.set(b)(sa.get(s)))(s),
-})
+export const composeLens = <S, A, B>(ab: Lens<A, B>) => (sa: Lens<S, A>): Lens<S, B> =>
+  toLens(composeLensLike(fromLens(ab), fromLens(sa)))
 
 export const over = <S, A>(ln: Lens<S, A>, f: (a: A) => A) => (s: S): S =>
   ln.set(f(ln.get(s)))(s)
@@ -34,18 +53,63 @@ export const over = <S, A>(ln: Lens<S, A>, f: (a: A) => A) => (s: S): S =>
 export type Prism<S, A> = {
   readonly getOption: (s: S) => Option<A>
   readonly reverseGet: (a: A) => S
+} & PrismWitnessCarrier<S, A>
+
+export const prism = <S, A>(getOption: (s: S) => Option<A>, reverseGet: (a: A) => S): Prism<S, A> => {
+  const optic: PrismLike<S, S, A, A> = (P) => (pab) =>
+    P.dimap(
+      P.left(pab),
+      (s: S) =>
+        pipe(
+          getOption(s),
+          mapO((a): Result<A, S> => Ok(a)),
+          getOrElseO<Result<A, S>>(() => Err(s)),
+        ),
+      (result) => (isOk(result) ? reverseGet(result.value) : result.error),
+    )
+  const base = toPrism(optic)
+  return attachPrismWitness(base, makePrismWitnessBundle(getOption, reverseGet))
 }
 
-export const prism = <S, A>(getOption: (s: S) => Option<A>, reverseGet: (a: A) => S): Prism<S, A> => ({
-  getOption,
-  reverseGet,
-})
+const ensurePrismWitness = <S, A>(pr: Prism<S, A>): PrismWitnessBundle<S, A> => {
+  const existing = readPrismWitness(pr)
+  if (existing) {
+    return existing
+  }
 
-export const composePrism = <S, A, B>(ab: Prism<A, B>) => (sa: Prism<S, A>): Prism<S, B> =>
-  prism(
-    (s) => flatMapO((a: A) => ab.getOption(a))(sa.getOption(s)),
-    (b) => sa.reverseGet(ab.reverseGet(b)),
-  )
+  const bundle = makePrismWitnessBundle(pr.getOption, pr.reverseGet)
+  attachPrismWitness(pr, bundle)
+  return bundle
+}
+
+export const composePrism = <S, A, B>(ab: Prism<A, B>) => (sa: Prism<S, A>): Prism<S, B> => {
+  const composed = toPrism(composePrismLike(fromPrism(ab), fromPrism(sa)))
+  const outerWitness = ensurePrismWitness(sa)
+  const innerWitness = ensurePrismWitness(ab)
+
+  const bundle: PrismWitnessBundle<S, B> = {
+    match: (source) => {
+      const outer = outerWitness.match(source)
+      if (outer.tag === "reject") {
+        return { tag: "reject", source, reason: outer.reason }
+      }
+
+      const inner = innerWitness.match(outer.focus)
+      if (inner.tag === "reject") {
+        return { tag: "reject", source, reason: inner.reason }
+      }
+
+      return { tag: "match", source, focus: inner.focus }
+    },
+    embed: (value) => {
+      const inner = innerWitness.embed(value)
+      const outer = outerWitness.embed(inner.result)
+      return { tag: "build", value, result: outer.result }
+    },
+  }
+
+  return attachPrismWitness(composed, bundle)
+}
 
 export const modifyP = <S, A>(pr: Prism<S, A>, f: (a: A) => A) => (s: S): S =>
   pipe(

@@ -13,6 +13,29 @@ This document catalogs the algebraic laws that our functional programming constr
 
 > **Notation:** We use “source/target” (aka domain/codomain) and write composition as \(g \circ f = \texttt{compose(g, f)}\); identity morphisms appear as \(\mathrm{id}_A\) in prose and `id(A)` in code.
 
+## Functional optics law diagnostics
+
+### Lens get-set/set-set registry coverage
+
+- **Registry Path:** `optics.lens.laws`
+- **Witness Builder:** `checkLensLaws({ lens, structure, first, second, equalsStructure?, equalsFocus? })` evaluates the get-set, set-get, and set-set equations while surfacing the full witness tuple for regression analysis.
+- **Check:** `MarkovOracles.optics.lens.laws`
+- **Implementation Notes:** Failure reports include the restored structure, repeated updates, and focused values so composite optics can attribute regressions to precise setter behaviour.
+
+### Optional focus/update registry coverage
+
+- **Registry Path:** `optics.optional.laws`
+- **Witness Builder:** `checkOptionalLaws({ optional, structure, first, second, equalsStructure?, equalsFocus? })` threads the optional witness bundle to capture hit/miss metadata for each update attempt and to distinguish skipped updates from true violations.
+- **Check:** `MarkovOracles.optics.optional.laws`
+- **Implementation Notes:** Reports expose focus witnesses, update witnesses, and miss reasons so higher-level traversals can compose diagnostics without losing context.
+
+### Prism preview/review registry coverage
+
+- **Registry Path:** `optics.prism.laws`
+- **Witness Builder:** `checkPrismLaws({ prism, matchSample, reviewSample, missSample?, equalsStructure?, equalsFocus? })` validates preview–review and review–preview coherence with full match/build witness bundles.
+- **Check:** `MarkovOracles.optics.prism.laws`
+- **Implementation Notes:** Diagnostics cite preview skips, reconstruction mismatches, and rejection metadata to make partial optic regressions reproducible in downstream suites.
+
 ## Commutative algebra and scheme scaffolding
 
 ### Prime ideal witnesses with structured counterexamples

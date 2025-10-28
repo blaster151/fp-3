@@ -1,13 +1,60 @@
 import { pipe } from "../../core"
 import type { Option } from "../../option"
-import { None, Some, flatMapO, getOrElseO, mapO } from "../../option"
+import { None, Some, getOrElseO, mapO } from "../../option"
+import type { Result } from "../../result"
+import { Err, Ok, isOk } from "../../result"
 import type { Lens, Prism } from "./lens-prism"
+import type { OptionalLike } from "./profunctor"
+import {
+  composeOptionalLike,
+  fromLens,
+  fromOptional,
+  fromPrism,
+  lensLikeToOptionalLike,
+  optionalLikeToTraversalLike,
+  prismLikeToOptionalLike,
+  toOptional,
+  toTraversal,
+} from "./profunctor"
+import {
+  attachOptionalWitness,
+  attachPrismWitness,
+  makeOptionalWitnessBundle,
+  makePrismWitnessBundle,
+  optionalMiss,
+  readOptionalWitness,
+  readPrismWitness,
+  type OptionalWitnessBundle,
+  type OptionalWitnessCarrier,
+  type PrismWitnessBundle,
+} from "./witness"
 
 /** Optional and Traversal abstractions extracted from allTS.ts. */
-export const optional = <S, A>(getOption: (s: S) => Option<A>, set: (a: A, s: S) => S): Optional<S, A> => ({
-  getOption,
-  set: (a: A) => (s: S) => set(a, s),
-})
+export const optional = <S, A>(getOption: (s: S) => Option<A>, set: (a: A, s: S) => S): Optional<S, A> => {
+  const optic: OptionalLike<S, S, A, A> = (P) => (pab) =>
+    P.dimap(
+      P.left(P.first(pab)),
+      (s: S) =>
+        pipe(
+          getOption(s),
+          mapO((a): readonly [A, S] => [a, s] as const),
+          mapO((pair): Result<readonly [A, S], S> => Ok(pair)),
+          getOrElseO<Result<readonly [A, S], S>>(() => Err(s)),
+        ),
+      (result) =>
+        isOk(result)
+          ? set(result.value[0], result.value[1])
+          : result.error,
+    )
+  const base = toOptional(optic)
+  return attachOptionalBundle(
+    base,
+    makeOptionalWitnessBundle(
+      getOption,
+      (next, source) => set(next, source),
+    ),
+  )
+}
 
 export const modifyO = <S, A>(opt: Optional<S, A>, f: (a: A) => A) => (s: S): S =>
   pipe(
@@ -31,30 +78,143 @@ export const composeTraversal = <S, A, B>(ab: Traversal<A, B>) => (sa: Traversal
 export type Optional<S, A> = {
   readonly getOption: (s: S) => Option<A>
   readonly set: (a: A) => (s: S) => S
+} & OptionalWitnessCarrier<S, A>
+
+const ensureOptionalWitness = <S, A>(opt: Optional<S, A>): OptionalWitnessBundle<S, A> => {
+  const existing = readOptionalWitness(opt)
+  if (existing) {
+    return existing
+  }
+
+  const bundle = makeOptionalWitnessBundle(
+    (source) => opt.getOption(source),
+    (next, source) => opt.set(next)(source),
+  )
+
+  attachOptionalWitness(opt, bundle)
+  return bundle
 }
 
-export const composeOptional = <S, A, B>(ab: Optional<A, B>) => (sa: Optional<S, A>): Optional<S, B> => ({
-  getOption: (s) => flatMapO((a: A) => ab.getOption(a))(sa.getOption(s)),
-  set: (b) => (s) =>
-    pipe(
-      sa.getOption(s),
-      mapO((a) => sa.set(ab.set(b)(a))(s)),
-      getOrElseO(() => s),
+const ensurePrismWitness = <S, A>(pr: Prism<S, A>): PrismWitnessBundle<S, A> => {
+  const existing = readPrismWitness(pr)
+  if (existing) {
+    return existing
+  }
+
+  const bundle = makePrismWitnessBundle(pr.getOption, pr.reverseGet)
+  attachPrismWitness(pr, bundle)
+  return bundle
+}
+
+const attachOptionalBundle = <S, A>(opt: Optional<S, A>, bundle: OptionalWitnessBundle<S, A>): Optional<S, A> => {
+  attachOptionalWitness(opt, bundle)
+  return opt
+}
+
+export const composeOptional = <S, A, B>(ab: Optional<A, B>) => (sa: Optional<S, A>): Optional<S, B> => {
+  const composed = toOptional(composeOptionalLike(fromOptional(ab), fromOptional(sa)))
+  const outerWitness = ensureOptionalWitness(sa)
+  const innerWitness = ensureOptionalWitness(ab)
+
+  const bundle: OptionalWitnessBundle<S, B> = {
+    focus: (source) => {
+      const outer = outerWitness.focus(source)
+      if (outer.tag === "miss") {
+        return optionalMiss(source, outer.reason)
+      }
+
+      const inner = innerWitness.focus(outer.focus)
+      if (inner.tag === "miss") {
+        return optionalMiss(source, inner.reason)
+      }
+
+      return { tag: "hit", source, focus: inner.focus }
+    },
+    update: (before, next) => {
+      const outer = outerWitness.focus(before)
+      if (outer.tag === "miss") {
+        const miss = optionalMiss(before, outer.reason)
+        return { tag: "skipped", before, reason: miss.reason, miss }
+      }
+
+      const innerFocus = innerWitness.focus(outer.focus)
+      if (innerFocus.tag === "miss") {
+        const miss = optionalMiss(before, innerFocus.reason)
+        return { tag: "skipped", before, reason: miss.reason, miss }
+      }
+
+      const innerUpdate = innerWitness.update(outer.focus, next)
+      if (innerUpdate.tag === "skipped") {
+        const reason = innerUpdate.reason
+        const miss = optionalMiss(before, reason)
+        return { tag: "skipped", before, reason, miss }
+      }
+
+      try {
+        const after = composed.set(next)(before)
+        return {
+          tag: "updated",
+          before,
+          after,
+          previous: innerUpdate.previous,
+          next,
+        }
+      } catch (error) {
+        const reason = { tag: "errored", error } as const
+        const miss = optionalMiss(before, reason)
+        return { tag: "skipped", before, reason, miss }
+      }
+    },
+  }
+
+  return attachOptionalBundle(composed, bundle)
+}
+
+export const lensToOptional = <S, A>(ln: Lens<S, A>): Optional<S, A> =>
+  attachOptionalBundle(
+    toOptional(lensLikeToOptionalLike(fromLens(ln))),
+    makeOptionalWitnessBundle(
+      (source) => Some(ln.get(source)),
+      (next, source) => ln.set(next)(source),
     ),
-})
+  )
 
-export const lensToOptional = <S, A>(ln: Lens<S, A>): Optional<S, A> => optional(
-  (s) => Some(ln.get(s)),
-  (a, s) => ln.set(a)(s),
-)
+export const prismToOptional = <S, A>(pr: Prism<S, A>): Optional<S, A> => {
+  const base = toOptional(prismLikeToOptionalLike(fromPrism(pr)))
+  const witness = ensurePrismWitness(pr)
+  const bundle: OptionalWitnessBundle<S, A> = {
+    focus: (source) => {
+      const match = witness.match(source)
+      return match.tag === "match"
+        ? { tag: "hit", source, focus: match.focus }
+        : optionalMiss(source, match.reason)
+    },
+    update: (before, next) => {
+      const match = witness.match(before)
+      if (match.tag === "reject") {
+        const miss = optionalMiss(before, match.reason)
+        return { tag: "skipped", before, reason: miss.reason, miss }
+      }
 
-export const prismToOptional = <S, A>(pr: Prism<S, A>): Optional<S, A> => optional(
-  pr.getOption,
-  (a, s) => {
-    void s
-    return pr.reverseGet(a)
-  },
-)
+      try {
+        const after = base.set(next)(before)
+        return {
+          tag: "updated",
+          before,
+          after,
+          previous: match.focus,
+          next,
+        }
+      } catch (error) {
+        const reason = { tag: "errored", error } as const
+        const miss = optionalMiss(before, reason)
+        return { tag: "skipped", before, reason, miss }
+      }
+    },
+  }
+
+  return attachOptionalBundle(base, bundle)
+}
 
 export const optionalProp = <S>() => <K extends keyof S>(k: K): Optional<S, NonNullable<S[K]>> => optional(
   (s: S) => {
@@ -85,13 +245,7 @@ export const traversalPropArray = <S>() =>
         return { ...s, [k]: current.map(f) } as S
       })
 
-export const optionalToTraversal = <S, A>(opt: Optional<S, A>): Traversal<S, A> => traversal(
-  (f) => (s) =>
-    pipe(
-      opt.getOption(s),
-      mapO((a) => opt.set(f(a))(s)),
-      getOrElseO(() => s),
-    ),
-)
+export const optionalToTraversal = <S, A>(opt: Optional<S, A>): Traversal<S, A> =>
+  toTraversal(optionalLikeToTraversalLike(fromOptional(opt)))
 
 export const overT = <S, A>(tv: Traversal<S, A>, f: (a: A) => A) => tv.modify(f)

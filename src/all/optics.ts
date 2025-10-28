@@ -29,3 +29,64 @@ export {
 } from "../optics/optional-traversal"
 
 export type { Optional, Traversal } from "../optics/optional-traversal"
+
+export {
+  HKP,
+  FunctionProfunctor,
+  PreviewProfunctor,
+  ForgetProfunctor,
+  TaggedProfunctor,
+  StarProfunctor,
+  composeLensLike,
+  composeOptionalLike,
+  composePrismLike,
+  composeTraversalLike,
+  fromLens,
+  fromOptional,
+  fromPrism,
+  lensLikeToOptionalLike,
+  optionalLikeToTraversalLike,
+  prismLikeToOptionalLike,
+  toLens,
+  toOptional,
+  toPrism,
+  toTraversal,
+  starWander,
+} from "../optics/profunctor"
+
+export type {
+  LensLike,
+  OptionalLike,
+  PrismLike,
+  TraversalLike,
+} from "../optics/profunctor"
+
+export {
+  OPTIONAL_WITNESS,
+  PRISM_WITNESS,
+  attachOptionalWitness,
+  attachPrismWitness,
+  makeOptionalWitnessBundle,
+  makePrismWitnessBundle,
+  optionalMiss,
+  readOptionalWitness,
+  readPrismWitness,
+} from "../optics/witness"
+
+export type {
+  OpticMissReason,
+  OptionalConstructor,
+  OptionalFocusHit,
+  OptionalFocusMiss,
+  OptionalFocusWitness,
+  OptionalUpdateWitness,
+  OptionalWitnessBundle,
+  OptionalWitnessCarrier,
+  PrismBuildWitness,
+  PrismConstructor,
+  PrismMatchWitness,
+  PrismRejectWitness,
+  PrismWitness,
+  PrismWitnessBundle,
+  PrismWitnessCarrier,
+} from "../optics/witness"
