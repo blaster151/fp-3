@@ -118,6 +118,7 @@ import {
   checkBorelHewittSavageZeroOne,
 } from "./borelstoch-examples";
 import { SetOracles } from "./oracles/set-oracles";
+import { checkLensLaws, checkOptionalLaws, checkPrismLaws } from "./oracles/optics";
 
 type AdapterFactorPoints<Spaces extends ReadonlyArray<TopVietorisTopSpace<unknown>>> = {
   readonly [Index in keyof Spaces]: Spaces[Index] extends TopVietorisTopSpace<infer Point> ? Point : never;
@@ -207,6 +208,18 @@ const createMarkovOracles = ({
   },
 
   set: SetOracles,
+
+  optics: {
+    lens: {
+      laws: checkLensLaws,
+    },
+    optional: {
+      laws: checkOptionalLaws,
+    },
+    prism: {
+      laws: checkPrismLaws,
+    },
+  },
 
   // Conditional independence witnesses
   conditionalIndependence: {
@@ -384,7 +397,8 @@ export function createMarkovOracleRegistry() {
     domains: [
       "foundational",
       "dominance",
-      "information"
+      "information",
+      "optics",
     ],
     coverage: {
       laws: "3.4-3.26, Section 4, Section 5",
