@@ -191,6 +191,19 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Registry Path:** `algebra.moduli.descentDatum`
 - **Witness Builder:** `checkStackDescent(datum, options)` pulls back local objects along overlap arrows, verifies transition isomorphisms, checks cocycle compositions, and confirms optional glue witnesses align with the supplied local trivialisations.
 - **Check:** `AlgebraOracles.moduli.descentDatum`
+- **Check:** `AlgebraOracles.representation.checkFinGrpRepresentationIrreducible`
+- **Check:** `AlgebraOracles.representation.analyzeFinGrpRepresentationSemisimplicity`
+- **Check:** `AlgebraOracles.representation.collectFinGrpRepresentationSemisimplicitySummands`
+- **Check:** `AlgebraOracles.representation.collectFinGrpRepresentationIrreducibleSummands`
+- **Check:** `AlgebraOracles.representation.certifyFinGrpRepresentationSemisimplicity`
+- **Workflow:** `AlgebraOracles.representation.runSemisimplicityWorkflow`
+- **Formatter:** `AlgebraOracles.representation.formatSemisimplicityWorkflow`
+- **Summary:** `AlgebraOracles.representation.summarizeSemisimplicityWorkflow`
+- **Profile:** `AlgebraOracles.representation.profileSemisimplicityWorkflow`
+- **Profile formatter:** `AlgebraOracles.representation.formatSemisimplicityProfile`
+- **Report:** `AlgebraOracles.representation.reportSemisimplicityWorkflow`
+- **Survey:** `AlgebraOracles.representation.surveySemisimplicityWorkflows`
+- **Survey formatter:** `AlgebraOracles.representation.formatSemisimplicitySurvey`
 - **Implementation Notes:** Witnesses surface missing local data, restriction failures, inverse mismatches, and cocycle violations, highlighting precisely which overlap caused trouble. Regression coverage: `test/moduli-stacks.spec.ts`.
 
 ## Category-theoretic scaffolding

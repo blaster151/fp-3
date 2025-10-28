@@ -256,6 +256,14 @@ representation.  Optional irreducibility checks on each leaf reuse
 `checkFinGrpRepresentationIrreducible` so the resulting report simultaneously
 certifies the splitting and classifies the constituents.
 
+`collectFinGrpRepresentationIrreducibleSummands` layers an irreducible filter on
+top of the summand collector.  It reuses the previously gathered decomposition
+data, insists that every leaf ships an irreducibility certificate, and records
+any reducibility witnesses or analysis failures that prevent a full
+classification.  Successful runs surface the irreducible summands alongside the
+underlying semisimplicity report so downstream tooling can reuse the ambient
+`ι`/`π` contributions without recomputation.
+
 When the summand collection succeeds, `certifyFinGrpRepresentationSemisimplicity`
 packages the leaves into an explicit direct-sum representation, stitches the
 inclusion and projection matrices into block morphisms, and verifies that the
@@ -264,8 +272,88 @@ action.  The report exposes the constructed functor, forward/backward natural
 transformations, and their identity checks so downstream code can reuse the
 decomposition without replaying the matrix algebra.
 
-Both reports are exposed through the `Algebra` namespace and catalogued so they
-surface in editor tooling next to the lower-level building blocks.
+All of these reports are exposed through the `Algebra` namespace and
+catalogued so they surface in editor tooling next to the lower-level building
+blocks.
+
+For workflows that want a single entry point,
+`enumerateFinGrpRepresentationOracles` runs the full diagnostic suite,
+threading the shared semisimplicity analysis through summand verification,
+irreducible filtering, and direct-sum certification.  The enumerator returns
+registry metadata alongside each report so higher-level tooling can surface
+summaries or filter by the exposed law keys without replaying the underlying
+linear algebra.
+
+`runFinGrpRepresentationSemisimplicityWorkflow` builds on the enumerator to
+produce a consolidated success/failure verdict together with stage-by-stage
+details.  It reports whether the representation is irreducible, whether the
+semisimplicity tree succeeded, how many summands were verified, if irreducible
+isolation passed, and whether the certification step produced explicit
+isomorphisms.  When any stage fails it highlights the first blocking oracle and
+returns the complete suite so callers can inspect the underlying reports
+without recomputing matrices.
+
+Successful and failing runs now surface a `stages` record and ordered
+`timeline` so downstream tooling can present concise headlines for each oracle
+without reimplementing heuristics.  Each stage summary mirrors the registry
+metadata, reports whether the oracle held, and distils the most important
+numerics (such as the number of checked coordinate subspaces, identified
+summands, or the direct-sum dimension) into human-readable prose before linking
+back to the full report.
+
+When you want prose suitable for CLI output or logging,
+`formatFinGrpRepresentationSemisimplicityWorkflow` converts the workflow result
+into a ready-made narrative.  The formatter emits an overall headline and a
+timeline annotated with success/failure glyphs.  Optional flags expand each
+stage with the raw oracle details or append the workflow-wide summary lines so
+callers can opt into more verbose transcripts without reimplementing formatting
+logic.
+
+For dashboards or automated reporting,
+`summarizeFinGrpRepresentationSemisimplicityWorkflow` turns the workflow result
+into a structured record.  The summary captures the high-level classification
+(`certified-semisimple`, `reducible-with-witness`, etc.), per-stage headlines,
+the recorded highlights, and actionable recommendations informed by the
+identified failure stage.  Downstream tooling can present the computed status at
+a glance while still linking back to the precise registry paths and oracle
+details when a deeper dive is required.
+
+When you need quantitative diagnostics for analytics or progress tracking,
+`profileFinGrpRepresentationSemisimplicityWorkflow` extracts the key metrics
+from the workflow.  The profile records tree depth, node and leaf counts,
+generator/sample usage, verified summand dimensions, irreducible isolation
+coverage, and certification failure modes.  Higher-level tooling can feed these
+numbers into dashboards or compare multiple representations without replaying
+the heavy linear-algebra steps.
+
+If you want those metrics presented for humans without rebuilding the layout,
+`formatFinGrpRepresentationSemisimplicityWorkflowProfile` turns the profile into
+bullet summaries.  Toggleable sections let CLI tools emphasise representation
+metadata, workflow status, analysis metrics, summand dimensions, or certification
+outcomes so the same payload can back both concise dashboards and deep-dive
+reports.
+
+When you prefer a single helper that returns every perspective,
+`reportFinGrpRepresentationSemisimplicityWorkflow` executes the workflow and
+bundles the raw report together with the structured summary, quantitative
+profile, and optionally formatted narrative.  CLI tooling or notebook demos can
+call the reporter once and receive every derivative artifact without manually
+threading options across the formatter, summarizer, and profiler.
+
+For batch analytics or catalog maintenance,
+`surveyFinGrpRepresentationSemisimplicityWorkflows` runs the reporter across any
+number of representations and aggregates the results.  The survey tallies the
+workflow classifications, counts how often each stage succeeds, records the
+first failing stage per representation, and computes dimension statistics so
+dashboards can highlight trends at a glance without reimplementing bookkeeping
+logic.
+
+When those aggregated numbers need to land in release notes, dashboards, or
+CI logs, `formatFinGrpRepresentationSemisimplicitySurvey` renders the survey
+result as a readable timeline.  The formatter summarises total successes,
+classification counts, stage pass totals, failure breakdowns, and dimension
+statistics before optionally listing per-representation headlines, stage status
+checks, recommendations, or even the full workflow narratives.
 
 The workflow is documented in
 [`docs/representation-substructures.md`](./representation-substructures.md) and

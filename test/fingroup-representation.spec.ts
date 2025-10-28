@@ -38,12 +38,25 @@ import {
   checkFinGrpRepresentationIrreducible,
   analyzeFinGrpRepresentationSemisimplicity,
   collectFinGrpRepresentationSemisimplicitySummands,
+  collectFinGrpRepresentationIrreducibleSummands,
   certifyFinGrpRepresentationSemisimplicity,
 } from "../models/fingroup-representation"
 import { finGrpKernelEqualizer } from "../models/fingroup-equalizer"
 import { makePrimeField } from "../models/fingroup-subrepresentation"
 import type { FiniteGroupRepresentation } from "../models/fingroup-subrepresentation"
 import { constructNaturalTransformationWithWitness } from "../natural-transformation"
+import {
+  FinGrpRepresentationLawRegistry,
+  enumerateFinGrpRepresentationOracles,
+  runFinGrpRepresentationSemisimplicityWorkflow,
+  formatFinGrpRepresentationSemisimplicityWorkflow,
+  formatFinGrpRepresentationSemisimplicityWorkflowProfile,
+  summarizeFinGrpRepresentationSemisimplicityWorkflow,
+  profileFinGrpRepresentationSemisimplicityWorkflow,
+  reportFinGrpRepresentationSemisimplicityWorkflow,
+  surveyFinGrpRepresentationSemisimplicityWorkflows,
+  formatFinGrpRepresentationSemisimplicitySurvey,
+} from "../oracles/fingroup-representation"
 
 const identityMatrix = (dim: number): number[][] =>
   Array.from({ length: dim }, (_, row) =>
@@ -1141,6 +1154,69 @@ describe("Finite group representations as functors", () => {
       ).toBe(true)
     })
 
+    it("isolates irreducible summands when every leaf splits", () => {
+      const F3 = makePrimeField(3)
+      const diagonal: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_diag",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 0],
+                [0, 2],
+              ],
+      }
+
+      const report = analyzeFinGrpRepresentationSemisimplicity(diagonal)
+      const summands = collectFinGrpRepresentationSemisimplicitySummands(report, {
+        includeIrreducibility: true,
+      })
+      const irreducible = collectFinGrpRepresentationIrreducibleSummands(report, {
+        reuseSummandsReport: summands,
+      })
+
+      expect(irreducible.holds).toBe(true)
+      expect(irreducible.summands).toHaveLength(2)
+      expect(irreducible.failures).toHaveLength(0)
+      expect(
+        irreducible.details.some((line) => line.includes("Identified 2 irreducible summands")),
+      ).toBe(true)
+    })
+
+    it("propagates reducibility witnesses when leaves fail irreducibility", () => {
+      const F3 = makePrimeField(3)
+      const reducible: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_red",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 1],
+                [0, 1],
+              ],
+      }
+
+      const report = analyzeFinGrpRepresentationSemisimplicity(reducible)
+      const irreducible = collectFinGrpRepresentationIrreducibleSummands(report)
+
+      expect(irreducible.holds).toBe(false)
+      expect(
+        irreducible.failures.some((failure) => failure.kind === "analysis-failure"),
+      ).toBe(true)
+    })
+
     it("certifies direct-sum decompositions when semisimplicity succeeds", () => {
       const F3 = makePrimeField(3)
       const diagonal: FiniteGroupRepresentation = {
@@ -1215,6 +1291,672 @@ describe("Finite group representations as functors", () => {
       expect(certification.failure?.kind).toBe("analysis-failure")
       expect(certification.directSum).toBeUndefined()
       expect(certification.details.some((line) => line.includes("skipping direct-sum"))).toBe(true)
+    })
+
+    it("enumerates irreducibility and semisimplicity diagnostics", () => {
+      const F3 = makePrimeField(3)
+      const diagonal: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_diag",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 0],
+                [0, 2],
+              ],
+      }
+
+      const suite = enumerateFinGrpRepresentationOracles(diagonal)
+      expect(suite.all).toHaveLength(5)
+      expect(suite.irreducibility.registryPath).toBe(
+        FinGrpRepresentationLawRegistry.irreducibility.registryPath,
+      )
+      expect(suite.irreducibility.holds).toBe(false)
+      expect(suite.irreducibility.report.witness.kind).toBe("coordinate-subrepresentation")
+      expect(suite.semisimplicity.holds).toBe(true)
+      expect(suite.summands.holds).toBe(true)
+      expect(suite.irreducibleSummands.holds).toBe(true)
+      expect(suite.certification.holds).toBe(true)
+      expect(suite.summands.report.root).toBe(suite.semisimplicity.report.root)
+      expect(suite.all.map((result) => result.registryPath)).toEqual([
+        FinGrpRepresentationLawRegistry.irreducibility.registryPath,
+        FinGrpRepresentationLawRegistry.semisimplicityAnalysis.registryPath,
+        FinGrpRepresentationLawRegistry.semisimplicitySummands.registryPath,
+        FinGrpRepresentationLawRegistry.irreducibleSummands.registryPath,
+        FinGrpRepresentationLawRegistry.semisimplicityCertification.registryPath,
+      ])
+    })
+
+    it("surfaces semisimplicity failures in the enumerator", () => {
+      const F3 = makePrimeField(3)
+      const jordan: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_jordan",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 1],
+                [0, 1],
+              ],
+      }
+
+      const suite = enumerateFinGrpRepresentationOracles(jordan)
+      expect(suite.semisimplicity.holds).toBe(false)
+      expect(suite.summands.holds).toBe(false)
+      expect(suite.certification.holds).toBe(false)
+      expect(suite.certification.report.failure?.kind).toBe("analysis-failure")
+      expect(suite.irreducibleSummands.holds).toBe(false)
+      expect(suite.all[0]).toBe(suite.irreducibility)
+      expect(suite.all[4]).toBe(suite.certification)
+    })
+
+    it("aggregates semisimplicity workflow results", () => {
+      const F3 = makePrimeField(3)
+      const diagonal: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_diag",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 0],
+                [0, 2],
+              ],
+      }
+
+      const workflow = runFinGrpRepresentationSemisimplicityWorkflow(diagonal)
+      expect(workflow.holds).toBe(true)
+      expect(workflow.isIrreducible).toBe(false)
+      expect(workflow.isSemisimple).toBe(true)
+      expect(workflow.hasSummands).toBe(true)
+      expect(workflow.hasIrreducibleSummands).toBe(true)
+      expect(workflow.hasCertifiedDirectSum).toBe(true)
+      expect(workflow.failures).toHaveLength(0)
+      expect(workflow.timeline).toHaveLength(5)
+      expect(workflow.timeline.map((stage) => stage.kind)).toEqual([
+        "irreducibility",
+        "semisimplicityAnalysis",
+        "semisimplicitySummands",
+        "irreducibleSummands",
+        "semisimplicityCertification",
+      ])
+      expect(workflow.stages.irreducibility).toBe(workflow.timeline[0])
+      expect(workflow.stages.certification.summary).toContain("Certified a direct sum")
+      expect(workflow.details.some((line) => line.includes("Semisimplicity analysis succeeded"))).toBe(true)
+      expect(workflow.details[0]).toContain("Finite-group representation irreducibility")
+      expect(workflow.details.some((line) => line.includes("Direct-sum certification produced"))).toBe(true)
+      expect(workflow.suite.all).toHaveLength(5)
+    })
+
+    it("records the first failing stage in the workflow", () => {
+      const F3 = makePrimeField(3)
+      const jordan: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_jordan",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 1],
+                [0, 1],
+              ],
+      }
+
+      const workflow = runFinGrpRepresentationSemisimplicityWorkflow(jordan)
+      expect(workflow.holds).toBe(false)
+      expect(workflow.isSemisimple).toBe(false)
+      expect(workflow.hasCertifiedDirectSum).toBe(false)
+      expect(workflow.failure?.stage).toBe("semisimplicityAnalysis")
+      expect(workflow.failures.length).toBeGreaterThan(0)
+      expect(workflow.timeline[1]?.holds).toBe(false)
+      expect(workflow.timeline[1]?.summary).toContain("failed")
+      expect(workflow.details.some((line) => line.includes("failed to produce a splitting tree"))).toBe(true)
+      expect(workflow.suite.semisimplicity.holds).toBe(false)
+    })
+
+    it("formats a readable semisimplicity workflow narrative", () => {
+      const F3 = makePrimeField(3)
+      const diagonal: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_diag",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 0],
+                [0, 2],
+              ],
+      }
+
+      const workflow = runFinGrpRepresentationSemisimplicityWorkflow(diagonal)
+      const narrative = formatFinGrpRepresentationSemisimplicityWorkflow(workflow)
+
+      expect(narrative[0]).toContain("succeeded")
+      expect(narrative[0]).toMatch(/direct sum/i)
+      expect(narrative[1]).toMatch(/^  [✔✘]/u)
+      expect(
+        narrative.some((line) => line.includes("Finite-group representation semisimplicity analysis")),
+      ).toBe(true)
+
+      const narrativeWithDetails = formatFinGrpRepresentationSemisimplicityWorkflow(workflow, {
+        includeStageDetails: true,
+        includeWorkflowDetails: true,
+      })
+      const hasStageDetails = workflow.timeline.some((stage) => stage.details.length > 0)
+      if (hasStageDetails) {
+        expect(narrativeWithDetails.length).toBeGreaterThan(narrative.length)
+      }
+      expect(
+        workflow.details.every((detail) =>
+          narrativeWithDetails.some((line) => line.includes(detail)),
+        ),
+      ).toBe(true)
+    })
+
+    it("highlights failing stages in the formatted narrative", () => {
+      const F3 = makePrimeField(3)
+      const jordan: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_jordan",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 1],
+                [0, 1],
+              ],
+      }
+
+      const workflow = runFinGrpRepresentationSemisimplicityWorkflow(jordan)
+      const narrative = formatFinGrpRepresentationSemisimplicityWorkflow(workflow, {
+        includeWorkflowDetails: true,
+      })
+
+      expect(narrative[0]).toContain("failed")
+      expect(narrative[0]).toContain("semisimplicity analysis")
+      expect(
+        narrative.some((line) => line.includes("Semisimplicity analysis failed to produce a splitting tree")),
+      ).toBe(true)
+      expect(
+        workflow.details.some((detail) => narrative.some((line) => line.includes(detail))),
+      ).toBe(true)
+    })
+
+    it("summarizes successful semisimplicity workflows", () => {
+      const F3 = makePrimeField(3)
+      const diagonal: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_diag",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 0],
+                [0, 2],
+              ],
+      }
+
+      const workflow = runFinGrpRepresentationSemisimplicityWorkflow(diagonal)
+      const summary = summarizeFinGrpRepresentationSemisimplicityWorkflow(workflow)
+
+      expect(summary.classification).toBe("certified-semisimple")
+      expect(summary.headline).toContain("succeeded")
+      expect(summary.status.certification).toBe(true)
+      expect(summary.stageSummaries).toHaveLength(5)
+      expect(summary.stageSummaries[0]?.kind).toBe("irreducibility")
+      expect(summary.highlights.some((line) => line.includes("Semisimplicity analysis succeeded"))).toBe(true)
+      expect(summary.recommendations.some((line) => line.includes("direct-sum witnesses"))).toBe(true)
+      expect(summary.failure).toBeUndefined()
+    })
+
+    it("summarizes failing semisimplicity workflows with recommendations", () => {
+      const F3 = makePrimeField(3)
+      const jordan: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_jordan",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 1],
+                [0, 1],
+              ],
+      }
+
+      const workflow = runFinGrpRepresentationSemisimplicityWorkflow(jordan)
+      const summary = summarizeFinGrpRepresentationSemisimplicityWorkflow(workflow)
+
+      expect(summary.classification).toBe("reducible-with-witness")
+      expect(summary.headline).toContain("failed")
+      expect(summary.status.semisimple).toBe(false)
+      expect(summary.failure?.stage).toBe("semisimplicityAnalysis")
+      expect(summary.failure?.summary).toContain("failed")
+      expect(summary.highlights.some((line) => line.includes("failed to produce a splitting tree"))).toBe(true)
+      expect(
+        summary.recommendations.some((line) =>
+          line.includes("Semisimplicity analysis failed"),
+        ),
+      ).toBe(true)
+    })
+
+    it("profiles successful semisimplicity workflows with quantitative metrics", () => {
+      const F3 = makePrimeField(3)
+      const diagonal: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_diag",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 0],
+                [0, 2],
+              ],
+      }
+
+      const workflow = runFinGrpRepresentationSemisimplicityWorkflow(diagonal)
+      const profile = profileFinGrpRepresentationSemisimplicityWorkflow(workflow)
+
+      expect(profile.classification).toBe("certified-semisimple")
+      expect(profile.representation.dimension).toBe(2)
+      expect(profile.analysis.tree.leafCount).toBeGreaterThanOrEqual(1)
+      expect(profile.summands.total).toBe(profile.analysis.tree.leafCount)
+      expect(profile.irreducibleSummands.verified).toBe(profile.irreducibleSummands.total)
+      expect(profile.certification.holds).toBe(true)
+      expect(profile.workflow.failureStage).toBeUndefined()
+    })
+
+    it("profiles failing semisimplicity workflows with failure diagnostics", () => {
+      const F3 = makePrimeField(3)
+      const jordan: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_jordan",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 1],
+                [0, 1],
+              ],
+      }
+
+      const workflow = runFinGrpRepresentationSemisimplicityWorkflow(jordan)
+      const profile = profileFinGrpRepresentationSemisimplicityWorkflow(workflow)
+
+      expect(profile.classification).toBe("reducible-with-witness")
+      expect(profile.analysis.holds).toBe(false)
+      expect(profile.analysis.failureReason).toBeDefined()
+      expect(profile.summands.failureCount).toBeGreaterThanOrEqual(0)
+      expect(profile.certification.holds).toBe(false)
+      expect(profile.workflow.failureStage).toBe("semisimplicityAnalysis")
+    })
+
+    it("formats semisimplicity workflow profiles with default sections", () => {
+      const F3 = makePrimeField(3)
+      const diagonal: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_diag",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 0],
+                [0, 2],
+              ],
+      }
+
+      const workflow = runFinGrpRepresentationSemisimplicityWorkflow(diagonal)
+      const profile = profileFinGrpRepresentationSemisimplicityWorkflow(workflow)
+      const formatted = formatFinGrpRepresentationSemisimplicityWorkflowProfile(profile)
+
+      expect(formatted[0]).toContain("ρ_diag")
+      expect(formatted[0]).toContain("Certified semisimple")
+      expect(formatted).toContain("  Representation:")
+      expect(
+        formatted.some((line) => line.includes("Group order")),
+      ).toBe(true)
+      expect(
+        formatted.some((line) => line.includes("All stages succeeded")),
+      ).toBe(true)
+      expect(
+        formatted.some((line) => line.includes("Irreducibility:") && line.includes("witness=irreducible")),
+      ).toBe(true)
+      expect(
+        formatted.some((line) => line.includes("Semisimplicity analysis:") && line.includes("Successful")),
+      ).toBe(true)
+      expect(formatted).toContain("  Semisimplicity summands:")
+      expect(
+        formatted.some((line) => line.includes("✓") && line.includes("summand")),
+      ).toBe(true)
+      expect(formatted).toContain("  Irreducible summands:")
+      expect(formatted.some((line) => line.includes("verified"))).toBe(true)
+      expect(formatted).toContain("  Direct-sum certification:")
+      expect(formatted.some((line) => line.includes("Succeeded"))).toBe(true)
+    })
+
+    it("formats semisimplicity workflow profiles with custom detail toggles", () => {
+      const F3 = makePrimeField(3)
+      const jordan: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_jordan",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 1],
+                [0, 1],
+              ],
+      }
+
+      const workflow = runFinGrpRepresentationSemisimplicityWorkflow(jordan)
+      const profile = profileFinGrpRepresentationSemisimplicityWorkflow(workflow)
+      const formatted = formatFinGrpRepresentationSemisimplicityWorkflowProfile(profile, {
+        includeRepresentation: false,
+        includeAnalysisTreeMetrics: true,
+        includeDimensionDetails: true,
+        successSymbol: "✔",
+        failureSymbol: "✘",
+      })
+
+      expect(formatted[0]).toContain("Reducible with witness")
+      expect(
+        formatted.some((line) => line.startsWith("  Representation:")),
+      ).toBe(false)
+      expect(formatted.some((line) => line.includes("Status: ✘ Failed"))).toBe(true)
+      expect(formatted).toContain("  Semisimplicity analysis:")
+      expect(
+        formatted.some((line) => line.includes("Tree:") && line.includes("nodes")),
+      ).toBe(true)
+      expect(
+        formatted.filter((line) => line.includes("Dimensions: [")).length,
+      ).toBeGreaterThanOrEqual(2)
+      expect(
+        formatted.some((line) =>
+          line.includes("Direct-sum certification:") &&
+          line.includes("semisimplicity analysis reported a failure"),
+        ),
+      ).toBe(true)
+    })
+
+    it("reports semisimplicity workflows with aggregated artifacts", () => {
+      const F3 = makePrimeField(3)
+      const diagonal: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_diag",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 0],
+                [0, 2],
+              ],
+      }
+
+      const report = reportFinGrpRepresentationSemisimplicityWorkflow(diagonal)
+
+      expect(report.workflow.holds).toBe(true)
+      expect(report.summary.classification).toBe("certified-semisimple")
+      expect(report.profile.workflow.holds).toBe(true)
+      expect(report.profile.representation.dimension).toBe(diagonal.dim)
+      expect(report.narrative?.[0]).toContain("succeeded")
+    })
+
+    it("omits the narrative when requested", () => {
+      const F3 = makePrimeField(3)
+      const jordan: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_jordan",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 1],
+                [0, 1],
+              ],
+      }
+
+      const report = reportFinGrpRepresentationSemisimplicityWorkflow(jordan, {
+        includeNarrative: false,
+      })
+
+      expect(report.workflow.holds).toBe(false)
+      expect(report.summary.classification).toBe("reducible-with-witness")
+      expect(report.narrative).toBeUndefined()
+    })
+
+    it("surveys semisimplicity workflows across multiple representations", () => {
+      const F3 = makePrimeField(3)
+      const diagonal: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_diag",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 0],
+                [0, 2],
+              ],
+      }
+
+      const jordan: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_jordan",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 1],
+                [0, 1],
+              ],
+      }
+
+      const sign: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 1,
+        label: "ρ_sign",
+        matrix: (element) => (element === "0" ? [[1]] : [[2]]),
+      }
+
+      const survey = surveyFinGrpRepresentationSemisimplicityWorkflows([
+        diagonal,
+        jordan,
+        sign,
+      ])
+
+      expect(survey.observations).toHaveLength(3)
+      expect(survey.metrics.total).toBe(3)
+      expect(survey.metrics.successCount).toBe(2)
+      expect(survey.metrics.withNarrative).toBe(3)
+      expect(survey.metrics.classificationCounts).toEqual({
+        "certified-semisimple": 2,
+        "semisimple-without-certification": 0,
+        irreducible: 0,
+        "reducible-with-witness": 1,
+        "partial-decomposition": 0,
+        inconclusive: 0,
+      })
+      expect(survey.metrics.statusCounts.irreducible).toBe(1)
+      expect(survey.metrics.statusCounts.certification).toBe(2)
+      expect(survey.metrics.failureStageCounts).toEqual({
+        semisimplicityAnalysis: 1,
+      })
+      expect(survey.metrics.dimension.min).toBe(1)
+      expect(survey.metrics.dimension.max).toBe(2)
+      expect(survey.metrics.dimension.average).toBeCloseTo(5 / 3)
+    })
+
+    it("formats semisimplicity survey analytics for humans", () => {
+      const F3 = makePrimeField(3)
+      const diagonal: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_diag",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 0],
+                [0, 2],
+              ],
+      }
+
+      const jordan: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 2,
+        label: "ρ_jordan",
+        matrix: (element) =>
+          element === "0"
+            ? [
+                [1, 0],
+                [0, 1],
+              ]
+            : [
+                [1, 1],
+                [0, 1],
+              ],
+      }
+
+      const sign: FiniteGroupRepresentation = {
+        group: Z2,
+        field: F3,
+        dim: 1,
+        label: "ρ_sign",
+        matrix: (element) => (element === "0" ? [[1]] : [[2]]),
+      }
+
+      const survey = surveyFinGrpRepresentationSemisimplicityWorkflows([
+        diagonal,
+        jordan,
+        sign,
+      ])
+
+      const formatted = formatFinGrpRepresentationSemisimplicitySurvey(survey)
+      expect(formatted[0]).toBe(
+        "Semisimplicity workflow survey across 3 representations",
+      )
+      expect(formatted).toContain("  2 succeeded; 3 include narratives")
+      expect(formatted).toContain("  Classification breakdown:")
+      expect(formatted).toContain("    - Certified semisimple: 2")
+      expect(formatted).toContain("    - Reducible with witness: 1")
+      expect(formatted).toContain(
+        "  First failure stage counts:",
+      )
+      expect(
+        formatted.some((line) =>
+          line.includes("Finite-group representation semisimplicity analysis"),
+        ),
+      ).toBe(true)
+      expect(formatted).toContain(
+        "  Dimension stats: min=1, max=2, average≈1.67",
+      )
+
+      expect(formatted).toContain("  - ρ_diag: Certified semisimple ✓")
+      expect(formatted).toContain("  - ρ_jordan: Reducible with witness ✗")
+      expect(formatted).toContain("  - ρ_sign: Certified semisimple ✓")
+      expect(
+        formatted.some((line) =>
+          line.startsWith("      Certification: ✗"),
+        ),
+      ).toBe(true)
+      expect(
+        formatted.some((line) => line.startsWith("      Irreducible: ✓")),
+      ).toBe(true)
+
+      const concise = formatFinGrpRepresentationSemisimplicitySurvey(survey, {
+        includeObservations: false,
+        includeClassificationBreakdown: false,
+      })
+      expect(concise.some((line) => line.includes("Observations:"))).toBe(false)
+      expect(
+        concise.some((line) => line.includes("Classification breakdown")),
+      ).toBe(false)
     })
   })
 })

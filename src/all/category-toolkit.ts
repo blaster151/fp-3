@@ -48,6 +48,7 @@ export {
   checkFinGrpRepresentationIrreducible,
   analyzeFinGrpRepresentationSemisimplicity,
   collectFinGrpRepresentationSemisimplicitySummands,
+  collectFinGrpRepresentationIrreducibleSummands,
   certifyFinGrpRepresentationSemisimplicity,
 } from "../../models/fingroup-representation"
 
@@ -111,6 +112,10 @@ export type {
   FinGrpRepresentationSemisimplicitySummandsOptions,
   FinGrpRepresentationSemisimplicitySummandsFailure,
   FinGrpRepresentationSemisimplicitySummandsReport,
+  FinGrpRepresentationIrreducibleSummand,
+  FinGrpRepresentationIrreducibleSummandsOptions,
+  FinGrpRepresentationIrreducibleSummandsFailure,
+  FinGrpRepresentationIrreducibleSummandsReport,
   FinGrpRepresentationSemisimplicityDirectSumOptions,
   FinGrpRepresentationSemisimplicityDirectSumFailure,
   FinGrpRepresentationSemisimplicityDirectSum,
