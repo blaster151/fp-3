@@ -3964,6 +3964,121 @@ export const collectFinGrpRepresentationSemisimplicitySummands = (
   }
 }
 
+export interface FinGrpRepresentationIrreducibleSummand
+  extends FinGrpRepresentationSemisimplicitySummand {
+  readonly irreducibility: FinGrpRepresentationIrreducibilityReport
+}
+
+export interface FinGrpRepresentationIrreducibleSummandsOptions
+  extends FinGrpRepresentationSemisimplicitySummandsOptions {
+  readonly reuseSummandsReport?: FinGrpRepresentationSemisimplicitySummandsReport
+}
+
+export type FinGrpRepresentationIrreducibleSummandsFailure =
+  | { readonly kind: "analysis-failure"; readonly failure?: FinGrpRepresentationSemisimplicityFailure }
+  | {
+      readonly kind: "summands-failure"
+      readonly failures: ReadonlyArray<FinGrpRepresentationSemisimplicitySummandsFailure>
+    }
+  | { readonly kind: "no-summands" }
+  | {
+      readonly kind: "missing-irreducibility"
+      readonly path: ReadonlyArray<FinGrpRepresentationSemisimplicityBranch>
+    }
+  | {
+      readonly kind: "reducible-summand"
+      readonly path: ReadonlyArray<FinGrpRepresentationSemisimplicityBranch>
+      readonly report: FinGrpRepresentationIrreducibilityReport
+    }
+
+export interface FinGrpRepresentationIrreducibleSummandsReport {
+  readonly holds: boolean
+  readonly root: FinGrpRepresentationSemisimplicityNode
+  readonly summands: ReadonlyArray<FinGrpRepresentationIrreducibleSummand>
+  readonly summandsReport: FinGrpRepresentationSemisimplicitySummandsReport
+  readonly failures: ReadonlyArray<FinGrpRepresentationIrreducibleSummandsFailure>
+  readonly details: ReadonlyArray<string>
+}
+
+export const collectFinGrpRepresentationIrreducibleSummands = (
+  report: FinGrpRepresentationSemisimplicityReport,
+  options: FinGrpRepresentationIrreducibleSummandsOptions = {},
+): FinGrpRepresentationIrreducibleSummandsReport => {
+  const summandsOptions: FinGrpRepresentationSemisimplicitySummandsOptions = {
+    generators: options.generators,
+    irreducibilityOptions: options.irreducibilityOptions,
+    includeIrreducibility: true,
+  }
+
+  const summandsReport =
+    options.reuseSummandsReport ??
+    collectFinGrpRepresentationSemisimplicitySummands(report, summandsOptions)
+
+  const irreducibleSummands: FinGrpRepresentationIrreducibleSummand[] = []
+  const failures: FinGrpRepresentationIrreducibleSummandsFailure[] = []
+  const details = [...summandsReport.details]
+
+  if (!report.holds && report.failure) {
+    failures.push({ kind: "analysis-failure", failure: report.failure })
+    details.push(
+      `Semisimplicity analysis reported failure: ${report.failure.reason}. Irreducible isolation may be incomplete.`,
+    )
+  }
+
+  if (!summandsReport.holds && summandsReport.failures.length > 0) {
+    failures.push({ kind: "summands-failure", failures: summandsReport.failures })
+    details.push(
+      "Semisimplicity summand verification reported failures; irreducible isolation will be conservative.",
+    )
+  }
+
+  if (summandsReport.summands.length === 0) {
+    failures.push({ kind: "no-summands" })
+    details.push("No semisimplicity summands were available to inspect.")
+  }
+
+  for (const summand of summandsReport.summands) {
+    const irreducibility = summand.irreducibility
+    const pathLabel = summand.path.length === 0 ? "root" : summand.path.join("→")
+    if (!irreducibility) {
+      failures.push({ kind: "missing-irreducibility", path: summand.path })
+      details.push(
+        `Summand ${pathLabel} did not include an irreducibility report; skipping irreducible certification.`,
+      )
+      continue
+    }
+
+    if (!irreducibility.holds) {
+      failures.push({ kind: "reducible-summand", path: summand.path, report: irreducibility })
+      details.push(
+        `Summand ${pathLabel} was reducible via ${irreducibility.witness.kind} witness; removing from irreducible list.`,
+      )
+      continue
+    }
+
+    irreducibleSummands.push({ ...summand, irreducibility })
+  }
+
+  if (irreducibleSummands.length > 0) {
+    details.push(
+      `Identified ${irreducibleSummands.length} irreducible summand${
+        irreducibleSummands.length === 1 ? "" : "s"
+      }.`,
+    )
+  }
+
+  const holds = report.holds && summandsReport.holds && failures.length === 0
+
+  return {
+    holds,
+    root: summandsReport.root,
+    summands: irreducibleSummands,
+    summandsReport,
+    failures,
+    details,
+  }
+}
+
 export interface FinGrpRepresentationSemisimplicityDirectSumOptions
   extends FinGrpRepresentationSemisimplicitySummandsOptions {
   readonly label?: string

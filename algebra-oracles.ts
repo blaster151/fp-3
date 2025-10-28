@@ -73,6 +73,26 @@ import { checkStructureSheaf } from "./src/schemes/structure-sheaf";
 import { checkSchemeGluing, checkSchemeFiberProduct } from "./src/schemes/global-schemes";
 import { checkFiberedCategory, checkStackDescent } from "./src/schemes/stacks";
 import { AffineSchemeExamples } from "./examples/runnable/093-affine-scheme-example-catalogue";
+import {
+  analyzeFinGrpRepresentationSemisimplicity,
+  certifyFinGrpRepresentationSemisimplicity,
+  checkFinGrpRepresentationIrreducible,
+  collectFinGrpRepresentationSemisimplicitySummands,
+  collectFinGrpRepresentationIrreducibleSummands,
+} from "./models/fingroup-representation";
+import {
+  FinGrpRepresentationOracles,
+  FinGrpRepresentationLawRegistry,
+  enumerateFinGrpRepresentationOracles,
+  runFinGrpRepresentationSemisimplicityWorkflow,
+  formatFinGrpRepresentationSemisimplicityWorkflow,
+  formatFinGrpRepresentationSemisimplicityWorkflowProfile,
+  summarizeFinGrpRepresentationSemisimplicityWorkflow,
+  profileFinGrpRepresentationSemisimplicityWorkflow,
+  reportFinGrpRepresentationSemisimplicityWorkflow,
+  surveyFinGrpRepresentationSemisimplicityWorkflows,
+  formatFinGrpRepresentationSemisimplicitySurvey,
+} from "./oracles/fingroup-representation";
 
 export interface RelativeMonadLawCheckResult<Obj, Arr, Payload, Evidence> {
   readonly holds: boolean;
@@ -130,6 +150,25 @@ export const AlgebraOracles = {
   moduli: {
     fiberedCategory: checkFiberedCategory,
     descentDatum: checkStackDescent,
+  },
+  representation: {
+    checkFinGrpRepresentationIrreducible,
+    analyzeFinGrpRepresentationSemisimplicity,
+    collectFinGrpRepresentationSemisimplicitySummands,
+    collectFinGrpRepresentationIrreducibleSummands,
+    certifyFinGrpRepresentationSemisimplicity,
+    enumerate: enumerateFinGrpRepresentationOracles,
+    oracles: FinGrpRepresentationOracles,
+    lawRegistry: FinGrpRepresentationLawRegistry,
+    runSemisimplicityWorkflow: runFinGrpRepresentationSemisimplicityWorkflow,
+    formatSemisimplicityWorkflow: formatFinGrpRepresentationSemisimplicityWorkflow,
+    formatSemisimplicityProfile:
+      formatFinGrpRepresentationSemisimplicityWorkflowProfile,
+    summarizeSemisimplicityWorkflow: summarizeFinGrpRepresentationSemisimplicityWorkflow,
+    profileSemisimplicityWorkflow: profileFinGrpRepresentationSemisimplicityWorkflow,
+    reportSemisimplicityWorkflow: reportFinGrpRepresentationSemisimplicityWorkflow,
+    surveySemisimplicityWorkflows: surveyFinGrpRepresentationSemisimplicityWorkflows,
+    formatSemisimplicitySurvey: formatFinGrpRepresentationSemisimplicitySurvey,
   },
   causality: {
     counterexampleScenario: buildCRingPlusCausalityScenario,
