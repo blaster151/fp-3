@@ -96,6 +96,8 @@ import { stage090AdtPolynomialEnrichedStreetRollups } from "./090-adt-polynomial
 import { stage091CommutativeRingOracleSamples } from "./091-commutative-ring-oracle-samples";
 import { stage092CommutativeRingSampleLibrary } from "./092-commutative-ring-sample-library";
 import { stage093AffineSchemeExampleCatalogue } from "./093-affine-scheme-example-catalogue";
+import { stage094FinGrpRepresentationNaturalTransformations } from "./094-fingroup-representation-natural-transformations";
+import { stage095FinGrpRepresentationHomFunctors } from "./095-fingroup-representation-hom-functors";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -195,4 +197,6 @@ export const registry: RunnableRegistry = [
   stage091CommutativeRingOracleSamples,
   stage092CommutativeRingSampleLibrary,
   stage093AffineSchemeExampleCatalogue,
+  stage094FinGrpRepresentationNaturalTransformations,
+  stage095FinGrpRepresentationHomFunctors,
 ];

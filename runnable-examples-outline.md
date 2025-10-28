@@ -111,4 +111,8 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 91. **Affine scheme example catalogue** – Package Spec ℤ, Spec ℤ[ε]/(ε²), and Spec 𝔽₅ charts using the shared ring library so atlas and gluing tests can import consistent fixtures. (examples/runnable/093-affine-scheme-example-catalogue.ts)
 
+92. **Finite-group representation natural transformations** – Build permutation and sign actions as FinGrp representations, validate intertwiner matrices with naturality witnesses, and surface failure diagnostics for non-intertwiners. (examples/runnable/094-fingroup-representation-natural-transformations.ts)
+
+93. **Finite-group representation Hom functors** – Evaluate Hom(source,–) and Hom(–,target) functors for permutation versus sign representations, recover bases and coordinate conversions, and observe pre/post-composition matrices induced by intertwiners. (examples/runnable/095-fingroup-representation-hom-functors.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.

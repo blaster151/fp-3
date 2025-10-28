@@ -1,5 +1,9 @@
 # Finite group subrepresentations via coordinate kernels
 
+> For a higher-level tour of the full representation toolkit—including
+> intertwiners, invariant vectors, and functor packaging—see
+> [`representation-tooling.md`](./representation-tooling.md).
+
 We now expose a concrete workflow for locating and certifying coordinate
 subrepresentations of finite-dimensional modules.  The core utilities live in
 [`models/fingroup-subrepresentation.ts`](../models/fingroup-subrepresentation.ts)
@@ -46,3 +50,21 @@ is an isomorphism.
 These helpers are re-exported through the `Algebra` namespace in
 [`src/all/triangulated.ts`](../src/all/triangulated.ts), making them available to
 example code, tests, and downstream consumers.
+
+## Diagnostics built atop coordinate witnesses
+
+`checkFinGrpRepresentationIrreducible` and
+`analyzeFinGrpRepresentationSemisimplicity` reuse the witnesses described above.
+The irreducibility oracle reports invariant vectors or the first coordinate
+subrepresentation it finds, while the semisimplicity analyzer searches for a
+splitting section, assembles the corresponding direct sum, and recurses on the
+sub and quotient constituents.  `collectFinGrpRepresentationSemisimplicitySummands`
+then walks the resulting decomposition tree, composing inclusions and
+projections along each branch to extract explicit direct-sum summands, replaying
+`π ∘ ι = id` checks, and confirming that the summed `ι ∘ π` terms reconstruct the
+identity on the ambient representation.  Once those checks pass,
+`certifyFinGrpRepresentationSemisimplicity` stitches the summands into a block
+diagonal representation, constructs the forward/backward natural
+transformations, and verifies they form an isomorphism with the original
+action.  All four helpers appear in the `Algebra` namespace and are documented
+alongside the higher-level toolkit.
