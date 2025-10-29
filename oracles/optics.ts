@@ -251,28 +251,30 @@ export const checkOptionalLaws = <S, A>(config: OptionalLawConfig<S, A>): Option
 
   const holds = getSetHolds && setGetHolds && setSetHolds
 
+  const witness: OptionalLawWitness<S, A> = {
+    original: structure,
+    originalFocus,
+    originalFocusWitness,
+    restored,
+    ...(restoredUpdate != null ? { restoredUpdate } : {}),
+    firstSet,
+    firstUpdate,
+    firstFocus,
+    firstFocusWitness,
+    secondSet,
+    secondUpdate,
+    secondFocus,
+    secondFocusWitness,
+    doubleSet,
+    doubleUpdate,
+  }
+
   return {
     holds,
     getSet: { holds: getSetHolds, skipped: getSetSkipped },
     setGet: { holds: setGetHolds, skipped: false },
     setSet: { holds: setSetHolds, skipped: false },
-    witness: {
-      original: structure,
-      originalFocus,
-      originalFocusWitness,
-      restored,
-      restoredUpdate,
-      firstSet,
-      firstUpdate,
-      firstFocus,
-      firstFocusWitness,
-      secondSet,
-      secondUpdate,
-      secondFocus,
-      secondFocusWitness,
-      doubleSet,
-      doubleUpdate,
-    },
+    witness,
     failures,
   }
 }
@@ -361,21 +363,23 @@ export const checkPrismLaws = <S, A>(config: PrismLawConfig<S, A>): PrismLawRepo
     )
   }
 
+  const witness: PrismLawWitness<S, A> = {
+    matchWitness,
+    matchPreview,
+    ...(reconstructedFromMatch != null ? { reconstructedFromMatch } : {}),
+    reviewWitness,
+    reviewPreview,
+    reviewPreviewWitness,
+    missPreview,
+    ...(missWitness != null ? { missWitness } : {}),
+    reviewed,
+  }
+
   return {
     holds: previewReviewHolds && reviewPreviewHolds,
     previewReview: { holds: previewReviewHolds, skipped: false },
     reviewPreview: { holds: reviewPreviewHolds, skipped: reviewPreviewSkipped },
-    witness: {
-      matchWitness,
-      matchPreview,
-      reconstructedFromMatch,
-      reviewWitness,
-      reviewPreview,
-      reviewPreviewWitness,
-      missPreview,
-      missWitness,
-      reviewed,
-    },
+    witness,
     failures,
   }
 }

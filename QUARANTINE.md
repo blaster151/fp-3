@@ -10,6 +10,9 @@ npm run typecheck
 
 # Check ONLY production-ready files (excludes quarantined)
 npm run typecheck:prod
+
+# Audit runnable example debt with production settings
+npm run typecheck:prod:runnable
 ```
 
 ## Quarantined Files

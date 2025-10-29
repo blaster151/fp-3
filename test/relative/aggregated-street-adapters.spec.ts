@@ -50,6 +50,6 @@ describe("selectAggregatedStreetAdaptersFrom", () => {
       selectAggregatedStreetAdaptersFrom(aggregated, {
         onReady: () => "ready",
       }),
-    ).toThrowError(/pending/);
+    ).toThrow(/pending/);
   });
 });

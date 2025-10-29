@@ -30,8 +30,9 @@ export {
 
 export type { Optional, Traversal } from "../optics/optional-traversal"
 
+export type { HKP } from "../optics/profunctor"
+
 export {
-  HKP,
   FunctionProfunctor,
   PreviewProfunctor,
   ForgetProfunctor,

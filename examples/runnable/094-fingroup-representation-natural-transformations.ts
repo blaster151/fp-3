@@ -69,11 +69,15 @@ const buildSignRepresentation = (): Representation<string, number> => ({
 })
 
 const describeObjectSamples = (
-  objects: ReadonlyArray<ReturnType<FinGrpRepresentationFunctor<number>["onObj"]>>,
+  functor: FinGrpRepresentationFunctor<number>,
+  objects: ReadonlyArray<string>,
 ): string => {
   if (objects.length === 0) return "No object samples recorded."
   return objects
-    .map((object, index) => `Object sample ${index + 1}: dimension ${object.dim}`)
+    .map((object, index) => {
+      const image = functor.onObj(object)
+      return `Object sample ${index + 1} (${object}): dimension ${image.dim}`
+    })
     .join("\n")
 }
 
@@ -109,7 +113,10 @@ export const stage094FinGrpRepresentationNaturalTransformations: RunnableExample
     )
 
     const successReport = intertwiner.witness.report
-    const objectSamples = describeObjectSamples(intertwiner.witness.witness.objectSamples)
+    const objectSamples = describeObjectSamples(
+      permutationFunctor,
+      intertwiner.witness.witness.objectSamples,
+    )
     const arrowSamples = describeArrowSamples(intertwiner.witness.witness.arrowSamples)
 
     const failingMatrix = [[1, 1]]

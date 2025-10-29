@@ -31,7 +31,11 @@ import {
   makeFinGrpRepresentationNatCategory,
   checkFinGrpRepresentationNatCategoryLaws,
   makeFinGrpRepresentationHomIntoFunctor,
+  finGrpRepresentationHomIntoFunctorWitness,
+  makeFinGrpRepresentationHomIntoFunctorWithWitness,
   makeFinGrpRepresentationHomFromFunctor,
+  finGrpRepresentationHomFromFunctorWitness,
+  makeFinGrpRepresentationHomFromFunctorWithWitness,
   makeFinGrpRepresentationHomBifunctor,
   finGrpRepresentationHomBifunctorWitness,
   makeFinGrpRepresentationHomBifunctorWithWitness,
@@ -40,6 +44,12 @@ import {
   collectFinGrpRepresentationSemisimplicitySummands,
   collectFinGrpRepresentationIrreducibleSummands,
   certifyFinGrpRepresentationSemisimplicity,
+} from "../models/fingroup-representation"
+import type {
+  FinGrpNatTransOptions,
+  FinGrpRepresentationFunctor,
+  FinGrpRepresentationHomSpace,
+  FinGrpRepresentationNatCategory,
 } from "../models/fingroup-representation"
 import { finGrpKernelEqualizer } from "../models/fingroup-equalizer"
 import { makePrimeField } from "../models/fingroup-subrepresentation"
@@ -92,6 +102,15 @@ const cyclicGroup = (order: number, name: string): FinGrpObj => {
   }
 }
 
+type FinRepFunctor = FinGrpRepresentationFunctor<number>
+
+const buildHomSpace = <F extends FinRepFunctor, G extends FinRepFunctor>(
+  source: F,
+  target: G,
+  options?: FinGrpNatTransOptions,
+): FinGrpRepresentationHomSpace<number, F, G> =>
+  finGrpRepresentationHomSpace<number, F, G>(source, target, options)
+
 describe("Finite group representations as functors", () => {
   const Z2 = cyclicGroup(2, "Z₂")
   const eqMatrix = eqMat(FieldReal)
@@ -104,7 +123,7 @@ describe("Finite group representations as functors", () => {
   }
 
   it("recovers representation matrices after round-tripping through the functor view", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const V = functor.onObj(Z2.name)
     expect(V.dim).toBe(2)
 
@@ -181,7 +200,7 @@ describe("Finite group representations as functors", () => {
   })
 
   it("builds functor witnesses for finite-group representations", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const witness = makeFinGrpRepresentationFunctorWithWitness(functor, { generators: ["1"] })
 
     expect(witness.report.holds).toBe(true)
@@ -193,8 +212,8 @@ describe("Finite group representations as functors", () => {
   })
 
   it("enumerates Hom-spaces and natural transformations for the permutation representation", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
-    const hom = finGrpRepresentationHomSpace<number>(functor, functor)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const hom = buildHomSpace(functor, functor)
 
     expect(hom.dim).toBe(2)
     expect(hom.basis.length).toBe(2)
@@ -262,8 +281,8 @@ describe("Finite group representations as functors", () => {
   })
 
   it("exposes vector-space operations on Hom-space data", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
-    const hom = finGrpRepresentationHomSpace<number>(functor, functor)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const hom = buildHomSpace(functor, functor)
 
     const zeroCoords = hom.zeroCoordinates()
     expect(zeroCoords.length).toBe(2)
@@ -312,7 +331,7 @@ describe("Finite group representations as functors", () => {
   })
 
   it("validates commuting matrices with the naturality checker", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const identity = identityMatrix(2)
 
     const report = checkFinGrpRepresentationNatTransMatrix(functor, functor, identity)
@@ -323,7 +342,7 @@ describe("Finite group representations as functors", () => {
   })
 
   it("reports detailed failures for invalid naturality matrices", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
 
     const rectangularMatrix = [
       [1, 0],
@@ -364,8 +383,8 @@ describe("Finite group representations as functors", () => {
   })
 
   it("promotes linear maps into natural transformations", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
-    const hom = finGrpRepresentationHomSpace(functor, functor)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const hom = buildHomSpace(functor, functor)
     const basisNat = hom.naturalTransformations[0]
     if (!basisNat) throw new Error("expected a natural transformation basis element")
 
@@ -383,7 +402,7 @@ describe("Finite group representations as functors", () => {
   })
 
   it("composes FinGrp representation natural transformations", () => {
-    const permutation = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const permutation: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
 
     const swapMatrix = representationZ2.mat("1")
     const swapNat = makeFinGrpRepresentationNatTrans(permutation, permutation, swapMatrix)
@@ -396,9 +415,9 @@ describe("Finite group representations as functors", () => {
       dimV: 1,
       mat: (element) => (element === "0" ? [[1]] : [[-1]]),
     }
-    const signFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
+    const signFunctor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
 
-    const permutationToSign = finGrpRepresentationHomSpace(permutation, signFunctor)
+    const permutationToSign = buildHomSpace(permutation, signFunctor)
     const basisNat = permutationToSign.naturalTransformations[0]
     if (!basisNat) throw new Error("expected a generator for Hom(permutation, sign)")
 
@@ -415,8 +434,8 @@ describe("Finite group representations as functors", () => {
   })
 
   it("constructs the endomorphism algebra for the permutation representation", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
-    const end = makeFinGrpRepresentationEndomorphismAlgebra(functor)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const end = makeFinGrpRepresentationEndomorphismAlgebra<number, FinRepFunctor>(functor)
 
     expect(end.dimension).toBe(2)
     expect(end.basis.length).toBe(2)
@@ -469,9 +488,9 @@ describe("Finite group representations as functors", () => {
   })
 
   it("diagnoses natural-transformation category laws for FinGrp representations", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
-    const category = makeFinGrpRepresentationNatCategory(Z2, FieldReal)
-    const hom = finGrpRepresentationHomSpace<number>(functor, functor)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const category: FinGrpRepresentationNatCategory<number> = makeFinGrpRepresentationNatCategory(Z2, FieldReal)
+    const hom = buildHomSpace(functor, functor)
 
     const success = checkFinGrpRepresentationNatCategoryLaws(category, {
       objects: [functor],
@@ -505,10 +524,10 @@ describe("Finite group representations as functors", () => {
   })
 
   it("rejects matrices that fail the intertwining equations", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
 
     expect(() =>
-      makeFinGrpRepresentationNatTrans<number>(functor, functor, [
+      makeFinGrpRepresentationNatTrans(functor, functor, [
         [1, 1],
         [0, 1],
       ]),
@@ -516,7 +535,7 @@ describe("Finite group representations as functors", () => {
   })
 
   it("produces rectangular natural transformations when the codomain dimension differs", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
 
     const signRepresentation: Representation<string, number> = {
       F: FieldReal,
@@ -524,8 +543,8 @@ describe("Finite group representations as functors", () => {
       mat: (element) => (element === "0" ? [[1]] : [[-1]]),
     }
 
-    const signFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
-    const hom = finGrpRepresentationHomSpace<number>(functor, signFunctor)
+    const signFunctor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
+    const hom = buildHomSpace(functor, signFunctor)
 
     expect(hom.dim).toBe(1)
     expect(hom.basis.length).toBe(1)
@@ -544,7 +563,7 @@ describe("Finite group representations as functors", () => {
     const right = multiply(matrix as number[][], swap as number[][])
     expect(eqMatrix(left as number[][], right as number[][])).toBe(true)
 
-    const natural = makeFinGrpRepresentationNatTrans<number>(
+    const natural = makeFinGrpRepresentationNatTrans(
       functor,
       signFunctor,
       hom.basis[0]!,
@@ -553,8 +572,8 @@ describe("Finite group representations as functors", () => {
   })
 
   it("analyzes kernels and images of natural transformations", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
-    const hom = finGrpRepresentationHomSpace<number>(functor, functor)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const hom = buildHomSpace(functor, functor)
 
     const [identityNat] = hom.naturalTransformations
     if (!identityNat) throw new Error("Expected natural transformations in Hom-space basis")
@@ -574,8 +593,8 @@ describe("Finite group representations as functors", () => {
       mat: (element) => (element === "0" ? [[1]] : [[-1]]),
     }
 
-    const signFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
-    const rectangularHom = finGrpRepresentationHomSpace<number>(functor, signFunctor)
+    const signFunctor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
+    const rectangularHom = buildHomSpace(functor, signFunctor)
     const rectangularNat = rectangularHom.naturalTransformations[0]
     if (!rectangularNat) throw new Error("Expected rectangular natural transformation")
 
@@ -591,7 +610,7 @@ describe("Finite group representations as functors", () => {
   })
 
   it("upgrades commuting matrices to natural transformation witnesses", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const swapMatrix = representationZ2.mat("1")
 
     const { natTrans, witness } = makeFinGrpRepresentationNatTransWithWitness(
@@ -611,7 +630,7 @@ describe("Finite group representations as functors", () => {
   })
 
   it("converts generic natural transformations into FinGrp representation form", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const swapMatrix = representationZ2.mat("1")
 
     const naturalTransformation = makeFinGrpRepresentationNatTrans(
@@ -658,7 +677,7 @@ describe("Finite group representations as functors", () => {
   })
 
   it("converts FinGrp representation natural transformations into the generic form", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const swapMatrix = representationZ2.mat("1")
 
     const naturalTransformation = makeFinGrpRepresentationNatTrans(
@@ -681,7 +700,7 @@ describe("Finite group representations as functors", () => {
   })
 
   it("packages FinGrp natural transformations with generic witnesses", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const swapMatrix = representationZ2.mat("1")
 
     const naturalTransformation = makeFinGrpRepresentationNatTrans(
@@ -710,7 +729,7 @@ describe("Finite group representations as functors", () => {
   })
 
   it("promotes invertible intertwiners to natural isomorphisms", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const isoMatrix = [
       [2, 1],
       [1, 2],
@@ -732,7 +751,7 @@ describe("Finite group representations as functors", () => {
   })
 
   it("attaches witnesses to finite-group representation natural isomorphisms", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const isoMatrix = [
       [2, 1],
       [1, 2],
@@ -751,26 +770,26 @@ describe("Finite group representations as functors", () => {
   })
 
   it("rejects singular commuting matrices when building natural isomorphisms", () => {
-    const functor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const functor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const singular = [
       [1, 1],
       [1, 1],
     ]
 
-    expect(() => makeFinGrpRepresentationNatIso(functor, functor, singular)).toThrowError(
+    expect(() => makeFinGrpRepresentationNatIso(functor, functor, singular)).toThrow(
       /natural isomorphism/i,
     )
   })
 
   it("assembles the natural-transformation category for a fixed finite group", () => {
     const Z2 = cyclicGroup(2, "Z₂")
-    const permutation = makeFinGrpRepresentationFunctor(Z2, {
+    const permutation: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, {
       F: FieldReal,
       dimV: 2,
       mat: (element) => (element === "0" ? identityMatrix(2) : [[0, 1], [1, 0]]),
     })
 
-    const category = makeFinGrpRepresentationNatCategory<number>(Z2, FieldReal)
+    const category: FinGrpRepresentationNatCategory<number> = makeFinGrpRepresentationNatCategory(Z2, FieldReal)
     category.ensureObject(permutation)
 
     const idNat = category.id(permutation)
@@ -789,13 +808,13 @@ describe("Finite group representations as functors", () => {
   })
 
   it("packages Hom(permutation,-) as a functor to vector spaces", () => {
-    const permutation = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const permutation: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const signRepresentation: Representation<string, number> = {
       F: FieldReal,
       dimV: 1,
       mat: (element) => (element === "0" ? [[1]] : [[-1]]),
     }
-    const signFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
+    const signFunctor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
 
     const homFunctor = makeFinGrpRepresentationHomIntoFunctor(permutation)
     const permutationHom = homFunctor.homSpace(permutation)
@@ -827,13 +846,13 @@ describe("Finite group representations as functors", () => {
   })
 
   it("packages Hom(-,sign) as a functor with precomposition coordinates", () => {
-    const permutation = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const permutation: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const signRepresentation: Representation<string, number> = {
       F: FieldReal,
       dimV: 1,
       mat: (element) => (element === "0" ? [[1]] : [[-1]]),
     }
-    const signFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
+    const signFunctor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
 
     const homFunctor = makeFinGrpRepresentationHomFromFunctor(signFunctor)
     const permutationHom = homFunctor.homSpace(permutation)
@@ -865,13 +884,13 @@ describe("Finite group representations as functors", () => {
   })
 
   it("builds witnesses for Hom(source,-) functors", () => {
-    const permutation = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const permutation: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const homFunctor = makeFinGrpRepresentationHomIntoFunctor(permutation)
 
     const witness = finGrpRepresentationHomIntoFunctorWitness(homFunctor)
     expect(witness.report.holds).toBe(true)
     expect(witness.witness.objectGenerators.includes(permutation)).toBe(true)
-    expect(witness.metadata?.some((line) => line.includes("Hom(source,-)"))).toBe(true)
+    expect(witness.metadata?.some((line: string) => line.includes("Hom(source,-)"))).toBe(true)
 
     const constructed = makeFinGrpRepresentationHomIntoFunctorWithWitness(permutation)
     expect(constructed.functor.sourceRepresentation).toBe(permutation)
@@ -888,19 +907,19 @@ describe("Finite group representations as functors", () => {
   })
 
   it("builds witnesses for Hom(-,sign) functors", () => {
-    const permutation = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const permutation: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const signRepresentation: Representation<string, number> = {
       F: FieldReal,
       dimV: 1,
       mat: (element) => (element === "0" ? [[1]] : [[-1]]),
     }
-    const signFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
+    const signFunctor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
     const homFunctor = makeFinGrpRepresentationHomFromFunctor(signFunctor)
 
     const witness = finGrpRepresentationHomFromFunctorWitness(homFunctor)
     expect(witness.report.holds).toBe(true)
     expect(witness.witness.objectGenerators.includes(signFunctor)).toBe(true)
-    expect(witness.metadata?.some((line) => line.includes("Hom(-,target)"))).toBe(true)
+    expect(witness.metadata?.some((line: string) => line.includes("Hom(-,target)"))).toBe(true)
 
     const constructed = makeFinGrpRepresentationHomFromFunctorWithWitness(signFunctor)
     expect(constructed.functor.targetRepresentation).toBe(signFunctor)
@@ -917,14 +936,14 @@ describe("Finite group representations as functors", () => {
   })
 
   it("packages Hom(-,-) as a bifunctor with coordinated transport", () => {
-    const permutation = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const permutation: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
     const signRepresentation: Representation<string, number> = {
       F: FieldReal,
       dimV: 1,
       mat: (element) => (element === "0" ? [[1]] : [[-1]]),
     }
-    const signFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
-    const natCategory = makeFinGrpRepresentationNatCategory<number>(Z2, FieldReal)
+    const signFunctor: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, signRepresentation)
+    const natCategory: FinGrpRepresentationNatCategory<number> = makeFinGrpRepresentationNatCategory(Z2, FieldReal)
     const bifunctor = makeFinGrpRepresentationHomBifunctor(natCategory)
 
     const permutationPair = bifunctor.homSpace(permutation, permutation)
@@ -948,8 +967,8 @@ describe("Finite group representations as functors", () => {
   })
 
   it("builds witnesses for the Hom(-,-) bifunctor", () => {
-    const permutation = makeFinGrpRepresentationFunctor(Z2, representationZ2)
-    const natCategory = makeFinGrpRepresentationNatCategory<number>(Z2, FieldReal)
+    const permutation: FinRepFunctor = makeFinGrpRepresentationFunctor(Z2, representationZ2)
+    const natCategory: FinGrpRepresentationNatCategory<number> = makeFinGrpRepresentationNatCategory(Z2, FieldReal)
     const bifunctor = makeFinGrpRepresentationHomBifunctor(natCategory)
     const swapNat = makeFinGrpRepresentationNatTrans(
       permutation,

@@ -13,6 +13,8 @@ import {
   makePrismWitnessBundle,
   readOptionalWitness,
   readPrismWitness,
+  type OptionalWitnessCarrier,
+  type PrismWitnessCarrier,
 } from "./witness"
 
 /**
@@ -84,9 +86,11 @@ export type Optic<I extends HKP.Id, S, T, A, B> = (pab: HKP.Kind<I, A, B>) => HK
 
 export type LensLike<S, T, A, B> = <I extends HKP.Id>(P: Strong<I>) => Optic<I, S, T, A, B>
 
-export type PrismLike<S, T, A, B> = <I extends HKP.Id>(P: Choice<I>) => Optic<I, S, T, A, B>
+export type PrismLike<S, T, A, B> = (<I extends HKP.Id>(P: Choice<I>) => Optic<I, S, T, A, B>) &
+  PrismWitnessCarrier<S, A>
 
-export type OptionalLike<S, T, A, B> = <I extends HKP.Id>(P: Affine<I>) => Optic<I, S, T, A, B>
+export type OptionalLike<S, T, A, B> = (<I extends HKP.Id>(P: Affine<I>) => Optic<I, S, T, A, B>) &
+  OptionalWitnessCarrier<S, A>
 
 export interface Wander<I extends HKP.Id, F> extends Strong<I> {
   readonly wander: <S, T, A, B>(
@@ -98,9 +102,13 @@ export interface Wander<I extends HKP.Id, F> extends Strong<I> {
 export type TraversalLike<S, T, A, B> = <F>(applicative: Applicative<F>) => Optic<HKP.StarId<F>, S, T, A, B>
 
 const functionProfunctor: Affine<HKP.FunctionId> = {
-  dimap: (pab, f, g) => (s) => g(pab(f(s))),
-  first: (pab) => ([a, c]) => [pab(a), c] as const,
-  left: (pab) => (rac) => (isErr(rac) ? Err(rac.error) : Ok(pab(rac.value))),
+  dimap: <S, T, A, B>(pab: HKP.Kind<HKP.FunctionId, A, B>, f: (s: S) => A, g: (b: B) => T) =>
+    (s: S) => g(pab(f(s))),
+  first: <A, B, C>(pab: HKP.Kind<HKP.FunctionId, A, B>) =>
+    ([a, c]: readonly [A, C]) => [pab(a), c] as const,
+  left: <A, B, C>(pab: HKP.Kind<HKP.FunctionId, A, B>) =>
+    (rac: Result<A, C>): Result<B, C> =>
+      (isErr(rac) ? Err(pab(rac.error)) : Ok(rac.value)),
 }
 
 const forgetProfunctor = <R>(): Strong<HKP.ForgetId<R>> => ({
@@ -109,17 +117,20 @@ const forgetProfunctor = <R>(): Strong<HKP.ForgetId<R>> => ({
 })
 
 const previewProfunctor: Affine<HKP.PreviewId> = {
-  dimap: (pab, f, g) => (s) => mapO(g)(pab(f(s))),
-  first: (pab) => ([a, c]) => mapO((b) => [b, c] as const)(pab(a)),
-  left: (pab) => (rac) =>
-    isErr(rac)
-      ? Some(Err(rac.error))
-      : mapO((b) => Ok(b))(pab(rac.value)),
+  dimap: <S, T, A, B>(pab: HKP.Kind<HKP.PreviewId, A, B>, f: (s: S) => A, g: (b: B) => T) =>
+    (s: S) => mapO(g)(pab(f(s))),
+  first: <A, B, C>(pab: HKP.Kind<HKP.PreviewId, A, B>) =>
+    ([a, c]: readonly [A, C]) => mapO((b: B) => [b, c] as const)(pab(a)),
+  left: <A, B, C>(pab: HKP.Kind<HKP.PreviewId, A, B>) =>
+    (rac: Result<A, C>): Option<Result<B, C>> =>
+      (isErr(rac)
+        ? mapO((b: B): Result<B, C> => Err(b))(pab(rac.error))
+        : Some(Ok(rac.value))),
 }
 
 const taggedChoice: Choice<HKP.TaggedId> = {
   dimap: (b, _f, g) => g(b),
-  left: (b) => Ok(b),
+  left: (b) => Err(b),
 }
 
 const starWander = <F>(applicative: Applicative<F>): Wander<HKP.StarId<F>, F> => ({
@@ -139,29 +150,35 @@ const identityApplicative: Applicative<'IdK1'> = {
 
 export const fromLens = <S, A>(ln: Lens<S, A>): LensLike<S, S, A, A> =>
   <I extends HKP.Id>(P: Strong<I>) =>
-    (pab) =>
-      P.dimap(
-        P.first(pab),
+    (pab: HKP.Kind<I, A, A>) => {
+      const first = P.first(pab) as HKP.Kind<I, readonly [A, S], readonly [A, S]>
+      return P.dimap(
+        first,
         (s: S) => [ln.get(s), s] as const,
         ([a, s]: readonly [A, S]) => ln.set(a)(s),
       )
+    }
 
 export const fromPrism = <S, A>(pr: Prism<S, A>): PrismLike<S, S, A, A> => {
   const witness =
     readPrismWitness(pr) ?? makePrismWitnessBundle(pr.getOption, pr.reverseGet)
   attachPrismWitness(pr, witness)
-  const optic: PrismLike<S, S, A, A> = <I extends HKP.Id>(P: Choice<I>) =>
-    (pab) =>
-      P.dimap(
-        P.left(pab),
+  const optic = (<I extends HKP.Id>(P: Choice<I>) => {
+    const right = rightFromLeft(P)
+    return (pab: HKP.Kind<I, A, A>) => {
+      const lifted = right<A, A, S>(pab as HKP.Kind<I, A, A>)
+      return P.dimap(
+        lifted,
         (s: S) =>
           pipe(
             pr.getOption(s),
-            mapO((a): Result<A, S> => Ok(a)),
-            getOrElseO<Result<A, S>>(() => Err(s)),
+            mapO((a: A): Result<S, A> => Ok(a)),
+            getOrElseO<Result<S, A>>(() => Err(s)),
           ),
         (result) => (isOk(result) ? pr.reverseGet(result.value) : result.error),
       )
+    }
+  }) as PrismLike<S, S, A, A>
   return attachPrismWitness(optic, witness)
 }
 
@@ -173,22 +190,27 @@ export const fromOptional = <S, A>(opt: Optional<S, A>): OptionalLike<S, S, A, A
       (next, source) => opt.set(next)(source),
     )
   attachOptionalWitness(opt, witness)
-  const optic: OptionalLike<S, S, A, A> = <I extends HKP.Id>(P: Affine<I>) =>
-    (pab) =>
-      P.dimap(
-        P.left(P.first(pab)),
+  const optic = (<I extends HKP.Id>(P: Affine<I>) => {
+    const right = rightFromLeft(P)
+    return (pab: HKP.Kind<I, A, A>) => {
+      const first = P.first(pab) as HKP.Kind<I, readonly [A, S], readonly [A, S]>
+      const lifted = right<readonly [A, S], readonly [A, S], S>(first)
+      return P.dimap(
+        lifted,
         (s: S) =>
           pipe(
             opt.getOption(s),
-            mapO((a): readonly [A, S] => [a, s] as const),
-            mapO((pair): Result<readonly [A, S], S> => Ok(pair)),
-            getOrElseO<Result<readonly [A, S], S>>(() => Err(s)),
+            mapO((a: A): readonly [A, S] => [a, s] as const),
+            mapO((pair: readonly [A, S]): Result<S, readonly [A, S]> => Ok(pair)),
+            getOrElseO<Result<S, readonly [A, S]>>(() => Err(s)),
           ),
         (result) =>
           isOk(result)
             ? opt.set(result.value[0])(result.value[1])
             : result.error,
       )
+    }
+  }) as OptionalLike<S, S, A, A>
   return attachOptionalWitness(optic, witness)
 }
 
@@ -252,9 +274,9 @@ const starChoice = <F>(applicative: Applicative<F>): Choice<HKP.StarId<F>> => ({
   dimap: starWander(applicative).dimap,
   left: <A, B, C>(pab: HKP.Kind<HKP.StarId<F>, A, B>) =>
     (rac: Result<A, C>): FunctorValue<F, Result<B, C>> =>
-      isErr(rac)
-        ? applicative.map<Result<B, C>>((b: B) => Err(b))(pab(rac.error))
-        : applicative.of<Result<B, C>>(Ok(rac.value)),
+      (isErr(rac)
+        ? applicative.map((b: B): Result<B, C> => Err(b))(pab(rac.error))
+        : applicative.of<Result<B, C>>(Ok(rac.value))),
 })
 
 const starAffine = <F>(applicative: Applicative<F>): Affine<HKP.StarId<F>> & Wander<HKP.StarId<F>, F> => ({
@@ -265,16 +287,27 @@ const starAffine = <F>(applicative: Applicative<F>): Affine<HKP.StarId<F>> & Wan
 export const optionalLikeToTraversalLike = <S, T, A, B>(
   opt: OptionalLike<S, T, A, B>,
 ): TraversalLike<S, T, A, B> =>
-  <F>(applicative: Applicative<F>) => opt(starAffine(applicative))
+  <F>(applicative: Applicative<F>) => {
+    const affine = starAffine(applicative) as Affine<HKP.StarId<F>>
+    return opt(affine)
+  }
 
 export const toLens = <S, A>(optic: LensLike<S, S, A, A>): Lens<S, A> => ({
-  get: (s: S) => optic(forgetProfunctor<A>())((a: A) => a)(s),
-  set: (a: A) => (s: S) => optic(functionProfunctor)((_old: A) => a)(s),
+  get: (s: S) => {
+    const focus = optic(forgetProfunctor<A>()) as Optic<HKP.ForgetId<A>, S, S, A, A>
+    return focus((a: A) => a)(s)
+  },
+  set: (a: A) => (s: S) => {
+    const updater = optic(functionProfunctor) as Optic<HKP.FunctionId, S, S, A, A>
+    return updater((_old: A) => a)(s)
+  },
 })
 
 export const toPrism = <S, A>(optic: PrismLike<S, S, A, A>): Prism<S, A> => {
-  const getOption = (s: S) => optic(previewProfunctor)((a: A) => Some(a))(s)
-  const reverseGet = (a: A) => optic(taggedChoice)(a)
+  const preview = optic(previewProfunctor) as Optic<HKP.PreviewId, S, S, A, A>
+  const tagged = optic(taggedChoice) as Optic<HKP.TaggedId, S, S, A, A>
+  const getOption = (s: S): Option<A> => preview((a: A) => Some(a))(s) as Option<A>
+  const reverseGet = (a: A) => tagged(a)
   const base: Prism<S, A> = {
     getOption,
     reverseGet,
@@ -285,8 +318,10 @@ export const toPrism = <S, A>(optic: PrismLike<S, S, A, A>): Prism<S, A> => {
 }
 
 export const toOptional = <S, A>(optic: OptionalLike<S, S, A, A>): Optional<S, A> => {
-  const getOption = (s: S) => optic(previewProfunctor)((a: A) => Some(a))(s)
-  const setValue = (a: A, s: S) => optic(functionProfunctor)((_old: A) => a)(s)
+  const preview = optic(previewProfunctor) as Optic<HKP.PreviewId, S, S, A, A>
+  const updater = optic(functionProfunctor) as Optic<HKP.FunctionId, S, S, A, A>
+  const getOption = (s: S): Option<A> => preview((a: A) => Some(a))(s) as Option<A>
+  const setValue = (a: A, s: S) => updater((_old: A) => a)(s)
   const base: Optional<S, A> = {
     getOption,
     set: (a: A) => (s: S) => setValue(a, s),

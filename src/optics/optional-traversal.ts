@@ -13,6 +13,7 @@ import {
   lensLikeToOptionalLike,
   optionalLikeToTraversalLike,
   prismLikeToOptionalLike,
+  rightFromLeft,
   toOptional,
   toTraversal,
 } from "./profunctor"
@@ -31,29 +32,30 @@ import {
 
 /** Optional and Traversal abstractions extracted from allTS.ts. */
 export const optional = <S, A>(getOption: (s: S) => Option<A>, set: (a: A, s: S) => S): Optional<S, A> => {
-  const optic: OptionalLike<S, S, A, A> = (P) => (pab) =>
-    P.dimap(
-      P.left(P.first(pab)),
-      (s: S) =>
-        pipe(
-          getOption(s),
-          mapO((a): readonly [A, S] => [a, s] as const),
-          mapO((pair): Result<readonly [A, S], S> => Ok(pair)),
-          getOrElseO<Result<readonly [A, S], S>>(() => Err(s)),
-        ),
-      (result) =>
-        isOk(result)
-          ? set(result.value[0], result.value[1])
-          : result.error,
-    )
+  const optic: OptionalLike<S, S, A, A> = ((P) => {
+    const right = rightFromLeft(P)
+    return (pab) =>
+      P.dimap(
+        right<readonly [A, S], readonly [A, S], S>(P.first<A, A, S>(pab)),
+        (s: S) =>
+          pipe(
+            getOption(s),
+            mapO((a: A): readonly [A, S] => [a, s] as const),
+            mapO((pair: readonly [A, S]): Result<S, readonly [A, S]> => Ok(pair)),
+            getOrElseO<Result<S, readonly [A, S]>>(() => Err(s)),
+          ),
+        (result) =>
+          isOk(result)
+            ? set(result.value[0], result.value[1])
+            : result.error,
+      )
+  }) as OptionalLike<S, S, A, A>
   const base = toOptional(optic)
-  return attachOptionalBundle(
-    base,
-    makeOptionalWitnessBundle(
-      getOption,
-      (next, source) => set(next, source),
-    ),
+  const bundle = makeOptionalWitnessBundle<S, A>(
+    getOption,
+    (next, source) => set(next, source),
   )
+  return attachOptionalBundle(base, bundle, [optic])
 }
 
 export const modifyO = <S, A>(opt: Optional<S, A>, f: (a: A) => A) => (s: S): S =>
@@ -87,8 +89,8 @@ const ensureOptionalWitness = <S, A>(opt: Optional<S, A>): OptionalWitnessBundle
   }
 
   const bundle = makeOptionalWitnessBundle(
-    (source) => opt.getOption(source),
-    (next, source) => opt.set(next)(source),
+    (source: S) => opt.getOption(source),
+    (next: A, source: S) => opt.set(next)(source),
   )
 
   attachOptionalWitness(opt, bundle)
@@ -106,9 +108,15 @@ const ensurePrismWitness = <S, A>(pr: Prism<S, A>): PrismWitnessBundle<S, A> => 
   return bundle
 }
 
-const attachOptionalBundle = <S, A>(opt: Optional<S, A>, bundle: OptionalWitnessBundle<S, A>): Optional<S, A> => {
-  attachOptionalWitness(opt, bundle)
-  return opt
+const attachOptionalBundle = <S, A>(
+  opt: Optional<S, A>,
+  bundle: OptionalWitnessBundle<S, A>,
+  carriers: readonly OptionalWitnessCarrier<S, A>[] = [],
+): Optional<S, A> => {
+  for (const carrier of carriers) {
+    attachOptionalWitness(carrier, bundle)
+  }
+  return attachOptionalWitness(opt, bundle)
 }
 
 export const composeOptional = <S, A, B>(ab: Optional<A, B>) => (sa: Optional<S, A>): Optional<S, B> => {
@@ -170,17 +178,19 @@ export const composeOptional = <S, A, B>(ab: Optional<A, B>) => (sa: Optional<S,
   return attachOptionalBundle(composed, bundle)
 }
 
-export const lensToOptional = <S, A>(ln: Lens<S, A>): Optional<S, A> =>
-  attachOptionalBundle(
-    toOptional(lensLikeToOptionalLike(fromLens(ln))),
-    makeOptionalWitnessBundle(
-      (source) => Some(ln.get(source)),
-      (next, source) => ln.set(next)(source),
-    ),
+export const lensToOptional = <S, A>(ln: Lens<S, A>): Optional<S, A> => {
+  const optic = lensLikeToOptionalLike(fromLens(ln))
+  const base = toOptional(optic)
+  const bundle = makeOptionalWitnessBundle<S, A>(
+    (source: S) => Some(ln.get(source)),
+    (next: A, source: S) => ln.set(next)(source),
   )
+  return attachOptionalBundle(base, bundle, [optic])
+}
 
 export const prismToOptional = <S, A>(pr: Prism<S, A>): Optional<S, A> => {
-  const base = toOptional(prismLikeToOptionalLike(fromPrism(pr)))
+  const optionalLike = prismLikeToOptionalLike(fromPrism(pr))
+  const base = toOptional(optionalLike)
   const witness = ensurePrismWitness(pr)
   const bundle: OptionalWitnessBundle<S, A> = {
     focus: (source) => {
@@ -213,7 +223,7 @@ export const prismToOptional = <S, A>(pr: Prism<S, A>): Optional<S, A> => {
     },
   }
 
-  return attachOptionalBundle(base, bundle)
+  return attachOptionalBundle(base, bundle, [optionalLike])
 }
 
 export const optionalProp = <S>() => <K extends keyof S>(k: K): Optional<S, NonNullable<S[K]>> => optional(

@@ -60,6 +60,9 @@ describe("Profunctor optics", () => {
 
       const miss = witness!.focus({ name: "Ada", age: 32 })
       expect(miss.tag).toBe("miss")
+      if (miss.tag !== "miss") {
+        throw new Error("Expected optional focus to miss when nickname is absent")
+      }
       expect(miss.reason.tag).toBe("absent")
     })
 
@@ -69,13 +72,17 @@ describe("Profunctor optics", () => {
 
       const aliasOptional = optionalProp<AliasHolder>()("alias")
       const shortOptional = optionalProp<Alias>()("short")
-      const composed = composeOptional(shortOptional)(aliasOptional)
+      const composed: Optional<AliasHolder, string> =
+        composeOptional<AliasHolder, Alias, string>(shortOptional)(aliasOptional)
 
       const witness = readOptionalWitness(composed)
       expect(witness).toBeDefined()
 
       const miss = witness!.focus({ name: "Ada", age: 32 } as AliasHolder)
       expect(miss.tag).toBe("miss")
+      if (miss.tag !== "miss") {
+        throw new Error("Expected composed optional to miss when alias is absent")
+      }
       expect(miss.reason.tag).toBe("absent")
     })
 
@@ -91,6 +98,9 @@ describe("Profunctor optics", () => {
 
       const update = witness!.update({ kind: "square", side: 3 }, 5)
       expect(update.tag).toBe("skipped")
+      if (update.tag !== "skipped") {
+        throw new Error("Expected optional update to skip when prism rejects the focus")
+      }
       expect(update.reason.tag).toBe("absent")
 
       const prismWitness = readPrismWitness(circle)
@@ -98,6 +108,9 @@ describe("Profunctor optics", () => {
 
       const reject = prismWitness!.match({ kind: "square", side: 3 })
       expect(reject.tag).toBe("reject")
+      if (reject.tag !== "reject") {
+        throw new Error("Expected prism witness to reject non-circle shapes")
+      }
       expect(reject.reason.tag).toBe("absent")
     })
   })
@@ -218,8 +231,12 @@ describe("Profunctor optics", () => {
       expect(absentReport.getSet.skipped).toBe(true)
       expect(absentReport.failures).toHaveLength(0)
       expect(absentReport.witness.originalFocusWitness.tag).toBe("miss")
-      expect(absentReport.witness.firstUpdate.tag).toBe("skipped")
-      expect(absentReport.witness.firstUpdate.reason.tag).toBe("absent")
+      const firstAbsentUpdate = absentReport.witness.firstUpdate
+      expect(firstAbsentUpdate.tag).toBe("skipped")
+      if (firstAbsentUpdate.tag !== "skipped") {
+        throw new Error("Expected absent optional law witness to record a skipped update")
+      }
+      expect(firstAbsentUpdate.reason.tag).toBe("absent")
 
       const presentReport = checkOptionalLaws({
         optional: nickname,

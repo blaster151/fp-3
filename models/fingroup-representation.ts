@@ -16,6 +16,7 @@ import type { ArrowFamilies } from "../stdlib/arrow-families"
 import type { SimpleCat } from "../simple-cat"
 import {
   constructFunctorWithWitness,
+  type Functor,
   type FunctorCheckSamples,
   type FunctorWithWitness,
 } from "../functor"
@@ -49,11 +50,11 @@ type LinMap<R> = {
   readonly M: Matrix<R>
 }
 
-interface FinGrpActionCategory extends FiniteCategory<string, GroupElement> {
+export interface FinGrpActionCategory extends FiniteCategory<string, GroupElement> {
   readonly group: FinGrpObj
 }
 
-interface RepObj {
+export interface RepObj {
   readonly dim: number
 }
 
@@ -63,10 +64,11 @@ export interface RepMor<R> {
   readonly cod: RepObj
 }
 
-interface RepresentationCategory<R>
+export interface RepresentationCategory<R>
   extends Category<RepObj, RepMor<R>>, ArrowFamilies.HasDomCod<RepObj, RepMor<R>> {
   readonly equalMor: (left: RepMor<R>, right: RepMor<R>) => boolean
   readonly object: RepObj
+  readonly field: Representation<GroupElement, R>["F"]
 }
 
 interface VectorSpaceCategory<R>
@@ -396,6 +398,7 @@ const makeRepresentationCategory = <R>(
 
   return {
     object,
+    field,
     id: (obj: RepObj): RepMor<R> => {
       if (obj.dim !== dim) {
         throw new Error(
@@ -480,8 +483,12 @@ const blockDiagonal = <R>(
   for (const block of blocks) {
     const size = block.length
     for (let i = 0; i < size; i++) {
+      const blockRow = block[i]
+      const resultRow = result[offset + i]
+      if (!blockRow || !resultRow) continue
       for (let j = 0; j < size; j++) {
-        result[offset + i]![offset + j]! = block[i]![j]!
+        const value = blockRow[j]
+        resultRow[offset + j] = value ?? field.zero
       }
     }
     offset += size
@@ -518,11 +525,13 @@ const linearCombination = <R>(
     if (!matrix) continue
     for (let r = 0; r < rows; r++) {
       const row = matrix[r]
-      if (!row) continue
+      const resultRow = result[r]
+      if (!row || !resultRow) continue
       for (let c = 0; c < cols; c++) {
         const entry = row[c]
         if (entry === undefined) continue
-        result[r]![c]! = add(result[r]![c]!, mul(coefficient, entry))
+        const current = resultRow[c] ?? field.zero
+        resultRow[c] = add(current, mul(coefficient, entry))
       }
     }
   }
@@ -558,7 +567,9 @@ const invertSquareMatrix = <R>(
       )
     }
     for (let rowIndex = 0; rowIndex < dimension; rowIndex++) {
-      inverse[rowIndex]![columnIndex]! = solution[rowIndex] ?? field.zero
+      const inverseRow = inverse[rowIndex]
+      if (!inverseRow) continue
+      inverseRow[columnIndex] = solution[rowIndex] ?? field.zero
     }
   }
 
@@ -704,7 +715,8 @@ export const makeFinGrpProductRepresentation = <R>(
     throw new Error("makeFinGrpProductRepresentation: at least one component functor is required.")
   }
 
-  const [first, ...rest] = functors
+  const first = functors[0]!
+  const rest = functors.slice(1)
   for (const candidate of rest) {
     if (candidate.field !== first.field) {
       throw new Error(
@@ -1427,6 +1439,43 @@ export const makeFinGrpRepresentationNatTransFromLinMap = <
   return makeFinGrpRepresentationNatTrans(source, target, linMap.M, options)
 }
 
+const toUnderlyingFunctor = <R>(
+  functor: FinGrpRepresentationFunctor<R>,
+): Functor<string, GroupElement, RepObj, RepMor<R>> => ({
+  F0: (object: string) => functor.onObj(object),
+  F1: (arrow: GroupElement) => functor.onMor(arrow),
+})
+
+const ensureUnderlyingFunctorCompatibility = <
+  R,
+  F extends FinGrpRepresentationFunctor<R>,
+>(
+  functor: F,
+  candidate: Functor<string, GroupElement, RepObj, RepMor<R>>,
+  role: string,
+  generators?: ReadonlyArray<GroupElement>,
+): void => {
+  const objectName = functor.group.name
+  const expectedObject = functor.onObj(objectName)
+  const actualObject = candidate.F0(objectName)
+  if (actualObject !== expectedObject) {
+    throw new Error(
+      `${role}: natural transformation ${role} functor does not map ${objectName} to the expected representation object.`,
+    )
+  }
+
+  const sample = generators ?? functor.group.elems
+  for (const arrow of sample) {
+    const expectedArrow = functor.onMor(arrow)
+    const actualArrow = candidate.F1(arrow)
+    if (!functor.target.equalMor(actualArrow, expectedArrow)) {
+      throw new Error(
+        `${role}: natural transformation ${role} functor does not match the supplied FinGrp representation on ${arrow}.`,
+      )
+    }
+  }
+}
+
 const ensureNatTransComponentCompatibility = <
   R,
   F extends FinGrpRepresentationFunctor<R>,
@@ -1458,16 +1507,18 @@ export const finGrpRepresentationNatTransFromNaturalTransformation = <
   natTrans: NaturalTransformation<string, GroupElement, RepObj, RepMor<R>>,
   options?: FinGrpNatTransOptions,
 ): FinGrpRepresentationNatTrans<R, F, G> => {
-  if (natTrans.source !== source) {
-    throw new Error(
-      "finGrpRepresentationNatTransFromNaturalTransformation: expected natural transformation source functor to match the supplied FinGrp representation functor.",
-    )
-  }
-  if (natTrans.target !== target) {
-    throw new Error(
-      "finGrpRepresentationNatTransFromNaturalTransformation: expected natural transformation target functor to match the supplied FinGrp representation functor.",
-    )
-  }
+  ensureUnderlyingFunctorCompatibility(
+    source,
+    natTrans.source,
+    "finGrpRepresentationNatTransFromNaturalTransformation (source)",
+    options?.generators,
+  )
+  ensureUnderlyingFunctorCompatibility(
+    target,
+    natTrans.target,
+    "finGrpRepresentationNatTransFromNaturalTransformation (target)",
+    options?.generators,
+  )
 
   const component = natTrans.component(source.group.name)
   ensureNatTransComponentCompatibility(source, target, component)
@@ -1512,8 +1563,8 @@ export const finGrpRepresentationNatTransToNaturalTransformation = <
 >(
   natTrans: FinGrpRepresentationNatTrans<R, F, G>,
 ): NaturalTransformation<string, GroupElement, RepObj, RepMor<R>> => ({
-  source: natTrans.source,
-  target: natTrans.target,
+  source: toUnderlyingFunctor(natTrans.source),
+  target: toUnderlyingFunctor(natTrans.target),
   component: (object) => natTrans.component(object),
 })
 
@@ -1549,7 +1600,6 @@ const buildFinGrpRepresentationNatTransWitness = <
     "FinGrp representation natural transformation witness checks commuting matrices on generators.",
     ...(options?.metadata ?? []),
   ]
-  const equalMor = natTrans.target.target.equalMor
   const functorWitnessOptions = options?.generators
     ? { generators: options.generators }
     : undefined
@@ -1567,7 +1617,7 @@ const buildFinGrpRepresentationNatTransWitness = <
     (object) => natTrans.component(object),
     {
       samples,
-      ...(equalMor ? { equalMor } : {}),
+      equalMor: natTrans.target.target.equalMor,
       metadata,
     },
   )
@@ -1720,7 +1770,7 @@ export const finGrpRepresentationNatIsoWitness = <
   ]
 
   const forwardWitness = finGrpRepresentationNatTransWitness(iso.forward, {
-    generators: options?.generators,
+    ...(options?.generators ? { generators: options.generators } : {}),
     metadata: [
       ...baseMetadata,
       "Forward component of the natural isomorphism.",
@@ -1729,7 +1779,7 @@ export const finGrpRepresentationNatIsoWitness = <
   })
 
   const inverseWitness = finGrpRepresentationNatTransWitness(iso.inverse, {
-    generators: options?.generators,
+    ...(options?.generators ? { generators: options.generators } : {}),
     metadata: [
       ...baseMetadata,
       "Inverse component of the natural isomorphism.",
@@ -1848,10 +1898,12 @@ export const finGrpRepresentationHomSpace = <
     const result = zeroMatrix(source.field, target.dimension, source.dimension)
 
     for (let r = 0; r < target.dimension; r++) {
+      const resultRow = result[r]
+      if (!resultRow) continue
       for (let c = 0; c < source.dimension; c++) {
         const leftEntry = left[r]?.[c] ?? zero
         const rightEntry = right[r]?.[c] ?? zero
-        result[r]![c]! = add(leftEntry, rightEntry)
+        resultRow[c] = add(leftEntry, rightEntry)
       }
     }
 
@@ -1865,9 +1917,11 @@ export const finGrpRepresentationHomSpace = <
     const result = zeroMatrix(source.field, target.dimension, source.dimension)
 
     for (let r = 0; r < target.dimension; r++) {
+      const resultRow = result[r]
+      if (!resultRow) continue
       for (let c = 0; c < source.dimension; c++) {
         const entry = matrix[r]?.[c] ?? zero
-        result[r]![c]! = mul(scalar, entry)
+        resultRow[c] = mul(scalar, entry)
       }
     }
 
@@ -2050,7 +2104,11 @@ export const makeFinGrpRepresentationEndomorphismAlgebra = <
   functor: F,
   options?: FinGrpNatTransOptions,
 ): FinGrpRepresentationEndomorphismAlgebra<R, F> => {
-  const homSpace = finGrpRepresentationHomSpace(functor, functor, options)
+  const homSpace = finGrpRepresentationHomSpace<R, F, F>(
+    functor,
+    functor,
+    options,
+  )
   const multiply = matMul(functor.field)
   const identityMatrix = eye(functor.field)(functor.dimension)
   const identity = makeFinGrpRepresentationNatTrans(functor, functor, identityMatrix, options)
@@ -2106,8 +2164,11 @@ export const makeFinGrpRepresentationEndomorphismAlgebra = <
       if (!right) continue
       const product = composeMatrices(left.matrix, right.matrix)
       const coordinates = homSpace.coordinatesFromMatrix(product)
+      const firstIndex = structureConstants[i]
+      const secondIndex = firstIndex?.[j]
+      if (!firstIndex || !secondIndex) continue
       for (let k = 0; k < coordinates.length; k++) {
-        structureConstants[i]![j]![k]! = coordinates[k]!
+        secondIndex[k] = coordinates[k] ?? functor.field.zero
       }
     }
   }
@@ -2230,7 +2291,9 @@ export const checkFinGrpRepresentationNatCategoryLaws = <R>(
   const eqMatrix = eqMat(category.field)
   const multiply = matMul(category.field)
 
-  for (const object of samples.objects) {
+  const arrows = samples.arrows ?? []
+  const objects = samples.objects ?? []
+  for (const object of objects) {
     const identity = category.id(object)
     const dom = category.dom(identity)
     const cod = category.cod(identity)
@@ -2245,7 +2308,7 @@ export const checkFinGrpRepresentationNatCategoryLaws = <R>(
       continue
     }
 
-    for (const arrow of samples.arrows) {
+    for (const arrow of arrows) {
       if (category.dom(arrow) === object) {
         const composite = category.compose(arrow, identity)
         if (!eqMatrix(composite.matrix as R[][], arrow.matrix as R[][])) {
@@ -2273,7 +2336,8 @@ export const checkFinGrpRepresentationNatCategoryLaws = <R>(
     }
   }
 
-  for (const pair of samples.composablePairs) {
+  const composablePairs = samples.composablePairs ?? []
+  for (const pair of composablePairs) {
     const { f, g } = pair
     const composite = category.compose(g, f)
     const expectedMatrix = multiply(g.matrix as R[][], f.matrix as R[][])
@@ -2292,8 +2356,6 @@ export const checkFinGrpRepresentationNatCategoryLaws = <R>(
       })
     }
   }
-
-  const arrows = samples.arrows
   let associativityChecks = 0
   for (const f of arrows) {
     for (const g of arrows) {
@@ -2316,8 +2378,8 @@ export const checkFinGrpRepresentationNatCategoryLaws = <R>(
   }
 
   const details: string[] = [
-    `Checked ${samples.objects.length} objects for identity laws in the FinGrp representation natural-transformation category.`,
-    `Checked ${samples.composablePairs.length} composable pairs for matrix compatibility.`,
+    `Checked ${objects.length} objects for identity laws in the FinGrp representation natural-transformation category.`,
+    `Checked ${composablePairs.length} composable pairs for matrix compatibility.`,
     `Checked ${associativityChecks} composable triples for associativity.`,
     ...(options.metadata ?? []),
   ]
@@ -2454,6 +2516,8 @@ export const makeFinGrpRepresentationHomIntoFunctor = <R>(
   const natCategory = makeFinGrpRepresentationNatCategory<R>(source.group, source.field)
   const vectorCategory = makeVectorSpaceCategory(source.field)
   const generatorList = options?.generators
+  const natOptions: FinGrpNatTransOptions | undefined =
+    generatorList !== undefined ? { generators: generatorList } : undefined
   const multiply = matMul(source.field)
   const zero = source.field.zero
 
@@ -2474,7 +2538,11 @@ export const makeFinGrpRepresentationHomIntoFunctor = <R>(
         G
       >
     }
-    const computed = finGrpRepresentationHomSpace(source, target, { generators: generatorList })
+    const computed = finGrpRepresentationHomSpace<
+      R,
+      FinGrpRepresentationFunctor<R>,
+      G
+    >(source, target, natOptions)
     cache.set(
       target,
       computed as unknown as FinGrpRepresentationHomSpace<
@@ -2508,7 +2576,19 @@ export const makeFinGrpRepresentationHomIntoFunctor = <R>(
           )
         }
         for (let row = 0; row < rows; row++) {
-          matrix[row]![column]! = coordinates[row]!
+          const rowValues = matrix[row]
+          if (!rowValues) {
+            throw new Error(
+              "makeFinGrpRepresentationHomIntoFunctor: expected initialized row while writing post-composition coordinates.",
+            )
+          }
+          const coordinate = coordinates[row]
+          if (coordinate === undefined) {
+            throw new Error(
+              "makeFinGrpRepresentationHomIntoFunctor: missing coordinate after dimension check.",
+            )
+          }
+          rowValues[column] = coordinate
         }
       }
 
@@ -2523,7 +2603,7 @@ export const makeFinGrpRepresentationHomIntoFunctor = <R>(
     field: source.field,
     sourceRepresentation: source,
     homSpace: getHomSpace,
-    options: generatorList ? { generators: generatorList } : {},
+    options: natOptions ?? {},
   }
 }
 
@@ -2622,6 +2702,8 @@ export const makeFinGrpRepresentationHomFromFunctor = <R>(
   const natCategory = makeFinGrpRepresentationNatCategory<R>(target.group, target.field)
   const vectorCategory = makeVectorSpaceCategory(target.field)
   const generatorList = options?.generators
+  const natOptions: FinGrpNatTransOptions | undefined =
+    generatorList !== undefined ? { generators: generatorList } : undefined
   const multiply = matMul(target.field)
   const zero = target.field.zero
 
@@ -2642,7 +2724,11 @@ export const makeFinGrpRepresentationHomFromFunctor = <R>(
         FinGrpRepresentationFunctor<R>
       >
     }
-    const computed = finGrpRepresentationHomSpace(source, target, { generators: generatorList })
+    const computed = finGrpRepresentationHomSpace<
+      R,
+      F,
+      FinGrpRepresentationFunctor<R>
+    >(source, target, natOptions)
     cache.set(
       source,
       computed as unknown as FinGrpRepresentationHomSpace<
@@ -2676,7 +2762,19 @@ export const makeFinGrpRepresentationHomFromFunctor = <R>(
           )
         }
         for (let row = 0; row < rows; row++) {
-          matrix[row]![column]! = coordinates[row]!
+          const rowValues = matrix[row]
+          if (!rowValues) {
+            throw new Error(
+              "makeFinGrpRepresentationHomFromFunctor: expected initialized row while writing pre-composition coordinates.",
+            )
+          }
+          const coordinate = coordinates[row]
+          if (coordinate === undefined) {
+            throw new Error(
+              "makeFinGrpRepresentationHomFromFunctor: missing coordinate after dimension check.",
+            )
+          }
+          rowValues[column] = coordinate
         }
       }
 
@@ -2691,7 +2789,7 @@ export const makeFinGrpRepresentationHomFromFunctor = <R>(
     field: target.field,
     targetRepresentation: target,
     homSpace: getHomSpace,
-    options: generatorList ? { generators: generatorList } : {},
+    options: natOptions ?? {},
   }
 }
 
@@ -2829,6 +2927,8 @@ export const makeFinGrpRepresentationHomBifunctor = <R>(
   const domain = makeFinGrpRepresentationHomBifunctorDomain(category)
   const vectorCategory = makeVectorSpaceCategory(category.field)
   const generatorList = options?.generators
+  const natOptions: FinGrpNatTransOptions | undefined =
+    generatorList !== undefined ? { generators: generatorList } : undefined
   const zero = category.field.zero
 
   const cache = new WeakMap<
@@ -2865,13 +2965,17 @@ export const makeFinGrpRepresentationHomBifunctor = <R>(
       return cached
     }
 
-    const computed = finGrpRepresentationHomSpace(source, target, { generators: generatorList })
+    const computed = finGrpRepresentationHomSpace<
+      R,
+      FinGrpRepresentationFunctor<R>,
+      FinGrpRepresentationFunctor<R>
+    >(source, target, natOptions)
     targetCache.set(target, computed)
     return computed
   }
 
   const normalizedOptions: FinGrpRepresentationHomBifunctorOptions<R> =
-    generatorList ? { generators: generatorList } : {}
+    natOptions ?? {}
 
   return {
     source: domain,
@@ -2902,7 +3006,14 @@ export const makeFinGrpRepresentationHomBifunctor = <R>(
           )
         }
         for (let row = 0; row < rows; row++) {
-          matrix[row]![column]! = coordinates[row] ?? zero
+          const rowValues = matrix[row]
+          if (!rowValues) {
+            throw new Error(
+              "makeFinGrpRepresentationHomBifunctor: expected initialized row while transporting intertwiners.",
+            )
+          }
+          const coordinate = coordinates[row] ?? zero
+          rowValues[column] = coordinate
         }
       }
 
@@ -2957,7 +3068,7 @@ export const finGrpRepresentationHomBifunctorWitness = <R>(
 
   return constructFunctorWithWitness(
     functor.source,
-    functor.target,
+    asSimpleCategory(functor.target),
     {
       F0: (object: FinGrpRepresentationHomBifunctorObject<R>) => functor.onObj(object),
       F1: (arrow: FinGrpRepresentationHomBifunctorArrow<R>) => functor.onMor(arrow),
@@ -3036,7 +3147,8 @@ const makeRepresentationFromFinite = (
 ): Representation<GroupElement, number> => ({
   F: field,
   dimV: representation.dim,
-  mat: (element: GroupElement) => representation.matrix(element),
+  mat: (element: GroupElement) =>
+    representation.matrix(element).map((row) => row.slice()) as number[][],
 })
 
 const makeSubrepresentationFromWitness = (
@@ -3112,9 +3224,12 @@ const makeBlockDiagonalMatrix = (
   for (const matrix of matrices) {
     for (let row = 0; row < matrix.length; row += 1) {
       const entries = matrix[row]
-      if (!entries) continue
+      const resultRow = result[rowOffset + row]
+      if (!entries || !resultRow) continue
       for (let column = 0; column < entries.length; column += 1) {
-        result[rowOffset + row]![columnOffset + column] = entries[column]!
+        const value = entries[column]
+        if (value === undefined) continue
+        resultRow[columnOffset + column] = value
       }
     }
     rowOffset += matrix.length
@@ -3171,7 +3286,10 @@ export const checkFinGrpRepresentationIrreducible = (
   )
   const field = makeFiniteFieldAsField(representation.field)
   const asRepresentation = makeRepresentationFromFinite(representation, field)
-  const invariants = invariantSubspace(field)(asRepresentation, generatorList)
+  const invariants = invariantSubspace<GroupElement, number>(field)(
+    asRepresentation,
+    generatorList,
+  )
 
   if (
     representation.dim > 1 &&
@@ -3398,8 +3516,14 @@ const analyzeSemisimplicityNode = (
     options.generators,
   )
   const asRepresentation = makeRepresentationFromFinite(representation, field)
-  const functor = makeFinGrpRepresentationFunctor(representation.group, asRepresentation)
-  const invariants = invariantSubspace(field)(asRepresentation, generatorList)
+  const functor = makeFinGrpRepresentationFunctor<number>(
+    representation.group,
+    asRepresentation,
+  )
+  const invariants = invariantSubspace<GroupElement, number>(field)(
+    asRepresentation,
+    generatorList,
+  )
   const coordinateWitnesses = enumerateCoordinateSubrepresentationWitnesses(
     representation,
     options.search,
@@ -3470,11 +3594,11 @@ const analyzeSemisimplicityNode = (
 
     const subFinite = makeSubrepresentationFromWitness(representation, witness, "sub")
     const quotientFinite = makeSubrepresentationFromWitness(representation, witness, "quotient")
-    const subFunctor = makeFinGrpRepresentationFunctor(
+    const subFunctor = makeFinGrpRepresentationFunctor<number>(
       subFinite.group,
       makeRepresentationFromFinite(subFinite, field),
     )
-    const quotientFunctor = makeFinGrpRepresentationFunctor(
+    const quotientFunctor = makeFinGrpRepresentationFunctor<number>(
       quotientFinite.group,
       makeRepresentationFromFinite(quotientFinite, field),
     )
@@ -3499,7 +3623,11 @@ const analyzeSemisimplicityNode = (
       natOptions,
     )
 
-    const homSpace = finGrpRepresentationHomSpace(quotientFunctor, functor, natOptions)
+    const homSpace = finGrpRepresentationHomSpace<
+      number,
+      FinGrpRepresentationFunctor<number>,
+      FinGrpRepresentationFunctor<number>
+    >(quotientFunctor, functor, natOptions)
     const splitting = findSplittingSection(field, homSpace, quotientProjection)
     attemptDetails.push(...splitting.details)
     if (!splitting.found || !splitting.section) {
@@ -3689,7 +3817,7 @@ export const analyzeFinGrpRepresentationSemisimplicity = (
   return {
     holds: outcome.holds,
     root: outcome.node,
-    failure: outcome.failure,
+    ...(outcome.failure !== undefined ? { failure: outcome.failure } : {}),
     checkedSubrepresentations: outcome.checkedSubrepresentations,
     details: outcome.details,
   }
@@ -3789,7 +3917,8 @@ const accumulateSemisimplicitySummands = (
   generators: ReadonlyArray<GroupElement>,
   out: FinGrpRepresentationSemisimplicityAccumulatedSummand[],
 ): void => {
-  if (!node.decomposition || node.children.length === 0) {
+  const decomposition = node.decomposition
+  if (!decomposition || node.children.length === 0) {
     out.push({ node, path, inclusion: toRoot, projection: fromRoot })
     return
   }
@@ -3801,8 +3930,15 @@ const accumulateSemisimplicitySummands = (
   }
 
   const compositionOptions = generators.length > 0 ? { generators } : undefined
-  const [subNode, quotientNode] = node.children
-  const { inclusion, projection, quotientProjection, section } = node.decomposition
+  const [subCandidate, quotientCandidate] = node.children
+  if (subCandidate === undefined || quotientCandidate === undefined) {
+    throw new Error(
+      "accumulateSemisimplicitySummands: decomposition children must be defined when length is 2.",
+    )
+  }
+  const { inclusion, projection, quotientProjection: projectionToQuotient, section } = decomposition
+  const subNode = subCandidate
+  const quotientNode = quotientCandidate
 
   const subInclusion = composeFinGrpRepresentationNatTrans(
     toRoot,
@@ -3829,8 +3965,8 @@ const accumulateSemisimplicitySummands = (
     section,
     compositionOptions,
   )
-  const quotientProjection = composeFinGrpRepresentationNatTrans(
-    quotientProjection,
+  const quotientProjectionFromRoot = composeFinGrpRepresentationNatTrans(
+    projectionToQuotient,
     fromRoot,
     compositionOptions,
   )
@@ -3838,7 +3974,7 @@ const accumulateSemisimplicitySummands = (
   accumulateSemisimplicitySummands(
     quotientNode,
     quotientInclusion,
-    quotientProjection,
+    quotientProjectionFromRoot,
     path.concat("quotient"),
     generators,
     out,
@@ -3865,22 +4001,24 @@ export const collectFinGrpRepresentationSemisimplicitySummands = (
     accumulated,
   )
 
-  const summands: FinGrpRepresentationSemisimplicitySummand[] = accumulated.map(
-    (entry) => ({
-      ...entry,
-      irreducibility:
-        options.includeIrreducibility === true
-          ? checkFinGrpRepresentationIrreducible(
-              entry.node.representation,
-              options.irreducibilityOptions ?? {},
-            )
-          : undefined,
-    }),
-  )
+  const summands: FinGrpRepresentationSemisimplicitySummand[] = accumulated.map((entry) => {
+    if (options.includeIrreducibility === true) {
+      const irreducibility = checkFinGrpRepresentationIrreducible(
+        entry.node.representation,
+        options.irreducibilityOptions ?? {},
+      )
+      return { ...entry, irreducibility }
+    }
+    return { ...entry }
+  })
 
   const field = rootFunctor.field
   const eqAmbient = eqMat(field)
-  const homSpace = finGrpRepresentationHomSpace(rootFunctor, rootFunctor, compositionOptions)
+  const homSpace = finGrpRepresentationHomSpace<
+    number,
+    FinGrpRepresentationFunctor<number>,
+    FinGrpRepresentationFunctor<number>
+  >(rootFunctor, rootFunctor, compositionOptions)
   let totalCoordinates = homSpace.zeroCoordinates()
   const contributions: FinGrpRepresentationNatTrans<
     number,
@@ -4005,8 +4143,10 @@ export const collectFinGrpRepresentationIrreducibleSummands = (
   options: FinGrpRepresentationIrreducibleSummandsOptions = {},
 ): FinGrpRepresentationIrreducibleSummandsReport => {
   const summandsOptions: FinGrpRepresentationSemisimplicitySummandsOptions = {
-    generators: options.generators,
-    irreducibilityOptions: options.irreducibilityOptions,
+    ...(options.generators ? { generators: options.generators } : {}),
+    ...(options.irreducibilityOptions
+      ? { irreducibilityOptions: options.irreducibilityOptions }
+      : {}),
     includeIrreducibility: true,
   }
 
@@ -4216,16 +4356,22 @@ const buildDirectSumMatrices = (
     const projection = summand.projection.matrix
     for (let row = 0; row < inclusion.length; row += 1) {
       const entries = inclusion[row]
-      if (!entries) continue
+      const resultRow = forward[row]
+      if (!entries || !resultRow) continue
       for (let column = 0; column < entries.length; column += 1) {
-        forward[row]![columnOffset + column] = entries[column]!
+        const value = entries[column]
+        if (value === undefined) continue
+        resultRow[columnOffset + column] = value
       }
     }
     for (let row = 0; row < projection.length; row += 1) {
       const entries = projection[row]
-      if (!entries) continue
+      const resultRow = backward[rowOffset + row]
+      if (!entries || !resultRow) continue
       for (let column = 0; column < entries.length; column += 1) {
-        backward[rowOffset + row]![column] = entries[column]!
+        const value = entries[column]
+        if (value === undefined) continue
+        resultRow[column] = value
       }
     }
     columnOffset += summand.node.representation.dim
@@ -4248,7 +4394,9 @@ export const certifyFinGrpRepresentationSemisimplicity = (
       holds: false,
       root: report.root,
       summands,
-      failure: { kind: "analysis-failure", failure: report.failure },
+      ...(report.failure
+        ? { failure: { kind: "analysis-failure", failure: report.failure } }
+        : {}),
       details: combinedDetails.concat([
         "Semisimplicity analysis reported failure; skipping direct-sum certification.",
       ]),
@@ -4292,7 +4440,7 @@ export const certifyFinGrpRepresentationSemisimplicity = (
     options.label,
   )
   const field = makeFiniteFieldAsField(report.root.representation.field)
-  const directSumFunctor = makeFinGrpRepresentationFunctor(
+  const directSumFunctor = makeFinGrpRepresentationFunctor<number>(
     report.root.representation.group,
     makeRepresentationFromFinite(directSumRepresentation, field),
   )
