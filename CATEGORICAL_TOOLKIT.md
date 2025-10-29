@@ -273,7 +273,9 @@ console.log('Entwining satisfies all laws:', [
 This toolkit implements a significant portion of the theory of **entwining structures** and **mixed distributive laws**, bringing abstract categorical constructions into practical computation. The mathematical foundations span:
 
 - **Hopf algebra theory** (algebras, coalgebras, entwinings)
-- **Monoidal category theory** (tensor products, braiding)  
+- Runnable reference: [`examples/runnable/097-hopf-algebra-antipode-diagnostics.ts`](examples/runnable/097-hopf-algebra-antipode-diagnostics.ts)
+  instantiates the ℚ[C₂] Hopf algebra with property-based samples for the bialgebra and antipode laws.
+- **Monoidal category theory** (tensor products, braiding)
 - **Distributive law theory** (Beck, mixed distributive laws)
 - **Linear algebra over semirings** (tropical geometry, algebraic path problems)
 

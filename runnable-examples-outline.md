@@ -124,4 +124,6 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 94. **Coalgebra wedge and cotensor diagnostics** – Assemble the boolean identity coalgebra wedge, verify its mediating inclusions, then evolve cotensor towers to contrast stabilized progress with intentionally mutated inclusions surfaced by the coalgebra oracles. (examples/runnable/096-coalgebra-wedge-and-cotensor-diagnostics.ts, examples/coalgebra/boolean-fixtures.ts)
 
+97. **Hopf antipode diagnostics for finite group algebras** – Build the ℚ[C₂] Hopf algebra from explicit multiplication/comultiplication tables, sweep property-based samples across the bialgebra checks, and verify both antipode convolution identities via executable witnesses. (examples/runnable/097-hopf-algebra-antipode-diagnostics.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.
