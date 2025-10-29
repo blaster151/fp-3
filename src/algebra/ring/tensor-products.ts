@@ -1,26 +1,13 @@
+import type { Equality } from "./structures"
 import type { Module, ModuleHomomorphism } from "./modules"
-import { checkModuleHomomorphism } from "./modules"
-
-type Equality<A> = (left: A, right: A) => boolean
-
-const withEquality = <A>(eq?: Equality<A>): Equality<A> => eq ?? ((left, right) => Object.is(left, right))
-
-const dedupe = <A>(values: ReadonlyArray<A>, eq: Equality<A>): A[] => {
-  const result: A[] = []
-  for (const value of values) {
-    if (!result.some(existing => eq(existing, value))) {
-      result.push(value)
-    }
-  }
-  return result
-}
-
-const defaultScalarSamples = <R>(module: Module<R, unknown>): R[] => {
-  const ring = module.ring
-  const eq = withEquality(ring.eq)
-  const candidates = [ring.zero, ring.one, ring.neg(ring.one)]
-  return dedupe(candidates, eq)
-}
+import {
+  checkModuleHomomorphism,
+  dedupeWithEquality as dedupe,
+  resolveEquality,
+  resolveModuleEquality,
+  resolveModuleScalarEquality,
+  sampleModuleScalars,
+} from "./modules"
 
 export interface BilinearMap<R, Left, Right, Codomain> {
   readonly left: Module<R, Left>
@@ -44,11 +31,15 @@ export interface BilinearWitness<Left, Right, Codomain> {
   readonly value: Codomain
 }
 
-export interface BilinearCheckOptions<R, Left, Right> {
+export interface BilinearCheckOptions<R, Left, Right, Codomain> {
   readonly leftSamples?: ReadonlyArray<Left>
   readonly rightSamples?: ReadonlyArray<Right>
   readonly scalarSamples?: ReadonlyArray<R>
   readonly witnessLimit?: number
+  readonly leftEquality?: Equality<Left> | undefined
+  readonly rightEquality?: Equality<Right> | undefined
+  readonly scalarEquality?: Equality<R> | undefined
+  readonly targetEquality?: Equality<Codomain> | undefined
 }
 
 export interface BilinearCheckResult<R, Left, Right, Codomain> {
@@ -73,17 +64,17 @@ export interface BilinearCheckResult<R, Left, Right, Codomain> {
 
 export const checkBilinearMap = <R, Left, Right, Codomain>(
   bilinear: BilinearMap<R, Left, Right, Codomain>,
-  options: BilinearCheckOptions<R, Left, Right> = {},
+  options: BilinearCheckOptions<R, Left, Right, Codomain> = {},
 ): BilinearCheckResult<R, Left, Right, Codomain> => {
   const leftSampleCandidates = options.leftSamples ?? []
   const rightSampleCandidates = options.rightSamples ?? []
   const scalarSampleCandidates =
-    options.scalarSamples ?? defaultScalarSamples<R>(bilinear.left as Module<R, unknown>)
+    options.scalarSamples ?? sampleModuleScalars(bilinear.left, { equality: options.scalarEquality })
 
-  const leftEq = withEquality(bilinear.left.eq)
-  const rightEq = withEquality(bilinear.right.eq)
-  const scalarEq = withEquality(bilinear.left.ring.eq)
-  const targetEq = withEquality(bilinear.target.eq)
+  const leftEq = resolveModuleEquality(bilinear.left, options.leftEquality)
+  const rightEq = resolveModuleEquality(bilinear.right, options.rightEquality)
+  const scalarEq = resolveModuleScalarEquality(bilinear.left, options.scalarEquality)
+  const targetEq = resolveModuleEquality(bilinear.target, options.targetEquality)
 
   const leftSamples = dedupe(leftSampleCandidates, leftEq)
   const rightSamples = dedupe(rightSampleCandidates, rightEq)
@@ -259,6 +250,11 @@ export interface TensorProductCheckOptions<R, Left, Right, Tensor> {
   readonly tensorSamples?: ReadonlyArray<Tensor>
   readonly bilinearMaps?: ReadonlyArray<BilinearMap<R, Left, Right, any>>
   readonly witnessLimit?: number
+  readonly leftEquality?: Equality<Left> | undefined
+  readonly rightEquality?: Equality<Right> | undefined
+  readonly scalarEquality?: Equality<R> | undefined
+  readonly tensorEquality?: Equality<Tensor> | undefined
+  readonly bilinearTargetEquality?: Equality<unknown> | undefined
 }
 
 export interface TensorProductCheckResult<Left, Right, Tensor> {
@@ -289,13 +285,13 @@ export const checkTensorProduct = <R, Left, Right, Tensor>(
   const leftSampleCandidates = options.leftSamples ?? []
   const rightSampleCandidates = options.rightSamples ?? []
   const scalarSampleCandidates =
-    options.scalarSamples ?? defaultScalarSamples<R>(structure.left as Module<R, unknown>)
+    options.scalarSamples ?? sampleModuleScalars(structure.left, { equality: options.scalarEquality })
   const tensorSampleCandidates = options.tensorSamples ?? []
 
-  const leftEq = withEquality(structure.left.eq)
-  const rightEq = withEquality(structure.right.eq)
-  const scalarEq = withEquality(structure.left.ring.eq)
-  const tensorEq = withEquality(structure.tensor.eq)
+  const leftEq = resolveModuleEquality(structure.left, options.leftEquality)
+  const rightEq = resolveModuleEquality(structure.right, options.rightEquality)
+  const scalarEq = resolveModuleScalarEquality(structure.left, options.scalarEquality)
+  const tensorEq = resolveModuleEquality(structure.tensor, options.tensorEquality)
 
   const leftSamples = dedupe(leftSampleCandidates, leftEq)
   const rightSamples = dedupe(rightSampleCandidates, rightEq)
@@ -334,6 +330,13 @@ export const checkTensorProduct = <R, Left, Right, Tensor>(
       rightSamples,
       scalarSamples,
       witnessLimit,
+      leftEquality: leftEq,
+      rightEquality: rightEq,
+      scalarEquality: scalarEq,
+      targetEquality:
+        ((options.bilinearTargetEquality as Equality<any> | undefined) ?? bilinear.target.eq) as
+          | Equality<any>
+          | undefined,
     })
 
     if (!bilinearCheck.holds) {
@@ -342,16 +345,21 @@ export const checkTensorProduct = <R, Left, Right, Tensor>(
     }
 
     const induced = structure.induce(bilinear)
+    const targetEqualityOverride =
+      (options.bilinearTargetEquality as Equality<any> | undefined) ??
+      bilinear.target.eq ??
+      induced.target.eq
     const homomorphismCheck = checkModuleHomomorphism(induced, {
       vectorSamples: tensorSamples,
       scalarSamples,
+      targetEquality: targetEqualityOverride,
     })
 
     if (!homomorphismCheck.holds) {
       violations.push({ kind: "inducedHomomorphism", mapLabel: label, details: homomorphismCheck.details })
     }
 
-    const targetEq = withEquality(bilinear.target.eq ?? induced.target.eq)
+    const targetEq = resolveEquality(targetEqualityOverride)
 
     for (const left of leftSamples) {
       for (const right of rightSamples) {
@@ -605,21 +613,20 @@ export const checkFlatModuleOnSamples = <
   options: FlatModuleSampleOptions<R, Left, Middle, Right, Candidate, LeftTensor, MiddleTensor, RightTensor> = {},
 ): FlatModuleCheckResult<Left, Middle, Right, Candidate> => {
   const { sequence, candidate, tensors } = input
-  const scalarSampleCandidates =
-    options.scalarSamples ?? defaultScalarSamples<R>(sequence.left as Module<R, unknown>)
+  const scalarSampleCandidates = options.scalarSamples ?? sampleModuleScalars(sequence.left)
   const candidateSampleCandidates = options.candidateSamples ?? []
   const leftSampleCandidates = options.leftSamples ?? []
   const middleSampleCandidates = options.middleSamples ?? []
   const rightSampleCandidates = options.rightSamples ?? []
 
-  const scalarEq = withEquality(sequence.left.ring.eq)
-  const candidateEq = withEquality(candidate.eq)
-  const leftEq = withEquality(sequence.left.eq)
-  const middleEq = withEquality(sequence.middle.eq)
-  const rightEq = withEquality(sequence.right.eq)
-  const leftTensorEq = withEquality(tensors.left.tensor.eq)
-  const middleTensorEq = withEquality(tensors.middle.tensor.eq)
-  const rightTensorEq = withEquality(tensors.right.tensor.eq)
+  const scalarEq = resolveModuleScalarEquality(sequence.left)
+  const candidateEq = resolveModuleEquality(candidate)
+  const leftEq = resolveModuleEquality(sequence.left)
+  const middleEq = resolveModuleEquality(sequence.middle)
+  const rightEq = resolveModuleEquality(sequence.right)
+  const leftTensorEq = resolveModuleEquality(tensors.left.tensor)
+  const middleTensorEq = resolveModuleEquality(tensors.middle.tensor)
+  const rightTensorEq = resolveModuleEquality(tensors.right.tensor)
 
   const scalarSamples = dedupe(scalarSampleCandidates, scalarEq)
   const candidateSamples = dedupe(candidateSampleCandidates, candidateEq)
@@ -699,6 +706,10 @@ export const checkFlatModuleOnSamples = <
     rightSamples: candidateSamples,
     scalarSamples,
     witnessLimit,
+    leftEquality: leftEq,
+    rightEquality: candidateEq,
+    scalarEquality: scalarEq,
+    targetEquality: tensors.middle.tensor.eq,
   })
 
   if (!includeBilinearCheck.holds) {
@@ -710,6 +721,10 @@ export const checkFlatModuleOnSamples = <
     rightSamples: candidateSamples,
     scalarSamples,
     witnessLimit,
+    leftEquality: middleEq,
+    rightEquality: candidateEq,
+    scalarEquality: scalarEq,
+    targetEquality: tensors.right.tensor.eq,
   })
 
   if (!projectBilinearCheck.holds) {
@@ -730,6 +745,10 @@ export const checkFlatModuleOnSamples = <
     rightSamples: mergeSamples(leftTensorOptions.rightSamples, candidateSamples, candidateEq),
     scalarSamples: mergeSamples(leftTensorOptions.scalarSamples, scalarSamples, scalarEq),
     tensorSamples: mergeSamples(leftTensorOptions.tensorSamples, leftTensorPure, leftTensorEq),
+    leftEquality: leftTensorOptions.leftEquality ?? leftEq,
+    rightEquality: leftTensorOptions.rightEquality ?? candidateEq,
+    scalarEquality: leftTensorOptions.scalarEquality ?? scalarEq,
+    tensorEquality: leftTensorOptions.tensorEquality ?? leftTensorEq,
   })
 
   if (!leftTensorCheck.holds) {
@@ -742,6 +761,10 @@ export const checkFlatModuleOnSamples = <
     rightSamples: mergeSamples(middleTensorOptions.rightSamples, candidateSamples, candidateEq),
     scalarSamples: mergeSamples(middleTensorOptions.scalarSamples, scalarSamples, scalarEq),
     tensorSamples: mergeSamples(middleTensorOptions.tensorSamples, middleTensorPure, middleTensorEq),
+    leftEquality: middleTensorOptions.leftEquality ?? middleEq,
+    rightEquality: middleTensorOptions.rightEquality ?? candidateEq,
+    scalarEquality: middleTensorOptions.scalarEquality ?? scalarEq,
+    tensorEquality: middleTensorOptions.tensorEquality ?? middleTensorEq,
   })
 
   if (!middleTensorCheck.holds) {
@@ -754,6 +777,10 @@ export const checkFlatModuleOnSamples = <
     rightSamples: mergeSamples(rightTensorOptions.rightSamples, candidateSamples, candidateEq),
     scalarSamples: mergeSamples(rightTensorOptions.scalarSamples, scalarSamples, scalarEq),
     tensorSamples: mergeSamples(rightTensorOptions.tensorSamples, rightTensorPure, rightTensorEq),
+    leftEquality: rightTensorOptions.leftEquality ?? rightEq,
+    rightEquality: rightTensorOptions.rightEquality ?? candidateEq,
+    scalarEquality: rightTensorOptions.scalarEquality ?? scalarEq,
+    tensorEquality: rightTensorOptions.tensorEquality ?? rightTensorEq,
   })
 
   if (!rightTensorCheck.holds) {

@@ -4,10 +4,21 @@ import type {
   CoalgebraMorphism,
   CoalgebraMorphismWitness,
   ComonadStructure,
+  HopfAlgebraStructure,
+  BialgebraStructure,
+  BialgebraCompatibilityDiagnostics,
+  BialgebraCompatibilityWitness,
+  BialgebraCompatibilityComponent,
+  HopfAntipodeConvolutionDiagnostics,
+  HopfAntipodeConvolutionComparisons,
+  HopfAntipodeDiagnostics,
 } from "./coalgebra-interfaces"
 import {
   analyzeCoalgebraLaws,
   analyzeCoalgebraMorphism,
+  analyzeHopfAntipode,
+  ensureBialgebraCompatibility,
+  ensureBialgebraCompatibilityComponent,
 } from "./coalgebra-interfaces"
 
 export interface CoalgebraCounitWitness<M> {
@@ -85,3 +96,39 @@ export const buildCoalgebraMorphismCoherenceWitness = <O, M>(
     right: report.right,
   }
 }
+
+export type HopfAntipodeConvolutionWitness<M> = HopfAntipodeConvolutionDiagnostics<M>
+
+export interface HopfAntipodeWitness<M> {
+  readonly left: HopfAntipodeConvolutionWitness<M>
+  readonly right: HopfAntipodeConvolutionWitness<M>
+  readonly overall: boolean
+}
+
+export const buildHopfAntipodeWitness = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  comparisons: HopfAntipodeConvolutionComparisons<M>,
+  diagnostics?: HopfAntipodeDiagnostics<M>,
+): HopfAntipodeWitness<M> => {
+  const report = diagnostics ?? analyzeHopfAntipode(hopf, comparisons)
+  return {
+    left: report.left,
+    right: report.right,
+    overall: report.overall,
+  }
+}
+
+export interface BialgebraCompatibilityWitnesses<M> extends BialgebraCompatibilityDiagnostics<M> {}
+
+export const buildBialgebraCompatibilityComponentWitness = <O, M>(
+  bialgebra: BialgebraStructure<O, M>,
+  component: BialgebraCompatibilityComponent,
+  diagnostics?: BialgebraCompatibilityDiagnostics<M>,
+): BialgebraCompatibilityWitness<M> =>
+  diagnostics?.[component] ?? ensureBialgebraCompatibilityComponent(bialgebra, component)
+
+export const buildBialgebraCompatibilityWitness = <O, M>(
+  bialgebra: BialgebraStructure<O, M>,
+  diagnostics?: BialgebraCompatibilityDiagnostics<M>,
+): BialgebraCompatibilityWitnesses<M> =>
+  diagnostics ?? ensureBialgebraCompatibility(bialgebra)

@@ -1,7 +1,18 @@
 import type { DeepReadonly } from "../../../stdlib/deep-freeze"
-import type { Ring } from "./structures"
+import type { Equality, Ring } from "./structures"
 
-type Equality<A> = (left: A, right: A) => boolean
+export const resolveEquality = <A>(eq?: Equality<A>): Equality<A> =>
+  eq ?? ((left, right) => Object.is(left, right))
+
+export const dedupeWithEquality = <A>(values: ReadonlyArray<A>, eq: Equality<A>): A[] => {
+  const result: A[] = []
+  for (const value of values) {
+    if (!result.some(existing => eq(existing, value))) {
+      result.push(value)
+    }
+  }
+  return result
+}
 
 export interface Module<R, M> {
   readonly ring: Ring<R>
@@ -22,6 +33,34 @@ export interface ModuleHomomorphism<R, Domain, Codomain> {
   readonly label?: string
 }
 
+export const resolveModuleEquality = <R, M>(
+  module: Module<R, M>,
+  override?: Equality<M>,
+): Equality<M> => resolveEquality(override ?? module.eq)
+
+export const resolveModuleScalarEquality = <R, M>(
+  module: Module<R, M>,
+  override?: Equality<R>,
+): Equality<R> => resolveEquality(override ?? module.ring.eq)
+
+export interface ModuleScalarSamplingOptions<R> {
+  readonly candidates?: ReadonlyArray<R>
+  readonly includeDefault?: boolean
+  readonly equality?: Equality<R> | undefined
+}
+
+export const sampleModuleScalars = <R, M>(
+  module: Module<R, M>,
+  options: ModuleScalarSamplingOptions<R> = {},
+): R[] => {
+  const defaultCandidates: R[] = [module.ring.zero, module.ring.one, module.ring.neg(module.ring.one)]
+  const includeDefault = options.includeDefault ?? true
+  const provided = options.candidates ? [...options.candidates] : []
+  const candidates = includeDefault ? provided.concat(defaultCandidates) : provided
+  const equality = resolveModuleScalarEquality(module, options.equality)
+  return dedupeWithEquality(candidates, equality)
+}
+
 export type ModuleViolation<R, M> =
   | { readonly kind: "zero"; readonly value: M }
   | { readonly kind: "inverse"; readonly value: M }
@@ -36,6 +75,7 @@ export type ModuleViolation<R, M> =
 export interface ModuleCheckOptions<R, M> {
   readonly scalarSamples?: ReadonlyArray<R>
   readonly vectorSamples?: ReadonlyArray<M>
+  readonly equality?: Equality<M> | undefined
 }
 
 export type ModuleHomomorphismViolation<R, Domain, Codomain> =
@@ -55,9 +95,10 @@ export interface ModuleHomomorphismCheck<R, Domain, Codomain> {
   }
 }
 
-export interface ModuleHomomorphismCheckOptions<R, Domain> {
+export interface ModuleHomomorphismCheckOptions<R, Domain, Codomain> {
   readonly vectorSamples?: ReadonlyArray<Domain>
   readonly scalarSamples?: ReadonlyArray<R>
+  readonly targetEquality?: Equality<Codomain> | undefined
 }
 
 export interface ModuleCheckResult<R, M> {
@@ -86,7 +127,7 @@ export const checkModule = <R, M>(module: Module<R, M>, options: ModuleCheckOpti
   const ring = module.ring
   const scalarSamples = options.scalarSamples ?? []
   const vectorSamples = options.vectorSamples ?? []
-  const eq = withEquality(module.eq)
+  const eq = resolveModuleEquality(module, options.equality)
   const violations: ModuleViolation<R, M>[] = []
 
   for (const value of vectorSamples) {
@@ -171,7 +212,7 @@ export const checkModule = <R, M>(module: Module<R, M>, options: ModuleCheckOpti
 
 export const checkModuleHomomorphism = <R, Domain, Codomain>(
   hom: ModuleHomomorphism<R, Domain, Codomain>,
-  options: ModuleHomomorphismCheckOptions<R, Domain> = {},
+  options: ModuleHomomorphismCheckOptions<R, Domain, Codomain> = {},
 ): ModuleHomomorphismCheck<R, Domain, Codomain> => {
   const sourceEq = withEquality(hom.source.eq)
   const vectorCandidates = options.vectorSamples ?? hom.source.sampleElements ?? []
@@ -180,7 +221,7 @@ export const checkModuleHomomorphism = <R, Domain, Codomain>(
   )
   const vectorSamples = filteredVectors
   const scalarSamples = options.scalarSamples ?? []
-  const eq = withEquality(hom.target.eq)
+  const eq = resolveModuleEquality(hom.target, options.targetEquality)
   const violations: ModuleHomomorphismViolation<R, Domain, Codomain>[] = []
 
   const mappedVectors = vectorSamples.map(value => {
