@@ -99,6 +99,7 @@ import { stage093AffineSchemeExampleCatalogue } from "./093-affine-scheme-exampl
 import { stage094FinGrpRepresentationNaturalTransformations } from "./094-fingroup-representation-natural-transformations";
 import { stage095FinGrpRepresentationHomFunctors } from "./095-fingroup-representation-hom-functors";
 import { stage096CoalgebraWedgeAndCotensorDiagnostics } from "./096-coalgebra-wedge-and-cotensor-diagnostics";
+import { stage097HopfAlgebraAntipodeDiagnostics } from "./097-hopf-algebra-antipode-diagnostics";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -201,4 +202,5 @@ export const registry: RunnableRegistry = [
   stage094FinGrpRepresentationNaturalTransformations,
   stage095FinGrpRepresentationHomFunctors,
   stage096CoalgebraWedgeAndCotensorDiagnostics,
+  stage097HopfAlgebraAntipodeDiagnostics,
 ];
