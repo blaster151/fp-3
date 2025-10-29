@@ -31,7 +31,10 @@ the new fold/filter/wither capabilities stay easy to discover.
   identifier order so the lower numbered catalogue entries run first. You can
   pass any subset of example identifiers (for example,
   `npm run examples:runnable -- 005 006`) or `--list` to inspect the catalogue
-  without running anything.
+  without running anything. Use `--tag <tag>` (repeat the flag for multiple
+  tags) to run only the examples annotated with the requested labels—for
+  instance `npm run examples:runnable -- --tag coalgebra` runs the coalgebra
+  diagnostics in isolation.
 - `npm run examples:runnable:coverage` gathers V8 coverage data while executing
   the runnable examples. The command writes a JSON summary to
   `coverage/runnable-examples/summary.json` and prints a human-readable

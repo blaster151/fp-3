@@ -2371,6 +2371,44 @@ For diagram closure operations:
 - **Witness**: Equivalence of garbling, joint, and SOSD characterizations
 - **Tests**: `law.BSS.spec.ts`
 
+## Coalgebra Infrastructure Laws
+
+### Coalgebra counit and coassociativity
+
+- **Domain**: Coalgebras (A, α) for a comonad W on category C
+- **Statement**: ε_A ∘ α = id_A and δ_A ∘ α = Wα ∘ α
+- **Rationale**: Verifies the fundamental coalgebra structure equations before running higher constructions
+- **Oracle**: `checkCoalgebraLaws(comonad, coalgebra)` → `{overall, counit, coassociativity, witness}`
+- **Witness**: `CoalgebraLawWitness` capturing composites for counit and coassociativity
+- **Tests**: `test/coalgebra-law-oracles.spec.ts`
+
+### Coalgebra morphism coherence
+
+- **Domain**: Coalgebra morphisms f : (A, α) → (B, β)
+- **Statement**: Wf ∘ α = β ∘ f
+- **Rationale**: Ensures morphisms respect coactions so coalgebras form a category
+- **Oracle**: `checkCoalgebraMorphism(comonad, morphism)` → `{holds, diagnostics, witness}`
+- **Witness**: `CoalgebraMorphismCoherenceWitness` comparing both composites
+- **Tests**: `test/coalgebra-law-oracles.spec.ts`
+
+### Coalgebra wedge product compatibility
+
+- **Domain**: Ambient coalgebra together with left/right subcoalgebras and a wedge witness
+- **Statement**: The wedge coaction satisfies coalgebra laws and the inclusions are coalgebra morphisms that agree with the pullback mediator
+- **Rationale**: Certifies that coalgebra pullbacks support wedge products used in cotensor constructions
+- **Oracle**: `checkCoalgebraWedgeProduct(comonad, ambient, left, right, witness, pullback)` → `CoalgebraWedgeOracleReport`
+- **Witness**: `CoalgebraWedgeProductWitness` assembled from pullback data and inclusions
+- **Tests**: `test/coalgebra-wedge-cotensor-oracles.spec.ts`
+
+### Cotensor tower stabilization
+
+- **Domain**: Iterated cotensor tower built from an ambient coalgebra and partner inclusion
+- **Statement**: Each stage's wedge witness is coherent and progress reporting identifies stabilization across levels
+- **Rationale**: Detects when cotensor iteration reaches a fixed point or exposes inconsistent staging metadata
+- **Oracle**: `checkCotensorTower(comonad, tower)` → `{overall, stages, progress}`
+- **Witness**: Stage-level `CoalgebraWedgeProductWitness` records embedded in the tower
+- **Tests**: `test/coalgebra-wedge-cotensor-oracles.spec.ts`
+
 ## Oracle Coverage Summary
 
 | Domain | Laws Covered | Oracles Implemented | Tests |

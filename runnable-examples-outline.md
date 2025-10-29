@@ -122,4 +122,6 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 93. **Finite-group representation Hom functors** – Evaluate Hom(source,–) and Hom(–,target) functors for permutation versus sign representations, recover bases and coordinate conversions, and observe pre/post-composition matrices induced by intertwiners. (examples/runnable/095-fingroup-representation-hom-functors.ts)
 
+94. **Coalgebra wedge and cotensor diagnostics** – Assemble the boolean identity coalgebra wedge, verify its mediating inclusions, then evolve cotensor towers to contrast stabilized progress with intentionally mutated inclusions surfaced by the coalgebra oracles. (examples/runnable/096-coalgebra-wedge-and-cotensor-diagnostics.ts, examples/coalgebra/boolean-fixtures.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.

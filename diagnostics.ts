@@ -1,4 +1,14 @@
 import type { FiniteCategory } from "./finite-cat";
+import type {
+  Coalgebra,
+  CoalgebraMorphism,
+  ComonadStructure,
+} from "./operations/coalgebra/coalgebra-interfaces";
+import type {
+  CoalgebraCoassociativityWitness,
+  CoalgebraCounitWitness,
+  CoalgebraMorphismCoherenceWitness,
+} from "./operations/coalgebra/coalgebra-witnesses";
 
 function describeArrow<Obj, Arr>(
   base: FiniteCategory<Obj, Arr>,
@@ -90,4 +100,53 @@ export const checkInverseEquation = <Obj, Arr>(
   const identityName = kind === "left" ? `id_${String(base.src(forward))}` : `id_${String(base.dst(forward))}`
   const prefix = `${inverseEquationLabel(kind)} ≠ ${identityName}`
   return { ok: false, msg: `${prefix}. ${detail}` }
+}
+
+const describeNamed = (value: unknown): string => {
+  const name = (value as { readonly name?: unknown })?.name
+  if (typeof name === "string" && name.length > 0) {
+    return name
+  }
+  return String(value)
+}
+
+export const describeCoalgebraCounitFailure = <O, M>(
+  _comonad: ComonadStructure<O, M>,
+  coalgebra: Coalgebra<O, M>,
+  witness: CoalgebraCounitWitness<M>,
+): string => {
+  const carrier = describeNamed(coalgebra.object)
+  return [
+    `Counit law failed for ${carrier}.`,
+    `ε ∘ α = ${describeNamed(witness.composite)}`,
+    `id = ${describeNamed(witness.identity)}`,
+  ].join(" ")
+}
+
+export const describeCoalgebraCoassociativityFailure = <O, M>(
+  _comonad: ComonadStructure<O, M>,
+  coalgebra: Coalgebra<O, M>,
+  witness: CoalgebraCoassociativityWitness<M>,
+): string => {
+  const carrier = describeNamed(coalgebra.object)
+  return [
+    `Coassociativity failed for ${carrier}.`,
+    `δ ∘ α = ${describeNamed(witness.left)}`,
+    `Wα ∘ α = ${describeNamed(witness.right)}`,
+  ].join(" ")
+}
+
+export const describeCoalgebraMorphismFailure = <O, M>(
+  _comonad: ComonadStructure<O, M>,
+  morphism: CoalgebraMorphism<O, M>,
+  witness: CoalgebraMorphismCoherenceWitness<M>,
+): string => {
+  const arrow = describeNamed(morphism.morphism)
+  const source = describeNamed(morphism.source.object)
+  const target = describeNamed(morphism.target.object)
+  return [
+    `Coalgebra morphism coherence failed for ${arrow}: ${source} → ${target}.`,
+    `Wf ∘ α = ${describeNamed(witness.left)}`,
+    `β ∘ f = ${describeNamed(witness.right)}`,
+  ].join(" ")
 }
