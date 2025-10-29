@@ -107,6 +107,7 @@ import {
   checkFinGrpRepresentationIrreducible,
   analyzeFinGrpRepresentationSemisimplicity,
   collectFinGrpRepresentationSemisimplicitySummands,
+  collectFinGrpRepresentationIrreducibleSummands,
   certifyFinGrpRepresentationSemisimplicity,
 } from "../../models/fingroup-representation"
 import {

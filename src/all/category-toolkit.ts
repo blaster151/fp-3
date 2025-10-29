@@ -124,11 +124,8 @@ export type {
   RepMor as FinGrpRepresentationMorphism,
 } from "../../models/fingroup-representation"
 
-export {
-  makePrimeField,
-  enumerateCoordinateSubrepresentationWitnesses,
-  assembleCoordinateDirectSum,
-} from "../../models/fingroup-subrepresentation"
+export { enumerateCoordinateSubrepresentationWitnesses, makePrimeField } from "../../models/fingroup-subrepresentation"
+export { assembleCoordinateDirectSum } from "./triangulated"
 
 export type {
   SubrepresentationWitness,

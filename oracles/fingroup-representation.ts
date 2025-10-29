@@ -229,8 +229,12 @@ export const enumerateFinGrpRepresentationOracles = (
         }
       : {
           reuseSummandsReport: summands.report,
-          generators: options.summands?.generators,
-          irreducibilityOptions: options.summands?.irreducibilityOptions,
+          ...(options.summands?.generators
+            ? { generators: options.summands.generators }
+            : {}),
+          ...(options.summands?.irreducibilityOptions
+            ? { irreducibilityOptions: options.summands.irreducibilityOptions }
+            : {}),
         }
   const irreducibleSummands = FinGrpRepresentationOracles.irreducibleSummands(
     semisimplicity.report,
@@ -581,7 +585,7 @@ export const runFinGrpRepresentationSemisimplicityWorkflow = (
     stages.summands,
     stages.irreducibleSummands,
     stages.certification,
-  ] as const
+  ] as ReadonlyArray<FinGrpRepresentationSemisimplicityWorkflowStageSummary>
 
   const failures: FinGrpRepresentationSemisimplicityWorkflowFailure[] = []
   if (!suite.semisimplicity.holds) {
@@ -637,6 +641,8 @@ export const runFinGrpRepresentationSemisimplicityWorkflow = (
       : "Direct-sum certification failed; the constructed witnesses do not yield a natural isomorphism.",
   )
 
+  const failure = failures[0]
+
   return {
     representation,
     suite,
@@ -646,7 +652,7 @@ export const runFinGrpRepresentationSemisimplicityWorkflow = (
     hasSummands: suite.summands.holds,
     hasIrreducibleSummands: suite.irreducibleSummands.holds,
     hasCertifiedDirectSum: suite.certification.holds,
-    failure: failures[0],
+    ...(failure ? { failure } : {}),
     failures,
     stages,
     timeline,
@@ -681,15 +687,20 @@ const getStageSummaryForKey = (
 ): FinGrpRepresentationSemisimplicityWorkflowStageSummary => {
   switch (key) {
     case "irreducibility":
-      return workflow.stages.irreducibility
+      return workflow.stages
+        .irreducibility as FinGrpRepresentationSemisimplicityWorkflowStageSummary
     case "semisimplicityAnalysis":
-      return workflow.stages.semisimplicity
+      return workflow.stages
+        .semisimplicity as FinGrpRepresentationSemisimplicityWorkflowStageSummary
     case "semisimplicitySummands":
-      return workflow.stages.summands
+      return workflow.stages
+        .summands as FinGrpRepresentationSemisimplicityWorkflowStageSummary
     case "irreducibleSummands":
-      return workflow.stages.irreducibleSummands
+      return workflow.stages
+        .irreducibleSummands as FinGrpRepresentationSemisimplicityWorkflowStageSummary
     case "semisimplicityCertification":
-      return workflow.stages.certification
+      return workflow.stages
+        .certification as FinGrpRepresentationSemisimplicityWorkflowStageSummary
     default: {
       const exhaustiveCheck: never = key
       return exhaustiveCheck
@@ -938,7 +949,7 @@ export const summarizeFinGrpRepresentationSemisimplicityWorkflow = (
     stageSummaries,
     highlights: workflow.details,
     recommendations,
-    failure,
+    ...(failure ? { failure } : {}),
   }
 }
 
@@ -1115,9 +1126,8 @@ export const profileFinGrpRepresentationSemisimplicityWorkflow = (
       }
     })(irreducibilityReport)
 
-  const analysis: FinGrpRepresentationSemisimplicityWorkflowAnalysisProfile = {
+  const analysis = {
     holds: semisimplicityReport.holds,
-    failureReason: semisimplicityReport.failure?.reason,
     invariantsDimension: semisimplicityReport.root.invariantsDimension,
     invariantBasisCount: semisimplicityReport.root.invariantBasis.length,
     generatorCount: semisimplicityReport.root.generators.length,
@@ -1130,7 +1140,10 @@ export const profileFinGrpRepresentationSemisimplicityWorkflow = (
       invariantNodes: treeStructure.invariantNodes,
       maxInvariantDimension: treeStructure.maxInvariantDimension,
     },
-  }
+    ...(semisimplicityReport.failure
+      ? { failureReason: semisimplicityReport.failure.reason }
+      : {}),
+  } satisfies FinGrpRepresentationSemisimplicityWorkflowAnalysisProfile
 
   const summands: FinGrpRepresentationSemisimplicityWorkflowSummandsProfile = {
     holds: summandsReport.holds,
@@ -1153,26 +1166,32 @@ export const profileFinGrpRepresentationSemisimplicityWorkflow = (
     ),
   }
 
-  const certification: FinGrpRepresentationSemisimplicityWorkflowCertificationProfile = {
+  const certification = {
     holds: certificationReport.holds,
-    failureKind: certificationReport.failure?.kind,
-  }
+    ...(certificationReport.failure
+      ? { failureKind: certificationReport.failure.kind }
+      : {}),
+  } satisfies FinGrpRepresentationSemisimplicityWorkflowCertificationProfile
+
+  const representationProfile = {
+    dimension: representation.dim,
+    groupOrder: representation.group.elems.length,
+    generatorCount: semisimplicityReport.root.generators.length,
+    ...(representation.label ? { label: representation.label } : {}),
+  } satisfies FinGrpRepresentationSemisimplicityWorkflowProfile["representation"]
+
+  const workflowProfile = {
+    holds: workflow.holds,
+    stageCount: workflow.timeline.length,
+    failureCount: workflow.failures.length,
+    detailCount: workflow.details.length,
+    ...(workflow.failure ? { failureStage: workflow.failure.stage } : {}),
+  } satisfies FinGrpRepresentationSemisimplicityWorkflowProfile["workflow"]
 
   return {
     classification,
-    representation: {
-      label: representation.label,
-      dimension: representation.dim,
-      groupOrder: representation.group.elems.length,
-      generatorCount: semisimplicityReport.root.generators.length,
-    },
-    workflow: {
-      holds: workflow.holds,
-      stageCount: workflow.timeline.length,
-      failureCount: workflow.failures.length,
-      failureStage: workflow.failure?.stage,
-      detailCount: workflow.details.length,
-    },
+    representation: representationProfile,
+    workflow: workflowProfile,
     irreducibility,
     analysis,
     summands,
@@ -1215,7 +1234,7 @@ export const reportFinGrpRepresentationSemisimplicityWorkflow = (
     workflow,
     summary,
     profile,
-    narrative,
+    ...(narrative ? { narrative } : {}),
   }
 }
 

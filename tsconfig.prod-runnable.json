@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.prod.json",
+  "compilerOptions": {
+    "composite": false
+  },
+  "include": [
+    "run-examples-simple.ts",
+    "run-examples.ts",
+    "run-runnable-examples.ts",
+    "examples/runnable/**/*.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}

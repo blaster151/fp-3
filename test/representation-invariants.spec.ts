@@ -19,6 +19,9 @@ const swapMatrix: number[][] = [
   [F.one, F.zero],
 ]
 
+const toMutableMatrix = (matrix: ReadonlyArray<ReadonlyArray<number>>): number[][] =>
+  matrix.map((row) => [...row])
+
 const permutationRep: Representation<SwapGen, number> = {
   F,
   dimV: 2,
@@ -51,8 +54,9 @@ describe('intertwinerSpace', () => {
       expect(M.length).toBe(2)
       expect(M[0]?.length).toBe(2)
 
-      const left = multiply(swapMatrix, M)
-      const right = multiply(M, swapMatrix)
+      const mutableM = toMutableMatrix(M)
+      const left = multiply(swapMatrix, mutableM)
+      const right = multiply(mutableM, swapMatrix)
       for (let i = 0; i < 2; i++) {
         for (let j = 0; j < 2; j++) {
           expect(F.eq?.(left[i]![j]!, right[i]![j]!) ?? left[i]![j]! === right[i]![j]!).toBe(true)

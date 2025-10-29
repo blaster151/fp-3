@@ -11,6 +11,7 @@ import {
   fromPrism,
   toLens,
   toPrism,
+  rightFromLeft,
 } from "./profunctor"
 import {
   attachPrismWitness,
@@ -31,7 +32,7 @@ export const Lens = Symbol.for("Lens")
 export const lens = <S, A>(get: (s: S) => A, set: (a: A, s: S) => S): Lens<S, A> => {
   const optic: LensLike<S, S, A, A> = (P) => (pab) =>
     P.dimap(
-      P.first(pab),
+      P.first<A, A, S>(pab),
       (s: S) => [get(s), s] as const,
       ([a, s]: readonly [A, S]) => set(a, s),
     )
@@ -56,19 +57,24 @@ export type Prism<S, A> = {
 } & PrismWitnessCarrier<S, A>
 
 export const prism = <S, A>(getOption: (s: S) => Option<A>, reverseGet: (a: A) => S): Prism<S, A> => {
-  const optic: PrismLike<S, S, A, A> = (P) => (pab) =>
-    P.dimap(
-      P.left(pab),
-      (s: S) =>
-        pipe(
-          getOption(s),
-          mapO((a): Result<A, S> => Ok(a)),
-          getOrElseO<Result<A, S>>(() => Err(s)),
-        ),
-      (result) => (isOk(result) ? reverseGet(result.value) : result.error),
-    )
+  const optic: PrismLike<S, S, A, A> = ((P) => {
+    const right = rightFromLeft(P)
+    return (pab) =>
+      P.dimap(
+        right<A, A, S>(pab),
+        (s: S) =>
+          pipe(
+            getOption(s),
+            mapO((a: A): Result<S, A> => Ok(a)),
+            getOrElseO<Result<S, A>>(() => Err(s)),
+          ),
+        (result) => (isOk(result) ? reverseGet(result.value) : result.error),
+      )
+  }) as PrismLike<S, S, A, A>
   const base = toPrism(optic)
-  return attachPrismWitness(base, makePrismWitnessBundle(getOption, reverseGet))
+  const bundle = makePrismWitnessBundle(getOption, reverseGet)
+  attachPrismWitness(optic, bundle)
+  return attachPrismWitness(base, bundle)
 }
 
 const ensurePrismWitness = <S, A>(pr: Prism<S, A>): PrismWitnessBundle<S, A> => {

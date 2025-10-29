@@ -98,6 +98,8 @@ We use strict TypeScript settings. All code must pass:
 
 ```bash
 npm run typecheck:prod  # Production code (zero errors required)
+# Runnable examples stay under quarantine but have a dedicated audit gate:
+npm run typecheck:prod:runnable  # Production settings applied to runnable suites
 ```
 
 Key settings:

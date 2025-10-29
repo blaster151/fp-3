@@ -5,6 +5,11 @@ import type { CSRig } from "./semiring-utils";
 import type { Dist } from "./dist";
 import {
   TOP_VIETORIS_STATUS,
+  buildTopVietorisKolmogorovWitness,
+  checkTopVietorisKolmogorov,
+  buildTopVietorisConstantFunctionWitness,
+  checkTopVietorisConstantFunction,
+  createSpaceStructureCache,
   type ClosedSubset as TopVietorisClosedSubset,
   type DeterministicStatisticInput,
   type KolmogorovProductSpace,
@@ -12,32 +17,6 @@ import {
   type TopSpace as TopVietorisTopSpace,
 } from "./top-vietoris-examples";
 import type { Eq, Fin, FinMarkov } from "./markov-category";
-
-type TopVietorisModule = typeof import("./top-vietoris-examples");
-
-const loadTopVietorisModule = (): TopVietorisModule =>
-  require("./top-vietoris-examples") as TopVietorisModule;
-
-const buildTopVietorisKolmogorovWitnessProxy: TopVietorisModule["buildTopVietorisKolmogorovWitness"] = (
-  p,
-  s,
-  finiteMarginals,
-  label?,
-) => loadTopVietorisModule().buildTopVietorisKolmogorovWitness(p, s, finiteMarginals, label);
-
-const checkTopVietorisKolmogorovProxy: TopVietorisModule["checkTopVietorisKolmogorov"] = (witness, opts?) =>
-  loadTopVietorisModule().checkTopVietorisKolmogorov(witness, opts);
-
-const buildTopVietorisConstantFunctionWitnessProxy: TopVietorisModule["buildTopVietorisConstantFunctionWitness"] = (mkInput) =>
-  loadTopVietorisModule().buildTopVietorisConstantFunctionWitness(mkInput);
-
-const checkTopVietorisConstantFunctionProxy: TopVietorisModule["checkTopVietorisConstantFunction"] = (
-  witness,
-  options?,
-) => loadTopVietorisModule().checkTopVietorisConstantFunction(witness, options);
-
-const createSpaceStructureCacheProxy: TopVietorisModule["createSpaceStructureCache"] = () =>
-  loadTopVietorisModule().createSpaceStructureCache();
 
 // Import all oracle functions
 import { isEntire } from "./semiring-utils";
@@ -300,13 +279,13 @@ const createMarkovOracles = ({
       status: TOP_VIETORIS_STATUS,
       adapters: () => getTopVietorisAdapters(),
       kolmogorov: {
-        witness: buildTopVietorisKolmogorovWitnessProxy,
-        check: checkTopVietorisKolmogorovProxy,
+        witness: buildTopVietorisKolmogorovWitness,
+        check: checkTopVietorisKolmogorov,
       },
       constantFunction: {
-        createSpaceStructureCache: createSpaceStructureCacheProxy,
-        witness: buildTopVietorisConstantFunctionWitnessProxy,
-        check: checkTopVietorisConstantFunctionProxy,
+        createSpaceStructureCache,
+        witness: buildTopVietorisConstantFunctionWitness,
+        check: checkTopVietorisConstantFunction,
       },
     },
   },

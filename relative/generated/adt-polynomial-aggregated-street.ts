@@ -18,6 +18,35 @@ type AnalyzerReports =
   | (Readonly<Record<AnalyzerKey, AnalyzerReport>> & { readonly [key: string]: AnalyzerReport })
   | undefined;
 
+type AggregatedStreetPayloadArtifacts = {
+  readonly pending?: boolean;
+  readonly holds?: boolean;
+  readonly extensions?: ReadonlyArray<unknown>;
+  readonly kleisli?: ReadonlyArray<unknown>;
+};
+
+type AggregatedStreetArtifacts = {
+  readonly streetRollups?: AggregatedStreetPayloadArtifacts;
+  readonly reports?: AnalyzerReports;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const readAggregatedStreetArtifacts = (
+  aggregated: AggregatedStreetRollup,
+): AggregatedStreetArtifacts | undefined => {
+  const candidate = (aggregated as { readonly artifacts?: unknown }).artifacts;
+  if (!isRecord(candidate)) {
+    return undefined;
+  }
+  const streetRollups = (candidate as { readonly streetRollups?: unknown }).streetRollups;
+  if (streetRollups != null && !isRecord(streetRollups)) {
+    return undefined;
+  }
+  return candidate as AggregatedStreetArtifacts;
+};
+
 const ANALYZER_ORDER: ReadonlyArray<readonly [string, AnalyzerKey]> = [
   ["Yoneda", "yoneda"],
   ["Yoneda distributor", "yonedaDistributor"],
@@ -56,14 +85,7 @@ const describePayloadFrom = (
       readonly kleisli: number;
     }
   | undefined => {
-  const payload = aggregated.artifacts?.streetRollups as
-    | {
-        readonly pending?: boolean;
-        readonly holds?: boolean;
-        readonly extensions?: ReadonlyArray<unknown>;
-        readonly kleisli?: ReadonlyArray<unknown>;
-      }
-    | undefined;
+  const payload = readAggregatedStreetArtifacts(aggregated)?.streetRollups;
   if (!payload) {
     return undefined;
   }
@@ -88,7 +110,7 @@ export function listAggregatedStreetRollupIssues(): ReadonlyArray<string> {
 }
 
 export function summarizeAggregatedStreetRollupAnalyzers(): ReadonlyArray<string> {
-  const reports = aggregatedStreetRollup.artifacts?.reports as AnalyzerReports;
+  const reports = readAggregatedStreetArtifacts(aggregatedStreetRollup)?.reports;
   if (!reports) {
     return [];
   }

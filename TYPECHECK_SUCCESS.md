@@ -57,9 +57,10 @@ npm run precommit
 ## 🎯 Next Steps
 
 1. **Maintain:** Keep `typecheck:prod` at 0 errors
-2. **Tackle Tests:** Fix test file errors systematically
-3. **Architectural Refactor:** Coordinate markov family migration
-4. **Unquarantine:** Remove files from quarantine as fixed
+2. **Track Runnable Debt:** Use `npm run typecheck:prod:runnable` to monitor progress as example suites are repaired
+3. **Tackle Tests:** Fix test file errors systematically
+4. **Architectural Refactor:** Coordinate markov family migration
+5. **Unquarantine:** Remove files from quarantine as fixed
 
 ## 🏆 Key Patterns Learned
 

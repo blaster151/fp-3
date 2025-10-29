@@ -8,7 +8,10 @@ import {
   makeFinGrpRepresentationHomFromFunctor,
   makeFinGrpRepresentationNatTrans,
 } from "../../src/all/category-toolkit"
-import type { FinGrpRepresentationFunctor } from "../../src/all/category-toolkit"
+import type {
+  FinGrpRepresentationFunctor,
+  FinGrpRepresentationNatTrans,
+} from "../../src/all/category-toolkit"
 
 const cyclicGroup = (order: number, name: string): FinGrpObj => {
   const elems = Array.from({ length: order }, (_, index) => index.toString())
@@ -62,8 +65,16 @@ const describeLinearMap = (map: { M: ReadonlyArray<ReadonlyArray<number>> }): st
 
 const makeSwapEndomorphism = (
   functor: FinGrpRepresentationFunctor<number>,
-): ReturnType<typeof makeFinGrpRepresentationNatTrans> =>
-  makeFinGrpRepresentationNatTrans(functor, functor, [
+): FinGrpRepresentationNatTrans<
+  number,
+  FinGrpRepresentationFunctor<number>,
+  FinGrpRepresentationFunctor<number>
+> =>
+  makeFinGrpRepresentationNatTrans<
+    number,
+    FinGrpRepresentationFunctor<number>,
+    FinGrpRepresentationFunctor<number>
+  >(functor, functor, [
     [0, 1],
     [1, 0],
   ])

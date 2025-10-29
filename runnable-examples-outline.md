@@ -2,6 +2,13 @@
 
 A ranked catalogue of the runnable examples implemented in the numerically prefixed modules under `examples/runnable/`. Each entry names the logical goal of the example suite so the code can be rebuilt later in a principled order. The suites can be executed via `run-runnable-examples.ts`.
 
+## Typechecking workflow
+
+- `tsconfig.prod-runnable.json` extends the production compiler settings while re-including the runnable example entry points (`run-examples-simple.ts`, `run-examples.ts`, and `run-runnable-examples.ts`) plus the catalogued modules under `examples/runnable/`.
+- `npm run typecheck:prod:runnable` uses that configuration so CI can track the outstanding diagnostics without disturbing the existing production build.
+- When a batch of examples is repaired, re-run the command above to confirm the typecheck delta before removing the now-unnecessary exclusions from `tsconfig.prod.json`.
+- The current diagnostic snapshot lives in `TYPECHECK_RUNNABLE_STATUS.md`; update it whenever you land fixes so the team can see progress.
+
 1. **Option, Result, and Validation primitives** – Parsing numbers, guarded division, and basic validation accumulation illustrate the fundamental success/failure container semantics. (examples/runnable/001-option-result-basics.ts)
 2. **Do-notation for synchronous and asynchronous Results** – Sequencing Result and TaskResult computations with builder combinators to emphasize structured monadic control flow. (examples/runnable/002-result-do-notation.ts)
 3. **State, Reader, and Task composition patterns** – Pure state ticks, dependency-injected Readers, Task-based concurrency, and combined StateReaderTask programs demonstrate effect combination. (examples/runnable/003-effect-composition.ts)
