@@ -74,6 +74,7 @@ import { checkSchemeGluing, checkSchemeFiberProduct } from "./src/schemes/global
 import { checkFiberedCategory, checkStackDescent } from "./src/schemes/stacks";
 import { AffineSchemeExamples } from "./examples/runnable/093-affine-scheme-example-catalogue";
 import { checkHopfAntipode } from "./oracles/coalgebra/hopf-antipode-oracle";
+import { checkBialgebraCompatibility } from "./oracles/coalgebra/bialgebra-compatibility-oracle";
 import {
   analyzeFinGrpRepresentationSemisimplicity,
   certifyFinGrpRepresentationSemisimplicity,
@@ -108,6 +109,7 @@ export const AlgebraOracles = {
   },
   coalgebra: {
     hopfAntipode: checkHopfAntipode,
+    bialgebraCompatibility: checkBialgebraCompatibility,
   },
   ring: {
     primeIdeal: checkPrimeIdeal,
