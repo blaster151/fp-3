@@ -1,6 +1,7 @@
 import type { PrimeSpectrumPoint } from "../../schemes/prime-spectrum"
 import type { MultiplicativeSet } from "./multiplicative-sets"
-import type { Ring } from "./structures"
+import type { Ring, RingHomomorphism, RingHomomorphismCheck } from "./structures"
+import { checkRingHomomorphism } from "./structures"
 
 export interface LocalizationFraction<A> {
   readonly numerator: A
@@ -22,6 +23,14 @@ export interface LocalizationRingWitness<A> {
   readonly left: LocalizationFraction<A>
   readonly right: LocalizationFraction<A>
   readonly multiplier: A
+}
+
+export interface LocalizationUniversalProperty<A> {
+  readonly localizedRing: Ring<LocalizationFraction<A>>
+  readonly unit: RingHomomorphism<A, LocalizationFraction<A>>
+  readonly counit: RingHomomorphism<LocalizationFraction<A>, LocalizationFraction<A>>
+  readonly unitCheck: RingHomomorphismCheck<A, LocalizationFraction<A>>
+  readonly counitCheck: RingHomomorphismCheck<LocalizationFraction<A>, LocalizationFraction<A>>
 }
 
 export type LocalizationRingViolation<A> =
@@ -49,6 +58,7 @@ export interface LocalizationRingCheckResult<A> {
   readonly violations: ReadonlyArray<LocalizationRingViolation<A>>
   readonly witnesses: ReadonlyArray<LocalizationRingWitness<A>>
   readonly details: string
+  readonly universalProperty: LocalizationUniversalProperty<A>
   readonly metadata: {
     readonly numeratorSamples: number
     readonly denominatorSamples: number
@@ -57,6 +67,8 @@ export interface LocalizationRingCheckResult<A> {
     readonly equalityChecks: number
     readonly witnessLimit: number
     readonly witnessesRecorded: number
+    readonly unitSamplesTested: number
+    readonly counitSamplesTested: number
   }
 }
 
@@ -136,14 +148,14 @@ export const checkLocalizationRing = <A>(
   options: LocalizationRingCheckOptions<A> = {},
 ): LocalizationRingCheckResult<A> => {
   const { base, multiplicativeSet } = data
-  const eq = base.eq ?? ((left: A, right: A) => Object.is(left, right))
+  const baseEq = base.eq ?? ((left: A, right: A) => Object.is(left, right))
   const witnessLimit = options.witnessLimit ?? 8
 
-  const numeratorSamples = dedupe(options.numeratorSamples ?? [], eq)
-  const denominatorSamples = dedupe(options.denominatorSamples ?? [], eq)
+  const numeratorSamples = dedupe(options.numeratorSamples ?? [], baseEq)
+  const denominatorSamples = dedupe(options.denominatorSamples ?? [], baseEq)
   const baseFractions = options.fractionSamples ?? []
   const multiplierPool = [base.one, ...denominatorSamples, ...(options.multiplierSamples ?? [])]
-  const multiplierSamples = dedupe(multiplierPool, eq)
+  const multiplierSamples = dedupe(multiplierPool, baseEq)
 
   const witnesses: LocalizationRingWitness<A>[] = []
   const violations: LocalizationRingViolation<A>[] = []
@@ -152,9 +164,13 @@ export const checkLocalizationRing = <A>(
     violations.push({ kind: "baseMismatch" })
   }
 
+  const zero = fraction(base.zero, base.one)
+  const one = fraction(base.one, base.one)
+
   const fractions = buildFractionSamples(base, numeratorSamples, denominatorSamples, baseFractions)
+  fractions.push(zero, one)
   const fractionSamples = dedupe(fractions, (left, right) =>
-    eq(left.numerator, right.numerator) && eq(left.denominator, right.denominator),
+    baseEq(left.numerator, right.numerator) && baseEq(left.denominator, right.denominator),
   )
 
   for (const denominator of denominatorSamples) {
@@ -168,9 +184,6 @@ export const checkLocalizationRing = <A>(
       violations.push({ kind: "denominatorOutsideSet", denominator: sample.denominator })
     }
   }
-
-  const zero = fraction(base.zero, base.one)
-  const one = fraction(base.one, base.one)
 
   let equalityChecks = 0
   const recordWitness = (
@@ -190,7 +203,7 @@ export const checkLocalizationRing = <A>(
     right: LocalizationFraction<A>,
   ): boolean => {
     equalityChecks += 1
-    const witness = tryEqualityWitness(base, multiplicativeSet, multiplierSamples, left, right, eq)
+    const witness = tryEqualityWitness(base, multiplicativeSet, multiplierSamples, left, right, baseEq)
     if (witness === undefined) {
       return false
     }
@@ -263,9 +276,50 @@ export const checkLocalizationRing = <A>(
     }
   }
 
+  const fractionEq = (
+    left: LocalizationFraction<A>,
+    right: LocalizationFraction<A>,
+  ): boolean =>
+    tryEqualityWitness(base, multiplicativeSet, multiplierSamples, left, right, baseEq) !== undefined
+
+  const localizedRing: Ring<LocalizationFraction<A>> = {
+    zero,
+    one,
+    add: (left, right) => addFractions(base, left, right),
+    mul: (left, right) => multiplyFractions(base, left, right),
+    neg: (value) => negateFraction(base, value),
+    sub: (left, right) => addFractions(base, left, negateFraction(base, right)),
+    eq: fractionEq,
+  }
+
+  const unit: RingHomomorphism<A, LocalizationFraction<A>> = {
+    source: base,
+    target: localizedRing,
+    map: (value: A) => fraction(value, base.one),
+    label: "η",
+  }
+
+  const counit: RingHomomorphism<LocalizationFraction<A>, LocalizationFraction<A>> = {
+    source: localizedRing,
+    target: localizedRing,
+    map: (value) => value,
+    label: "id",
+  }
+
+  const unitCheck = checkRingHomomorphism(unit, { samples: numeratorSamples })
+  const counitCheck = checkRingHomomorphism(counit, { samples: fractionSamples })
+
+  const universalProperty: LocalizationUniversalProperty<A> = {
+    localizedRing,
+    unit,
+    counit,
+    unitCheck,
+    counitCheck,
+  }
+
   const holds = violations.length === 0
   const details = holds
-    ? `Localization ring laws verified on ${fractionSamples.length} fraction samples.`
+    ? `Localization ring laws verified on ${fractionSamples.length} fraction samples with canonical homomorphisms.`
     : `${violations.length} localization ring checks failed.`
 
   return {
@@ -273,6 +327,7 @@ export const checkLocalizationRing = <A>(
     violations,
     witnesses,
     details,
+    universalProperty,
     metadata: {
       numeratorSamples: numeratorSamples.length,
       denominatorSamples: denominatorSamples.length,
@@ -281,6 +336,8 @@ export const checkLocalizationRing = <A>(
       equalityChecks,
       witnessLimit,
       witnessesRecorded: witnesses.length,
+      unitSamplesTested: unitCheck.metadata.samplesTested,
+      counitSamplesTested: counitCheck.metadata.samplesTested,
     },
   }
 }

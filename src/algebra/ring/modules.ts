@@ -22,6 +22,8 @@ export interface Module<R, M> {
   readonly scalar: (scalar: R, value: M) => M
   readonly eq?: Equality<M>
   readonly name?: string
+  readonly contains?: (value: M) => boolean
+  readonly sampleElements?: ReadonlyArray<M>
 }
 
 export interface ModuleHomomorphism<R, Domain, Codomain> {
@@ -79,6 +81,7 @@ export interface ModuleCheckOptions<R, M> {
 export type ModuleHomomorphismViolation<R, Domain, Codomain> =
   | { readonly kind: "addition"; readonly pair: DeepReadonly<[Domain, Domain]> }
   | { readonly kind: "scalar"; readonly scalar: R; readonly value: Domain }
+  | { readonly kind: "targetMembership"; readonly preimage: Domain; readonly image: Codomain }
 
 export interface ModuleHomomorphismCheck<R, Domain, Codomain> {
   readonly holds: boolean
@@ -108,10 +111,19 @@ export interface ModuleCheckResult<R, M> {
   }
 }
 
-export const checkModule = <R, M>(
-  module: Module<R, M>,
-  options: ModuleCheckOptions<R, M> = {},
-): ModuleCheckResult<R, M> => {
+const withEquality = <A>(eq?: Equality<A>): Equality<A> => eq ?? ((left, right) => Object.is(left, right))
+
+const dedupeWith = <A>(values: ReadonlyArray<A>, eq: Equality<A>): A[] => {
+  const result: A[] = []
+  for (const value of values) {
+    if (!result.some(existing => eq(existing, value))) {
+      result.push(value)
+    }
+  }
+  return result
+}
+
+export const checkModule = <R, M>(module: Module<R, M>, options: ModuleCheckOptions<R, M> = {}): ModuleCheckResult<R, M> => {
   const ring = module.ring
   const scalarSamples = options.scalarSamples ?? []
   const vectorSamples = options.vectorSamples ?? []
@@ -202,17 +214,32 @@ export const checkModuleHomomorphism = <R, Domain, Codomain>(
   hom: ModuleHomomorphism<R, Domain, Codomain>,
   options: ModuleHomomorphismCheckOptions<R, Domain, Codomain> = {},
 ): ModuleHomomorphismCheck<R, Domain, Codomain> => {
-  const vectorSamples = options.vectorSamples ?? []
+  const sourceEq = withEquality(hom.source.eq)
+  const vectorCandidates = options.vectorSamples ?? hom.source.sampleElements ?? []
+  const filteredVectors = dedupeWith(vectorCandidates, sourceEq).filter(value =>
+    hom.source.contains ? hom.source.contains(value) : true,
+  )
+  const vectorSamples = filteredVectors
   const scalarSamples = options.scalarSamples ?? []
   const eq = resolveModuleEquality(hom.target, options.targetEquality)
   const violations: ModuleHomomorphismViolation<R, Domain, Codomain>[] = []
 
+  const mappedVectors = vectorSamples.map(value => {
+    const image = hom.map(value)
+    if (hom.target.contains && !hom.target.contains(image)) {
+      violations.push({ kind: "targetMembership", preimage: value, image })
+    }
+    return image
+  })
+
   let additivePairsChecked = 0
-  for (const left of vectorSamples) {
-    for (const right of vectorSamples) {
+  for (let leftIndex = 0; leftIndex < vectorSamples.length; leftIndex += 1) {
+    const left = vectorSamples[leftIndex]!
+    const mappedLeft = mappedVectors[leftIndex]!
+    for (let rightIndex = 0; rightIndex < vectorSamples.length; rightIndex += 1) {
+      const right = vectorSamples[rightIndex]!
+      const mappedRight = mappedVectors[rightIndex]!
       additivePairsChecked++
-      const mappedLeft = hom.map(left)
-      const mappedRight = hom.map(right)
       const additionPreserved = eq(
         hom.map(hom.source.add(left, right)),
         hom.target.add(mappedLeft, mappedRight),
@@ -227,10 +254,14 @@ export const checkModuleHomomorphism = <R, Domain, Codomain>(
 
   let scalarPairsChecked = 0
   for (const scalar of scalarSamples) {
-    for (const value of vectorSamples) {
+    for (let index = 0; index < vectorSamples.length; index += 1) {
+      const value = vectorSamples[index]!
       scalarPairsChecked++
       const mappedScalar = hom.map(hom.source.scalar(scalar, value))
-      const scalarMapped = hom.target.scalar(scalar, hom.map(value))
+      const scalarMapped = hom.target.scalar(scalar, mappedVectors[index]!)
+      if (hom.target.contains && !hom.target.contains(mappedScalar)) {
+        violations.push({ kind: "targetMembership", preimage: value, image: mappedScalar })
+      }
       const scalarPreserved = eq(mappedScalar, scalarMapped)
 
       if (!scalarPreserved) {
