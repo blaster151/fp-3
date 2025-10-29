@@ -98,6 +98,7 @@ import { stage092CommutativeRingSampleLibrary } from "./092-commutative-ring-sam
 import { stage093AffineSchemeExampleCatalogue } from "./093-affine-scheme-example-catalogue";
 import { stage094FinGrpRepresentationNaturalTransformations } from "./094-fingroup-representation-natural-transformations";
 import { stage095FinGrpRepresentationHomFunctors } from "./095-fingroup-representation-hom-functors";
+import { stage096CoalgebraWedgeAndCotensorDiagnostics } from "./096-coalgebra-wedge-and-cotensor-diagnostics";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -199,4 +200,5 @@ export const registry: RunnableRegistry = [
   stage093AffineSchemeExampleCatalogue,
   stage094FinGrpRepresentationNaturalTransformations,
   stage095FinGrpRepresentationHomFunctors,
+  stage096CoalgebraWedgeAndCotensorDiagnostics,
 ];
