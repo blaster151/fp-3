@@ -38,6 +38,11 @@ import {
 import { checkPrimeIdeal, checkLocalRingAtPrime } from "./src/algebra/ring/prime-ideals";
 import { checkMultiplicativeSet } from "./src/algebra/ring/multiplicative-sets";
 import { checkLocalizationRing } from "./src/algebra/ring/localizations";
+import { analyzePrimeLocalization } from "./src/algebra/ring/localization-scenarios";
+import { checkIdeal } from "./src/algebra/ring/ideals";
+import { checkRingCategory } from "./src/algebra/ring/category";
+import { checkSubmodule, checkQuotientModule } from "./src/algebra/ring/submodules";
+import { checkQuotientRing } from "./src/algebra/ring/quotients";
 import {
   checkFinitelyGeneratedModule,
   checkNoetherianModule,
@@ -106,10 +111,16 @@ export const AlgebraOracles = {
     cringPlusInitialUnit: checkCRingPlusInitialSemicartesian,
   },
   ring: {
+    category: checkRingCategory,
+    ideal: checkIdeal,
     primeIdeal: checkPrimeIdeal,
     multiplicativeSet: checkMultiplicativeSet,
     localization: checkLocalizationRing,
+    primeLocalization: analyzePrimeLocalization,
     localRing: checkLocalRingAtPrime,
+    quotientRing: checkQuotientRing,
+    submodule: checkSubmodule,
+    quotientModule: checkQuotientModule,
     finitelyGeneratedModule: checkFinitelyGeneratedModule,
     // Ascending-chain harness layered on finitely generated module checks
     noetherianModule: checkNoetherianModule,
