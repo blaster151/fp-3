@@ -77,6 +77,9 @@ const hopf: HopfAlgebraStructure<HopfObject, HopfMorphism> = {
     copy: { tag: "id", name: "Δ" },
     discard: { tag: "id", name: "ε" },
   },
+  tensorWitnesses: {
+    middleSwap: identity,
+  },
   antipode: { tag: "id", name: "S" },
 }
 

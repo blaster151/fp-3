@@ -5,6 +5,10 @@ import type {
   CoalgebraMorphismWitness,
   ComonadStructure,
   HopfAlgebraStructure,
+  BialgebraStructure,
+  BialgebraCompatibilityDiagnostics,
+  BialgebraCompatibilityWitness,
+  BialgebraCompatibilityComponent,
   HopfAntipodeConvolutionDiagnostics,
   HopfAntipodeConvolutionComparisons,
   HopfAntipodeDiagnostics,
@@ -13,6 +17,8 @@ import {
   analyzeCoalgebraLaws,
   analyzeCoalgebraMorphism,
   analyzeHopfAntipode,
+  ensureBialgebraCompatibility,
+  ensureBialgebraCompatibilityComponent,
 } from "./coalgebra-interfaces"
 
 export interface CoalgebraCounitWitness<M> {
@@ -111,3 +117,18 @@ export const buildHopfAntipodeWitness = <O, M>(
     overall: report.overall,
   }
 }
+
+export interface BialgebraCompatibilityWitnesses<M> extends BialgebraCompatibilityDiagnostics<M> {}
+
+export const buildBialgebraCompatibilityComponentWitness = <O, M>(
+  bialgebra: BialgebraStructure<O, M>,
+  component: BialgebraCompatibilityComponent,
+  diagnostics?: BialgebraCompatibilityDiagnostics<M>,
+): BialgebraCompatibilityWitness<M> =>
+  diagnostics?.[component] ?? ensureBialgebraCompatibilityComponent(bialgebra, component)
+
+export const buildBialgebraCompatibilityWitness = <O, M>(
+  bialgebra: BialgebraStructure<O, M>,
+  diagnostics?: BialgebraCompatibilityDiagnostics<M>,
+): BialgebraCompatibilityWitnesses<M> =>
+  diagnostics ?? ensureBialgebraCompatibility(bialgebra)
