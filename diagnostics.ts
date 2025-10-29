@@ -3,11 +3,13 @@ import type {
   Coalgebra,
   CoalgebraMorphism,
   ComonadStructure,
+  HopfAlgebraStructure,
 } from "./operations/coalgebra/coalgebra-interfaces";
 import type {
   CoalgebraCoassociativityWitness,
   CoalgebraCounitWitness,
   CoalgebraMorphismCoherenceWitness,
+  HopfAntipodeConvolutionWitness,
 } from "./operations/coalgebra/coalgebra-witnesses";
 
 function describeArrow<Obj, Arr>(
@@ -148,5 +150,19 @@ export const describeCoalgebraMorphismFailure = <O, M>(
     `Coalgebra morphism coherence failed for ${arrow}: ${source} → ${target}.`,
     `Wf ∘ α = ${describeNamed(witness.left)}`,
     `β ∘ f = ${describeNamed(witness.right)}`,
+  ].join(" ")
+}
+
+export const describeHopfAntipodeFailure = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  side: "left" | "right",
+  witness: HopfAntipodeConvolutionWitness<M>,
+): string => {
+  const carrier = describeNamed(hopf.algebra.object)
+  const operation = side === "left" ? "S * id" : "id * S"
+  return [
+    `Hopf antipode ${side} convolution failed on ${carrier}.`,
+    `${operation} = ${describeNamed(witness.actual)}`,
+    `η ∘ ε = ${describeNamed(witness.expected)}`,
   ].join(" ")
 }

@@ -73,6 +73,7 @@ import { checkStructureSheaf } from "./src/schemes/structure-sheaf";
 import { checkSchemeGluing, checkSchemeFiberProduct } from "./src/schemes/global-schemes";
 import { checkFiberedCategory, checkStackDescent } from "./src/schemes/stacks";
 import { AffineSchemeExamples } from "./examples/runnable/093-affine-scheme-example-catalogue";
+import { checkHopfAntipode } from "./oracles/coalgebra/hopf-antipode-oracle";
 import {
   analyzeFinGrpRepresentationSemisimplicity,
   certifyFinGrpRepresentationSemisimplicity,
@@ -104,6 +105,9 @@ export interface RelativeMonadLawCheckResult<Obj, Arr, Payload, Evidence> {
 export const AlgebraOracles = {
   semicartesian: {
     cringPlusInitialUnit: checkCRingPlusInitialSemicartesian,
+  },
+  coalgebra: {
+    hopfAntipode: checkHopfAntipode,
   },
   ring: {
     primeIdeal: checkPrimeIdeal,

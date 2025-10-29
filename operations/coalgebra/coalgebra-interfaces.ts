@@ -1,5 +1,6 @@
 import type { Category } from "../../stdlib/category"
 import type { ArrowFamilies } from "../../stdlib/arrow-families"
+import type { CategoryLimits } from "../../stdlib/category-limits"
 
 /**
  * Endofunctor on a base category. Used to package the object/morphism actions
@@ -257,5 +258,81 @@ export const analyzeCoalgebraMorphism = <O, M>(
     left,
     right,
     holds: equality(left, right),
+  }
+}
+
+/**
+ * Algebra object structure. Mirrors the comonoid helper above but for
+ * multiplication/unit data so we can package bialgebras and Hopf algebras.
+ */
+export interface AlgebraStructure<O, M> {
+  readonly object: O
+  readonly multiply: M
+  readonly unit: M
+}
+
+/** Morphism of algebras preserving multiplication/unit data. */
+export interface AlgebraMorphism<O, M> {
+  readonly domain: AlgebraStructure<O, M>
+  readonly codomain: AlgebraStructure<O, M>
+  readonly arrow: M
+}
+
+/** Bundled algebra and comonoid data on the same carrier object. */
+export interface BialgebraStructure<O, M> {
+  readonly category: Category<O, M> & ArrowFamilies.HasDomCod<O, M>
+  readonly tensor: CategoryLimits.TensorProductStructure<O, M>
+  readonly algebra: AlgebraStructure<O, M>
+  readonly comonoid: ComonoidStructure<O, M>
+}
+
+/** Hopf algebra obtained by adjoining an antipode to a bialgebra. */
+export interface HopfAlgebraStructure<O, M> extends BialgebraStructure<O, M> {
+  readonly antipode: M
+}
+
+/**
+ * Raw convolution data needed to check the antipode axioms. The `actual`
+ * morphisms will typically be populated via convolution products once the
+ * tensor helpers are wired in a later pass, while `expected` records the
+ * counit/unit composite acting as the convolution identity.
+ */
+export interface HopfAntipodeConvolutionComparison<M> {
+  readonly actual: M
+  readonly expected: M
+}
+
+export interface HopfAntipodeConvolutionComparisons<M> {
+  readonly left: HopfAntipodeConvolutionComparison<M>
+  readonly right: HopfAntipodeConvolutionComparison<M>
+}
+
+export interface HopfAntipodeConvolutionDiagnostics<M> extends HopfAntipodeConvolutionComparison<M> {
+  readonly holds: boolean
+}
+
+/** Equality-focused diagnostics for both sides of the antipode equations. */
+export interface HopfAntipodeDiagnostics<M> {
+  readonly left: HopfAntipodeConvolutionDiagnostics<M>
+  readonly right: HopfAntipodeConvolutionDiagnostics<M>
+  readonly overall: boolean
+}
+
+/**
+ * Compare the convolution composites S * id and id * S against the
+ * convolution identity η ∘ ε. Later passes will supply the actual
+ * convolution data via the `comparisons` argument.
+ */
+export const analyzeHopfAntipode = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  comparisons: HopfAntipodeConvolutionComparisons<M>,
+): HopfAntipodeDiagnostics<M> => {
+  const equality = morphismEquality(hopf.category)
+  const leftHolds = equality(comparisons.left.actual, comparisons.left.expected)
+  const rightHolds = equality(comparisons.right.actual, comparisons.right.expected)
+  return {
+    left: { ...comparisons.left, holds: leftHolds },
+    right: { ...comparisons.right, holds: rightHolds },
+    overall: leftHolds && rightHolds,
   }
 }
