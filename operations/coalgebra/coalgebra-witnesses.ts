@@ -4,10 +4,15 @@ import type {
   CoalgebraMorphism,
   CoalgebraMorphismWitness,
   ComonadStructure,
+  HopfAlgebraStructure,
+  HopfAntipodeConvolutionDiagnostics,
+  HopfAntipodeConvolutionComparisons,
+  HopfAntipodeDiagnostics,
 } from "./coalgebra-interfaces"
 import {
   analyzeCoalgebraLaws,
   analyzeCoalgebraMorphism,
+  analyzeHopfAntipode,
 } from "./coalgebra-interfaces"
 
 export interface CoalgebraCounitWitness<M> {
@@ -83,5 +88,26 @@ export const buildCoalgebraMorphismCoherenceWitness = <O, M>(
     holds: report.holds,
     left: report.left,
     right: report.right,
+  }
+}
+
+export type HopfAntipodeConvolutionWitness<M> = HopfAntipodeConvolutionDiagnostics<M>
+
+export interface HopfAntipodeWitness<M> {
+  readonly left: HopfAntipodeConvolutionWitness<M>
+  readonly right: HopfAntipodeConvolutionWitness<M>
+  readonly overall: boolean
+}
+
+export const buildHopfAntipodeWitness = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  comparisons: HopfAntipodeConvolutionComparisons<M>,
+  diagnostics?: HopfAntipodeDiagnostics<M>,
+): HopfAntipodeWitness<M> => {
+  const report = diagnostics ?? analyzeHopfAntipode(hopf, comparisons)
+  return {
+    left: report.left,
+    right: report.right,
+    overall: report.overall,
   }
 }

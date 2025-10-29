@@ -1,6 +1,7 @@
 export * from "./balanced"
 export * from "./coalgebra/coalgebra-law-oracles"
 export * from "./coalgebra/cotensor-oracles"
+export * from "./coalgebra/hopf-antipode-oracle"
 export * from "./fingroup-representation"
 export * from "./inverses-oracles"
 export * from "./iso-axioms"
