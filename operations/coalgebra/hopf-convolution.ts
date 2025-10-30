@@ -3,6 +3,8 @@ import type {
   HopfAlgebraStructure,
   HopfAntipodeConvolutionComparisons,
   HopfAntipodeDiagnostics,
+  HopfAntipodeDerivedOptions,
+  HopfAntipodePropertySampling,
 } from "./coalgebra-interfaces"
 import { analyzeHopfAntipode } from "./coalgebra-interfaces"
 
@@ -29,10 +31,18 @@ export const buildHopfConvolutionIdentity = <O, M>(
   bialgebra: BialgebraStructure<O, M>,
 ): M => bialgebra.category.compose(bialgebra.algebra.unit, bialgebra.comonoid.discard)
 
-export interface HopfAntipodeConvolutionOptions<M> {
+export interface HopfAntipodeConvolutionOptions<
+  O,
+  M,
+  Grade = unknown,
+  Trace = unknown,
+  Sample = unknown,
+> {
   readonly expected?: M
   readonly leftPair?: readonly [M, M]
   readonly rightPair?: readonly [M, M]
+  readonly derived?: HopfAntipodeDerivedOptions<O, M, Grade, Trace>
+  readonly propertySampling?: HopfAntipodePropertySampling<M, Sample>
 }
 
 /**
@@ -41,9 +51,15 @@ export interface HopfAntipodeConvolutionOptions<M> {
  * identity, while still allowing callers to override the morphism pairs or the
  * expected identity when specialized data is available.
  */
-export const buildHopfAntipodeConvolutionComparisons = <O, M>(
+export const buildHopfAntipodeConvolutionComparisons = <
+  O,
+  M,
+  Grade = unknown,
+  Trace = unknown,
+  Sample = unknown,
+>(
   hopf: HopfAlgebraStructure<O, M>,
-  options: HopfAntipodeConvolutionOptions<M> = {},
+  options: HopfAntipodeConvolutionOptions<O, M, Grade, Trace, Sample> = {},
 ): HopfAntipodeConvolutionComparisons<M> => {
   const identityArrow = hopf.category.id(hopf.algebra.object)
   const leftPair = options.leftPair ?? [hopf.antipode, identityArrow] as const
@@ -67,8 +83,18 @@ export const buildHopfAntipodeConvolutionComparisons = <O, M>(
  * antipode laws and immediately analyzes them using the Hopf algebra's ambient
  * morphism equality.
  */
-export const analyzeHopfAntipodeViaConvolution = <O, M>(
+export const analyzeHopfAntipodeViaConvolution = <
+  O,
+  M,
+  Grade = unknown,
+  Trace = unknown,
+  Sample = unknown,
+>(
   hopf: HopfAlgebraStructure<O, M>,
-  options: HopfAntipodeConvolutionOptions<M> = {},
-): HopfAntipodeDiagnostics<M> =>
-  analyzeHopfAntipode(hopf, buildHopfAntipodeConvolutionComparisons(hopf, options))
+  options: HopfAntipodeConvolutionOptions<O, M, Grade, Trace, Sample> = {},
+): HopfAntipodeDiagnostics<M, Grade, Trace> =>
+  analyzeHopfAntipode(
+    hopf,
+    buildHopfAntipodeConvolutionComparisons(hopf, options),
+    options.derived,
+  )

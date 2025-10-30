@@ -2,15 +2,16 @@ import type {
   HopfAlgebraStructure,
   HopfAntipodeConvolutionComparisons,
   HopfAntipodeDiagnostics,
+  HopfAntipodePropertySamplingReport,
 } from "../../operations/coalgebra/coalgebra-interfaces"
-import { analyzeHopfAntipode } from "../../operations/coalgebra/coalgebra-interfaces"
+import { analyzeHopfAntipode, evaluateHopfAntipodeOnSamples } from "../../operations/coalgebra/coalgebra-interfaces"
 import type { HopfAntipodeConvolutionWitness, HopfAntipodeWitness } from "../../operations/coalgebra/coalgebra-witnesses"
 import {
   buildHopfAntipodeConvolutionComparisons,
   type HopfAntipodeConvolutionOptions,
 } from "../../operations/coalgebra/hopf-convolution"
 import { buildHopfAntipodeWitness } from "../../operations/coalgebra/coalgebra-witnesses"
-import { describeHopfAntipodeFailure } from "../../diagnostics"
+import { describeHopfAntipodeFailure, summarizeHopfAntipodePropertySampling } from "../../diagnostics"
 
 export interface HopfAntipodeOracleComponent<M> {
   readonly holds: boolean
@@ -18,16 +19,19 @@ export interface HopfAntipodeOracleComponent<M> {
   readonly details?: string
 }
 
-export interface HopfAntipodeOracleReport<M> {
+export interface HopfAntipodeOracleReport<M, Grade = unknown, Trace = unknown, Sample = unknown> {
   readonly overall: boolean
   readonly left: HopfAntipodeOracleComponent<M>
   readonly right: HopfAntipodeOracleComponent<M>
-  readonly diagnostics: HopfAntipodeDiagnostics<M>
+  readonly diagnostics: HopfAntipodeDiagnostics<M, Grade, Trace>
   readonly witness: HopfAntipodeWitness<M>
   readonly comparisons: HopfAntipodeConvolutionComparisons<M>
+  readonly propertySampling?: HopfAntipodePropertySamplingReport<Sample>
+  readonly propertySamplingSummary?: string
 }
 
-export type HopfAntipodeOracleOptions<M> = HopfAntipodeConvolutionOptions<M>
+export type HopfAntipodeOracleOptions<O, M, Grade = unknown, Trace = unknown, Sample = unknown> =
+  HopfAntipodeConvolutionOptions<O, M, Grade, Trace, Sample>
 
 const component = <O, M>(
   hopf: HopfAlgebraStructure<O, M>,
@@ -42,13 +46,25 @@ const component = <O, M>(
   }
 }
 
-export const checkHopfAntipode = <O, M>(
+export const checkHopfAntipode = <
+  O,
+  M,
+  Grade = unknown,
+  Trace = unknown,
+  Sample = unknown,
+>(
   hopf: HopfAlgebraStructure<O, M>,
-  options: HopfAntipodeOracleOptions<M> = {},
-): HopfAntipodeOracleReport<M> => {
+  options: HopfAntipodeOracleOptions<O, M, Grade, Trace, Sample> = {},
+): HopfAntipodeOracleReport<M, Grade, Trace, Sample> => {
   const comparisons = buildHopfAntipodeConvolutionComparisons(hopf, options)
-  const diagnostics = analyzeHopfAntipode(hopf, comparisons)
+  const diagnostics = analyzeHopfAntipode(hopf, comparisons, options.derived)
   const witness = buildHopfAntipodeWitness(hopf, comparisons, diagnostics)
+  const propertySampling = options.propertySampling
+    ? evaluateHopfAntipodeOnSamples(comparisons, options.propertySampling)
+    : undefined
+  const propertySamplingSummary = propertySampling
+    ? summarizeHopfAntipodePropertySampling(propertySampling)
+    : undefined
   return {
     overall: diagnostics.overall,
     left: component(hopf, "left", witness.left),
@@ -56,5 +72,7 @@ export const checkHopfAntipode = <O, M>(
     diagnostics,
     witness,
     comparisons,
+    ...(propertySampling ? { propertySampling } : {}),
+    ...(propertySamplingSummary ? { propertySamplingSummary } : {}),
   }
 }
