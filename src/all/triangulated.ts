@@ -3897,6 +3897,33 @@ const buildBinaryProductWitness = (A: FinSetObj, B: FinSetObj) => {
   return { obj, proj1, proj2, pair }
 }
 
+type FinSetBinaryProductWitness = ReturnType<typeof buildBinaryProductWitness>
+
+const finsetBinaryProductCache = new WeakMap<
+  FinSetObj,
+  WeakMap<FinSetObj, FinSetBinaryProductWitness>
+>()
+
+const getFinSetBinaryProductWitness = (
+  A: FinSetObj,
+  B: FinSetObj,
+): FinSetBinaryProductWitness => {
+  let byLeft = finsetBinaryProductCache.get(A)
+  if (byLeft === undefined) {
+    byLeft = new WeakMap<FinSetObj, FinSetBinaryProductWitness>()
+    finsetBinaryProductCache.set(A, byLeft)
+  }
+
+  const cached = byLeft.get(B)
+  if (cached !== undefined) {
+    return cached
+  }
+
+  const witness = buildBinaryProductWitness(A, B)
+  byLeft.set(B, witness)
+  return witness
+}
+
 const finsetTruthProductBase = buildBinaryProductWitness(FinSetTruthValues, FinSetTruthValues)
 
 export const FinSetTruthProduct: CategoryLimits.TruthProductWitness<FinSetObj, FinSetMor> = {
@@ -4151,10 +4178,10 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
   },
   terminate: terminateFinSetAtTerminal,
   initialArrow: (target: FinSetObj): FinSetMor => ({ from: initialFinSetObj, to: target, map: [] }),
-  binaryProduct: (A: FinSetObj, B: FinSetObj) => buildBinaryProductWitness(A, B),
+  binaryProduct: (A: FinSetObj, B: FinSetObj) => getFinSetBinaryProductWitness(A, B),
   exponential: (A: FinSetObj, B: FinSetObj) => {
     const expObj = expFinSet(B, A)
-    const evalProduct = buildBinaryProductWitness(expObj, A)
+    const evalProduct = getFinSetBinaryProductWitness(expObj, A)
 
     const evaluation: FinSetMor = {
       from: evalProduct.obj,
@@ -4230,7 +4257,7 @@ export const FinSet: Category<FinSetObj, FinSetMor> &
         throw new Error('FinSet.exponential.uncurry: arrow must assign a function to each element')
       }
 
-      const productXA = buildBinaryProductWitness(X, A)
+      const productXA = getFinSetBinaryProductWitness(X, A)
       const map = productXA.obj.elements.map(tuple => {
         const coordinates = tuple as ReadonlyArray<number>
         const xIx = coordinates[0]
