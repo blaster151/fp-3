@@ -132,4 +132,8 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 100. **Hopf module/comodule functor gallery** – Audit module and comodule morphisms, then transport actions and coactions along a symbolic Hopf morphism using restriction and induction functors with witness metadata. (examples/runnable/100-hopf-module-comodule-gallery.ts)
 
+101. **Coordinatewise vector relative monad heuristics** – Sample ℕ-coordinates for the Boolean Vec relative monad, inspect tail-heavy arrow columns, and record the truncation diagnostics produced by the approximation guards. (examples/runnable/101-mnne-coordinatewise-vector-relative-monad.ts)
+
+102. **Lazy λ-term relative monad approximations** – Enumerate λ-context growth symbolically, contrast lazy and strict Kleisli substitution reports, and surface the approximation slices driving the oracle outputs. (examples/runnable/102-mnne-lambda-relative-monad.ts)
+
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.

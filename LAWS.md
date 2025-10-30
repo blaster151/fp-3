@@ -197,12 +197,23 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Check:** `AlgebraOracles.derived.chainComplex`
 - **Implementation Notes:** Metadata reports the number of differentials, sampled cochains, and recorded witnesses so higher Čech constructions can budget search envelopes.
 
+### Multi-cover Čech cohomology and derived comparisons
+
+- **Builders:** `buildCechComplex(setup)` assembles the Čech complex for any finite covering by normalising intersections, deduplicating section samples, and wiring the alternating differential. `checkCechCohomology(setup, options)` runs the resulting chain complex through `checkChainComplex`, computes cohomology ranks, and (optionally) compares them against derived-functor reference data.
+- **Workflow Notes:** Provide a `MultiOpenCechSetup` with covering samples and higher intersections—triple-cover fixtures in `test/cech-cohomology.spec.ts` document the expected shape. The returned `CechCohomologyResult` exposes the chain check, cohomology analysis, and any derived mismatches.
+- **Integration:** `buildTwoOpenCechComplex`/`checkTwoOpenCechCohomology` now delegate through the general machinery so legacy callers continue to work on two-open covers.
+
 ### Two-open Čech cohomology checks
 
 - **Registry Path:** `algebra.derived.cechTwoOpen`
 - **Witness Builder:** `checkTwoOpenCechCohomology(setup, options)` builds the two-open Čech complex from sheaf restriction data, validates the differential square, and returns cohomology coset representatives.
 - **Check:** `AlgebraOracles.derived.cechTwoOpen`
 - **Implementation Notes:** Results expose coset counts via `analyzeCohomology`, surfaced at `AlgebraOracles.derived.cohomologyAnalysis`, so downstream derived-functor tooling can reuse the same kernel/image analysis.
+
+### Ext/Tor sampler comparisons
+
+- **Samplers:** `sampleTorFromFlat({ cech, flat, options })` reconciles Čech cohomology ranks with flat-module tensor witnesses, while `sampleExtFromTensor({ cech, tensor, options })` aligns Ext degrees with tensor-product evidence.
+- **Details:** Both samplers classify witness/violation counts per degree, summarise satisfied versus failing comparisons, and return structured metadata for further automation. Regression coverage lives in `test/ext-tor-samplers.spec.ts`.
 
 ### Prime spectrum and stalk checks
 
@@ -272,6 +283,21 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Survey:** `AlgebraOracles.representation.surveySemisimplicityWorkflows`
 - **Survey formatter:** `AlgebraOracles.representation.formatSemisimplicitySurvey`
 - **Implementation Notes:** Witnesses surface missing local data, restriction failures, inverse mismatches, and cocycle violations, highlighting precisely which overlap caused trouble. Regression coverage: `test/moduli-stacks.spec.ts`.
+
+### Fibered morphism functoriality
+
+- **Builder:** `checkFiberedMorphism(morphism, samples, options)` verifies that a morphism of fibered categories preserves base objects, maps arrows functorially, and respects sampled cartesian lifts.
+- **Workflow:** Reuse `buildFiberedSamplesFromEtaleDescent` to generate cartesian lift samples from étale data when aligning atlases. Tests in `test/moduli-stacks.spec.ts` cover both satisfied and broken morphisms.
+
+### Fibered 2-morphism witnesses
+
+- **Builder:** `checkFiberedTwoMorphism(datum, samples, options)` checks component sources/targets and naturality squares between parallel fibered morphisms.
+- **Implementation Notes:** Witness arrays capture successful components up to a configurable limit so stack diagnostics can surface explicit 2-morphism data. Regression coverage: `test/moduli-stacks.spec.ts`.
+
+### Stack groupoid presentations
+
+- **Workflow:** `synthesizeStackPresentation({ descent, additionalFiberedSamples, etaleSamples, label })` produces a finite groupoid from descent data, reuses `checkStackDescent`/`checkFiberedCategory` for verification, and returns narrative details together with the merged fibered samples.
+- **Implementation Notes:** The groupoid exposes `hom`, `inv`, and identity/composition helpers built from the fibered category’s structure; atlas refinement scenarios are documented in `test/moduli-stacks.spec.ts`.
 
 ## Category-theoretic scaffolding
 

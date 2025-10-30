@@ -59,15 +59,21 @@ import {
   type PowersetRelativeMonadWitness,
 } from "./mnne-powerset-monads";
 import {
+  analyzeCoordinatewiseVectorRelativeMonad,
   analyzeFiniteVectorArrowCorrespondence,
   analyzeFiniteVectorKleisliSplitting,
   describeBooleanVectorArrowCorrespondenceWitness,
+  describeCoordinatewiseBooleanVectorWitness,
+  type CoordinatewiseVectorRelativeMonadWitness,
   type FiniteVectorArrowCorrespondenceWitness,
   type FiniteVectorRelativeMonadWitness,
 } from "./mnne-vector-monads";
 import {
   analyzeLambdaKleisliSplitting,
+  analyzeLazyLambdaRelativeMonad,
+  describeCountableLambdaRelativeMonadWitness,
   type LambdaRelativeMonadWitness,
+  type LazyLambdaRelativeMonadWitness,
 } from "./mnne-lambda-monads";
 import {
   analyzeMnneLaxMonoidalStructure,
@@ -421,6 +427,34 @@ export const RelativeMonadOracles = {
       registryPath: descriptor.registryPath,
       details: report.details,
       issues: report.issues,
+      artifacts: {
+        baseSlice: report.baseSlice,
+        subsetSlices: report.subsetSlices,
+        arrowSamples: report.arrowSamples,
+        comparisons: report.comparisons,
+        approximation: report.approximation,
+      },
+    };
+  },
+  coordinatewiseVectorRelativeMonad: <Coordinate, R>(
+    witness: CoordinatewiseVectorRelativeMonadWitness<Coordinate, R> =
+      describeCoordinatewiseBooleanVectorWitness() as unknown as CoordinatewiseVectorRelativeMonadWitness<Coordinate, R>,
+  ): RelativeMonadOracleResult => {
+    const descriptor = RelativeMonadLawRegistry.coordinatewiseVectorRelativeMonad;
+    const report = analyzeCoordinatewiseVectorRelativeMonad(witness);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+      artifacts: {
+        coordinateSlice: report.coordinateSlice,
+        unitSlices: report.unitSlices,
+        arrowSlices: report.arrowSlices,
+        comparisons: report.comparisons,
+        approximation: report.approximation,
+      },
     };
   },
   vectorKleisliSplitting: <R>(
@@ -461,6 +495,25 @@ export const RelativeMonadOracles = {
       registryPath: descriptor.registryPath,
       details: report.details,
       issues: report.issues,
+    };
+  },
+  lazyLambdaRelativeMonad: (
+    witness: LazyLambdaRelativeMonadWitness =
+      describeCountableLambdaRelativeMonadWitness(),
+  ): RelativeMonadOracleResult => {
+    const descriptor = RelativeMonadLawRegistry.lazyLambdaRelativeMonad;
+    const report = analyzeLazyLambdaRelativeMonad(witness);
+    return {
+      holds: report.holds,
+      pending: false,
+      registryPath: descriptor.registryPath,
+      details: report.details,
+      issues: report.issues,
+      artifacts: {
+        contexts: report.contexts,
+        substitutions: report.substitutions,
+        approximation: report.approximation,
+      },
     };
   },
   functorCategoryLaxMonoidal: <Obj, Arr>(

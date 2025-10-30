@@ -16,6 +16,25 @@ const dedupe = <A>(values: ReadonlyArray<A>, eq: Equality<A>): A[] => {
   return result
 }
 
+const cartesianProduct = <A>(factors: ReadonlyArray<ReadonlyArray<A>>): ReadonlyArray<ReadonlyArray<A>> => {
+  if (factors.length === 0) {
+    return [[]]
+  }
+
+  return factors.reduce<ReadonlyArray<ReadonlyArray<A>>>(
+    (acc, factor) => {
+      const next: Array<ReadonlyArray<A>> = []
+      for (const prefix of acc) {
+        for (const value of factor) {
+          next.push([...prefix, value])
+        }
+      }
+      return next
+    },
+    [[]],
+  )
+}
+
 export interface ChainComplexLevel<R, M> {
   readonly degree: number
   readonly module: Module<R, M>
@@ -322,6 +341,377 @@ export const analyzeCohomology = <R>(complex: ChainComplex<R>): CohomologyAnalys
   }
 }
 
+const keyOf = (indices: ReadonlyArray<number>): string => indices.join("|")
+
+const isStrictlyIncreasing = (values: ReadonlyArray<number>): boolean =>
+  values.every((value, index) => index === 0 || value > values[index - 1])
+
+const sameKey = (left: ReadonlyArray<number>, right: ReadonlyArray<number>): boolean =>
+  left.length === right.length && left.every((value, index) => value === right[index])
+
+const dedupeVectors = <Section>(
+  vectors: ReadonlyArray<ReadonlyArray<Section>>,
+  eq: Equality<Section>,
+): ReadonlyArray<ReadonlyArray<Section>> => {
+  const vectorEq: Equality<ReadonlyArray<Section>> = (left, right) =>
+    left.length === right.length && left.every((value, index) => eq(value, right[index]))
+  return dedupe(vectors, vectorEq)
+}
+
+const buildProductModule = <R, Section>(
+  base: Module<R, Section>,
+  size: number,
+  label: string,
+  eq: Equality<Section>,
+): Module<R, ReadonlyArray<Section>> => {
+  const vectorEq: Equality<ReadonlyArray<Section>> = (left, right) =>
+    left.length === right.length && left.every((value, index) => eq(value, right[index]))
+
+  const zeroVector = Array.from({ length: size }, () => base.zero) as ReadonlyArray<Section>
+
+  return {
+    ring: base.ring,
+    zero: zeroVector,
+    add: (left, right) =>
+      left.map((value, index) => base.add(value, right[index])) as ReadonlyArray<Section>,
+    neg: value => value.map(entry => base.neg(entry)) as ReadonlyArray<Section>,
+    scalar: (scalar, value) =>
+      value.map(entry => base.scalar(scalar, entry)) as ReadonlyArray<Section>,
+    eq: vectorEq,
+    name: label,
+  }
+}
+
+export interface CechIntersectionFace<Arr> {
+  readonly omit: number
+  readonly targetKey: ReadonlyArray<number>
+  readonly arrow: Arr
+  readonly label?: string
+}
+
+export interface MultiOpenCechCell<Obj, Arr, Section> {
+  readonly key: ReadonlyArray<number>
+  readonly object: Obj
+  readonly faces: ReadonlyArray<CechIntersectionFace<Arr>>
+  readonly samples?: ReadonlyArray<Section>
+  readonly label?: string
+}
+
+export interface MultiOpenCechSetup<Obj, Arr, Section, R> {
+  readonly sheaf: Sheaf<Obj, Arr, Section>
+  readonly covering: CoveringFamily<Obj, Arr>
+  readonly module: Module<R, Section>
+  readonly intersections: ReadonlyArray<MultiOpenCechCell<Obj, Arr, Section>>
+  readonly coveringSamples?: ReadonlyArray<ReadonlyArray<Section> | undefined>
+  readonly label?: string
+}
+
+export interface CechDerivedMismatch {
+  readonly degree: number
+  readonly actualRank: number
+  readonly expectedRank: number
+  readonly actualKernel: number
+  readonly expectedKernel: number
+  readonly actualImage: number
+  readonly expectedImage: number
+}
+
+export interface CechDerivedComparison {
+  readonly provided: CohomologyAnalysis
+  readonly matches: boolean
+  readonly mismatches: ReadonlyArray<CechDerivedMismatch>
+  readonly details: string
+}
+
+export interface CechCohomologyOptions {
+  readonly chain?: ChainComplexCheckOptions
+  readonly derived?: CohomologyAnalysis
+}
+
+export interface CechCohomologyResult {
+  readonly holds: boolean
+  readonly complex: ChainComplex<any>
+  readonly chainCheck: ChainComplexCheckResult
+  readonly cohomology: CohomologyAnalysis
+  readonly derivedComparison?: CechDerivedComparison
+  readonly details: string
+}
+
+interface NormalizedCechCell<Obj, Arr, Section> {
+  readonly key: ReadonlyArray<number>
+  readonly object: Obj
+  readonly faces: ReadonlyArray<CechIntersectionFace<Arr>>
+  readonly samples: ReadonlyArray<Section>
+  readonly label?: string
+}
+
+interface LevelInfo<R, Section> {
+  readonly degree: number
+  readonly cells: ReadonlyArray<NormalizedCechCell<any, any, Section>>
+  readonly module: Module<R, ReadonlyArray<Section>>
+  readonly elements: ReadonlyArray<ReadonlyArray<Section>>
+  readonly indexByKey: Map<string, number>
+}
+
+export const buildCechComplex = <Obj, Arr, Section, R>(
+  setup: MultiOpenCechSetup<Obj, Arr, Section, R>,
+): ChainComplex<R> => {
+  const { sheaf, covering, module } = setup
+  const coveringArrows = covering.arrows
+  if (coveringArrows.length === 0) {
+    throw new Error("Čech complex requires a non-empty covering family.")
+  }
+
+  const site = sheaf.site
+  const eqSection = withEquality(sheaf.sectionEq)
+
+  const coveringCells: NormalizedCechCell<Obj, Arr, Section>[] = coveringArrows.map((arrow, index) => {
+    const domain = site.category.src(arrow)
+    const provided = setup.coveringSamples?.[index]
+    const samples = dedupe(provided ?? sheaf.sections(domain), eqSection)
+    return {
+      key: [index],
+      object: domain,
+      faces: [],
+      samples,
+      label: covering.label ? `${covering.label}[${index}]` : undefined,
+    }
+  })
+
+  const normalizedIntersections: NormalizedCechCell<Obj, Arr, Section>[] = setup.intersections.map(cell => {
+    if (cell.key.length < 2) {
+      throw new Error("Čech intersections must involve at least two covering indices.")
+    }
+    if (!isStrictlyIncreasing(cell.key)) {
+      throw new Error("Čech intersection keys must be strictly increasing.")
+    }
+    if (cell.faces.length !== cell.key.length) {
+      throw new Error("Čech intersection must provide one face map per omitted index.")
+    }
+
+    const normalizedFaces = cell.faces.map(face => {
+      if (face.omit < 0 || face.omit >= cell.key.length) {
+        throw new Error("Čech face omission index is out of bounds.")
+      }
+      const expectedTarget = cell.key.filter((_, index) => index !== face.omit)
+      if (!sameKey(expectedTarget, face.targetKey)) {
+        throw new Error("Čech face target key does not match omitted index pattern.")
+      }
+      return face
+    })
+
+    const samples = dedupe(cell.samples ?? sheaf.sections(cell.object), eqSection)
+
+    return {
+      key: cell.key,
+      object: cell.object,
+      faces: normalizedFaces,
+      samples,
+      label: cell.label,
+    }
+  })
+
+  const allCells: NormalizedCechCell<Obj, Arr, Section>[] = [...coveringCells, ...normalizedIntersections]
+  const cellByKey = new Map<string, NormalizedCechCell<Obj, Arr, Section>>()
+  for (const cell of allCells) {
+    const key = keyOf(cell.key)
+    if (cellByKey.has(key)) {
+      throw new Error(`Duplicate Čech intersection data for key ${key}.`)
+    }
+    cellByKey.set(key, cell)
+  }
+
+  for (const cell of normalizedIntersections) {
+    for (const face of cell.faces) {
+      const targetKey = keyOf(face.targetKey)
+      if (!cellByKey.has(targetKey)) {
+        throw new Error(`Čech intersection missing target for face ${targetKey}.`)
+      }
+    }
+  }
+
+  const maxLength = allCells.reduce((current, cell) => Math.max(current, cell.key.length), 1)
+  const levels: ChainComplexLevel<R, ReadonlyArray<Section>>[] = []
+  const levelInfos: LevelInfo<R, Section>[] = []
+
+  for (let length = 1; length <= maxLength; length += 1) {
+    const degree = length - 1
+    const cellsAtLength = allCells.filter(cell => cell.key.length === length)
+    if (cellsAtLength.length === 0) {
+      continue
+    }
+
+    const moduleLabel = setup.label
+      ? `C^${degree}(${setup.label})`
+      : covering.label
+        ? `C^${degree}(${covering.label})`
+        : `C^${degree}`
+    const moduleForLevel = buildProductModule(module, cellsAtLength.length, moduleLabel, eqSection)
+
+    const factorSamples = cellsAtLength.map(cell => cell.samples)
+    const elements = dedupeVectors(cartesianProduct(factorSamples), eqSection)
+
+    const level: ChainComplexLevel<R, ReadonlyArray<Section>> = {
+      degree,
+      module: moduleForLevel,
+      elements,
+      label: `C^${degree}`,
+    }
+    levels.push(level)
+
+    const indexByKey = new Map<string, number>()
+    cellsAtLength.forEach((cell, index) => {
+      indexByKey.set(keyOf(cell.key), index)
+    })
+
+    levelInfos[degree] = {
+      degree,
+      cells: cellsAtLength,
+      module: moduleForLevel,
+      elements,
+      indexByKey,
+    }
+  }
+
+  const differentials: ChainComplexDifferential<R, ReadonlyArray<Section>, ReadonlyArray<Section>>[] = []
+
+  for (let degree = 0; degree < levelInfos.length - 1; degree += 1) {
+    const sourceInfo = levelInfos[degree]
+    const targetInfo = levelInfos[degree + 1]
+    if (!sourceInfo || !targetInfo) {
+      continue
+    }
+
+    const differential: ChainComplexDifferential<R, ReadonlyArray<Section>, ReadonlyArray<Section>> = {
+      source: sourceInfo.module,
+      target: targetInfo.module,
+      sourceDegree: degree,
+      targetDegree: degree + 1,
+      label: `δ^${degree}`,
+      map: cochain => {
+        const outputs: Section[] = targetInfo.cells.map(() => module.zero)
+
+        targetInfo.cells.forEach((cell, cellIndex) => {
+          let value = module.zero
+          cell.faces.forEach(face => {
+            const sourceIndex = sourceInfo.indexByKey.get(keyOf(face.targetKey))
+            if (sourceIndex === undefined) {
+              throw new Error(`Čech differential missing source for face ${keyOf(face.targetKey)}.`)
+            }
+            const section = cochain[sourceIndex]
+            const restricted = sheaf.restrict(face.arrow, section)
+            const signed = face.omit % 2 === 0 ? restricted : module.neg(restricted)
+            value = module.add(value, signed)
+          })
+          outputs[cellIndex] = value
+        })
+
+        return outputs as ReadonlyArray<Section>
+      },
+    }
+
+    differentials.push(differential)
+  }
+
+  const label = setup.label ?? `Čech complex for ${covering.label ?? "covering"}`
+
+  return {
+    label,
+    levels,
+    differentials,
+  }
+}
+
+const compareDerivedAnalyses = (
+  actual: CohomologyAnalysis,
+  expected: CohomologyAnalysis,
+): CechDerivedComparison => {
+  const actualByDegree = new Map(actual.groups.map(group => [group.degree, group]))
+  const expectedByDegree = new Map(expected.groups.map(group => [group.degree, group]))
+  const allDegrees = Array.from(new Set([...actualByDegree.keys(), ...expectedByDegree.keys()])).sort(
+    (left, right) => left - right,
+  )
+
+  const mismatches: CechDerivedMismatch[] = []
+  for (const degree of allDegrees) {
+    const actualGroup = actualByDegree.get(degree)
+    const expectedGroup = expectedByDegree.get(degree)
+    const actualRank = actualGroup?.rank ?? 0
+    const expectedRank = expectedGroup?.rank ?? 0
+    const actualKernel = actualGroup?.kernelSize ?? 0
+    const expectedKernel = expectedGroup?.kernelSize ?? 0
+    const actualImage = actualGroup?.imageSize ?? 0
+    const expectedImage = expectedGroup?.imageSize ?? 0
+
+    if (actualRank !== expectedRank || actualKernel !== expectedKernel || actualImage !== expectedImage) {
+      mismatches.push({
+        degree,
+        actualRank,
+        expectedRank,
+        actualKernel,
+        expectedKernel,
+        actualImage,
+        expectedImage,
+      })
+    }
+  }
+
+  const matches = mismatches.length === 0
+  const degreeSummary = allDegrees.length > 0 ? allDegrees.join(", ") : "∅"
+  const details = matches
+    ? `Derived functor comparison matches across degrees ${degreeSummary}.`
+    : `Derived functor comparison found ${mismatches.length} mismatch(es) across degrees ${mismatches
+        .map(mismatch => mismatch.degree)
+        .join(", ")}.`
+
+  return { provided: expected, matches, mismatches, details }
+}
+
+export const checkCechCohomology = <Obj, Arr, Section, R>(
+  setup: MultiOpenCechSetup<Obj, Arr, Section, R>,
+  options: CechCohomologyOptions = {},
+): CechCohomologyResult => {
+  const complex = buildCechComplex(setup)
+  const chainCheck = checkChainComplex(complex, options.chain)
+  const cohomology = analyzeCohomology(complex)
+  const derivedComparison = options.derived
+    ? compareDerivedAnalyses(cohomology, options.derived)
+    : undefined
+  const holds = chainCheck.holds && (!derivedComparison || derivedComparison.matches)
+
+  const complexLabel = complex.label ? ` ${complex.label}` : ""
+
+  let details: string
+  if (chainCheck.holds) {
+    details = `Čech complex${complexLabel} validates chain conditions with ${cohomology.groups.length} cohomology degree(s).`
+    if (derivedComparison) {
+      details += derivedComparison.matches
+        ? " Derived functor comparison confirms all sampled ranks."
+        : ` Derived functor comparison flagged mismatches at degree(s) ${derivedComparison.mismatches
+            .map(mismatch => mismatch.degree)
+            .join(", ")}.`
+    }
+  } else {
+    details = `Čech complex${complexLabel} failed chain validation: ${chainCheck.details}`
+    if (derivedComparison) {
+      details += derivedComparison.matches
+        ? " Derived functor comparison agrees with expected ranks despite chain failures."
+        : ` Derived functor comparison also flagged mismatches at degree(s) ${derivedComparison.mismatches
+            .map(mismatch => mismatch.degree)
+            .join(", ")}.`
+    }
+  }
+
+  return {
+    holds,
+    complex,
+    chainCheck,
+    cohomology,
+    derivedComparison,
+    details,
+  }
+}
+
 export interface TwoOpenIntersection<Obj, Arr> {
   readonly object: Obj
   readonly toFirst: Arr
@@ -344,147 +734,51 @@ export interface TwoOpenCechSetup<Obj, Arr, Section, R> {
   readonly label?: string
 }
 
-const pairEquality = <Section>(eq: Equality<Section>): Equality<readonly [Section, Section]> =>
-  (left, right) => eq(left[0], right[0]) && eq(left[1], right[1])
-
-const cartesianPairs = <Section>(
-  first: ReadonlyArray<Section>,
-  second: ReadonlyArray<Section>,
-): Array<readonly [Section, Section]> => {
-  const result: Array<readonly [Section, Section]> = []
-  for (const left of first) {
-    for (const right of second) {
-      result.push([left, right] as const)
-    }
-  }
-  return result
-}
-
-export const buildTwoOpenCechComplex = <Obj, Arr, Section, R>(
+const twoOpenToMultiOpenSetup = <Obj, Arr, Section, R>(
   setup: TwoOpenCechSetup<Obj, Arr, Section, R>,
-): ChainComplex<R> => {
+): MultiOpenCechSetup<Obj, Arr, Section, R> => {
   const { sheaf, covering, intersection, module } = setup
   if (covering.arrows.length !== 2) {
     throw new Error("Two-open Čech complex requires exactly two covering arrows.")
   }
 
-  const eqSection = withEquality(sheaf.sectionEq)
+  const coveringSamples: Array<ReadonlyArray<Section> | undefined> = []
+  coveringSamples[0] = setup.samples?.first
+  coveringSamples[1] = setup.samples?.second
 
-  const site = sheaf.site
-  const firstArrow = covering.arrows[0]
-  const secondArrow = covering.arrows[1]
-  if (!firstArrow || !secondArrow) {
-    throw new Error("Two-open Čech complex requires two covering arrows.")
-  }
-  const firstDomain = site.category.src(firstArrow)
-  const secondDomain = site.category.src(secondArrow)
-
-  const firstSections = dedupe(
-    setup.samples?.first ?? sheaf.sections(firstDomain),
-    eqSection,
-  )
-  const secondSections = dedupe(
-    setup.samples?.second ?? sheaf.sections(secondDomain),
-    eqSection,
-  )
-  const intersectionSections = dedupe(
-    setup.samples?.intersection ?? sheaf.sections(intersection.object),
-    eqSection,
-  )
-
-  const pairEq = pairEquality(eqSection)
-  const pairModule: Module<R, readonly [Section, Section]> = {
-    ring: module.ring,
-    zero: [module.zero, module.zero] as const,
-    add: (left, right) => [module.add(left[0], right[0]), module.add(left[1], right[1])] as const,
-    neg: value => [module.neg(value[0]), module.neg(value[1])] as const,
-    scalar: (scalar, value) => [module.scalar(scalar, value[0]), module.scalar(scalar, value[1])] as const,
-    eq: pairEq,
-    name: `C^0(${setup.label ?? covering.label ?? "two-open cover"})`,
-  }
-
-  const cochain0Elements = cartesianPairs(firstSections, secondSections)
-  const cochain1Elements = intersectionSections
-  const zeroOnly = [module.zero]
-
-  const level0: ChainComplexLevel<R, readonly [Section, Section]> = {
-    degree: 0,
-    module: pairModule,
-    elements: cochain0Elements,
-    label: "C^0",
-  }
-
-  const level1: ChainComplexLevel<R, Section> = {
-    degree: 1,
-    module: { ...module, name: `C^1(${setup.label ?? covering.label ?? "two-open cover"})` },
-    elements: cochain1Elements,
-    label: "C^1",
-  }
-
-  const level2: ChainComplexLevel<R, Section> = {
-    degree: 2,
-    module: { ...module, name: `C^2(${setup.label ?? covering.label ?? "two-open cover"})` },
-    elements: zeroOnly,
-    label: "C^2",
-  }
-
-  const differential0: ChainComplexDifferential<R, readonly [Section, Section], Section> = {
-    source: pairModule,
-    target: level1.module,
-    sourceDegree: 0,
-    targetDegree: 1,
-    label: "δ^0",
-    map: ([firstSection, secondSection]) => {
-      const firstRestricted = sheaf.restrict(intersection.toFirst, firstSection)
-      const secondRestricted = sheaf.restrict(intersection.toSecond, secondSection)
-      return module.add(secondRestricted, module.neg(firstRestricted))
-    },
-  }
-
-  const differential1: ChainComplexDifferential<R, Section, Section> = {
-    source: level1.module,
-    target: level2.module,
-    sourceDegree: 1,
-    targetDegree: 2,
-    label: "δ^1",
-    map: () => module.zero,
-  }
+  const label =
+    setup.label ?? `Čech complex for ${covering.label ?? "two-open cover"}`
 
   return {
-    label: setup.label ?? `Čech complex for ${covering.label ?? "two-open cover"}`,
-    levels: [level0, level1, level2],
-    differentials: [differential0, differential1],
+    sheaf,
+    covering,
+    module,
+    intersections: [
+      {
+        key: [0, 1],
+        object: intersection.object,
+        faces: [
+          { omit: 0, targetKey: [1], arrow: intersection.toSecond },
+          { omit: 1, targetKey: [0], arrow: intersection.toFirst },
+        ],
+        samples: setup.samples?.intersection,
+        label: intersection.label,
+      },
+    ],
+    coveringSamples,
+    label,
   }
 }
 
-export interface TwoOpenCechCohomologyOptions {
-  readonly chain?: ChainComplexCheckOptions
-}
+export const buildTwoOpenCechComplex = <Obj, Arr, Section, R>(
+  setup: TwoOpenCechSetup<Obj, Arr, Section, R>,
+): ChainComplex<R> => buildCechComplex(twoOpenToMultiOpenSetup(setup))
 
-export interface TwoOpenCechCohomologyResult {
-  readonly holds: boolean
-  readonly complex: ChainComplex<any>
-  readonly chainCheck: ChainComplexCheckResult
-  readonly cohomology: CohomologyAnalysis
-  readonly details: string
-}
+export type TwoOpenCechCohomologyOptions = CechCohomologyOptions
+
+export type TwoOpenCechCohomologyResult = CechCohomologyResult
 
 export const checkTwoOpenCechCohomology = <Obj, Arr, Section, R>(
   setup: TwoOpenCechSetup<Obj, Arr, Section, R>,
   options: TwoOpenCechCohomologyOptions = {},
-): TwoOpenCechCohomologyResult => {
-  const complex = buildTwoOpenCechComplex(setup)
-  const chainCheck = checkChainComplex(complex, options.chain)
-  const cohomology = analyzeCohomology(complex)
-  const holds = chainCheck.holds
-  const details = holds
-    ? `Čech complex ${complex.label ?? ""} validates derived functor checks with ${cohomology.groups.length} cohomology degree(s).`
-    : `Čech complex ${complex.label ?? ""} failed derived functor checks: ${chainCheck.details}`
-  return {
-    holds,
-    complex,
-    chainCheck,
-    cohomology,
-    details,
-  }
-}
+): TwoOpenCechCohomologyResult => checkCechCohomology(twoOpenToMultiOpenSetup(setup), options)

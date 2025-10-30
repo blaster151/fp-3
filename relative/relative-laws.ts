@@ -125,6 +125,12 @@ export const RelativeMonadLawRegistry = {
     summary:
       "Example 8 of *Monads Need Not Be Endofunctors* highlights the powerset relative monad; the analyzer enumerates lazy subsets, replayable arrows, and checks the unit/right-unit/associativity laws under the new approximation guards.",
   },
+  coordinatewiseVectorRelativeMonad: {
+    name: "Coordinatewise vector relative monad heuristics",
+    registryPath: "relativeMonad.mnne.coordinatewiseVector",
+    summary:
+      "Example 9 packages Vec’s Boolean coordinatewise presentation with countable (co)limits; the analyzer slices ℕ, samples tail-heavy arrows, and records every truncation detected by the finitary approximation heuristics.",
+  },
   vectorKleisliSplitting: {
     name: "Finite vector Kleisli splitting diagnostics",
     registryPath: "relativeMonad.mnne.vectorKleisli",
@@ -142,6 +148,12 @@ export const RelativeMonadLawRegistry = {
     registryPath: "relativeMonad.mnne.lambdaKleisli",
     summary:
       "Example 6 describes Kleisli morphisms for Lam as capture-avoiding substitutions; the analyzer reuses the λ-relative monad witness to confirm trivial substitutions act as identities and composition agrees with sequential substitution.",
+  },
+  lazyLambdaRelativeMonad: {
+    name: "Lazy λ-term relative monad approximations",
+    registryPath: "relativeMonad.mnne.lambdaRelativeMonad",
+    summary:
+      "Example 10 symbolically enumerates λ-context growth; the analyzer materialises countable contexts/substitutions up to configurable bounds and surfaces every approximation slice recorded during the relative monad checks.",
   },
   functorCategoryLaxMonoidal: {
     name: "[J,C] lax monoidal structure via Lan_j",

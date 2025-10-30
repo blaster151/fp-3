@@ -9,10 +9,23 @@ export interface IndexedContainerShape {
   readonly positions: ReadonlyArray<IndexedContainerPosition>;
 }
 
+export interface IndexedContainerShapeCompositionCase {
+  readonly resultShape: string;
+  readonly binderShapes: ReadonlyArray<{
+    readonly binder: string;
+    readonly shape: string;
+  }>;
+}
+
 export type IndexedContainerShapeExpression =
   | { readonly kind: "original" }
   | { readonly kind: "constant"; readonly shape: string }
-  | { readonly kind: "binding"; readonly binder: string };
+  | { readonly kind: "binding"; readonly binder: string }
+  | {
+      readonly kind: "composition";
+      readonly cases: ReadonlyArray<IndexedContainerShapeCompositionCase>;
+      readonly defaultShape?: string;
+    };
 
 export type IndexedContainerAssignmentExpression =
   | { readonly kind: "original"; readonly position: string }
@@ -390,6 +403,7 @@ export const analyzeIndexedContainerRelativeMonad = (
     }
 
     const binderNames = new Set<string>();
+    const bindingTargets = new Map<string, string>();
     let ruleValid = true;
     for (const binding of rule.bindings) {
       if (!domainPositions.has(binding.position)) {
@@ -408,6 +422,7 @@ export const analyzeIndexedContainerRelativeMonad = (
       }
       binderNames.add(binding.binder);
       const position = domainPositions.get(binding.position)!;
+      bindingTargets.set(binding.binder, position.targetIndex);
       if (binding.allowedShapes) {
         const available = shapesByIndex.get(position.targetIndex) ?? [];
         for (const candidate of binding.allowedShapes) {
@@ -491,11 +506,67 @@ export const analyzeIndexedContainerRelativeMonad = (
       }
     }
 
+    const availableResultShapes = new Set(
+      (shapesByIndex.get(rule.index) ?? []).map((candidate) => candidate.shape),
+    );
+    if (rule.resultShape.kind === "constant") {
+      if (!availableResultShapes.has(rule.resultShape.shape)) {
+        issues.push(
+          `${ruleContext} references constant result shape "${rule.resultShape.shape}" which is not registered for index "${rule.index}".`,
+        );
+        ruleValid = false;
+      }
+    }
     if (rule.resultShape.kind === "binding" && !binderNames.has(rule.resultShape.binder)) {
       issues.push(
         `${ruleContext} sets the result shape from binder "${rule.resultShape.binder}" which is not declared.`,
       );
       ruleValid = false;
+    }
+    if (rule.resultShape.kind === "composition") {
+      if (rule.resultShape.cases.length === 0 && !rule.resultShape.defaultShape) {
+        issues.push(
+          `${ruleContext} must specify at least one composition case or a default shape for the result shape.`,
+        );
+        ruleValid = false;
+      }
+      if (
+        rule.resultShape.defaultShape &&
+        !availableResultShapes.has(rule.resultShape.defaultShape)
+      ) {
+        issues.push(
+          `${ruleContext} lists default composition shape "${rule.resultShape.defaultShape}" which is not registered for index "${rule.index}".`,
+        );
+        ruleValid = false;
+      }
+      for (const compositionCase of rule.resultShape.cases) {
+        if (!availableResultShapes.has(compositionCase.resultShape)) {
+          issues.push(
+            `${ruleContext} references composition result shape "${compositionCase.resultShape}" which is not registered for index "${rule.index}".`,
+          );
+          ruleValid = false;
+        }
+        for (const requirement of compositionCase.binderShapes) {
+          if (!binderNames.has(requirement.binder)) {
+            issues.push(
+              `${ruleContext} references binder "${requirement.binder}" in a composition case but it is not declared.`,
+            );
+            ruleValid = false;
+            continue;
+          }
+          const targetIndex = bindingTargets.get(requirement.binder);
+          if (!targetIndex) {
+            continue;
+          }
+          const allowedShapes = shapesByIndex.get(targetIndex) ?? [];
+          if (!allowedShapes.some((shape) => shape.shape === requirement.shape)) {
+            issues.push(
+              `${ruleContext} expects binder "${requirement.binder}" to produce shape "${requirement.shape}" but index "${targetIndex}" does not register it.`,
+            );
+            ruleValid = false;
+          }
+        }
+      }
     }
 
     if (!ruleValid) {
@@ -653,6 +724,51 @@ export const analyzeIndexedContainerRelativeMonad = (
             break;
           }
           resultShapeName = binderElement.shape;
+          break;
+        }
+        case "composition": {
+          const availableResultShapes = new Set(
+            (shapesByIndex.get(element.index) ?? []).map((candidate) => candidate.shape),
+          );
+          let matchedShape: string | undefined;
+          for (const entry of rule.resultShape.cases) {
+            let match = true;
+            for (const requirement of entry.binderShapes) {
+              const binderElement = binderElements.get(requirement.binder);
+              if (!binderElement) {
+                match = false;
+                break;
+              }
+              if (binderElement.shape !== requirement.shape) {
+                match = false;
+                break;
+              }
+            }
+            if (match) {
+              matchedShape = entry.resultShape;
+              break;
+            }
+          }
+          if (!matchedShape) {
+            matchedShape = rule.resultShape.defaultShape;
+          }
+          if (!matchedShape) {
+            aggregatedIssues.push(
+              `${ruleContext} could not determine a composition result shape for (${element.index}, ${element.shape}).`,
+            );
+            applicable = false;
+            resultShapeName = element.shape;
+            break;
+          }
+          if (!availableResultShapes.has(matchedShape)) {
+            aggregatedIssues.push(
+              `${ruleContext} selected composition result shape "${matchedShape}" which is not available at index "${element.index}".`,
+            );
+            applicable = false;
+            resultShapeName = element.shape;
+            break;
+          }
+          resultShapeName = matchedShape;
           break;
         }
         default: {
@@ -1023,22 +1139,22 @@ export const describeIndexedContainerExample4Witness = (): IndexedContainerRelat
   shapes: [
     {
       index: "Nat",
-      shape: "returnNat",
+      shape: "kappaReturn",
       positions: [{ position: "focus", targetIndex: "Nat" }],
     },
     {
       index: "Nat",
-      shape: "succ",
+      shape: "kappaSucc",
       positions: [{ position: "focus", targetIndex: "Nat" }],
     },
     {
       index: "Stream",
-      shape: "returnStream",
+      shape: "sigmaReturn",
       positions: [{ position: "tail", targetIndex: "Stream" }],
     },
     {
       index: "Stream",
-      shape: "cons",
+      shape: "sigmaCons",
       positions: [
         { position: "head", targetIndex: "Nat" },
         { position: "tail", targetIndex: "Stream" },
@@ -1064,7 +1180,7 @@ export const describeIndexedContainerExample4Witness = (): IndexedContainerRelat
   substitutions: [
     {
       index: "Nat",
-      domainShape: "returnNat",
+      domainShape: "kappaReturn",
       bindings: [
         { position: "focus", binder: "focus" },
       ],
@@ -1079,7 +1195,7 @@ export const describeIndexedContainerExample4Witness = (): IndexedContainerRelat
     },
     {
       index: "Nat",
-      domainShape: "succ",
+      domainShape: "kappaSucc",
       bindings: [
         { position: "focus", binder: "focus" },
       ],
@@ -1094,9 +1210,9 @@ export const describeIndexedContainerExample4Witness = (): IndexedContainerRelat
     },
     {
       index: "Stream",
-      domainShape: "returnStream",
+      domainShape: "sigmaReturn",
       bindings: [
-        { position: "tail", binder: "tail" },
+        { position: "tail", binder: "tail", allowedShapes: ["sigmaReturn"] },
       ],
       resultShape: { kind: "binding", binder: "tail" },
       assignments: [
@@ -1109,12 +1225,21 @@ export const describeIndexedContainerExample4Witness = (): IndexedContainerRelat
     },
     {
       index: "Stream",
-      domainShape: "cons",
+      domainShape: "sigmaCons",
       bindings: [
         { position: "head", binder: "head" },
         { position: "tail", binder: "tail" },
       ],
-      resultShape: { kind: "constant", shape: "cons" },
+      resultShape: {
+        kind: "composition",
+        cases: [
+          {
+            resultShape: "sigmaCons",
+            binderShapes: [{ binder: "tail", shape: "sigmaCons" }],
+          },
+        ],
+        defaultShape: "sigmaCons",
+      },
       assignments: [
         {
           position: "head",
@@ -1134,7 +1259,7 @@ export const describeIndexedContainerExample4Witness = (): IndexedContainerRelat
       case "Nat":
         return {
           index: "Nat",
-          shape: "returnNat",
+          shape: "kappaReturn",
           assignments: Object.freeze([
             { position: "focus", targetIndex: "Nat", value: element.value },
           ]) as ReadonlyArray<IndexedContainerAssignment>,
@@ -1142,7 +1267,7 @@ export const describeIndexedContainerExample4Witness = (): IndexedContainerRelat
       case "Stream":
         return {
           index: "Stream",
-          shape: "returnStream",
+          shape: "sigmaReturn",
           assignments: Object.freeze([
             { position: "tail", targetIndex: "Stream", value: element.value },
           ]) as ReadonlyArray<IndexedContainerAssignment>,
