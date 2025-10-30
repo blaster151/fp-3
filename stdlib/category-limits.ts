@@ -19,6 +19,8 @@ import {
   makeBinaryProductComponentwise,
   makeBinaryProductDiagonal,
   makeBinaryProductSwap,
+  tensorIdentityOnLeft as tensorIdentityOnLeftHelper,
+  tensorIdentityOnRight as tensorIdentityOnRightHelper,
   type BinaryProductComponentwiseCollapseInput as CategoryBinaryProductComponentwiseCollapseInput,
   type BinaryProductComponentwiseInput as CategoryBinaryProductComponentwiseInput,
   type BinaryProductDiagonalFactor as CategoryBinaryProductDiagonalFactor,
@@ -29,6 +31,8 @@ import {
   type BinaryProductSwapResult as CategoryBinaryProductSwapResult,
   type BinaryProductTuple as CategoryBinaryProductTuple,
   type BinaryProductUnitPointCompatibilityInput as CategoryBinaryProductUnitPointCompatibilityInput,
+  type TensorIdentityOnLeftInput as CategoryTensorIdentityOnLeftInput,
+  type TensorIdentityOnRightInput as CategoryTensorIdentityOnRightInput,
 } from "../category-limits-helpers"
 import { ArrowFamilies } from "./arrow-families"
 import { IndexedFamilies } from "./indexed-families"
@@ -6556,6 +6560,18 @@ export namespace CategoryLimits {
 
   export const componentwiseBinaryProduct = makeBinaryProductComponentwise as <O, M>(
     input: BinaryProductComponentwiseInput<O, M>,
+  ) => M
+
+  export type TensorIdentityOnLeftInput<O, M> = CategoryTensorIdentityOnLeftInput<O, M>
+
+  export type TensorIdentityOnRightInput<O, M> = CategoryTensorIdentityOnRightInput<O, M>
+
+  export const tensorIdentityOnLeft = tensorIdentityOnLeftHelper as <O, M>(
+    input: TensorIdentityOnLeftInput<O, M>,
+  ) => M
+
+  export const tensorIdentityOnRight = tensorIdentityOnRightHelper as <O, M>(
+    input: TensorIdentityOnRightInput<O, M>,
   ) => M
 
   export const checkBinaryProductComponentwiseCollapse =

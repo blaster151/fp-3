@@ -1,3 +1,7 @@
+import type {
+  HopfAntipodePropertySampling,
+} from "./coalgebra-interfaces"
+
 export type GroupAlgebraElement<Basis extends string> = Readonly<Record<Basis, number>>
 
 export type GroupAlgebraTensor<Basis extends string> = Readonly<
@@ -79,6 +83,17 @@ export interface GroupAlgebraHopfOperations<Basis extends string> {
     second: GroupAlgebraLinearMap<Basis>,
     samples: readonly GroupAlgebraElement<Basis>[],
   ) => HopfDiagnostic
+  readonly buildAntipodePropertySampling: (
+    plan?: GroupAlgebraPropertySamplingPlan<Basis>,
+  ) => HopfAntipodePropertySampling<GroupAlgebraLinearMap<Basis>, GroupAlgebraElement<Basis>>
+}
+
+export interface GroupAlgebraPropertySamplingPlan<Basis extends string> {
+  readonly samples?: ReadonlyArray<GroupAlgebraElement<Basis>>
+  readonly sampleCount?: number
+  readonly generator?: () => GroupAlgebraElement<Basis>
+  readonly metadata?: ReadonlyArray<string>
+  readonly describeSample?: (element: GroupAlgebraElement<Basis>) => string
 }
 
 const buildRecord = <Basis extends string, Value>(
@@ -651,6 +666,34 @@ export const buildGroupAlgebraHopfOperations = <Basis extends string>(
     return { label, holds: failures.length === 0, details: failures }
   }
 
+  const buildAntipodePropertySampling = (
+    plan: GroupAlgebraPropertySamplingPlan<Basis> = {},
+  ): HopfAntipodePropertySampling<GroupAlgebraLinearMap<Basis>, GroupAlgebraElement<Basis>> => {
+    const generator = plan.generator
+    const resample = generator
+      ? (count: number) => {
+          const generated: GroupAlgebraElement<Basis>[] = []
+          for (let index = 0; index < count; index += 1) {
+            generated.push(generator())
+          }
+          return generated
+        }
+      : undefined
+
+    const describe = plan.describeSample ?? describeElement
+    const metadata = plan.metadata?.length ? plan.metadata : undefined
+
+    return {
+      ...(plan.samples ? { samples: plan.samples } : {}),
+      ...(plan.sampleCount !== undefined ? { sampleCount: plan.sampleCount } : {}),
+      ...(resample ? { resample } : {}),
+      apply: (morphism, element) => applyLinearMap(morphism, element),
+      equalElements: elementsEqual,
+      describe,
+      ...(metadata ? { metadata } : {}),
+    }
+  }
+
   return {
     basis: spec.basis,
     makeElement,
@@ -673,5 +716,6 @@ export const buildGroupAlgebraHopfOperations = <Basis extends string>(
     checkCounitMultiplicationCompatibility,
     checkCounitUnitCompatibility,
     checkAntipode,
+    buildAntipodePropertySampling,
   }
 }

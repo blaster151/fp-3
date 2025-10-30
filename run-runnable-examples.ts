@@ -4,6 +4,7 @@ import {
   findRunnableExample,
   runnableExamples,
 } from "./examples/runnable/manifest";
+import type { RunnableRegistry } from "./examples/runnable/types";
 
 declare const process: {
   readonly argv: ReadonlyArray<string>;
@@ -23,6 +24,9 @@ async function main(): Promise<void> {
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
+    if (token === undefined) {
+      continue;
+    }
     if (token === "--list") {
       listRequested = true;
       continue;
@@ -56,7 +60,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  let candidates = requestedIds.length > 0
+  let candidates: RunnableRegistry = requestedIds.length > 0
     ? requestedIds
         .map((id) => {
           const example = findRunnableExample(id);
@@ -66,7 +70,7 @@ async function main(): Promise<void> {
           return example;
         })
         .filter((example): example is NonNullable<typeof example> => example !== undefined)
-    : [...runnableExamples];
+    : runnableExamples;
 
   candidates = filterRunnableExamplesByTags(candidates, requestedTags);
 

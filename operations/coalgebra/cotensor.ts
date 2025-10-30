@@ -156,6 +156,9 @@ export const analyzeCotensorTowerProgress = <O, M>(
     }
 
     const previous = tower.stages[index - 1]
+    if (!previous) {
+      throw new Error(`Cotensor tower stage ${index} is missing its predecessor`)
+    }
     const matchesPrevious = equality(stage.inclusion.morphism, previous.inclusion.morphism)
     const sameCarrierAsPrevious = Object.is(stage.coalgebra.object, previous.coalgebra.object)
     const sameCoactionAsPrevious = equality(stage.coalgebra.coaction, previous.coalgebra.coaction)
@@ -175,7 +178,7 @@ export const analyzeCotensorTowerProgress = <O, M>(
 
   return {
     stabilized: stabilizedStage !== undefined,
-    stabilizedAt: stabilizedStage?.level,
+    ...(stabilizedStage ? { stabilizedAt: stabilizedStage.level } : {}),
     stages: stageProgress,
   }
 }

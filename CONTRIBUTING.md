@@ -185,6 +185,31 @@ it('detects invalid framing', () => {
 
 ---
 
+## 🌀 Hopf Algebra Contribution Track
+
+Hopf algebra support spans multiple subsystems (structure factories, registries, diagnostics, modules/comodules, duals, braided upgrades, and runnables). When extending that surface area, align with the following guidance so new features interoperate with the existing toolkit.
+
+### Core Extension Points
+
+- **Structure factories and registries** – Use `buildHopfAlgebraStructure` and `registerHopfAlgebraSpec` in `operations/coalgebra/coalgebra-interfaces.ts` to assemble new instances with derived tensor witnesses.
+- **Diagnostics and sampling** – Extend `operations/coalgebra/hopf-convolution.ts` and `diagnostics.ts` to wire additional invariants or property sampling plans into `checkHopfAntipode`.
+- **Morphisms, modules, comodules** – Reuse the analyzers in `operations/coalgebra/coalgebra-interfaces.ts` to validate transport functors and representation data before exposing them in examples or docs.
+- **Advanced constructions** – Leverage the dual, integral, and braided helpers in `operations/coalgebra/coalgebra-interfaces.ts` plus the runnable harnesses under `examples/runnable/` when exploring Drinfeld doubles or other upgrades.
+
+### Verification Checklist
+
+Before opening a Hopf-focused pull request:
+
+- [ ] **Witness data validated** – Confirm `buildHopfAlgebraStructure` passes for every new instance (add or update a spec in `test/coalgebra-hopf-factory.spec.ts`).
+- [ ] **Registry coherence** – Register the structure through `registerHopfAlgebraSpec` and add coverage in `test/coalgebra-hopf-registry.spec.ts` (or equivalent) to ensure listing/retrieval works.
+- [ ] **Diagnostics exercised** – Extend or add Vitest suites (e.g., `test/coalgebra-hopf-antipode-oracle.spec.ts`, module/comodule suites, or braided/dual tests) that capture the new invariants.
+- [ ] **Runnable docs updated** – If contributor-facing walkthroughs change, refresh the relevant runnable (`examples/runnable/097-*` or `098-*`) and the catalogue entry.
+- [ ] **Type safety verified** – Run `npm run typecheck` and resolve any new errors introduced by the change set.
+
+Treat the checklist as additive: novel constructions often touch multiple extension points, so expect to check several boxes per feature.
+
+---
+
 ## 📝 Code Style
 
 ### Naming Conventions

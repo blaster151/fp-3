@@ -4,6 +4,14 @@ import type {
   CoalgebraMorphism,
   ComonadStructure,
   HopfAlgebraStructure,
+  HopfAntipodeCompatibilityDiagnostics,
+  HopfAntipodeInvolutivityDiagnostics,
+  HopfAntipodeGradedTraceDiagnostics,
+  HopfAntipodePropertySampleFailure,
+  HopfAntipodePropertySamplingReport,
+  HopfCointegralDiagnostics,
+  HopfInvarianceWitness,
+  HopfIntegralDiagnostics,
 } from "./operations/coalgebra/coalgebra-interfaces";
 import {
   BIALGEBRA_COMPATIBILITY_COMPONENTS,
@@ -172,6 +180,167 @@ export const describeHopfAntipodeFailure = <O, M>(
     `η ∘ ε = ${describeNamed(witness.expected)}`,
   ].join(" ")
 }
+
+export const describeHopfAntipodeUnitCompatibilityFailure = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  witness: HopfAntipodeCompatibilityDiagnostics<M>,
+): string => {
+  const carrier = describeNamed(hopf.algebra.object)
+  return [
+    `Hopf antipode unit compatibility failed on ${carrier}.`,
+    `S ∘ η = ${describeNamed(witness.actual)}`,
+    `η = ${describeNamed(witness.expected)}`,
+  ].join(" ")
+}
+
+export const describeHopfAntipodeCounitCompatibilityFailure = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  witness: HopfAntipodeCompatibilityDiagnostics<M>,
+): string => {
+  const carrier = describeNamed(hopf.algebra.object)
+  return [
+    `Hopf antipode counit compatibility failed on ${carrier}.`,
+    `ε ∘ S = ${describeNamed(witness.actual)}`,
+    `ε = ${describeNamed(witness.expected)}`,
+  ].join(" ")
+}
+
+export const describeHopfAntipodeInvolutivityFailure = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  witness: HopfAntipodeInvolutivityDiagnostics<M>,
+): string => {
+  const carrier = describeNamed(hopf.algebra.object)
+  return [
+    `Hopf antipode involutivity failed on ${carrier}.`,
+    `S ∘ S = ${describeNamed(witness.composite)}`,
+    `Expected = ${describeNamed(witness.expected)}`,
+  ].join(" ")
+}
+
+export const describeHopfAntipodeGradedTraceFailure = <Grade, Trace>(
+  grade: Grade,
+  diagnostic: HopfAntipodeGradedTraceDiagnostics<Grade, Trace>,
+): string => {
+  const gradeLabel = describeNamed(grade)
+  const actual = describeNamed(diagnostic.actual)
+  const expected = diagnostic.expected === undefined ? "<unspecified>" : describeNamed(diagnostic.expected)
+  return `Graded trace mismatch for grade ${gradeLabel}: trace = ${actual}, expected ${expected}`
+}
+
+const describeSamplingValue = (provided: string | undefined, fallback: unknown) =>
+  provided ?? describeNamed(fallback)
+
+const renderSamplingSide = <Element>(
+  side: "left" | "right",
+  failure: NonNullable<HopfAntipodePropertySampleFailure<Element>["left" | "right"]>,
+): string => {
+  const label = side === "left" ? "Left" : "Right"
+  const actual = describeSamplingValue(failure.actualDescription, failure.actual)
+  const expected = describeSamplingValue(failure.expectedDescription, failure.expected)
+  return `${label} mismatch: actual = ${actual}, expected = ${expected}`
+}
+
+export const describeHopfAntipodePropertySamplingFailure = <Element>(
+  failure: HopfAntipodePropertySampleFailure<Element>,
+): string => {
+  const sampleLabel = describeSamplingValue(failure.sampleDescription, failure.sample)
+  const pieces = [`Sample ${sampleLabel} failed.`]
+  if (failure.left) {
+    pieces.push(renderSamplingSide("left", failure.left))
+  }
+  if (failure.right) {
+    pieces.push(renderSamplingSide("right", failure.right))
+  }
+  return pieces.join(" ")
+}
+
+export const summarizeHopfAntipodePropertySampling = <Element>(
+  report: HopfAntipodePropertySamplingReport<Element>,
+): string => {
+  const base = report.failureCount === 0
+    ? `Hopf antipode property sampling: ${report.samplesTested} samples tested, all passed.`
+    : `Hopf antipode property sampling: ${report.failureCount} of ${report.samplesTested} samples failed (left failures: ${report.leftFailureCount}, right failures: ${report.rightFailureCount}).`
+  const successLine = report.failureCount === 0
+    ? undefined
+    : `Successful samples: ${report.successCount}.`
+  const metadataLine = report.metadata && report.metadata.length > 0
+    ? `Metadata: ${report.metadata.join(", ")}`
+    : undefined
+  const failureLines = report.failures.map((failure) => `- ${describeHopfAntipodePropertySamplingFailure(failure)}`)
+  return [base, successLine, metadataLine, ...failureLines].filter((line): line is string => Boolean(line)).join("\n")
+}
+
+const hopfCarrierLabel = <O, M>(hopf: HopfAlgebraStructure<O, M>): string =>
+  String(hopf.algebra.object)
+
+const hopfUnitLabel = <O, M>(hopf: HopfAlgebraStructure<O, M>): string =>
+  String(hopf.category.dom(hopf.algebra.unit))
+
+export const describeHopfIntegralInvarianceFailure = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  witness: HopfInvarianceWitness<M>,
+  side: "left" | "right",
+): string =>
+  `Hopf integral ${side} invariance failed on ${hopfCarrierLabel(hopf)}; actual ${String(witness.actual)} did not match expected ${String(witness.expected)}.`
+
+export const describeHopfIntegralAntipodeFailure = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  witness: HopfInvarianceWitness<M>,
+): string =>
+  `Hopf integral antipode invariance failed on ${hopfCarrierLabel(hopf)}; antipode image ${String(witness.actual)} differed from integral ${String(witness.expected)}.`
+
+export const describeHopfIntegralDiagnostics = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  diagnostics: HopfIntegralDiagnostics<M>,
+): string[] => {
+  const failures: string[] = []
+  if (diagnostics.left && !diagnostics.left.holds) {
+    failures.push(describeHopfIntegralInvarianceFailure(hopf, diagnostics.left, "left"))
+  }
+  if (diagnostics.right && !diagnostics.right.holds) {
+    failures.push(describeHopfIntegralInvarianceFailure(hopf, diagnostics.right, "right"))
+  }
+  if (!diagnostics.antipode.holds) {
+    failures.push(describeHopfIntegralAntipodeFailure(hopf, diagnostics.antipode))
+  }
+  return failures
+}
+
+export const describeHopfCointegralInvarianceFailure = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  witness: HopfInvarianceWitness<M>,
+  side: "left" | "right",
+): string =>
+  `Hopf cointegral ${side} invariance failed on ${hopfCarrierLabel(hopf)}; actual ${String(witness.actual)} did not match expected ${String(witness.expected)}.`
+
+export const describeHopfCointegralAntipodeFailure = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  witness: HopfInvarianceWitness<M>,
+): string =>
+  `Hopf cointegral antipode invariance failed on ${hopfCarrierLabel(hopf)}; composite ${String(witness.actual)} differed from ${String(witness.expected)}.`
+
+export const describeHopfCointegralDiagnostics = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  diagnostics: HopfCointegralDiagnostics<M>,
+): string[] => {
+  const failures: string[] = []
+  if (diagnostics.left && !diagnostics.left.holds) {
+    failures.push(describeHopfCointegralInvarianceFailure(hopf, diagnostics.left, "left"))
+  }
+  if (diagnostics.right && !diagnostics.right.holds) {
+    failures.push(describeHopfCointegralInvarianceFailure(hopf, diagnostics.right, "right"))
+  }
+  if (!diagnostics.antipode.holds) {
+    failures.push(describeHopfCointegralAntipodeFailure(hopf, diagnostics.antipode))
+  }
+  return failures
+}
+
+export const describeHopfIntegralCointegralNormalizationFailure = <O, M>(
+  hopf: HopfAlgebraStructure<O, M>,
+  witness: HopfInvarianceWitness<M>,
+): string =>
+  `Hopf integral/cointegral normalization failed on ${hopfUnitLabel(hopf)}; actual ${String(witness.actual)} did not match expected ${String(witness.expected)}.`
 
 export const describeBialgebraCompatibilityFailure = <O, M>(
   bialgebra: BialgebraStructure<O, M>,

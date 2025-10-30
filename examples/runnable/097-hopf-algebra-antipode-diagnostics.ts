@@ -5,6 +5,8 @@ import {
   type GroupAlgebraLinearMap,
   type HopfDiagnostic,
 } from "../../operations/coalgebra/group-algebra-hopf"
+import { evaluateHopfAntipodeOnSamples } from "../../operations/coalgebra/coalgebra-interfaces"
+import { summarizeHopfAntipodePropertySampling } from "../../diagnostics"
 
 type BasisElement = "one" | "sigma"
 
@@ -43,6 +45,38 @@ const runHopfAntipodeDiagnostics = () => {
     hopf.elementFromBasis(basis)
   const antipodeMap: GroupAlgebraLinearMap<BasisElement> = (basis) =>
     hopf.elementFromBasis(hopf.inverseBasis(basis))
+  const convolutionIdentityMap: GroupAlgebraLinearMap<BasisElement> = () =>
+    hopf.unitElement()
+  const buildConvolutionMap = (
+    first: GroupAlgebraLinearMap<BasisElement>,
+    second: GroupAlgebraLinearMap<BasisElement>,
+  ): GroupAlgebraLinearMap<BasisElement> => (basis) =>
+    hopf.convolution(first, second, hopf.elementFromBasis(basis))
+
+  const propertySampling = hopf.buildAntipodePropertySampling({
+    samples: sampleElements,
+    metadata: ["hand-picked group algebra samples"],
+    describeSample: hopf.describeElement,
+  })
+
+  const comparisons = {
+    left: {
+      actual: buildConvolutionMap(antipodeMap, identityMap),
+      expected: convolutionIdentityMap,
+    },
+    right: {
+      actual: buildConvolutionMap(identityMap, antipodeMap),
+      expected: convolutionIdentityMap,
+    },
+  }
+
+  const propertySamplingReport = evaluateHopfAntipodeOnSamples(
+    comparisons,
+    propertySampling,
+  )
+  const propertySamplingSummary = summarizeHopfAntipodePropertySampling(
+    propertySamplingReport,
+  )
 
   const diagnostics: ReadonlyArray<HopfDiagnostic> = [
     hopf.checkAssociativity(sampleElements),
@@ -62,6 +96,9 @@ const runHopfAntipodeDiagnostics = () => {
     "",
     "== Property-based sample elements ==",
     ...sampleElements.map((element, index) => `  ${index + 1}. ${hopf.describeElement(element)}`),
+    "",
+    "== Property sampling summary ==",
+    ...propertySamplingSummary.split("\n").map((line) => `  ${line}`),
     "",
     "== Law checks ==",
     ...diagnostics.flatMap(renderDiagnostic),
