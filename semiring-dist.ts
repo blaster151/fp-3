@@ -88,7 +88,7 @@ export function DRMonad(R: NumSemiring | CSRig<number>): DistLikeMonadSpec {
         out.set(b, R.add(out.get(b) ?? R.zero, R.mul(wa, wb)));
       }
     }
-    if (R === MaxPlus) {
+    if (R === MaxPlus || R === Prob) {
       return normalizeR(R, out);
     }
     return out;

@@ -1,5 +1,5 @@
 import type { ChainMap, Field, FinitePoset, PosetDiagram, Ring } from "../allTS"
-import { kron, matMul, matAdd, matNeg, idMat, nullspace } from "../allTS"
+import { kron, matMul, matAdd, matNeg, idMat } from "../src/all/semiring-linear"
 
 export namespace VectView {
   export type VectorSpace<R> = {
@@ -124,6 +124,97 @@ const standardVectorBasis = <R>(dim: number, zero: R, one: R): R[][] =>
   Array.from({ length: dim }, (_, i) =>
     Array.from({ length: dim }, (_, j) => (i === j ? one : zero))
   )
+
+type Matrix<R> = ReadonlyArray<ReadonlyArray<R>>
+
+const cloneMatrix = <R>(matrix: Matrix<R>): R[][] =>
+  matrix.map((row) => Array.from(row))
+
+const makeRref = <R>(F: Field<R>) =>
+  (matrix: Matrix<R>): { R: R[][]; pivots: number[] } => {
+    const rows = cloneMatrix(matrix)
+    const m = rows.length
+    const n = rows[0]?.length ?? 0
+    const pivots: number[] = []
+    const eq = F.eq ?? ((a: R, b: R) => Object.is(a, b))
+    const sub = F.sub ?? ((a: R, b: R) => F.add(a, F.neg(b)))
+    let pivotRow = 0
+
+    for (let col = 0; col < n && pivotRow < m; col++) {
+      let candidate = pivotRow
+      while (
+        candidate < m &&
+        eq(rows[candidate]?.[col] ?? F.zero, F.zero)
+      ) {
+        candidate++
+      }
+      if (candidate === m) {
+        continue
+      }
+      if (candidate !== pivotRow) {
+        ;[rows[pivotRow], rows[candidate]] = [rows[candidate]!, rows[pivotRow]!]
+      }
+      const pivot = rows[pivotRow]?.[col]
+      if (pivot === undefined || eq(pivot, F.zero)) {
+        continue
+      }
+      const inv = F.inv(pivot)
+      for (let j = col; j < n; j++) {
+        rows[pivotRow]![j] = F.mul(rows[pivotRow]![j]!, inv)
+      }
+      for (let r = 0; r < m; r++) {
+        if (r === pivotRow) continue
+        const factor = rows[r]?.[col]
+        if (factor === undefined || eq(factor, F.zero)) continue
+        for (let j = col; j < n; j++) {
+          rows[r]![j] = sub(rows[r]![j]!, F.mul(factor, rows[pivotRow]![j]!))
+        }
+      }
+      pivots.push(col)
+      pivotRow++
+    }
+
+    return { R: rows, pivots }
+  }
+
+const nullspace =
+  <R>(F: Field<R>) =>
+  (matrix: Matrix<R>): R[][] => {
+    const width = matrix[0]?.length ?? 0
+    if (width === 0) {
+      return []
+    }
+    const { R, pivots } = makeRref(F)(matrix)
+    const pivotSet = new Set(pivots)
+    const free: number[] = []
+    for (let j = 0; j < width; j++) {
+      if (!pivotSet.has(j)) {
+        free.push(j)
+      }
+    }
+    const eq = F.eq ?? ((a: R, b: R) => Object.is(a, b))
+    const basis: R[][] = []
+    for (const f of free) {
+      const vector = Array.from({ length: width }, () => F.zero)
+      vector[f] = F.one
+      let row = 0
+      for (const pivotCol of pivots) {
+        let sum = F.zero
+        for (let j = pivotCol + 1; j < width; j++) {
+          const coefficient = R[row]?.[j]
+          const value = vector[j]
+          if (coefficient === undefined || value === undefined || eq(value, F.zero)) {
+            continue
+          }
+          sum = F.add(sum, F.mul(coefficient, value))
+        }
+        vector[pivotCol] = F.neg(sum)
+        row++
+      }
+      basis.push(vector)
+    }
+    return basis
+  }
 
 export const applyRepAsLin =
   <A, R>(F: Field<R>) =>
