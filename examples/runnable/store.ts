@@ -1,4 +1,8 @@
+import { lens as profunctorLens } from "../../allTS";
+import type { Lens } from "../../allTS";
 import { Result } from "./structures";
+
+export type { Lens } from "../../allTS";
 
 export type Store<Position, Value> = {
   readonly pos: Position;
@@ -51,16 +55,11 @@ export function collectStoreFromPositions<Position, Value>(
   return (store) => positions.map((position) => store.peek(position));
 }
 
-export type Lens<Source, Focus> = {
-  readonly get: (source: Source) => Focus;
-  readonly set: (focus: Focus, source: Source) => Source;
-};
-
 export function makeLens<Source, Focus>(
   get: (source: Source) => Focus,
   set: (focus: Focus, source: Source) => Source,
 ): Lens<Source, Focus> {
-  return { get, set };
+  return profunctorLens(get, set);
 }
 
 export function focusStore<Source, Focus, Value>(
@@ -69,7 +68,7 @@ export function focusStore<Source, Focus, Value>(
 ): Store<Focus, Value> {
   return {
     pos: lens.get(store.pos),
-    peek: (focus) => store.peek(lens.set(focus, store.pos)),
+    peek: (focus) => store.peek(lens.set(focus)(store.pos)),
   };
 }
 
@@ -95,7 +94,7 @@ export function extendStoreWithLens<Position, Source, Focus>(
       };
       const updatedFocus = transform(focused, cursor);
       const current = cursor.peek(cursor.pos);
-      return lens.set(updatedFocus, current);
+      return lens.set(updatedFocus)(current);
     });
 }
 
