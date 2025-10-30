@@ -92,8 +92,8 @@ describe("Coalgebra law oracle", () => {
     expect(report.overall).toBe(false)
     expect(report.counit.holds).toBe(false)
     expect(report.coassociativity.holds).toBe(false)
-    expect(report.counit.details).toContain("Counit law failed")
-    expect(report.coassociativity.details).toContain("Coassociativity failed")
+    expect(report.counit.details ?? "").toContain("Counit law failed")
+    expect(report.coassociativity.details ?? "").toContain("Coassociativity failed")
     expect(report.witness.overall).toBe(false)
     expect(report.witness.counit.holds).toBe(false)
     expect(report.witness.coassociativity.holds).toBe(false)
@@ -112,7 +112,7 @@ describe("Coalgebra morphism oracle", () => {
     const report = checkCoalgebraMorphism(identityComonad, identityIntoFlipping)
     expect(report.holds).toBe(false)
     expect(report.witness.holds).toBe(false)
-    expect(report.details).toContain("Coalgebra morphism coherence failed")
+    expect(report.details ?? "").toContain("Coalgebra morphism coherence failed")
     expect(booleanDomain.every((value) => report.diagnostics.left.apply(value) === value)).toBe(true)
     expect(booleanDomain.every((value) => report.diagnostics.right.apply(value) === !value)).toBe(true)
   })
@@ -123,14 +123,17 @@ describe("Coalgebra batch analyzers", () => {
     const results = analyzeCoalgebraFamily(identityComonad, [identityCoalgebra, flippingCoalgebra])
     expect(results).toHaveLength(2)
     const [identityResult, flippingResult] = results
+    if (!identityResult || !flippingResult) {
+      throw new Error("Expected two coalgebra law results")
+    }
     expect(identityResult.label).toBe("𝟙")
     expect(identityResult.passed).toBe(true)
     expect(identityResult.report.overall).toBe(true)
     expect(identityResult.details).toBeUndefined()
     expect(flippingResult.label).toBe("𝟙")
     expect(flippingResult.passed).toBe(false)
-    expect(flippingResult.details).toContain("Counit law failed")
-    expect(flippingResult.details).toContain("Coassociativity failed")
+    expect(flippingResult.details ?? "").toContain("Counit law failed")
+    expect(flippingResult.details ?? "").toContain("Coassociativity failed")
   })
 
   it("supports custom labelling of coalgebra morphism reports", () => {
@@ -143,12 +146,15 @@ describe("Coalgebra batch analyzers", () => {
 
     expect(results).toHaveLength(2)
     const [coherent, incoherent] = results
+    if (!coherent || !incoherent) {
+      throw new Error("Expected two coalgebra morphism results")
+    }
     expect(coherent.label).toBe("f:𝟙→𝟙")
     expect(coherent.passed).toBe(true)
     expect(coherent.details).toBeUndefined()
     expect(incoherent.label).toBe("f:𝟙→𝟙")
     expect(incoherent.passed).toBe(false)
-    expect(incoherent.details).toContain("Coalgebra morphism coherence failed")
+    expect(incoherent.details ?? "").toContain("Coalgebra morphism coherence failed")
   })
 })
 

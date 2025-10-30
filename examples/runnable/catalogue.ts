@@ -100,6 +100,9 @@ import { stage094FinGrpRepresentationNaturalTransformations } from "./094-fingro
 import { stage095FinGrpRepresentationHomFunctors } from "./095-fingroup-representation-hom-functors";
 import { stage096CoalgebraWedgeAndCotensorDiagnostics } from "./096-coalgebra-wedge-and-cotensor-diagnostics";
 import { stage097HopfAlgebraAntipodeDiagnostics } from "./097-hopf-algebra-antipode-diagnostics";
+import { stage098HopfAlgebraPlayground } from "./098-hopf-algebra-playground";
+import { stage099HopfAlgebraMorphismLaboratory } from "./099-hopf-algebra-morphism-laboratory";
+import { stage100HopfModuleComoduleGallery } from "./100-hopf-module-comodule-gallery";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -203,4 +206,7 @@ export const registry: RunnableRegistry = [
   stage095FinGrpRepresentationHomFunctors,
   stage096CoalgebraWedgeAndCotensorDiagnostics,
   stage097HopfAlgebraAntipodeDiagnostics,
+  stage098HopfAlgebraPlayground,
+  stage099HopfAlgebraMorphismLaboratory,
+  stage100HopfModuleComoduleGallery,
 ];

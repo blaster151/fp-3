@@ -171,10 +171,16 @@ export const checkCotensorTower = <O, M>(
     const left: CoalgebraSubcoalgebra<O, M> =
       index === 0
         ? tower.seed
-        : {
-            coalgebra: tower.stages[index - 1].witness.wedge,
-            inclusion: tower.stages[index - 1].witness.inclusions.ambient,
-          }
+        : (() => {
+            const previousStage = tower.stages[index - 1]
+            if (!previousStage) {
+              throw new Error(`Cotensor tower stage ${index} is missing its predecessor`)
+            }
+            return {
+              coalgebra: previousStage.witness.wedge,
+              inclusion: previousStage.witness.inclusions.ambient,
+            }
+          })()
 
     const wedgeReport = checkCoalgebraWedgeProduct(
       comonad,

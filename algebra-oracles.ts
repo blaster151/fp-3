@@ -81,6 +81,12 @@ import { AffineSchemeExamples } from "./examples/runnable/093-affine-scheme-exam
 import { checkHopfAntipode } from "./oracles/coalgebra/hopf-antipode-oracle";
 import { checkBialgebraCompatibility } from "./oracles/coalgebra/bialgebra-compatibility-oracle";
 import {
+  createHopfAlgebraRegistry,
+  buildHopfAlgebraFromSpec,
+  type HopfAlgebraRegistrySpec,
+  type HopfAlgebraRegistryEntry,
+} from "./operations/coalgebra/coalgebra-interfaces";
+import {
   analyzeFinGrpRepresentationSemisimplicity,
   certifyFinGrpRepresentationSemisimplicity,
   checkFinGrpRepresentationIrreducible,
@@ -108,6 +114,8 @@ export interface RelativeMonadLawCheckResult<Obj, Arr, Payload, Evidence> {
   readonly analysis: RelativeMonadLawAnalysis<Obj, Arr, Payload, Evidence>;
 }
 
+const hopfRegistry = createHopfAlgebraRegistry();
+
 export const AlgebraOracles = {
   semicartesian: {
     cringPlusInitialUnit: checkCRingPlusInitialSemicartesian,
@@ -115,6 +123,13 @@ export const AlgebraOracles = {
   coalgebra: {
     hopfAntipode: checkHopfAntipode,
     bialgebraCompatibility: checkBialgebraCompatibility,
+    hopfRegistry: {
+      register: hopfRegistry.register,
+      get: hopfRegistry.get,
+      list: hopfRegistry.list,
+      clear: hopfRegistry.clear,
+      buildFromSpec: buildHopfAlgebraFromSpec,
+    } as const,
   },
   ring: {
     category: checkRingCategory,
@@ -232,6 +247,8 @@ export const AlgebraOracles = {
     analyzePolynomialContainerComposition: analyzeADTPolynomialContainerComposition,
   },
 } as const;
+
+export type { HopfAlgebraRegistrySpec, HopfAlgebraRegistryEntry };
 
 export const checkRelativeMonadLaws = <Obj, Arr, Payload, Evidence>(
   monad: RelativeMonadData<Obj, Arr, Payload, Evidence>,

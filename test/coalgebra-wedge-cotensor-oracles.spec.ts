@@ -61,7 +61,9 @@ const booleanCategoryWithLimits: Category<BooleanObject, BooleanMorphism> &
     equalizer: () => ({ obj: "𝟙", equalize: identityMorphism }),
   }
 
-const identityComonad: ComonadStructure<BooleanObject, BooleanMorphism> = {
+const identityComonad: ComonadStructure<BooleanObject, BooleanMorphism> & {
+  readonly category: typeof booleanCategoryWithLimits
+} = {
   category: booleanCategoryWithLimits,
   endofunctor: {
     onObjects: (object) => object,
@@ -196,8 +198,12 @@ describe("Cotensor tower oracle", () => {
     const report = checkCotensorTower(identityComonad, mutatedTower)
 
     expect(report.overall).toBe(false)
-    expect(report.stages[0].passed).toBe(false)
-    expect(report.stages[0].details).toContain("level mismatch")
+    const firstStageReport = report.stages[0]
+    if (!firstStageReport) {
+      throw new Error("Cotensor tower report is missing the first stage")
+    }
+    expect(firstStageReport.passed).toBe(false)
+    expect(firstStageReport.details ?? "").toContain("level mismatch")
     expect(report.progress.summary).toContain("level 2")
   })
 })
@@ -211,7 +217,14 @@ describe("Cotensor tower progress analyzer", () => {
     expect(progress.stabilizedAt).toBe(1)
     expect(progress.stages).toHaveLength(3)
 
-    const [firstStage, secondStage] = progress.stages
+    const firstStage = progress.stages[0]
+    if (!firstStage) {
+      throw new Error("Cotensor tower progress is missing the first stage")
+    }
+    const secondStage = progress.stages[1]
+    if (!secondStage) {
+      throw new Error("Cotensor tower progress is missing the second stage")
+    }
     expect(firstStage.matchesSeed).toBe(true)
     expect(firstStage.matchesPrevious).toBeUndefined()
     expect(firstStage.stabilized).toBe(true)

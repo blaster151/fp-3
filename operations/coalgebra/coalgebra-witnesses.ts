@@ -105,10 +105,10 @@ export interface HopfAntipodeWitness<M> {
   readonly overall: boolean
 }
 
-export const buildHopfAntipodeWitness = <O, M>(
+export const buildHopfAntipodeWitness = <O, M, Grade = unknown, Trace = unknown>(
   hopf: HopfAlgebraStructure<O, M>,
   comparisons: HopfAntipodeConvolutionComparisons<M>,
-  diagnostics?: HopfAntipodeDiagnostics<M>,
+  diagnostics?: HopfAntipodeDiagnostics<M, Grade, Trace>,
 ): HopfAntipodeWitness<M> => {
   const report = diagnostics ?? analyzeHopfAntipode(hopf, comparisons)
   return {
