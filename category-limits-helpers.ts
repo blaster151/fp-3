@@ -247,3 +247,39 @@ export const checkBinaryProductUnitPointCompatibility = <O, M>({
   const canonical = category.compose(diagonal, point)
   return category.eq(lifted, canonical)
 }
+
+export interface TensorIdentityOnLeftInput<O, M> {
+  readonly category: {
+    readonly id: (object: O) => M
+  }
+  readonly tensor: {
+    readonly onMorphisms: (left: M, right: M) => M
+  }
+  readonly left: O
+  readonly morphism: M
+}
+
+export const tensorIdentityOnLeft = <O, M>({
+  category,
+  tensor,
+  left,
+  morphism,
+}: TensorIdentityOnLeftInput<O, M>): M => tensor.onMorphisms(category.id(left), morphism)
+
+export interface TensorIdentityOnRightInput<O, M> {
+  readonly category: {
+    readonly id: (object: O) => M
+  }
+  readonly tensor: {
+    readonly onMorphisms: (left: M, right: M) => M
+  }
+  readonly right: O
+  readonly morphism: M
+}
+
+export const tensorIdentityOnRight = <O, M>({
+  category,
+  tensor,
+  right,
+  morphism,
+}: TensorIdentityOnRightInput<O, M>): M => tensor.onMorphisms(morphism, category.id(right))

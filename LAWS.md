@@ -36,6 +36,50 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Check:** `MarkovOracles.optics.prism.laws`
 - **Implementation Notes:** Diagnostics cite preview skips, reconstruction mismatches, and rejection metadata to make partial optic regressions reproducible in downstream suites.
 
+## Coalgebra and Hopf law diagnostics
+
+### Bialgebra compatibility witness registry
+
+- **Registry Path:** `coalgebra.hopf.bialgebraCompatibility`
+- **Witness Builder:** `ensureBialgebraCompatibility(bialgebra)` materializes multiplication, unit, and counit composites and feeds them to `buildBialgebraCompatibilityWitness` for reusable witnesses and cached reports.
+- **Check:** `AlgebraOracles.coalgebra.bialgebraCompatibility`
+- **Implementation Notes:** Summary helpers such as `summarizeBialgebraCompatibility`, `collectBialgebraCompatibilitySummary`, and `collectBialgebraCompatibilityFailures` render carrier-level headlines plus per-component diagnostics for runnable logs and CLI output.
+
+### Hopf antipode convolution and sampling diagnostics
+
+- **Registry Path:** `coalgebra.hopf.antipode`
+- **Witness Builder:** `analyzeHopfAntipode(hopf, comparisons, options)` combines convolution pairs from `buildHopfAntipodeConvolutionComparisons` with property-sampling reports via `evaluateHopfAntipodeOnSamples` and wraps them in `buildHopfAntipodeWitness`.
+- **Check:** `AlgebraOracles.coalgebra.hopfAntipode`
+- **Implementation Notes:** `describeHopfAntipodeFailure`, `summarizeHopfAntipodePropertySampling`, and related renderers narrate involutivity, unit/counit compatibility, graded traces, and quantitative sampling metadata so regression suites can quote exact failing samples.
+
+### Hopf algebra specification and registry workflow
+
+- **Registry Path:** `coalgebra.hopf.registry`
+- **Witness Builder:** `buildHopfAlgebraStructure(input)` automatically infers tensor witnesses via `deriveBialgebraTensorWitnessesFromSymmetricMonoidal` before packaging antipode data, while `buildHopfAlgebraFromSpec` lifts reusable specs into concrete structures.
+- **Check:** `AlgebraOracles.coalgebra.hopfRegistry`
+- **Implementation Notes:** `createHopfAlgebraRegistry` stores keyed entries with optional metadata so runnable demonstrations, CLIs, and tests can list, retrieve, or rebuild Hopf instances deterministically.
+
+### Hopf integrals, cointegrals, and normalization
+
+- **Registry Path:** `coalgebra.hopf.integrals`
+- **Witness Builder:** `analyzeHopfIntegralCointegralPair(hopf, { integral, cointegral }, options)` validates unit/counit invariance and antipode stability via `analyzeHopfIntegral` and `analyzeHopfCointegral`, then records normalization witnesses.
+- **Check:** `analyzeHopfIntegralCointegralPair`
+- **Implementation Notes:** Failure reporters in `diagnostics.ts` (for example `describeHopfIntegralDiagnostics`, `describeHopfCointegralDiagnostics`, and `describeHopfIntegralCointegralNormalizationFailure`) surface the precise morphisms and unit objects responsible for invariance breaks.
+
+### Hopf morphisms, modules, and comodules
+
+- **Registry Path:** `coalgebra.hopf.modules`
+- **Witness Builder:** `analyzeHopfAlgebraMorphism`, `analyzeHopfModuleMorphism`, and `analyzeHopfComoduleMorphism` check algebra/comonoid preservation and action/coaction coherence while emitting categorical witnesses.
+- **Check:** `hopfModuleRestrictionFunctorWithWitness`, `hopfComoduleInductionFunctorWithWitness`, and related functors provide law checks over module/comodule categories.
+- **Implementation Notes:** Category constructors such as `hopfModuleCategory`, `hopfModuleDomCod`, and the restriction/induction functors enforce shared tensor infrastructure via `ensureSharedMonoidalInfrastructure`, guaranteeing that morphism transport respects symmetric monoidal coherence.
+
+### Finite duals, braided upgrades, and Drinfeld doubles
+
+- **Registry Path:** `coalgebra.hopf.doubles`
+- **Witness Builder:** `buildHopfFiniteDual` dualizes multiplication/comultiplication and assembles evaluation, coevaluation, and bidual witnesses with optional symmetric monoidal derivations.
+- **Check:** `analyzeHopfDrinfeldDouble`
+- **Implementation Notes:** Half-braiding and centrality analyzers (`analyzeHopfHalfBraiding`, `analyzeHopfDrinfeldDouble`) reuse bialgebra witness infrastructure to certify braided Hopf structures and validate the primal/dual embeddings inside Drinfeld doubles.
+
 ## Commutative algebra and scheme scaffolding
 
 ### Prime ideal witnesses with structured counterexamples

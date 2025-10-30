@@ -124,6 +124,12 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 94. **Coalgebra wedge and cotensor diagnostics** – Assemble the boolean identity coalgebra wedge, verify its mediating inclusions, then evolve cotensor towers to contrast stabilized progress with intentionally mutated inclusions surfaced by the coalgebra oracles. (examples/runnable/096-coalgebra-wedge-and-cotensor-diagnostics.ts, examples/coalgebra/boolean-fixtures.ts)
 
-97. **Hopf antipode diagnostics for finite group algebras** – Build the ℚ[C₂] Hopf algebra from explicit multiplication/comultiplication tables, sweep property-based samples across the bialgebra checks, and verify both antipode convolution identities via executable witnesses. (examples/runnable/097-hopf-algebra-antipode-diagnostics.ts)
+97. **Hopf antipode and registry diagnostics** – Materialize the ℚ[C₂] Hopf algebra through `buildHopfAlgebraStructure`, confirm the registry-driven spec matches the handcrafted tables, sweep property-based samples across the bialgebra checks, and surface the enriched antipode report (unit/counit compatibility, involutivity, graded trace, and sampling summaries). (examples/runnable/097-hopf-algebra-antipode-diagnostics.ts)
+
+98. **Hopf algebra playground** – Walk through constructing the ℚ[C₂] Hopf algebra from raw multiplication/comultiplication data, inspect the middle-four interchange witness, and interpret the bialgebra and antipode diagnostics produced by the guided runnable. (examples/runnable/098-hopf-algebra-playground.ts)
+
+99. **Hopf morphism diagnostics laboratory** – Compare symbolic Hopf structures via `analyzeHopfAlgebraMorphism`, showcasing how the identity arrow preserves μ, η, Δ, ε, S while renamed generators violate the algebra, coalgebra, and antipode checks. (examples/runnable/099-hopf-algebra-morphism-laboratory.ts)
+
+100. **Hopf module/comodule functor gallery** – Audit module and comodule morphisms, then transport actions and coactions along a symbolic Hopf morphism using restriction and induction functors with witness metadata. (examples/runnable/100-hopf-module-comodule-gallery.ts)
 
 This outline preserves the intent of each runnable example so the implementations can be reconstructed methodically from foundational effects up to advanced categorical oracles.

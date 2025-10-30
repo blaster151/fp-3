@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest"
 import type {
   BialgebraStructure,
   BialgebraCompatibilityDiagnostics,
+  SymmetricMonoidalWitnesses,
+  MonoidalIsomorphismWitness,
 } from "../operations/coalgebra/coalgebra-interfaces"
-import { BIALGEBRA_COMPATIBILITY_COMPONENTS } from "../operations/coalgebra/coalgebra-interfaces"
+import {
+  BIALGEBRA_COMPATIBILITY_COMPONENTS,
+  deriveBialgebraTensorWitnessesFromSymmetricMonoidal,
+} from "../operations/coalgebra/coalgebra-interfaces"
 import {
   analyzeBialgebraCompatibilityComponent,
   ensureBialgebraCompatibilityComponent,
@@ -64,6 +69,16 @@ const bialgebraTensor: CategoryLimits.TensorProductStructure<BialgebraObject, Bi
   onMorphisms: () => identity,
 }
 
+const trivialIso = (): MonoidalIsomorphismWitness<BialgebraMorphism> => ({
+  forward: identity,
+  backward: identity,
+})
+
+const symmetricWitnesses: SymmetricMonoidalWitnesses<BialgebraObject, BialgebraMorphism> = {
+  associator: () => trivialIso(),
+  braiding: () => trivialIso(),
+}
+
 const baseBialgebra: BialgebraStructure<BialgebraObject, BialgebraMorphism> = {
   category: bialgebraCategory,
   tensor: bialgebraTensor,
@@ -77,9 +92,12 @@ const baseBialgebra: BialgebraStructure<BialgebraObject, BialgebraMorphism> = {
     copy: identity,
     discard: identity,
   },
-  tensorWitnesses: {
-    middleSwap: identity,
-  },
+  tensorWitnesses: deriveBialgebraTensorWitnessesFromSymmetricMonoidal(
+    bialgebraCategory,
+    bialgebraTensor,
+    symmetricWitnesses,
+    bialgebraObject,
+  ),
 }
 
 const extract = <M>(
