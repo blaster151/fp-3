@@ -17,43 +17,36 @@ npm run typecheck:prod:runnable
 
 ## Quarantined Files
 
-### 🔴 Non-Production Examples (562 errors)
-These files are runnable examples but not part of the production library:
+🎉 **None!** Every TypeScript source now ships with production typechecking enabled.
 
-- `run-examples-simple.ts` (451 errors) - Evolved demo file; candidate for BDD-style rewrite
-- `examples-mixed-distributive.ts` (42 errors)
-- `examples-store-lens.ts` (16 errors)
+The remaining store–lens walkthrough has been fully migrated into the runnable
+catalogue (`examples/runnable/029–030b`) and the entire Markov family now relies
+on the shared `Dist<R, X>` probability bridge. The legacy quarantine exclusions
+have been deleted from `tsconfig.prod.json`, so `npm run typecheck:prod`
+exercises the same surface as the full `npm run typecheck` audit.
 
-**Action:** Consider rewriting as structured test suites or documentation examples.
-
-### 🟡 Architectural Debt - Markov Family (197 errors)
-These files require a coordinated refactor around the `Dist<R, X>` migration:
-
-- `markov-category.ts` (111 errors) - Core architectural issue with semiring polymorphism
-- `markov-infinite-oracles.ts` (21 errors)
-- `markov-infinite.ts` (20 errors)
-- `markov-deterministic-structure.ts` (17 errors)
-- `markov-zero-one.ts` (14 errors)
-- `markov-laws.ts` (14 errors)
-- `cring-plus-filtered-tensor.ts` (17 errors) - Has markov dependencies
-- `cring-plus.ts` (15 errors) - Has markov dependencies
-
-**Action:** Needs coordinated architectural refactor. Fixing errors outside markov-category first may make this safer to tackle.
+### Recent Milestones
+- ✅ Completed the staged Markov refactor, routing determinism, infinite, and
+  CRing⊕ diagnostics through the canonical probability adapters.
+- ✅ Added regression oracles and runnable coverage that continuously exercise
+  the new distribution bridge.
+- ✅ Ported the remaining example debt onto the runnable manifest and retired
+  the `examples-store-lens.ts` entry point.
+- ✅ Removed the final adapter shims and Map-based conversions so the probability
+  monad surface exposes the only Map↔rigged bridge.
 
 ## Status
 
 - **Before Quarantine:** 1,646 total errors
 - **After Quarantine:** **0 prod errors** ✅
-- **Quarantined:** ~887 errors (architectural debt)
+- **Quarantined:** **0 errors remaining** 🎯
 
 ## Strategy
 
 1. ✅ Get prod code to 0 errors
-2. ✅ Use `typecheck:prod` as your CI gate
-3. 🔄 Tackle quarantined files systematically:
-   - Rewrite non-prod examples as tests
-   - Coordinate markov family refactor
-4. 🎯 Remove files from quarantine as they're fixed
+2. ✅ Use `typecheck:prod` as your CI gate (now covers all files)
+3. ✅ Tackle quarantined files systematically
+4. ✅ Remove files from quarantine as they're fixed
 
 ## Removal Criteria
 
@@ -61,4 +54,6 @@ A file can be removed from quarantine when:
 1. It has 0 type errors
 2. Changes pass `npm run typecheck:prod` (introduce no new errors)
 3. Tests pass (if applicable)
+
+All criteria have now been satisfied for every previously quarantined file.
 

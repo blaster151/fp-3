@@ -1,7 +1,13 @@
 import type { Dist } from "./dist";
 import { bind, map } from "./dist";
 import type { CSRig } from "./semiring-utils";
-import { FinMarkov, tensorObj, pair, IFin } from "./markov-category";
+import {
+  FinMarkov,
+  tensorObj,
+  pair,
+  IFin,
+  ProbabilityWeightRig,
+} from "./markov-category";
 import type { Fin } from "./markov-category";
 import type {
   CountabilityWitness,
@@ -47,6 +53,7 @@ import {
   checkConditionalIndependence,
   type MarkovConditionalReport,
 } from "./markov-conditional-independence";
+import { probabilityLegacyToRigged } from "./probability-monads";
 
 const sectionsEqual = <J, X>(
   left: CylinderSection<J, X>,
@@ -577,28 +584,32 @@ export interface DeterministicProductUniversalPropertyResult<R, A, J, X, Carrier
   readonly candidateLabel?: string;
 }
 
-const ensureDeterministicBase = <A, X>(
-  arrow: FinMarkov<A, X>,
-  label: string
-): ((input: A) => X) => {
-  const EPS = 1e-9;
+const ensureDeterministicBase = <A, X>(arrow: FinMarkov<A, X>, label: string): ((input: A) => X) => {
+  const codomain = arrow.Y;
+  const isZero =
+    ProbabilityWeightRig.isZero ?? ((weight: number) => ProbabilityWeightRig.eq(weight, ProbabilityWeightRig.zero));
   return (input: A) => {
-    const dist = arrow.k(input);
-    let value: X | undefined;
-    dist.forEach((weight, outcome) => {
-      if (weight > EPS) {
-        if (value !== undefined && value !== outcome) {
-          throw new Error(
-            `Deterministic base extraction for ${label} found multiple outcomes with weight > ${EPS}.`
-          );
-        }
-        value = outcome;
+    const legacy = arrow.k(input);
+    const dist = probabilityLegacyToRigged(legacy);
+    let support: X | undefined;
+    dist.w.forEach((weight, outcome) => {
+      if (isZero(weight)) {
+        return;
+      }
+      if (support === undefined) {
+        support = outcome;
+        return;
+      }
+      if (!codomain.eq(support, outcome)) {
+        throw new Error(
+          `Deterministic base extraction for ${label} found multiple outcomes with non-zero support.`
+        );
       }
     });
-    if (value !== undefined) {
-      return value;
+    if (support !== undefined) {
+      return support;
     }
-    const entries = Array.from(dist.keys());
+    const entries = Array.from(legacy.keys());
     if (entries.length === 1) {
       return entries[0]!;
     }

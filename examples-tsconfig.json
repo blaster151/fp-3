@@ -8,6 +8,6 @@
     "downlevelIteration": true,
     "verbatimModuleSyntax": false
   },
-  "files": ["run-examples.ts", "run-examples-simple.ts"],
+  "files": ["run-examples.ts", "run-runnable-examples.ts"],
   "exclude": []
 }

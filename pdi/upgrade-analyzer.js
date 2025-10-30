@@ -19,7 +19,7 @@ const KNOWLEDGE_BASE = 'pdi/KNOWLEDGE_BASE.md';
 function analyzePattern(pattern) {
   try {
     console.log(`🔍 Analyzing pattern: ${pattern}`);
-    const result = execSync(`grep -r "${pattern}" allTS.ts run-examples-simple.ts`, { encoding: 'utf8' });
+    const result = execSync(`grep -r "${pattern}" allTS.ts run-runnable-examples.ts examples/runnable`, { encoding: 'utf8' });
     const lines = result.split('\n').filter(line => line.trim());
     
     if (lines.length === 0) {

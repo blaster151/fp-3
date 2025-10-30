@@ -310,15 +310,14 @@ if (f.tag === 'Arr' && g.tag === 'Arr') {
 
 ### Runnable Examples as Tests
 
-Our `run-examples-simple.ts` serves as **integration tests** that:
+Our runnable catalogue (`run-runnable-examples.ts`) serves as **integration tests** that:
 - Show real usage patterns
 - Test feature integration  
 - Demonstrate correctness through execution
 - Provide live documentation
 
-FOR NEWLY or SUBSEQUENTLY ADDED RUNNABLE EXAMPLES, may use same file as always but please
-put the NEW example in an appropriately named function of its own, rather than expanding
-the giant "RUN ALL EXAMPLES" that's currently there.
+FOR NEWLY or SUBSEQUENTLY ADDED RUNNABLE EXAMPLES, register them in `examples/runnable/manifest.ts`, give the module a descript
+ive id, and let the manifest wiring handle execution ordering. Avoid building another monolithic entry point.
 
 **Keep both approaches**: Witness tests for law compliance + runnable examples for integration testing.
 

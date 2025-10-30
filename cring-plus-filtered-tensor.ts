@@ -8,6 +8,10 @@
 //   3. Provide filtered-diagram helpers (inclusions, restrictions, support) with compatibility oracles.
 
 import type { CRingPlusObject } from "./cring-plus";
+import type { Dist as ParamDist } from "./dist";
+import { ProbabilityRig } from "./probability-monads";
+
+const SUPPORT_EPS = 1e-12;
 
 export type FiniteSubset<J> = ReadonlyArray<J>;
 
@@ -230,6 +234,50 @@ export const tensorSupport = <J, A>(family: TensorFamily<J, A>, tensor: TensorEl
     }
   }
   return Array.from(indices.values());
+};
+
+const coefficientMagnitude = (coefficient: bigint): number => {
+  const magnitude = coefficient < 0n ? -coefficient : coefficient;
+  return Number(magnitude);
+};
+
+export const tensorSupportDistribution = <J, A>(
+  family: TensorFamily<J, A>,
+  tensor: TensorElement<J, A>,
+): ParamDist<number, J> => {
+  const weights = new Map<J, number>();
+  for (const term of tensor.terms) {
+    const weight = coefficientMagnitude(term.coefficient);
+    if (weight === 0) continue;
+    for (const entry of term.entries) {
+      const current = weights.get(entry.index) ?? 0;
+      weights.set(entry.index, current + weight);
+    }
+  }
+
+  const total = Array.from(weights.values()).reduce((sum, value) => sum + value, 0);
+  if (total > SUPPORT_EPS) {
+    const normalized = new Map<J, number>();
+    weights.forEach((value, index) => {
+      const probability = value / total;
+      if (probability > SUPPORT_EPS) {
+        normalized.set(index, probability);
+      }
+    });
+    return { R: ProbabilityRig, w: normalized };
+  }
+
+  const size = weights.size;
+  if (size === 0) {
+    return { R: ProbabilityRig, w: new Map() };
+  }
+
+  const uniform = 1 / size;
+  const normalized = new Map<J, number>();
+  weights.forEach((_value, index) => {
+    normalized.set(index, uniform);
+  });
+  return { R: ProbabilityRig, w: normalized };
 };
 
 export const restrictTensor = <J, A>(

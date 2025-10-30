@@ -11,6 +11,7 @@ import {
   negateTensor,
   restrictTensor,
   tensorSupport,
+  tensorSupportDistribution,
   type TensorFamily,
   type TensorElement,
 } from "../../cring-plus-filtered-tensor";
@@ -86,5 +87,18 @@ describe("CRing⊕ infinite tensor filtered colimit", () => {
     const sum = addTensors(family, tensorA, addTensors(family, tensorB, tensorC));
     const support = Array.from(tensorSupport(family, sum));
     expect(support.sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("produces normalized support distributions via semiring adapters", () => {
+    const sum = addTensors(family, tensorA, addTensors(family, tensorB, tensorC));
+    const distribution = tensorSupportDistribution(family, sum);
+    const weights = Array.from(distribution.w.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    );
+    expect(weights).toEqual([
+      ["a", 1 / 3],
+      ["b", 1 / 3],
+      ["c", 1 / 3],
+    ]);
   });
 });

@@ -1,13 +1,14 @@
 # 🎉 Production Code: Zero Type Errors!
 
 **Date Achieved:** October 5, 2025
+**Last refreshed:** March 6, 2026 – Quarantine fully retired
 
 ## 📊 Achievement Summary
 
 ```
 Starting Point:  2,189 total errors
 After fixes:     1,646 → 0 production errors ✅
-Quarantined:     ~887 errors (architectural debt)
+Quarantined:     0 errors (all exclusions cleared)
 Success Rate:    100% of production code clean!
 ```
 
@@ -26,20 +27,25 @@ Success Rate:    100% of production code clean!
 - ✅ `lin-alg.ts` (55 errors fixed)
 - ✅ `examples.ts` (43 errors fixed)
 - ✅ `relative/*` (5 files, final 8 errors fixed)
+- ✅ Markov category stack, CRing⊕ diagnostics, and probability monad bridge (197 errors retired)
 - ✅ Various test files and utilities
 
 ## 📝 Quarantine Strategy
 
-Non-production files temporarily excluded via `tsconfig.prod.json`:
+All historical quarantine exclusions have been cleared. The production
+`tsconfig.prod.json` now includes every TypeScript file, so
+`npm run typecheck:prod` exercises the exact same surface as the full
+`npm run typecheck` audit.
 
-### Non-Prod Examples (~562 errors)
-- `run-examples-simple.ts` - Candidate for BDD rewrite
-- `examples-mixed-distributive.ts`
-- `examples-store-lens.ts`
-
-### Architectural Debt - Markov Family (~325 errors)
-- `markov-category.ts` - Needs `Dist<R, X>` migration
-- Related markov files and cring dependencies
+### Final Burn-Down Highlights
+- ✅ Migrated the entire Markov stack to the `Dist<R, X>` bridge, replacing all
+  Map-based compatibility shims.
+- ✅ Added regression, determinism, infinity, and CRing⊕ diagnostics that verify
+  the refactored kernels end-to-end.
+- ✅ Ported the Store–lens walkthrough into runnable examples 029–030b and
+  retired the `examples-store-lens.ts` entry point.
+- ✅ Removed the last quarantine exclusions from `tsconfig.prod.json` and
+  verified the production build remains clean.
 
 ## 🚀 Development Workflow
 
@@ -56,11 +62,10 @@ npm run precommit
 
 ## 🎯 Next Steps
 
-1. **Maintain:** Keep `typecheck:prod` at 0 errors
-2. **Track Runnable Debt:** Use `npm run typecheck:prod:runnable` to monitor progress as example suites are repaired
-3. **Tackle Tests:** Fix test file errors systematically
-4. **Architectural Refactor:** Coordinate markov family migration
-5. **Unquarantine:** Remove files from quarantine as fixed
+1. **Maintain:** Keep `typecheck:prod` and `typecheck` at 0 errors now that both cover the full surface
+2. **Runnable Monitoring:** Continue running `npm run typecheck:prod:runnable` to catch regressions in the catalogue
+3. **Test Expansion:** Grow oracle/test coverage alongside the Markov diagnostics to guard against future drift
+4. **Documentation Sync:** Keep QUARANTINE.md and TYPECHECK_SUCCESS.md updated as new areas graduate or regress
 
 ## 🏆 Key Patterns Learned
 

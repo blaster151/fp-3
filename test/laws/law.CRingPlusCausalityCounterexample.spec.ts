@@ -19,6 +19,9 @@ describe("CRing_⊕ causality counterexample", () => {
     expect(analysis.holds).toBe(true);
     expect(analysis.equalAfterObservation).toBe(true);
     expect(analysis.equalBeforeObservation).toBe(false);
+    expect(analysis.markov.holds).toBe(true);
+    expect(analysis.markov.observationEqual).toBe(true);
+    expect(analysis.markov.futureEqual).toBe(false);
     expect(analysis.witness).toBeDefined();
     expect(analysis.details).toContain("premise but violate");
   });

@@ -1,7 +1,7 @@
 import { type CSRig, isNumericRig } from "./semiring-utils";
 import type { Dist } from "./dist";
 import { bind, dirac, map } from "./dist";
-import type { FinMarkov, Dist as FiniteDist } from "./markov-category";
+import type { FinMarkov } from "./markov-category";
 import {
   type MeasurableSpace,
   type ProbabilityMeasure,
@@ -11,6 +11,7 @@ import {
 import type { MarkovComonoidWitness } from "./markov-comonoid-structure";
 import type { MarkovConditionalWitness } from "./markov-conditional-independence";
 import type { DeterminismLemmaWitness } from "./markov-deterministic-structure";
+import { probabilityRiggedToLegacy } from "./probability-monads";
 
 export type KernelR<R, A, B> = (a: A) => Dist<R, B>;
 export type FiniteSubset<J> = ReadonlyArray<J>;
@@ -131,16 +132,8 @@ export interface ProjectiveFamily<R, J, X, Carrier = ProjectiveLimitSection<J, X
   readonly giry?: GiryProjectiveFamilyData<J, X> | undefined;
 }
 
-const numericDistToFinite = <Y>(dist: Dist<number, Y>): FiniteDist<Y> => {
-  const result: FiniteDist<Y> = new Map();
-  dist.w.forEach((weight, value) => {
-    result.set(value, weight);
-  });
-  return result;
-};
-
 const probabilityFromNumericDist = <Y>(space: MeasurableSpace<Y>, dist: Dist<number, Y>): ProbabilityMeasure<Y> =>
-  probabilityFromFinite(space, numericDistToFinite(dist));
+  probabilityFromFinite(space, probabilityRiggedToLegacy(dist));
 
 export const discreteCylinderMeasurableSpace = <J, X>(
   label?: string

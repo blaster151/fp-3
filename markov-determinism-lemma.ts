@@ -1,9 +1,14 @@
 // markov-determinism-lemma.ts — Executable determinism oracle
 // Detects determinism of s ∘ p under p-almost-sure conditional independence X ⟂ T ∥ A.
 
-import { FinMarkov, pair, tensorObj, idK, type Pair } from "./markov-category";
-import { Prob } from "./semiring-utils";
-import { fromLegacy } from "./dist";
+import {
+  FinMarkov,
+  pair,
+  tensorObj,
+  idK,
+  type Pair,
+  ProbabilityWeightRig,
+} from "./markov-category";
 import { isDeterministic, isDeterministicKernel } from "./markov-laws";
 import { buildMarkovComonoidWitness, type MarkovComonoidWitness } from "./markov-comonoid-structure";
 import {
@@ -11,6 +16,7 @@ import {
   checkConditionalIndependence,
   type MarkovConditionalReport,
 } from "./markov-conditional-independence";
+import { probabilityLegacyToRigged } from "./probability-monads";
 
 const DEFAULT_TOLERANCE = 1e-9;
 
@@ -91,7 +97,11 @@ export function checkDeterminismLemma<A, X, T>(
   const independence = checkConditionalIndependence(conditional);
   const ciVerified = independence.holds;
 
-  const deterministicReport = isDeterministic(Prob, (a: A) => fromLegacy(Prob, composite.k(a)), witness.prior.X.elems);
+  const deterministicReport = isDeterministic(
+    ProbabilityWeightRig,
+    (a: A) => probabilityLegacyToRigged(composite.k(a)),
+    witness.prior.X.elems,
+  );
   let deterministic = deterministicReport.det;
   if (deterministic) {
     deterministic = isDeterministicKernel(witness.prior.X, composite.k, tolerance);

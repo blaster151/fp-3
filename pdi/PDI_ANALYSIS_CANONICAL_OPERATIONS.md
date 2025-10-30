@@ -74,49 +74,49 @@
 #### **1. Manual Array Deduplication**
 ```bash
 # Find manual deduplication patterns
-grep -r "\.filter.*indexOf\|\.filter.*includes\|new Set.*map" allTS.ts run-examples-simple.ts
+grep -r "\.filter.*indexOf\|\.filter.*includes\|new Set.*map" allTS.ts run-runnable-examples.ts examples/runnable
 ```
 
 #### **2. Manual Min/Max Operations**
 ```bash
 # Find manual min/max patterns
-grep -r "\.reduce.*Math\.min\|\.reduce.*Math\.max\|\.sort.*\[0\]" allTS.ts run-examples-simple.ts
+grep -r "\.reduce.*Math\.min\|\.reduce.*Math\.max\|\.sort.*\[0\]" allTS.ts run-runnable-examples.ts examples/runnable
 ```
 
 #### **3. Manual Distinct Operations**
 ```bash
 # Find manual distinct patterns
-grep -r "\.filter.*\.indexOf\|\.filter.*\.includes" allTS.ts run-examples-simple.ts
+grep -r "\.filter.*\.indexOf\|\.filter.*\.includes" allTS.ts run-runnable-examples.ts examples/runnable
 ```
 
 #### **4. JSON Array Processing**
 ```bash
 # Find JSON array processing
-grep -r "Json.*\[\].*filter\|Json.*\[\].*map\|Json.*\[\].*reduce" allTS.ts run-examples-simple.ts
+grep -r "Json.*\[\].*filter\|Json.*\[\].*map\|Json.*\[\].*reduce" allTS.ts run-runnable-examples.ts examples/runnable
 ```
 
 #### **5. Canonical Key Usage**
 ```bash
 # Find existing canonical key usage
-grep -r "canonicalKey\|canonicalizeJson" allTS.ts run-examples-simple.ts
+grep -r "canonicalKey\|canonicalizeJson" allTS.ts run-runnable-examples.ts examples/runnable
 ```
 
 #### **6. Manual Sorting Operations**
 ```bash
 # Find manual sorting patterns
-grep -r "\.sort.*\|\.sortBy\|\.orderBy" allTS.ts run-examples-simple.ts
+grep -r "\.sort.*\|\.sortBy\|\.orderBy" allTS.ts run-runnable-examples.ts examples/runnable
 ```
 
 #### **7. Manual Unique Operations**
 ```bash
 # Find manual unique patterns
-grep -r "\.filter.*\.indexOf\|\.filter.*\.includes\|new Set.*map" allTS.ts run-examples-simple.ts
+grep -r "\.filter.*\.indexOf\|\.filter.*\.includes\|new Set.*map" allTS.ts run-runnable-examples.ts examples/runnable
 ```
 
 #### **8. JSON Array Sorting**
 ```bash
 # Find JSON array sorting
-grep -r "Json.*\[\].*sort\|Json.*\[\].*order" allTS.ts run-examples-simple.ts
+grep -r "Json.*\[\].*sort\|Json.*\[\].*order" allTS.ts run-runnable-examples.ts examples/runnable
 ```
 
 ### **Decision Matrix**

@@ -12,7 +12,7 @@
     "typecheck": "tsc --project tsconfig.typecheck.json",
     "typecheck:prod": "tsc --project tsconfig.prod.json --noEmit",
     "typecheck:prod:runnable": "tsc --project tsconfig.prod-runnable.json --noEmit",
-    "examples": "node dist/run-examples-simple.js",
+    "examples": "node dist/run-runnable-examples.js",
     "examples:runnable": "ts-node --project tsconfig.runnable-plan.json run-runnable-examples.ts",
     "examples:runnable:coverage": "node scripts/run-runnable-coverage.mjs",
     "test": "vitest",

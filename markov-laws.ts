@@ -16,11 +16,13 @@ import {
   copyK,
   discardK,
   deterministic,
-  IFin
+  IFin,
+  ProbabilityWeightRig,
 } from "./markov-category";
 import type { Dist } from "./dist";
-import { Prob } from "./semiring-utils";
 import type { CSRig } from "./semiring-utils";
+
+export { isDeterministicKernel } from "./markov-category";
 
 export function approxEqualMatrix(a:number[][], b:number[][], tol=1e-9){
   if(a.length!==b.length) return false;
@@ -75,14 +77,6 @@ export function checkComonoidLaws<X>(Xf: Fin<X>) {
   const copyCoassoc = true;
 
   return { copyCoassoc, copyCommut, copyCounitL, copyCounitR };
-}
-
-export function isDeterministicKernel<X,Y>(Xf: Fin<X>, k: Kernel<X,Y>, tol=1e-12){
-  for (const x of Xf.elems){
-    const d=k(x); let count=0, m=0; for (const [_y,p] of d){ m+=p; count+=(p>tol?1:0); }
-    if (Math.abs(m-1)>tol || count!==1) return false;
-  }
-  return true;
 }
 
 export function checkComonoidHom<X,Y>(Xf: Fin<X>, Yf: Fin<Y>, f: Kernel<X,Y>){
@@ -166,23 +160,6 @@ export function isDeterministic<R, A, B>(
   };
   
   return { det: true, base };
-}
-
-/**
- * Legacy determinism recognizer for backward compatibility
- * @deprecated Use the enhanced version with CSRig parameter
- */
-export function isDeterministicLegacy<A, X>(
-  f: (a: A) => Map<X, number>,
-  eqX: (x: X, y: X) => boolean,
-  sampleAs: readonly A[]
-): { det: boolean; base?: (a: A) => X } {
-  // Convert to use the new recognizer with Prob semiring
-  const newF = (a: A): Dist<number, X> => ({
-    R: Prob,
-    w: f(a)
-  });
-  return isDeterministic(Prob, newF, sampleAs);
 }
 
 /**

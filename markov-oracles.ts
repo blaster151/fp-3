@@ -91,6 +91,11 @@ import {
 } from "./markov-zero-one-factory";
 import { checkFinitePermutationInvariance } from "./markov-permutation";
 import {
+  checkFinMarkovDeterminism,
+  checkFinMarkovThunkability,
+  checkFinMarkovTensorStrength,
+} from "./markov-regression-oracles";
+import {
   buildBorelKolmogorovWitness,
   buildBorelHewittSavageWitness,
   checkBorelKolmogorovZeroOne,
@@ -158,6 +163,11 @@ const createMarkovOracles = ({
     robust: checkThunkabilityRobust,
     witness: certifyDeterministicFunction,
     comonoid: checkDeterministicComonoid,
+    regression: {
+      finDeterminism: checkFinMarkovDeterminism,
+      finThunkability: checkFinMarkovThunkability,
+      tensorStrength: checkFinMarkovTensorStrength,
+    },
     lemmaWitness: buildDeterminismLemmaWitness,
     lemma: checkDeterminismLemma,
     detailedLemma: checkStructuredDeterminismLemma,
