@@ -9,6 +9,38 @@ export interface IndexedContainerShape {
   readonly positions: ReadonlyArray<IndexedContainerPosition>;
 }
 
+export type IndexedContainerShapeExpression =
+  | { readonly kind: "original" }
+  | { readonly kind: "constant"; readonly shape: string }
+  | { readonly kind: "binding"; readonly binder: string };
+
+export type IndexedContainerAssignmentExpression =
+  | { readonly kind: "original"; readonly position: string }
+  | { readonly kind: "bindingValue"; readonly binder: string }
+  | { readonly kind: "bindingAssignment"; readonly binder: string; readonly position: string }
+  | { readonly kind: "literal"; readonly value: string };
+
+export interface IndexedContainerSubstitutionBinding {
+  readonly position: string;
+  readonly binder: string;
+  readonly allowedShapes?: ReadonlyArray<string>;
+  readonly reindexTargets?: ReadonlyArray<{ readonly from: string; readonly to: string }>;
+}
+
+export interface IndexedContainerSubstitutionAssignment {
+  readonly position: string;
+  readonly targetIndex: string;
+  readonly expression: IndexedContainerAssignmentExpression;
+}
+
+export interface IndexedContainerSubstitutionRule {
+  readonly index: string;
+  readonly domainShape: string;
+  readonly bindings: ReadonlyArray<IndexedContainerSubstitutionBinding>;
+  readonly resultShape: IndexedContainerShapeExpression;
+  readonly assignments: ReadonlyArray<IndexedContainerSubstitutionAssignment>;
+}
+
 export interface IndexedContainerFamilyComponent {
   readonly index: string;
   readonly values: ReadonlyArray<string>;
@@ -45,6 +77,7 @@ export interface IndexedContainerRelativeMonadWitness {
     element: IndexedContainerBaseElement,
   ) => IndexedContainerElement;
   readonly extractValue: (element: IndexedContainerElement) => string;
+  readonly substitutions?: ReadonlyArray<IndexedContainerSubstitutionRule>;
 }
 
 export interface IndexedContainerFamilySummary {
@@ -71,6 +104,11 @@ interface EnumeratedFamilyData {
   readonly componentValues: Map<string, ReadonlySet<string>>;
 }
 
+interface ReplacementData {
+  readonly assignment: IndexedContainerAssignment;
+  readonly element: IndexedContainerElement;
+}
+
 const uniqueSorted = (values: ReadonlyArray<string>): ReadonlyArray<string> => {
   const sorted = [...values];
   sorted.sort();
@@ -91,6 +129,9 @@ const elementKey = (element: IndexedContainerElement): string => {
 
 const baseKey = (element: IndexedContainerBaseElement): string =>
   `${element.index}:${element.value}`;
+
+const substitutionKey = (index: string, shape: string): string =>
+  `${index}::${shape}`;
 
 const cartesianProduct = <T>(
   collections: ReadonlyArray<ReadonlyArray<T>>,
@@ -323,6 +364,149 @@ export const analyzeIndexedContainerRelativeMonad = (
     }
   }
 
+  const substitutionRulesByShape = new Map<string, IndexedContainerSubstitutionRule[]>();
+  const substitutionRules = witness.substitutions ?? [];
+  for (const rule of substitutionRules) {
+    const ruleContext = `Substitution rule for (${rule.index}, ${rule.domainShape})`;
+    const domainShapes = shapesByIndex.get(rule.index);
+    if (!domainShapes || domainShapes.length === 0) {
+      issues.push(
+        `${ruleContext} references index "${rule.index}" which has no registered shapes.`,
+      );
+      continue;
+    }
+    const domainShape = domainShapes.find((candidate) => candidate.shape === rule.domainShape);
+    if (!domainShape) {
+      issues.push(
+        `${ruleContext} targets an unknown shape; available shapes are ${domainShapes
+          .map((candidate) => candidate.shape)
+          .join(", ")}.`,
+      );
+      continue;
+    }
+    const domainPositions = new Map<string, IndexedContainerPosition>();
+    for (const position of domainShape.positions) {
+      domainPositions.set(position.position, position);
+    }
+
+    const binderNames = new Set<string>();
+    let ruleValid = true;
+    for (const binding of rule.bindings) {
+      if (!domainPositions.has(binding.position)) {
+        issues.push(
+          `${ruleContext} lists binding position "${binding.position}" which does not appear in shape "${rule.domainShape}".`,
+        );
+        ruleValid = false;
+        continue;
+      }
+      if (binderNames.has(binding.binder)) {
+        issues.push(
+          `${ruleContext} reuses binder name "${binding.binder}"; binders must be unique per rule.`,
+        );
+        ruleValid = false;
+        continue;
+      }
+      binderNames.add(binding.binder);
+      const position = domainPositions.get(binding.position)!;
+      if (binding.allowedShapes) {
+        const available = shapesByIndex.get(position.targetIndex) ?? [];
+        for (const candidate of binding.allowedShapes) {
+          if (!available.some((shape) => shape.shape === candidate)) {
+            issues.push(
+              `${ruleContext} allows shape "${candidate}" for binder "${binding.binder}" but index "${position.targetIndex}" does not register it.`,
+            );
+            ruleValid = false;
+          }
+        }
+      }
+      if (binding.reindexTargets) {
+        const seenSources = new Set<string>();
+        for (const mapping of binding.reindexTargets) {
+          if (!uniqueIndices.includes(mapping.from)) {
+            issues.push(
+              `${ruleContext} lists reindex source "${mapping.from}" for binder "${binding.binder}" which is not a known index.`,
+            );
+            ruleValid = false;
+          }
+          if (!uniqueIndices.includes(mapping.to)) {
+            issues.push(
+              `${ruleContext} lists reindex target "${mapping.to}" for binder "${binding.binder}" which is not a known index.`,
+            );
+            ruleValid = false;
+          }
+          if (seenSources.has(mapping.from)) {
+            issues.push(
+              `${ruleContext} repeats reindex source "${mapping.from}" for binder "${binding.binder}"; mappings must be unique.`,
+            );
+            ruleValid = false;
+          }
+          seenSources.add(mapping.from);
+        }
+      }
+    }
+
+    const assignmentPositions = new Set<string>();
+    for (const assignment of rule.assignments) {
+      if (assignmentPositions.has(assignment.position)) {
+        issues.push(
+          `${ruleContext} repeats assignment position "${assignment.position}" in the result shape.`,
+        );
+        ruleValid = false;
+        continue;
+      }
+      assignmentPositions.add(assignment.position);
+      if (!uniqueIndices.includes(assignment.targetIndex)) {
+        issues.push(
+          `${ruleContext} targets unknown index "${assignment.targetIndex}" for position "${assignment.position}".`,
+        );
+        ruleValid = false;
+      }
+      switch (assignment.expression.kind) {
+        case "original":
+          if (!domainPositions.has(assignment.expression.position)) {
+            issues.push(
+              `${ruleContext} references original position "${assignment.expression.position}" which is not present in shape "${rule.domainShape}".`,
+            );
+            ruleValid = false;
+          }
+          break;
+        case "bindingValue":
+        case "bindingAssignment":
+          if (!binderNames.has(assignment.expression.binder)) {
+            issues.push(
+              `${ruleContext} references unknown binder "${assignment.expression.binder}" in the result assignments.`,
+            );
+            ruleValid = false;
+          }
+          break;
+        case "literal":
+          break;
+        default: {
+          const _exhaustive: never = assignment.expression;
+          issues.push(
+            `${ruleContext} uses an unsupported assignment expression ${(assignment.expression as { kind: string }).kind}.`,
+          );
+          ruleValid = false;
+        }
+      }
+    }
+
+    if (rule.resultShape.kind === "binding" && !binderNames.has(rule.resultShape.binder)) {
+      issues.push(
+        `${ruleContext} sets the result shape from binder "${rule.resultShape.binder}" which is not declared.`,
+      );
+      ruleValid = false;
+    }
+
+    if (!ruleValid) {
+      continue;
+    }
+    const key = substitutionKey(rule.index, rule.domainShape);
+    const bucket = substitutionRulesByShape.get(key) ?? [];
+    bucket.push(rule);
+    substitutionRulesByShape.set(key, bucket);
+  }
+
   const enumeratedFamilies: EnumeratedFamilyData[] = witness.families.map((family) =>
     enumerateFamilyData(witness, shapesByIndex, family, issues),
   );
@@ -387,14 +571,246 @@ export const analyzeIndexedContainerRelativeMonad = (
     }
   }
 
+  const applySubstitutionRules = (
+    rules: ReadonlyArray<IndexedContainerSubstitutionRule>,
+    element: IndexedContainerElement,
+    replacementsByPosition: Map<string, ReplacementData>,
+    codomain: EnumeratedFamilyData,
+    context: string,
+    originalAssignments: Map<string, IndexedContainerAssignment>,
+  ): { result?: IndexedContainerElement; issues: ReadonlyArray<string> } => {
+    const aggregatedIssues: string[] = [];
+    for (const rule of rules) {
+      const ruleContext = `${context} using rule (${rule.index}, ${rule.domainShape})`;
+      const binderElements = new Map<string, IndexedContainerElement>();
+      const binderBindings = new Map<string, IndexedContainerSubstitutionBinding>();
+      let applicable = true;
+      for (const binding of rule.bindings) {
+        const replacement = replacementsByPosition.get(binding.position);
+        if (!replacement) {
+          aggregatedIssues.push(
+            `${ruleContext} could not find a replacement element for position "${binding.position}".`,
+          );
+          applicable = false;
+          break;
+        }
+        if (
+          binding.allowedShapes &&
+          binding.allowedShapes.length > 0 &&
+          !binding.allowedShapes.includes(replacement.element.shape)
+        ) {
+          aggregatedIssues.push(
+            `${ruleContext} received shape "${replacement.element.shape}" for binder "${binding.binder}" which is not permitted.`,
+          );
+          applicable = false;
+          break;
+        }
+        binderElements.set(binding.binder, replacement.element);
+        binderBindings.set(binding.binder, binding);
+      }
+      if (!applicable) {
+        continue;
+      }
+
+      const binderValueCache = new Map<string, string>();
+      const computeBinderValue = (binder: string): string | undefined => {
+        if (binderValueCache.has(binder)) {
+          return binderValueCache.get(binder);
+        }
+        const binderElement = binderElements.get(binder);
+        if (!binderElement) {
+          return undefined;
+        }
+        try {
+          const value = witness.extractValue(binderElement);
+          binderValueCache.set(binder, value);
+          return value;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : `${error}`;
+          aggregatedIssues.push(
+            `${ruleContext} failed to extract a value from binder "${binder}": ${message}`,
+          );
+          return undefined;
+        }
+      };
+
+      let resultShapeName: string;
+      switch (rule.resultShape.kind) {
+        case "original":
+          resultShapeName = element.shape;
+          break;
+        case "constant":
+          resultShapeName = rule.resultShape.shape;
+          break;
+        case "binding": {
+          const binderElement = binderElements.get(rule.resultShape.binder);
+          if (!binderElement) {
+            aggregatedIssues.push(
+              `${ruleContext} references binder "${rule.resultShape.binder}" for the result shape but no replacement was recorded.`,
+            );
+            applicable = false;
+            resultShapeName = element.shape;
+            break;
+          }
+          resultShapeName = binderElement.shape;
+          break;
+        }
+        default: {
+          const _exhaustive: never = rule.resultShape;
+          aggregatedIssues.push(
+            `${ruleContext} encountered an unsupported shape expression ${(rule.resultShape as { kind: string }).kind}.`,
+          );
+          applicable = false;
+          resultShapeName = element.shape;
+        }
+      }
+      if (!applicable) {
+        continue;
+      }
+
+      const computedAssignments: IndexedContainerAssignment[] = [];
+      let assignmentFailed = false;
+      for (const assignment of rule.assignments) {
+        let value: string | undefined;
+        switch (assignment.expression.kind) {
+          case "original": {
+            const original = originalAssignments.get(assignment.expression.position);
+            if (!original) {
+              aggregatedIssues.push(
+                `${ruleContext} references original position "${assignment.expression.position}" which is absent from the element.`,
+              );
+              assignmentFailed = true;
+              break;
+            }
+            if (original.targetIndex !== assignment.targetIndex) {
+              aggregatedIssues.push(
+                `${ruleContext} cannot reuse original position "${assignment.expression.position}" because it targets "${original.targetIndex}" rather than "${assignment.targetIndex}".`,
+              );
+              assignmentFailed = true;
+              break;
+            }
+            value = original.value;
+            break;
+          }
+          case "bindingValue": {
+            const binderValue = computeBinderValue(assignment.expression.binder);
+            if (binderValue === undefined) {
+              assignmentFailed = true;
+              break;
+            }
+            value = binderValue;
+            break;
+          }
+          case "bindingAssignment": {
+            const binderElement = binderElements.get(assignment.expression.binder);
+            if (!binderElement) {
+              aggregatedIssues.push(
+                `${ruleContext} references binder "${assignment.expression.binder}" for position "${assignment.position}" but no replacement was provided.`,
+              );
+              assignmentFailed = true;
+              break;
+            }
+            const binderAssignment = binderElement.assignments.find(
+              (candidate) => candidate.position === assignment.expression.position,
+            );
+            if (!binderAssignment) {
+              aggregatedIssues.push(
+                `${ruleContext} could not find assignment "${assignment.expression.position}" on binder "${assignment.expression.binder}".`,
+              );
+              assignmentFailed = true;
+              break;
+            }
+            if (binderAssignment.targetIndex !== assignment.targetIndex) {
+              const binding = binderBindings.get(assignment.expression.binder);
+              const reindexMap = new Map<string, string>();
+              binding?.reindexTargets?.forEach(({ from, to }) => {
+                reindexMap.set(from, to);
+              });
+              const allowedTarget = reindexMap.get(binderAssignment.targetIndex);
+              if (allowedTarget !== assignment.targetIndex) {
+                aggregatedIssues.push(
+                  `${ruleContext} cannot reindex binder "${assignment.expression.binder}" assignment "${assignment.expression.position}" from "${binderAssignment.targetIndex}" to "${assignment.targetIndex}".`,
+                );
+                assignmentFailed = true;
+                break;
+              }
+            }
+            value = binderAssignment.value;
+            break;
+          }
+          case "literal":
+            value = assignment.expression.value;
+            break;
+          default: {
+            const _exhaustive: never = assignment.expression;
+            aggregatedIssues.push(
+              `${ruleContext} encountered an unsupported assignment expression ${(assignment.expression as { kind: string }).kind}.`,
+            );
+            assignmentFailed = true;
+          }
+        }
+        if (assignmentFailed) {
+          break;
+        }
+        if (value === undefined) {
+          assignmentFailed = true;
+          break;
+        }
+        const allowed = codomain.componentValues.get(assignment.targetIndex);
+        if (!allowed || !allowed.has(value)) {
+          aggregatedIssues.push(
+            `${ruleContext} produced value "${value}" for position "${assignment.position}" which is not available in component "${assignment.targetIndex}" of family "${codomain.family.label}".`,
+          );
+        }
+        computedAssignments.push({
+          position: assignment.position,
+          targetIndex: assignment.targetIndex,
+          value,
+        });
+      }
+      if (assignmentFailed) {
+        continue;
+      }
+
+      const candidate: IndexedContainerElement = {
+        index: element.index,
+        shape: resultShapeName,
+        assignments: Object.freeze(computedAssignments) as ReadonlyArray<IndexedContainerAssignment>,
+      };
+
+      if (
+        !validateElement(
+          shapesByIndex,
+          codomain.componentValues,
+          candidate,
+          `${ruleContext} result`,
+          aggregatedIssues,
+        )
+      ) {
+        continue;
+      }
+
+      if (!codomain.containerKeys.has(elementKey(candidate))) {
+        aggregatedIssues.push(
+          `${ruleContext} produced (${candidate.index}, ${candidate.shape}) which is not present in family "${codomain.family.label}".`,
+        );
+        continue;
+      }
+
+      return { result: candidate, issues: aggregatedIssues };
+    }
+
+    return { issues: aggregatedIssues };
+  };
+
   const extendElement = (
-    domain: EnumeratedFamilyData,
+    _domain: EnumeratedFamilyData,
     codomain: EnumeratedFamilyData,
     arrow: (element: IndexedContainerBaseElement) => IndexedContainerElement,
     element: IndexedContainerElement,
     context: string,
   ): IndexedContainerElement | undefined => {
-    const replacements: IndexedContainerElement[] = [];
+    const replacementsByPosition = new Map<string, ReplacementData>();
     for (const assignment of element.assignments) {
       const baseElement: IndexedContainerBaseElement = {
         index: assignment.targetIndex,
@@ -420,38 +836,84 @@ export const analyzeIndexedContainerRelativeMonad = (
         );
         return undefined;
       }
-      replacements.push(image);
+      replacementsByPosition.set(assignment.position, {
+        assignment,
+        element: image,
+      });
     }
 
-    const newAssignments = element.assignments.map((assignment, index) => {
-      const replacement = replacements[index]!;
-      const extracted = witness.extractValue(replacement);
-      const allowed = codomain.componentValues.get(assignment.targetIndex);
-      if (!allowed || !allowed.has(extracted)) {
-        issues.push(
-          `${context}: extracted value "${extracted}" is not available in component "${assignment.targetIndex}" of family "${codomain.family.label}".`,
-        );
+    const originalAssignments = new Map<string, IndexedContainerAssignment>();
+    for (const assignment of element.assignments) {
+      originalAssignments.set(assignment.position, assignment);
+    }
+
+    const substitutionKeyName = substitutionKey(element.index, element.shape);
+    const substitutionRulesForShape = substitutionRulesByShape.get(substitutionKeyName);
+
+    let result: IndexedContainerElement | undefined;
+    if (substitutionRulesForShape && substitutionRulesForShape.length > 0) {
+      const { result: substituted, issues: substitutionIssues } = applySubstitutionRules(
+        substitutionRulesForShape,
+        element,
+        replacementsByPosition,
+        codomain,
+        context,
+        originalAssignments,
+      );
+      if (!substituted) {
+        const recorded = new Set<string>();
+        for (const issue of substitutionIssues) {
+          if (issue && !recorded.has(issue)) {
+            issues.push(issue);
+            recorded.add(issue);
+          }
+        }
+        return undefined;
       }
-      return {
-        position: assignment.position,
-        targetIndex: assignment.targetIndex,
-        value: extracted,
+      result = substituted;
+    } else {
+      const fallbackAssignments: IndexedContainerAssignment[] = [];
+      for (const assignment of element.assignments) {
+        const replacement = replacementsByPosition.get(assignment.position);
+        if (!replacement) {
+          issues.push(
+            `${context}: substitution fallback missing replacement for position "${assignment.position}".`,
+          );
+          return undefined;
+        }
+        const extracted = witness.extractValue(replacement.element);
+        const allowed = codomain.componentValues.get(assignment.targetIndex);
+        if (!allowed || !allowed.has(extracted)) {
+          issues.push(
+            `${context}: extracted value "${extracted}" is not available in component "${assignment.targetIndex}" of family "${codomain.family.label}".`,
+          );
+        }
+        fallbackAssignments.push({
+          position: assignment.position,
+          targetIndex: assignment.targetIndex,
+          value: extracted,
+        });
+      }
+      result = {
+        index: element.index,
+        shape: element.shape,
+        assignments: Object.freeze(fallbackAssignments) as ReadonlyArray<IndexedContainerAssignment>,
       };
-    });
+    }
 
-    const result: IndexedContainerElement = {
-      index: element.index,
-      shape: element.shape,
-      assignments: Object.freeze(newAssignments) as ReadonlyArray<IndexedContainerAssignment>,
-    };
+    if (!result) {
+      return undefined;
+    }
 
-    if (!validateElement(
-      shapesByIndex,
-      codomain.componentValues,
-      result,
-      `${context}: extended element`,
-      issues,
-    )) {
+    if (
+      !validateElement(
+        shapesByIndex,
+        codomain.componentValues,
+        result,
+        `${context}: extended element`,
+        issues,
+      )
+    ) {
       return undefined;
     }
 
@@ -596,6 +1058,74 @@ export const describeIndexedContainerExample4Witness = (): IndexedContainerRelat
       components: [
         { index: "Nat", values: ["0", "1", "2"] },
         { index: "Stream", values: ["s0", "s1", "s2"] },
+      ],
+    },
+  ],
+  substitutions: [
+    {
+      index: "Nat",
+      domainShape: "returnNat",
+      bindings: [
+        { position: "focus", binder: "focus" },
+      ],
+      resultShape: { kind: "binding", binder: "focus" },
+      assignments: [
+        {
+          position: "focus",
+          targetIndex: "Nat",
+          expression: { kind: "bindingAssignment", binder: "focus", position: "focus" },
+        },
+      ],
+    },
+    {
+      index: "Nat",
+      domainShape: "succ",
+      bindings: [
+        { position: "focus", binder: "focus" },
+      ],
+      resultShape: { kind: "binding", binder: "focus" },
+      assignments: [
+        {
+          position: "focus",
+          targetIndex: "Nat",
+          expression: { kind: "bindingAssignment", binder: "focus", position: "focus" },
+        },
+      ],
+    },
+    {
+      index: "Stream",
+      domainShape: "returnStream",
+      bindings: [
+        { position: "tail", binder: "tail" },
+      ],
+      resultShape: { kind: "binding", binder: "tail" },
+      assignments: [
+        {
+          position: "tail",
+          targetIndex: "Stream",
+          expression: { kind: "bindingAssignment", binder: "tail", position: "tail" },
+        },
+      ],
+    },
+    {
+      index: "Stream",
+      domainShape: "cons",
+      bindings: [
+        { position: "head", binder: "head" },
+        { position: "tail", binder: "tail" },
+      ],
+      resultShape: { kind: "constant", shape: "cons" },
+      assignments: [
+        {
+          position: "head",
+          targetIndex: "Nat",
+          expression: { kind: "bindingValue", binder: "head" },
+        },
+        {
+          position: "tail",
+          targetIndex: "Stream",
+          expression: { kind: "bindingAssignment", binder: "tail", position: "tail" },
+        },
       ],
     },
   ],

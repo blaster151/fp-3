@@ -39,14 +39,12 @@
 - **Source:** Section 2 of *Monads Need Not Be Endofunctors* (user-supplied scans) discussing the FinSet → Set left Kan extension and its monoidal structure.
 
 ## Non-finitary MNNE relatives (Examples 8–10)
-- **What could be implemented:** Bring the powerset, coordinatewise vector, and possibly infinite λ-term relative monads into the executable suite by supporting infinite (co)limits, finitary approximation heuristics, or symbolic enumeration of context growth.
+- ✅ **Implemented:** `relative/mnne-powerset-monads.ts`, `relative/mnne-vector-monads.ts`, and `relative/mnne-lambda-monads.ts` now expose approximation-driven analyzers (`analyzePowersetRelativeMonad`, `analyzeCoordinatewiseVectorRelativeMonad`, and `analyzeLazyLambdaRelativeMonad`) alongside runnable witnesses so Examples 8–10 execute over lazy infinite carriers with truncation diagnostics.
 - **Trigger factor:** Infrastructure for representing infinite sets/relations (e.g., lazy generators or algebraic data types with decidable equality) together with Kan-extension solvers that can certify the Example 8–10 κ\_T isomorphisms without exhaustive enumeration.
 - **Source:** Examples 8–10 from *Monads Need Not Be Endofunctors* (user-provided excerpt highlighting the non-finitary behaviour of P, Vec, and Lam).
 
 ## Indexed Container Substitution Mechanics
-- **What could be implemented:** Upgrade `analyzeIndexedContainerRelativeMonad` to accept arbitrary indexed container substitution data (shape composition, context reindexing, and variable binding) instead of the current focus-position simplification. This would allow Example 4’s reduction of strictly positive families to W-types to run with genuine κ/σ substitutions.
-- **Trigger factor:** A structured witness for indexed container substitution (e.g., explicit composition operators or a programmable tree-building calculus) so the analyzer can synthesise the substituted shapes rather than projecting a single focused value.
-- **Source:** Example 4 of *Monads Need Not Be Endofunctors* (user-supplied scan highlighting the indexed container construction).
+- ✅ **Implemented:** `analyzeIndexedContainerRelativeMonad` now accepts structured substitution rules describing shape composition, context reindexing, and variable binding. Example 4’s witness records κ/σ data directly, and the analyzer consumes those rules when replaying indexed container substitutions across every enumerated family.
 
 ## Typed λ-Calculus Relative Monad (Example 3)
 - **What could be implemented:** Encode the typed λ-calculus Example 3 as an executable relative monad by representing contexts as finite lists of simple types, adding type-directed term constructors, and checking the substitution/prism diagrams highlighted in the paper.

@@ -426,8 +426,8 @@ This document catalogs the algebraic laws that our functional programming constr
   indexed container presentation.  `describeIndexedContainerExample4Witness`
   enumerates finite Nat/Stream families while
   `analyzeIndexedContainerRelativeMonad` replays the Example 4
-  unit/extraction data and checks the relative monad laws via the induced
-  substitution operator.
+  unit/extraction data and threads the recorded κ/σ substitution rules through
+  every family before checking the relative monad laws.
 - `relative/mnne-powerset-monads.ts` captures Example 8’s powerset relative
   monad using lazy/replayable subsets.  `describeCofinitePowersetWitness`
   supplies the cofinite ℕ witness, and `analyzePowersetRelativeMonad`
