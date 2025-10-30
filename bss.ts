@@ -323,7 +323,7 @@ export type BSSDetailedResult<
  * Enhanced BSS compare with barycentric dilation search
  * f ⪰ g iff ∃ dilation T with gHat = T# fHat and e∘T = id
  */
-export function bssCompare<
+const bssDominates = <
   Θ extends string | number,
   X extends string | number,
   Y extends string | number
@@ -332,8 +332,8 @@ export function bssCompare<
   f: (θ: Θ) => Dist<number, X>,
   g: (θ: Θ) => Dist<number, Y>,
   xVals: readonly X[],
-  yVals: readonly Y[]
-): boolean {
+  yVals: readonly Y[],
+): boolean => {
   const fHat = standardMeasure(m, f, xVals);
   const gHat = standardMeasure(m, g, yVals);
   if (equalDistNum(fHat, gHat)) return true;
@@ -347,6 +347,31 @@ export function bssCompare<
 
   const pushed = pushMeasure(fHat, T);
   return equalDistNum(pushed, gHat);
+};
+
+export function bssCompare<
+  Θ extends string | number,
+  X extends string | number,
+  Y extends string | number
+>(
+  m: Dist<number, Θ>,
+  f: (θ: Θ) => Dist<number, X>,
+  g: (θ: Θ) => Dist<number, Y>,
+  xVals: readonly X[],
+  yVals: readonly Y[]
+): boolean {
+  const sameAlphabet =
+    xVals.length === yVals.length &&
+    xVals.every((x, idx) => Object.is(x, yVals[idx]));
+
+  if (sameAlphabet) {
+    return (
+      bssDominates(m, f, g, xVals, yVals) &&
+      bssDominates(m, g, f, yVals, xVals)
+    );
+  }
+
+  return bssDominates(m, f, g, xVals, yVals);
 }
 
 // ===== Enhanced BSS Testing Framework =====
@@ -398,8 +423,8 @@ export function testBSSDetailed<
   xVals: readonly X[],
   yVals: readonly Y[]
 ): BSSDetailedResult<Θ, X, Y> {
-  const fToG = bssCompare(m, f, g, xVals, yVals);
-  const gToF = bssCompare(m, g, f, yVals, xVals);
+  const fToG = bssDominates(m, f, g, xVals, yVals);
+  const gToF = bssDominates(m, g, f, yVals, xVals);
 
   const equivalent = fToG && gToF;
   const dilationFound = fToG || gToF;
@@ -516,7 +541,7 @@ export function testBSSMatrix<
       if (!from || !to) continue;
       
       const analysis = testBSSDetailed(m, from.f, to.f, xVals, xVals);
-      
+
       row.push({
         from: from.name,
         to: to.name,
@@ -549,30 +574,32 @@ export function findMostInformative<
   details: string;
 } {
   const matrix = testBSSMatrix(m, experiments, xVals);
-  const scores = new Map<string, number>();
-  
-  // Count how many experiments each one dominates via actual dilations
+  const entries: Array<[string, number]> = [];
+
   for (let i = 0; i < experiments.length; i++) {
-    let score = 0;
-    const matrixRow = matrix[i];
     const experiment = experiments[i];
-    if (!matrixRow || !experiment) continue;
-    for (let j = 0; j < experiments.length; j++) {
-      const entry = matrixRow[j];
-      if (entry && entry.dilationFound && entry.moreInformative) score++;
-    }
-    scores.set(experiment.name, score);
+    const matrixRow = matrix[i];
+    if (!experiment || !matrixRow) continue;
+
+    const score = matrixRow.reduce((acc, entry) => {
+      if (entry?.dilationFound && entry.moreInformative) {
+        return acc + 1;
+      }
+      return acc;
+    }, 0);
+
+    entries.push([experiment.name, score]);
   }
-  
-  const maxScore = Math.max(...scores.values());
-  const mostInformative = [...scores.entries()]
-    .filter(([_, score]) => score === maxScore)
-    .map(([name, _]) => name);
-  
-  const dilationMatrix = matrix.map(row => 
+
+  const maxScore = entries.reduce((max, [, score]) => Math.max(max, score), 0);
+  const mostInformative = entries
+    .filter(([, score]) => score === maxScore)
+    .map(([name]) => name);
+
+  const dilationMatrix = matrix.map(row =>
     row.map(({ from, to, dilationFound }) => ({ from, to, dilationFound }))
   );
-  
+
   return {
     mostInformative,
     dilationMatrix,

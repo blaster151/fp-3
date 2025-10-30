@@ -31,12 +31,20 @@ const edgeIndex = (graph: DiGraph): Map<string, Edge> => {
 
 export const makeGraphHom = ({ dom, cod, nodeImage, edgeImage }: GraphHomConstruction): GraphHom => {
   const nodeMapping = new Map<NodeId, NodeId>();
-  for (const node of dom.nodes) {
+  const getNodeImage = (node: NodeId): NodeId => {
+    const existing = nodeMapping.get(node);
+    if (existing !== undefined) {
+      return existing;
+    }
     const image = nodeImage(node);
     if (!cod.nodes.has(image)) {
       throw new Error(`GraphHom: node image must lie in codomain: ${String(image)}`);
     }
     nodeMapping.set(node, image);
+    return image;
+  };
+  for (const node of dom.nodes) {
+    getNodeImage(node);
   }
 
   const codEdges = edgeIndex(cod);
@@ -47,8 +55,8 @@ export const makeGraphHom = ({ dom, cod, nodeImage, edgeImage }: GraphHomConstru
     if (!witness) {
       throw new Error(`GraphHom: edge image must exist in codomain: ${image.id}`);
     }
-    const mappedSrc = nodeMapping.get(edge.src);
-    const mappedDst = nodeMapping.get(edge.dst);
+    const mappedSrc = getNodeImage(edge.src);
+    const mappedDst = getNodeImage(edge.dst);
     if (mappedSrc === undefined || mappedDst === undefined) {
       throw new Error("GraphHom: node mapping must be total on domain nodes.");
     }

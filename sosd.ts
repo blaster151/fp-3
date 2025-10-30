@@ -24,12 +24,26 @@ export function push<R, A, B>(
 }
 
 export function equalDist<R, X>(R: CSRig<R>, a: Dist<R, X>, b: Dist<R, X>): boolean {
-  const keys = new Set([...a.w.keys(), ...b.w.keys()]);
-  for (const k of keys) {
-    const va = a.w.get(k) ?? R.zero;
-    const vb = b.w.get(k) ?? R.zero;
-    if (!R.eq(va, vb)) return false;
+  const isZero = R.isZero ?? ((x: R) => R.eq(x, R.zero));
+
+  for (const [k, weight] of a.w) {
+    if (!isZero(weight)) {
+      const vb = b.w.get(k) ?? R.zero;
+      if (isZero(vb) || !R.eq(weight, vb)) {
+        return false;
+      }
+    }
   }
+
+  for (const [k, weight] of b.w) {
+    if (!isZero(weight)) {
+      const va = a.w.get(k) ?? R.zero;
+      if (isZero(va) || !R.eq(va, weight)) {
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 
