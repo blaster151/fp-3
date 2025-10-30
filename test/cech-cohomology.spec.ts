@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest"
 import {
   analyzeCohomology,
+  buildCechComplex,
   buildTwoOpenCechComplex,
   checkChainComplex,
+  checkCechCohomology,
   checkTwoOpenCechCohomology,
   type ChainComplex,
   type Sheaf,
   type Site,
   type CoveringFamily,
   type Module,
+  type MultiOpenCechCell,
 } from "../allTS"
 import type { SimpleCat } from "../simple-cat"
 import type { Ring } from "../src/algebra/ring/structures"
@@ -258,6 +261,246 @@ describe("Čech cohomology oracles", () => {
     expect(check.violations.some(v => v.kind === "composition")).toBe(true)
     expect(check.witnesses).toHaveLength(1)
     const composition = check.violations.find(v => v.kind === "composition")
-    expect(composition && level1.module.eq?.(composition.image as Section, module.zero)).toBe(false)
+    const zeroVector = level1.module.zero
+    expect(
+      composition &&
+        level1.module.eq?.(composition.image as ReadonlyArray<Section>, zeroVector),
+    ).toBe(false)
+  })
+})
+
+describe("Multi-open Čech cohomology", () => {
+  type ThreeOpenSet = "Union" | "A" | "B" | "C" | "AB" | "AC" | "BC" | "ABC"
+
+  interface ThreeInclusion {
+    readonly from: ThreeOpenSet
+    readonly to: ThreeOpenSet
+  }
+
+  const makeThreeInclusion = (from: ThreeOpenSet, to: ThreeOpenSet): ThreeInclusion => ({ from, to })
+
+  const inclusionCategoryThree: SimpleCat<ThreeOpenSet, ThreeInclusion> = {
+    id: object => makeThreeInclusion(object, object),
+    compose: (g, f) => makeThreeInclusion(f.from, g.to),
+    src: arrow => arrow.from,
+    dst: arrow => arrow.to,
+  }
+
+  const pointsByThreeOpen: Record<ThreeOpenSet, ReadonlyArray<string>> = {
+    Union: ["p", "q", "r"],
+    A: ["p", "q"],
+    B: ["q", "r"],
+    C: ["p", "r"],
+    AB: ["q"],
+    AC: ["p"],
+    BC: ["r"],
+    ABC: [],
+  }
+
+  const restrictThree = (arrow: ThreeInclusion, section: Section): Section => {
+    const domainPoints = pointsByThreeOpen[arrow.from]
+    const values: Record<string, number> = {}
+    for (const point of domainPoints) {
+      values[point] = section.values[point] ?? 0
+    }
+    return { values }
+  }
+
+  const buildThreeOpenSite = (): Site<ThreeOpenSet, ThreeInclusion> => {
+    const site: Site<ThreeOpenSet, ThreeInclusion> = {
+      category: inclusionCategoryThree,
+      coverings: (object) => {
+        if (object !== "Union") {
+          return []
+        }
+        return [
+          {
+            site,
+            target: "Union" as const,
+            arrows: [
+              makeThreeInclusion("A", "Union"),
+              makeThreeInclusion("B", "Union"),
+              makeThreeInclusion("C", "Union"),
+            ],
+            label: "{A, B, C} → Union",
+          },
+        ]
+      },
+      objectEq: (left, right) => left === right,
+      arrowEq: (left, right) => left.from === right.from && left.to === right.to,
+      label: "Three-open site",
+    }
+    return site
+  }
+
+  const buildThreeOpenSheaf = (
+    site: Site<ThreeOpenSet, ThreeInclusion>,
+  ): Sheaf<ThreeOpenSet, ThreeInclusion, Section> => ({
+    site,
+    sections: object => enumerateSections(pointsByThreeOpen[object]),
+    restrict: restrictThree,
+    sectionEq,
+    label: "Binary-valued functions on three-open cover",
+    glue: (covering, assignments) => {
+      const result: Record<string, number> = {}
+      for (const assignment of assignments) {
+        const domainPoints = pointsByThreeOpen[assignment.arrow.from]
+        for (const point of domainPoints) {
+          const value = assignment.section.values[point] ?? 0
+          if (result[point] !== undefined && result[point] !== value) {
+            return {
+              exists: false,
+              details: `Conflict at ${point}: ${result[point]} vs ${value}`,
+            }
+          }
+          result[point] = value
+        }
+      }
+      const targetPoints = pointsByThreeOpen[covering.target]
+      for (const point of targetPoints) {
+        if (result[point] === undefined) {
+          result[point] = 0
+        }
+      }
+      return { exists: true, section: { values: result } }
+    },
+  })
+
+  const sectionModuleThree = (
+    site: Site<ThreeOpenSet, ThreeInclusion>,
+  ): Module<number, Section> => {
+    const basePoints = pointsByThreeOpen["Union"]
+    const zeroValues: Record<string, number> = {}
+    for (const point of basePoints) {
+      zeroValues[point] = 0
+    }
+    const scale = (scalar: number, value: Section): Section => {
+      const scaled: Record<string, number> = {}
+      for (const point of basePoints) {
+        const entry = value.values[point] ?? 0
+        scaled[point] = ringF2.mul(scalar, entry)
+      }
+      return { values: scaled }
+    }
+    return {
+      ring: ringF2,
+      zero: { values: { ...zeroValues } },
+      add: (left, right) => {
+        const values: Record<string, number> = {}
+        for (const point of basePoints) {
+          const leftValue = left.values[point] ?? 0
+          const rightValue = right.values[point] ?? 0
+          values[point] = ringF2.add(leftValue, rightValue)
+        }
+        return { values }
+      },
+      neg: value => scale(ringF2.neg(ringF2.one), value),
+      scalar: scale,
+      eq: sectionEq,
+      name: `F₂-functions on ${site.label ?? "site"}`,
+    }
+  }
+
+  const buildThreeOpenSetup = () => {
+    const site = buildThreeOpenSite()
+    const sheaf = buildThreeOpenSheaf(site)
+    const coveringCandidate = site.coverings("Union")[0]
+    if (!coveringCandidate) {
+      throw new Error("Expected three-open covering for Čech cohomology tests")
+    }
+    const covering: CoveringFamily<ThreeOpenSet, ThreeInclusion> = coveringCandidate
+    const module = sectionModuleThree(site)
+
+    const intersections: ReadonlyArray<MultiOpenCechCell<ThreeOpenSet, ThreeInclusion, Section>> = [
+      {
+        key: [0, 1],
+        object: "AB",
+        faces: [
+          { omit: 0, targetKey: [1], arrow: makeThreeInclusion("AB", "B") },
+          { omit: 1, targetKey: [0], arrow: makeThreeInclusion("AB", "A") },
+        ],
+        samples: enumerateSections(pointsByThreeOpen["AB"]),
+        label: "AB",
+      },
+      {
+        key: [0, 2],
+        object: "AC",
+        faces: [
+          { omit: 0, targetKey: [2], arrow: makeThreeInclusion("AC", "C") },
+          { omit: 1, targetKey: [0], arrow: makeThreeInclusion("AC", "A") },
+        ],
+        samples: enumerateSections(pointsByThreeOpen["AC"]),
+        label: "AC",
+      },
+      {
+        key: [1, 2],
+        object: "BC",
+        faces: [
+          { omit: 0, targetKey: [2], arrow: makeThreeInclusion("BC", "C") },
+          { omit: 1, targetKey: [1], arrow: makeThreeInclusion("BC", "B") },
+        ],
+        samples: enumerateSections(pointsByThreeOpen["BC"]),
+        label: "BC",
+      },
+      {
+        key: [0, 1, 2],
+        object: "ABC",
+        faces: [
+          { omit: 0, targetKey: [1, 2], arrow: makeThreeInclusion("ABC", "BC") },
+          { omit: 1, targetKey: [0, 2], arrow: makeThreeInclusion("ABC", "AC") },
+          { omit: 2, targetKey: [0, 1], arrow: makeThreeInclusion("ABC", "AB") },
+        ],
+        samples: enumerateSections(pointsByThreeOpen["ABC"]),
+        label: "ABC",
+      },
+    ]
+
+    const coveringSamples = [
+      enumerateSections(pointsByThreeOpen["A"]),
+      enumerateSections(pointsByThreeOpen["B"]),
+      enumerateSections(pointsByThreeOpen["C"]),
+    ]
+
+    return {
+      setup: {
+        sheaf,
+        covering,
+        module,
+        intersections,
+        coveringSamples,
+        label: "Čech complex for {A,B,C} cover",
+      },
+      site,
+    }
+  }
+
+  it("builds multi-level complexes and validates derived comparisons", () => {
+    const { setup } = buildThreeOpenSetup()
+    const complex = buildCechComplex(setup)
+    const chainCheck = checkChainComplex(complex)
+    expect(chainCheck.holds).toBe(true)
+
+    const derivedAnalysis = analyzeCohomology(complex)
+    const result = checkCechCohomology(setup, { derived: derivedAnalysis })
+    expect(result.holds).toBe(true)
+    expect(result.derivedComparison?.matches).toBe(true)
+    expect(result.derivedComparison?.details).toContain("matches across degrees")
+  })
+
+  it("detects mismatched derived expectations", () => {
+    const { setup } = buildThreeOpenSetup()
+    const complex = buildCechComplex(setup)
+    const derivedAnalysis = analyzeCohomology(complex)
+    const mismatched = {
+      ...derivedAnalysis,
+      groups: derivedAnalysis.groups.map(group =>
+        group.degree === 1 ? { ...group, rank: group.rank + 1 } : group,
+      ),
+    }
+
+    const result = checkCechCohomology(setup, { derived: mismatched })
+    expect(result.holds).toBe(false)
+    expect(result.derivedComparison?.matches).toBe(false)
+    expect(result.details).toContain("mismatches")
   })
 })

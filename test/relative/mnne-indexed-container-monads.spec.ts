@@ -160,5 +160,28 @@ describe("MNNE Example 4 indexed container relative monad", () => {
     expect(report.holds).toBe(true);
     expect(report.issues).toEqual([]);
   });
+
+  it("validates composition-based result shape selection", () => {
+    const witness = describeIndexedContainerExample4Witness();
+    const tampered = {
+      ...witness,
+      substitutions: witness.substitutions?.map((rule) => {
+        if (rule.index === "Stream" && rule.domainShape === "sigmaCons") {
+          return {
+            ...rule,
+            resultShape: { kind: "composition", cases: [] },
+          };
+        }
+        return rule;
+      }),
+    };
+    const report = analyzeIndexedContainerRelativeMonad(tampered);
+    expect(report.holds).toBe(false);
+    expect(
+      report.issues.some((issue) =>
+        issue.includes("must specify at least one composition case"),
+      ),
+    ).toBe(true);
+  });
 });
 

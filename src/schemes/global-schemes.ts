@@ -1,3 +1,14 @@
+/**
+ * Global scheme tooling coordinates atlas-level validation and refinement.
+ *
+ * The utilities exported from this module allow downstream callers to verify
+ * that affine charts glue correctly, synthesize fibre products, and refine
+ * existing atlases. In particular, `refineSchemeAtlas` can be used to merge two
+ * compatible atlases: it aligns shared spectra, reuses the existing inverse
+ * validation logic, and automatically re-runs `checkSchemeGluing` on the
+ * original and refined atlases so that the returned narrative `details`
+ * describe every verification pass.
+ */
 import type { RingIdeal } from "../algebra/ring/ideals"
 import type { Ring } from "../algebra/ring/structures"
 import {
@@ -44,6 +55,25 @@ const gatherRingSamples = <A>(
 
   explicit?.forEach(value => pushUnique(samples, value, eq))
   points.forEach(point => point.samples?.forEach(sample => pushUnique(samples, sample, eq)))
+
+  if (samples.length === 0) {
+    pushUnique(samples, ring.zero, eq)
+    pushUnique(samples, ring.one, eq)
+  }
+
+  return samples
+}
+
+const gatherAlignmentSamples = <A>(
+  ring: Ring<A>,
+  left: ReadonlyArray<PrimeSpectrumPoint<A>>,
+  right: ReadonlyArray<PrimeSpectrumPoint<A>>,
+): A[] => {
+  const eq = withEquality(ring)
+  const samples: A[] = []
+
+  left.forEach(point => point.samples?.forEach(sample => pushUnique(samples, sample, eq)))
+  right.forEach(point => point.samples?.forEach(sample => pushUnique(samples, sample, eq)))
 
   if (samples.length === 0) {
     pushUnique(samples, ring.zero, eq)
@@ -482,9 +512,12 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
   const quasiCompact = atlas.charts.length > 0
   const separatedOnSamples = inverseFailures === 0 && requireInverse
 
+  const heuristicDetails = `Heuristics — quasi-compact on samples: ${quasiCompact ? "yes" : "no"}; separated on sampled gluings: ${
+    separatedOnSamples ? "yes" : "no"
+  }.`
   const details = holds
-    ? `Scheme gluing for ${atlas.label ?? "the provided atlas"} verified across ${atlas.charts.length} charts.`
-    : `${violations.length} gluing issues detected for ${atlas.label ?? "the provided atlas"}.`
+    ? `Scheme gluing for ${atlas.label ?? "the provided atlas"} verified across ${atlas.charts.length} charts. ${heuristicDetails}`
+    : `${violations.length} gluing issues detected for ${atlas.label ?? "the provided atlas"}. ${heuristicDetails}`
 
   return {
     holds,
@@ -505,6 +538,256 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
       witnessesRecorded: witnesses.length,
       quasiCompact,
       separatedOnSamples,
+    },
+  }
+}
+
+const chartsShareSpectrum = <A>(left: SchemeChart<A>, right: SchemeChart<A>): boolean => {
+  if (left.spectrum.ring !== right.spectrum.ring) {
+    return false
+  }
+
+  const samples = gatherAlignmentSamples(left.spectrum.ring, left.spectrum.points, right.spectrum.points)
+
+  const everyLeftMatches = left.spectrum.points.every(point =>
+    findMatchingPoint(right.spectrum, point.ideal, samples) !== undefined,
+  )
+  const everyRightMatches = right.spectrum.points.every(point =>
+    findMatchingPoint(left.spectrum, point.ideal, samples) !== undefined,
+  )
+
+  return everyLeftMatches && everyRightMatches
+}
+
+const mergeIndexLists = (
+  left?: ReadonlyArray<number>,
+  right?: ReadonlyArray<number>,
+): ReadonlyArray<number> | undefined => {
+  if (!left && !right) {
+    return undefined
+  }
+
+  const indices: number[] = []
+  const push = (value: number): void => pushUnique(indices, value, (a, b) => a === b)
+  left?.forEach(push)
+  right?.forEach(push)
+
+  return indices
+}
+
+const mergeSamples = <A>(
+  ring: Ring<A>,
+  left?: ReadonlyArray<A>,
+  right?: ReadonlyArray<A>,
+): ReadonlyArray<A> | undefined => {
+  if (!left && !right) {
+    return undefined
+  }
+
+  const merged: A[] = []
+  const eq = withEquality(ring)
+  left?.forEach(sample => pushUnique(merged, sample, eq))
+  right?.forEach(sample => pushUnique(merged, sample, eq))
+
+  return merged
+}
+
+const mergeCompatibility = <Left, Right>(
+  leftRing: Ring<Left>,
+  rightRing: Ring<Right>,
+  existing?: SchemeGluingCompatibility<Left, Right>,
+  incoming?: SchemeGluingCompatibility<Left, Right>,
+): SchemeGluingCompatibility<Left, Right> | undefined => {
+  if (!existing) {
+    return incoming
+  }
+  if (!incoming) {
+    return existing
+  }
+
+  const leftSamples = mergeSamples(leftRing, existing.leftSamples, incoming.leftSamples)
+  const rightSamples = mergeSamples(rightRing, existing.rightSamples, incoming.rightSamples)
+  const leftIndices = mergeIndexLists(existing.leftPointIndices, incoming.leftPointIndices)
+  const rightIndices = mergeIndexLists(existing.rightPointIndices, incoming.rightPointIndices)
+
+  const merged: SchemeGluingCompatibility<Left, Right> = {
+    ...(leftSamples ? { leftSamples } : {}),
+    ...(rightSamples ? { rightSamples } : {}),
+    ...(leftIndices ? { leftPointIndices: leftIndices } : {}),
+    ...(rightIndices ? { rightPointIndices: rightIndices } : {}),
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined
+}
+
+const findMatchingChartIndex = (charts: ReadonlyArray<SchemeChart<any>>, chart: SchemeChart<any>): number | undefined => {
+  for (let index = 0; index < charts.length; index += 1) {
+    const candidate = charts[index]
+    if (!candidate) {
+      continue
+    }
+    if (chartsShareSpectrum(candidate, chart)) {
+      return index
+    }
+  }
+  return undefined
+}
+
+const buildGluingKey = (
+  leftIndex: number,
+  rightIndex: number,
+  forwardLabel?: string,
+  backwardLabel?: string,
+  label?: string,
+): string => `${leftIndex}->${rightIndex}|${label ?? ""}|${forwardLabel ?? ""}|${backwardLabel ?? ""}`
+
+export interface SchemeAtlasRefinementOptions {
+  readonly label?: string
+  readonly checkOptions?: SchemeGluingCheckOptions
+}
+
+export interface SchemeAtlasRefinementResult {
+  readonly atlas: SchemeAtlas
+  readonly details: string
+  readonly summaries: {
+    readonly left: SchemeGluingCheckResult
+    readonly right: SchemeGluingCheckResult
+    readonly refined: SchemeGluingCheckResult
+  }
+}
+
+/**
+ * Construct a refined atlas that merges the charts and gluings of two input
+ * atlases.
+ *
+ * Shared spectra are aligned using {@link findMatchingPoint}, compatibility
+ * samples are merged, and the gluings are revalidated by calling
+ * {@link checkSchemeGluing} on the left atlas, right atlas, and the refined
+ * atlas. The combined narrative is surfaced in the returned `details` field so
+ * callers can display a concise verification summary.
+ */
+export const refineSchemeAtlas = (
+  left: SchemeAtlas,
+  right: SchemeAtlas,
+  options: SchemeAtlasRefinementOptions = {},
+): SchemeAtlasRefinementResult => {
+  const leftSummary = checkSchemeGluing(left, options.checkOptions)
+  const rightSummary = checkSchemeGluing(right, options.checkOptions)
+
+  const charts: SchemeChart<any>[] = [...left.charts]
+  const leftIndexMap = left.charts.map((_, index) => index)
+  const rightIndexMap: number[] = []
+
+  right.charts.forEach((chart, index) => {
+    const matchIndex = findMatchingChartIndex(charts, chart)
+    if (matchIndex !== undefined) {
+      rightIndexMap[index] = matchIndex
+      return
+    }
+
+    charts.push(chart)
+    rightIndexMap[index] = charts.length - 1
+  })
+
+  const gluings: SchemeAtlasGluing<any, any>[] = []
+  const gluingIndexByKey = new Map<string, number>()
+
+  const registerGluing = <Left, Right>(
+    gluing: SchemeAtlasGluing<Left, Right>,
+    leftIndex: number,
+    rightIndex: number,
+  ): void => {
+    const leftChart = charts[leftIndex] as SchemeChart<Left>
+    const rightChart = charts[rightIndex] as SchemeChart<Right>
+
+    const normalized: SchemeAtlasGluing<Left, Right> = {
+      leftChart: leftIndex,
+      rightChart: rightIndex,
+      forward: {
+        ...gluing.forward,
+        domain: rightChart.spectrum,
+        codomain: leftChart.spectrum,
+      },
+      backward: {
+        ...gluing.backward,
+        domain: leftChart.spectrum,
+        codomain: rightChart.spectrum,
+      },
+      ...(gluing.forwardOptions ? { forwardOptions: gluing.forwardOptions } : {}),
+      ...(gluing.backwardOptions ? { backwardOptions: gluing.backwardOptions } : {}),
+      ...(gluing.compatibility ? { compatibility: gluing.compatibility } : {}),
+      ...(gluing.label ? { label: gluing.label } : {}),
+    }
+
+    const key = buildGluingKey(
+      leftIndex,
+      rightIndex,
+      normalized.forward.label,
+      normalized.backward.label,
+      normalized.label,
+    )
+
+    const existingIndex = gluingIndexByKey.get(key)
+    if (existingIndex === undefined) {
+      gluingIndexByKey.set(key, gluings.length)
+      gluings.push(normalized)
+      return
+    }
+
+    const existing = gluings[existingIndex] as SchemeAtlasGluing<Left, Right>
+    const compatibility = mergeCompatibility(
+      leftChart.spectrum.ring,
+      rightChart.spectrum.ring,
+      existing.compatibility,
+      normalized.compatibility,
+    )
+
+    const merged: SchemeAtlasGluing<Left, Right> = {
+      ...existing,
+      ...(compatibility ? { compatibility } : {}),
+    }
+
+    gluings[existingIndex] = merged
+  }
+
+  left.gluings.forEach(gluing => {
+    const leftIndex = leftIndexMap[gluing.leftChart]
+    const rightIndex = leftIndexMap[gluing.rightChart]
+    if (leftIndex === undefined || rightIndex === undefined) {
+      return
+    }
+    registerGluing(gluing, leftIndex, rightIndex)
+  })
+
+  right.gluings.forEach(gluing => {
+    const leftIndex = rightIndexMap[gluing.leftChart]
+    const rightIndex = rightIndexMap[gluing.rightChart]
+    if (leftIndex === undefined || rightIndex === undefined) {
+      return
+    }
+    registerGluing(gluing, leftIndex, rightIndex)
+  })
+
+  const label = options.label ??
+    `Refined atlas from ${left.label ?? "left atlas"} and ${right.label ?? "right atlas"}`
+
+  const refinedAtlas: SchemeAtlas = {
+    label,
+    charts,
+    gluings,
+  }
+
+  const refinedSummary = checkSchemeGluing(refinedAtlas, options.checkOptions)
+
+  const details = `${label}: ${refinedSummary.details} Source atlases — left: ${leftSummary.details}; right: ${rightSummary.details}.`
+
+  return {
+    atlas: refinedAtlas,
+    details,
+    summaries: {
+      left: leftSummary,
+      right: rightSummary,
+      refined: refinedSummary,
     },
   }
 }

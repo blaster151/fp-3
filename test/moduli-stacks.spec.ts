@@ -3,13 +3,20 @@ import {
   buildEtaleDescentSample,
   buildFiberedSamplesFromEtaleDescent,
   checkFiberedCategory,
+  checkFiberedMorphism,
+  checkFiberedTwoMorphism,
   checkStackDescent,
+  synthesizeStackPresentation,
   type CartesianComparison,
   type CoveringFamily,
   type DescentDatum,
   type DescentTransition,
   type FiberedCategory,
+  type FiberedCategoryMorphism,
   type FiberedCategorySample,
+  type FiberedMorphismCheckSamples,
+  type FiberedTwoMorphism,
+  type FiberedTwoMorphismSamples,
   type GrothendieckTopology,
   type Site,
 } from "../allTS"
@@ -104,6 +111,36 @@ const composeArrow = (g: BundleArrow, f: BundleArrow): BundleArrow | undefined =
   return makeArrow(f.source, g.target, `${g.name}∘${f.name}`)
 }
 
+const buildIdentityMorphism = (
+  fibered: FiberedCategory<OpenSet, Inclusion, Bundle, BundleArrow>,
+): FiberedCategoryMorphism<OpenSet, Inclusion, Bundle, BundleArrow, Bundle, BundleArrow> => ({
+  source: fibered,
+  target: fibered,
+  onObjects: (object) => object,
+  onArrows: (arrow) => arrow,
+  label: "Identity morphism",
+})
+
+const twistLabel = (bundle: Bundle): string => `twist(${bundle.label}@${bundle.base})`
+
+const twistBundle = (bundle: Bundle): Bundle => makeBundle(bundle.base, `${bundle.label}^twist`)
+
+const twistComponentArrow = (bundle: Bundle): BundleArrow =>
+  makeArrow(bundle, twistBundle(bundle), twistLabel(bundle))
+
+const twistArrow = (arrow: BundleArrow): BundleArrow =>
+  makeArrow(twistBundle(arrow.source), twistBundle(arrow.target), twistLabel(arrow.target))
+
+const buildTwistMorphism = (
+  fibered: FiberedCategory<OpenSet, Inclusion, Bundle, BundleArrow>,
+): FiberedCategoryMorphism<OpenSet, Inclusion, Bundle, BundleArrow, Bundle, BundleArrow> => ({
+  source: fibered,
+  target: fibered,
+  onObjects: twistBundle,
+  onArrows: twistArrow,
+  label: "Twist morphism",
+})
+
 const buildFiberedCategory = (): FiberedCategory<OpenSet, Inclusion, Bundle, BundleArrow> => ({
   base: inclusionCategory,
   fiber: {
@@ -146,9 +183,10 @@ const brokenFiberedCategory = (): FiberedCategory<OpenSet, Inclusion, Bundle, Bu
 const buildFiberedSample = (
   covering: CoveringFamily<OpenSet, Inclusion>,
   fibered: FiberedCategory<OpenSet, Inclusion, Bundle, BundleArrow>,
+  arrowIndex = 0,
 ): FiberedCategorySample<OpenSet, Inclusion, Bundle, BundleArrow> => {
   const target = makeBundle("UV", "L")
-  const baseArrow = covering.arrows[0]
+  const baseArrow = covering.arrows[arrowIndex]
   if (!baseArrow) {
     throw new Error("Expected covering arrow for sample setup")
   }
@@ -168,7 +206,7 @@ const buildFiberedSample = (
     baseArrow,
     target,
     comparisons,
-    label: "Lift along U → UV",
+    label: `Lift along ${baseArrow.from} → ${baseArrow.to}`,
   }
 }
 
@@ -404,6 +442,186 @@ describe("moduli and stack scaffolding", () => {
     const result = checkFiberedCategory(fibered, badSamples)
     expect(result.holds).toBe(false)
     expect(result.violations.some(v => v.kind === "targetBaseMismatch")).toBe(true)
+  })
+
+  it("verifies fibered morphism functoriality samples", () => {
+    const morphism = buildIdentityMorphism(fibered)
+    const target = makeBundle("UV", "L")
+    const identity = idArrow(target)
+    const samples: FiberedMorphismCheckSamples<OpenSet, Inclusion, Bundle, BundleArrow> = {
+      objects: [target],
+      arrows: [identity],
+      identities: [target],
+      compositions: [
+        {
+          first: identity,
+          second: identity,
+          composite: identity,
+        },
+      ],
+      cartesianLifts: [
+        {
+          baseArrow: covering.arrows[0],
+          target,
+        },
+      ],
+    }
+
+    const result = checkFiberedMorphism(morphism, samples)
+    expect(result.holds).toBe(true)
+    expect(result.metadata.objectsChecked).toBe(1)
+    expect(result.metadata.cartesianChecked).toBe(1)
+  })
+
+  it("detects fibered morphism violations", () => {
+    const broken: FiberedCategoryMorphism<OpenSet, Inclusion, Bundle, BundleArrow, Bundle, BundleArrow> = {
+      ...buildIdentityMorphism(fibered),
+      onObjects: (object) => makeBundle("U", `${object.label}!`),
+      onArrows: () => undefined,
+      label: "Broken morphism",
+    }
+    const target = makeBundle("UV", "L")
+    const samples: FiberedMorphismCheckSamples<OpenSet, Inclusion, Bundle, BundleArrow> = {
+      objects: [target],
+      arrows: [idArrow(target)],
+      cartesianLifts: [
+        {
+          baseArrow: covering.arrows[0],
+          target,
+        },
+      ],
+    }
+
+    const result = checkFiberedMorphism(broken, samples)
+    expect(result.holds).toBe(false)
+    expect(result.violations.some(v => v.kind === "arrowMappingMissing")).toBe(true)
+    expect(result.violations.some(v => v.kind === "objectBaseMismatch")).toBe(true)
+    expect(result.violations.some(v => v.kind === "cartesianTargetFailure")).toBe(true)
+  })
+
+  it("records 2-morphism witnesses for twist components", () => {
+    const identity = buildIdentityMorphism(fibered)
+    const twist = buildTwistMorphism(fibered)
+    const twoMorphism: FiberedTwoMorphism<OpenSet, Inclusion, Bundle, BundleArrow, Bundle, BundleArrow> = {
+      left: identity,
+      right: twist,
+      component: (bundle) => twistComponentArrow(bundle),
+      label: "Twist comparison",
+    }
+    const localU = makeBundle("U", "L|U")
+    const localV = makeBundle("V", "L|V")
+    const samples: FiberedTwoMorphismSamples<Bundle, BundleArrow> = {
+      objects: [localU, localV],
+      arrows: [makeArrow(localU, localV, twistLabel(localU))],
+    }
+
+    const result = checkFiberedTwoMorphism(twoMorphism, samples)
+    expect(result.holds).toBe(true)
+    expect(result.witnesses.length).toBeGreaterThan(0)
+    expect(result.metadata.objectsChecked).toBe(2)
+  })
+
+  it("detects missing 2-morphism components", () => {
+    const identity = buildIdentityMorphism(fibered)
+    const twist = buildTwistMorphism(fibered)
+    const broken: FiberedTwoMorphism<OpenSet, Inclusion, Bundle, BundleArrow, Bundle, BundleArrow> = {
+      left: identity,
+      right: twist,
+      component: (bundle) => (bundle.base === "U" ? twistComponentArrow(bundle) : undefined),
+      label: "Partial twist",
+    }
+    const localU = makeBundle("U", "L|U")
+    const localV = makeBundle("V", "L|V")
+    const samples: FiberedTwoMorphismSamples<Bundle, BundleArrow> = {
+      objects: [localU, localV],
+      arrows: [makeArrow(localU, localV, twistLabel(localU))],
+    }
+
+    const result = checkFiberedTwoMorphism(broken, samples)
+    expect(result.holds).toBe(false)
+    expect(result.violations.some(v => v.kind === "componentMissing")).toBe(true)
+  })
+
+  it("synthesizes stack groupoid presentations from covering data", () => {
+    const descent = buildDescentDatum(covering, fibered)
+    const descentSample = buildEtaleDescent(topology, covering)
+    const sampleU = buildFiberedSample(covering, fibered, 0)
+    const sampleV = buildFiberedSample(covering, fibered, 1)
+
+    const presentation = synthesizeStackPresentation({
+      descent,
+      additionalFiberedSamples: [sampleU, sampleV],
+      etaleSamples: {
+        sample: descentSample,
+        specifications: [
+          {
+            pullbackIndex: 0,
+            target: sampleU.target,
+            comparisons: sampleU.comparisons ?? [],
+            label: sampleU.label,
+          },
+          {
+            pullbackIndex: 1,
+            target: sampleV.target,
+            comparisons: sampleV.comparisons ?? [],
+            label: sampleV.label,
+          },
+        ],
+      },
+      label: "Trivial bundle stack",
+    })
+
+    expect(presentation.descentCheck.holds).toBe(true)
+    expect(presentation.fiberedCheck.holds).toBe(true)
+    expect(presentation.groupoid.objects.length).toBeGreaterThanOrEqual(2)
+
+    const transition = descent.transitions[0]
+    if (!transition) {
+      throw new Error("Expected transition in descent datum")
+    }
+
+    const inverse = presentation.groupoid.inv(transition.transition)
+    const composite = presentation.groupoid.compose(transition.transition, inverse)
+    const targetIdentity = presentation.groupoid.id(presentation.groupoid.cod(transition.transition))
+    const eq = presentation.groupoid.eq ?? arrowEq
+
+    expect(eq(composite, targetIdentity)).toBe(true)
+
+    const homSet = presentation.groupoid.hom(
+      presentation.groupoid.dom(transition.transition),
+      presentation.groupoid.cod(transition.transition),
+    )
+    expect(homSet.some(arrow => eq(arrow, transition.transition))).toBe(true)
+  })
+
+  it("surfaces verification failures for inconsistent stack presentations", () => {
+    const descent = buildDescentDatum(covering, fibered)
+    const brokenDescent: DescentDatum<OpenSet, Inclusion, Bundle, BundleArrow> = {
+      ...descent,
+      fibered: brokenFiberedCategory(),
+      label: "Broken trivial bundle",
+    }
+    const descentSample = buildEtaleDescent(topology, covering)
+    const sampleU = buildFiberedSample(covering, fibered, 0)
+
+    const presentation = synthesizeStackPresentation({
+      descent: brokenDescent,
+      etaleSamples: {
+        sample: descentSample,
+        specifications: [
+          {
+            pullbackIndex: 0,
+            target: sampleU.target,
+            comparisons: sampleU.comparisons ?? [],
+            label: sampleU.label,
+          },
+        ],
+      },
+    })
+
+    expect(presentation.descentCheck.holds).toBe(false)
+    expect(presentation.fiberedCheck.holds).toBe(false)
+    expect(presentation.details.includes("exhibits") || presentation.details.includes("violations")).toBe(true)
   })
 })
 

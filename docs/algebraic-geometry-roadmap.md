@@ -56,3 +56,11 @@ Taken together, these helpers allow Stage 2 contributors to walk from a `Site`
   - Added fibered-category and descent-datum oracles with witness-rich metadata for stack-style validation.
 - [x] Enhance documentation, visualization, and automated tests for algebraic-geometry workflows.
   - Documented the new moduli oracles in LAWS.md and added Vitest coverage for cartesian lifts and descent gluing scenarios.
+- [x] Generalize Čech cohomology across arbitrary covers and compare ranks against derived functor expectations.
+  - `buildCechComplex`/`checkCechCohomology` in [`src/sheaves/cech-cohomology.ts`](../src/sheaves/cech-cohomology.ts) assemble multi-level Čech complexes, run chain checks, and report derived-functor mismatches. Triple-cover fixtures live in `test/cech-cohomology.spec.ts`.
+- [x] Bridge Čech outputs with tensor-product evidence through Ext/Tor samplers.
+  - `sampleTorFromFlat` and `sampleExtFromTensor` in [`src/sheaves/ext-tor-samplers.ts`](../src/sheaves/ext-tor-samplers.ts) reconcile cohomology ranks with flatness/tensor witnesses, with regression coverage in `test/ext-tor-samplers.spec.ts`.
+- [x] Deepen stack diagnostics with morphism, 2-morphism, and atlas-refinement tooling.
+  - `checkFiberedMorphism`, `checkFiberedTwoMorphism`, and `refineSchemeAtlas` broaden Stage 4/5 verification (see `test/moduli-stacks.spec.ts` and `test/global-schemes.spec.ts`).
+- [x] Automate stack presentations by synthesizing Čech-style groupoids from covering families.
+  - `synthesizeStackPresentation` in [`src/schemes/stacks.ts`](../src/schemes/stacks.ts) reuses étale samples and fibered checks to output verified finite groupoids; integration tests document the workflow in `test/moduli-stacks.spec.ts`.

@@ -1,4 +1,5 @@
 import type { SimpleCat } from "../../simple-cat"
+import type { FiniteGroupoid } from "../../stdlib/category"
 import type { EtaleDescentSample } from "../sheaves/grothendieck-topologies"
 import type { CoveringFamily } from "../sheaves/sites"
 
@@ -640,5 +641,625 @@ export const buildFiberedSamplesFromEtaleDescent = <BaseObj, BaseArr, Obj, Arr>(
   })
 
   return results
+}
+
+export interface FiberedCategoryMorphism<BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr> {
+  readonly source: FiberedCategory<BaseObj, BaseArr, SrcObj, SrcArr>
+  readonly target: FiberedCategory<BaseObj, BaseArr, TgtObj, TgtArr>
+  readonly onObjects: (object: SrcObj) => TgtObj
+  readonly onArrows: (arrow: SrcArr) => TgtArr | undefined
+  readonly label?: string
+}
+
+export interface FiberedMorphismCheckSamples<BaseObj, BaseArr, Obj, Arr> {
+  readonly objects?: ReadonlyArray<Obj>
+  readonly arrows?: ReadonlyArray<Arr>
+  readonly identities?: ReadonlyArray<Obj>
+  readonly compositions?: ReadonlyArray<{
+    readonly first: Arr
+    readonly second: Arr
+    readonly composite: Arr
+  }>
+  readonly cartesianLifts?: ReadonlyArray<{
+    readonly baseArrow: BaseArr
+    readonly target: Obj
+  }>
+}
+
+export type FiberedMorphismViolation<BaseObj, Obj, Arr> =
+  | {
+      readonly kind: "objectBaseMismatch"
+      readonly objectIndex: number
+      readonly expected: BaseObj
+      readonly actual: BaseObj
+    }
+  | {
+      readonly kind: "arrowMappingMissing"
+      readonly arrowIndex: number
+    }
+  | {
+      readonly kind: "arrowSourceMismatch"
+      readonly arrowIndex: number
+    }
+  | {
+      readonly kind: "arrowTargetMismatch"
+      readonly arrowIndex: number
+    }
+  | {
+      readonly kind: "identityMismatch"
+      readonly objectIndex: number
+    }
+  | {
+      readonly kind: "compositionMismatch"
+      readonly compositionIndex: number
+    }
+  | {
+      readonly kind: "cartesianSourceFailure"
+      readonly cartesianIndex: number
+    }
+  | {
+      readonly kind: "cartesianTargetFailure"
+      readonly cartesianIndex: number
+    }
+  | {
+      readonly kind: "cartesianObjectMismatch"
+      readonly cartesianIndex: number
+    }
+  | {
+      readonly kind: "cartesianArrowMismatch"
+      readonly cartesianIndex: number
+    }
+
+export interface FiberedMorphismWitness<BaseObj, Obj, Arr> {
+  readonly violation: FiberedMorphismViolation<BaseObj, Obj, Arr>
+}
+
+export interface FiberedMorphismCheckOptions<BaseObj, TgtObj, TgtArr> {
+  readonly baseObjectEq?: Equality<BaseObj>
+  readonly targetObjectEq?: Equality<TgtObj>
+  readonly targetArrowEq?: Equality<TgtArr>
+  readonly witnessLimit?: number
+}
+
+export interface FiberedMorphismCheckMetadata {
+  readonly objectsChecked: number
+  readonly arrowsChecked: number
+  readonly identitiesChecked: number
+  readonly compositionsChecked: number
+  readonly cartesianChecked: number
+  readonly witnessesRecorded: number
+  readonly witnessLimit: number
+}
+
+export interface FiberedMorphismCheckResult<BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr> {
+  readonly holds: boolean
+  readonly violations: ReadonlyArray<FiberedMorphismViolation<BaseObj, SrcObj, SrcArr>>
+  readonly witnesses: ReadonlyArray<FiberedMorphismWitness<BaseObj, SrcObj, SrcArr>>
+  readonly details: string
+  readonly metadata: FiberedMorphismCheckMetadata
+}
+
+export const checkFiberedMorphism = <BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr>(
+  morphism: FiberedCategoryMorphism<BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr>,
+  samples: FiberedMorphismCheckSamples<BaseObj, BaseArr, SrcObj, SrcArr> = {},
+  options: FiberedMorphismCheckOptions<BaseObj, TgtObj, TgtArr> = {},
+): FiberedMorphismCheckResult<BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr> => {
+  const baseEq = withEquality(options.baseObjectEq)
+  const objectEq = withEquality(options.targetObjectEq ?? morphism.target.fiber.objectEq)
+  const arrowEq = withEquality(options.targetArrowEq ?? morphism.target.fiber.arrowEq)
+  const witnessLimit = options.witnessLimit ?? 3
+
+  const violations: FiberedMorphismViolation<BaseObj, SrcObj, SrcArr>[] = []
+  const witnesses: FiberedMorphismWitness<BaseObj, SrcObj, SrcArr>[] = []
+
+  const record = (violation: FiberedMorphismViolation<BaseObj, SrcObj, SrcArr>): void => {
+    violations.push(violation)
+    if (witnesses.length < witnessLimit) {
+      witnesses.push({ violation })
+    }
+  }
+
+  samples.objects?.forEach((object, index) => {
+    const expectedBase = morphism.source.baseOfObject(object)
+    const image = morphism.onObjects(object)
+    const actualBase = morphism.target.baseOfObject(image)
+    if (!baseEq(expectedBase, actualBase)) {
+      record({ kind: "objectBaseMismatch", objectIndex: index, expected: expectedBase, actual: actualBase })
+    }
+  })
+
+  samples.arrows?.forEach((arrow, index) => {
+    const mapped = morphism.onArrows(arrow)
+    if (!mapped) {
+      record({ kind: "arrowMappingMissing", arrowIndex: index })
+      return
+    }
+
+    const sourceObject = morphism.source.fiber.src(arrow)
+    const targetObject = morphism.source.fiber.dst(arrow)
+    const mappedSource = morphism.onObjects(sourceObject)
+    const mappedTarget = morphism.onObjects(targetObject)
+
+    const actualSource = morphism.target.fiber.src(mapped)
+    const actualTarget = morphism.target.fiber.dst(mapped)
+
+    if (!objectEq(actualSource, mappedSource)) {
+      record({ kind: "arrowSourceMismatch", arrowIndex: index })
+    }
+
+    if (!objectEq(actualTarget, mappedTarget)) {
+      record({ kind: "arrowTargetMismatch", arrowIndex: index })
+    }
+  })
+
+  samples.identities?.forEach((object, index) => {
+    const identity = morphism.source.fiber.id(object)
+    const mappedIdentity = morphism.onArrows(identity)
+    if (!mappedIdentity) {
+      record({ kind: "identityMismatch", objectIndex: index })
+      return
+    }
+
+    const expectedIdentity = morphism.target.fiber.id(morphism.onObjects(object))
+    if (!arrowEq(mappedIdentity, expectedIdentity)) {
+      record({ kind: "identityMismatch", objectIndex: index })
+    }
+  })
+
+  samples.compositions?.forEach((composition, index) => {
+    const mappedFirst = morphism.onArrows(composition.first)
+    const mappedSecond = morphism.onArrows(composition.second)
+    const mappedComposite = morphism.onArrows(composition.composite)
+
+    if (!mappedFirst || !mappedSecond || !mappedComposite) {
+      record({ kind: "compositionMismatch", compositionIndex: index })
+      return
+    }
+
+    const targetComposed = morphism.target.fiber.compose(mappedSecond, mappedFirst)
+    if (!targetComposed || !arrowEq(targetComposed, mappedComposite)) {
+      record({ kind: "compositionMismatch", compositionIndex: index })
+    }
+  })
+
+  samples.cartesianLifts?.forEach((cartesian, index) => {
+    const sourceLift = morphism.source.pullback(cartesian.baseArrow, cartesian.target)
+    if (!sourceLift.exists || !sourceLift.object || !sourceLift.lift) {
+      record({ kind: "cartesianSourceFailure", cartesianIndex: index })
+      return
+    }
+
+    const imageTarget = morphism.onObjects(cartesian.target)
+    const targetLift = morphism.target.pullback(cartesian.baseArrow, imageTarget)
+    if (!targetLift.exists || !targetLift.object || !targetLift.lift) {
+      record({ kind: "cartesianTargetFailure", cartesianIndex: index })
+      return
+    }
+
+    const mappedObject = morphism.onObjects(sourceLift.object)
+    if (!objectEq(mappedObject, targetLift.object)) {
+      record({ kind: "cartesianObjectMismatch", cartesianIndex: index })
+    }
+
+    const mappedLift = morphism.onArrows(sourceLift.lift)
+    if (!mappedLift || !arrowEq(mappedLift, targetLift.lift)) {
+      record({ kind: "cartesianArrowMismatch", cartesianIndex: index })
+    }
+  })
+
+  const holds = violations.length === 0
+  const details = holds
+    ? morphism.label
+      ? `Fibered morphism ${morphism.label} respected all sampled functoriality checks.`
+      : "Fibered morphism respected all sampled functoriality checks."
+    : `Fibered morphism${morphism.label ? ` ${morphism.label}` : ""} exhibits ${violations.length} violation(s).`
+
+  return {
+    holds,
+    violations,
+    witnesses,
+    details,
+    metadata: {
+      objectsChecked: samples.objects?.length ?? 0,
+      arrowsChecked: samples.arrows?.length ?? 0,
+      identitiesChecked: samples.identities?.length ?? 0,
+      compositionsChecked: samples.compositions?.length ?? 0,
+      cartesianChecked: samples.cartesianLifts?.length ?? 0,
+      witnessesRecorded: witnesses.length,
+      witnessLimit,
+    },
+  }
+}
+
+export interface FiberedTwoMorphism<BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr> {
+  readonly left: FiberedCategoryMorphism<BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr>
+  readonly right: FiberedCategoryMorphism<BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr>
+  readonly component: (object: SrcObj) => TgtArr | undefined
+  readonly label?: string
+}
+
+export interface FiberedTwoMorphismSamples<Obj, Arr> {
+  readonly objects: ReadonlyArray<Obj>
+  readonly arrows?: ReadonlyArray<Arr>
+}
+
+export type FiberedTwoMorphismViolation<Obj> =
+  | {
+      readonly kind: "componentMissing"
+      readonly objectIndex: number
+    }
+  | {
+      readonly kind: "componentSourceMismatch"
+      readonly objectIndex: number
+    }
+  | {
+      readonly kind: "componentTargetMismatch"
+      readonly objectIndex: number
+    }
+  | {
+      readonly kind: "naturalityMismatch"
+      readonly arrowIndex: number
+    }
+
+export interface FiberedTwoMorphismWitness<Obj, Arr> {
+  readonly objectIndex: number
+  readonly object: Obj
+  readonly component: Arr
+}
+
+export interface FiberedTwoMorphismCheckOptions<TgtObj, TgtArr> {
+  readonly targetObjectEq?: Equality<TgtObj>
+  readonly targetArrowEq?: Equality<TgtArr>
+  readonly witnessLimit?: number
+}
+
+export interface FiberedTwoMorphismCheckMetadata {
+  readonly objectsChecked: number
+  readonly arrowsChecked: number
+  readonly witnessesRecorded: number
+  readonly witnessLimit: number
+}
+
+export interface FiberedTwoMorphismCheckResult<BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr> {
+  readonly holds: boolean
+  readonly violations: ReadonlyArray<FiberedTwoMorphismViolation<SrcObj>>
+  readonly witnesses: ReadonlyArray<FiberedTwoMorphismWitness<SrcObj, TgtArr>>
+  readonly details: string
+  readonly metadata: FiberedTwoMorphismCheckMetadata
+}
+
+export const checkFiberedTwoMorphism = <BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr>(
+  datum: FiberedTwoMorphism<BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr>,
+  samples: FiberedTwoMorphismSamples<SrcObj, SrcArr>,
+  options: FiberedTwoMorphismCheckOptions<TgtObj, TgtArr> = {},
+): FiberedTwoMorphismCheckResult<BaseObj, BaseArr, SrcObj, SrcArr, TgtObj, TgtArr> => {
+  const objectEq = withEquality(options.targetObjectEq ?? datum.left.target.fiber.objectEq)
+  const arrowEq = withEquality(options.targetArrowEq ?? datum.left.target.fiber.arrowEq)
+  const witnessLimit = options.witnessLimit ?? 5
+
+  const violations: FiberedTwoMorphismViolation<SrcObj>[] = []
+  const witnesses: FiberedTwoMorphismWitness<SrcObj, TgtArr>[] = []
+
+  const recordViolation = (violation: FiberedTwoMorphismViolation<SrcObj>): void => {
+    violations.push(violation)
+  }
+
+  samples.objects.forEach((object, index) => {
+    const component = datum.component(object)
+    if (!component) {
+      recordViolation({ kind: "componentMissing", objectIndex: index })
+      return
+    }
+
+    const leftImage = datum.left.onObjects(object)
+    const rightImage = datum.right.onObjects(object)
+
+    const source = datum.left.target.fiber.src(component)
+    const target = datum.left.target.fiber.dst(component)
+
+    let valid = true
+
+    if (!objectEq(source, leftImage)) {
+      recordViolation({ kind: "componentSourceMismatch", objectIndex: index })
+      valid = false
+    }
+
+    if (!objectEq(target, rightImage)) {
+      recordViolation({ kind: "componentTargetMismatch", objectIndex: index })
+      valid = false
+    }
+
+    if (valid && witnesses.length < witnessLimit) {
+      witnesses.push({ objectIndex: index, object, component })
+    }
+  })
+
+  samples.arrows?.forEach((arrow, index) => {
+    const leftArrow = datum.left.onArrows(arrow)
+    const rightArrow = datum.right.onArrows(arrow)
+    if (!leftArrow || !rightArrow) {
+      recordViolation({ kind: "naturalityMismatch", arrowIndex: index })
+      return
+    }
+
+    const sourceObject = datum.left.source.fiber.src(arrow)
+    const targetObject = datum.left.source.fiber.dst(arrow)
+
+    const sourceComponent = datum.component(sourceObject)
+    const targetComponent = datum.component(targetObject)
+
+    if (!sourceComponent || !targetComponent) {
+      recordViolation({ kind: "naturalityMismatch", arrowIndex: index })
+      return
+    }
+
+    const leftComposite = datum.left.target.fiber.compose(targetComponent, leftArrow)
+    const rightComposite = datum.left.target.fiber.compose(rightArrow, sourceComponent)
+
+    if (!leftComposite || !rightComposite || !arrowEq(leftComposite, rightComposite)) {
+      recordViolation({ kind: "naturalityMismatch", arrowIndex: index })
+    }
+  })
+
+  const holds = violations.length === 0
+  const details = holds
+    ? datum.label
+      ? `Fibered 2-morphism ${datum.label} satisfied all sampled naturality checks.`
+      : "Fibered 2-morphism satisfied all sampled naturality checks."
+    : `Fibered 2-morphism${datum.label ? ` ${datum.label}` : ""} exhibits ${violations.length} violation(s).`
+
+  return {
+    holds,
+    violations,
+    witnesses,
+    details,
+    metadata: {
+      objectsChecked: samples.objects.length,
+      arrowsChecked: samples.arrows?.length ?? 0,
+      witnessesRecorded: witnesses.length,
+      witnessLimit,
+    },
+  }
+}
+
+const dedupe = <T>(items: ReadonlyArray<T>, eq: Equality<T>): T[] => {
+  const result: T[] = []
+  items.forEach(item => {
+    if (!result.some(existing => eq(existing, item))) {
+      result.push(item)
+    }
+  })
+  return result
+}
+
+interface StackGroupoidArrowEntry<Arr> {
+  readonly arrow: Arr
+  inverse?: Arr
+}
+
+const registerArrow = <Arr>(
+  entries: StackGroupoidArrowEntry<Arr>[],
+  arrow: Arr,
+  eq: Equality<Arr>,
+): StackGroupoidArrowEntry<Arr> => {
+  const existing = entries.find(entry => eq(entry.arrow, arrow))
+  if (existing) {
+    return existing
+  }
+  const entry: StackGroupoidArrowEntry<Arr> = { arrow }
+  entries.push(entry)
+  return entry
+}
+
+export interface StackPresentationRequest<BaseObj, BaseArr, Obj, Arr> {
+  readonly descent: DescentDatum<BaseObj, BaseArr, Obj, Arr>
+  readonly additionalFiberedSamples?: ReadonlyArray<FiberedCategorySample<BaseObj, BaseArr, Obj, Arr>>
+  readonly etaleSamples?: {
+    readonly sample: EtaleDescentSample<BaseObj, BaseArr>
+    readonly specifications: ReadonlyArray<EtaleFiberedSampleSpec<BaseObj, BaseArr, Obj, Arr>>
+  }
+  readonly label?: string
+}
+
+export interface StackPresentation<BaseObj, BaseArr, Obj, Arr> {
+  readonly groupoid: FiniteGroupoid<Obj, Arr>
+  readonly fiberedSamples: ReadonlyArray<FiberedCategorySample<BaseObj, BaseArr, Obj, Arr>>
+  readonly fiberedCheck: FiberedCategoryCheckResult<BaseObj, BaseArr, Obj, Arr>
+  readonly descentCheck: DescentCheckResult<BaseObj, BaseArr, Obj, Arr>
+  readonly details: string
+}
+
+const buildStackGroupoid = <BaseObj, BaseArr, Obj, Arr>(
+  datum: DescentDatum<BaseObj, BaseArr, Obj, Arr>,
+): FiniteGroupoid<Obj, Arr> => {
+  const objectEq = withEquality(datum.fibered.fiber.objectEq)
+  const arrowEq = withEquality(datum.fibered.fiber.arrowEq)
+
+  const objects: Obj[] = []
+  const addObject = (object: Obj): void => {
+    if (!objects.some(existing => objectEq(existing, object))) {
+      objects.push(object)
+    }
+  }
+
+  datum.localObjects.forEach(addObject)
+
+  const arrowEntries: StackGroupoidArrowEntry<Arr>[] = []
+  const addArrow = (arrow: Arr): StackGroupoidArrowEntry<Arr> => {
+    const entry = registerArrow(arrowEntries, arrow, arrowEq)
+    addObject(datum.fibered.fiber.src(arrow))
+    addObject(datum.fibered.fiber.dst(arrow))
+    return entry
+  }
+
+  objects.forEach(object => {
+    const identity = datum.fibered.fiber.id(object)
+    const entry = addArrow(identity)
+    entry.inverse = identity
+  })
+
+  datum.transitions.forEach(transition => {
+    const entry = addArrow(transition.transition)
+    if (transition.inverse) {
+      const inverseEntry = addArrow(transition.inverse)
+      entry.inverse = transition.inverse
+      inverseEntry.inverse = transition.transition
+    }
+  })
+
+  datum.cocycles?.forEach(cocycle => {
+    const firstEntry = addArrow(cocycle.first)
+    const secondEntry = addArrow(cocycle.second)
+    addArrow(cocycle.expected)
+    const sourceIdentity = datum.fibered.fiber.id(datum.fibered.fiber.src(cocycle.first))
+    const targetIdentity = datum.fibered.fiber.id(datum.fibered.fiber.dst(cocycle.first))
+    const expectedIsSourceIdentity = arrowEq(cocycle.expected, sourceIdentity)
+    const expectedIsTargetIdentity = arrowEq(cocycle.expected, targetIdentity)
+    if (expectedIsSourceIdentity) {
+      firstEntry.inverse = cocycle.second
+      secondEntry.inverse = cocycle.first
+    } else if (expectedIsTargetIdentity) {
+      firstEntry.inverse = cocycle.second
+      secondEntry.inverse = cocycle.first
+    }
+  })
+
+  const hom = (from: Obj, to: Obj): Arr[] =>
+    arrowEntries
+      .filter(entry =>
+        objectEq(datum.fibered.fiber.src(entry.arrow), from) &&
+        objectEq(datum.fibered.fiber.dst(entry.arrow), to),
+      )
+      .map(entry => entry.arrow)
+
+  const findEntry = (arrow: Arr): StackGroupoidArrowEntry<Arr> | undefined =>
+    arrowEntries.find(entry => arrowEq(entry.arrow, arrow))
+
+  const ensureIdentityEntry = (object: Obj): StackGroupoidArrowEntry<Arr> => {
+    const identity = datum.fibered.fiber.id(object)
+    const entry = findEntry(identity)
+    if (entry) {
+      entry.inverse = identity
+      return entry
+    }
+    const newEntry = addArrow(identity)
+    newEntry.inverse = identity
+    return newEntry
+  }
+
+  const inv = (arrow: Arr): Arr => {
+    const entry = findEntry(arrow)
+    if (entry?.inverse) {
+      return entry.inverse
+    }
+
+    const source = datum.fibered.fiber.src(arrow)
+    const target = datum.fibered.fiber.dst(arrow)
+    ensureIdentityEntry(source)
+    ensureIdentityEntry(target)
+    const identitySource = datum.fibered.fiber.id(source)
+    const identityTarget = datum.fibered.fiber.id(target)
+
+    const candidate = arrowEntries.find(candidateEntry => {
+      const candidateArrow = candidateEntry.arrow
+      if (!objectEq(datum.fibered.fiber.src(candidateArrow), target)) {
+        return false
+      }
+      if (!objectEq(datum.fibered.fiber.dst(candidateArrow), source)) {
+        return false
+      }
+      const forward = datum.fibered.fiber.compose(arrow, candidateArrow)
+      const backward = datum.fibered.fiber.compose(candidateArrow, arrow)
+      return (
+        !!forward &&
+        !!backward &&
+        arrowEq(forward, identityTarget) &&
+        arrowEq(backward, identitySource)
+      )
+    })
+
+    if (candidate) {
+      if (entry) {
+        entry.inverse = candidate.arrow
+      }
+      if (!candidate.inverse) {
+        candidate.inverse = arrow
+      }
+      return candidate.arrow
+    }
+
+    if (entry && arrowEq(entry.arrow, identitySource)) {
+      entry.inverse = entry.arrow
+      return entry.arrow
+    }
+
+    return identitySource
+  }
+
+  const uniqueObjects = dedupe(objects, objectEq)
+
+  return {
+    objects: uniqueObjects,
+    hom,
+    id: (object: Obj) => {
+      const identity = datum.fibered.fiber.id(object)
+      addArrow(identity)
+      return identity
+    },
+    compose: (g: Arr, f: Arr) => {
+      const composed = datum.fibered.fiber.compose(g, f)
+      if (!composed) {
+        throw new Error("Stack groupoid composition undefined for provided arrows.")
+      }
+      addArrow(composed)
+      return composed
+    },
+    inv,
+    dom: (arrow: Arr) => datum.fibered.fiber.src(arrow),
+    cod: (arrow: Arr) => datum.fibered.fiber.dst(arrow),
+    eq: datum.fibered.fiber.arrowEq,
+    isId: (arrow: Arr) => {
+      const source = datum.fibered.fiber.src(arrow)
+      return arrowEq(arrow, datum.fibered.fiber.id(source))
+    },
+    equalMor: datum.fibered.fiber.arrowEq,
+  }
+}
+
+export const synthesizeStackPresentation = <BaseObj, BaseArr, Obj, Arr>(
+  request: StackPresentationRequest<BaseObj, BaseArr, Obj, Arr>,
+): StackPresentation<BaseObj, BaseArr, Obj, Arr> => {
+  const { descent } = request
+
+  const fiberedSamplesFromEtale = request.etaleSamples
+    ? buildFiberedSamplesFromEtaleDescent(request.etaleSamples.sample, request.etaleSamples.specifications)
+    : []
+
+  const suppliedSamples = request.additionalFiberedSamples ?? []
+  const mergedSamples = [...suppliedSamples, ...fiberedSamplesFromEtale]
+
+  const fiberedCheck = checkFiberedCategory(descent.fibered, mergedSamples)
+  const descentCheck = checkStackDescent(descent)
+  const groupoid = buildStackGroupoid(descent)
+
+  const label = request.label ?? descent.label
+  const detailParts = [
+    label
+      ? `Stack presentation ${label} synthesized groupoid with ${groupoid.objects.length} object(s).`
+      : `Stack presentation synthesized groupoid with ${groupoid.objects.length} object(s).`,
+    mergedSamples.length > 0
+      ? `Verified ${mergedSamples.length} fibered sample(s).`
+      : "No fibered samples supplied for verification.",
+    descentCheck.details,
+    fiberedCheck.details,
+  ]
+
+  return {
+    groupoid,
+    fiberedSamples: mergedSamples,
+    fiberedCheck,
+    descentCheck,
+    details: detailParts.join(" "),
+  }
 }
 

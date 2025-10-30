@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest"
 import {
-  AffineSchemeExamples,
+  SchemeChartExamples,
   checkSchemeFiberProduct,
   checkSchemeGluing,
   createModuloRing,
   normalizeMod,
+  refineSchemeAtlas,
   type AffineSchemeMorphism,
   type AffineSchemePullbackSquare,
   type PrimeSpectrum,
@@ -41,7 +42,7 @@ const cloneChart = <A>(chart: SchemeChart<A>, label: string): SchemeChart<A> => 
 })
 
 describe("global scheme infrastructure", () => {
-  const specZSample = AffineSchemeExamples.specIntegers
+  const specZSample = SchemeChartExamples.specIntegers
   const specZChart = specZSample.chart as SchemeChart<bigint>
 
   const ringSamples = specZChart.options?.spectrum?.ringSamples ?? []
@@ -94,6 +95,46 @@ describe("global scheme infrastructure", () => {
     expect(result.metadata.quasiCompact).toBe(true)
     expect(result.metadata.separatedOnSamples).toBe(true)
     expect(result.violations).toHaveLength(0)
+  })
+
+  it("refines atlases by aligning shared spectra and merging compatibility samples", () => {
+    const swappedAtlas: SchemeAtlas = {
+      label: "Spec ℤ atlas with swapped charts",
+      charts: [cloneChart(secondChart, "Chart V (alt)"), cloneChart(baseChart, "Chart U (alt)")],
+      gluings: [
+        {
+          leftChart: 1,
+          rightChart: 0,
+          forward: backward,
+          backward: forward,
+          compatibility: { leftSamples: [5n], rightSamples: [7n], leftPointIndices: [0], rightPointIndices: [2] },
+        },
+      ],
+    }
+
+    const refinement = refineSchemeAtlas(atlas, swappedAtlas, { checkOptions: { witnessLimit: 6 } })
+
+    expect(refinement.atlas.charts).toHaveLength(2)
+    expect(refinement.atlas.gluings).toHaveLength(1)
+
+    const gluing = refinement.atlas.gluings[0]
+    if (!gluing) {
+      throw new Error("Expected refined gluing to exist")
+    }
+
+    expect(gluing.leftChart).toBe(0)
+    expect(gluing.rightChart).toBe(1)
+    expect(gluing.forward.domain).toBe(refinement.atlas.charts[1]?.spectrum)
+    expect(gluing.backward.domain).toBe(refinement.atlas.charts[0]?.spectrum)
+    expect(gluing.compatibility?.leftSamples).toEqual(expect.arrayContaining([5n, ...ringSamples]))
+    expect(gluing.compatibility?.rightSamples).toEqual(expect.arrayContaining([7n, ...ringSamples]))
+    expect(refinement.summaries.refined.metadata.chartCount).toBe(2)
+    expect(refinement.summaries.left.holds).toBe(true)
+    expect(refinement.summaries.right.holds).toBe(true)
+    expect(refinement.details).toContain(refinement.summaries.refined.details)
+    expect(refinement.details).toContain(refinement.summaries.left.details)
+    expect(refinement.details).toContain(refinement.summaries.right.details)
+    expect(refinement.details).toContain("Heuristics — quasi-compact on samples")
   })
 
   it("detects when a gluing atlas omits the induced image prime", () => {
