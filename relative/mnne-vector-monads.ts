@@ -1,7 +1,12 @@
 import type { Semiring } from "../allTS";
 import {
   createFiniteIndexedFamily,
+  createReplayableIterable,
+  createReplayableIterableFromArray,
   materializeIndexedFamily,
+  sliceLazyIterable,
+  type LazyReplayableIterable,
+  type LazySliceResult,
   type MaterializeIndexedFamilyResult,
 } from "./mnne-infinite-support";
 
@@ -1220,4 +1225,558 @@ export const describeBooleanVectorLeftKanExtensionWitness = (
   semiring: FiniteSemiringBoolOrAnd,
   targetSizes,
   dimensionLimit,
+});
+
+type CoordinatewiseComparisonKind = "unit" | "element" | "associativity";
+
+const DEFAULT_COORDINATE_LIMIT = 12;
+const DEFAULT_VECTOR_ENTRY_LIMIT = 16;
+const DEFAULT_ARROW_LIMIT = 6;
+const DEFAULT_COMPOSITION_LIMIT = 4;
+
+const freezeArray = <T>(values: readonly T[]): ReadonlyArray<T> =>
+  Object.freeze([...values]) as ReadonlyArray<T>;
+
+export interface CoordinatewiseVectorEntry<Coordinate, R> {
+  readonly coordinate: Coordinate;
+  readonly value: R;
+}
+
+export interface CoordinatewiseVectorArrow<Coordinate, R> {
+  readonly label: string;
+  readonly column: (
+    coordinate: Coordinate,
+  ) => LazyReplayableIterable<CoordinatewiseVectorEntry<Coordinate, R>>;
+  readonly description?: string;
+}
+
+export interface CoordinatewiseVectorApproximationOptions {
+  readonly coordinateLimit?: number;
+  readonly entryLimit?: number;
+  readonly arrowLimit?: number;
+  readonly compositionLimit?: number;
+}
+
+export interface CoordinatewiseVectorRelativeMonadWitness<Coordinate, R> {
+  readonly semiring: Semiring<R>;
+  readonly coordinates: LazyReplayableIterable<Coordinate>;
+  readonly arrows: ReadonlyArray<CoordinatewiseVectorArrow<Coordinate, R>>;
+  readonly coordinateKey: (coordinate: Coordinate) => string;
+  readonly describeCoordinate?: (coordinate: Coordinate) => string;
+  readonly unit?: (
+    coordinate: Coordinate,
+  ) => LazyReplayableIterable<CoordinatewiseVectorEntry<Coordinate, R>>;
+  readonly approximation?: CoordinatewiseVectorApproximationOptions;
+}
+
+export interface CoordinatewiseVectorUnitSlice<Coordinate, R> {
+  readonly coordinate: Coordinate;
+  readonly slice: LazySliceResult<CoordinatewiseVectorEntry<Coordinate, R>>;
+}
+
+export interface CoordinatewiseVectorArrowSlice<Coordinate, R> {
+  readonly arrow: string;
+  readonly coordinate: Coordinate;
+  readonly slice: LazySliceResult<CoordinatewiseVectorEntry<Coordinate, R>>;
+  readonly arrowDescription?: string;
+}
+
+export interface CoordinatewiseVectorComparison<Coordinate, R> {
+  readonly kind: CoordinatewiseComparisonKind;
+  readonly context: string;
+  readonly equal: boolean;
+  readonly leftSlice: LazySliceResult<CoordinatewiseVectorEntry<Coordinate, R>>;
+  readonly rightSlice: LazySliceResult<CoordinatewiseVectorEntry<Coordinate, R>>;
+}
+
+export interface CoordinatewiseVectorApproximationDiagnostics<Coordinate> {
+  readonly coordinateLimit: number;
+  readonly entryLimit: number;
+  readonly arrowLimit: number;
+  readonly compositionLimit: number;
+  readonly coordinateSlice: LazySliceResult<Coordinate>;
+  readonly truncatedUnits: ReadonlyArray<{
+    readonly coordinate: Coordinate;
+    readonly limit: number;
+    readonly consumed: number;
+  }>;
+  readonly truncatedArrows: ReadonlyArray<{
+    readonly arrow: string;
+    readonly coordinate: Coordinate;
+    readonly limit: number;
+    readonly consumed: number;
+  }>;
+  readonly truncatedComparisons: ReadonlyArray<{
+    readonly kind: CoordinatewiseComparisonKind;
+    readonly context: string;
+    readonly leftTruncated: boolean;
+    readonly rightTruncated: boolean;
+  }>;
+}
+
+export interface CoordinatewiseVectorRelativeMonadReport<Coordinate, R> {
+  readonly holds: boolean;
+  readonly issues: ReadonlyArray<string>;
+  readonly details: string;
+  readonly coordinateSlice: LazySliceResult<Coordinate>;
+  readonly unitSlices: ReadonlyArray<CoordinatewiseVectorUnitSlice<Coordinate, R>>;
+  readonly arrowSlices: ReadonlyArray<CoordinatewiseVectorArrowSlice<Coordinate, R>>;
+  readonly comparisons: ReadonlyArray<CoordinatewiseVectorComparison<Coordinate, R>>;
+  readonly approximation: CoordinatewiseVectorApproximationDiagnostics<Coordinate>;
+}
+
+interface NormalisedVectorEntry<Coordinate, R> {
+  readonly coordinate: Coordinate;
+  readonly value: R;
+}
+
+interface NormalisedVector<Coordinate, R> {
+  readonly entries: ReadonlyArray<NormalisedVectorEntry<Coordinate, R>>;
+  readonly truncated: boolean;
+}
+
+const semiringEquals = <R>(semiring: Semiring<R>) =>
+  semiring.eq ?? ((left: R, right: R) => left === right);
+
+const accumulateVector = <Coordinate, R>(
+  semiring: Semiring<R>,
+  key: (coordinate: Coordinate) => string,
+  slice: LazySliceResult<CoordinatewiseVectorEntry<Coordinate, R>>,
+): NormalisedVector<Coordinate, R> => {
+  const map = new Map<string, NormalisedVectorEntry<Coordinate, R>>();
+  for (const entry of slice.values) {
+    const entryKey = key(entry.coordinate);
+    const existing = map.get(entryKey);
+    if (existing) {
+      map.set(entryKey, {
+        coordinate: existing.coordinate,
+        value: semiring.add(existing.value, entry.value),
+      });
+    } else {
+      map.set(entryKey, {
+        coordinate: entry.coordinate,
+        value: entry.value,
+      });
+    }
+  }
+  return {
+    entries: freezeArray(Array.from(map.values())),
+    truncated: slice.truncated,
+  };
+};
+
+const compareNormalisedVectors = <Coordinate, R>(
+  semiring: Semiring<R>,
+  key: (coordinate: Coordinate) => string,
+  left: NormalisedVector<Coordinate, R>,
+  right: NormalisedVector<Coordinate, R>,
+): boolean => {
+  const equals = semiringEquals(semiring);
+  if (left.entries.length !== right.entries.length) {
+    return false;
+  }
+  const sortedLeft = [...left.entries].sort((a, b) =>
+    key(a.coordinate).localeCompare(key(b.coordinate)),
+  );
+  const sortedRight = [...right.entries].sort((a, b) =>
+    key(a.coordinate).localeCompare(key(b.coordinate)),
+  );
+  for (let index = 0; index < sortedLeft.length; index += 1) {
+    const leftEntry = sortedLeft[index]!;
+    const rightEntry = sortedRight[index]!;
+    if (key(leftEntry.coordinate) !== key(rightEntry.coordinate)) {
+      return false;
+    }
+    if (!equals(leftEntry.value, rightEntry.value)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const defaultDescribeCoordinate = (coordinate: unknown): string => `${coordinate}`;
+
+const defaultUnitVector = <Coordinate, R>(
+  semiring: Semiring<R>,
+  coordinate: Coordinate,
+  describe: (coordinate: Coordinate) => string,
+): LazyReplayableIterable<CoordinatewiseVectorEntry<Coordinate, R>> =>
+  createReplayableIterableFromArray(
+    [
+      {
+        coordinate,
+        value: semiring.one,
+      },
+    ],
+    { description: `η(${describe(coordinate)})` },
+  );
+
+const approximateExtend = <Coordinate, R>(
+  semiring: Semiring<R>,
+  key: (coordinate: Coordinate) => string,
+  arrow: CoordinatewiseVectorArrow<Coordinate, R>,
+  vector: LazyReplayableIterable<CoordinatewiseVectorEntry<Coordinate, R>>,
+  entryLimit: number,
+  description: string,
+): {
+  readonly iterable: LazyReplayableIterable<CoordinatewiseVectorEntry<Coordinate, R>>;
+  readonly slice: LazySliceResult<CoordinatewiseVectorEntry<Coordinate, R>>;
+  readonly normalised: NormalisedVector<Coordinate, R>;
+} => {
+  const vectorSlice = sliceLazyIterable(vector, { limit: entryLimit });
+  const equals = semiringEquals(semiring);
+  const contributions = new Map<string, CoordinatewiseVectorEntry<Coordinate, R>>();
+  let truncated = vectorSlice.truncated;
+
+  for (const entry of vectorSlice.values) {
+    const columnSlice = sliceLazyIterable(arrow.column(entry.coordinate), {
+      limit: entryLimit,
+    });
+    truncated = truncated || columnSlice.truncated;
+    for (const columnEntry of columnSlice.values) {
+      const columnKey = key(columnEntry.coordinate);
+      const scaled = semiring.mul(entry.value, columnEntry.value);
+      const existing = contributions.get(columnKey);
+      if (existing) {
+        const combined = semiring.add(existing.value, scaled);
+        if (!equals(existing.value, combined)) {
+          contributions.set(columnKey, {
+            coordinate: existing.coordinate,
+            value: combined,
+          });
+        }
+      } else {
+        contributions.set(columnKey, {
+          coordinate: columnEntry.coordinate,
+          value: scaled,
+        });
+      }
+    }
+  }
+
+  const values = freezeArray(Array.from(contributions.values()));
+  const iterable = createReplayableIterableFromArray(values, {
+    description,
+  });
+  const slice: LazySliceResult<CoordinatewiseVectorEntry<Coordinate, R>> = {
+    values,
+    truncated,
+    limit: entryLimit,
+    consumed: values.length,
+  };
+  const normalised = accumulateVector(semiring, key, slice);
+  return { iterable, slice, normalised };
+};
+
+export const analyzeCoordinatewiseVectorRelativeMonad = <Coordinate, R>(
+  witness: CoordinatewiseVectorRelativeMonadWitness<Coordinate, R>,
+): CoordinatewiseVectorRelativeMonadReport<Coordinate, R> => {
+  const describe = witness.describeCoordinate ?? defaultDescribeCoordinate;
+  const coordinateLimit = witness.approximation?.coordinateLimit ?? DEFAULT_COORDINATE_LIMIT;
+  const entryLimit = witness.approximation?.entryLimit ?? DEFAULT_VECTOR_ENTRY_LIMIT;
+  const arrowLimit = witness.approximation?.arrowLimit ?? DEFAULT_ARROW_LIMIT;
+  const compositionLimit = witness.approximation?.compositionLimit ?? DEFAULT_COMPOSITION_LIMIT;
+
+  const coordinateSlice = sliceLazyIterable(witness.coordinates, {
+    limit: coordinateLimit,
+  });
+
+  const issues: string[] = [];
+  const unitSlices: CoordinatewiseVectorUnitSlice<Coordinate, R>[] = [];
+  const arrowSlices: CoordinatewiseVectorArrowSlice<Coordinate, R>[] = [];
+  const comparisons: CoordinatewiseVectorComparison<Coordinate, R>[] = [];
+
+  const unitArrow: CoordinatewiseVectorArrow<Coordinate, R> = {
+    label: "η",
+    description: "Basis singleton",
+    column: (coordinate) =>
+      witness.unit?.(coordinate) ??
+      defaultUnitVector(witness.semiring, coordinate, describe),
+  };
+
+  const sampleVectors: Array<{
+    readonly label: string;
+    readonly vector: LazyReplayableIterable<CoordinatewiseVectorEntry<Coordinate, R>>;
+  }> = [];
+
+  for (const coordinate of coordinateSlice.values) {
+    const unit = unitArrow.column(coordinate);
+    const slice = sliceLazyIterable(unit, { limit: entryLimit });
+    unitSlices.push({ coordinate, slice });
+    sampleVectors.push({
+      label: `η(${describe(coordinate)})`,
+      vector: unit,
+    });
+  }
+
+  const limitedArrows = witness.arrows.slice(0, arrowLimit);
+  for (const arrow of limitedArrows) {
+    for (const coordinate of coordinateSlice.values) {
+      const column = arrow.column(coordinate);
+      const slice = sliceLazyIterable(column, { limit: entryLimit });
+      arrowSlices.push({
+        arrow: arrow.label,
+        coordinate,
+        slice,
+        ...(arrow.description !== undefined
+          ? { arrowDescription: arrow.description }
+          : {}),
+      });
+      sampleVectors.push({
+        label: `${arrow.label}(${describe(coordinate)})`,
+        vector: column,
+      });
+
+      const unitVector = unitArrow.column(coordinate);
+      const rightUnit = approximateExtend(
+        witness.semiring,
+        witness.coordinateKey,
+        arrow,
+        unitVector,
+        entryLimit,
+        `${arrow.label} ∘ η(${describe(coordinate)})`,
+      );
+      const comparison = compareNormalisedVectors(
+        witness.semiring,
+        witness.coordinateKey,
+        rightUnit.normalised,
+        accumulateVector(witness.semiring, witness.coordinateKey, slice),
+      );
+      if (!comparison) {
+        issues.push(
+          `Right unit failed for coordinate ${describe(coordinate)} via arrow "${arrow.label}".`,
+        );
+      }
+      comparisons.push({
+        kind: "element",
+        context: `Right unit for ${describe(coordinate)} along "${arrow.label}"`,
+        equal: comparison,
+        leftSlice: rightUnit.slice,
+        rightSlice: slice,
+      });
+    }
+  }
+
+  for (const sample of sampleVectors) {
+    const unitExtended = approximateExtend(
+      witness.semiring,
+      witness.coordinateKey,
+      unitArrow,
+      sample.vector,
+      entryLimit,
+      `η ▷ ${sample.label}`,
+    );
+    const vectorSlice = sliceLazyIterable(sample.vector, { limit: entryLimit });
+    const equal = compareNormalisedVectors(
+      witness.semiring,
+      witness.coordinateKey,
+      unitExtended.normalised,
+      accumulateVector(witness.semiring, witness.coordinateKey, vectorSlice),
+    );
+    if (!equal) {
+      issues.push(`Unit law failed on sample vector ${sample.label}.`);
+    }
+    comparisons.push({
+      kind: "unit",
+      context: `Unit law on ${sample.label}`,
+      equal,
+      leftSlice: unitExtended.slice,
+      rightSlice: vectorSlice,
+    });
+  }
+
+  const limitedSamples = sampleVectors.slice(0, compositionLimit);
+  for (const first of limitedArrows) {
+    for (const second of limitedArrows) {
+      for (const sample of limitedSamples) {
+        const sequential = approximateExtend(
+          witness.semiring,
+          witness.coordinateKey,
+          second,
+          approximateExtend(
+            witness.semiring,
+            witness.coordinateKey,
+            first,
+            sample.vector,
+            entryLimit,
+            `${first.label} ▷ ${sample.label}`,
+          ).iterable,
+          entryLimit,
+          `${second.label} ▷ (${first.label} ▷ ${sample.label})`,
+        );
+
+        const composite: CoordinatewiseVectorArrow<Coordinate, R> = {
+          label: `${second.label} ∘ ${first.label}`,
+          column: (coordinate) =>
+            approximateExtend(
+              witness.semiring,
+              witness.coordinateKey,
+              second,
+              first.column(coordinate),
+              entryLimit,
+              `${second.label} ∘ ${first.label}(${describe(coordinate)})`,
+            ).iterable,
+        };
+
+        const combined = approximateExtend(
+          witness.semiring,
+          witness.coordinateKey,
+          composite,
+          sample.vector,
+          entryLimit,
+          `(${second.label} ∘ ${first.label}) ▷ ${sample.label}`,
+        );
+
+        const equal = compareNormalisedVectors(
+          witness.semiring,
+          witness.coordinateKey,
+          sequential.normalised,
+          combined.normalised,
+        );
+        if (!equal) {
+          issues.push(
+            `Associativity failed on ${sample.label} using arrows "${first.label}" then "${second.label}".`,
+          );
+        }
+        comparisons.push({
+          kind: "associativity",
+          context: `${second.label} ∘ ${first.label} on ${sample.label}`,
+          equal,
+          leftSlice: sequential.slice,
+          rightSlice: combined.slice,
+        });
+      }
+    }
+  }
+
+  const holds = comparisons.every((comparison) => comparison.equal) && issues.length === 0;
+  const details = holds
+    ? `Coordinatewise vector witness satisfied unit and associativity checks on ${coordinateSlice.consumed} sampled coordinates.`
+    : "Coordinatewise vector witness failed one or more sampled laws.";
+
+  const approximation: CoordinatewiseVectorApproximationDiagnostics<Coordinate> = {
+    coordinateLimit,
+    entryLimit,
+    arrowLimit,
+    compositionLimit,
+    coordinateSlice,
+    truncatedUnits: freezeArray(
+      unitSlices
+        .filter((slice) => slice.slice.truncated)
+        .map((slice) => ({
+          coordinate: slice.coordinate,
+          limit: slice.slice.limit,
+          consumed: slice.slice.consumed,
+        })),
+    ),
+    truncatedArrows: freezeArray(
+      arrowSlices
+        .filter((slice) => slice.slice.truncated)
+        .map((slice) => ({
+          arrow: slice.arrow,
+          coordinate: slice.coordinate,
+          limit: slice.slice.limit,
+          consumed: slice.slice.consumed,
+        })),
+    ),
+    truncatedComparisons: freezeArray(
+      comparisons
+        .filter(
+          (comparison) => comparison.leftSlice.truncated || comparison.rightSlice.truncated,
+        )
+        .map((comparison) => ({
+          kind: comparison.kind,
+          context: comparison.context,
+          leftTruncated: comparison.leftSlice.truncated,
+          rightTruncated: comparison.rightSlice.truncated,
+        })),
+    ),
+  };
+
+  return {
+    holds,
+    issues: freezeArray(issues),
+    details,
+    coordinateSlice,
+    unitSlices: freezeArray(unitSlices),
+    arrowSlices: freezeArray(arrowSlices),
+    comparisons: freezeArray(comparisons),
+    approximation,
+  };
+};
+
+const naturalsIterable: LazyReplayableIterable<number> = createReplayableIterable(() => ({
+  [Symbol.iterator]: function* () {
+    let index = 0;
+    while (true) {
+      yield index;
+      index += 1;
+    }
+  },
+}), { description: "ℕ" });
+
+const successorColumn = (
+  coordinate: number,
+): LazyReplayableIterable<CoordinatewiseVectorEntry<number, boolean>> =>
+  createReplayableIterableFromArray(
+    [
+      { coordinate: coordinate + 1, value: true },
+    ],
+    { description: `{${coordinate + 1}}` },
+  );
+
+const duplicateColumn = (
+  coordinate: number,
+): LazyReplayableIterable<CoordinatewiseVectorEntry<number, boolean>> =>
+  createReplayableIterableFromArray(
+    [
+      { coordinate, value: true },
+      { coordinate: coordinate + 1, value: true },
+    ],
+    { description: `{${coordinate}, ${coordinate + 1}}` },
+  );
+
+const tailColumn = (
+  coordinate: number,
+): LazyReplayableIterable<CoordinatewiseVectorEntry<number, boolean>> =>
+  createReplayableIterable(() => ({
+    [Symbol.iterator]: function* () {
+      let offset = 0;
+      while (true) {
+        yield { coordinate: coordinate + offset, value: true };
+        offset += 1;
+      }
+    },
+  }), { description: `{n ≥ ${coordinate}}` });
+
+export const describeCoordinatewiseBooleanVectorWitness = (
+  approximation: CoordinatewiseVectorApproximationOptions = {
+    coordinateLimit: 8,
+    entryLimit: 16,
+    arrowLimit: 3,
+    compositionLimit: 3,
+  },
+): CoordinatewiseVectorRelativeMonadWitness<number, boolean> => ({
+  semiring: FiniteSemiringBoolOrAnd,
+  coordinates: naturalsIterable,
+  coordinateKey: (coordinate) => coordinate.toString(),
+  describeCoordinate: (coordinate) => coordinate.toString(),
+  arrows: [
+    {
+      label: "shift",
+      description: "n ↦ e_{n+1}",
+      column: successorColumn,
+    },
+    {
+      label: "duplicate",
+      description: "n ↦ e_n + e_{n+1}",
+      column: duplicateColumn,
+    },
+    {
+      label: "tail",
+      description: "n ↦ ∑_{k≥0} e_{n+k}",
+      column: tailColumn,
+    },
+  ],
+  approximation,
 });

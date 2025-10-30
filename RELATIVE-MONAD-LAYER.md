@@ -238,8 +238,9 @@
   - ✅ Example 4 of *Monads Need Not Be Endofunctors* is executable via
     `analyzeIndexedContainerRelativeMonad` and the
     `relativeMonad.mnne.indexedContainers` oracle, which enumerate finite
-    indexed families, replay the Example 4 unit/extraction data, and verify the
-    relative monad laws for the induced substitution operator.
+    indexed families, replay the Example 4 unit/extraction data, and apply the
+    recorded κ/σ substitution rules to verify the relative monad laws without
+    relying on the focus-position simplification.
   - ✅ Definition 8.16’s enriched T-algebra is now executable via
     `analyzeRelativeEnrichedEilenbergMooreAlgebra` and the
     `relativeMonad.enriched.eilenbergMooreAlgebra` oracle, which insist the
@@ -471,6 +472,17 @@
     `relative/mnne-powerset-monads.ts`, supplying lazy/replayable subsets,
     approximation diagnostics, and an analyzer that reports the unit/right-unit/
     associativity comparisons together with truncation metadata.
+  - ✅ Added Example 9’s coordinatewise vector relative monad via
+    `relative/mnne-vector-monads.ts`, pairing lazy ℕ-indexed bases with
+    approximation-aware analyzers and regression coverage in
+    `test/relative/mnne-coordinatewise-vector.spec.ts` to detect unit and
+    associativity failures under truncation.
+  - ✅ Extended Example 10’s potentially infinite λ-term relative monad with
+    `analyzeLazyLambdaRelativeMonad` and
+    `describeCountableLambdaRelativeMonadWitness`, enabling symbolic context
+    growth through replayable iterables and covering both the relative monad and
+    Kleisli splitting diagnostics in
+    `test/relative/mnne-lambda-lazy.spec.ts`.
   - ✅ Bridged Example 1’s arrow semantics with
     `analyzeFiniteVectorArrowCorrespondence` and
     `describeBooleanVectorArrowCorrespondenceWitness`, confirming that any

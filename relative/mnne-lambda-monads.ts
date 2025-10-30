@@ -1,4 +1,10 @@
 import type { NonEmptyArray } from "../allTS";
+import {
+  createReplayableIterable,
+  sliceLazyIterable,
+  type LazyReplayableIterable,
+  type LazySliceResult,
+} from "./mnne-infinite-support";
 
 export type LambdaTerm =
   | { readonly kind: "variable"; readonly index: number }
@@ -535,6 +541,202 @@ export const describeBrokenUntypedLambdaRelativeMonadWitness = (): LambdaRelativ
       return variable(0);
     }
     return cloneTerm(substitution.mapping[0]!);
+  },
+});
+
+const freezeArray = <T>(values: readonly T[]): ReadonlyArray<T> =>
+  Object.freeze([...values]) as ReadonlyArray<T>;
+
+const DEFAULT_LAZY_CONTEXT_LIMIT = 6;
+const DEFAULT_LAZY_SUBSTITUTION_LIMIT = 8;
+
+export interface LazyLambdaApproximationOptions {
+  readonly contextLimit?: number;
+  readonly substitutionLimit?: number;
+}
+
+export interface LazyLambdaRelativeMonadWitness
+  extends Omit<LambdaRelativeMonadWitness, "contexts" | "substitutions"> {
+  readonly contexts: LazyReplayableIterable<LambdaContextConfiguration>;
+  readonly substitutions: LazyReplayableIterable<LambdaSubstitutionConfiguration>;
+  readonly approximation?: LazyLambdaApproximationOptions;
+}
+
+interface MaterialisedLazyLambdaWitness {
+  readonly witness?: LambdaRelativeMonadWitness;
+  readonly contextSlice: LazySliceResult<LambdaContextConfiguration>;
+  readonly substitutionSlice: LazySliceResult<LambdaSubstitutionConfiguration>;
+  readonly issues: ReadonlyArray<string>;
+}
+
+const materialiseLazyLambdaWitness = (
+  witness: LazyLambdaRelativeMonadWitness,
+): MaterialisedLazyLambdaWitness => {
+  const contextLimit = witness.approximation?.contextLimit ?? DEFAULT_LAZY_CONTEXT_LIMIT;
+  const substitutionLimit =
+    witness.approximation?.substitutionLimit ?? DEFAULT_LAZY_SUBSTITUTION_LIMIT;
+
+  const contextSlice = sliceLazyIterable(witness.contexts, { limit: contextLimit });
+  const substitutionSlice = sliceLazyIterable(witness.substitutions, {
+    limit: substitutionLimit,
+  });
+
+  const issues: string[] = [];
+  if (contextSlice.values.length === 0) {
+    issues.push("No contexts enumerated within the configured limit.");
+  }
+  if (substitutionSlice.values.length === 0) {
+    issues.push("No substitution configurations enumerated within the configured limit.");
+  }
+
+  if (issues.length > 0) {
+    return {
+      witness: undefined,
+      contextSlice,
+      substitutionSlice,
+      issues: freezeArray(issues),
+    };
+  }
+
+  const strictWitness: LambdaRelativeMonadWitness = {
+    contexts: contextSlice.values as NonEmptyArray<LambdaContextConfiguration>,
+    substitutions: substitutionSlice.values as NonEmptyArray<LambdaSubstitutionConfiguration>,
+    ...(witness.customExtend ? { customExtend: witness.customExtend } : {}),
+    ...(witness.customCompose ? { customCompose: witness.customCompose } : {}),
+  };
+
+  return {
+    witness: strictWitness,
+    contextSlice,
+    substitutionSlice,
+    issues: freezeArray([]),
+  };
+};
+
+export interface LazyLambdaRelativeMonadReport extends LambdaRelativeMonadReport {
+  readonly approximation: {
+    readonly contextSlice: LazySliceResult<LambdaContextConfiguration>;
+    readonly substitutionSlice: LazySliceResult<LambdaSubstitutionConfiguration>;
+  };
+}
+
+export const analyzeLazyLambdaRelativeMonad = (
+  witness: LazyLambdaRelativeMonadWitness,
+): LazyLambdaRelativeMonadReport => {
+  const materialised = materialiseLazyLambdaWitness(witness);
+  if (!materialised.witness) {
+    return {
+      holds: false,
+      issues: materialised.issues,
+      details:
+        "Lazy λ-term witness materialisation failed; increase the context or substitution limits.",
+      contexts: [],
+      substitutions: [],
+      approximation: {
+        contextSlice: materialised.contextSlice,
+        substitutionSlice: materialised.substitutionSlice,
+      },
+    };
+  }
+
+  const baseReport = analyzeUntypedLambdaRelativeMonad(materialised.witness);
+  const details = `${baseReport.details} Sampled ${materialised.contextSlice.consumed} contexts and ${materialised.substitutionSlice.consumed} substitution configurations.`;
+
+  return {
+    ...baseReport,
+    holds: baseReport.holds && materialised.issues.length === 0,
+    issues: freezeArray([...baseReport.issues, ...materialised.issues]),
+    details,
+    approximation: {
+      contextSlice: materialised.contextSlice,
+      substitutionSlice: materialised.substitutionSlice,
+    },
+  };
+};
+
+export interface LazyLambdaKleisliSplittingReport extends LambdaKleisliSplittingReport {
+  readonly approximation: {
+    readonly contextSlice: LazySliceResult<LambdaContextConfiguration>;
+    readonly substitutionSlice: LazySliceResult<LambdaSubstitutionConfiguration>;
+  };
+}
+
+export const analyzeLazyLambdaKleisliSplitting = (
+  witness: LazyLambdaRelativeMonadWitness,
+): LazyLambdaKleisliSplittingReport => {
+  const materialised = materialiseLazyLambdaWitness(witness);
+  if (!materialised.witness) {
+    return {
+      holds: false,
+      issues: materialised.issues,
+      details:
+        "Lazy λ-term Kleisli materialisation failed; increase the context or substitution limits.",
+      contexts: [],
+      substitutions: [],
+      approximation: {
+        contextSlice: materialised.contextSlice,
+        substitutionSlice: materialised.substitutionSlice,
+      },
+    };
+  }
+
+  const baseReport = analyzeLambdaKleisliSplitting(materialised.witness);
+  const details = `${baseReport.details} Sampled ${materialised.contextSlice.consumed} contexts and ${materialised.substitutionSlice.consumed} substitution configurations.`;
+
+  return {
+    ...baseReport,
+    holds: baseReport.holds && materialised.issues.length === 0,
+    issues: freezeArray([...baseReport.issues, ...materialised.issues]),
+    details,
+    approximation: {
+      contextSlice: materialised.contextSlice,
+      substitutionSlice: materialised.substitutionSlice,
+    },
+  };
+};
+
+const countableContexts: LazyReplayableIterable<LambdaContextConfiguration> =
+  createReplayableIterable(() => ({
+    [Symbol.iterator]: function* () {
+      let size = 0;
+      while (true) {
+        yield { size, maxTermDepth: Math.min(3, size + 2) };
+        size += 1;
+      }
+    },
+  }), { description: "Countable λ-contexts" });
+
+const countableSubstitutions: LazyReplayableIterable<LambdaSubstitutionConfiguration> =
+  createReplayableIterable(() => ({
+    [Symbol.iterator]: function* () {
+      let radius = 0;
+      const emitted = new Set<string>();
+      while (true) {
+        for (let source = 0; source <= radius; source += 1) {
+          for (let target = source; target <= radius + 1; target += 1) {
+            const key = `${source}|${target}`;
+            if (emitted.has(key)) {
+              continue;
+            }
+            emitted.add(key);
+            yield {
+              source,
+              target,
+              maxTermDepth: Math.min(3, radius + 2),
+            };
+          }
+        }
+        radius += 1;
+      }
+    },
+  }), { description: "Countable λ-substitutions" });
+
+export const describeCountableLambdaRelativeMonadWitness = (): LazyLambdaRelativeMonadWitness => ({
+  contexts: countableContexts,
+  substitutions: countableSubstitutions,
+  approximation: {
+    contextLimit: DEFAULT_LAZY_CONTEXT_LIMIT,
+    substitutionLimit: DEFAULT_LAZY_SUBSTITUTION_LIMIT,
   },
 });
 
