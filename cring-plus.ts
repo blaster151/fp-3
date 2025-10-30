@@ -9,6 +9,10 @@
 
 import type { Ring } from "./ring";
 import { RingInteger, createModuloRing, normalizeMod } from "./ring";
+import type { Kernel } from "./markov-category";
+import { ProbabilityWeightRig, deterministic } from "./markov-category";
+import { probabilityLegacyToRigged } from "./probability-monads";
+import type { Dist as ParamDist } from "./dist";
 import {
   type InitialArrowSample,
   type InitialObjectWitness,
@@ -111,6 +115,72 @@ const requireRingEq = <A>(object: CRingPlusObject<A>): ((left: A, right: A) => b
     throw new Error(`CRingPlus object ${object.name} requires a ring equality`);
   }
   return eq;
+};
+
+const markovKernelFromHom = <A, B>(hom: CRingPlusHom<A, B>): Kernel<A, B> =>
+  deterministic((value: A) => hom.map(value));
+
+const collectDistinctValues = <B>(
+  eq: (left: B, right: B) => boolean,
+  left: ParamDist<number, B>,
+  right: ParamDist<number, B>,
+): B[] => {
+  const values: B[] = [];
+  const push = (candidate: B) => {
+    if (!values.some((existing) => eq(existing, candidate))) {
+      values.push(candidate);
+    }
+  };
+  left.w.forEach((_weight, value) => push(value));
+  right.w.forEach((_weight, value) => push(value));
+  return values;
+};
+
+const totalWeightFor = <B>(
+  eq: (left: B, right: B) => boolean,
+  dist: ParamDist<number, B>,
+  pivot: B,
+): number => {
+  let acc = ProbabilityWeightRig.zero;
+  dist.w.forEach((weight, value) => {
+    if (eq(value, pivot)) {
+      acc = ProbabilityWeightRig.add(acc, weight);
+    }
+  });
+  return acc;
+};
+
+const equalRiggedDistributions = <B>(
+  eq: (left: B, right: B) => boolean,
+  left: ParamDist<number, B>,
+  right: ParamDist<number, B>,
+): boolean => {
+  const values = collectDistinctValues(eq, left, right);
+  for (const value of values) {
+    const leftWeight = totalWeightFor(eq, left, value);
+    const rightWeight = totalWeightFor(eq, right, value);
+    if (!ProbabilityWeightRig.eq(leftWeight, rightWeight)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const kernelsEqualOnSamples = <A, B>(
+  left: Kernel<A, B>,
+  right: Kernel<A, B>,
+  domain: CRingPlusObject<A>,
+  codomain: CRingPlusObject<B>,
+): boolean => {
+  const eq = requireRingEq(codomain);
+  for (const sample of domain.sample) {
+    const leftDist = probabilityLegacyToRigged(left(sample));
+    const rightDist = probabilityLegacyToRigged(right(sample));
+    if (!equalRiggedDistributions(eq, leftDist, rightDist)) {
+      return false;
+    }
+  }
+  return true;
 };
 
 export const equalHom = <A, B>(
@@ -419,6 +489,11 @@ export interface CRingPlusCausalityAnalysis {
     readonly pastCanonical: ReturnType<typeof checkAdditiveUnitHom>;
     readonly pastIdentity: ReturnType<typeof checkAdditiveUnitHom>;
   };
+  readonly markov: {
+    readonly observationEqual: boolean;
+    readonly futureEqual: boolean;
+    readonly holds: boolean;
+  };
   readonly details: string;
 }
 
@@ -453,7 +528,21 @@ export const checkCRingPlusCausalityCounterexample = (
     pastIdentity: checkAdditiveUnitHom(pastIdentity),
   } as const;
 
+  const markovObservationEqual = kernelsEqualOnSamples(
+    markovKernelFromHom(observedCanonical),
+    markovKernelFromHom(observedIdentity),
+    observedCanonical.source,
+    observedCanonical.target,
+  );
+  const markovFutureEqual = kernelsEqualOnSamples(
+    markovKernelFromHom(futureAfterCanonical),
+    markovKernelFromHom(futureAfterIdentity),
+    futureAfterCanonical.source,
+    futureAfterCanonical.target,
+  );
+
   const holds = equalObservation && !equalFuture;
+  const markovHolds = markovObservationEqual && !markovFutureEqual;
   const details = holds
     ? "CRing_⊕ morphisms satisfy the causal premise but violate its conclusion."
     : "Causality counterexample conditions not met.";
@@ -463,6 +552,11 @@ export const checkCRingPlusCausalityCounterexample = (
     equalAfterObservation: equalObservation,
     equalBeforeObservation: equalFuture,
     homChecks,
+    markov: {
+      observationEqual: markovObservationEqual,
+      futureEqual: markovFutureEqual,
+      holds: markovHolds,
+    },
     details,
     ...(witness && { witness }),
   };

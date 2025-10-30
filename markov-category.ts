@@ -17,7 +17,13 @@
 // ----------------------------------------------------------------------------------------------
 
 import type { Dist as Dist2Param, Samp } from "./dist";
-import type { CSRig } from "./semiring-utils";
+import { mass as paramMass } from "./dist";
+import {
+  RiggedProbMonad,
+  probabilityLegacyToRigged,
+  probabilityRiggedToLegacy,
+  ProbabilityRig,
+} from "./probability-monads";
 import {
   type MeasurableSpace,
   type MeasurableSet,
@@ -93,44 +99,71 @@ function indexOfEq<T>(fin: Fin<T>, x: T): number {
 
 const EPS = 1e-12;
 
+type NumericParamDist<X> = Dist2Param<number, X>;
+
+const toParam = probabilityLegacyToRigged;
+
+const fromParam = probabilityRiggedToLegacy;
+
+export const ProbabilityWeightRig = ProbabilityRig;
+
+const probabilityDirac = <X>(x: X): NumericParamDist<X> => RiggedProbMonad.of(x);
+
+const pruneParam = <X>(d: NumericParamDist<X>, eps = EPS): NumericParamDist<X> => {
+  const w = new Map<X, number>();
+  d.w.forEach((weight, x) => {
+    if (weight > eps) {
+      w.set(x, weight);
+    }
+  });
+  return { R: ProbabilityRig, w };
+};
+
+const normalizeParam = <X>(d: NumericParamDist<X>): NumericParamDist<X> => {
+  const total = paramMass<number, X>(d);
+  if (total > EPS) {
+    const w = new Map<X, number>();
+    d.w.forEach((weight, x) => {
+      const normalized = weight / total;
+      if (normalized > EPS) {
+        w.set(x, normalized);
+      }
+    });
+    return { R: ProbabilityRig, w };
+  }
+
+  const size = d.w.size;
+  if (size === 0) {
+    return { R: ProbabilityRig, w: new Map() };
+  }
+
+  const uniform = 1 / size;
+  const w = new Map<X, number>();
+  d.w.forEach((_weight, x) => {
+    w.set(x, uniform);
+  });
+  return { R: ProbabilityRig, w };
+};
+
+const probabilityProduct = <A, B>(
+  da: NumericParamDist<A>,
+  db: NumericParamDist<B>,
+): NumericParamDist<[A, B]> => RiggedProbMonad.product(da, db);
+
 export function mass<T>(d: Dist<T>): number {
-  let s = 0;
-  for (const p of d.values()) s += p;
-  return s;
+  return paramMass<number, T>(toParam(d));
 }
 
 export function normalize<T>(d: Dist<T>): Dist<T> {
-  const m = mass(d);
-  const out: Dist<T> = new Map();
-
-  if (m > EPS) {
-    for (const [k, v] of d) {
-      const w = v / m;
-      if (w > EPS) out.set(k, w);
-    }
-    return out;
-  }
-
-  // Degenerate input: all weights are ≈ 0. Instead of returning an empty
-  // distribution (which would violate affine/Markov expectations), fall back
-  // to an equal-weight distribution over the existing support.
-  if (d.size === 0) return out;
-
-  const uniform = 1 / d.size;
-  for (const [k] of d) {
-    out.set(k, uniform);
-  }
-  return out;
+  return fromParam(pruneParam(normalizeParam(toParam(d))));
 }
 
 export function prune<T>(d: Dist<T>, eps = EPS): Dist<T> {
-  const out: Dist<T> = new Map();
-  for (const [k, v] of d) if (v > eps) out.set(k, v);
-  return out;
+  return fromParam(pruneParam(toParam(d), eps));
 }
 
 export function dirac<T>(x: T): Dist<T> {
-  return new Map([[x, 1]]);
+  return fromParam(probabilityDirac(x));
 }
 
 export function fromWeights<T>(pairs: ReadonlyArray<[T, number]>, normalizeFlag = true): Dist<T> {
@@ -145,13 +178,9 @@ export type Kernel<X, Y> = (x: X) => Dist<Y>;
 // Composition: (g ∘ f)(x) = bind y~f(x); g(y)
 export function compose<X, Y, Z>(f: Kernel<X, Y>, g: Kernel<Y, Z>): Kernel<X, Z> {
   return (x: X) => {
-    const dy = f(x);
-    const acc: Dist<Z> = new Map();
-    for (const [y, py] of dy) {
-      const dz = g(y);
-      for (const [z, pz] of dz) acc.set(z, (acc.get(z) ?? 0) + py * pz);
-    }
-    return prune(acc);
+    const dy = toParam(f(x));
+    const result = RiggedProbMonad.bind(dy, (y) => toParam(g(y)));
+    return fromParam(pruneParam(result));
   };
 }
 
@@ -163,12 +192,16 @@ export function deterministic<X, Y>(f: (x: X) => Y): Kernel<X, Y> {
 // Convex mixture of kernels: λ f ⊕ (1-λ) g
 export function convexMix<X, Y>(lambda: number, f: Kernel<X, Y>, g: Kernel<X, Y>): Kernel<X, Y> {
   return (x: X) => {
-    const d1 = f(x);
-    const d2 = g(x);
-    const out = new Map<Y, number>();
-    for (const [y, p] of d1) out.set(y, (out.get(y) ?? 0) + lambda * p);
-    for (const [y, p] of d2) out.set(y, (out.get(y) ?? 0) + (1 - lambda) * p);
-    return prune(out);
+    const d1 = toParam(f(x));
+    const d2 = toParam(g(x));
+    const w = new Map<Y, number>();
+    d1.w.forEach((p, y) => {
+      w.set(y, (w.get(y) ?? 0) + lambda * p);
+    });
+    d2.w.forEach((p, y) => {
+      w.set(y, (w.get(y) ?? 0) + (1 - lambda) * p);
+    });
+    return fromParam(pruneParam({ R: ProbabilityRig, w }));
   };
 }
 
@@ -185,13 +218,10 @@ export function tensorObj<X, Y>(X: Fin<X>, Y: Fin<Y>): Fin<Pair<X, Y>> {
 // Tensor on morphisms: (f ⊗ g)(x,z) = f(x) × g(z)
 export function tensor<X1, Y1, X2, Y2>(f: Kernel<X1, Y1>, g: Kernel<X2, Y2>): Kernel<Pair<X1, X2>, Pair<Y1, Y2>> {
   return ([x, z]) => {
-    const dy = f(x);
-    const dw = g(z);
-    const out = new Map<Pair<Y1, Y2>, number>();
-    for (const [y, py] of dy) for (const [w, pw] of dw) {
-      out.set([y, w], (out.get([y, w]) ?? 0) + py * pw);
-    }
-    return prune(out);
+    const dy = toParam(f(x));
+    const dw = toParam(g(z));
+    const product = probabilityProduct(dy, dw);
+    return fromParam(pruneParam(product));
   };
 }
 
@@ -1025,13 +1055,24 @@ export interface ComonoidHomReport {
 // Deterministic kernel predicate: every row is a Dirac measure
 export function isDeterministicKernel<X, Y>(Xf: Fin<X>, k: Kernel<X, Y>, tol = 1e-12): boolean {
   for (const x of Xf.elems) {
-    const d = k(x);
-    const m = mass(d);
-    if (Math.abs(m - 1) > tol) return false; // must be a (sub)probability with full mass
-    let nonzero = 0;
-    for (const _ of d) nonzero++;
-    if (nonzero !== 1) return false;
+    const dist = toParam(k(x));
+    const total = paramMass<number, Y>(dist);
+    if (!Number.isFinite(total) || Math.abs(total - 1) > tol) {
+      return false;
+    }
+
+    let support = 0;
+    dist.w.forEach((weight) => {
+      if (Math.abs(weight) > tol) {
+        support += 1;
+      }
+    });
+
+    if (support !== 1) {
+      return false;
+    }
   }
+
   return true;
 }
 

@@ -4,7 +4,6 @@
     "composite": false
   },
   "include": [
-    "run-examples-simple.ts",
     "run-examples.ts",
     "run-runnable-examples.ts",
     "examples/runnable/**/*.ts"

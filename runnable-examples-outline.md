@@ -4,7 +4,7 @@ A ranked catalogue of the runnable examples implemented in the numerically prefi
 
 ## Typechecking workflow
 
-- `tsconfig.prod-runnable.json` extends the production compiler settings while re-including the runnable example entry points (`run-examples-simple.ts`, `run-examples.ts`, and `run-runnable-examples.ts`) plus the catalogued modules under `examples/runnable/`.
+- `tsconfig.prod-runnable.json` extends the production compiler settings while re-including the runnable example entry points (`run-examples.ts` and `run-runnable-examples.ts`) plus the catalogued modules under `examples/runnable/`.
 - `npm run typecheck:prod:runnable` uses that configuration so CI can track the outstanding diagnostics without disturbing the existing production build.
 - When a batch of examples is repaired, re-run the command above to confirm the typecheck delta before removing the now-unnecessary exclusions from `tsconfig.prod.json`.
 - The current diagnostic snapshot lives in `TYPECHECK_RUNNABLE_STATUS.md`; update it whenever you land fixes so the team can see progress.

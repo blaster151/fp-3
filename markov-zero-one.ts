@@ -1,9 +1,14 @@
 // markov-zero-one.ts — Kolmogorov and Hewitt–Savage zero–one oracles
 // Packages finite marginal witnesses, permutation invariance, and determinism diagnostics.
 
-import { FinMarkov, pair, tensorObj, type Kernel, type Fin } from "./markov-category";
-import { Prob } from "./semiring-utils";
-import { fromLegacy } from "./dist";
+import {
+  FinMarkov,
+  ProbabilityWeightRig,
+  pair,
+  tensorObj,
+  type Kernel,
+  type Fin,
+} from "./markov-category";
 import { isDeterministic, isDeterministicKernel } from "./markov-laws";
 import { buildMarkovComonoidWitness, type MarkovComonoidWitness } from "./markov-comonoid-structure";
 import {
@@ -16,6 +21,7 @@ import {
   type FiniteSymmetry,
   type FinitePermutationInvarianceReport,
 } from "./markov-permutation";
+import { probabilityLegacyToRigged } from "./probability-monads";
 
 const DEFAULT_TOLERANCE = 1e-9;
 
@@ -191,7 +197,11 @@ export function checkKolmogorovZeroOne<A, XJ, T, XF = unknown>(
   const ciFamilyVerified =
     (globalIndependence?.holds ?? true) && marginalReports.every((entry) => entry.report.holds);
 
-  const deterministicReport = isDeterministic(Prob, (a: A) => fromLegacy(Prob, composite.k(a)), witness.prior.X.elems);
+  const deterministicReport = isDeterministic(
+    ProbabilityWeightRig,
+    (a: A) => probabilityLegacyToRigged(composite.k(a)),
+    witness.prior.X.elems,
+  );
   let deterministic = deterministicReport.det;
   if (deterministic) {
     deterministic = isDeterministicKernel(witness.prior.X, composite.k, tolerance);

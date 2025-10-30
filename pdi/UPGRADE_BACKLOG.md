@@ -18,7 +18,7 @@
 - **Pattern**: `f.items.reduce((n, x) => n + x, 0)`
 - **Upgrade to**: `mapGroupValues(groups, (vs) => vs.reduce((s, x) => s + x, 0))`
 - **Outcome**: Successfully implemented and in active use in examples and core code
-- **Files updated**: `run-examples-simple.ts`, `allTS.ts`
+- **Files updated**: `allTS.ts` (and the legacy `run-examples-simple.ts` before it was retired)
 - **Impact**: Cleaner, more functional group operations
 
 #### **2. Replace Manual Filtering with filterEachGroup** - ✅ **COMPLETED 2025-01-18**

@@ -2,21 +2,7 @@
   "extends": "./tsconfig.json",
   "exclude": [
     "node_modules",
-    "dist",
-    // Non-production example files (quarantined)
-    "run-examples-simple.ts",
-    "examples-mixed-distributive.ts",
-    "examples-store-lens.ts",
-    // Architectural debt - markov family (needs refactor)
-    "markov-category.ts",
-    "markov-infinite-oracles.ts",
-    "markov-infinite.ts",
-    "markov-deterministic-structure.ts",
-    "markov-zero-one.ts",
-    "markov-laws.ts",
-    // Additional ring/tensor files with markov dependencies
-    "cring-plus-filtered-tensor.ts",
-    "cring-plus.ts"
+    "dist"
   ]
 }
 

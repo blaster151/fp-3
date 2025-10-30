@@ -7,5 +7,5 @@
     "rootDir": "./",
     "verbatimModuleSyntax": false
   },
-  "files": ["run-examples-simple.ts"]
+  "files": ["run-runnable-examples.ts"]
 }

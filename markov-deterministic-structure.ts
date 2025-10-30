@@ -8,7 +8,17 @@
 //   3. Emit rich oracle reports exposing determinism diagnostics and constructive witnesses.
 
 import type { Eq, Fin, Kernel, ComonoidHomReport, Pair, Show } from "./markov-category";
-import { FinMarkov, checkComonoidHom, tensorObj, fst, snd, approxEqualMatrix } from "./markov-category";
+import {
+  FinMarkov,
+  ProbabilityWeightRig,
+  approxEqualMatrix,
+  checkComonoidHom,
+  deterministic,
+  tensorObj,
+  fst,
+  snd,
+} from "./markov-category";
+import { probabilityLegacyToRigged, probabilityRiggedToLegacy } from "./probability-monads";
 import { buildMarkovComonoidWitness } from "./markov-comonoid-structure";
 import type { MarkovComonoidWitness } from "./markov-comonoid-structure";
 import type {
@@ -28,6 +38,7 @@ import type { MarkovConditionalReport, MarkovConditionalWitness } from "./markov
 import { checkConditionalIndependence, conditionalMarginals } from "./markov-conditional-independence";
 import type { SetObj } from "./set-cat";
 import { isLazySet } from "./set-cat";
+import { isDeterministic } from "./markov-laws";
 
 export interface MarkovDeterministicWitness<X, Y> {
   readonly domain: MarkovComonoidWitness<X>;
@@ -95,15 +106,6 @@ export interface TensorMarginalDeterminismReport<A, B, C> {
   readonly details: string;
 }
 
-function indexOfEq<T>(fin: Fin<T>, value: T): number {
-  const { elems, eq } = fin;
-  for (let i = 0; i < elems.length; i++) {
-    const candidate = elems[i];
-    if (candidate !== undefined && eq(candidate, value)) return i;
-  }
-  return -1;
-}
-
 function describeObject<X>(witness: MarkovComonoidWitness<X>): string {
   const size = witness.object.elems.length;
   return witness.label ?? (size === 1 ? "terminal object" : `${size}-element object`);
@@ -121,46 +123,55 @@ function extractDeterministicBase<X, Y>(
   codomain: Fin<Y>,
   kernel: Kernel<X, Y>,
   tol = 1e-12,
-): { deterministic: true; base: (x: X) => Y } | { deterministic: false; counterexample: DeterminismCounterexample<X, Y> } {
-  const outputs: Y[] = [];
-  const { elems } = domain;
-  for (let i = 0; i < elems.length; i++) {
-    const x = elems[i];
+):
+  | { deterministic: true; base: (x: X) => Y }
+  | { deterministic: false; counterexample: DeterminismCounterexample<X, Y> } {
+  const samples = domain.elems;
+  const riggedKernel = (x: X) => probabilityLegacyToRigged(kernel(x));
+  const deterministic = isDeterministic(ProbabilityWeightRig, riggedKernel, samples);
+
+  if (deterministic.det && deterministic.base !== undefined) {
+    return { deterministic: true, base: deterministic.base };
+  }
+
+  for (const x of samples) {
     if (x === undefined) {
       throw new Error("Deterministic witnesses require total finite domains.");
     }
-    const dist = kernel(x);
+    const dist = riggedKernel(x);
     let support: Y | undefined;
+    let nonZero = 0;
     let total = 0;
-    for (const [y, p] of dist) {
-      total += p;
-      if (p > tol) {
+    for (const [y, weight] of dist.w.entries()) {
+      total += weight;
+      if (weight > tol) {
+        nonZero += 1;
         if (support === undefined) {
           support = y;
         } else if (!codomain.eq(support, y)) {
-          return { deterministic: false, counterexample: { input: x, distribution: dist } };
+          return {
+            deterministic: false,
+            counterexample: { input: x, distribution: probabilityRiggedToLegacy(dist) },
+          };
         }
       }
     }
-    const value = support;
-    if (value === undefined || Math.abs(total - 1) > tol) {
-      return { deterministic: false, counterexample: { input: x, distribution: dist } };
+    if (support === undefined || nonZero !== 1 || Math.abs(total - 1) > tol) {
+      return {
+        deterministic: false,
+        counterexample: { input: x, distribution: probabilityRiggedToLegacy(dist) },
+      };
     }
-    outputs[i] = value;
   }
 
-  const base = (x: X): Y => {
-    const idx = indexOfEq(domain, x);
-    if (idx < 0 || idx >= outputs.length) {
-      throw new Error("Input is outside the deterministic witness domain.");
-    }
-    const output = outputs[idx];
-    if (output === undefined) {
-      throw new Error("Deterministic witness outputs must be total.");
-    }
-    return output;
+  const [first] = samples;
+  if (first === undefined) {
+    throw new Error("Deterministic witnesses require non-empty domains.");
+  }
+  return {
+    deterministic: false,
+    counterexample: { input: first, distribution: probabilityRiggedToLegacy(riggedKernel(first)) },
   };
-  return { deterministic: true, base };
 }
 
 export function buildMarkovDeterministicWitness<X, Y, Y0 extends Y>(
@@ -288,7 +299,7 @@ export function certifyDeterministicFunction<X, Y>(
   base: (x: X) => Y,
   options: MarkovDeterministicWitnessOptions<X, Y> = {},
 ): MarkovDeterministicWitness<X, Y> {
-  const arrow = new FinMarkov(domain.object, codomain.object, (x: X) => new Map([[base(x), 1]]));
+  const arrow = new FinMarkov(domain.object, codomain.object, deterministic(base));
   return buildMarkovDeterministicWitness(domain, codomain, arrow, { ...options, base });
 }
 
