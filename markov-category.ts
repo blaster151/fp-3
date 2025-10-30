@@ -101,9 +101,9 @@ const EPS = 1e-12;
 
 type NumericParamDist<X> = Dist2Param<number, X>;
 
-const toParam = probabilityLegacyToRigged;
+const toParam = <X>(legacy: Dist<X>) => probabilityLegacyToRigged(legacy);
 
-const fromParam = probabilityRiggedToLegacy;
+const fromParam = <X>(param: NumericParamDist<X>) => probabilityRiggedToLegacy(param);
 
 export const ProbabilityWeightRig = ProbabilityRig;
 
