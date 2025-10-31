@@ -393,12 +393,9 @@ export function coreIdNat<F extends AnyCoreFunctor>(F_: F): CoreNatTrans<F, F> {
    Adjunction Interface and Triangle Identities
    ================================================================ */
 
-// TODO(virtual-equipment): Equipment-level adjunctions and relative variants
-// are staged in `virtual-equipment/`.  Keep this notice so contributors who
-// search here discover the dedicated module boundary.
-// TODO(relative-monads): Definition 4.1 framing analyzers and law catalogues
-// now live in `relative/`.  Future refactors should wire the classic monad
-// helpers through that layer once the relative adjunction calculus is ready.
+// Equipment-level adjunction analyzers and relative variants live alongside
+// `buildCoreAdjunctionBridge` in `virtual-equipment/core-adjunction-bridge.ts`.
+// Definition 4.1 framing analyzers and law catalogues now live in `relative/`.
 /**
  * An adjunction F ⊣ U : C ↔ D given by unit η : Id_C ⇒ U∘F and
  * counit ε : F∘U ⇒ Id_D.
@@ -935,4 +932,13 @@ export const checkPushforwardMonadLaws = (
     allPass: unitLaws && associativity
   }
 }
+
+export {
+  buildCoreAdjunctionBridge,
+  coreAdjunctionFromBridge,
+  type BuildCoreAdjunctionBridgeOptions,
+  type CoreAdjunctionBridge,
+  verifyCoreAdjunctionBridgeTriangles,
+} from "../virtual-equipment/core-adjunction-bridge"
+
 

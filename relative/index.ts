@@ -11,6 +11,7 @@ export * from "./relative-comonad-oracles";
 export * from "./relative-composition";
 export * from "./resolutions";
 export * from "./resolution-oracles";
+export * from "./polynomial-street-registry";
 export * from "./mnne-vector-monads";
 export * from "./mnne-lambda-monads";
 export * from "./mnne-indexed-container-monads";
