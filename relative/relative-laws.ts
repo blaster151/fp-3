@@ -503,7 +503,19 @@ export const RelativeResolutionLawRegistry = {
     name: "Resolution precomposition and transport suite",
     registryPath: "relativeResolution.precomposition.suite",
     summary:
-      "Aggregates the executable witnesses for Proposition 5.29 precomposition, Proposition 5.30 pasting, Remark 5.33/Corollary 5.34 resolute composition, Example 5.31/Corollary 5.32 fully faithful postcomposition, and Proposition 5.37 left-adjoint transport.",
+      "Aggregates the executable witnesses for Proposition 5.29 precomposition, Proposition 5.30 pasting, Remark 5.33/Corollary 5.34 resolute composition, Example 5.31/Corollary 5.32 fully faithful postcomposition, and Proposition 5.37 left-adjoint transport, threading the `(ℓ'!, r')` monad morphism comparisons and their narrated transport summaries throughout.",
+  },
+  looseMonadIdentification: {
+    name: "Resolution loose monad identification (Corollary 5.28)",
+    registryPath: "relativeResolution.corollary.5.28",
+    summary:
+      "Confirms that Corollary 5.28’s canonical comparison identifies the loose monad derived from a resolution with E(j,-)T while reusing the Proposition 5.29–5.37 metadata recorded by the resolution oracle, including the Proposition 5.37 `(ℓ'!, r')` transport narratives surfaced by the loose-monad diagnostics.",
+  },
+  identityUnitCriterion: {
+    name: "Identity-unit collapse for fully faithful postcomposition (Corollary 5.32)",
+    registryPath: "relativeResolution.corollary.5.32",
+    summary:
+      "Checks Corollary 5.32’s requirement that the identity/unit data collapse a fully faithful postcomposition back to the original resolution, reporting whether the induced j-monads coincide.",
   },
 } satisfies Record<string, RelativeResolutionLawDescriptor>;
 

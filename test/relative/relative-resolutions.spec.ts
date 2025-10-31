@@ -21,10 +21,23 @@ import {
   checkRelativeAdjunctionPrecomposition,
   checkResolutionCategoryLaws,
   checkResolutionOfRelativeMonad,
+  checkLooseMonadIsomorphism,
+  checkIdentityUnitForRelativeAdjunction,
+  identifyLooseMonadFromResolution,
+  looseAdjunctionFromResolution,
+  looseMonadFromResolution,
+  postcomposeLooseAdjunctionAlongFullyFaithful,
+  precomposeLooseAdjunction,
+  pasteLooseAdjunctionAlongResolution,
+  composeLooseAdjunctionResolutely,
+  propagateFullyFaithfulPostcompositionAcrossResolutionMorphism,
+  propagateLeftAdjointTransportAcrossResolutionMorphism,
+  propagateResoluteCompositeAcrossResolutionMorphism,
   type ResolutionCategory,
   type ResolutionData,
   type ResolutionMorphism,
   type ResolutionMorphismMetadata,
+  transportLooseAdjunctionAlongLeftAdjoint,
 } from "../../relative/resolutions";
 
 const makeTrivialResolution = () => {
@@ -177,6 +190,343 @@ describe("Resolution oracle", () => {
     expect(report.issues).toContain(
       "Resolution apex loose morphism must originate at the root domain A.",
     );
+  });
+});
+
+describe("Resolution loose adjunction helpers", () => {
+  it("derives a loose adjunction with propagated metadata", () => {
+    const { resolution } = makeTrivialResolution();
+
+    const result = looseAdjunctionFromResolution(resolution);
+
+    expect(result.analysis.holds).toBe(true);
+    expect(result.metadata.precompositions?.length).toBe(1);
+    expect(result.details).toContain("Proposition 5.29 witness(es)");
+  });
+
+  it("records Proposition 5.29 data when precomposing the loose adjunction", () => {
+    const { resolution } = makeTrivialResolution();
+
+    const result = precomposeLooseAdjunction({
+      resolution,
+      tightCell: resolution.inclusion,
+      details: "Test precomposition witness.",
+    });
+
+    expect(result.precompositionWitness.tightCell).toBe(resolution.inclusion);
+    expect(result.metadata.precompositions?.length).toBe(2);
+    expect(result.details).toContain("Proposition 5.29 witness(es)");
+  });
+
+  it("records Proposition 5.30 data when pasting adjunction triangles", () => {
+    const { resolution, forward } = makeTrivialResolution();
+
+    const result = pasteLooseAdjunctionAlongResolution({
+      resolution,
+      inner: forward,
+      outer: forward,
+      details: "Test pasting witness.",
+    });
+
+    expect(result.pastingWitness.inner).toBe(forward);
+    expect(result.metadata.pastings?.length).toBe(2);
+    expect(result.details).toContain("Proposition 5.30 pasting witness(es)");
+  });
+
+  it("records Example 5.31 data when postcomposing with a fully faithful right leg", () => {
+    const { resolution } = makeTrivialResolution();
+
+    const result = postcomposeLooseAdjunctionAlongFullyFaithful({
+      resolution,
+      rightLeg: resolution.relativeMonad.root,
+      inducedAdjunctionSummary: "Test fully faithful witness.",
+      identityCollapseSummary: "Test identity collapse witness.",
+    });
+
+    expect(result.fullyFaithfulWitness.rightLeg).toBe(resolution.relativeMonad.root);
+    expect(result.metadata.fullyFaithfulPostcompositions?.length).toBe(2);
+    expect(result.details).toContain("Example 5.31 fully faithful witness(es)");
+  });
+
+  it("records Remark 5.33 data when a resolute pair is supplied", () => {
+    const { resolution } = makeTrivialResolution();
+
+    const result = composeLooseAdjunctionResolutely({
+      resolution,
+      leftLeg: resolution.inclusion,
+      rightAdjoint: resolution.relativeMonad.root,
+      details: "Test resolute witness.",
+    });
+
+    expect(result.resoluteWitness.leftLeg).toBe(resolution.inclusion);
+    expect(result.metadata.resoluteComposites?.length).toBe(2);
+    expect(result.details).toContain("Remark 5.33 resolute composite witness(es)");
+  });
+
+  it("records Proposition 5.37 data when transporting along a left adjoint", () => {
+    const { resolution } = makeTrivialResolution();
+
+    const result = transportLooseAdjunctionAlongLeftAdjoint({
+      resolution,
+      leftAdjoint: resolution.inclusion,
+      details: "Test transport witness.",
+    });
+
+    expect(result.transportWitness.leftAdjoint).toBe(resolution.inclusion);
+    expect(result.metadata.leftAdjointTransports?.length).toBe(2);
+    expect(result.details).toContain("Proposition 5.37 transport witness(es)");
+    expect(result.details).toContain("(ℓ'!, r')");
+  });
+
+  it("derives the loose monad induced by the resolution", () => {
+    const { resolution } = makeTrivialResolution();
+
+    const report = looseMonadFromResolution(resolution);
+
+    expect(report.holds).toBe(true);
+    expect(report.induced).toBe(resolution.relativeMonad.looseCell);
+    expect(report.details).toContain("Proposition 5.37 transport witness(es)");
+    expect(report.details).toContain("(ℓ'!, r')");
+  });
+
+  it("confirms the loose monad isomorphism with coherent witnesses", () => {
+    const { resolution } = makeTrivialResolution();
+
+    const report = checkLooseMonadIsomorphism(resolution);
+
+    expect(report.holds).toBe(true);
+    expect(report.issues).toHaveLength(0);
+    expect(report.details).toContain("naturally isomorphic");
+    expect(report.coherence.precompositions).toBeGreaterThan(0);
+    expect(report.coherence.leftAdjointTransports).toBeGreaterThan(0);
+    expect(report.transportComparisons.length).toBeGreaterThan(0);
+    expect(report.transportComparisons[0]?.summary).toContain("(ℓ'!, r')");
+  });
+
+  it("identifies the loose monad via Corollary 5.28", () => {
+    const { resolution } = makeTrivialResolution();
+
+    const report = identifyLooseMonadFromResolution(resolution);
+
+    expect(report.holds).toBe(true);
+    expect(report.details).toContain("Corollary 5.28");
+    expect(report.comparison).toBe(resolution.comparison);
+    expect(report.transportComparisons.length).toBeGreaterThan(0);
+    expect(report.transportComparisons[0]?.summary).toContain("(ℓ'!, r')");
+  });
+
+  it("detects mismatched precomposition comparisons", () => {
+    const { resolution, forward } = makeTrivialResolution();
+
+    const brokenComparison: typeof forward = {
+      ...forward,
+      boundaries: {
+        ...forward.boundaries,
+        right: resolution.relativeMonad.root,
+      },
+    };
+
+    const brokenMetadata =
+      resolution.metadata === undefined
+        ? undefined
+        : {
+            ...resolution.metadata,
+            precompositions: [
+              {
+                tightCell: resolution.inclusion,
+                comparison: brokenComparison,
+                details: "Broken witness",
+              },
+            ],
+          };
+
+    const brokenResolution: TrivialResolutionObject = {
+      ...resolution,
+      metadata: brokenMetadata,
+    };
+
+    const report = checkLooseMonadIsomorphism(brokenResolution);
+
+    expect(report.holds).toBe(false);
+    expect(report.issues).toContain(
+      "Precomposition comparison 0 must land in the relative monad carrier boundary.",
+    );
+  });
+});
+
+describe("Corollary 5.32 identity-unit criterion", () => {
+  it("certifies the trivial resolution's identity unit", () => {
+    const { resolution } = makeTrivialResolution();
+
+    const report = checkIdentityUnitForRelativeAdjunction({
+      equipment: resolution.equipment,
+      left: resolution.inclusion,
+      right: resolution.relativeMonad.carrier,
+      unit: resolution.relativeMonad.unit,
+      details: "Trivial identity-unit witness propagates Corollary 5.32.",
+    });
+
+    expect(report.holds).toBe(true);
+    expect(report.monadsCoincide).toBe(true);
+    expect(report.details).toContain("Corollary 5.32");
+  });
+
+  it("flags mismatched unit boundaries", () => {
+    const { resolution } = makeTrivialResolution();
+
+    const brokenUnit = {
+      ...resolution.relativeMonad.unit,
+      boundaries: {
+        ...resolution.relativeMonad.unit.boundaries,
+        right: resolution.relativeMonad.root,
+      },
+    };
+
+    const report = checkIdentityUnitForRelativeAdjunction({
+      equipment: resolution.equipment,
+      left: resolution.inclusion,
+      right: resolution.relativeMonad.carrier,
+      unit: brokenUnit,
+    });
+
+    expect(report.holds).toBe(false);
+    expect(report.monadsCoincide).toBe(false);
+    expect(report.issues).toContain(
+      "Unit 2-cell must use the supplied right leg as its right boundary for Corollary 5.32.",
+    );
+  });
+});
+
+describe("Resolution morphism functoriality", () => {
+  it("propagates fully faithful postcomposition witnesses across morphisms", () => {
+    const { resolution } = makeTrivialResolution();
+    const witness = resolution.metadata?.fullyFaithfulPostcompositions?.[0];
+    expect(witness).toBeDefined();
+
+    const baseMorphism: TrivialResolutionHom = {
+      source: resolution,
+      target: resolution,
+      tight: resolution.inclusion,
+      loose: resolution.apexLoose,
+      comparison: resolution.comparison,
+      metadata: {
+        precompositions: [],
+        pastings: [],
+        fullyFaithfulPostcompositions: [],
+        resoluteComposites: [],
+        leftAdjointTransports: [],
+        details: "Base morphism metadata.",
+      },
+    };
+
+    const propagation = propagateFullyFaithfulPostcompositionAcrossResolutionMorphism({
+      morphism: baseMorphism,
+      witness: witness!,
+    });
+
+    expect(baseMorphism.metadata?.fullyFaithfulPostcompositions).toHaveLength(0);
+    expect(propagation.metadata.fullyFaithfulPostcompositions).toHaveLength(1);
+    expect(propagation.metadata.fullyFaithfulPostcompositions[0]).toBe(witness);
+    expect(propagation.metadata.details).toContain("Base morphism metadata.");
+    expect(propagation.metadata.details).toContain("Example 5.31");
+    expect(propagation.details).toContain("fully faithful postcomposition witness");
+
+    const category = categoryOfResolutions({
+      objects: [resolution],
+      morphisms: [propagation.morphism],
+      identity: (_object: TrivialResolutionObject) => propagation.morphism,
+      compose: (_g: TrivialResolutionHom, _f: TrivialResolutionHom) => propagation.morphism,
+    });
+
+    expect(category.metadata.fullyFaithfulPostcompositions).toContain(witness);
+  });
+
+  it("threads resolute composite witnesses across morphisms", () => {
+    const { resolution } = makeTrivialResolution();
+    const witness = resolution.metadata?.resoluteComposites?.[0];
+    expect(witness).toBeDefined();
+
+    const baseMorphism: TrivialResolutionHom = {
+      source: resolution,
+      target: resolution,
+      tight: resolution.inclusion,
+      loose: resolution.apexLoose,
+      comparison: resolution.comparison,
+      metadata: {
+        precompositions: [],
+        pastings: [],
+        fullyFaithfulPostcompositions: [],
+        resoluteComposites: [],
+        leftAdjointTransports: [],
+        details: "Base morphism metadata.",
+      },
+    };
+
+    const customNarrative = "Resolute witness propagated across the morphism.";
+    const propagation = propagateResoluteCompositeAcrossResolutionMorphism({
+      morphism: baseMorphism,
+      witness: witness!,
+      details: customNarrative,
+    });
+
+    expect(baseMorphism.metadata?.resoluteComposites).toHaveLength(0);
+    expect(propagation.metadata.resoluteComposites).toHaveLength(1);
+    expect(propagation.metadata.resoluteComposites[0]).toBe(witness);
+    expect(propagation.metadata.details).toContain("Base morphism metadata.");
+    expect(propagation.metadata.details).toContain(customNarrative);
+    expect(propagation.details).toContain("Remark 5.33");
+
+    const category = categoryOfResolutions({
+      objects: [resolution],
+      morphisms: [propagation.morphism],
+      identity: (_object: TrivialResolutionObject) => propagation.morphism,
+      compose: (_g: TrivialResolutionHom, _f: TrivialResolutionHom) => propagation.morphism,
+    });
+
+    expect(category.metadata.resoluteComposites).toContain(witness);
+  });
+
+  it("propagates Proposition 5.37 transport witnesses and the (ℓ'!, r') monad morphism", () => {
+    const { resolution } = makeTrivialResolution();
+    const witness = resolution.metadata?.leftAdjointTransports?.[0];
+    expect(witness).toBeDefined();
+
+    const baseMorphism: TrivialResolutionHom = {
+      source: resolution,
+      target: resolution,
+      tight: resolution.inclusion,
+      loose: resolution.apexLoose,
+      comparison: resolution.comparison,
+      metadata: {
+        precompositions: [],
+        pastings: [],
+        fullyFaithfulPostcompositions: [],
+        resoluteComposites: [],
+        leftAdjointTransports: [],
+        details: "Base morphism metadata.",
+      },
+    };
+
+    const propagation = propagateLeftAdjointTransportAcrossResolutionMorphism({
+      morphism: baseMorphism,
+      witness: witness!,
+    });
+
+    expect(baseMorphism.metadata?.leftAdjointTransports).toHaveLength(0);
+    expect(propagation.metadata.leftAdjointTransports).toHaveLength(1);
+    expect(propagation.metadata.leftAdjointTransports[0]).toBe(witness);
+    expect(propagation.metadata.details).toContain("Base morphism metadata.");
+    expect(propagation.metadata.details).toContain("(ℓ'!, r')");
+    expect(propagation.details).toContain("Proposition 5.37");
+
+    const category = categoryOfResolutions({
+      objects: [resolution],
+      morphisms: [propagation.morphism],
+      identity: (_object: TrivialResolutionObject) => propagation.morphism,
+      compose: (_g: TrivialResolutionHom, _f: TrivialResolutionHom) => propagation.morphism,
+    });
+
+    expect(category.metadata.leftAdjointTransports).toContain(witness);
   });
 });
 

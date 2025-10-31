@@ -154,7 +154,14 @@
       `analyzeRelativeAdjunctionRelativeMonadPasting`, consuming the pasted
       unit/extension witnesses and verifying that the resulting
       \(j'\)-relative monad and comparison morphism reuse the supplied
-      adjunction boundaries.
+      adjunction boundaries while narrating the transported `(ℓ'!, r')`
+      monad morphism so the resolution metadata and oracle reports expose
+      the comparison.
+    - ✅ The resolution precomposition suite entry in
+      `RelativeResolutionOracles` now aggregates the Proposition 5.29–5.37
+      diagnostics together with the narrated `(ℓ'!, r')` transport
+      comparisons so oracle enumeration surfaces the same loose-monad
+      narratives recorded in the resolution metadata.
     - ✅ Example 5.38’s fully faithful refinement appears in
       `analyzeRelativeAdjunctionRelativeMonadPastingFullyFaithful`, which layers
       the tight-cell witness over the Proposition 5.37 diagnostics to expose the
@@ -513,6 +520,7 @@
 ## 5. Update surrounding documentation and exports
 - **Docs**
   - ✅ Added a dedicated "Relative monad scaffolding" section to `LAWS.md`, documenting the registry paths and pointing readers at `RelativeMonadOracles` and `enumerateRelativeMonadOracles`.
+  - ✅ Extended the resolution oracle registry overview so `RelativeResolutionLawRegistry` and `RelativeResolutionOracles.precompositionSuite` advertise the Proposition 5.37 `(ℓ'!, r')` transport narratives now threaded through the loose-monad diagnostics.
   - ✅ Updated `README.md` and `ORGANIZATION-PLAN.md` so the project overview highlights the `relative/` module, Street-action analyzers, and the exported enumerators.
   - ✅ Expanded `USAGE_CHEATSHEET.md` with identity-root conversion snippets and oracle enumeration walkthroughs for the new law checker.
 - **Exports**
