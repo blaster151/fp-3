@@ -1,4 +1,5 @@
 export * from "./balanced"
+export * from "./chu-spaces"
 export * from "./coalgebra/coalgebra-law-oracles"
 export * from "./coalgebra/cotensor-oracles"
 export * from "./coalgebra/hopf-antipode-oracle"

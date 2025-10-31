@@ -1,6 +1,7 @@
+import type { FiniteCategory } from "./finite-cat";
 import type { SimpleCat } from "./simple-cat";
 
-interface DiscreteBifunctorElement<O, V> {
+interface BifunctorElement<O, V> {
   readonly object: O;
   readonly value: V;
 }
@@ -16,27 +17,40 @@ export interface DiscreteBifunctorInput<O, A, V> {
   readonly actOnRight: (left: O, arrow: A, value: V) => V;
 }
 
-interface DiagonalWitness<O, V> extends DiscreteBifunctorElement<O, V> {
+export interface FiniteBifunctorInput<O, A, V> {
+  readonly category: FiniteCategory<O, A>;
+  readonly evaluate: (left: O, right: O) => ReadonlyArray<V>;
+  readonly valueKey: (left: O, right: O, value: V) => string;
+  readonly objectKey: (object: O) => string;
+  readonly actOnLeft: (arrow: A, right: O, value: V) => V;
+  readonly actOnRight: (left: O, arrow: A, value: V) => V;
+}
+
+interface DiagonalWitness<O, V> extends BifunctorElement<O, V> {
   readonly key: string;
 }
 
-const diagonalKey = <O, A, V>(input: DiscreteBifunctorInput<O, A, V>, object: O, value: V): string =>
-  `${input.objectKey(object)}::${input.valueKey(object, object, value)}`;
+const diagonalKey = <O, V>(
+  objectKey: (object: O) => string,
+  valueKey: (left: O, right: O, value: V) => string,
+  object: O,
+  value: V,
+): string => `${objectKey(object)}::${valueKey(object, object, value)}`;
 
 interface RelationWitness<O, A, V> {
   readonly arrow: A;
   readonly raw: V;
-  readonly left: DiscreteBifunctorElement<O, V>;
-  readonly right: DiscreteBifunctorElement<O, V>;
+  readonly left: BifunctorElement<O, V>;
+  readonly right: BifunctorElement<O, V>;
 }
 
 interface CoendClass<O, V> {
-  readonly representative: DiscreteBifunctorElement<O, V>;
-  readonly members: ReadonlyArray<DiscreteBifunctorElement<O, V>>;
+  readonly representative: BifunctorElement<O, V>;
+  readonly members: ReadonlyArray<BifunctorElement<O, V>>;
   readonly key: string;
 }
 
-export interface DiscreteCoendDiagnostics<O, A, V> {
+export interface FiniteCoendDiagnostics<O, A, V> {
   readonly diagonalCount: number;
   readonly relationCount: number;
   readonly missingDiagonalWitnesses: ReadonlyArray<{
@@ -48,12 +62,15 @@ export interface DiscreteCoendDiagnostics<O, A, V> {
   readonly holds: boolean;
 }
 
-export interface DiscreteCoendResult<O, A, V> {
+export interface FiniteCoendResult<O, A, V> {
   readonly classes: ReadonlyArray<CoendClass<O, V>>;
-  readonly classify: (element: DiscreteBifunctorElement<O, V>) => CoendClass<O, V> | undefined;
+  readonly classify: (element: BifunctorElement<O, V>) => CoendClass<O, V> | undefined;
   readonly relations: ReadonlyArray<RelationWitness<O, A, V>>;
-  readonly diagnostics: DiscreteCoendDiagnostics<O, A, V>;
+  readonly diagnostics: FiniteCoendDiagnostics<O, A, V>;
 }
+
+export type DiscreteCoendDiagnostics<O, A, V> = FiniteCoendDiagnostics<O, A, V>;
+export type DiscreteCoendResult<O, A, V> = FiniteCoendResult<O, A, V>;
 
 const findRepresentative = (parents: number[], index: number): number => {
   if (parents[index] !== index) {
@@ -71,14 +88,26 @@ const union = (parents: number[], left: number, right: number): void => {
   }
 };
 
-export const computeDiscreteCoend = <O, A, V>(
-  input: DiscreteBifunctorInput<O, A, V>,
-): DiscreteCoendResult<O, A, V> => {
+interface BifunctorHarness<O, A, V> {
+  readonly category: SimpleCat<O, A>;
+  readonly objects: ReadonlyArray<O>;
+  readonly arrows: ReadonlyArray<A>;
+  readonly evaluate: (left: O, right: O) => ReadonlyArray<V>;
+  readonly valueKey: (left: O, right: O, value: V) => string;
+  readonly objectKey: (object: O) => string;
+  readonly actOnLeft: (arrow: A, right: O, value: V) => V;
+  readonly actOnRight: (left: O, arrow: A, value: V) => V;
+}
+
+const computeCoendFromHarness = <O, A, V>(
+  harness: BifunctorHarness<O, A, V>,
+): FiniteCoendResult<O, A, V> => {
+  const { objects, arrows, evaluate, objectKey, valueKey, actOnLeft, actOnRight, category } = harness;
   const diagonals: Array<DiagonalWitness<O, V>> = [];
   const diagonalIndex = new Map<string, number>();
-  for (const object of input.objects) {
-    for (const value of input.evaluate(object, object)) {
-      const key = diagonalKey(input, object, value);
+  for (const object of objects) {
+    for (const value of evaluate(object, object)) {
+      const key = diagonalKey(objectKey, valueKey, object, value);
       diagonalIndex.set(key, diagonals.length);
       diagonals.push({ object, value, key });
     }
@@ -93,15 +122,15 @@ export const computeDiscreteCoend = <O, A, V>(
     readonly value: V;
   }> = [];
 
-  for (const arrow of input.arrows) {
-    const source = input.category.src(arrow);
-    const target = input.category.dst(arrow);
-    const fiber = input.evaluate(target, source);
+  for (const arrow of arrows) {
+    const source = category.src(arrow);
+    const target = category.dst(arrow);
+    const fiber = evaluate(target, source);
     for (const raw of fiber) {
-      const leftValue = input.actOnLeft(arrow, source, raw);
-      const rightValue = input.actOnRight(target, arrow, raw);
-      const leftKey = diagonalKey(input, source, leftValue);
-      const rightKey = diagonalKey(input, target, rightValue);
+      const leftValue = actOnLeft(arrow, source, raw);
+      const rightValue = actOnRight(target, arrow, raw);
+      const leftKey = diagonalKey(objectKey, valueKey, source, leftValue);
+      const rightKey = diagonalKey(objectKey, valueKey, target, rightValue);
 
       const leftIndex = diagonalIndex.get(leftKey);
       if (leftIndex === undefined) {
@@ -124,7 +153,7 @@ export const computeDiscreteCoend = <O, A, V>(
     }
   }
 
-  const classesByRoot = new Map<number, { index: number; members: Array<DiscreteBifunctorElement<O, V>> }>();
+  const classesByRoot = new Map<number, { index: number; members: Array<BifunctorElement<O, V>> }>();
   const classes: Array<CoendClass<O, V>> = [];
   const classification = new Map<string, number>();
 
@@ -144,8 +173,8 @@ export const computeDiscreteCoend = <O, A, V>(
     classification.set(element.key, bucket.index);
   });
 
-  const classify = (element: DiscreteBifunctorElement<O, V>): CoendClass<O, V> | undefined => {
-    const key = diagonalKey(input, element.object, element.value);
+  const classify = (element: BifunctorElement<O, V>): CoendClass<O, V> | undefined => {
+    const key = diagonalKey(objectKey, valueKey, element.object, element.value);
     const classIndex = classification.get(key);
     if (classIndex === undefined) {
       return undefined;
@@ -170,6 +199,40 @@ export const computeDiscreteCoend = <O, A, V>(
     },
   };
 };
+
+const harnessFromFiniteInput = <O, A, V>(
+  input: FiniteBifunctorInput<O, A, V>,
+): BifunctorHarness<O, A, V> => ({
+  category: input.category,
+  objects: input.category.objects,
+  arrows: input.category.arrows,
+  evaluate: input.evaluate,
+  valueKey: input.valueKey,
+  objectKey: input.objectKey,
+  actOnLeft: input.actOnLeft,
+  actOnRight: input.actOnRight,
+});
+
+export const computeFiniteCoend = <O, A, V>(
+  input: FiniteBifunctorInput<O, A, V>,
+): FiniteCoendResult<O, A, V> => computeCoendFromHarness(harnessFromFiniteInput(input));
+
+export const computeDiscreteCoend = <O, A, V>(
+  input: DiscreteBifunctorInput<O, A, V>,
+): DiscreteCoendResult<O, A, V> =>
+  computeFiniteCoend({
+    category: {
+      ...input.category,
+      objects: input.objects,
+      arrows: input.arrows,
+      eq: (x: A, y: A) => x === y,
+    },
+    evaluate: input.evaluate,
+    valueKey: input.valueKey,
+    objectKey: input.objectKey,
+    actOnLeft: input.actOnLeft,
+    actOnRight: input.actOnRight,
+  });
 
 interface TupleIndexDiagnostics {
   readonly enumerated: number;
@@ -200,34 +263,38 @@ const buildFamilyIndexTuples = (
 };
 
 interface EndAssignment<O, V> {
-  readonly components: ReadonlyArray<DiscreteBifunctorElement<O, V>>;
+  readonly components: ReadonlyArray<BifunctorElement<O, V>>;
   readonly key: string;
 }
 
-export interface DiscreteEndDiagnostics<O, A, V> {
+export interface FiniteEndDiagnostics<O, A, V> {
   readonly enumeratedCandidates: number;
   readonly compatibleCandidates: number;
   readonly truncated: boolean;
   readonly failures: ReadonlyArray<{
     readonly arrow: A;
-    readonly source: DiscreteBifunctorElement<O, V>;
-    readonly target: DiscreteBifunctorElement<O, V>;
+    readonly source: BifunctorElement<O, V>;
+    readonly target: BifunctorElement<O, V>;
     readonly expectedKey: string;
     readonly actualKey: string;
   }>;
 }
 
-export interface DiscreteEndResult<O, A, V> {
+export interface FiniteEndResult<O, A, V> {
   readonly assignments: ReadonlyArray<EndAssignment<O, V>>;
-  readonly diagnostics: DiscreteEndDiagnostics<O, A, V>;
+  readonly diagnostics: FiniteEndDiagnostics<O, A, V>;
 }
 
-export const computeDiscreteEnd = <O, A, V>(
-  input: DiscreteBifunctorInput<O, A, V>,
-): DiscreteEndResult<O, A, V> => {
-  const diagonalFamilies = input.objects.map((object) => ({
+export type DiscreteEndDiagnostics<O, A, V> = FiniteEndDiagnostics<O, A, V>;
+export type DiscreteEndResult<O, A, V> = FiniteEndResult<O, A, V>;
+
+const computeEndFromHarness = <O, A, V>(
+  harness: BifunctorHarness<O, A, V>,
+): FiniteEndResult<O, A, V> => {
+  const { objects, evaluate, arrows, category, actOnLeft, actOnRight, valueKey, objectKey } = harness;
+  const diagonalFamilies = objects.map((object) => ({
     object,
-    values: input.evaluate(object, object),
+    values: evaluate(object, object),
   }));
 
   const lengths = diagonalFamilies.map((family) => family.values.length);
@@ -252,8 +319,8 @@ export const computeDiscreteEnd = <O, A, V>(
   const assignments: Array<EndAssignment<O, V>> = [];
   const failures: Array<{
     readonly arrow: A;
-    readonly source: DiscreteBifunctorElement<O, V>;
-    readonly target: DiscreteBifunctorElement<O, V>;
+    readonly source: BifunctorElement<O, V>;
+    readonly target: BifunctorElement<O, V>;
     readonly expectedKey: string;
     readonly actualKey: string;
   }> = [];
@@ -272,9 +339,9 @@ export const computeDiscreteEnd = <O, A, V>(
     });
 
     let compatible = true;
-    for (const arrow of input.arrows) {
-      const source = input.category.src(arrow);
-      const target = input.category.dst(arrow);
+    for (const arrow of arrows) {
+      const source = category.src(arrow);
+      const target = category.dst(arrow);
       const sourceIndex = objectIndex.get(source);
       const targetIndex = objectIndex.get(target);
       if (sourceIndex === undefined || targetIndex === undefined) {
@@ -285,10 +352,10 @@ export const computeDiscreteEnd = <O, A, V>(
       if (sourceComponent === undefined || targetComponent === undefined) {
         continue;
       }
-      const transportedSource = input.actOnRight(source, arrow, sourceComponent.value);
-      const transportedTarget = input.actOnLeft(arrow, target, targetComponent.value);
-      const expectedKey = input.valueKey(source, target, transportedTarget);
-      const actualKey = input.valueKey(source, target, transportedSource);
+      const transportedSource = actOnRight(source, arrow, sourceComponent.value);
+      const transportedTarget = actOnLeft(arrow, target, targetComponent.value);
+      const expectedKey = valueKey(source, target, transportedTarget);
+      const actualKey = valueKey(source, target, transportedSource);
       if (expectedKey !== actualKey) {
         compatible = false;
         failures.push({
@@ -304,7 +371,7 @@ export const computeDiscreteEnd = <O, A, V>(
 
     if (compatible) {
       const key = components
-        .map((component) => diagonalKey(input, component.object, component.value))
+        .map((component) => diagonalKey(objectKey, valueKey, component.object, component.value))
         .join("||");
       assignments.push({ components, key });
     }
@@ -323,3 +390,24 @@ export const computeDiscreteEnd = <O, A, V>(
     },
   };
 };
+
+export const computeFiniteEnd = <O, A, V>(
+  input: FiniteBifunctorInput<O, A, V>,
+): FiniteEndResult<O, A, V> => computeEndFromHarness(harnessFromFiniteInput(input));
+
+export const computeDiscreteEnd = <O, A, V>(
+  input: DiscreteBifunctorInput<O, A, V>,
+): DiscreteEndResult<O, A, V> =>
+  computeFiniteEnd({
+    category: {
+      ...input.category,
+      objects: input.objects,
+      arrows: input.arrows,
+      eq: (x: A, y: A) => x === y,
+    },
+    evaluate: input.evaluate,
+    valueKey: input.valueKey,
+    objectKey: input.objectKey,
+    actOnLeft: input.actOnLeft,
+    actOnRight: input.actOnRight,
+  });
