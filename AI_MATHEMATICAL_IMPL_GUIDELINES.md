@@ -713,6 +713,37 @@ Statement → Oracle → Witness → Verification → Confidence
 
 ---
 
+## ♾️ **Finite (Co)end Tooling**
+
+- Use `computeFiniteCoend`/`computeFiniteEnd` with a `FiniteBifunctorInput` whenever a construction (such as Day convolution) needs general finite indexing categories.
+- Supply the base `FiniteCategory` objects/arrows and profunctor-style transports; the helper will enumerate diagonals, manage relations, and surface diagnostics for missing witnesses or incompatible assignments.
+- Legacy `computeDiscrete*` helpers remain available for existing callers and now delegate to the finite engine, so prefer the finite APIs for new work.
+
+## 🔺 **Promonoidal Kernels**
+
+- Translate strict monoidal data—tensor on objects/arrows, the unit object, and coherence isomorphisms—into a promonoidal kernel with `promonoidalKernelFromStrictMonoidal`.
+- `PromonoidalKernel` exposes reusable `FiniteBifunctorInput` bundles for the Day tensor and unit together with diagnostics from `analyzePromonoidalKernel`, so the convolution layer can reuse the same transport witnesses when verifying naturality or searching for counterexamples.
+- The `makeTwoObjectPromonoidalKernel` helper demonstrates a concrete kernel and is exercised in `test/promonoidal-structure.spec.ts`; copy that pattern when adding new finite monoidal examples.
+
+## ✨ **Day Convolution**
+
+- Use `dayTensor(kernel, leftContravariant, rightCovariant)` to build the Day convolution of a contravariant/presheaf witness with a covariant functor; the helper reuses the promonoidal kernel's transports to enumerate coend classes and returns both the functor-with-witness and the underlying coend fibers for inspection.
+- The unit functor arises from `dayUnit(kernel)` and reuses the promonoidal unit profunctor so arrow maps share the same carriers as the object assignments; both tensor and unit helpers surface functor-law diagnostics through their returned witnesses.
+- `test/day-convolution.spec.ts` exercises the tensor and unit on the two-object promonoidal kernel, checking coend diagnostics, carrier enumeration, and the induced arrow maps, so follow that pattern when introducing additional convolution examples.
+- Use `mapDayConvolutionFiber(source, target, object, transform)` to reclassify Day fibers when natural transformations act on the input functors; the helper applies the provided witness transformer and delegates classification to the destination fiber, throwing descriptive errors if the mapped witness lacks a representative.
+- `dayUnitContravariant` converts the Day unit into a presheaf, while `dayConvolutionLeftUnitor`, `dayConvolutionRightUnitor`, and `dayConvolutionAssociator` package the kernel's coherence data into natural transformations; the accompanying tests verify the induced maps against explicit tensor calculations on the two-object example.
+
+## ♻️ **Chu Spaces**
+
+- Build a Chu space over `Set` with `makeChuSpace({ dualizing, primal, dual, evaluate })`; the helper materialises the product carrier, registers the evaluation as a `SetCat.hom`, and exposes `evaluate` for quick lookups.
+- For precomputed carriers and pairings, use `constructChuSpace({ dualizing, primal, dual, product, pairing })` to retain the existing witnesses without rebuilding them.
+- Use `constructChuMorphism(domain, codomain, forward, backward)` (or `checkChuMorphism`) to validate the Chu adjointness equation; diagnostics report enumerated pairs, truncation at the 4096-pair safety cap, and concrete counterexamples when equality fails.
+- `identityChuMorphism(space)` and `composeChuMorphisms(domain, middle, codomain, first, second)` provide ready-made morphism witnesses that reuse the same diagnostics machinery; see `test/chu-space.spec.ts` for examples covering successful, failing, and truncated checks.
+- `chuSpaceFromDayPairing({ kernel, left, right, convolution, pairing, aggregate, dualizing })` packages a Day convolution pairing into a Chu space by aggregating the evaluated coend witnesses; supply an `aggregate` function that collapses the collected `DayPairingContribution`s into an element of the chosen dualizing set.
+- Use `dualChuSpace(space)` to swap primal/dual carriers while transposing the evaluation, and `sweedlerDualFromPrimal`/`sweedlerDualFromDual` to extract the Sweedler-style evaluation functionals from either side.
+- `buildDayPairingData(input)` exposes the indexed carriers, classification collector, and resulting `ChuSpace` for a Day pairing so callers can inspect or reuse the aggregated contributions without rebuilding the witnesses.
+- The `oracles/chu-spaces.ts` helpers—`analyzeDayChuPairing(input, options?)` and `aggregateDayPairing`—enumerate primal/dual samples (respecting the 4 096 pair cap), report contributions per sample, and flag values that fall outside the supplied dualizing object for Day-driven Chu constructions.
+
 ## 📋 **Quick Reference Checklist**
 
 ### **For Each New Mathematical Concept**
