@@ -1777,37 +1777,87 @@ export const FinPosSubobjectClassifier: CategoryLimits.SubobjectClassifierCatego
   },
 }
 
-export const FinPosPowerObject = CategoryLimits.makePowerObjectFromSubobjectClassifier({
-  category: FinPosSubobjectClassifier,
-  pullbacks: FinPosPullbacks,
-  binaryProduct: (left: FinPosObj, right: FinPosObj) => {
-    const witness = FinPos.product(left, right)
-    return {
-      obj: witness.object,
-      projections: [witness.projections.fst, witness.projections.snd] as const,
-      pair: (domain: FinPosObj, leftArrow: MonoMap, rightArrow: MonoMap) => ({
-        name: `⟨${leftArrow.name},${rightArrow.name}⟩_${domain.name}`,
-        dom: domain.name,
-        cod: witness.object.name,
-        map: (value: string) => witness.pair(leftArrow.map(value), rightArrow.map(value)),
-      }),
+export const FinPosPowerObject: (anchor: FinPosObj) => CategoryLimits.PowerObjectWitness<FinPosObj, MonoMap> = (
+  anchor: FinPosObj,
+) => {
+  // Lazily build the factory function to avoid circular initialization issues where
+  // CategoryLimits.makePowerObjectFromSubobjectClassifier might be undefined at import time.
+  let factory: ((anchor: FinPosObj) => CategoryLimits.PowerObjectWitness<FinPosObj, MonoMap>) | undefined =
+    (FinPosPowerObject as any).__factory
+  if (!factory) {
+  // Use dynamic require here to avoid reading a partially-initialized
+  // `CategoryLimits` namespace during circular module initialization.
+  // The static import at module top can be an object whose properties are
+  // not yet set if there's a circular dependency; requiring at call-time
+  // gives Node a chance to complete initialization of dependencies.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  let CL: any = undefined;
+  try {
+    CL = require("../stdlib/category-limits");
+  } catch (__) {
+    CL = undefined;
+  }
+  // If the TS source path didn't yield a usable module (ts-node / circular init),
+  // attempt the compiled `dist` fallback which often contains the fully-initialized
+  // JS namespace.
+  if (!CL) {
+    try {
+      CL = require("../dist/stdlib/category-limits");
+    } catch (__) {
+      CL = undefined;
     }
-  },
-  ensureMonomorphism: (arrow: MonoMap, context?: string) => {
-    const dom = ensureRegistered(arrow.dom)
-    const cod = ensureRegistered(arrow.cod)
-    if (!FinPos.isMonotone(dom, cod, arrow) || !FinPos.injective(dom, cod, arrow)) {
+  }
+  // The required module may expose the namespace in multiple shapes depending on
+  // transpilation / interop: it might be { CategoryLimits: { ... } }, or the
+  // namespace itself, or a default-export wrapper. Try multiple access patterns.
+  const makeFn =
+    CL?.CategoryLimits?.makePowerObjectFromSubobjectClassifier ??
+    CL?.makePowerObjectFromSubobjectClassifier ??
+    CL?.default?.CategoryLimits?.makePowerObjectFromSubobjectClassifier ??
+    CL?.default?.makePowerObjectFromSubobjectClassifier;
+    if (typeof makeFn !== "function") {
       throw new Error(
-        `${context ?? 'FinPosPowerObject'}: classified relation must be a monotone injection.`,
-      )
+        "FinPosPowerObject: CategoryLimits.makePowerObjectFromSubobjectClassifier is not available at runtime (circular import or module interop issue). Try running the examples with the isolated --child-run flag or build the project first.",
+      );
     }
-  },
-  makeIso: (relation: MonoMap, canonical: MonoMap, context: string) => {
-    if (!equalMonomorphisms(relation, canonical)) {
-      throw new Error(`${context}: relation mediator does not coincide with the canonical inclusion.`)
-    }
-    const domain = ensureRegistered(relation.dom)
-    return { forward: identityMonomorphism(domain), backward: identityMonomorphism(domain) }
-  },
-  equalMor: equalMonomorphisms,
-})
+    factory = makeFn({
+      category: FinPosSubobjectClassifier,
+      pullbacks: FinPosPullbacks,
+      binaryProduct: (left: FinPosObj, right: FinPosObj) => {
+        const witness = FinPos.product(left, right)
+        return {
+          obj: witness.object,
+          projections: [witness.projections.fst, witness.projections.snd] as const,
+          pair: (domain: FinPosObj, leftArrow: MonoMap, rightArrow: MonoMap) => ({
+            name: `⟨${leftArrow.name},${rightArrow.name}⟩_${domain.name}`,
+            dom: domain.name,
+            cod: witness.object.name,
+            map: (value: string) => witness.pair(leftArrow.map(value), rightArrow.map(value)),
+          }),
+        }
+      },
+      ensureMonomorphism: (arrow: MonoMap, context?: string) => {
+        const dom = ensureRegistered(arrow.dom)
+        const cod = ensureRegistered(arrow.cod)
+        if (!FinPos.isMonotone(dom, cod, arrow) || !FinPos.injective(dom, cod, arrow)) {
+          throw new Error(
+            `${context ?? 'FinPosPowerObject'}: classified relation must be a monotone injection.`,
+          )
+        }
+      },
+      makeIso: (relation: MonoMap, canonical: MonoMap, context: string) => {
+        if (!equalMonomorphisms(relation, canonical)) {
+          throw new Error(`${context}: relation mediator does not coincide with the canonical inclusion.`)
+        }
+        const domain = ensureRegistered(relation.dom)
+        return { forward: identityMonomorphism(domain), backward: identityMonomorphism(domain) }
+      },
+      equalMor: equalMonomorphisms,
+    })
+    ;
+    ;(FinPosPowerObject as any).__factory = factory
+  }
+  return (factory as (anchor: FinPosObj) => CategoryLimits.PowerObjectWitness<FinPosObj, MonoMap>)(
+    anchor,
+  )
+}

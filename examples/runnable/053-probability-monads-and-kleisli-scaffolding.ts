@@ -27,7 +27,9 @@ type KleisliToolkit = {
     f: (x: X1) => Dist<Y1>,
     g: (x: X2) => Dist<Y2>,
   ) => (input: readonly [X1, X2]) => Dist<readonly [Y1, Y2]>;
-  readonly detKleisli: <X, Y>(f: (x: X) => Y) => (x: X) => Dist<Y>;
+  // detKleisli requires the source and target finite types and a pure function
+  // X->Y. The runtime implementation takes (Fin<X>, Fin<Y>, f) -> Kleisli.
+  readonly detKleisli: <X, Y>(X: Fin<X>, Y: Fin<Y>, f: (x: X) => Y) => (x: X) => Dist<Y>;
   readonly copyK: <X>() => (x: X) => Dist<readonly [X, X]>;
   readonly FinKleisli: new <X, Y>(X: Fin<X>, Y: Fin<Y>, k: (x: X) => Dist<Y>) => FinKleisli<X, Y>;
   readonly isMarkovCategory: boolean;
@@ -232,7 +234,10 @@ function describeTensor(): readonly string[] {
 const commutePlanner = new distKit.FinKleisli(
   Weather,
   Activities,
-  distKit.detKleisli((state: WeatherState): Activity => (state === "clear" ? "cycle" : "train")),
+  // detKleisli expects Fin<X>, Fin<Y>, and a pure function X->Y; previously the
+  // call passed only the function which made `f` undefined inside the Kleisli
+  // implementation (TypeError: f is not a function). Provide the Fin arguments.
+  distKit.detKleisli(Weather, Activities, (state: WeatherState): Activity => (state === "clear" ? "cycle" : "train")),
 );
 
 function describeDeterministic(): readonly string[] {
