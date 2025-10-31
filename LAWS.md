@@ -889,7 +889,20 @@ This document catalogs the algebraic laws that our functional programming constr
   Proposition 5.29 precomposition, Proposition 5.30 pasting, Remark 5.33 and
   Corollary 5.34’s resolute-composition guarantees, Example 5.31/Corollary 5.32
   fully faithful postcomposition, and Proposition 5.37 transport along left
-  relative adjoints.
+  relative adjoints, now explicitly threading the `(ℓ'!, r')` monad morphism
+  comparisons and their narrative summaries through each transport report.
+- `relativeResolution.corollary.5.28` wraps
+  `identifyLooseMonadFromResolution`, reusing the
+  `checkLooseMonadIsomorphism` witnesses so Corollary 5.28’s canonical
+  comparison explicitly identifies the loose monad induced by a resolution with
+  \(E(j,-)T\) across all recorded Proposition 5.29–5.37 scenarios, surfacing the
+  Proposition 5.37 `(ℓ'!, r')` transport comparisons alongside the base
+  adjunction and precomposition diagnostics.
+- `relativeResolution.corollary.5.32` exports
+  `checkIdentityUnitForRelativeAdjunction`, checking that a fully faithful
+  postcomposition collapses back to the base resolution whenever the identity
+  and unit satisfy Corollary 5.32 and reporting whether the paired \(j\)-monads
+  coincide.
 - `relativeAdjunction.pasting.leftMorphism` runs
   `analyzeRelativeAdjunctionPasting`, checking that a nested pair of relative
   adjunctions shares equipment, that the outer right leg matches the inner root,

@@ -3,13 +3,22 @@ import type {
   ResolutionCategory,
   ResolutionCategoryMetadata,
   ResolutionData,
+  ResolutionLooseMonadIsomorphismReport,
   ResolutionOracleReport,
+  RelativeAdjunctionIdentityUnitReport,
 } from "./resolutions";
 import {
+  checkIdentityUnitForRelativeAdjunction,
   checkRelativeAdjunctionPrecomposition,
   checkResolutionCategoryLaws,
   checkResolutionOfRelativeMonad,
+  identifyLooseMonadFromResolution,
 } from "./resolutions";
+import type {
+  Equipment2Cell,
+  EquipmentVerticalBoundary,
+} from "../virtual-equipment";
+import type { RelativeMonadData } from "./relative-monads";
 import {
   RelativeResolutionLawRegistry,
   type RelativeResolutionLawKey,
@@ -36,6 +45,23 @@ export interface RelativeResolutionCategoryOracleResult<Obj, Arr, Payload, Evide
 export interface RelativeResolutionPrecompositionOracleResult
   extends RelativeResolutionOracleResult {
   readonly report: ResolutionAdjunctionPrecompositionReport;
+}
+
+export interface RelativeResolutionLooseMonadOracleResult<Obj, Arr, Payload, Evidence>
+  extends RelativeResolutionOracleResult {
+  readonly report: ResolutionLooseMonadIsomorphismReport<Obj, Arr, Payload, Evidence>;
+}
+
+export interface RelativeResolutionIdentityUnitOracleResult
+  extends RelativeResolutionOracleResult {
+  readonly report: RelativeAdjunctionIdentityUnitReport;
+}
+
+export interface ResolutionIdentityUnitOverrides<Obj, Arr, Payload, Evidence> {
+  readonly left?: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly right?: EquipmentVerticalBoundary<Obj, Arr>;
+  readonly unit?: Equipment2Cell<Obj, Arr, Payload, Evidence>;
+  readonly details?: string;
 }
 
 const buildResult = (
@@ -86,6 +112,16 @@ export const RelativeResolutionOracles = {
       report,
     };
   },
+  looseMonadIdentification: <Obj, Arr, Payload, Evidence>(
+    resolution: ResolutionData<Obj, Arr, Payload, Evidence>,
+    monad: RelativeMonadData<Obj, Arr, Payload, Evidence> = resolution.relativeMonad,
+  ): RelativeResolutionLooseMonadOracleResult<Obj, Arr, Payload, Evidence> => {
+    const report = identifyLooseMonadFromResolution(resolution, monad);
+    return {
+      ...buildResult("looseMonadIdentification", report.holds, report.details, report.issues),
+      report,
+    };
+  },
   categoryIdentities: <Obj, Arr, Payload, Evidence>(
     category: ResolutionCategory<Obj, Arr, Payload, Evidence>,
   ): RelativeResolutionCategoryOracleResult<Obj, Arr, Payload, Evidence> => {
@@ -109,6 +145,22 @@ export const RelativeResolutionOracles = {
       report,
     };
   },
+  identityUnitCriterion: <Obj, Arr, Payload, Evidence>(
+    resolution: ResolutionData<Obj, Arr, Payload, Evidence>,
+    overrides?: ResolutionIdentityUnitOverrides<Obj, Arr, Payload, Evidence>,
+  ): RelativeResolutionIdentityUnitOracleResult => {
+    const report = checkIdentityUnitForRelativeAdjunction({
+      equipment: resolution.equipment,
+      left: overrides?.left ?? resolution.inclusion,
+      right: overrides?.right ?? resolution.relativeMonad.carrier,
+      unit: overrides?.unit ?? resolution.relativeMonad.unit,
+      details: overrides?.details,
+    });
+    return {
+      ...buildResult("identityUnitCriterion", report.holds, report.details, report.issues),
+      report,
+    };
+  },
 } as const;
 
 export const enumerateResolutionOracles = <Obj, Arr, Payload, Evidence>(
@@ -116,6 +168,8 @@ export const enumerateResolutionOracles = <Obj, Arr, Payload, Evidence>(
   category: ResolutionCategory<Obj, Arr, Payload, Evidence>,
 ): ReadonlyArray<RelativeResolutionOracleResult> => [
   RelativeResolutionOracles.resolution(resolution),
+  RelativeResolutionOracles.looseMonadIdentification(resolution),
   RelativeResolutionOracles.categoryIdentities(category),
   RelativeResolutionOracles.precompositionSuite(category.metadata),
+  RelativeResolutionOracles.identityUnitCriterion(resolution),
 ];
