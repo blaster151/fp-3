@@ -13,6 +13,39 @@ This document catalogs the algebraic laws that our functional programming constr
 
 > **Notation:** We use “source/target” (aka domain/codomain) and write composition as \(g \circ f = \texttt{compose(g, f)}\); identity morphisms appear as \(\mathrm{id}_A\) in prose and `id(A)` in code.
 
+## Day–Chu interaction law constructors
+
+### Stretching interaction law packaging
+
+- **Helper:** `stretchInteractionLaw(law, { left, right, mapLeft, mapRight, ... })` realises the Section 2.3 construction \((F', G', g ∘ φ ∘ f)\) by precomposing each Day fiber with the supplied natural transformation components. The helper reuses the original law’s aggregation logic so stretched evaluations remain observationally equal.
+- **Witness Builder:** `analyzeFunctorOperationDegeneracy(law)` now reports `finalLaw` witnesses alongside nullary and commutative-binary collapse traces, pulling in `finalInteractionLaw(kernel)` when degeneracies surface. The same report documents Lawvere comparisons and Day fiber references for replaying the proof steps of Theorems 1–2.
+- **Check:** `test/functor-interaction-law.spec.ts` exercises the stretching helper (“stretches interaction laws via natural transformations”), verifies the `selfDualInteractionLaw` pairing against the dual Chu space, and confirms that `finalInteractionLaw` returns the constant-zero evaluation demanded by the final object of `IL(𝒞)`.
+- **Implementation Notes:** Nullary and commutative-binary degeneracy reports embed the constructed `finalInteractionLaw`, giving oracles a concrete collapse object to compose with stretching-derived diagnostics.
+- **Implementation Notes (update):** Degeneracy reports additionally surface the explicit `SetCat` homs witnessing `GY → 0` and `0 → GY`, so collapse oracles can replay Theorems 1–2 with concrete zero-object comparisons rather than inferred metadata.
+- **Implementation Notes (update):** Commutative-binary traces now enumerate each Theorem 2 proof stage (`δ_Y`, lifted `α^2_Y`, substitution witnesses, Lawvere comparisons, Day-fiber indices) and attach structured artifact bundles so diagnostics can quote the recorded arrows and remaining factorisation gaps.
+
+### Binary product constructor
+
+- **Helper:** `productInteractionLaw(law0, law1)` forms the categorical product in `IL(𝒞)` by pairing the Day fibers of `law0` and `law1`, aggregating their witnesses with the underlying `collect`/`aggregate` logic, and returning evaluation pairs in the product dualising object.
+- **Helper:** `coproductInteractionLaw(law0, law1)` dualises the product construction, wiring coproduct injections for both functor witnesses, rerouting Day contributions through the matching summand, and returning evaluations in the coproduct dualising carrier.
+- **Witness Builder:** The result includes `projections.left/right` lookups together with the dualising product carrier so projection diagnostics and Day-fiber traversals can recover each factor’s contribution.
+- **Check:** `test/functor-interaction-law.spec.ts` (“forms categorical products of interaction laws”) validates the paired evaluation, confirms `collect`/`aggregate` compatibility, and inspects the recorded projection data for both functor components and the dualising carrier.
+- **Implementation Notes:** Operation metadata from both factors is merged so degeneracy analyzers continue to expose nullary/commutative-binary collapse evidence after forming products.
+
+### Initial algebra/currying adapters and fixed-side categories
+
+- **Helper:** `deriveInteractionLawCurrying(law)` curries each Day fiber into `θ^X_Y : FX × GY → GY`, records the reconstructed `φ^X_Y` via `uncurry`, and flags any discrepancies so oracle tooling can replay the Section 2.4 initial algebra/final coalgebra proof steps objectwise.
+- **Helper (update):** `deriveInteractionLawCurrying(law)` now surfaces the full Cartesian-closed triple \((φ^X_Y, \hat{φ}^X_Y, \check{φ}^X)\), including the exponential evaluation witnesses, the transposed map from `FX` into `G^X`, and diagnostic checks that the evaluation of \(\check{φ}^X\) agrees with the original Day pairing. The helper reports both double-transpose and evaluation consistency together with any recorded mismatches.
+- **Helper:** `deriveInteractionLawCCCPresentation(law)` is an alias that emphasises the CCC view; it returns the same summary while exposing aggregate `hatEvaluationDiscrepancies` so coherence oracles can consume the CCC diagnostics directly.
+- **Helper:** `deriveInteractionLawLeftCommaPresentation(law)` instantiates the internal-hom functor `G'X = [GX, ⊙]`, records the comma transformation `σ : F ⇒ G'`, and checks both the reconstructed Day evaluation and the naturality squares demanded by the `(F, G, σ)` presentation of `IL(𝒞)`.
+- **Helper:** `deriveInteractionLawLeftCommaEquivalence(law)` uncurries the comma components back into `φ_X : F(X) × G(X) → ⊙`, compares them with the stored Day pairing, and replays the naturality condition `φ_X ∘ (Ff × id) = φ_Y ∘ (id × Gf)` objectwise.
+- **Helper:** `makeFixedLeftInteractionMorphism({ domain, codomain, transformation })` and `makeFixedRightInteractionMorphism(...)` transport natural transformations on the right/left functors into morphisms of `IL(𝒞)_{F,-}` / `IL(𝒞)_{-,G}`, emitting comparison tables that certify evaluation preservation across sample Day witnesses.
+- **Helper:** `buildFixedLeftInitialObject(law)` stretches the constant-zero final law to the supplied left functor, returning the initial object of `IL(𝒞)_{F,-}` together with the canonical collapse map `F ⇒ 1`; `buildFixedRightInitialObject(law)` mirrors the construction with a terminal left functor, reporting whether the fixed-right collapse admits a map into the final interaction law.
+- **Witness Builder:** `checkNullaryDegeneracy` and `checkCommutativeBinaryDegeneracy` now surface these initial objects (and their collapse diagnostics) alongside the constant-zero law, so degeneracy oracles can automatically reuse the canonical morphisms promised by Theorems 1–2 when certifying collapse.
+- **Check:** `test/functor-interaction-law.spec.ts` exercises currying consistency, both fixed-side morphism constructors, and the initial object helpers (“derives currying data and fixed-side morphisms”).
+- **Check:** `test/functor-interaction-law.spec.ts` (“presents interaction laws in the left comma form”) validates the comma transformation against the Day evaluation, inspects the internal-hom functor report, and confirms the naturality diagnostics.
+- **Check:** `test/functor-interaction-law.spec.ts` (“reconstructs the interaction law from its left comma presentation”) exercises the equivalence helper by confirming reconstructed values and arrowwise naturality agree with the original interaction law.
+
 ## Functional optics law diagnostics
 
 ### Lens get-set/set-set registry coverage
