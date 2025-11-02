@@ -113,6 +113,10 @@ export * from "./src/all/option-result"
 export * from "./endo-2category"
 export * from "./comonad-k1"
 export * from "./array-recursion"
+export * from "./lambda-coop"
+export * from "./functor-interaction-law"
+export * from "./functor-interaction-law-degeneracy"
+export * from "./monad-comonad-interaction-law"
 export * from "./task"
 export * from "./validation"
 export * from "./reader-task-option"
@@ -875,6 +879,30 @@ export {
   detectBalancedPromotions,
   type BalancedPromotion,
 } from "./oracles/balanced"
+export {
+  checkInteractionLawProductUniversalProperty,
+  checkInteractionLawCoproductUniversalProperty,
+  checkLaxMonoidalDualComparison,
+  checkInteractionLawCCCPresentation,
+  checkInteractionLawStretching,
+  type InteractionLawProductUniversalPropertyOptions,
+  type InteractionLawProductProjectionSample,
+  type InteractionLawProductProjectionCheck,
+  type InteractionLawProductUniversalPropertyResult,
+  type InteractionLawCoproductUniversalPropertyOptions,
+  type InteractionLawCoproductInjectionSample,
+  type InteractionLawCoproductInjectionCheck,
+  type InteractionLawCoproductUniversalPropertyResult,
+  type LaxMonoidalDualComparisonOracleOptions,
+  type LaxMonoidalDualComparisonSample,
+  type LaxMonoidalDualComparisonOracleResult,
+  type InteractionLawCCCPresentationFiberDiagnostics,
+  type InteractionLawCCCPresentationResult,
+  type InteractionLawStretchingOptions,
+  type InteractionLawStretchingSample,
+  type InteractionLawStretchingResult,
+  type InteractionLawStretchingWitness,
+} from "./oracles/functor-interaction-laws"
 export {
   MonicFactorizationYieldsIso,
   type CategoryOracle,
