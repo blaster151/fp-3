@@ -242,7 +242,7 @@ export interface CommutativeBinaryDegeneracyArtifacts<Obj, Arr, Right> {
   readonly transformation?: Arr;
   readonly transformationGap?: string;
   readonly operationComponent: Arr;
-  readonly operationMetadata: ReadonlyArray<string>;
+  readonly operationMetadata?: ReadonlyArray<string>;
   readonly lawvereMetadata: ReadonlyArray<string>;
   readonly dayReferenceMetadata: ReadonlyArray<string>;
   readonly zeroComparison?: ZeroComparisonWitness<Obj, Right>;
@@ -381,7 +381,7 @@ const gatherBinaryArtifacts = <Obj, Arr, Left, Right, Value>(
     transformation,
     transformationGap,
     operationComponent: component.arrow,
-    operationMetadata,
+    ...(operationMetadata.length > 0 ? { operationMetadata } : {}),
     lawvereMetadata,
     dayReferenceMetadata: dayMetadata,
     zeroComparison,
