@@ -251,20 +251,20 @@ const mergeMetadata = (
 };
 
 const mergeMetadataList = (
-  ...inputs: ReadonlyArray<string> | undefined[]
+  ...inputs: (ReadonlyArray<string> | undefined)[]
 ): ReadonlyArray<string> | undefined =>
   inputs.reduce<ReadonlyArray<string> | undefined>((accumulator, current) => mergeMetadata(accumulator, current), undefined);
 
 const MONAD_UNIT_METADATA = [
-  "Generic element witnesses derived from the monad unit η.",
+  "Generic element witnesses derived from the monad unit ?.",
 ] as const;
 
 const COMONAD_COMULT_METADATA = [
-  "Generic duplication witnesses derived from the comonad comultiplication δ.",
+  "Generic duplication witnesses derived from the comonad comultiplication ?.",
 ] as const;
 
 const COMONAD_COUNIT_METADATA = [
-  "Counit witnesses derived from the comonad counit ε.",
+  "Counit witnesses derived from the comonad counit ?.",
 ] as const;
 
 export interface FunctorInteractionLawOperationsInput<Obj, Arr, LawObj = Obj, LawArr = Arr> {
@@ -961,7 +961,7 @@ export const greatestInteractingFunctor = <Obj, Arr, Left, Right, Value>(
   diagnostics.push(
     options.comma
       ? "Greatest functor: reused cached internal-hom presentation."
-      : "Greatest functor: derived internal-hom presentation [G(-), ⊙].",
+      : "Greatest functor: derived internal-hom presentation [G(-), ?].",
   );
 
   const sigma = comma.sigma;
@@ -992,7 +992,7 @@ export const greatestInteractingFunctor = <Obj, Arr, Left, Right, Value>(
       const component = sigma.get(object);
       if (!component) {
         throw new Error(
-          `Greatest interacting functor requires a σ-component for object ${String(object)}.`,
+          `Greatest interacting functor requires a ?-component for object ${String(object)}.`,
         );
       }
       return component as unknown as SetHom<unknown, unknown>;
@@ -1085,7 +1085,7 @@ export const greatestInteractingComonad = <Obj, Arr, Left, Right, Value>(
   diagnostics.push(
     options.comma
       ? "Greatest comonad: reused cached internal-hom presentation."
-      : "Greatest comonad: derived internal-hom presentation [F(-), ⊙].",
+      : "Greatest comonad: derived internal-hom presentation [F(-), ?].",
   );
 
   const sigma = comma.sigma;
@@ -1116,7 +1116,7 @@ export const greatestInteractingComonad = <Obj, Arr, Left, Right, Value>(
       const component = sigma.get(object);
       if (!component) {
         throw new Error(
-          `Greatest interacting comonad requires a σ-component for object ${String(object)}.`,
+          `Greatest interacting comonad requires a ?-component for object ${String(object)}.`,
         );
       }
       return component as unknown as SetHom<unknown, unknown>;
@@ -1307,7 +1307,7 @@ const compareInteractionLaws = <
         mismatches += 1;
         matches = false;
         diagnostics.push(
-          `compareInteractionLaws${mapping.label ? ` (${mapping.label})` : ""}: mismatch for pair ${primalKey} ⊗ ${dualKey}.`,
+          `compareInteractionLaws${mapping.label ? ` (${mapping.label})` : ""}: mismatch for pair ${primalKey} ? ${dualKey}.`,
         );
       } else {
         visitedPairs.add(`${primalKey}||${dualKey}`);
@@ -1440,8 +1440,8 @@ export const dualOfTerminal = <Obj, Arr, Left, Right, Value>(
 
   const diagnostics = [
     ...reference.diagnostics,
-    `dualOfTerminal: reference dual carriers — primal ${referencePrimalSize}, dual ${referenceDualSize}.`,
-    `dualOfTerminal: constructed final law carriers — primal ${finalPrimalSize}, dual ${finalDualSize}.`,
+    `dualOfTerminal: reference dual carriers ? primal ${referencePrimalSize}, dual ${referenceDualSize}.`,
+    `dualOfTerminal: constructed final law carriers ? primal ${finalPrimalSize}, dual ${finalDualSize}.`,
     matchesReference
       ? "dualOfTerminal: both constructions collapse to the constant-zero interaction law."
       : "dualOfTerminal: mismatch between general dual and final-law construction for terminal functor.",
@@ -1609,7 +1609,7 @@ export const dualOfInitial = <Obj, Arr, Left, Right, Value>(
     "dualOfInitial: reused fixed-left initial object witness from Phase I.",
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualOfInitial: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `dualOfInitial: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -1734,7 +1734,7 @@ export const dualOfCoproduct = <
     ...agreement.diagnostics,
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualOfCoproduct: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `dualOfCoproduct: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -1785,7 +1785,7 @@ export const dualOfWeightedSum = <Obj, Arr, Left, Right, Value, Weight>(
     `dualOfWeightedSum: enumerated ${enumeratedWeights.length} weight elements for the Day integral witness.`,
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualOfWeightedSum: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `dualOfWeightedSum: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -1984,7 +1984,7 @@ export const dualLowerBound = <Obj, Arr, Left, Right, Value>(
     ...componentDiagnostics,
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualLowerBound: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `dualLowerBound: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -2065,11 +2065,11 @@ export const dualOfExponentialIdentity = <Obj, Arr, Left, Right, Value, Paramete
     ...reference.diagnostics,
     `dualOfExponentialIdentity: parameter cardinality ${parameterCardinality}.`,
     ...cardinalities.map((entry) =>
-      `dualOfExponentialIdentity: object ${String(entry.object)} — original ${entry.originalCardinality}, dual ${entry.dualCardinality}, expected ${entry.expectedCardinality}.`,
+      `dualOfExponentialIdentity: object ${String(entry.object)} ? original ${entry.originalCardinality}, dual ${entry.dualCardinality}, expected ${entry.expectedCardinality}.`,
     ),
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualOfExponentialIdentity: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `dualOfExponentialIdentity: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -2154,21 +2154,21 @@ export const dualOfPositiveList = <Obj, Arr, Left, Right, Value, Element>(
 
   const diagnostics = [
     ...reference.diagnostics,
-    `dualOfPositiveList: collected θ_n summaries for ${thetaSummaries.length} length classes.`,
+    `dualOfPositiveList: collected ?_n summaries for ${thetaSummaries.length} length classes.`,
     ...thetaSummaries.map((summary) => {
       const preview = summary.sequences
         .slice(0, 3)
         .map((sequence) => `[${sequence.map((value) => String(value)).join(", ")}]`)
         .join(", ");
-      const suffix = summary.sequences.length > 3 ? ", …" : "";
-      return `dualOfPositiveList: θ_${summary.length} on ${String(summary.object)} captures ${summary.sequences.length} sequences${
+      const suffix = summary.sequences.length > 3 ? ", ?" : "";
+      return `dualOfPositiveList: ?_${summary.length} on ${String(summary.object)} captures ${summary.sequences.length} sequences${
         preview ? ` (${preview}${suffix})` : ""
       }.`;
     }),
     ...zeroLengthDiagnostics,
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualOfPositiveList: degeneracy metadata propagated — ${degeneracyMetadata.join("; ")}.`,
+          `dualOfPositiveList: degeneracy metadata propagated ? ${degeneracyMetadata.join("; ")}.`,
         ]
       : ["dualOfPositiveList: no degeneracy metadata supplied for positive-list witnesses."]),
   ];
@@ -2359,7 +2359,7 @@ export const laxMonoidalDualComparison = <
             mismatchDiagnostics.push(
               `laxMonoidalDualComparison: mismatch on object ${String(object)} with primal ${JSON.stringify(
                 primal.element,
-              )} and dual ${JSON.stringify(dual.element)} — specialised value ${JSON.stringify(
+              )} and dual ${JSON.stringify(dual.element)} ? specialised value ${JSON.stringify(
                 domainValue,
               )} maps to ${JSON.stringify(mappedValue)} but reference produced ${JSON.stringify(
                 referenceValue,
@@ -2411,7 +2411,7 @@ export const laxMonoidalDualComparison = <
       : "laxMonoidalDualComparison: value-level swap witness is not bijective; lax structure fails to be invertible.",
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `laxMonoidalDualComparison: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `laxMonoidalDualComparison: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -3236,17 +3236,17 @@ export const deriveInteractionLawCurrying = <Obj, Arr, Left, Right, Value>(
       }));
 
       const componentDiagnostics: string[] = [
-        `δ^${String(object)}_${String(parameter)} tabulates ${domainElements.length} domain element(s)` +
+        `?^${String(object)}_${String(parameter)} tabulates ${domainElements.length} domain element(s)` +
           ` against ${codomainElements.length} candidate(s) of G(${String(parameter)}).`,
       ];
       if (domainElements.length === 0) {
         componentDiagnostics.push(
-          `F(${String(tensorObject)}) is empty; δ^${String(object)}_${String(parameter)} has no samples to evaluate.`,
+          `F(${String(tensorObject)}) is empty; ?^${String(object)}_${String(parameter)} has no samples to evaluate.`,
         );
       }
       if (codomainElements.length === 0) {
         componentDiagnostics.push(
-          `G(${String(parameter)}) is empty; δ^${String(object)}_${String(parameter)} produces no targets.`,
+          `G(${String(parameter)}) is empty; ?^${String(object)}_${String(parameter)} produces no targets.`,
         );
       }
 
@@ -3261,7 +3261,7 @@ export const deriveInteractionLawCurrying = <Obj, Arr, Left, Right, Value>(
     }
 
     finalDiagnostics.push(
-      `Recorded ${finalComponents.length} component(s) of δ^${String(object)}_(-)` +
+      `Recorded ${finalComponents.length} component(s) of ?^${String(object)}_(-)` +
         " with Day-based evaluation tables.",
     );
 
@@ -3446,7 +3446,7 @@ export const deriveInteractionLawLeftCommaPresentation = <Obj, Arr, Left, Right,
     internalHomFunctor,
     samples,
     [
-      "Internal hom functor X ↦ [G(X), ⊙] induced from the interaction law's right witness.",
+      "Internal hom functor X ? [G(X), ?] induced from the interaction law's right witness.",
       "Targets land in Set thanks to SetCat.exponential carriers registered per object.",
     ],
   );
@@ -4117,7 +4117,7 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
     },
     {
       metadata: [
-        "Currying transformation σ : F ⇒ G' supplying the comparison into the fixed-right final object.",
+        "Currying transformation ? : F ? G' supplying the comparison into the fixed-right final object.",
       ],
     },
   );

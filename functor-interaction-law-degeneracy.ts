@@ -42,14 +42,15 @@ const buildZeroComparison = <Obj, Arr, Left, Right, Value>(
   law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
   object: Obj,
 ): ZeroComparisonWitness<Obj, Right> => {
-  const domain = law.right.functor.functor.F0(object);
-  const zero = SetCat.initialObj;
+  const domain = law.right.functor.F0(object) as SetObj<Right>;
+  const initial = SetCat.initial();
+  const zero = initial.object as SetObj<never>;
   const toZero = SetCat.hom(domain, zero, (_value): never => {
     throw new Error(
       "Degeneracy zero map invoked; interacting functor should collapse to the initial object.",
     );
   });
-  const fromZero = SetCat.initialArrow(domain);
+  const fromZero = initial.initialize(domain);
   return { object, domain, zero, toZero, fromZero };
 };
 
@@ -121,11 +122,19 @@ const buildNullaryWitness = <Obj, Arr>(
   arity,
   operationMetadata,
   nullary,
-  components: objects.map((object) => ({
-    object,
-    arrow: nullary.component(object),
-    metadata: nullary.metadata ?? operationMetadata,
-  })),
+  components: objects.map((object) => {
+    const metadata = nullary.metadata ?? operationMetadata;
+    return metadata
+      ? {
+          object,
+          arrow: nullary.component(object),
+          metadata,
+        }
+      : {
+          object,
+          arrow: nullary.component(object),
+        };
+  }),
 });
 
 const describeNullaryStep = <Obj, Arr>(
@@ -305,15 +314,15 @@ const gatherBinaryArtifacts = <Obj, Arr, Left, Right, Value>(
 
   const duplicationGap =
     duplication === undefined
-      ? "Missing duplication witness β^2_Y; supply genericDuplication for the comonad component."
+      ? "Missing duplication witness ?^2_Y; supply genericDuplication for the comonad component."
       : undefined;
   const substitutionGap =
     substitution === undefined && operationEntry.kind === "monad"
-      ? "Missing Kleisli-on-generic arrow κ_Y needed to build f_Y in Theorem 2."
+      ? "Missing Kleisli-on-generic arrow ?_Y needed to build f_Y in Theorem 2."
       : undefined;
   const transformationGap =
     transformation === undefined
-      ? "Natural transformation component α^2_Y unavailable; provide transformation metadata for the operation."
+      ? "Natural transformation component ?^2_Y unavailable; provide transformation metadata for the operation."
       : undefined;
   const zeroComparisonGap =
     zeroComparison === undefined
@@ -383,112 +392,144 @@ const buildBinarySteps = <Obj, Arr, Left, Right, Value>(
   component: CommutativeBinaryComponentWitness<Obj, Arr>,
   artifacts: CommutativeBinaryDegeneracyArtifacts<Obj, Arr, Right>,
 ): ReadonlyArray<DegeneracyProofStep<Obj, Arr>> => {
-  const steps: DegeneracyProofStep<Obj, Arr>[] = [
+  const steps: DegeneracyProofStep<Obj, Arr>[] = [];
+  const pushStep = (
+    base: Omit<DegeneracyProofStep<Obj, Arr>, "metadata">,
+    metadata: ReadonlyArray<string> | undefined,
+  ) => {
+    steps.push(metadata && metadata.length > 0 ? { ...base, metadata } : base);
+  };
+
+  pushStep(
     {
       label: "diagonal-delta",
       description:
-        "Construct diagonal δ_Y : Y → Y × Y to duplicate the generic element as in Theorem 2 part (1).",
+        "Construct diagonal ?_Y : Y ? Y ? Y to duplicate the generic element as in Theorem 2 part (1).",
       object: component.object,
       ...(artifacts.duplication ? { arrow: artifacts.duplication } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.duplicationGap ? { gaps: [artifacts.duplicationGap] } : {}),
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "lift-through-functor",
       description:
-        "Lift δ_Y through the functor/transformation to obtain α^2_Y ∘ Tδ_Y for collapse analysis.",
+        "Lift ?_Y through the functor/transformation to obtain ?^2_Y ? T?_Y for collapse analysis.",
       object: component.object,
       ...(artifacts.transformation ? { arrow: artifacts.transformation } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.transformationGap ? { gaps: [artifacts.transformationGap] } : {}),
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "apply-commutative-operation",
       description:
-        "Apply the commutative binary component, producing the candidate collapse map α^2_Y.",
+        "Apply the commutative binary component, producing the candidate collapse map ?^2_Y.",
       object: component.object,
       arrow: artifacts.operationComponent,
-      metadata: artifacts.operationMetadata,
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "construct-fY",
       description:
         "Assemble f_Y via substitution on the generic element, as required in Theorem 2 part (1).",
       object: component.object,
       ...(artifacts.substitution ? { arrow: artifacts.substitution } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.substitutionGap ? { gaps: [artifacts.substitutionGap] } : {}),
     },
-  ];
+    artifacts.operationMetadata,
+  );
 
   if (artifacts.lawvereMetadata.length > 0) {
-    steps.push({
-      label: "lawvere-comparison",
-      description:
-        "Reference the Lawvere-theory morphism μ₂ witnessing substitution compatibility for the operation.",
-      object: component.object,
-      metadata: artifacts.lawvereMetadata,
-    });
+    pushStep(
+      {
+        label: "lawvere-comparison",
+        description:
+          "Reference the Lawvere-theory morphism ?? witnessing substitution compatibility for the operation.",
+        object: component.object,
+      },
+      artifacts.lawvereMetadata,
+    );
   }
 
   if (artifacts.dayReferenceMetadata.length > 0) {
-    steps.push({
-      label: "day-fiber-reference",
-      description:
-        "Track the Day fiber indices used when aggregating the interaction pairing for this operation.",
-      object: component.object,
-      metadata: artifacts.dayReferenceMetadata,
-    });
+    pushStep(
+      {
+        label: "day-fiber-reference",
+        description:
+          "Track the Day fiber indices used when aggregating the interaction pairing for this operation.",
+        object: component.object,
+      },
+      artifacts.dayReferenceMetadata,
+    );
   }
 
-  steps.push(
+  pushStep(
     {
       label: "construct-hY",
       description:
-        "Terminate the right-hand carrier to obtain h_Y : GY → 1 as used in the uniqueness argument.",
+        "Terminate the right-hand carrier to obtain h_Y : GY ? 1 as used in the uniqueness argument.",
       object: component.object,
       ...(artifacts.toTerminal ? { arrow: artifacts.toTerminal } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.toTerminalGap ? { gaps: [artifacts.toTerminalGap] } : {}),
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "construct-deltaPrimeY",
       description:
-        "Compose h_Y with the canonical injection into 1 + 1 to form δ'_Y for Theorem 2 part (2).",
+        "Compose h_Y with the canonical injection into 1 + 1 to form ?'_Y for Theorem 2 part (2).",
       object: component.object,
       ...(artifacts.terminalDiagonal ? { arrow: artifacts.terminalDiagonal } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.terminalDiagonalGap ? { gaps: [artifacts.terminalDiagonalGap] } : {}),
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "construct-kPrimeY",
       description:
         "Factor through the zero coproduct to obtain k'_Y as in Theorem 2 part (2).",
       object: component.object,
       ...(artifacts.kPrime ? { arrow: artifacts.kPrime } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.kPrimeGap ? { gaps: [artifacts.kPrimeGap] } : {}),
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "construct-kY",
       description:
-        "Use the uniqueness of maps into the zero object to build the final collapse morphism k_Y : GY → 0.",
+        "Use the uniqueness of maps into the zero object to build the final collapse morphism k_Y : GY ? 0.",
       object: component.object,
       ...(artifacts.zeroComparison ? { arrow: artifacts.zeroComparison.toZero } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.zeroComparisonGap ? { gaps: [artifacts.zeroComparisonGap] } : {}),
     },
+    artifacts.operationMetadata,
   );
 
   const pairing = law.getPairingComponent(component.object);
   if (pairing) {
-    steps.push({
-      label: "compare-with-pairing",
-      description: "Compare the constructed collapse map with the stored Day pairing component.",
-      object: component.object,
-      pairingComponent: pairing,
-      metadata: artifacts.operationMetadata,
-    });
+    pushStep(
+      {
+        label: "compare-with-pairing",
+        description: "Compare the constructed collapse map with the stored Day pairing component.",
+        object: component.object,
+        pairingComponent: pairing,
+      },
+      artifacts.operationMetadata,
+    );
   }
 
   return steps;
@@ -603,13 +644,16 @@ export const analyzeFunctorOperationDegeneracy = <Obj, Arr, Left, Right, Value, 
     }
     if (operation.nullary) {
       dropMaps.push(
-        ...objects.map<NullaryDropMapWitness<Obj, Arr>>((object) => ({
-          label: operation.label,
-          kind: entry.kind,
-          object,
-          arrow: operation.nullary!.component(object),
-          metadata: operation.nullary?.metadata ?? operation.metadata,
-        })),
+        ...objects.map<NullaryDropMapWitness<Obj, Arr>>((object) => {
+          const metadata = operation.nullary?.metadata ?? operation.metadata;
+          const base = {
+            label: operation.label,
+            kind: entry.kind,
+            object,
+            arrow: operation.nullary!.component(object),
+          } as const;
+          return metadata && metadata.length > 0 ? { ...base, metadata } : base;
+        }),
       );
     }
   });

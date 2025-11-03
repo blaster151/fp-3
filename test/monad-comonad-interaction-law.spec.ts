@@ -557,7 +557,7 @@ describe("dual map translators", () => {
       },
     );
 
-    const tamperedGreatest = {
+    const tamperedGreatest: typeof greatest = {
       ...greatest,
       greatest: {
         ...greatest.greatest,
@@ -567,7 +567,7 @@ describe("dual map translators", () => {
         ...greatest.diagnostics,
         "Tampered Sweedler comonad transformation.",
       ],
-    } as typeof greatest;
+    };
 
     const failure = verifySweedlerDualFactorization(packaged, {
       sampleLimit: 4,
