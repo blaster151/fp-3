@@ -116,15 +116,10 @@ const buildNullaryWitness = <Obj, Arr>(
   nullary: NullaryOperationMetadata<Obj, Arr>,
   objects: ReadonlyArray<Obj>,
   operationMetadata?: ReadonlyArray<string>,
-): NullaryDegeneracyWitness<Obj, Arr> => ({
-  kind,
-  label,
-  arity,
-  operationMetadata,
-  nullary,
-  components: objects.map((object) => {
+): NullaryDegeneracyWitness<Obj, Arr> => {
+  const components = objects.map((object) => {
     const metadata = nullary.metadata ?? operationMetadata;
-    return metadata
+    return metadata && metadata.length > 0
       ? {
           object,
           arrow: nullary.component(object),
@@ -134,16 +129,32 @@ const buildNullaryWitness = <Obj, Arr>(
           object,
           arrow: nullary.component(object),
         };
-  }),
-});
+  });
+
+  const base: Omit<NullaryDegeneracyWitness<Obj, Arr>, "operationMetadata"> = {
+    kind,
+    label,
+    arity,
+    nullary,
+    components,
+  };
+
+  return operationMetadata && operationMetadata.length > 0
+    ? { ...base, operationMetadata }
+    : base;
+};
 
 const describeNullaryStep = <Obj, Arr>(
   witness: NullaryDegeneracyWitness<Obj, Arr>,
-): DegeneracyProofStep<Obj, Arr> => ({
-  label: "nullary-collapse",
-  description: `Nullary operation ${witness.label} forces constant-zero interaction partners via Theorem 1.`,
-  metadata: witness.operationMetadata,
-});
+): DegeneracyProofStep<Obj, Arr> => {
+  const base: Omit<DegeneracyProofStep<Obj, Arr>, "metadata"> = {
+    label: "nullary-collapse",
+    description: `Nullary operation ${witness.label} forces constant-zero interaction partners via Theorem 1.`,
+  };
+  return witness.operationMetadata && witness.operationMetadata.length > 0
+    ? { ...base, metadata: witness.operationMetadata }
+    : base;
+};
 
 export const checkNullaryDegeneracy = <Obj, Arr, Left, Right, Value>(
   law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
