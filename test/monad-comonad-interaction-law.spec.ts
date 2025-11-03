@@ -527,6 +527,61 @@ describe("dual map translators", () => {
     expect(reconstruction.comonadDiagram.holds).toBe(true);
   });
 
+  it("surfaces diagnostics when Sweedler factorization is tampered", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+    const summary = interactionLawToDualMap(packaged, { sampleLimit: 4 });
+    const greatest = deriveGreatestInteractingComonadForMonadComonadLaw(packaged);
+
+    const originalTransformation = greatest.greatest.transformation;
+    const tamperedTransformation = constructNaturalTransformationWithWitness(
+      originalTransformation.witness.source,
+      originalTransformation.witness.target,
+      (object) => {
+        const component = originalTransformation.transformation.component(object);
+        const codomain = component.cod as SetObj<unknown>;
+        const fallback = enumerate(codomain)[0];
+        if (fallback === undefined) {
+          return component;
+        }
+        return SetCat.hom(
+          component.dom as SetObj<unknown>,
+          component.cod as SetObj<unknown>,
+          () => fallback,
+        );
+      },
+      {
+        metadata: [
+          ...(originalTransformation.metadata ?? []),
+          "Tampered Sweedler transformation",
+        ],
+      },
+    );
+
+    const tamperedGreatest = {
+      ...greatest,
+      greatest: {
+        ...greatest.greatest,
+        transformation: tamperedTransformation,
+      },
+      diagnostics: [
+        ...greatest.diagnostics,
+        "Tampered Sweedler comonad transformation.",
+      ],
+    } as typeof greatest;
+
+    const failure = verifySweedlerDualFactorization(packaged, {
+      sampleLimit: 4,
+      dual: summary,
+      greatest: tamperedGreatest,
+    });
+
+    expect(failure.report.holds).toBe(false);
+    expect(failure.report.counterexamples.length).toBeGreaterThan(0);
+    expect(
+      failure.report.details.some((detail) => detail.includes("first mismatch")),
+    ).toBe(true);
+  });
+
   it("flags mismatches when the monad dual map is altered", () => {
     const packaged = makeExample6MonadComonadInteractionLaw();
     const summary = interactionLawToDualMap(packaged, { sampleLimit: 5 });

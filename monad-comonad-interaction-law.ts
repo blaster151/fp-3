@@ -1347,6 +1347,9 @@ export const verifySweedlerDualFactorization = <
   diagnostics.push(
     `verifySweedlerDualFactorization: sampled ${checked} comonad element(s) across ${objects.size} object(s).`,
   );
+  diagnostics.push(
+    `verifySweedlerDualFactorization: matched ${matched} of ${checked} sampled assignment(s).`,
+  );
 
   const holds = counterexamples.length === 0;
   diagnostics.push(
@@ -1354,6 +1357,14 @@ export const verifySweedlerDualFactorization = <
       ? "verifySweedlerDualFactorization: Sweedler factoring verified on sampled data."
       : `verifySweedlerDualFactorization: encountered ${counterexamples.length} mismatched assignment(s).`,
   );
+  if (!holds && counterexamples.length > 0) {
+    const first = counterexamples[0];
+    diagnostics.push(
+      `verifySweedlerDualFactorization: first mismatch at object ${String(
+        first.object,
+      )} on input ${String(first.input)} ? ${first.reason}`,
+    );
+  }
 
   const metadata = mergeMetadataList(
     interaction.metadata,
