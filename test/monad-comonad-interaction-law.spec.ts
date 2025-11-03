@@ -12,6 +12,7 @@ import {
   interactionLawFromDualMap,
   interactionLawMonoidToMonadComonadLaw,
   interactionLawToDualMap,
+  verifySweedlerDualFactorization,
   nonemptyListFreeMonad,
   nonemptyListQuotient,
   type Example14CofreeElement,
@@ -500,6 +501,18 @@ describe("dual map translators", () => {
     );
     expect(summary.diagnostics).toContain(
       "interactionLawToDualMap: dual maps agree with ψ on sampled entries.",
+    );
+
+    const greatest = deriveGreatestInteractingComonadForMonadComonadLaw(packaged);
+    const factorization = verifySweedlerDualFactorization(packaged, {
+      sampleLimit: 6,
+      dual: summary,
+      greatest,
+    });
+
+    expect(factorization.report.holds).toBe(true);
+    expect(factorization.report.details).toContain(
+      "verifySweedlerDualFactorization: Sweedler factoring verified on sampled data.",
     );
 
     const reconstruction = interactionLawFromDualMap({

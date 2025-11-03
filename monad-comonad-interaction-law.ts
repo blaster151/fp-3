@@ -1186,6 +1186,203 @@ export const interactionLawFromDualMap = <
   };
 };
 
+interface SweedlerFactorizationWitness<Obj, Right, Value> {
+  readonly object: Obj;
+  readonly input: Right;
+  readonly witness: ExponentialArrow<Right, Value>;
+}
+
+interface SweedlerFactorizationCounterexample<Obj, Right> {
+  readonly object: Obj;
+  readonly input: Right;
+  readonly reason: string;
+}
+
+export interface SweedlerFactorizationReport<Obj, Right, Value> {
+  readonly holds: boolean;
+  readonly checked: number;
+  readonly matched: number;
+  readonly witnesses: ReadonlyArray<SweedlerFactorizationWitness<Obj, Right, Value>>;
+  readonly counterexamples: ReadonlyArray<SweedlerFactorizationCounterexample<Obj, Right>>;
+  readonly details: ReadonlyArray<string>;
+}
+
+export interface SweedlerFactorizationOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+> {
+  readonly sampleLimit?: number;
+  readonly dual?: MonadComonadDualMapSummary<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly greatest?: MonadComonadGreatestComonadResult<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface SweedlerFactorizationSummary<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+> {
+  readonly interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly dual: MonadComonadDualMapSummary<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly greatest: MonadComonadGreatestComonadResult<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly report: SweedlerFactorizationReport<Obj, Right, Value>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export const verifySweedlerDualFactorization = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+>(
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, LawObj, LawArr>,
+  options: SweedlerFactorizationOptions<Obj, Arr, Left, Right, Value, LawObj, LawArr> = {},
+): SweedlerFactorizationSummary<Obj, Arr, Left, Right, Value, LawObj, LawArr> => {
+  const sampleLimit =
+    options.sampleLimit !== undefined && options.sampleLimit > 0
+      ? options.sampleLimit
+      : DEFAULT_SWEEDLER_FACTOR_SAMPLE_LIMIT;
+
+  const dual = options.dual ?? interactionLawToDualMap(interaction, { sampleLimit });
+  const greatest =
+    options.greatest ?? deriveGreatestInteractingComonadForMonadComonadLaw(interaction);
+
+  const diagnostics: string[] = [
+    `verifySweedlerDualFactorization: sampling up to ${sampleLimit} element(s) per carrier.`,
+  ];
+
+  const valueEquals = semanticsAwareEquals(interaction.law.dualizing as SetObj<Value>);
+
+  const witnesses: Array<SweedlerFactorizationWitness<Obj, Right, Value>> = [];
+  const counterexamples: Array<SweedlerFactorizationCounterexample<Obj, Right>> = [];
+
+  let checked = 0;
+  let matched = 0;
+
+  const objects = new Set<Obj>();
+  for (const object of interaction.law.kernel.base.objects) {
+    objects.add(object);
+  }
+  for (const object of interaction.comonad.functor.witness.objectGenerators) {
+    objects.add(object);
+  }
+
+  for (const object of objects) {
+    const comonadCarrier = interaction.comonad.functor.functor.F0(object) as SetObj<Right>;
+    const comonadElements = enumerateWithLimit(comonadCarrier, sampleLimit);
+
+    const sweedlerCarrier = greatest.greatest.functorOpposite.functor.F0(object) as SetObj<
+      ExponentialArrow<Right, Value>
+    >;
+    const sweedlerElements = enumerateWithLimit(sweedlerCarrier, sampleLimit);
+
+    const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
+    const rightSamples = enumerateWithLimit(rightCarrier, sampleLimit);
+
+    const comonadComponent = dual.comonadToDual.transformation.component(object) as SetHom<
+      Right,
+      ExponentialArrow<Right, Value>
+    >;
+    const sweedlerComponent = greatest.greatest.transformation.transformation.component(object) as SetHom<
+      ExponentialArrow<Right, Value>,
+      ExponentialArrow<Right, Value>
+    >;
+
+    const compareAssignments = (
+      reference: ExponentialArrow<Right, Value>,
+      candidate: ExponentialArrow<Right, Value>,
+    ): boolean => {
+      if (rightSamples.length === 0) {
+        return true;
+      }
+      for (const sample of rightSamples) {
+        const expected = reference(sample as Right);
+        const actual = candidate(sample as Right);
+        if (!valueEquals(expected, actual)) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    for (const element of comonadElements) {
+      checked += 1;
+      const targetAssignment = comonadComponent.map(element as Right);
+      let witness: ExponentialArrow<Right, Value> | undefined;
+
+      for (const candidate of sweedlerElements) {
+        const candidateAssignment = sweedlerComponent.map(candidate);
+        if (compareAssignments(targetAssignment, candidateAssignment)) {
+          witness = candidate;
+          break;
+        }
+      }
+
+      if (witness) {
+        matched += 1;
+        witnesses.push({ object, input: element as Right, witness });
+      } else {
+        const reason =
+          sweedlerElements.length === 0
+            ? "Sweedler carrier provided no sample elements."
+            : "No Sweedler element reproduced the dual assignment on sampled evaluations.";
+        counterexamples.push({ object, input: element as Right, reason });
+      }
+    }
+  }
+
+  diagnostics.push(
+    `verifySweedlerDualFactorization: sampled ${checked} comonad element(s) across ${objects.size} object(s).`,
+  );
+
+  const holds = counterexamples.length === 0;
+  diagnostics.push(
+    holds
+      ? "verifySweedlerDualFactorization: Sweedler factoring verified on sampled data."
+      : `verifySweedlerDualFactorization: encountered ${counterexamples.length} mismatched assignment(s).`,
+  );
+
+  const metadata = mergeMetadataList(
+    interaction.metadata,
+    interaction.comonad.metadata,
+    dual.metadata,
+    greatest.metadata,
+    options.metadata,
+  );
+
+  const report: SweedlerFactorizationReport<Obj, Right, Value> = {
+    holds,
+    checked,
+    matched,
+    witnesses,
+    counterexamples,
+    details: diagnostics,
+  };
+
+  return {
+    interaction,
+    dual,
+    greatest,
+    report,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+const DEFAULT_SWEEDLER_FACTOR_SAMPLE_LIMIT = 12;
 const DEFAULT_RUNNER_TRANSLATION_SAMPLE_LIMIT = 64;
 
 const enumerateWithLimit = <A>(carrier: SetObj<A>, limit: number): ReadonlyArray<A> => {
