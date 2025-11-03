@@ -1058,6 +1058,17 @@ export const interactionLawToDualMap = <
     comonadMetadata ? { metadata: comonadMetadata } : undefined,
   );
 
+  diagnostics.push(
+    monadToDual.report.holds
+      ? "interactionLawToDualMap: T ? D? naturality verified."
+      : `interactionLawToDualMap: T ? D? naturality failed: ${monadToDual.report.details.join(" ")}`,
+  );
+  diagnostics.push(
+    comonadToDual.report.holds
+      ? "interactionLawToDualMap: D ? T? naturality verified."
+      : `interactionLawToDualMap: D ? T? naturality failed: ${comonadToDual.report.details.join(" ")}`,
+  );
+
   const monadDiagram = compareSigmaWithPsi(
     interaction,
     interaction.comma.sigma as ReadonlyMap<Obj, SetHom<unknown, unknown>>,

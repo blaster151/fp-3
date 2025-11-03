@@ -493,6 +493,12 @@ describe("dual map translators", () => {
     expect(summary.monadDiagram.holds).toBe(true);
     expect(summary.comonadDiagram.holds).toBe(true);
     expect(summary.diagnostics).toContain(
+      "interactionLawToDualMap: T → D° naturality verified.",
+    );
+    expect(summary.diagnostics).toContain(
+      "interactionLawToDualMap: D → T° naturality verified.",
+    );
+    expect(summary.diagnostics).toContain(
       "interactionLawToDualMap: dual maps agree with ψ on sampled entries.",
     );
 
