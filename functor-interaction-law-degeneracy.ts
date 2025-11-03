@@ -23,10 +23,15 @@ import type {
   OperationDayReference,
 } from "./functor-interaction-law";
 
-interface OperationEntry<Obj, Arr> {
-  readonly kind: "monad" | "comonad";
-  readonly operation: MonadOperation<Obj, Arr, unknown, unknown> | ComonadCooperation<Obj, Arr, unknown, unknown>;
-}
+type OperationEntry<Obj, Arr> =
+  | {
+      readonly kind: "monad";
+      readonly operation: MonadOperation<Obj, Arr, unknown, unknown>;
+    }
+  | {
+      readonly kind: "comonad";
+      readonly operation: ComonadCooperation<Obj, Arr, unknown, unknown>;
+    };
 
 type FinalLaw<Obj, Arr> = FunctorInteractionLaw<Obj, Arr, SetTerminalObject, never, boolean>;
 
@@ -60,11 +65,11 @@ const enumerateOperations = <Obj, Arr>(
   if (!operations) return [];
   const monad = (operations.monadOperations ?? []).map<OperationEntry<Obj, Arr>>((operation) => ({
     kind: "monad",
-    operation: operation as MonadOperation<Obj, Arr, unknown, unknown>,
+    operation,
   }));
   const comonad = (operations.comonadCooperations ?? []).map<OperationEntry<Obj, Arr>>((operation) => ({
     kind: "comonad",
-    operation: operation as ComonadCooperation<Obj, Arr, unknown, unknown>,
+    operation,
   }));
   return [...monad, ...comonad];
 };
@@ -283,12 +288,12 @@ const buildBinaryWitness = <Obj, Arr>(
   kind: entry.kind,
   label: entry.operation.label,
   arity: entry.operation.arity,
-  operationMetadata: metadata,
-  components: objects.map((object) => ({
-    object,
-    arrow: component(object),
-    metadata,
-  })),
+  ...(metadata && metadata.length > 0 ? { operationMetadata: metadata } : {}),
+  components: objects.map((object) =>
+    metadata && metadata.length > 0
+      ? { object, arrow: component(object), metadata }
+      : { object, arrow: component(object) },
+  ),
   ...(swapWitness ? { swapWitness } : {}),
   operationEntry: entry,
 });
@@ -372,29 +377,66 @@ const gatherBinaryArtifacts = <Obj, Arr, Left, Right, Value>(
       ? "Unable to assemble k'_Y without a zero-comparison witness."
       : undefined;
 
-  return {
+  const artifacts: CommutativeBinaryDegeneracyArtifacts<Obj, Arr, Right> = {
     object: component.object,
-    duplication,
-    duplicationGap,
-    substitution,
-    substitutionGap,
-    transformation,
-    transformationGap,
     operationComponent: component.arrow,
-    ...(operationMetadata.length > 0 ? { operationMetadata } : {}),
     lawvereMetadata,
     dayReferenceMetadata: dayMetadata,
-    zeroComparison,
-    zeroComparisonGap,
-    toTerminal,
-    toTerminalGap,
-    terminalCoproduct,
-    terminalDiagonal,
-    terminalDiagonalGap,
-    zeroCoproduct,
-    kPrime,
-    kPrimeGap,
   };
+
+  if (operationMetadata.length > 0) {
+    artifacts.operationMetadata = operationMetadata;
+  }
+  if (duplication !== undefined) {
+    artifacts.duplication = duplication;
+  }
+  if (duplicationGap) {
+    artifacts.duplicationGap = duplicationGap;
+  }
+  if (substitution !== undefined) {
+    artifacts.substitution = substitution;
+  }
+  if (substitutionGap) {
+    artifacts.substitutionGap = substitutionGap;
+  }
+  if (transformation !== undefined) {
+    artifacts.transformation = transformation;
+  }
+  if (transformationGap) {
+    artifacts.transformationGap = transformationGap;
+  }
+  if (zeroComparison !== undefined) {
+    artifacts.zeroComparison = zeroComparison;
+  }
+  if (zeroComparisonGap) {
+    artifacts.zeroComparisonGap = zeroComparisonGap;
+  }
+  if (toTerminal !== undefined) {
+    artifacts.toTerminal = toTerminal;
+  }
+  if (toTerminalGap) {
+    artifacts.toTerminalGap = toTerminalGap;
+  }
+  if (terminalCoproduct !== undefined) {
+    artifacts.terminalCoproduct = terminalCoproduct;
+  }
+  if (terminalDiagonal !== undefined) {
+    artifacts.terminalDiagonal = terminalDiagonal;
+  }
+  if (terminalDiagonalGap) {
+    artifacts.terminalDiagonalGap = terminalDiagonalGap;
+  }
+  if (zeroCoproduct !== undefined) {
+    artifacts.zeroCoproduct = zeroCoproduct;
+  }
+  if (kPrime !== undefined) {
+    artifacts.kPrime = kPrime;
+  }
+  if (kPrimeGap) {
+    artifacts.kPrimeGap = kPrimeGap;
+  }
+
+  return artifacts;
 };
 
 const buildBinarySteps = <Obj, Arr, Left, Right, Value>(
@@ -488,7 +530,6 @@ const buildBinarySteps = <Obj, Arr, Left, Right, Value>(
       description:
         "Terminate the right-hand carrier to obtain h_Y : GY ? 1 as used in the uniqueness argument.",
       object: component.object,
-      ...(artifacts.toTerminal ? { arrow: artifacts.toTerminal } : {}),
       ...(artifacts.toTerminalGap ? { gaps: [artifacts.toTerminalGap] } : {}),
     },
     artifacts.operationMetadata,
@@ -500,7 +541,6 @@ const buildBinarySteps = <Obj, Arr, Left, Right, Value>(
       description:
         "Compose h_Y with the canonical injection into 1 + 1 to form ?'_Y for Theorem 2 part (2).",
       object: component.object,
-      ...(artifacts.terminalDiagonal ? { arrow: artifacts.terminalDiagonal } : {}),
       ...(artifacts.terminalDiagonalGap ? { gaps: [artifacts.terminalDiagonalGap] } : {}),
     },
     artifacts.operationMetadata,
@@ -512,7 +552,6 @@ const buildBinarySteps = <Obj, Arr, Left, Right, Value>(
       description:
         "Factor through the zero coproduct to obtain k'_Y as in Theorem 2 part (2).",
       object: component.object,
-      ...(artifacts.kPrime ? { arrow: artifacts.kPrime } : {}),
       ...(artifacts.kPrimeGap ? { gaps: [artifacts.kPrimeGap] } : {}),
     },
     artifacts.operationMetadata,
@@ -524,7 +563,6 @@ const buildBinarySteps = <Obj, Arr, Left, Right, Value>(
       description:
         "Use the uniqueness of maps into the zero object to build the final collapse morphism k_Y : GY ? 0.",
       object: component.object,
-      ...(artifacts.zeroComparison ? { arrow: artifacts.zeroComparison.toZero } : {}),
       ...(artifacts.zeroComparisonGap ? { gaps: [artifacts.zeroComparisonGap] } : {}),
     },
     artifacts.operationMetadata,
@@ -657,12 +695,12 @@ export const analyzeFunctorOperationDegeneracy = <Obj, Arr, Left, Right, Value, 
       dropMaps.push(
         ...objects.map<NullaryDropMapWitness<Obj, Arr>>((object) => {
           const metadata = operation.nullary?.metadata ?? operation.metadata;
-          const base = {
+          const base: Omit<NullaryDropMapWitness<Obj, Arr>, "metadata"> = {
             label: operation.label,
             kind: entry.kind,
             object,
             arrow: operation.nullary!.component(object),
-          } as const;
+          };
           return metadata && metadata.length > 0 ? { ...base, metadata } : base;
         }),
       );

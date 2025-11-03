@@ -285,8 +285,7 @@ export interface FunctorInteractionLawOperationsInput<Obj, Arr, LawObj = Obj, La
 export const makeFunctorInteractionLawOperations = <Obj, Arr, LawObj = Obj, LawArr = Arr>(
   input: FunctorInteractionLawOperationsInput<Obj, Arr, LawObj, LawArr>,
 ): FunctorInteractionLawOperations<Obj, Arr, LawObj, LawArr> => {
-  let monadOperations: ReadonlyArray<MonadOperation<Obj, Arr, LawObj, LawArr>> =
-    input.monadOperations ?? [];
+  let monadOperations = input.monadOperations ?? [];
   if (monadOperations.length > 0 && input.monadStructure?.unit) {
     const addition = mergeMetadataList(
       MONAD_UNIT_METADATA,
@@ -294,25 +293,21 @@ export const makeFunctorInteractionLawOperations = <Obj, Arr, LawObj = Obj, LawA
       input.monadStructure.unit.metadata,
     );
     const genericElement = (object: Obj) =>
-      input.monadStructure!.unit!.transformation.component(object);
+      input.monadStructure.unit.transformation.component(object);
     monadOperations = monadOperations.map((operation) => {
-      let next = operation;
-      let changed = false;
-      if (!operation.kleisliOnGeneric) {
-        next = { ...next, kleisliOnGeneric: genericElement };
-        changed = true;
+      const cloned: MonadOperation<Obj, Arr, LawObj, LawArr> = { ...operation };
+      if (!cloned.kleisliOnGeneric) {
+        cloned.kleisliOnGeneric = genericElement;
       }
-      const metadata = mergeMetadata(operation.metadata, addition);
-      if (metadata !== operation.metadata) {
-        next = { ...next, metadata };
-        changed = true;
+      const metadata = mergeMetadata(cloned.metadata, addition);
+      if (metadata && metadata !== cloned.metadata) {
+        cloned.metadata = metadata;
       }
-      return changed ? next : operation;
+      return cloned;
     });
   }
 
-  let comonadCooperations: ReadonlyArray<ComonadCooperation<Obj, Arr, LawObj, LawArr>> =
-    input.comonadCooperations ?? [];
+  let comonadCooperations = input.comonadCooperations ?? [];
   if (comonadCooperations.length > 0 && input.comonadStructure?.comultiplication) {
     const addition = mergeMetadataList(
       COMONAD_COMULT_METADATA,
@@ -320,20 +315,17 @@ export const makeFunctorInteractionLawOperations = <Obj, Arr, LawObj = Obj, LawA
       input.comonadStructure.comultiplication.metadata,
     );
     const duplication = (object: Obj) =>
-      input.comonadStructure!.comultiplication!.transformation.component(object);
+      input.comonadStructure.comultiplication.transformation.component(object);
     comonadCooperations = comonadCooperations.map((operation) => {
-      let next = operation;
-      let changed = false;
-      if (!operation.genericDuplication) {
-        next = { ...next, genericDuplication: duplication };
-        changed = true;
+      const cloned: ComonadCooperation<Obj, Arr, LawObj, LawArr> = { ...operation };
+      if (!cloned.genericDuplication) {
+        cloned.genericDuplication = duplication;
       }
-      const metadata = mergeMetadata(operation.metadata, addition);
-      if (metadata !== operation.metadata) {
-        next = { ...next, metadata };
-        changed = true;
+      const metadata = mergeMetadata(cloned.metadata, addition);
+      if (metadata && metadata !== cloned.metadata) {
+        cloned.metadata = metadata;
       }
-      return changed ? next : operation;
+      return cloned;
     });
   }
 
@@ -344,33 +336,30 @@ export const makeFunctorInteractionLawOperations = <Obj, Arr, LawObj = Obj, LawA
       input.comonadStructure.counit.metadata,
     );
     const counit = (object: Obj) =>
-      input.comonadStructure!.counit!.transformation.component(object);
+      input.comonadStructure.counit.transformation.component(object);
     comonadCooperations = comonadCooperations.map((operation) => {
-      let next = operation;
-      let changed = false;
-      if (!operation.counit) {
-        next = { ...next, counit };
-        changed = true;
+      const cloned: ComonadCooperation<Obj, Arr, LawObj, LawArr> = { ...operation };
+      if (!cloned.counit) {
+        cloned.counit = counit;
       }
-      const metadata = mergeMetadata(operation.metadata, addition);
-      if (metadata !== operation.metadata) {
-        next = { ...next, metadata };
-        changed = true;
+      const metadata = mergeMetadata(cloned.metadata, addition);
+      if (metadata && metadata !== cloned.metadata) {
+        cloned.metadata = metadata;
       }
-      return changed ? next : operation;
+      return cloned;
     });
   }
 
   let metadata = input.metadata;
   metadata = mergeMetadata(metadata, input.monadStructure?.metadata);
-  metadata = mergeMetadata(metadata, input.monadStructure?.unit.metadata);
+  metadata = mergeMetadata(metadata, input.monadStructure?.unit?.metadata);
   metadata = mergeMetadata(metadata, input.monadStructure?.unit ? MONAD_UNIT_METADATA : undefined);
   metadata = mergeMetadata(metadata, input.comonadStructure?.metadata);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.comultiplication.metadata);
+  metadata = mergeMetadata(metadata, input.comonadStructure?.comultiplication?.metadata);
   metadata = mergeMetadata(metadata, input.comonadStructure?.comultiplication
     ? COMONAD_COMULT_METADATA
     : undefined);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.counit.metadata);
+  metadata = mergeMetadata(metadata, input.comonadStructure?.counit?.metadata);
   metadata = mergeMetadata(metadata, input.comonadStructure?.counit ? COMONAD_COUNIT_METADATA : undefined);
 
   const operations: FunctorInteractionLawOperations<Obj, Arr, LawObj, LawArr> = {};
