@@ -9,7 +9,9 @@ import {
   makeMonadComonadInteractionLaw,
   deriveGreatestInteractingComonadForMonadComonadLaw,
   deriveGreatestInteractingFunctorForMonadComonadLaw,
+  interactionLawFromDualMap,
   interactionLawMonoidToMonadComonadLaw,
+  interactionLawToDualMap,
   nonemptyListFreeMonad,
   nonemptyListQuotient,
   type Example14CofreeElement,
@@ -58,7 +60,7 @@ import {
   constructNaturalTransformationWithWitness,
   identityNaturalTransformation,
 } from "../natural-transformation";
-import { SetCat, type SetHom } from "../set-cat";
+import { SetCat, getCarrierSemantics, type SetHom, type SetObj } from "../set-cat";
 import { makeTwoObjectPromonoidalKernel } from "../promonoidal-structure";
 import { TwoObjectCategory, type TwoArrow, type TwoObject } from "../two-object-cat";
 import {
@@ -75,6 +77,14 @@ type BooleanContribution = FunctorInteractionLawContribution<
   unknown,
   boolean
 >;
+
+const enumerate = <T>(carrier: SetObj<T>): ReadonlyArray<T> => {
+  const semantics = getCarrierSemantics(carrier);
+  if (semantics?.iterate) {
+    return Array.from(semantics.iterate());
+  }
+  return Array.from(carrier as Iterable<T>);
+};
 
 const buildBooleanLaw = () => {
   const kernel = makeTwoObjectPromonoidalKernel();
@@ -472,6 +482,66 @@ describe("greatest-interaction Sweedler utilities", () => {
       "Greatest comonad: reused provided Sweedler summary.",
     );
     expect(result.greatest.transformation).toBeDefined();
+  });
+});
+
+describe("dual map translators", () => {
+  it("extracts dual maps consistent with ψ for Example 6", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+    const summary = interactionLawToDualMap(packaged, { sampleLimit: 6 });
+
+    expect(summary.monadDiagram.holds).toBe(true);
+    expect(summary.comonadDiagram.holds).toBe(true);
+    expect(summary.diagnostics).toContain(
+      "interactionLawToDualMap: dual maps agree with ψ on sampled entries.",
+    );
+
+    const reconstruction = interactionLawFromDualMap({
+      interaction: packaged,
+      monadToDual: summary.monadToDual,
+      comonadToDual: summary.comonadToDual,
+      sampleLimit: 6,
+    });
+
+    expect(reconstruction.reconstructsPsi).toBe(true);
+    expect(reconstruction.monadDiagram.holds).toBe(true);
+    expect(reconstruction.comonadDiagram.holds).toBe(true);
+  });
+
+  it("flags mismatches when the monad dual map is altered", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+    const summary = interactionLawToDualMap(packaged, { sampleLimit: 5 });
+
+    const wrongMonadToDual = constructNaturalTransformationWithWitness(
+      summary.monadToDual.witness.source,
+      summary.monadToDual.witness.target,
+      (object) => {
+        const component = summary.monadToDual.transformation.component(object);
+        const domain = component.dom as SetObj<unknown>;
+        const codomain = component.cod as SetObj<unknown>;
+        const rightCarrier = packaged.law.right.functor.F0(object) as SetObj<unknown>;
+        const fallbackRight = enumerate(rightCarrier)[0];
+        if (fallbackRight === undefined) {
+          return component as unknown as SetHom<unknown, unknown>;
+        }
+        return SetCat.hom(domain, codomain, (element) => {
+          const baseAssignment = component.map(element);
+          const constantValue = baseAssignment(fallbackRight);
+          return ((_: unknown) => constantValue) as (input: unknown) => unknown;
+        });
+      },
+    );
+
+    const reconstruction = interactionLawFromDualMap({
+      interaction: packaged,
+      monadToDual: wrongMonadToDual,
+      comonadToDual: summary.comonadToDual,
+      sampleLimit: 5,
+    });
+
+    expect(reconstruction.reconstructsPsi).toBe(false);
+    expect(reconstruction.monadDiagram.holds).toBe(false);
+    expect(reconstruction.monadDiagram.mismatches).toBeGreaterThan(0);
   });
 });
 
