@@ -19,6 +19,14 @@ export function makeGraph(
   for (const node of nodes) {
     nodeSet.add(node);
   }
+  // To be compatible with compiled output that sometimes assumes
+  // an array (indexed access / .length) and sometimes a Set (has()),
+  // produce an Array of nodes but attach a `.has` method that
+  // delegates to the underlying Set. This keeps runtime behaviour
+  // working for both styles of compiled code.
+  const nodeArray: NodeId[] = Array.from(nodeSet);
+  // attach a has method so callers that expect a Set still work
+  (nodeArray as any).has = (value: NodeId) => nodeSet.has(value);
   const seenIds = new Set<string>();
   const edgeList: Edge[] = [];
   let auto = 0;
@@ -33,5 +41,5 @@ export function makeGraph(
     seenIds.add(id);
     edgeList.push({ id, src: edge.src, dst: edge.dst });
   }
-  return { nodes: nodeSet, edges: edgeList };
+  return { nodes: nodeArray as unknown as ReadonlySet<NodeId>, edges: edgeList };
 }

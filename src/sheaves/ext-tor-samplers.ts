@@ -244,7 +244,7 @@ export const sampleExtFromTensor = <Left, Right, Tensor>(
       cohomologyRank: rank,
       witnessCount: relevantWitnesses.length,
       violationCount: relevantViolations.length,
-      mapLabels: config.mapLabels,
+      mapLabels: config.mapLabels ?? [],
       matches,
       details,
     }

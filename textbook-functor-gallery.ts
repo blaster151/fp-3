@@ -195,17 +195,29 @@ const buildForgetfulMonoidFunctor = (
 ): FunctorWithWitness<Monoid<boolean>, MonoidHom<boolean, boolean>, SetObj<string>, SetHom<string, string>> => {
   const encodeBoolean = (value: boolean): string => (value ? "true" : "false");
   const decodeBoolean = (label: string): boolean => label === "true";
-  const carrierFrom = (elements: ReadonlyArray<boolean> | undefined): SetObj<string> =>
-    SetCat.obj((elements ?? []).map(encodeBoolean));
+  // Cache created Set objects so repeated calls for the same monoid return
+  // the same `SetObj` instance. This ensures that composed images of
+  // arrows live in the same carrier instances and `SetCat.compose`
+  // does not report domain/codomain mismatches.
+  const setCache = new Map<Monoid<boolean>, SetObj<string>>();
+  const getSetForMonoid = (m: Monoid<boolean> | undefined, elements?: ReadonlyArray<boolean>): SetObj<string> => {
+    if (!m) {
+      return SetCat.obj((elements ?? []).map(encodeBoolean));
+    }
+    const existing = setCache.get(m);
+    if (existing) return existing;
+    const created = SetCat.obj((elements ?? m.elements ?? []).map(encodeBoolean));
+    setCache.set(m, created);
+    return created;
+  };
 
   const functor: Functor<Monoid<boolean>, MonoidHom<boolean, boolean>, SetObj<string>, SetHom<string, string>> = {
-    F0: (monoid) => carrierFrom(monoid.elements),
-    F1: (arrow) =>
-      SetCat.hom(
-        carrierFrom(arrow.dom.elements),
-        carrierFrom(arrow.cod.elements),
-        (label) => encodeBoolean(arrow.map(decodeBoolean(label))),
-      ),
+    F0: (monoid) => getSetForMonoid(monoid, monoid.elements),
+    F1: (arrow) => {
+      const dom = getSetForMonoid(arrow.dom, arrow.dom.elements);
+      const cod = getSetForMonoid(arrow.cod, arrow.cod.elements);
+      return SetCat.hom(dom, cod, (label) => encodeBoolean(arrow.map(decodeBoolean(label))));
+    },
   };
   return constructFunctorWithWitness(
     monoidCategory,
@@ -365,7 +377,8 @@ const z2ToZ3: FinGrpHom = {
   name: "inclZ₂→Z₃",
   dom: "Z₂",
   cod: "Z₃",
-  map: (value) => (value === "0" ? "0" : "1"),
+  // map both elements of Z₂ to the identity in Z₃ to form a valid group homomorphism
+  map: () => "0",
 };
 
 if (!FinGrp.isHom(z2, z3, z2ToZ3)) {
@@ -443,14 +456,25 @@ const setCategory = makeSetCategory([z2Set, z3Set, s3Set, z4Set, v4Set, extraTwo
 const setSamples = collectSetGenerators(setCategory);
 
 const groupToSetFunctor = (): FunctorWithWitness<string, FinGrpHom, SetObj<string>, SetHom<string, string>> => {
+  // Cache created Set objects so repeated calls for the same group name
+  // return the same `SetObj` instance. This ensures that composed images
+  // of arrows live in the same carrier instances and `SetCat.compose`
+  // does not report domain/codomain mismatches.
+  const setCache = new Map<string, SetObj<string>>();
+  const getSetForGroup = (name: string): SetObj<string> => {
+    const existing = setCache.get(name);
+    if (existing) return existing;
+    const group = finGrpCategory.lookup(name);
+    const created = makeGroupSet(group);
+    setCache.set(name, created);
+    return created;
+  };
+
   const functor: Functor<string, FinGrpHom, SetObj<string>, SetHom<string, string>> = {
-    F0: (name) => {
-      const group = finGrpCategory.lookup(name);
-      return makeGroupSet(group);
-    },
+    F0: (name) => getSetForGroup(name),
     F1: (arrow) => {
-      const dom = makeGroupSet(finGrpCategory.lookup(arrow.dom));
-      const cod = makeGroupSet(finGrpCategory.lookup(arrow.cod));
+      const dom = getSetForGroup(arrow.dom);
+      const cod = getSetForGroup(arrow.cod);
       return SetCat.hom(dom, cod, arrow.map);
     },
   };
