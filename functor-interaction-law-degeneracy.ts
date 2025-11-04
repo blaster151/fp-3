@@ -435,8 +435,30 @@ const gatherBinaryArtifacts = <Obj, Arr, Left, Right, Value>(
   if (kPrimeGap) {
     artifacts.kPrimeGap = kPrimeGap;
   }
-
-  return artifacts;
+  
+  return {
+    object: artifacts.object,
+    operationComponent: artifacts.operationComponent,
+    lawvereMetadata: artifacts.lawvereMetadata,
+    dayReferenceMetadata: artifacts.dayReferenceMetadata,
+    ...(artifacts.operationMetadata ? { operationMetadata: artifacts.operationMetadata } : {}),
+    ...(artifacts.duplication ? { duplication: artifacts.duplication } : {}),
+    ...(artifacts.duplicationGap ? { duplicationGap: artifacts.duplicationGap } : {}),
+    ...(artifacts.substitution ? { substitution: artifacts.substitution } : {}),
+    ...(artifacts.substitutionGap ? { substitutionGap: artifacts.substitutionGap } : {}),
+    ...(artifacts.transformation ? { transformation: artifacts.transformation } : {}),
+    ...(artifacts.transformationGap ? { transformationGap: artifacts.transformationGap } : {}),
+    ...(artifacts.zeroComparison ? { zeroComparison: artifacts.zeroComparison } : {}),
+    ...(artifacts.zeroComparisonGap ? { zeroComparisonGap: artifacts.zeroComparisonGap } : {}),
+    ...(artifacts.toTerminal ? { toTerminal: artifacts.toTerminal } : {}),
+    ...(artifacts.toTerminalGap ? { toTerminalGap: artifacts.toTerminalGap } : {}),
+    ...(artifacts.terminalCoproduct ? { terminalCoproduct: artifacts.terminalCoproduct } : {}),
+    ...(artifacts.terminalDiagonal ? { terminalDiagonal: artifacts.terminalDiagonal } : {}),
+    ...(artifacts.terminalDiagonalGap ? { terminalDiagonalGap: artifacts.terminalDiagonalGap } : {}),
+    ...(artifacts.zeroCoproduct ? { zeroCoproduct: artifacts.zeroCoproduct } : {}),
+    ...(artifacts.kPrime ? { kPrime: artifacts.kPrime } : {}),
+    ...(artifacts.kPrimeGap ? { kPrimeGap: artifacts.kPrimeGap } : {}),
+  };
 };
 
 const buildBinarySteps = <Obj, Arr, Left, Right, Value>(
