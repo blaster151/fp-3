@@ -41,7 +41,7 @@ import {
   type SetTerminalObject,
 } from "./set-cat";
 import { setSimpleCategory } from "./set-simple-category";
-import { SimpleCat } from "./simple-cat";
+import type { SimpleCat } from "./simple-cat";
 import type { PromonoidalKernel, PromonoidalTensorValue } from "./promonoidal-structure";
 import type {
   FunctorOperationDegeneracyReport,
@@ -2449,7 +2449,7 @@ export const finalInteractionLaw = <Obj, Arr, Value = boolean>(
   const evaluationValue = options.evaluationValue ?? ((false as unknown) as Value);
   const dualizing = options.dualizing ?? (SetCat.obj([false, true], { tag: "FinalDualizing" }) as SetObj<Value>);
 
-  const terminalSimpleCategory = setSimpleCategory as SimpleCat<
+  const terminalSimpleCategory = setSimpleCategory as unknown as SimpleCat<
     SetObj<SetTerminalObject>,
     SetHom<SetTerminalObject, SetTerminalObject>
   >;
@@ -2463,7 +2463,7 @@ export const finalInteractionLaw = <Obj, Arr, Value = boolean>(
     },
   );
 
-  const initialSimpleCategory = setSimpleCategory as SimpleCat<
+  const initialSimpleCategory = setSimpleCategory as unknown as SimpleCat<
     SetObj<never>,
     SetHom<never, never>
   >;
@@ -2613,7 +2613,7 @@ export const productInteractionLaw = <
     return product;
   };
 
-  const leftPairSimpleCategory = setSimpleCategory as SimpleCat<
+  const leftPairSimpleCategory = setSimpleCategory as unknown as SimpleCat<
     SetObj<readonly [Left0, Left1]>,
     SetHom<readonly [Left0, Left1], readonly [Left0, Left1]>
   >;
@@ -2638,7 +2638,7 @@ export const productInteractionLaw = <
     },
   );
 
-  const rightPairSimpleCategory = setSimpleCategory as SimpleCat<
+  const rightPairSimpleCategory = setSimpleCategory as unknown as SimpleCat<
     SetObj<readonly [Right0, Right1]>,
     SetHom<readonly [Right0, Right1], readonly [Right0, Right1]>
   >;
@@ -2841,7 +2841,7 @@ export const coproductInteractionLaw = <
     return coproduct;
   };
 
-  const leftCoproductSimpleCategory = setSimpleCategory as SimpleCat<
+  const leftCoproductSimpleCategory = setSimpleCategory as unknown as SimpleCat<
     SetObj<Coproduct<Left0, Left1>>,
     SetHom<Coproduct<Left0, Left1>, Coproduct<Left0, Left1>>
   >;
@@ -2868,7 +2868,7 @@ export const coproductInteractionLaw = <
     },
   );
 
-  const rightCoproductSimpleCategory = setSimpleCategory as SimpleCat<
+  const rightCoproductSimpleCategory = setSimpleCategory as unknown as SimpleCat<
     SetObj<Coproduct<Right0, Right1>>,
     SetHom<Coproduct<Right0, Right1>, Coproduct<Right0, Right1>>
   >;
@@ -3470,7 +3470,7 @@ export const deriveInteractionLawLeftCommaPresentation = <Obj, Arr, Left, Right,
     arrows: base.arrows,
     composablePairs: enumerateComposablePairs(base),
   } as const;
-  const exponentialSimpleCategory = setSimpleCategory as SimpleCat<
+  const exponentialSimpleCategory = setSimpleCategory as unknown as SimpleCat<
     SetObj<ExponentialArrow<Right, Value>>,
     SetHom<ExponentialArrow<Right, Value>, ExponentialArrow<Right, Value>>
   >;
@@ -3486,7 +3486,7 @@ export const deriveInteractionLawLeftCommaPresentation = <Obj, Arr, Left, Right,
     internalHomFunctor,
     samples,
     [
-      "Internal hom functor X ? [G(X), ?] induced from the interaction law's right witness.",
+      "Internal hom functor X -> [G(X), ?] induced from the interaction law's right witness.",
       "Targets land in Set thanks to SetCat.exponential carriers registered per object.",
     ],
   );
