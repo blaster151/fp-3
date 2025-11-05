@@ -420,7 +420,7 @@ export const monadComonadInteractionLawToMonoid = <
         multiplicationChecked += 1;
         const expected = interaction.law.evaluate(primal, dual);
         const actual = arrow(dual);
-        if (!semanticsAwareEquals(expected, actual)) {
+        if (!Object.is(expected, actual)) {
           multiplicationMismatches += 1;
           if (multiplicationFailures.length < sampleLimit) {
             multiplicationFailures.push({
@@ -487,7 +487,7 @@ export const monadComonadInteractionLawToMonoid = <
         unitChecked += 1;
         const expected = interaction.law.evaluate(primal, dual);
         const actual = arrow(dual);
-        if (!semanticsAwareEquals(expected, actual)) {
+        if (!Object.is(expected, actual)) {
           unitMismatches += 1;
           if (unitFailures.length < sampleLimit) {
             unitFailures.push({
@@ -625,7 +625,7 @@ export const interactionLawMonoidToMonadComonadLaw = <
     monad: input.monad,
     comonad: input.comonad,
     law: input.monoid.law,
-    metadata,
+    ...(metadata ? { metadata } : {}),
     options,
   });
 };
@@ -680,12 +680,14 @@ export const deriveGreatestInteractingFunctorForMonadComonadLaw = <
     options.metadata,
   );
 
+  const sweedler = options.sweedler ?? interaction.sweedler;
+  const comma = options.comma ?? interaction.comma;
+  const dual = options.dual ?? interaction.dual;
   const greatest = greatestInteractingFunctor(interaction.law, {
-    ...options,
-    sweedler: options.sweedler ?? interaction.sweedler,
-    comma: options.comma ?? interaction.comma,
-    dual: options.dual ?? interaction.dual,
-    metadata,
+    sweedler,
+    comma,
+    ...(dual ? { dual } : {}),
+    ...(metadata ? { metadata } : {}),
   });
 
   const diagnostics: string[] = [];
@@ -768,11 +770,12 @@ export const deriveGreatestInteractingComonadForMonadComonadLaw = <
     options.metadata,
   );
 
+  const sweedler = options.sweedler ?? interaction.sweedler;
+  const dual = options.dual ?? interaction.dual;
   const greatest = greatestInteractingComonad(interaction.law, {
-    ...options,
-    sweedler: options.sweedler ?? interaction.sweedler,
-    dual: options.dual ?? interaction.dual,
-    metadata,
+    sweedler,
+    ...(dual ? { dual } : {}),
+    ...(metadata ? { metadata } : {}),
   });
 
   const diagnostics: string[] = [];
@@ -1358,7 +1361,7 @@ export const verifySweedlerDualFactorization = <
       : `verifySweedlerDualFactorization: encountered ${counterexamples.length} mismatched assignment(s).`,
   );
   if (!holds && counterexamples.length > 0) {
-    const first = counterexamples[0];
+    const first = counterexamples[0]!;
     diagnostics.push(
       `verifySweedlerDualFactorization: first mismatch at object ${String(
         first.object,
@@ -4106,7 +4109,7 @@ export const stretchMonadComonadInteractionLaw = <
     monad: input.monad,
     comonad: input.comonad,
     law: stretchedLaw,
-    metadata,
+    ...(metadata ? { metadata } : {}),
     ...(input.packageOptions ? { options: input.packageOptions } : {}),
   });
 
@@ -4226,7 +4229,7 @@ export const tensorMonadComonadInteractionLaws = <
     monad: input.monad,
     comonad: input.comonad,
     law: product.law,
-    metadata,
+    ...(metadata ? { metadata } : {}),
     ...(input.packageOptions ? { options: input.packageOptions } : {}),
   });
 
@@ -4328,7 +4331,7 @@ export const composeMonadComonadInteractionLaws = <
     monad: input.monad,
     comonad: input.comonad,
     law: input.law,
-    metadata,
+    ...(metadata ? { metadata } : {}),
     ...(input.packageOptions ? { options: input.packageOptions } : {}),
   });
 

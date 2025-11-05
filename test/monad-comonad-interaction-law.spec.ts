@@ -330,7 +330,7 @@ describe("checkMonadComonadInteractionLaw", () => {
     expect(report.finalLaw).toBeDefined();
     expect(report.metadata).toContain("Example9 free semigroup operations");
     const firstZero = report.commutativeBinary.zeroComparisons[0];
-    expect(firstZero?.zero).toBe(SetCat.initialObj);
+    expect(firstZero?.zero).toBe(SetCat.initial().object);
     const samplePrimal = Array.from(law.primalCarrier)[0]!;
     const sampleDual = Array.from(law.dualCarrier)[0]!;
     expect(typeof law.evaluate(samplePrimal, sampleDual)).toBe("boolean");

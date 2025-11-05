@@ -3734,8 +3734,8 @@ export interface FixedLeftInteractionMorphism<Obj, Arr, Left, RightDomain, Right
   readonly transformation: NaturalTransformationWithWitness<
     Obj,
     Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
+    SetObj<RightDomain>,
+    SetHom<RightDomain, RightCodomain>
   >;
   readonly comparisons: ReadonlyArray<
     FixedLeftInteractionComparison<Obj, Left, RightDomain, RightCodomain, Value>
@@ -3750,8 +3750,8 @@ export interface FixedLeftInteractionMorphismInput<Obj, Arr, Left, RightDomain, 
   readonly transformation: NaturalTransformationWithWitness<
     Obj,
     Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
+    SetObj<RightDomain>,
+    SetHom<RightDomain, RightCodomain>
   >;
   readonly sampleLimit?: number;
 }
@@ -3789,7 +3789,7 @@ export const makeFixedLeftInteractionMorphism = <Obj, Arr, Left, RightDomain, Ri
 
     for (const element of primalElements) {
       for (const dual of dualElements) {
-        const mapped = component.map(dual);
+        const mapped = component.map(dual as RightDomain) as RightCodomain;
         const primal: IndexedElement<Obj, Left> = { object, element };
         const domainDual: IndexedElement<Obj, RightDomain> = { object, element: dual };
         const codomainDual: IndexedElement<Obj, RightCodomain> = { object, element: mapped };
@@ -3842,8 +3842,8 @@ export interface FixedRightInteractionMorphism<Obj, Arr, LeftDomain, LeftCodomai
   readonly transformation: NaturalTransformationWithWitness<
     Obj,
     Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
+    SetObj<LeftDomain>,
+    SetHom<LeftDomain, LeftCodomain>
   >;
   readonly comparisons: ReadonlyArray<
     FixedRightInteractionComparison<Obj, LeftDomain, LeftCodomain, Right, Value>
@@ -3858,8 +3858,8 @@ export interface FixedRightInteractionMorphismInput<Obj, Arr, LeftDomain, LeftCo
   readonly transformation: NaturalTransformationWithWitness<
     Obj,
     Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
+    SetObj<LeftDomain>,
+    SetHom<LeftDomain, LeftCodomain>
   >;
   readonly sampleLimit?: number;
 }
@@ -3896,7 +3896,7 @@ export const makeFixedRightInteractionMorphism = <Obj, Arr, LeftDomain, LeftCodo
     const primalElements = enumerateCarrier(domainCarrier);
 
     for (const element of primalElements) {
-      const mapped = component.map(element);
+      const mapped = component.map(element as LeftDomain) as LeftCodomain;
       const domainPrimal: IndexedElement<Obj, LeftDomain> = { object, element };
       const codomainPrimal: IndexedElement<Obj, LeftCodomain> = { object, element: mapped };
       for (const dual of dualElements) {
@@ -4075,8 +4075,8 @@ export interface FixedRightFinalObject<Obj, Arr, Left, Right, Value> {
   readonly sigma: NaturalTransformationWithWitness<
     Obj,
     Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
+    SetObj<Left>,
+    SetHom<Left, ExponentialArrow<Right, Value>>
   >;
   readonly mediator: FixedRightInteractionMorphism<
     Obj,
@@ -4150,7 +4150,7 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
     ...(law.operations ? { operations: law.operations } : {}),
   });
 
-  const sigma = constructNaturalTransformationWithWitness(
+  const sigmaRaw = constructNaturalTransformationWithWitness(
     contravariantToOppositeFunctor(law.left),
     presentation.internalHomOpposite,
     (object) => {
@@ -4168,6 +4168,12 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
       ],
     },
   );
+  const sigma = sigmaRaw as unknown as NaturalTransformationWithWitness<
+    Obj,
+    Arr,
+    SetObj<Left>,
+    SetHom<Left, ExponentialArrow<Right, Value>>
+  >;
 
   const mediator = makeFixedRightInteractionMorphism({
     domain: law,
