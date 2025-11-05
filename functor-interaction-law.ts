@@ -41,7 +41,7 @@ import {
   type SetTerminalObject,
 } from "./set-cat";
 import { setSimpleCategory } from "./set-simple-category";
-import type { PromonoidalKernel } from "./promonoidal-structure";
+import type { PromonoidalKernel, PromonoidalTensorValue } from "./promonoidal-structure";
 import type {
   FunctorOperationDegeneracyReport,
 } from "./functor-interaction-law-degeneracy";
@@ -570,7 +570,7 @@ export const stretchInteractionLaw = <Obj, Arr, Left, Right, Value, LeftPrime, R
     operations,
   } = options;
 
-  const convolution = dayTensor(law.kernel, left.functor, right.functor);
+  const convolution = dayTensor(law.kernel, left, right);
 
   const pairing = (
     object: Obj,
@@ -586,13 +586,13 @@ export const stretchInteractionLaw = <Obj, Arr, Left, Right, Value, LeftPrime, R
     }
 
     return SetCat.hom(carrier, law.dualizing, (cls) => {
-      const data = cls as unknown as {
+      const data = cls as {
         readonly diagonalObject: Obj;
         readonly witness: {
           readonly kernelLeft: Obj;
           readonly kernelRight: Obj;
           readonly output: Obj;
-          readonly kernelValue: unknown;
+          readonly kernelValue: PromonoidalTensorValue<Obj, Arr>;
           readonly leftElement: LeftPrime;
           readonly rightElement: RightPrime;
         };
@@ -652,6 +652,8 @@ export const stretchInteractionLaw = <Obj, Arr, Left, Right, Value, LeftPrime, R
     return aggregatePostprocess({ baseValue, contributions, mapped });
   };
 
+  const combinedOperations = operations ?? law.operations;
+
   return makeFunctorInteractionLaw({
     kernel: law.kernel,
     left,
@@ -661,7 +663,7 @@ export const stretchInteractionLaw = <Obj, Arr, Left, Right, Value, LeftPrime, R
     pairing,
     aggregate,
     ...(tags ? { tags } : {}),
-    operations: operations ?? law.operations,
+    ...(combinedOperations ? { operations: combinedOperations } : {}),
   });
 };
 
@@ -676,18 +678,18 @@ export const selfDualInteractionLaw = <Obj, Arr, Left, Right, Value>(
   const dualSpace = dualChuSpace(space);
   const dualLeft = oppositeFunctorToContravariant(law.kernel.base, law.right);
   const dualRight = contravariantToOppositeFunctor(law.left);
-  const convolution = dayTensor(law.kernel, dualLeft.functor, dualRight.functor);
+  const convolution = dayTensor(law.kernel, dualLeft, dualRight);
 
   const pairing = (
     _object: Obj,
     carrier: ReturnType<typeof convolution.functor.functor.F0>,
   ) => SetCat.hom(carrier, law.dualizing, (cls) => {
-    const data = cls as unknown as {
+    const data = cls as {
       readonly witness: {
         readonly kernelLeft: Obj;
         readonly kernelRight: Obj;
         readonly output: Obj;
-        readonly kernelValue: unknown;
+        readonly kernelValue: PromonoidalTensorValue<Obj, Arr>;
         readonly leftElement: Right;
         readonly rightElement: Left;
       };
@@ -732,7 +734,7 @@ export const selfDualInteractionLaw = <Obj, Arr, Left, Right, Value>(
     dualizing: law.dualizing,
     pairing,
     aggregate,
-    operations: law.operations,
+    ...(law.operations ? { operations: law.operations } : {}),
     tags: { primal: "SelfDualPrimal", dual: "SelfDualDual" },
   });
 
@@ -2439,8 +2441,10 @@ export const finalInteractionLaw = <Obj, Arr, Value = boolean>(
   kernel: PromonoidalKernel<Obj, Arr>,
   options: FinalInteractionLawOptions<Obj, Arr, Value> = {},
 ): FunctorInteractionLaw<Obj, Arr, SetTerminalObject, never, Value> => {
-  const terminal = SetCat.terminalObj;
-  const initial = SetCat.initialObj;
+  const terminalData = SetCat.terminal();
+  const terminal = terminalData.object;
+  const initialData = SetCat.initial();
+  const initial = initialData.object;
   const evaluationValue = options.evaluationValue ?? ((false as unknown) as Value);
   const dualizing = options.dualizing ?? (SetCat.obj([false, true], { tag: "FinalDualizing" }) as SetObj<Value>);
 
@@ -2462,7 +2466,7 @@ export const finalInteractionLaw = <Obj, Arr, Value = boolean>(
     },
   );
 
-  const convolution = dayTensor(kernel, left.functor, right.functor);
+  const convolution = dayTensor(kernel, left, right);
 
   const pairing = (
     _object: Obj,
@@ -2480,7 +2484,7 @@ export const finalInteractionLaw = <Obj, Arr, Value = boolean>(
     pairing,
     aggregate,
     ...(options.tags ? { tags: options.tags } : {}),
-    operations: options.operations,
+    ...(options.operations ? { operations: options.operations } : {}),
   });
 };
 
@@ -2529,7 +2533,7 @@ const evaluateWitnessForLaw = <Obj, Arr, Left, Right, Value>(
     readonly kernelLeft: Obj;
     readonly kernelRight: Obj;
     readonly output: Obj;
-    readonly kernelValue: unknown;
+    readonly kernelValue: PromonoidalTensorValue<Obj, Arr>;
     readonly leftElement: Left;
     readonly rightElement: Right;
   },
@@ -2608,12 +2612,13 @@ export const productInteractionLaw = <
         const codomain = getLeftProduct(kernel.base.src(arrow));
         const map0 = law0.left.functor.F1(arrow);
         const map1 = law1.left.functor.F1(arrow);
-        return SetCat.hom(domain.object, codomain.object, (pair) => (
+        const map = SetCat.hom(domain.object, codomain.object, (pair) => (
           [
             map0.map(pair[0]),
             map1.map(pair[1]),
           ] as const
         )) as SetHom<readonly [Left0, Left1], readonly [Left0, Left1]>;
+        return map as SetHom<unknown, unknown>;
       },
     },
   );
@@ -2628,17 +2633,18 @@ export const productInteractionLaw = <
         const codomain = getRightProduct(kernel.base.dst(arrow));
         const map0 = law0.right.functor.F1(arrow);
         const map1 = law1.right.functor.F1(arrow);
-        return SetCat.hom(domain.object, codomain.object, (pair) => (
+        const map = SetCat.hom(domain.object, codomain.object, (pair) => (
           [
             map0.map(pair[0]),
             map1.map(pair[1]),
           ] as const
         )) as SetHom<readonly [Right0, Right1], readonly [Right0, Right1]>;
+        return map as SetHom<unknown, unknown>;
       },
     },
   );
 
-  const convolution = dayTensor(kernel, left.functor, right.functor);
+  const convolution = dayTensor(kernel, left, right);
   const dualizingProduct = SetCat.product(law0.dualizing, law1.dualizing);
 
   const fiber0 = buildFiberLookup(law0);
@@ -2648,13 +2654,13 @@ export const productInteractionLaw = <
     object: Obj,
     carrier: ReturnType<typeof convolution.functor.functor.F0>,
   ) => SetCat.hom(carrier, dualizingProduct.object, (cls) => {
-    const data = cls as unknown as {
+    const data = cls as {
       readonly diagonalObject: Obj;
       readonly witness: {
         readonly kernelLeft: Obj;
         readonly kernelRight: Obj;
         readonly output: Obj;
-        readonly kernelValue: unknown;
+        readonly kernelValue: PromonoidalTensorValue<Obj, Arr>;
         readonly leftElement: readonly [Left0, Left1];
         readonly rightElement: readonly [Right0, Right1];
       };
@@ -2826,7 +2832,7 @@ export const coproductInteractionLaw = <
         const codomain = getLeftCoproduct(kernel.base.src(arrow));
         const map0 = law0.left.functor.F1(arrow);
         const map1 = law1.left.functor.F1(arrow);
-        return SetCat.hom(domain.object, codomain.object, (value) => {
+        const map = SetCat.hom(domain.object, codomain.object, (value) => {
           if (value.tag === "inl") {
             const mapped = map0.map(value.value);
             return codomain.injections.inl.map(mapped);
@@ -2834,6 +2840,7 @@ export const coproductInteractionLaw = <
           const mapped = map1.map(value.value);
           return codomain.injections.inr.map(mapped);
         }) as SetHom<Coproduct<Left0, Left1>, Coproduct<Left0, Left1>>;
+        return map as SetHom<unknown, unknown>;
       },
     },
   );
@@ -2848,7 +2855,7 @@ export const coproductInteractionLaw = <
         const codomain = getRightCoproduct(kernel.base.dst(arrow));
         const map0 = law0.right.functor.F1(arrow);
         const map1 = law1.right.functor.F1(arrow);
-        return SetCat.hom(domain.object, codomain.object, (value) => {
+        const map = SetCat.hom(domain.object, codomain.object, (value) => {
           if (value.tag === "inl") {
             const mapped = map0.map(value.value);
             return codomain.injections.inl.map(mapped);
@@ -2856,11 +2863,12 @@ export const coproductInteractionLaw = <
           const mapped = map1.map(value.value);
           return codomain.injections.inr.map(mapped);
         }) as SetHom<Coproduct<Right0, Right1>, Coproduct<Right0, Right1>>;
+        return map as SetHom<unknown, unknown>;
       },
     },
   );
 
-  const convolution = dayTensor(kernel, left.functor, right.functor);
+  const convolution = dayTensor(kernel, left, right);
   const dualizingCoproduct = SetCat.coproduct(law0.dualizing, law1.dualizing);
 
   const fiber0 = buildFiberLookup(law0);
@@ -2870,13 +2878,13 @@ export const coproductInteractionLaw = <
     object: Obj,
     carrier: ReturnType<typeof convolution.functor.functor.F0>,
   ) => SetCat.hom(carrier, dualizingCoproduct.object, (cls) => {
-    const data = cls as unknown as {
+    const data = cls as {
       readonly diagonalObject: Obj;
       readonly witness: {
         readonly kernelLeft: Obj;
         readonly kernelRight: Obj;
         readonly output: Obj;
-        readonly kernelValue: unknown;
+        readonly kernelValue: PromonoidalTensorValue<Obj, Arr>;
         readonly leftElement: Coproduct<Left0, Left1>;
         readonly rightElement: Coproduct<Right0, Right1>;
       };
@@ -3951,7 +3959,7 @@ export const buildFixedRightInitialObject = <Obj, Arr, Left, Right, Value>(
   });
   const collapseValue = finalLaw.aggregate([]);
 
-  const convolution = dayTensor(law.kernel, terminalFunctor.functor, law.right.functor);
+  const convolution = dayTensor(law.kernel, terminalFunctor, law.right);
   const pairing = (
     _object: Obj,
     carrier: ReturnType<typeof convolution.functor.functor.F0>,
@@ -4062,7 +4070,7 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
   const presentation = deriveInteractionLawLeftCommaPresentation(law);
   const internalHom = presentation.internalHom;
 
-  const convolution = dayTensor(law.kernel, internalHom.functor, law.right.functor);
+  const convolution = dayTensor(law.kernel, internalHom, law.right);
   const pairing = (
     _object: Obj,
     carrier: ReturnType<typeof convolution.functor.functor.F0>,
