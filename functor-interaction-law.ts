@@ -970,20 +970,27 @@ export const greatestInteractingFunctor = <Obj, Arr, Left, Right, Value>(
     ["Greatest interacting functor packages Sweedler dual evaluations."],
   );
 
-  const sourceOpposite = law.left.witness.oppositeWitness as FunctorWithWitness<
-    Obj,
-    Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >;
-  const targetOpposite = comma.internalHomOpposite as FunctorWithWitness<
-    Obj,
-    Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >;
+  const sourceOpposite: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    law.left.witness.oppositeWitness as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
+  const targetOpposite: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    comma.internalHomOpposite as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
 
-  const transformation = constructNaturalTransformationWithWitness(
+  const transformation = constructNaturalTransformationWithWitness<
+    Obj,
+    Arr,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
     sourceOpposite,
     targetOpposite,
     (object) => {
@@ -1094,20 +1101,27 @@ export const greatestInteractingComonad = <Obj, Arr, Left, Right, Value>(
     ["Greatest interacting comonad packages Sweedler dual evaluations."],
   );
 
-  const comonadSourceOpposite = dual.law.left.witness.oppositeWitness as FunctorWithWitness<
-    Obj,
-    Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >;
-  const comonadTargetOpposite = comma.internalHomOpposite as FunctorWithWitness<
-    Obj,
-    Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >;
+  const comonadSourceOpposite: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    dual.law.left.witness.oppositeWitness as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
+  const comonadTargetOpposite: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    comma.internalHomOpposite as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
 
-  const transformation = constructNaturalTransformationWithWitness(
+  const transformation = constructNaturalTransformationWithWitness<
+    Obj,
+    Arr,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
     comonadSourceOpposite,
     comonadTargetOpposite,
     (object) => {
@@ -3734,8 +3748,8 @@ export interface FixedLeftInteractionMorphism<Obj, Arr, Left, RightDomain, Right
   readonly transformation: NaturalTransformationWithWitness<
     Obj,
     Arr,
-    SetObj<RightDomain>,
-    SetHom<RightDomain, RightCodomain>
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
   >;
   readonly comparisons: ReadonlyArray<
     FixedLeftInteractionComparison<Obj, Left, RightDomain, RightCodomain, Value>
@@ -3750,8 +3764,8 @@ export interface FixedLeftInteractionMorphismInput<Obj, Arr, Left, RightDomain, 
   readonly transformation: NaturalTransformationWithWitness<
     Obj,
     Arr,
-    SetObj<RightDomain>,
-    SetHom<RightDomain, RightCodomain>
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
   >;
   readonly sampleLimit?: number;
 }
@@ -3789,7 +3803,7 @@ export const makeFixedLeftInteractionMorphism = <Obj, Arr, Left, RightDomain, Ri
 
     for (const element of primalElements) {
       for (const dual of dualElements) {
-        const mapped = component.map(dual as RightDomain) as RightCodomain;
+          const mapped = component.map(dual) as RightCodomain;
         const primal: IndexedElement<Obj, Left> = { object, element };
         const domainDual: IndexedElement<Obj, RightDomain> = { object, element: dual };
         const codomainDual: IndexedElement<Obj, RightCodomain> = { object, element: mapped };
@@ -3842,8 +3856,8 @@ export interface FixedRightInteractionMorphism<Obj, Arr, LeftDomain, LeftCodomai
   readonly transformation: NaturalTransformationWithWitness<
     Obj,
     Arr,
-    SetObj<LeftDomain>,
-    SetHom<LeftDomain, LeftCodomain>
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
   >;
   readonly comparisons: ReadonlyArray<
     FixedRightInteractionComparison<Obj, LeftDomain, LeftCodomain, Right, Value>
@@ -3858,8 +3872,8 @@ export interface FixedRightInteractionMorphismInput<Obj, Arr, LeftDomain, LeftCo
   readonly transformation: NaturalTransformationWithWitness<
     Obj,
     Arr,
-    SetObj<LeftDomain>,
-    SetHom<LeftDomain, LeftCodomain>
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
   >;
   readonly sampleLimit?: number;
 }
@@ -3896,7 +3910,7 @@ export const makeFixedRightInteractionMorphism = <Obj, Arr, LeftDomain, LeftCodo
     const primalElements = enumerateCarrier(domainCarrier);
 
     for (const element of primalElements) {
-      const mapped = component.map(element as LeftDomain) as LeftCodomain;
+      const mapped = component.map(element) as LeftCodomain;
       const domainPrimal: IndexedElement<Obj, LeftDomain> = { object, element };
       const codomainPrimal: IndexedElement<Obj, LeftCodomain> = { object, element: mapped };
       for (const dual of dualElements) {
@@ -4072,12 +4086,7 @@ export interface FixedRightFinalObject<Obj, Arr, Left, Right, Value> {
     Value
   >;
   readonly presentation: InteractionLawLeftCommaPresentation<Obj, Arr, Left, Right, Value>;
-  readonly sigma: NaturalTransformationWithWitness<
-    Obj,
-    Arr,
-    SetObj<Left>,
-    SetHom<Left, ExponentialArrow<Right, Value>>
-  >;
+  readonly sigma: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
   readonly mediator: FixedRightInteractionMorphism<
     Obj,
     Arr,
@@ -4150,9 +4159,29 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
     ...(law.operations ? { operations: law.operations } : {}),
   });
 
-  const sigmaRaw = constructNaturalTransformationWithWitness(
-    contravariantToOppositeFunctor(law.left),
-    presentation.internalHomOpposite,
+  const sigmaSource: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    contravariantToOppositeFunctor(law.left) as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
+  const sigmaTarget: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    presentation.internalHomOpposite as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
+
+  const sigma = constructNaturalTransformationWithWitness<
+    Obj,
+    Arr,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
+    sigmaSource,
+    sigmaTarget,
     (object) => {
       const component = presentation.sigma.get(object);
       if (!component) {
@@ -4160,7 +4189,7 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
           `buildFixedRightFinalObject: missing sigma component for ${String(object)}.`,
         );
       }
-      return component;
+      return component as unknown as SetHom<unknown, unknown>;
     },
     {
       metadata: [
@@ -4168,12 +4197,6 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
       ],
     },
   );
-  const sigma = sigmaRaw as unknown as NaturalTransformationWithWitness<
-    Obj,
-    Arr,
-    SetObj<Left>,
-    SetHom<Left, ExponentialArrow<Right, Value>>
-  >;
 
   const mediator = makeFixedRightInteractionMorphism({
     domain: law,

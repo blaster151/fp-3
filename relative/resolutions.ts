@@ -96,9 +96,28 @@ export interface ResolutionMetadata<Obj, Arr, Payload, Evidence> {
   readonly details?: string;
 }
 
+interface NormalizedResolutionMetadata<Obj, Arr, Payload, Evidence> {
+  readonly precompositions: ReadonlyArray<
+    ResolutionPrecompositionWitness<Obj, Arr, Payload, Evidence>
+  >;
+  readonly pastings: ReadonlyArray<
+    ResolutionPastingWitness<Obj, Arr, Payload, Evidence>
+  >;
+  readonly fullyFaithfulPostcompositions: ReadonlyArray<
+    ResolutionFullyFaithfulPostcompositionWitness<Obj, Arr>
+  >;
+  readonly resoluteComposites: ReadonlyArray<
+    ResolutionResoluteCompositeWitness<Obj, Arr>
+  >;
+  readonly leftAdjointTransports: ReadonlyArray<
+    ResolutionLeftAdjointTransportWitness<Obj, Arr, Payload, Evidence>
+  >;
+  readonly details?: string;
+}
+
 const normalizeResolutionMetadata = <Obj, Arr, Payload, Evidence>(
   metadata: ResolutionMetadata<Obj, Arr, Payload, Evidence> | undefined,
-): ResolutionMetadata<Obj, Arr, Payload, Evidence> => ({
+): NormalizedResolutionMetadata<Obj, Arr, Payload, Evidence> => ({
   precompositions: [...(metadata?.precompositions ?? [])],
   pastings: [...(metadata?.pastings ?? [])],
   fullyFaithfulPostcompositions: [
@@ -112,7 +131,7 @@ const normalizeResolutionMetadata = <Obj, Arr, Payload, Evidence>(
 const mergeResolutionMetadata = <Obj, Arr, Payload, Evidence>(
   base: ResolutionMetadata<Obj, Arr, Payload, Evidence> | undefined,
   additions: Partial<ResolutionMetadata<Obj, Arr, Payload, Evidence>> = {},
-): ResolutionMetadata<Obj, Arr, Payload, Evidence> => {
+): NormalizedResolutionMetadata<Obj, Arr, Payload, Evidence> => {
   const normalized = normalizeResolutionMetadata(base);
   return {
     precompositions: [
@@ -139,7 +158,7 @@ const mergeResolutionMetadata = <Obj, Arr, Payload, Evidence>(
 };
 
 const describeResolutionMetadataSummary = <Obj, Arr, Payload, Evidence>(
-  metadata: ResolutionMetadata<Obj, Arr, Payload, Evidence>,
+  metadata: NormalizedResolutionMetadata<Obj, Arr, Payload, Evidence>,
 ): string => {
   const summary = `Resolution metadata threads ${
     metadata.precompositions?.length ?? 0

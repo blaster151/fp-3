@@ -1,6 +1,7 @@
 import {
   deriveInteractionLawCurrying,
   deriveInteractionLawLeftCommaPresentation,
+  deriveInteractionLawLeftCommaEquivalence,
   deriveInteractionLawSweedlerSummary,
   dualInteractionLaw,
   productInteractionLaw,
@@ -314,8 +315,10 @@ export const makeMonadComonadInteractionLaw = <
 
   const currying = options.currying ?? deriveInteractionLawCurrying(law);
   const comma = options.comma ?? deriveInteractionLawLeftCommaPresentation(law);
+  const commaEquivalence =
+    options.commaEquivalence ?? deriveInteractionLawLeftCommaEquivalence(law);
   const sweedler =
-    options.sweedler ?? deriveInteractionLawSweedlerSummary(law, { currying, comma });
+    options.sweedler ?? deriveInteractionLawSweedlerSummary(law, { currying, comma: commaEquivalence });
   const degeneracy =
     options.degeneracy ?? analyzeFunctorOperationDegeneracy<Obj, Arr, Left, Right, Value, LawObj, LawArr>(law);
 
@@ -348,11 +351,11 @@ export const makeMonadComonadInteractionLaw = <
     currying,
     psiComponents,
     comma,
+    commaEquivalence,
     sweedler,
     degeneracy,
     diagnostics,
     ...(metadata.length > 0 ? { metadata } : {}),
-    ...(options.commaEquivalence ? { commaEquivalence: options.commaEquivalence } : {}),
     ...(options.dual ? { dual: options.dual } : {}),
   };
 };
@@ -990,7 +993,7 @@ export const interactionLawToDualMap = <
     ?? dualInteractionLaw(interaction.law, {
       space: interaction.sweedler.space,
       currying: interaction.currying,
-      comma: interaction.comma,
+      comma: interaction.commaEquivalence,
       degeneracy: interaction.degeneracy,
     });
   diagnostics.push(

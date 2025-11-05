@@ -154,7 +154,7 @@ export const RelativeResolutionOracles = {
       left: overrides?.left ?? resolution.inclusion,
       right: overrides?.right ?? resolution.relativeMonad.carrier,
       unit: overrides?.unit ?? resolution.relativeMonad.unit,
-      details: overrides?.details,
+      ...(overrides?.details ? { details: overrides.details } : {}),
     });
     return {
       ...buildResult("identityUnitCriterion", report.holds, report.details, report.issues),

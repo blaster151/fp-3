@@ -361,7 +361,7 @@ export const analyzeUntypedLambdaRelativeMonad = (
     }
     if (config.maxTermDepth < 0) {
       issues.push(
-        `Substitution (${config.source}→${config.target}) depth must be non-negative, received ${config.maxTermDepth}.`,
+        `Substitution (${config.source}?${config.target}) depth must be non-negative, received ${config.maxTermDepth}.`,
       );
     }
     const substitutions = enumerateSubstitutions(config);
@@ -413,14 +413,14 @@ export const analyzeUntypedLambdaRelativeMonad = (
     for (const substitution of substitutions) {
       if (substitution.mapping.length !== config.source) {
         issues.push(
-          `Substitution (${config.source}→${config.target}) has incorrect arity ${substitution.mapping.length}.`,
+          `Substitution (${config.source}?${config.target}) has incorrect arity ${substitution.mapping.length}.`,
         );
         continue;
       }
       for (const component of substitution.mapping) {
         if (!isWellScoped(component, config.target)) {
           issues.push(
-            `Component ${termKey(component)} of substitution (${config.source}→${config.target}) is not well scoped for target ${config.target}.`,
+            `Component ${termKey(component)} of substitution (${config.source}?${config.target}) is not well scoped for target ${config.target}.`,
           );
         }
       }
@@ -461,7 +461,7 @@ export const analyzeUntypedLambdaRelativeMonad = (
             const viaComposite = extend(composed, term);
             if (!termsEqual(viaTau, viaComposite)) {
               issues.push(
-                `Associativity failed for (${sigmaConfig.source}→${sigmaConfig.target}) and (${tauConfig.source}→${tauConfig.target}) on term ${termKey(term)}.`,
+                `Associativity failed for (${sigmaConfig.source}?${sigmaConfig.target}) and (${tauConfig.source}?${tauConfig.target}) on term ${termKey(term)}.`,
               );
               break;
             }
@@ -479,13 +479,13 @@ export const analyzeUntypedLambdaRelativeMonad = (
       const right = compose(substitution, rightIdentity);
       if (left.mapping.length !== substitution.mapping.length) {
         issues.push(
-          `Left identity changed the arity of substitution (${config.source}→${config.target}).`,
+          `Left identity changed the arity of substitution (${config.source}?${config.target}).`,
         );
       } else {
         for (let index = 0; index < left.mapping.length; index += 1) {
           if (!termsEqual(left.mapping[index]!, substitution.mapping[index]!)) {
             issues.push(
-              `Left identity altered component ${index} of substitution (${config.source}→${config.target}).`,
+              `Left identity altered component ${index} of substitution (${config.source}?${config.target}).`,
             );
             break;
           }
@@ -493,13 +493,13 @@ export const analyzeUntypedLambdaRelativeMonad = (
       }
       if (right.mapping.length !== substitution.mapping.length) {
         issues.push(
-          `Right identity changed the arity of substitution (${config.source}→${config.target}).`,
+          `Right identity changed the arity of substitution (${config.source}?${config.target}).`,
         );
       } else {
         for (let index = 0; index < right.mapping.length; index += 1) {
           if (!termsEqual(right.mapping[index]!, substitution.mapping[index]!)) {
             issues.push(
-              `Right identity altered component ${index} of substitution (${config.source}→${config.target}).`,
+              `Right identity altered component ${index} of substitution (${config.source}?${config.target}).`,
             );
             break;
           }
@@ -591,7 +591,6 @@ const materialiseLazyLambdaWitness = (
 
   if (issues.length > 0) {
     return {
-      witness: undefined,
       contextSlice,
       substitutionSlice,
       issues: freezeArray(issues),
@@ -629,7 +628,7 @@ export const analyzeLazyLambdaRelativeMonad = (
       holds: false,
       issues: materialised.issues,
       details:
-        "Lazy λ-term witness materialisation failed; increase the context or substitution limits.",
+        "Lazy ?-term witness materialisation failed; increase the context or substitution limits.",
       contexts: [],
       substitutions: [],
       approximation: {
@@ -670,7 +669,7 @@ export const analyzeLazyLambdaKleisliSplitting = (
       holds: false,
       issues: materialised.issues,
       details:
-        "Lazy λ-term Kleisli materialisation failed; increase the context or substitution limits.",
+        "Lazy ?-term Kleisli materialisation failed; increase the context or substitution limits.",
       contexts: [],
       substitutions: [],
       approximation: {
@@ -704,7 +703,7 @@ const countableContexts: LazyReplayableIterable<LambdaContextConfiguration> =
         size += 1;
       }
     },
-  }), { description: "Countable λ-contexts" });
+  }), { description: "Countable ?-contexts" });
 
 const countableSubstitutions: LazyReplayableIterable<LambdaSubstitutionConfiguration> =
   createReplayableIterable(() => ({
@@ -729,7 +728,7 @@ const countableSubstitutions: LazyReplayableIterable<LambdaSubstitutionConfigura
         radius += 1;
       }
     },
-  }), { description: "Countable λ-substitutions" });
+  }), { description: "Countable ?-substitutions" });
 
 export const describeCountableLambdaRelativeMonadWitness = (): LazyLambdaRelativeMonadWitness => ({
   contexts: countableContexts,
