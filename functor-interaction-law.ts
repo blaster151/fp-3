@@ -255,6 +255,32 @@ const mergeMetadataList = (
 ): ReadonlyArray<string> | undefined =>
   inputs.reduce<ReadonlyArray<string> | undefined>((accumulator, current) => mergeMetadata(accumulator, current), undefined);
 
+const buildMonadOperation = <Obj, Arr, LawObj, LawArr>(
+  operation: MonadOperation<Obj, Arr, LawObj, LawArr>,
+  genericElement: ((object: Obj) => Arr) | undefined,
+  metadata: ReadonlyArray<string> | undefined,
+): MonadOperation<Obj, Arr, LawObj, LawArr> => ({
+  ...operation,
+  ...(genericElement && !operation.kleisliOnGeneric
+    ? { kleisliOnGeneric: genericElement }
+    : {}),
+  ...(metadata ? { metadata } : {}),
+});
+
+const buildComonadOperation = <Obj, Arr, LawObj, LawArr>(
+  operation: ComonadCooperation<Obj, Arr, LawObj, LawArr>,
+  duplication: ((object: Obj) => Arr) | undefined,
+  counit: ((object: Obj) => Arr) | undefined,
+  metadata: ReadonlyArray<string> | undefined,
+): ComonadCooperation<Obj, Arr, LawObj, LawArr> => ({
+  ...operation,
+  ...(duplication && !operation.genericDuplication
+    ? { genericDuplication: duplication }
+    : {}),
+  ...(counit && !operation.counit ? { counit } : {}),
+  ...(metadata ? { metadata } : {}),
+});
+
 const MONAD_UNIT_METADATA = [
   "Generic element witnesses derived from the monad unit ?.",
 ] as const;
@@ -285,94 +311,74 @@ export interface FunctorInteractionLawOperationsInput<Obj, Arr, LawObj = Obj, La
 export const makeFunctorInteractionLawOperations = <Obj, Arr, LawObj = Obj, LawArr = Arr>(
   input: FunctorInteractionLawOperationsInput<Obj, Arr, LawObj, LawArr>,
 ): FunctorInteractionLawOperations<Obj, Arr, LawObj, LawArr> => {
-  let monadOperations = input.monadOperations ?? [];
-  if (monadOperations.length > 0 && input.monadStructure?.unit) {
-    const addition = mergeMetadataList(
-      MONAD_UNIT_METADATA,
-      input.monadStructure.metadata,
-      input.monadStructure.unit.metadata,
-    );
-    const genericElement = (object: Obj) =>
-      input.monadStructure.unit.transformation.component(object);
-    monadOperations = monadOperations.map((operation) => {
-      const cloned: MonadOperation<Obj, Arr, LawObj, LawArr> = { ...operation };
-      if (!cloned.kleisliOnGeneric) {
-        cloned.kleisliOnGeneric = genericElement;
-      }
-      const metadata = mergeMetadata(cloned.metadata, addition);
-      if (metadata && metadata !== cloned.metadata) {
-        cloned.metadata = metadata;
-      }
-      return cloned;
-    });
-  }
+  const monadUnitMetadata = input.monadStructure?.unit
+    ? mergeMetadataList(
+        MONAD_UNIT_METADATA,
+        input.monadStructure.metadata,
+        input.monadStructure.unit.metadata,
+      )
+    : undefined;
 
-  let comonadCooperations = input.comonadCooperations ?? [];
-  if (comonadCooperations.length > 0 && input.comonadStructure?.comultiplication) {
-    const addition = mergeMetadataList(
-      COMONAD_COMULT_METADATA,
-      input.comonadStructure.metadata,
-      input.comonadStructure.comultiplication.metadata,
-    );
-    const duplication = (object: Obj) =>
-      input.comonadStructure.comultiplication.transformation.component(object);
-    comonadCooperations = comonadCooperations.map((operation) => {
-      const cloned: ComonadCooperation<Obj, Arr, LawObj, LawArr> = { ...operation };
-      if (!cloned.genericDuplication) {
-        cloned.genericDuplication = duplication;
-      }
-      const metadata = mergeMetadata(cloned.metadata, addition);
-      if (metadata && metadata !== cloned.metadata) {
-        cloned.metadata = metadata;
-      }
-      return cloned;
-    });
-  }
+  const monadGenericElement = input.monadStructure?.unit
+    ? input.monadStructure.unit.transformation.component
+    : undefined;
 
-  if (comonadCooperations.length > 0 && input.comonadStructure?.counit) {
-    const addition = mergeMetadataList(
-      COMONAD_COUNIT_METADATA,
-      input.comonadStructure.metadata,
-      input.comonadStructure.counit.metadata,
-    );
-    const counit = (object: Obj) =>
-      input.comonadStructure.counit.transformation.component(object);
-    comonadCooperations = comonadCooperations.map((operation) => {
-      const cloned: ComonadCooperation<Obj, Arr, LawObj, LawArr> = { ...operation };
-      if (!cloned.counit) {
-        cloned.counit = counit;
-      }
-      const metadata = mergeMetadata(cloned.metadata, addition);
-      if (metadata && metadata !== cloned.metadata) {
-        cloned.metadata = metadata;
-      }
-      return cloned;
-    });
-  }
+  const monadOperations = (input.monadOperations ?? []).map((operation) =>
+    buildMonadOperation(operation, monadGenericElement, mergeMetadata(operation.metadata, monadUnitMetadata)),
+  );
 
-  let metadata = input.metadata;
-  metadata = mergeMetadata(metadata, input.monadStructure?.metadata);
-  metadata = mergeMetadata(metadata, input.monadStructure?.unit?.metadata);
-  metadata = mergeMetadata(metadata, input.monadStructure?.unit ? MONAD_UNIT_METADATA : undefined);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.metadata);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.comultiplication?.metadata);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.comultiplication
-    ? COMONAD_COMULT_METADATA
-    : undefined);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.counit?.metadata);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.counit ? COMONAD_COUNIT_METADATA : undefined);
+  const comultiplicationMetadata = input.comonadStructure?.comultiplication
+    ? mergeMetadataList(
+        COMONAD_COMULT_METADATA,
+        input.comonadStructure.metadata,
+        input.comonadStructure.comultiplication.metadata,
+      )
+    : undefined;
 
-  const operations: FunctorInteractionLawOperations<Obj, Arr, LawObj, LawArr> = {};
-  if (monadOperations.length > 0) {
-    operations.monadOperations = monadOperations;
-  }
-  if (comonadCooperations.length > 0) {
-    operations.comonadCooperations = comonadCooperations;
-  }
-  if (metadata && metadata.length > 0) {
-    operations.metadata = metadata;
-  }
-  return operations;
+  const counitMetadata = input.comonadStructure?.counit
+    ? mergeMetadataList(
+        COMONAD_COUNIT_METADATA,
+        input.comonadStructure.metadata,
+        input.comonadStructure.counit.metadata,
+      )
+    : undefined;
+
+  const comultiplicationComponent = input.comonadStructure?.comultiplication
+    ? input.comonadStructure.comultiplication.transformation.component
+    : undefined;
+
+  const counitComponent = input.comonadStructure?.counit
+    ? input.comonadStructure.counit.transformation.component
+    : undefined;
+
+  const comonadOperations = (input.comonadCooperations ?? []).map((operation) =>
+    buildComonadOperation(
+      operation,
+      comultiplicationComponent,
+      counitComponent,
+      mergeMetadataList(operation.metadata, comultiplicationMetadata, counitMetadata),
+    ),
+  );
+
+  const operationsMetadata = mergeMetadataList(
+    input.metadata,
+    input.monadStructure?.metadata,
+    input.monadStructure?.unit?.metadata,
+    input.monadStructure?.unit ? MONAD_UNIT_METADATA : undefined,
+    input.comonadStructure?.metadata,
+    input.comonadStructure?.comultiplication?.metadata,
+    input.comonadStructure?.comultiplication ? COMONAD_COMULT_METADATA : undefined,
+    input.comonadStructure?.counit?.metadata,
+    input.comonadStructure?.counit ? COMONAD_COUNIT_METADATA : undefined,
+  );
+
+  return {
+    ...(monadOperations.length > 0 ? { monadOperations } : {}),
+    ...(comonadOperations.length > 0 ? { comonadCooperations: comonadOperations } : {}),
+    ...(operationsMetadata && operationsMetadata.length > 0
+      ? { metadata: operationsMetadata }
+      : {}),
+  };
 };
 
 export interface FunctorInteractionLaw<Obj, Arr, Left, Right, Value>

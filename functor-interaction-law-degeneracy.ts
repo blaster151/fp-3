@@ -350,12 +350,10 @@ const gatherBinaryArtifacts = <Obj, Arr, Left, Right, Value>(
   const terminalData = SetCat.terminal();
   const terminal = terminalData.object;
   const terminalCoproduct = SetCat.coproduct(terminal, terminal);
-  const toTerminal = rightCarrier
-    ? terminalData.terminate(rightCarrier)
-    : undefined;
+  const toTerminal = rightCarrier ? terminalData.terminate(rightCarrier) : undefined;
   const toTerminalGap =
     toTerminal === undefined
-      ? "Unable to terminate the right carrier at the terminal object." 
+      ? "Unable to terminate the right carrier at the terminal object."
       : undefined;
   const terminalDiagonal =
     toTerminal === undefined
@@ -363,7 +361,7 @@ const gatherBinaryArtifacts = <Obj, Arr, Left, Right, Value>(
       : SetCat.compose(terminalCoproduct.injections.inl, toTerminal);
   const terminalDiagonalGap =
     terminalDiagonal === undefined
-      ? "Missing diagonal into 1 + 1; ensure the right carrier terminates." 
+      ? "Missing diagonal into 1 + 1; ensure the right carrier terminates."
       : undefined;
 
   const initialData = SetCat.initial();
@@ -377,87 +375,28 @@ const gatherBinaryArtifacts = <Obj, Arr, Left, Right, Value>(
       ? "Unable to assemble k'_Y without a zero-comparison witness."
       : undefined;
 
-  const artifacts: CommutativeBinaryDegeneracyArtifacts<Obj, Arr, Right> = {
+  return {
     object: component.object,
     operationComponent: component.arrow,
     lawvereMetadata,
     dayReferenceMetadata: dayMetadata,
-  };
-
-  if (operationMetadata.length > 0) {
-    artifacts.operationMetadata = operationMetadata;
-  }
-  if (duplication !== undefined) {
-    artifacts.duplication = duplication;
-  }
-  if (duplicationGap) {
-    artifacts.duplicationGap = duplicationGap;
-  }
-  if (substitution !== undefined) {
-    artifacts.substitution = substitution;
-  }
-  if (substitutionGap) {
-    artifacts.substitutionGap = substitutionGap;
-  }
-  if (transformation !== undefined) {
-    artifacts.transformation = transformation;
-  }
-  if (transformationGap) {
-    artifacts.transformationGap = transformationGap;
-  }
-  if (zeroComparison !== undefined) {
-    artifacts.zeroComparison = zeroComparison;
-  }
-  if (zeroComparisonGap) {
-    artifacts.zeroComparisonGap = zeroComparisonGap;
-  }
-  if (toTerminal !== undefined) {
-    artifacts.toTerminal = toTerminal;
-  }
-  if (toTerminalGap) {
-    artifacts.toTerminalGap = toTerminalGap;
-  }
-  if (terminalCoproduct !== undefined) {
-    artifacts.terminalCoproduct = terminalCoproduct;
-  }
-  if (terminalDiagonal !== undefined) {
-    artifacts.terminalDiagonal = terminalDiagonal;
-  }
-  if (terminalDiagonalGap) {
-    artifacts.terminalDiagonalGap = terminalDiagonalGap;
-  }
-  if (zeroCoproduct !== undefined) {
-    artifacts.zeroCoproduct = zeroCoproduct;
-  }
-  if (kPrime !== undefined) {
-    artifacts.kPrime = kPrime;
-  }
-  if (kPrimeGap) {
-    artifacts.kPrimeGap = kPrimeGap;
-  }
-  
-  return {
-    object: artifacts.object,
-    operationComponent: artifacts.operationComponent,
-    lawvereMetadata: artifacts.lawvereMetadata,
-    dayReferenceMetadata: artifacts.dayReferenceMetadata,
-    ...(artifacts.operationMetadata ? { operationMetadata: artifacts.operationMetadata } : {}),
-    ...(artifacts.duplication ? { duplication: artifacts.duplication } : {}),
-    ...(artifacts.duplicationGap ? { duplicationGap: artifacts.duplicationGap } : {}),
-    ...(artifacts.substitution ? { substitution: artifacts.substitution } : {}),
-    ...(artifacts.substitutionGap ? { substitutionGap: artifacts.substitutionGap } : {}),
-    ...(artifacts.transformation ? { transformation: artifacts.transformation } : {}),
-    ...(artifacts.transformationGap ? { transformationGap: artifacts.transformationGap } : {}),
-    ...(artifacts.zeroComparison ? { zeroComparison: artifacts.zeroComparison } : {}),
-    ...(artifacts.zeroComparisonGap ? { zeroComparisonGap: artifacts.zeroComparisonGap } : {}),
-    ...(artifacts.toTerminal ? { toTerminal: artifacts.toTerminal } : {}),
-    ...(artifacts.toTerminalGap ? { toTerminalGap: artifacts.toTerminalGap } : {}),
-    ...(artifacts.terminalCoproduct ? { terminalCoproduct: artifacts.terminalCoproduct } : {}),
-    ...(artifacts.terminalDiagonal ? { terminalDiagonal: artifacts.terminalDiagonal } : {}),
-    ...(artifacts.terminalDiagonalGap ? { terminalDiagonalGap: artifacts.terminalDiagonalGap } : {}),
-    ...(artifacts.zeroCoproduct ? { zeroCoproduct: artifacts.zeroCoproduct } : {}),
-    ...(artifacts.kPrime ? { kPrime: artifacts.kPrime } : {}),
-    ...(artifacts.kPrimeGap ? { kPrimeGap: artifacts.kPrimeGap } : {}),
+    ...(operationMetadata.length > 0 ? { operationMetadata } : {}),
+    ...(duplication !== undefined ? { duplication } : {}),
+    ...(duplicationGap ? { duplicationGap } : {}),
+    ...(substitution !== undefined ? { substitution } : {}),
+    ...(substitutionGap ? { substitutionGap } : {}),
+    ...(transformation !== undefined ? { transformation } : {}),
+    ...(transformationGap ? { transformationGap } : {}),
+    ...(zeroComparison !== undefined ? { zeroComparison } : {}),
+    ...(zeroComparisonGap ? { zeroComparisonGap } : {}),
+    ...(toTerminal !== undefined ? { toTerminal } : {}),
+    ...(toTerminalGap ? { toTerminalGap } : {}),
+    ...(terminalCoproduct ? { terminalCoproduct } : {}),
+    ...(terminalDiagonal !== undefined ? { terminalDiagonal } : {}),
+    ...(terminalDiagonalGap ? { terminalDiagonalGap } : {}),
+    ...(zeroCoproduct ? { zeroCoproduct } : {}),
+    ...(kPrime !== undefined ? { kPrime } : {}),
+    ...(kPrimeGap ? { kPrimeGap } : {}),
   };
 };
 
@@ -637,7 +576,7 @@ export const checkCommutativeBinaryDegeneracy = <Obj, Arr, Left, Right, Value>(
             label: `${witness.label}(${String(component.object)})`,
             object: component.object,
             steps: buildBinarySteps(law, witness, component, artifacts),
-            zeroComparison,
+            ...(zeroComparison ? { zeroComparison } : {}),
             artifacts,
           };
         }),
