@@ -3982,7 +3982,9 @@ export const buildFixedRightInitialObject = <Obj, Arr, Left, Right, Value>(
   law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
 ): FixedRightInitialObject<Obj, Arr, Right, Value> => {
   const terminal = SetCat.terminal().object;
-  const terminalSimpleCategory = setSimpleCategory as SimpleCat<
+  const initialData = SetCat.initial();
+  const initialObject = initialData.object;
+  const terminalSimpleCategory = setSimpleCategory as unknown as SimpleCat<
     SetObj<SetTerminalObject>,
     SetHom<SetTerminalObject, SetTerminalObject>
   >;
@@ -4031,7 +4033,7 @@ export const buildFixedRightInitialObject = <Obj, Arr, Left, Right, Value>(
     }
     collapseComponents.set(
       object,
-      SetCat.hom(carrier, SetCat.initialObj, () => {
+      SetCat.hom(carrier, initialObject, () => {
         throw new Error(
           "buildFixedRightInitialObject: collapse map invoked on a non-empty right carrier.",
         );
@@ -4094,8 +4096,9 @@ const enforceConsistentContributions = <Obj, Arr, Left, Right, Value>(
       "Fixed-slice universal object aggregation requires at least one Day contribution.",
     );
   }
-  const [first, ...rest] = contributions;
-  for (const entry of rest) {
+  const first = contributions[0]!;
+  for (let index = 1; index < contributions.length; index += 1) {
+    const entry = contributions[index]!;
     if (!Object.is(entry.evaluation, first.evaluation)) {
       throw new Error(
         "Fixed-slice universal object aggregation encountered mismatched Day evaluations.",

@@ -205,7 +205,7 @@ const mergeMetadata = (
 };
 
 const mergeMetadataList = (
-  ...inputs: ReadonlyArray<string> | undefined[]
+  ...inputs: (ReadonlyArray<string> | undefined)[]
 ): ReadonlyArray<string> | undefined =>
   inputs.reduce<ReadonlyArray<string> | undefined>(
     (accumulator, current) => mergeMetadata(accumulator, current),
@@ -611,7 +611,7 @@ export const interactionLawMonoidToMonadComonadLaw = <
     ...(input.monoid.degeneracy ? { degeneracy: input.monoid.degeneracy } : {}),
     ...(input.monoid.commaEquivalence ? { commaEquivalence: input.monoid.commaEquivalence } : {}),
     ...(input.monoid.dual ? { dual: input.monoid.dual } : {}),
-    metadata: input.monoid.metadata,
+    ...(input.monoid.metadata ? { metadata: input.monoid.metadata } : {}),
   };
 
   const metadata = mergeMetadataList(
