@@ -41,7 +41,7 @@ import {
   type SetTerminalObject,
 } from "./set-cat";
 import { setSimpleCategory } from "./set-simple-category";
-import type { SimpleCat } from "./simple-cat";
+import { SimpleCat } from "./simple-cat";
 import type { PromonoidalKernel, PromonoidalTensorValue } from "./promonoidal-structure";
 import type {
   FunctorOperationDegeneracyReport,
@@ -3470,9 +3470,19 @@ export const deriveInteractionLawLeftCommaPresentation = <Obj, Arr, Left, Right,
     arrows: base.arrows,
     composablePairs: enumerateComposablePairs(base),
   } as const;
-  const internalHom = constructContravariantFunctorWithWitness(
+  const exponentialSimpleCategory = setSimpleCategory as SimpleCat<
+    SetObj<ExponentialArrow<Right, Value>>,
+    SetHom<ExponentialArrow<Right, Value>, ExponentialArrow<Right, Value>>
+  >;
+
+  const internalHom = constructContravariantFunctorWithWitness<
+    Obj,
+    Arr,
+    SetObj<ExponentialArrow<Right, Value>>,
+    SetHom<ExponentialArrow<Right, Value>, ExponentialArrow<Right, Value>>
+  >(
     base,
-    setSimpleCategory,
+    exponentialSimpleCategory,
     internalHomFunctor,
     samples,
     [
@@ -3935,7 +3945,7 @@ export interface FixedLeftInitialObject<Obj, Arr, Left, Value> {
 export const buildFixedLeftInitialObject = <Obj, Arr, Left, Right, Value>(
   law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
 ): FixedLeftInitialObject<Obj, Arr, Left, Value> => {
-  const terminalElement = enumerateCarrier(SetCat.terminalObj)[0]!;
+  const terminalElement = enumerateCarrier(SetCat.terminal().object)[0]!;
   const finalLaw = finalInteractionLaw<Obj, Arr, Value>(law.kernel, {
     dualizing: law.dualizing,
   });
@@ -3944,11 +3954,11 @@ export const buildFixedLeftInitialObject = <Obj, Arr, Left, Right, Value>(
     right: finalLaw.right,
     mapLeft: () => terminalElement,
     mapRight: (_object, element) => element,
-    operations: law.operations,
+    ...(law.operations ? { operations: law.operations } : {}),
   });
 
   const component = (object: Obj) =>
-    SetCat.hom(law.left.functor.F0(object), SetCat.terminalObj, () => terminalElement);
+    SetCat.hom(law.left.functor.F0(object), SetCat.terminal().object, () => terminalElement);
 
   return {
     law: stretched,
@@ -3971,10 +3981,14 @@ export interface FixedRightInitialObject<Obj, Arr, Right, Value> {
 export const buildFixedRightInitialObject = <Obj, Arr, Left, Right, Value>(
   law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
 ): FixedRightInitialObject<Obj, Arr, Right, Value> => {
-  const terminal = SetCat.terminalObj;
+  const terminal = SetCat.terminal().object;
+  const terminalSimpleCategory = setSimpleCategory as SimpleCat<
+    SetObj<SetTerminalObject>,
+    SetHom<SetTerminalObject, SetTerminalObject>
+  >;
   const terminalFunctor = constructContravariantFunctorWithWitness(
     law.kernel.base,
-    setSimpleCategory,
+    terminalSimpleCategory,
     {
       F0: () => terminal,
       F1: () => SetCat.id(terminal),
@@ -4001,7 +4015,7 @@ export const buildFixedRightInitialObject = <Obj, Arr, Left, Right, Value>(
     dualizing: law.dualizing,
     pairing,
     aggregate,
-    operations: law.operations,
+    ...(law.operations ? { operations: law.operations } : {}),
   });
 
   const collapseDetails: string[] = [];
@@ -4103,7 +4117,7 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
     carrier: ReturnType<typeof convolution.functor.functor.F0>,
   ) =>
     SetCat.hom(carrier, law.dualizing, (cls) => {
-      const data = cls as unknown as {
+      const data = cls as {
         readonly witness: {
           readonly leftElement: ExponentialArrow<Right, Value>;
           readonly rightElement: Right;
@@ -4111,7 +4125,7 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
       };
       const assignment = data.witness.leftElement;
       const element = data.witness.rightElement;
-      return assignment.map(element);
+      return assignment(element);
     });
 
   const aggregate: DayPairingAggregator<
@@ -4130,7 +4144,7 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
     dualizing: law.dualizing,
     pairing,
     aggregate,
-    operations: law.operations,
+    ...(law.operations ? { operations: law.operations } : {}),
   });
 
   const sigma = constructNaturalTransformationWithWitness(
