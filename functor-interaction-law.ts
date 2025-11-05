@@ -41,6 +41,7 @@ import {
   type SetTerminalObject,
 } from "./set-cat";
 import { setSimpleCategory } from "./set-simple-category";
+import type { SimpleCat } from "./simple-cat";
 import type { PromonoidalKernel, PromonoidalTensorValue } from "./promonoidal-structure";
 import type {
   FunctorOperationDegeneracyReport,
@@ -2448,18 +2449,28 @@ export const finalInteractionLaw = <Obj, Arr, Value = boolean>(
   const evaluationValue = options.evaluationValue ?? ((false as unknown) as Value);
   const dualizing = options.dualizing ?? (SetCat.obj([false, true], { tag: "FinalDualizing" }) as SetObj<Value>);
 
+  const terminalSimpleCategory = setSimpleCategory as SimpleCat<
+    SetObj<SetTerminalObject>,
+    SetHom<SetTerminalObject, SetTerminalObject>
+  >;
+
   const left = constructContravariantFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    terminalSimpleCategory,
     {
       F0: () => terminal,
       F1: () => SetCat.id(terminal),
     },
   );
 
+  const initialSimpleCategory = setSimpleCategory as SimpleCat<
+    SetObj<never>,
+    SetHom<never, never>
+  >;
+
   const right = constructFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    initialSimpleCategory,
     {
       F0: () => initial,
       F1: () => SetCat.id(initial),
@@ -2602,9 +2613,14 @@ export const productInteractionLaw = <
     return product;
   };
 
+  const leftPairSimpleCategory = setSimpleCategory as SimpleCat<
+    SetObj<readonly [Left0, Left1]>,
+    SetHom<readonly [Left0, Left1], readonly [Left0, Left1]>
+  >;
+
   const left = constructContravariantFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    leftPairSimpleCategory,
     {
       F0: (object) => getLeftProduct(object).object,
       F1: (arrow) => {
@@ -2612,20 +2628,24 @@ export const productInteractionLaw = <
         const codomain = getLeftProduct(kernel.base.src(arrow));
         const map0 = law0.left.functor.F1(arrow);
         const map1 = law1.left.functor.F1(arrow);
-        const map = SetCat.hom(domain.object, codomain.object, (pair) => (
+        return SetCat.hom(domain.object, codomain.object, (pair) => (
           [
             map0.map(pair[0]),
             map1.map(pair[1]),
           ] as const
         )) as SetHom<readonly [Left0, Left1], readonly [Left0, Left1]>;
-        return map as SetHom<unknown, unknown>;
       },
     },
   );
 
+  const rightPairSimpleCategory = setSimpleCategory as SimpleCat<
+    SetObj<readonly [Right0, Right1]>,
+    SetHom<readonly [Right0, Right1], readonly [Right0, Right1]>
+  >;
+
   const right = constructFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    rightPairSimpleCategory,
     {
       F0: (object) => getRightProduct(object).object,
       F1: (arrow) => {
@@ -2633,13 +2653,12 @@ export const productInteractionLaw = <
         const codomain = getRightProduct(kernel.base.dst(arrow));
         const map0 = law0.right.functor.F1(arrow);
         const map1 = law1.right.functor.F1(arrow);
-        const map = SetCat.hom(domain.object, codomain.object, (pair) => (
+        return SetCat.hom(domain.object, codomain.object, (pair) => (
           [
             map0.map(pair[0]),
             map1.map(pair[1]),
           ] as const
         )) as SetHom<readonly [Right0, Right1], readonly [Right0, Right1]>;
-        return map as SetHom<unknown, unknown>;
       },
     },
   );
@@ -2684,7 +2703,7 @@ export const productInteractionLaw = <
       rightElement: data.witness.rightElement[1],
     });
 
-    return dualizingProduct.lookup(value0, value1);
+    return dualizingProduct.lookup?.(value0, value1) ?? ([value0, value1] as const);
   });
 
   const aggregate: DayPairingAggregator<
@@ -2744,7 +2763,7 @@ export const productInteractionLaw = <
 
     const value0 = law0.aggregate(mapped0);
     const value1 = law1.aggregate(mapped1);
-    return dualizingProduct.lookup(value0, value1);
+    return dualizingProduct.lookup?.(value0, value1) ?? ([value0, value1] as const);
   };
 
   const mergedOperations = mergeOperations(law0.operations, law1.operations);
@@ -2757,7 +2776,7 @@ export const productInteractionLaw = <
     dualizing: dualizingProduct.object,
     pairing,
     aggregate,
-    operations: mergedOperations,
+    ...(mergedOperations ? { operations: mergedOperations } : {}),
   });
 
   const projections: InteractionLawProductProjections<
@@ -2822,9 +2841,14 @@ export const coproductInteractionLaw = <
     return coproduct;
   };
 
+  const leftCoproductSimpleCategory = setSimpleCategory as SimpleCat<
+    SetObj<Coproduct<Left0, Left1>>,
+    SetHom<Coproduct<Left0, Left1>, Coproduct<Left0, Left1>>
+  >;
+
   const left = constructContravariantFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    leftCoproductSimpleCategory,
     {
       F0: (object) => getLeftCoproduct(object).object,
       F1: (arrow) => {
@@ -2832,7 +2856,7 @@ export const coproductInteractionLaw = <
         const codomain = getLeftCoproduct(kernel.base.src(arrow));
         const map0 = law0.left.functor.F1(arrow);
         const map1 = law1.left.functor.F1(arrow);
-        const map = SetCat.hom(domain.object, codomain.object, (value) => {
+        return SetCat.hom(domain.object, codomain.object, (value) => {
           if (value.tag === "inl") {
             const mapped = map0.map(value.value);
             return codomain.injections.inl.map(mapped);
@@ -2840,14 +2864,18 @@ export const coproductInteractionLaw = <
           const mapped = map1.map(value.value);
           return codomain.injections.inr.map(mapped);
         }) as SetHom<Coproduct<Left0, Left1>, Coproduct<Left0, Left1>>;
-        return map as SetHom<unknown, unknown>;
       },
     },
   );
 
+  const rightCoproductSimpleCategory = setSimpleCategory as SimpleCat<
+    SetObj<Coproduct<Right0, Right1>>,
+    SetHom<Coproduct<Right0, Right1>, Coproduct<Right0, Right1>>
+  >;
+
   const right = constructFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    rightCoproductSimpleCategory,
     {
       F0: (object) => getRightCoproduct(object).object,
       F1: (arrow) => {
@@ -2855,7 +2883,7 @@ export const coproductInteractionLaw = <
         const codomain = getRightCoproduct(kernel.base.dst(arrow));
         const map0 = law0.right.functor.F1(arrow);
         const map1 = law1.right.functor.F1(arrow);
-        const map = SetCat.hom(domain.object, codomain.object, (value) => {
+        return SetCat.hom(domain.object, codomain.object, (value) => {
           if (value.tag === "inl") {
             const mapped = map0.map(value.value);
             return codomain.injections.inl.map(mapped);
@@ -2863,7 +2891,6 @@ export const coproductInteractionLaw = <
           const mapped = map1.map(value.value);
           return codomain.injections.inr.map(mapped);
         }) as SetHom<Coproduct<Right0, Right1>, Coproduct<Right0, Right1>>;
-        return map as SetHom<unknown, unknown>;
       },
     },
   );
@@ -3011,7 +3038,7 @@ export const coproductInteractionLaw = <
     dualizing: dualizingCoproduct.object,
     pairing,
     aggregate,
-    operations: mergedOperations,
+    ...(mergedOperations ? { operations: mergedOperations } : {}),
   });
 
   const injections: InteractionLawCoproductInjections<
