@@ -173,7 +173,7 @@ export const checkMonadComonadInteractionLaw = <Obj, Arr, Left, Right, Value>(
     const tObject = input.monad.functor.functor.F0(object);
     const dObject = input.comonad.functor.functor.F0(object);
 
-    const epsilonAtDual = input.comonad.counit.transformation.component(dObject) as SetHom<unknown, unknown>;
+    const epsilonAtDual = input.comonad.counit.transformation.component(object) as SetHom<unknown, unknown>;
 
     // Unit diagram: ψ ∘ (η × id) = ⟨id, ε⟩
     for (const x of enumeratedX) {
@@ -208,7 +208,7 @@ export const checkMonadComonadInteractionLaw = <Obj, Arr, Left, Right, Value>(
 
         const lifted = delta.map(dy);
         const intermediate = evaluatePsi(input, { object, element: tx as Left }, {
-          object: dObject,
+          object,
           element: lifted as Right,
         });
         const [interLeft, interRight] = projector.project(intermediate);
@@ -238,8 +238,8 @@ export const checkMonadComonadInteractionLaw = <Obj, Arr, Left, Right, Value>(
         });
 
         const liftedDy = delta.map(dy);
-        const intermediate = evaluatePsi(input, { object: tObject, element: ttx as Left }, {
-          object: dObject,
+        const intermediate = evaluatePsi(input, { object, element: ttx as Left }, {
+          object,
           element: liftedDy as Right,
         });
         const [interTx, interDy] = projector.project(intermediate);
@@ -271,7 +271,7 @@ export const checkMonadComonadInteractionLaw = <Obj, Arr, Left, Right, Value>(
 
         const liftedDy = delta.map(dy);
         const intermediate = evaluatePsi(input, { object, element: collapsedTx as Left }, {
-          object: dObject,
+          object,
           element: liftedDy as Right,
         });
         const [interLeft, interRight] = projector.project(intermediate);
@@ -373,11 +373,7 @@ export const checkFreeInteractionLaw = <
     InitialComparison,
     FinalComparison
   >,
-): FreeInteractionLawReport<
-  FreeMonadComonadCoproductWitness<LawObj>,
-  FreeMonadComonadUniversalComparison<InitialComparison>,
-  FreeMonadComonadUniversalComparison<FinalComparison>
-> => {
+  ): FreeInteractionLawReport<LawObj, InitialComparison, FinalComparison> => {
   const details: string[] = [];
   let holds = true;
 
@@ -450,7 +446,11 @@ const flattenExample14ListOfListsManual = (
   for (const list of lists) {
     collected.push(...list);
   }
-  return collected as Example14NonemptyList;
+    if (collected.length === 0) {
+      throw new Error("flattenExample14ListOfListsManual: expected non-empty input lists.");
+    }
+    const [first, ...rest] = collected;
+    return [first, ...rest] as Example14NonemptyList;
 };
 
 export interface NonemptyListQuotientCheckResult {

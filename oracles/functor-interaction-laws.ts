@@ -997,30 +997,38 @@ export const checkLaxMonoidalDualComparison = <
   let truncated = false;
 
   outer: for (const primal of referenceLaw.primalCarrier) {
-    for (const dual of referenceLaw.dualCarrier) {
-      if (samples.length >= sampleLimit) {
-        truncated = true;
-        break outer;
-      }
+      for (const dual of referenceLaw.dualCarrier) {
+        if (samples.length >= sampleLimit) {
+          truncated = true;
+          break outer;
+        }
 
-      const domainPrimal: IndexedElement<Obj, readonly [Right1, Right0]> = {
-        object: primal.object,
-        element: [primal.element[1], primal.element[0]] as unknown as readonly [
-          Right1,
-          Right0,
-        ],
-      };
-      const domainDual: IndexedElement<Obj, readonly [Left1, Left0]> = {
-        object: dual.object,
-        element: [dual.element[1], dual.element[0]] as unknown as readonly [Left1, Left0],
-      };
+        const referencePrimal: IndexedElement<Obj, readonly [Left0, Left1]> = {
+          object: primal.object,
+          element: primal.element as unknown as readonly [Left0, Left1],
+        };
+        const referenceDual: IndexedElement<Obj, readonly [Right0, Right1]> = {
+          object: dual.object,
+          element: dual.element as unknown as readonly [Right0, Right1],
+        };
+        const domainPrimal: IndexedElement<Obj, readonly [Right1, Right0]> = {
+          object: primal.object,
+          element: [primal.element[1], primal.element[0]] as unknown as readonly [
+            Right1,
+            Right0,
+          ],
+        };
+        const domainDual: IndexedElement<Obj, readonly [Left1, Left0]> = {
+          object: dual.object,
+          element: [dual.element[1], dual.element[0]] as unknown as readonly [Left1, Left0],
+        };
 
-      const referenceValue = referenceLaw.evaluate(primal, dual);
-      const domainValue = domainLaw.evaluate(domainPrimal, domainDual);
-      const mappedValue = [domainValue[1], domainValue[0]] as unknown as readonly [
-        Value0,
-        Value1,
-      ];
+        const referenceValue = referenceLaw.evaluate(primal, dual);
+        const domainValue = domainLaw.evaluate(domainPrimal, domainDual);
+        const mappedValue = [domainValue[1], domainValue[0]] as unknown as readonly [
+          Value0,
+          Value1,
+        ];
       const matches = structuralValueEquals(referenceValue, mappedValue);
 
       const sample: LaxMonoidalDualComparisonSample<
@@ -1032,9 +1040,9 @@ export const checkLaxMonoidalDualComparison = <
         Value0,
         Value1
       > = {
-        object: primal.object,
-        referencePrimal: primal,
-        referenceDual: dual,
+          object: primal.object,
+          referencePrimal,
+          referenceDual,
         domainPrimal,
         domainDual,
         referenceValue,
