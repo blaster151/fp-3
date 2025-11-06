@@ -1450,7 +1450,7 @@ export interface MonadComonadRunnerCostateComponent<Obj, Left, Right, Value> {
   readonly object: Obj;
   readonly costate: SetHom<
     Right,
-    ExponentialArrow<IndexedElement<Obj, Right>, Value>
+    ExponentialArrow<IndexedElement<Obj, Left>, Value>
   >;
   readonly evaluationConsistent: boolean;
   readonly diagnostics: ReadonlyArray<string>;
@@ -1460,7 +1460,7 @@ export interface MonadComonadRunnerCoalgebraComponent<Obj, Left, Right, Value> {
   readonly object: Obj;
   readonly coalgebra: SetHom<
     IndexedElement<Obj, Right>,
-    ExponentialArrow<IndexedElement<Obj, Right>, Value>
+    ExponentialArrow<IndexedElement<Obj, Left>, Value>
   >;
   readonly evaluationConsistent: boolean;
   readonly diagnostics: ReadonlyArray<string>;
@@ -1549,6 +1549,10 @@ export const deriveMonadComonadRunnerTranslation = <
   >;
 
   for (const [object, fiber] of interaction.psiComponents.entries()) {
+    const primalExponential = SetCat.exponential(
+      fiber.primalFiber,
+      interaction.law.dualizing as SetObj<Value>,
+    );
     const thetaDiagnostics: string[] = [];
     let consistentWithDelta = true;
 
@@ -1603,10 +1607,10 @@ export const deriveMonadComonadRunnerTranslation = <
     const costateDiagnostics: string[] = [];
     let costateConsistent = true;
 
-    const costate = SetCat.hom(rightCarrier, fiber.exponential.object, (element) => {
+    const costate = SetCat.hom(rightCarrier, primalExponential.object, (element) => {
       const indexed: IndexedElement<Obj, Right> = { object, element };
-      const evaluation = sweedlerFromDual.map(indexed as IndexedElement<Obj, Right>);
-      return fiber.exponential.register((primal) => evaluation(primal));
+      const evaluation = sweedlerFromDual.map(indexed);
+      return primalExponential.register((primal) => evaluation(primal));
     });
 
     const coalgebraDiagnostics: string[] = [];
@@ -1614,10 +1618,10 @@ export const deriveMonadComonadRunnerTranslation = <
 
     const coalgebra = SetCat.hom(
       fiber.dualFiber,
-      fiber.exponential.object,
+      primalExponential.object,
       (dualElement) => {
-        const evaluation = sweedlerFromDual.map(dualElement as IndexedElement<Obj, Right>);
-        return fiber.exponential.register((primal) => evaluation(primal));
+        const evaluation = sweedlerFromDual.map(dualElement);
+        return primalExponential.register((primal) => evaluation(primal));
       },
     );
 
@@ -1631,8 +1635,8 @@ export const deriveMonadComonadRunnerTranslation = <
 
       for (const primal of sampledPrimal) {
         const expected = fiber.phi.map([primal, dualElement]);
-        const fromCostate = fiber.exponential.evaluation.map([costateArrow, dualElement]);
-        const fromCoalgebra = fiber.exponential.evaluation.map([coalgebraArrow, dualElement]);
+        const fromCostate = primalExponential.evaluation.map([costateArrow, primal]);
+        const fromCoalgebra = primalExponential.evaluation.map([coalgebraArrow, primal]);
 
         if (!Object.is(expected, fromCostate)) {
           costateConsistent = false;
@@ -1648,9 +1652,7 @@ export const deriveMonadComonadRunnerTranslation = <
           coalgebraDiagnostics.push(
             `Coalgebra inconsistency at object ${String(object)}: ?(${String(
               primal.element,
-            )}, ${String(rawElement)}) = ${String(expected)} but Sweedler map returns ${String(
-              fromCoalgebra,
-            )}.`,
+            )}, ${String(rawElement)}) = ${String(expected)} but ? returns ${String(fromCoalgebra)}.`,
           );
         }
       }
