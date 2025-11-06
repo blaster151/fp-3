@@ -1840,10 +1840,6 @@ const toNonemptyArray = <T>(values: ReadonlyArray<T>, context: string): Nonempty
   return [first as T, ...rest] as NonemptyArray<T>;
 };
 
-const asUnknownSetHom = <Domain, Codomain>(
-  hom: SetHom<Domain, Codomain>,
-): SetHom<unknown, unknown> => hom as unknown as SetHom<unknown, unknown>;
-
 export type Example14CofreeElement =
   | {
       readonly tag: "inl";
@@ -2220,12 +2216,10 @@ const example14FreeMonadUnit = constructNaturalTransformationWithWitness(
   example14FreeMonadFunctor,
   example14FreeMonadFunctor,
   () =>
-    asUnknownSetHom(
-      SetCat.hom(example14SymbolCarrier, example14FreeTermCarrier, (symbol) => ({
-        tag: "var",
-        value: symbol as Example14Symbol,
-      }) as Example14FreeTerm),
-    ),
+    SetCat.hom(example14SymbolCarrier, example14FreeTermCarrier, (symbol) => ({
+      tag: "var",
+      value: symbol as Example14Symbol,
+    }) as Example14FreeTerm),
   { metadata: ["Example14 free monad unit"] },
 );
 
@@ -2233,10 +2227,8 @@ const example14FreeMonadMultiplication = constructNaturalTransformationWithWitne
   example14FreeMonadFunctor,
   example14FreeMonadFunctor,
   () =>
-    asUnknownSetHom(
-      SetCat.hom(example14NestedTermCarrier, example14FreeTermCarrier, (term) =>
-        flattenExample14NestedTerm(term as Example14NestedTerm),
-      ),
+    SetCat.hom(example14NestedTermCarrier, example14FreeTermCarrier, (term) =>
+      flattenExample14NestedTerm(term as Example14NestedTerm),
     ),
   { metadata: ["Example14 free monad multiplication"] },
 );
@@ -2256,10 +2248,8 @@ const example14NonemptyListUnit = constructNaturalTransformationWithWitness(
   example14NonemptyListFunctor,
   example14NonemptyListFunctor,
   () =>
-    asUnknownSetHom(
-      SetCat.hom(example14SymbolCarrier, example14NonemptyListCarrier, (symbol) =>
-        toNonemptyArray([symbol as Example14Symbol], "Example14 nonempty list unit"),
-      ),
+    SetCat.hom(example14SymbolCarrier, example14NonemptyListCarrier, (symbol) =>
+      toNonemptyArray([symbol as Example14Symbol], "Example14 nonempty list unit"),
     ),
   { metadata: ["Example14 nonempty list unit"] },
 );
@@ -2268,10 +2258,8 @@ const example14NonemptyListMultiplication = constructNaturalTransformationWithWi
   example14NonemptyListFunctor,
   example14NonemptyListFunctor,
   () =>
-    asUnknownSetHom(
-      SetCat.hom(example14ListOfListsCarrier, example14NonemptyListCarrier, (value) =>
-        flattenExample14ListOfLists(value as Example14ListOfLists),
-      ),
+    SetCat.hom(example14ListOfListsCarrier, example14NonemptyListCarrier, (value) =>
+      flattenExample14ListOfLists(value as Example14ListOfLists),
     ),
   { metadata: ["Example14 nonempty list multiplication"] },
 );
@@ -2311,10 +2299,8 @@ export const nonemptyListQuotient = (): NonemptyListQuotientData => {
     free.monad.functor,
     example14NonemptyListFunctor,
     () =>
-      asUnknownSetHom(
-        SetCat.hom(free.freeCarrier, example14NonemptyListCarrier, (term) =>
-          flattenExample14Term(term as Example14FreeTerm),
-        ),
+      SetCat.hom(free.freeCarrier, example14NonemptyListCarrier, (term) =>
+        flattenExample14Term(term as Example14FreeTerm),
       ),
     { metadata: ["Example14 quotient map"] },
   );
