@@ -1745,22 +1745,22 @@ const buildExample9Law = () => {
     monadOperations: [
       makeCommutativeBinaryMonadOperation<TwoObject, TwoArrow>({
         label: "db",
-        component: (object) => TwoObjectCategory.id(object),
-        swapWitness: TwoObjectCategory.id("?"),
+          component: (object) => TwoObjectCategory.id(object),
+          swapWitness: TwoObjectCategory.id("?"),
         kleisliOnGeneric: (object) => TwoObjectCategory.id(object),
         dayReferences: [
-          {
-            fiber: "?",
-            index: 0,
-            metadata: ["Example9 fiber"],
-          },
+            {
+              fiber: "?",
+              index: 0,
+              metadata: ["Example9 fiber"],
+            },
         ],
-        lawvereWitness: {
-          domain: "?",
-          codomain: "?",
-          morphism: TwoObjectCategory.id("?"),
-          metadata: ["Example9 lawvere witness"],
-        },
+          lawvereWitness: {
+            domain: "?",
+            codomain: "?",
+            morphism: TwoObjectCategory.id("?"),
+            metadata: ["Example9 lawvere witness"],
+          },
         metadata: ["Example9 binary operation"],
         commutativeMetadata: ["Example9 degeneracy"],
       }),
@@ -1839,6 +1839,9 @@ const toNonemptyArray = <T>(values: ReadonlyArray<T>, context: string): Nonempty
   const [first, ...rest] = values;
   return [first as T, ...rest] as NonemptyArray<T>;
 };
+
+const toUnknownSetHom = <Dom, Cod>(hom: SetHom<Dom, Cod>): SetHom<unknown, unknown> =>
+  hom as unknown as SetHom<unknown, unknown>;
 
 export type Example14CofreeElement =
   | {
@@ -2361,9 +2364,9 @@ const isRectangularDouble = (value: Example14CofreeDoubleElement): boolean =>
     ? isRectangularCofree(value.value)
     : isRectangularCofree(value.value[0]) && isRectangularCofree(value.value[1]);
 
-export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
-  const quotient = nonemptyListQuotient();
-  const baseCarrier = quotient.monad.functor.functor.F0("?") as SetObj<Example14NonemptyList>;
+  export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
+    const quotient = nonemptyListQuotient();
+    const baseCarrier = quotient.monad.functor.functor.F0("?") as SetObj<Example14NonemptyList>;
   const cofreePair = SetCat.product(baseCarrier, baseCarrier);
   const cofreeData = SetCat.coproduct(baseCarrier, cofreePair.object);
   const cofreeCarrier = cofreeData.object as SetObj<Example14CofreeElement>;
@@ -2376,7 +2379,7 @@ export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
     setSimpleCategory,
     {
       F0: () => cofreeCarrier,
-      F1: () => SetCat.id(cofreeCarrier),
+      F1: () => toUnknownSetHom(SetCat.id(cofreeCarrier)),
     },
     { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
     ["Example14 cofree functor"],
@@ -2450,37 +2453,43 @@ export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
     setSimpleCategory,
     {
       F0: () => sweedlerCarrier,
-      F1: () => SetCat.id(sweedlerCarrier),
+      F1: () => toUnknownSetHom(SetCat.id(sweedlerCarrier)),
     },
     { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
     ["Example14 Sweedler functor"],
   );
 
-  const sweedlerCounit = constructNaturalTransformationWithWitness(
-    sweedlerFunctor,
-    quotient.monad.functor,
-    () => SetCat.compose(cofreeCounit.transformation.component("?"), sweedlerInclusionMap),
-    { metadata: ["Example14 Sweedler counit"] },
-  );
-
-  const cofreeComponent = cofreeComultiplication.transformation.component("?") as SetHom<
-    Example14CofreeElement,
-    Example14CofreeDoubleElement
-  >;
-
-  const sweedlerComultiplication = constructNaturalTransformationWithWitness(
-    sweedlerFunctor,
-    sweedlerFunctor,
-    () =>
-      asUnknownSetHom(
-        SetCat.hom(
-          sweedlerCarrier,
-          sweedlerDoubleCarrier,
-          (value) => cofreeComponent.map(sweedlerInclusionMap.map(value)),
+    const sweedlerCounit = constructNaturalTransformationWithWitness(
+      sweedlerFunctor,
+      quotient.monad.functor,
+      () =>
+        toUnknownSetHom(
+          SetCat.compose(
+            cofreeCounit.transformation.component("?"),
+            sweedlerInclusionMap,
+          ),
         ),
-      ),
-    { metadata: ["Example14 Sweedler comultiplication"] },
-  );
+      { metadata: ["Example14 Sweedler counit"] },
+    );
+
+    const cofreeComponent = cofreeComultiplication.transformation.component("?") as SetHom<
+      Example14CofreeElement,
+      Example14CofreeDoubleElement
+    >;
+
+    const sweedlerComultiplication = constructNaturalTransformationWithWitness(
+      sweedlerFunctor,
+      sweedlerFunctor,
+      () =>
+        toUnknownSetHom(
+          SetCat.hom(
+            sweedlerCarrier,
+            sweedlerDoubleCarrier,
+            (value) => cofreeComponent.map(sweedlerInclusionMap.map(value)),
+          ),
+        ),
+      { metadata: ["Example14 Sweedler comultiplication"] },
+    );
 
   const sweedlerInclusion = constructNaturalTransformationWithWitness(
     sweedlerFunctor,
@@ -2565,9 +2574,9 @@ const partitionSweedlerElements = (
   readonly left: ReadonlyArray<Example14CofreeElement>;
   readonly right: ReadonlyArray<Example14CofreeElement>;
 } => {
-  const values = enumerateAllElements(
-    data.sweedler.functor.functor.F0("?") as SetObj<Example14CofreeElement>,
-  );
+    const values = enumerateAllElements(
+      data.sweedler.functor.functor.F0("?") as SetObj<Example14CofreeElement>,
+    );
   const left: Example14CofreeElement[] = [];
   const right: Example14CofreeElement[] = [];
   const coequation = data.sweedler.coequation;
@@ -2588,14 +2597,14 @@ const makeInclusion = <A>(
 ): SetHom<A, A> =>
   SetCat.hom(subset, ambient, (value) => value);
 
-export const deriveNonemptyListCoequation = (): NonemptyListCoequationData => {
-  const sweedler = sweedlerDualNonemptyList();
-  const sweedlerCarrier = sweedler.sweedler.functor.functor.F0(
-    "?",
-  ) as SetObj<Example14CofreeElement>;
-  const baseCarrier = sweedler.quotient.monad.functor.functor.F0(
-    "?",
-  ) as SetObj<Example14NonemptyList>;
+  export const deriveNonemptyListCoequation = (): NonemptyListCoequationData => {
+    const sweedler = sweedlerDualNonemptyList();
+    const sweedlerCarrier = sweedler.sweedler.functor.functor.F0(
+      "?",
+    ) as SetObj<Example14CofreeElement>;
+    const baseCarrier = sweedler.quotient.monad.functor.functor.F0(
+      "?",
+    ) as SetObj<Example14NonemptyList>;
 
   const { left, right } = partitionSweedlerElements(sweedler);
 
@@ -2635,12 +2644,12 @@ export const deriveNonemptyListCoequation = (): NonemptyListCoequationData => {
   );
 
   const leftMembership = semanticsAwareHas(leftPartition);
-  const counit = sweedler.sweedler.comonad.counit.transformation.component(
-    "?",
-  ) as SetHom<Example14CofreeElement, Example14NonemptyList>;
+    const counit = sweedler.sweedler.comonad.counit.transformation.component(
+      "?",
+    ) as SetHom<Example14CofreeElement, Example14NonemptyList>;
   const comultiplication =
     sweedler.sweedler.comonad.comultiplication.transformation.component(
-      "?",
+        "?",
     ) as SetHom<Example14CofreeElement, Example14CofreeDoubleElement>;
 
   const cDelta = SetCat.hom(
