@@ -594,50 +594,50 @@ export function summarizeKernelComputationResources(term: LambdaCoopKernelComput
     case 'kernelOperation': {
       const argumentSummary = summarizeValueResources(term.argument);
       const continuationSummary = summarizeKernelContinuation(term.continuation);
-      return combineSummaries(
-        [argumentSummary, continuationSummary],
-        {
-          termKind: 'kernelOperation',
-          note: `kernel operation ${term.operation}` ,
-          operations: [term.operation],
-          states: term.stateEffect ? [term.stateEffect] : undefined,
-        },
-        (usage) => {
-          usage.signatures.add(term.operation);
-          if (term.stateEffect) {
-            usage.states.add(term.stateEffect);
-          }
-          applyAnnotation(usage, term.annotation);
-        },
-      );
+        return combineSummaries(
+          [argumentSummary, continuationSummary],
+          {
+            termKind: 'kernelOperation',
+            note: `kernel operation ${term.operation}` ,
+            operations: [term.operation] as const,
+            ...(term.stateEffect ? { states: [term.stateEffect] as const } : {}),
+          },
+          (usage) => {
+            usage.signatures.add(term.operation);
+            if (term.stateEffect) {
+              usage.states.add(term.stateEffect);
+            }
+            applyAnnotation(usage, term.annotation);
+          },
+        );
     }
     case 'kernelRaise': {
       const payloadSummary = term.payload ? summarizeValueResources(term.payload) : combineSummaries([], { termKind: 'kernelRaisePayload', note: 'no payload' });
-      return combineSummaries(
-        [payloadSummary],
-        {
-          termKind: 'kernelRaise',
-          note: `kernel raise ${term.exception}` ,
-          exceptions: [term.exception],
-        },
-        (usage) => {
-          usage.exceptions.add(term.exception);
-        },
-      );
+        return combineSummaries(
+          [payloadSummary],
+          {
+            termKind: 'kernelRaise',
+            note: `kernel raise ${term.exception}` ,
+            exceptions: [term.exception] as const,
+          },
+          (usage) => {
+            usage.exceptions.add(term.exception);
+          },
+        );
     }
     case 'kernelSignal': {
       const payloadSummary = term.payload ? summarizeValueResources(term.payload) : combineSummaries([], { termKind: 'kernelSignalPayload', note: 'no payload' });
-      return combineSummaries(
-        [payloadSummary],
-        {
-          termKind: 'kernelSignal',
-          note: `signal ${term.signal}` ,
-          signals: [term.signal],
-        },
-        (usage) => {
-          usage.signals.add(term.signal);
-        },
-      );
+        return combineSummaries(
+          [payloadSummary],
+          {
+            termKind: 'kernelSignal',
+            note: `signal ${term.signal}` ,
+            signals: [term.signal] as const,
+          },
+          (usage) => {
+            usage.signals.add(term.signal);
+          },
+        );
     }
     case 'kernelTry': {
       const computationSummary = summarizeKernelComputationResources(term.computation);
@@ -666,10 +666,10 @@ export function summarizeAnnotation(note: string, annotation?: LambdaCoopResourc
     {
       termKind: 'annotation',
       note,
-      operations: annotation?.operations,
-      exceptions: annotation?.exceptions,
-      signals: annotation?.signals,
-      states: annotation?.states,
+      ...(annotation?.operations ? { operations: annotation.operations } : {}),
+      ...(annotation?.exceptions ? { exceptions: annotation.exceptions } : {}),
+      ...(annotation?.signals ? { signals: annotation.signals } : {}),
+      ...(annotation?.states ? { states: annotation.states } : {}),
     },
     (usage) => {
       applyAnnotation(usage, annotation);

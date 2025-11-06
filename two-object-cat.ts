@@ -1,6 +1,6 @@
 import type { FiniteCategory } from "./finite-cat"
 
-export type TwoObject = "•" | "★"
+export type TwoObject = "•" | "★" | "?"
 
 export interface TwoArrow {
   readonly name: string
@@ -12,10 +12,11 @@ const id = (object: TwoObject): TwoArrow => ({ name: `id_${object}`, src: object
 
 const idDot = id("•")
 const idStar = id("★")
+const idQuestion = id("?")
 
 const f: TwoArrow = { name: "f", src: "•", dst: "★" }
 
-const arrows: readonly TwoArrow[] = [idDot, idStar, f]
+const arrows: readonly TwoArrow[] = [idDot, idStar, idQuestion, f]
 
 const compose = (g: TwoArrow, h: TwoArrow): TwoArrow => {
   if (h.dst !== g.src) {
@@ -27,7 +28,7 @@ const compose = (g: TwoArrow, h: TwoArrow): TwoArrow => {
 }
 
 export const TwoObjectCategory: FiniteCategory<TwoObject, TwoArrow> = {
-  objects: ["•", "★"],
+  objects: ["•", "★", "?"],
   arrows,
   id,
   compose,

@@ -617,14 +617,14 @@ export const buildFiberedSamplesFromEtaleDescent = <BaseObj, BaseArr, Obj, Arr>(
   specifications.forEach(spec => {
     const pullback = sample.pullbackSamples[spec.pullbackIndex]
     if (!pullback) {
-      throw new Error(`Missing étale pullback sample at index ${spec.pullbackIndex}`)
+      throw new Error(`Missing ?tale pullback sample at index ${spec.pullbackIndex}`)
     }
 
     if (spec.liftIndex !== undefined) {
       const lift = pullback.lifts[spec.liftIndex]
       if (!lift) {
         throw new Error(
-          `Missing étale pullback lift at index ${spec.liftIndex} for pullback sample ${spec.pullbackIndex}`,
+          `Missing ?tale pullback lift at index ${spec.liftIndex} for pullback sample ${spec.pullbackIndex}`,
         )
       }
       void lift
@@ -1217,12 +1217,12 @@ const buildStackGroupoid = <BaseObj, BaseArr, Obj, Arr>(
     inv,
     dom: (arrow: Arr) => datum.fibered.fiber.src(arrow),
     cod: (arrow: Arr) => datum.fibered.fiber.dst(arrow),
-    eq: datum.fibered.fiber.arrowEq,
+    ...(datum.fibered.fiber.arrowEq ? { eq: datum.fibered.fiber.arrowEq } : {}),
     isId: (arrow: Arr) => {
       const source = datum.fibered.fiber.src(arrow)
       return arrowEq(arrow, datum.fibered.fiber.id(source))
     },
-    equalMor: datum.fibered.fiber.arrowEq,
+    ...(datum.fibered.fiber.arrowEq ? { equalMor: datum.fibered.fiber.arrowEq } : {}),
   }
 }
 

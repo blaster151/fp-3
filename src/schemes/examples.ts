@@ -260,7 +260,7 @@ const buildSpecF5Chart = (): SchemeChart<bigint> => {
   return {
     spectrum,
     structureSheaf,
-    label: spectrum.label,
+    ...(spectrum.label ? { label: spectrum.label } : {}),
     options: {
       spectrum: { ringSamples: [0n, 1n, 2n, 3n, 4n] },
       structureSheaf: {

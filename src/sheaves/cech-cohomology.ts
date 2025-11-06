@@ -343,18 +343,52 @@ export const analyzeCohomology = <R>(complex: ChainComplex<R>): CohomologyAnalys
 
 const keyOf = (indices: ReadonlyArray<number>): string => indices.join("|")
 
-const isStrictlyIncreasing = (values: ReadonlyArray<number>): boolean =>
-  values.every((value, index) => index === 0 || value > values[index - 1])
+const isStrictlyIncreasing = (values: ReadonlyArray<number>): boolean => {
+  for (let index = 1; index < values.length; index += 1) {
+    const current = values[index];
+    const previous = values[index - 1];
+    if (current === undefined || previous === undefined) {
+      return false;
+    }
+    if (current <= previous) {
+      return false
+    }
+  }
+  return true
+}
 
-const sameKey = (left: ReadonlyArray<number>, right: ReadonlyArray<number>): boolean =>
-  left.length === right.length && left.every((value, index) => value === right[index])
+const sameKey = (left: ReadonlyArray<number>, right: ReadonlyArray<number>): boolean => {
+  if (left.length !== right.length) {
+    return false
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false
+    }
+  }
+  return true
+}
 
 const dedupeVectors = <Section>(
   vectors: ReadonlyArray<ReadonlyArray<Section>>,
   eq: Equality<Section>,
 ): ReadonlyArray<ReadonlyArray<Section>> => {
-  const vectorEq: Equality<ReadonlyArray<Section>> = (left, right) =>
-    left.length === right.length && left.every((value, index) => eq(value, right[index]))
+  const vectorEq: Equality<ReadonlyArray<Section>> = (left, right) => {
+    if (left.length !== right.length) {
+      return false
+    }
+    for (let index = 0; index < left.length; index += 1) {
+      const leftValue = left[index]
+      const rightValue = right[index]
+      if (leftValue === undefined || rightValue === undefined) {
+        return false
+      }
+      if (!eq(leftValue, rightValue)) {
+        return false
+      }
+    }
+    return true
+  }
   return dedupe(vectors, vectorEq)
 }
 
@@ -364,8 +398,22 @@ const buildProductModule = <R, Section>(
   label: string,
   eq: Equality<Section>,
 ): Module<R, ReadonlyArray<Section>> => {
-  const vectorEq: Equality<ReadonlyArray<Section>> = (left, right) =>
-    left.length === right.length && left.every((value, index) => eq(value, right[index]))
+  const vectorEq: Equality<ReadonlyArray<Section>> = (left, right) => {
+    if (left.length !== right.length) {
+      return false
+    }
+    for (let index = 0; index < left.length; index += 1) {
+      const leftValue = left[index]
+      const rightValue = right[index]
+      if (leftValue === undefined || rightValue === undefined) {
+        return false
+      }
+      if (!eq(leftValue, rightValue)) {
+        return false
+      }
+    }
+    return true
+  }
 
   const zeroVector = Array.from({ length: size }, () => base.zero) as ReadonlyArray<Section>
 
@@ -373,7 +421,13 @@ const buildProductModule = <R, Section>(
     ring: base.ring,
     zero: zeroVector,
     add: (left, right) =>
-      left.map((value, index) => base.add(value, right[index])) as ReadonlyArray<Section>,
+      left.map((value, index) => {
+        const rightValue = right[index]
+        if (rightValue === undefined) {
+          throw new Error("Čech module addition requires vectors of equal length.")
+        }
+        return base.add(value, rightValue)
+      }) as ReadonlyArray<Section>,
     neg: value => value.map(entry => base.neg(entry)) as ReadonlyArray<Section>,
     scalar: (scalar, value) =>
       value.map(entry => base.scalar(scalar, entry)) as ReadonlyArray<Section>,
@@ -468,13 +522,13 @@ export const buildCechComplex = <Obj, Arr, Section, R>(
   const coveringCells: NormalizedCechCell<Obj, Arr, Section>[] = coveringArrows.map((arrow, index) => {
     const domain = site.category.src(arrow)
     const provided = setup.coveringSamples?.[index]
-    const samples = dedupe(provided ?? sheaf.sections(domain), eqSection)
+    const samples = dedupe(provided ?? sheaf.sections(domain), eqSection) as ReadonlyArray<Section>
     return {
       key: [index],
       object: domain,
       faces: [],
       samples,
-      label: covering.label ? `${covering.label}[${index}]` : undefined,
+      ...(covering.label ? { label: `${covering.label}[${index}]` } : {}),
     }
   })
 
@@ -500,14 +554,14 @@ export const buildCechComplex = <Obj, Arr, Section, R>(
       return face
     })
 
-    const samples = dedupe(cell.samples ?? sheaf.sections(cell.object), eqSection)
+    const samples = dedupe(cell.samples ?? sheaf.sections(cell.object), eqSection) as ReadonlyArray<Section>
 
     return {
       key: cell.key,
       object: cell.object,
       faces: normalizedFaces,
       samples,
-      label: cell.label,
+      ...(cell.label ? { label: cell.label } : {}),
     }
   })
 
@@ -599,6 +653,9 @@ export const buildCechComplex = <Obj, Arr, Section, R>(
               throw new Error(`Čech differential missing source for face ${keyOf(face.targetKey)}.`)
             }
             const section = cochain[sourceIndex]
+            if (section === undefined) {
+              throw new Error(`Čech differential missing cochain component for index ${sourceIndex}.`)
+            }
             const restricted = sheaf.restrict(face.arrow, section)
             const signed = face.omit % 2 === 0 ? restricted : module.neg(restricted)
             value = module.add(value, signed)
@@ -707,7 +764,7 @@ export const checkCechCohomology = <Obj, Arr, Section, R>(
     complex,
     chainCheck,
     cohomology,
-    derivedComparison,
+    ...(derivedComparison ? { derivedComparison } : {}),
     details,
   }
 }
@@ -761,8 +818,8 @@ const twoOpenToMultiOpenSetup = <Obj, Arr, Section, R>(
           { omit: 0, targetKey: [1], arrow: intersection.toSecond },
           { omit: 1, targetKey: [0], arrow: intersection.toFirst },
         ],
-        samples: setup.samples?.intersection,
-        label: intersection.label,
+        ...(setup.samples?.intersection ? { samples: setup.samples.intersection } : {}),
+        ...(intersection.label ? { label: intersection.label } : {}),
       },
     ],
     coveringSamples,

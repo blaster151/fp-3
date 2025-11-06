@@ -23,10 +23,15 @@ import type {
   OperationDayReference,
 } from "./functor-interaction-law";
 
-interface OperationEntry<Obj, Arr> {
-  readonly kind: "monad" | "comonad";
-  readonly operation: MonadOperation<Obj, Arr, unknown, unknown> | ComonadCooperation<Obj, Arr, unknown, unknown>;
-}
+type OperationEntry<Obj, Arr> =
+  | {
+      readonly kind: "monad";
+      readonly operation: MonadOperation<Obj, Arr, unknown, unknown>;
+    }
+  | {
+      readonly kind: "comonad";
+      readonly operation: ComonadCooperation<Obj, Arr, unknown, unknown>;
+    };
 
 type FinalLaw<Obj, Arr> = FunctorInteractionLaw<Obj, Arr, SetTerminalObject, never, boolean>;
 
@@ -42,14 +47,15 @@ const buildZeroComparison = <Obj, Arr, Left, Right, Value>(
   law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
   object: Obj,
 ): ZeroComparisonWitness<Obj, Right> => {
-  const domain = law.right.functor.functor.F0(object);
-  const zero = SetCat.initialObj;
+  const domain = law.right.functor.F0(object) as SetObj<Right>;
+  const initial = SetCat.initial();
+  const zero = initial.object as SetObj<never>;
   const toZero = SetCat.hom(domain, zero, (_value): never => {
     throw new Error(
       "Degeneracy zero map invoked; interacting functor should collapse to the initial object.",
     );
   });
-  const fromZero = SetCat.initialArrow(domain);
+  const fromZero = initial.initialize(domain);
   return { object, domain, zero, toZero, fromZero };
 };
 
@@ -59,11 +65,11 @@ const enumerateOperations = <Obj, Arr>(
   if (!operations) return [];
   const monad = (operations.monadOperations ?? []).map<OperationEntry<Obj, Arr>>((operation) => ({
     kind: "monad",
-    operation: operation as MonadOperation<Obj, Arr, unknown, unknown>,
+    operation,
   }));
   const comonad = (operations.comonadCooperations ?? []).map<OperationEntry<Obj, Arr>>((operation) => ({
     kind: "comonad",
-    operation: operation as ComonadCooperation<Obj, Arr, unknown, unknown>,
+    operation,
   }));
   return [...monad, ...comonad];
 };
@@ -115,26 +121,45 @@ const buildNullaryWitness = <Obj, Arr>(
   nullary: NullaryOperationMetadata<Obj, Arr>,
   objects: ReadonlyArray<Obj>,
   operationMetadata?: ReadonlyArray<string>,
-): NullaryDegeneracyWitness<Obj, Arr> => ({
-  kind,
-  label,
-  arity,
-  operationMetadata,
-  nullary,
-  components: objects.map((object) => ({
-    object,
-    arrow: nullary.component(object),
-    metadata: nullary.metadata ?? operationMetadata,
-  })),
-});
+): NullaryDegeneracyWitness<Obj, Arr> => {
+  const components = objects.map((object) => {
+    const metadata = nullary.metadata ?? operationMetadata;
+    return metadata && metadata.length > 0
+      ? {
+          object,
+          arrow: nullary.component(object),
+          metadata,
+        }
+      : {
+          object,
+          arrow: nullary.component(object),
+        };
+  });
+
+  const base: Omit<NullaryDegeneracyWitness<Obj, Arr>, "operationMetadata"> = {
+    kind,
+    label,
+    arity,
+    nullary,
+    components,
+  };
+
+  return operationMetadata && operationMetadata.length > 0
+    ? { ...base, operationMetadata }
+    : base;
+};
 
 const describeNullaryStep = <Obj, Arr>(
   witness: NullaryDegeneracyWitness<Obj, Arr>,
-): DegeneracyProofStep<Obj, Arr> => ({
-  label: "nullary-collapse",
-  description: `Nullary operation ${witness.label} forces constant-zero interaction partners via Theorem 1.`,
-  metadata: witness.operationMetadata,
-});
+): DegeneracyProofStep<Obj, Arr> => {
+  const base: Omit<DegeneracyProofStep<Obj, Arr>, "metadata"> = {
+    label: "nullary-collapse",
+    description: `Nullary operation ${witness.label} forces constant-zero interaction partners via Theorem 1.`,
+  };
+  return witness.operationMetadata && witness.operationMetadata.length > 0
+    ? { ...base, metadata: witness.operationMetadata }
+    : base;
+};
 
 export const checkNullaryDegeneracy = <Obj, Arr, Left, Right, Value>(
   law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
@@ -222,7 +247,7 @@ export interface CommutativeBinaryDegeneracyArtifacts<Obj, Arr, Right> {
   readonly transformation?: Arr;
   readonly transformationGap?: string;
   readonly operationComponent: Arr;
-  readonly operationMetadata: ReadonlyArray<string>;
+  readonly operationMetadata?: ReadonlyArray<string>;
   readonly lawvereMetadata: ReadonlyArray<string>;
   readonly dayReferenceMetadata: ReadonlyArray<string>;
   readonly zeroComparison?: ZeroComparisonWitness<Obj, Right>;
@@ -263,12 +288,12 @@ const buildBinaryWitness = <Obj, Arr>(
   kind: entry.kind,
   label: entry.operation.label,
   arity: entry.operation.arity,
-  operationMetadata: metadata,
-  components: objects.map((object) => ({
-    object,
-    arrow: component(object),
-    metadata,
-  })),
+  ...(metadata && metadata.length > 0 ? { operationMetadata: metadata } : {}),
+  components: objects.map((object) =>
+    metadata && metadata.length > 0
+      ? { object, arrow: component(object), metadata }
+      : { object, arrow: component(object) },
+  ),
   ...(swapWitness ? { swapWitness } : {}),
   operationEntry: entry,
 });
@@ -305,15 +330,15 @@ const gatherBinaryArtifacts = <Obj, Arr, Left, Right, Value>(
 
   const duplicationGap =
     duplication === undefined
-      ? "Missing duplication witness β^2_Y; supply genericDuplication for the comonad component."
+      ? "Missing duplication witness ?^2_Y; supply genericDuplication for the comonad component."
       : undefined;
   const substitutionGap =
     substitution === undefined && operationEntry.kind === "monad"
-      ? "Missing Kleisli-on-generic arrow κ_Y needed to build f_Y in Theorem 2."
+      ? "Missing Kleisli-on-generic arrow ?_Y needed to build f_Y in Theorem 2."
       : undefined;
   const transformationGap =
     transformation === undefined
-      ? "Natural transformation component α^2_Y unavailable; provide transformation metadata for the operation."
+      ? "Natural transformation component ?^2_Y unavailable; provide transformation metadata for the operation."
       : undefined;
   const zeroComparisonGap =
     zeroComparison === undefined
@@ -325,12 +350,10 @@ const gatherBinaryArtifacts = <Obj, Arr, Left, Right, Value>(
   const terminalData = SetCat.terminal();
   const terminal = terminalData.object;
   const terminalCoproduct = SetCat.coproduct(terminal, terminal);
-  const toTerminal = rightCarrier
-    ? terminalData.terminate(rightCarrier)
-    : undefined;
+  const toTerminal = rightCarrier ? terminalData.terminate(rightCarrier) : undefined;
   const toTerminalGap =
     toTerminal === undefined
-      ? "Unable to terminate the right carrier at the terminal object." 
+      ? "Unable to terminate the right carrier at the terminal object."
       : undefined;
   const terminalDiagonal =
     toTerminal === undefined
@@ -338,7 +361,7 @@ const gatherBinaryArtifacts = <Obj, Arr, Left, Right, Value>(
       : SetCat.compose(terminalCoproduct.injections.inl, toTerminal);
   const terminalDiagonalGap =
     terminalDiagonal === undefined
-      ? "Missing diagonal into 1 + 1; ensure the right carrier terminates." 
+      ? "Missing diagonal into 1 + 1; ensure the right carrier terminates."
       : undefined;
 
   const initialData = SetCat.initial();
@@ -354,26 +377,26 @@ const gatherBinaryArtifacts = <Obj, Arr, Left, Right, Value>(
 
   return {
     object: component.object,
-    duplication,
-    duplicationGap,
-    substitution,
-    substitutionGap,
-    transformation,
-    transformationGap,
     operationComponent: component.arrow,
-    operationMetadata,
     lawvereMetadata,
     dayReferenceMetadata: dayMetadata,
-    zeroComparison,
-    zeroComparisonGap,
-    toTerminal,
-    toTerminalGap,
-    terminalCoproduct,
-    terminalDiagonal,
-    terminalDiagonalGap,
-    zeroCoproduct,
-    kPrime,
-    kPrimeGap,
+    ...(operationMetadata.length > 0 ? { operationMetadata } : {}),
+    ...(duplication !== undefined ? { duplication } : {}),
+    ...(duplicationGap ? { duplicationGap } : {}),
+    ...(substitution !== undefined ? { substitution } : {}),
+    ...(substitutionGap ? { substitutionGap } : {}),
+    ...(transformation !== undefined ? { transformation } : {}),
+    ...(transformationGap ? { transformationGap } : {}),
+    ...(zeroComparison !== undefined ? { zeroComparison } : {}),
+    ...(zeroComparisonGap ? { zeroComparisonGap } : {}),
+    ...(toTerminal !== undefined ? { toTerminal } : {}),
+    ...(toTerminalGap ? { toTerminalGap } : {}),
+    ...(terminalCoproduct ? { terminalCoproduct } : {}),
+    ...(terminalDiagonal !== undefined ? { terminalDiagonal } : {}),
+    ...(terminalDiagonalGap ? { terminalDiagonalGap } : {}),
+    ...(zeroCoproduct ? { zeroCoproduct } : {}),
+    ...(kPrime !== undefined ? { kPrime } : {}),
+    ...(kPrimeGap ? { kPrimeGap } : {}),
   };
 };
 
@@ -383,112 +406,140 @@ const buildBinarySteps = <Obj, Arr, Left, Right, Value>(
   component: CommutativeBinaryComponentWitness<Obj, Arr>,
   artifacts: CommutativeBinaryDegeneracyArtifacts<Obj, Arr, Right>,
 ): ReadonlyArray<DegeneracyProofStep<Obj, Arr>> => {
-  const steps: DegeneracyProofStep<Obj, Arr>[] = [
+  const steps: DegeneracyProofStep<Obj, Arr>[] = [];
+  const pushStep = (
+    base: Omit<DegeneracyProofStep<Obj, Arr>, "metadata">,
+    metadata: ReadonlyArray<string> | undefined,
+  ) => {
+    steps.push(metadata && metadata.length > 0 ? { ...base, metadata } : base);
+  };
+
+  pushStep(
     {
       label: "diagonal-delta",
       description:
-        "Construct diagonal δ_Y : Y → Y × Y to duplicate the generic element as in Theorem 2 part (1).",
+        "Construct diagonal ?_Y : Y ? Y ? Y to duplicate the generic element as in Theorem 2 part (1).",
       object: component.object,
       ...(artifacts.duplication ? { arrow: artifacts.duplication } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.duplicationGap ? { gaps: [artifacts.duplicationGap] } : {}),
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "lift-through-functor",
       description:
-        "Lift δ_Y through the functor/transformation to obtain α^2_Y ∘ Tδ_Y for collapse analysis.",
+        "Lift ?_Y through the functor/transformation to obtain ?^2_Y ? T?_Y for collapse analysis.",
       object: component.object,
       ...(artifacts.transformation ? { arrow: artifacts.transformation } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.transformationGap ? { gaps: [artifacts.transformationGap] } : {}),
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "apply-commutative-operation",
       description:
-        "Apply the commutative binary component, producing the candidate collapse map α^2_Y.",
+        "Apply the commutative binary component, producing the candidate collapse map ?^2_Y.",
       object: component.object,
       arrow: artifacts.operationComponent,
-      metadata: artifacts.operationMetadata,
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "construct-fY",
       description:
         "Assemble f_Y via substitution on the generic element, as required in Theorem 2 part (1).",
       object: component.object,
       ...(artifacts.substitution ? { arrow: artifacts.substitution } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.substitutionGap ? { gaps: [artifacts.substitutionGap] } : {}),
     },
-  ];
+    artifacts.operationMetadata,
+  );
 
   if (artifacts.lawvereMetadata.length > 0) {
-    steps.push({
-      label: "lawvere-comparison",
-      description:
-        "Reference the Lawvere-theory morphism μ₂ witnessing substitution compatibility for the operation.",
-      object: component.object,
-      metadata: artifacts.lawvereMetadata,
-    });
+    pushStep(
+      {
+        label: "lawvere-comparison",
+        description:
+          "Reference the Lawvere-theory morphism ?? witnessing substitution compatibility for the operation.",
+        object: component.object,
+      },
+      artifacts.lawvereMetadata,
+    );
   }
 
   if (artifacts.dayReferenceMetadata.length > 0) {
-    steps.push({
-      label: "day-fiber-reference",
-      description:
-        "Track the Day fiber indices used when aggregating the interaction pairing for this operation.",
-      object: component.object,
-      metadata: artifacts.dayReferenceMetadata,
-    });
+    pushStep(
+      {
+        label: "day-fiber-reference",
+        description:
+          "Track the Day fiber indices used when aggregating the interaction pairing for this operation.",
+        object: component.object,
+      },
+      artifacts.dayReferenceMetadata,
+    );
   }
 
-  steps.push(
+  pushStep(
     {
       label: "construct-hY",
       description:
-        "Terminate the right-hand carrier to obtain h_Y : GY → 1 as used in the uniqueness argument.",
+        "Terminate the right-hand carrier to obtain h_Y : GY ? 1 as used in the uniqueness argument.",
       object: component.object,
-      ...(artifacts.toTerminal ? { arrow: artifacts.toTerminal } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.toTerminalGap ? { gaps: [artifacts.toTerminalGap] } : {}),
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "construct-deltaPrimeY",
       description:
-        "Compose h_Y with the canonical injection into 1 + 1 to form δ'_Y for Theorem 2 part (2).",
+        "Compose h_Y with the canonical injection into 1 + 1 to form ?'_Y for Theorem 2 part (2).",
       object: component.object,
-      ...(artifacts.terminalDiagonal ? { arrow: artifacts.terminalDiagonal } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.terminalDiagonalGap ? { gaps: [artifacts.terminalDiagonalGap] } : {}),
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "construct-kPrimeY",
       description:
         "Factor through the zero coproduct to obtain k'_Y as in Theorem 2 part (2).",
       object: component.object,
-      ...(artifacts.kPrime ? { arrow: artifacts.kPrime } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.kPrimeGap ? { gaps: [artifacts.kPrimeGap] } : {}),
     },
+    artifacts.operationMetadata,
+  );
+
+  pushStep(
     {
       label: "construct-kY",
       description:
-        "Use the uniqueness of maps into the zero object to build the final collapse morphism k_Y : GY → 0.",
+        "Use the uniqueness of maps into the zero object to build the final collapse morphism k_Y : GY ? 0.",
       object: component.object,
-      ...(artifacts.zeroComparison ? { arrow: artifacts.zeroComparison.toZero } : {}),
-      metadata: artifacts.operationMetadata,
       ...(artifacts.zeroComparisonGap ? { gaps: [artifacts.zeroComparisonGap] } : {}),
     },
+    artifacts.operationMetadata,
   );
 
   const pairing = law.getPairingComponent(component.object);
   if (pairing) {
-    steps.push({
-      label: "compare-with-pairing",
-      description: "Compare the constructed collapse map with the stored Day pairing component.",
-      object: component.object,
-      pairingComponent: pairing,
-      metadata: artifacts.operationMetadata,
-    });
+    pushStep(
+      {
+        label: "compare-with-pairing",
+        description: "Compare the constructed collapse map with the stored Day pairing component.",
+        object: component.object,
+        pairingComponent: pairing,
+      },
+      artifacts.operationMetadata,
+    );
   }
 
   return steps;
@@ -525,7 +576,7 @@ export const checkCommutativeBinaryDegeneracy = <Obj, Arr, Left, Right, Value>(
             label: `${witness.label}(${String(component.object)})`,
             object: component.object,
             steps: buildBinarySteps(law, witness, component, artifacts),
-            zeroComparison,
+            ...(zeroComparison ? { zeroComparison } : {}),
             artifacts,
           };
         }),
@@ -603,13 +654,16 @@ export const analyzeFunctorOperationDegeneracy = <Obj, Arr, Left, Right, Value, 
     }
     if (operation.nullary) {
       dropMaps.push(
-        ...objects.map<NullaryDropMapWitness<Obj, Arr>>((object) => ({
-          label: operation.label,
-          kind: entry.kind,
-          object,
-          arrow: operation.nullary!.component(object),
-          metadata: operation.nullary?.metadata ?? operation.metadata,
-        })),
+        ...objects.map<NullaryDropMapWitness<Obj, Arr>>((object) => {
+          const metadata = operation.nullary?.metadata ?? operation.metadata;
+          const base: Omit<NullaryDropMapWitness<Obj, Arr>, "metadata"> = {
+            label: operation.label,
+            kind: entry.kind,
+            object,
+            arrow: operation.nullary!.component(object),
+          };
+          return metadata && metadata.length > 0 ? { ...base, metadata } : base;
+        }),
       );
     }
   });

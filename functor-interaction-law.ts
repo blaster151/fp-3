@@ -41,7 +41,8 @@ import {
   type SetTerminalObject,
 } from "./set-cat";
 import { setSimpleCategory } from "./set-simple-category";
-import type { PromonoidalKernel } from "./promonoidal-structure";
+import type { SimpleCat } from "./simple-cat";
+import type { PromonoidalKernel, PromonoidalTensorValue } from "./promonoidal-structure";
 import type {
   FunctorOperationDegeneracyReport,
 } from "./functor-interaction-law-degeneracy";
@@ -251,20 +252,46 @@ const mergeMetadata = (
 };
 
 const mergeMetadataList = (
-  ...inputs: ReadonlyArray<string> | undefined[]
+  ...inputs: (ReadonlyArray<string> | undefined)[]
 ): ReadonlyArray<string> | undefined =>
   inputs.reduce<ReadonlyArray<string> | undefined>((accumulator, current) => mergeMetadata(accumulator, current), undefined);
 
+const buildMonadOperation = <Obj, Arr, LawObj, LawArr>(
+  operation: MonadOperation<Obj, Arr, LawObj, LawArr>,
+  genericElement: ((object: Obj) => Arr) | undefined,
+  metadata: ReadonlyArray<string> | undefined,
+): MonadOperation<Obj, Arr, LawObj, LawArr> => ({
+  ...operation,
+  ...(genericElement && !operation.kleisliOnGeneric
+    ? { kleisliOnGeneric: genericElement }
+    : {}),
+  ...(metadata ? { metadata } : {}),
+});
+
+const buildComonadOperation = <Obj, Arr, LawObj, LawArr>(
+  operation: ComonadCooperation<Obj, Arr, LawObj, LawArr>,
+  duplication: ((object: Obj) => Arr) | undefined,
+  counit: ((object: Obj) => Arr) | undefined,
+  metadata: ReadonlyArray<string> | undefined,
+): ComonadCooperation<Obj, Arr, LawObj, LawArr> => ({
+  ...operation,
+  ...(duplication && !operation.genericDuplication
+    ? { genericDuplication: duplication }
+    : {}),
+  ...(counit && !operation.counit ? { counit } : {}),
+  ...(metadata ? { metadata } : {}),
+});
+
 const MONAD_UNIT_METADATA = [
-  "Generic element witnesses derived from the monad unit η.",
+  "Generic element witnesses derived from the monad unit ?.",
 ] as const;
 
 const COMONAD_COMULT_METADATA = [
-  "Generic duplication witnesses derived from the comonad comultiplication δ.",
+  "Generic duplication witnesses derived from the comonad comultiplication ?.",
 ] as const;
 
 const COMONAD_COUNIT_METADATA = [
-  "Counit witnesses derived from the comonad counit ε.",
+  "Counit witnesses derived from the comonad counit ?.",
 ] as const;
 
 export interface FunctorInteractionLawOperationsInput<Obj, Arr, LawObj = Obj, LawArr = Arr> {
@@ -285,105 +312,74 @@ export interface FunctorInteractionLawOperationsInput<Obj, Arr, LawObj = Obj, La
 export const makeFunctorInteractionLawOperations = <Obj, Arr, LawObj = Obj, LawArr = Arr>(
   input: FunctorInteractionLawOperationsInput<Obj, Arr, LawObj, LawArr>,
 ): FunctorInteractionLawOperations<Obj, Arr, LawObj, LawArr> => {
-  let monadOperations: ReadonlyArray<MonadOperation<Obj, Arr, LawObj, LawArr>> =
-    input.monadOperations ?? [];
-  if (monadOperations.length > 0 && input.monadStructure?.unit) {
-    const addition = mergeMetadataList(
-      MONAD_UNIT_METADATA,
-      input.monadStructure.metadata,
-      input.monadStructure.unit.metadata,
-    );
-    const genericElement = (object: Obj) =>
-      input.monadStructure!.unit!.transformation.component(object);
-    monadOperations = monadOperations.map((operation) => {
-      let next = operation;
-      let changed = false;
-      if (!operation.kleisliOnGeneric) {
-        next = { ...next, kleisliOnGeneric: genericElement };
-        changed = true;
-      }
-      const metadata = mergeMetadata(operation.metadata, addition);
-      if (metadata !== operation.metadata) {
-        next = { ...next, metadata };
-        changed = true;
-      }
-      return changed ? next : operation;
-    });
-  }
+  const monadUnitMetadata = input.monadStructure?.unit
+    ? mergeMetadataList(
+        MONAD_UNIT_METADATA,
+        input.monadStructure.metadata,
+        input.monadStructure.unit.metadata,
+      )
+    : undefined;
 
-  let comonadCooperations: ReadonlyArray<ComonadCooperation<Obj, Arr, LawObj, LawArr>> =
-    input.comonadCooperations ?? [];
-  if (comonadCooperations.length > 0 && input.comonadStructure?.comultiplication) {
-    const addition = mergeMetadataList(
-      COMONAD_COMULT_METADATA,
-      input.comonadStructure.metadata,
-      input.comonadStructure.comultiplication.metadata,
-    );
-    const duplication = (object: Obj) =>
-      input.comonadStructure!.comultiplication!.transformation.component(object);
-    comonadCooperations = comonadCooperations.map((operation) => {
-      let next = operation;
-      let changed = false;
-      if (!operation.genericDuplication) {
-        next = { ...next, genericDuplication: duplication };
-        changed = true;
-      }
-      const metadata = mergeMetadata(operation.metadata, addition);
-      if (metadata !== operation.metadata) {
-        next = { ...next, metadata };
-        changed = true;
-      }
-      return changed ? next : operation;
-    });
-  }
+  const monadGenericElement = input.monadStructure?.unit
+    ? input.monadStructure.unit.transformation.component
+    : undefined;
 
-  if (comonadCooperations.length > 0 && input.comonadStructure?.counit) {
-    const addition = mergeMetadataList(
-      COMONAD_COUNIT_METADATA,
-      input.comonadStructure.metadata,
-      input.comonadStructure.counit.metadata,
-    );
-    const counit = (object: Obj) =>
-      input.comonadStructure!.counit!.transformation.component(object);
-    comonadCooperations = comonadCooperations.map((operation) => {
-      let next = operation;
-      let changed = false;
-      if (!operation.counit) {
-        next = { ...next, counit };
-        changed = true;
-      }
-      const metadata = mergeMetadata(operation.metadata, addition);
-      if (metadata !== operation.metadata) {
-        next = { ...next, metadata };
-        changed = true;
-      }
-      return changed ? next : operation;
-    });
-  }
+  const monadOperations = (input.monadOperations ?? []).map((operation) =>
+    buildMonadOperation(operation, monadGenericElement, mergeMetadata(operation.metadata, monadUnitMetadata)),
+  );
 
-  let metadata = input.metadata;
-  metadata = mergeMetadata(metadata, input.monadStructure?.metadata);
-  metadata = mergeMetadata(metadata, input.monadStructure?.unit.metadata);
-  metadata = mergeMetadata(metadata, input.monadStructure?.unit ? MONAD_UNIT_METADATA : undefined);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.metadata);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.comultiplication.metadata);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.comultiplication
-    ? COMONAD_COMULT_METADATA
-    : undefined);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.counit.metadata);
-  metadata = mergeMetadata(metadata, input.comonadStructure?.counit ? COMONAD_COUNIT_METADATA : undefined);
+  const comultiplicationMetadata = input.comonadStructure?.comultiplication
+    ? mergeMetadataList(
+        COMONAD_COMULT_METADATA,
+        input.comonadStructure.metadata,
+        input.comonadStructure.comultiplication.metadata,
+      )
+    : undefined;
 
-  const operations: FunctorInteractionLawOperations<Obj, Arr, LawObj, LawArr> = {};
-  if (monadOperations.length > 0) {
-    operations.monadOperations = monadOperations;
-  }
-  if (comonadCooperations.length > 0) {
-    operations.comonadCooperations = comonadCooperations;
-  }
-  if (metadata && metadata.length > 0) {
-    operations.metadata = metadata;
-  }
-  return operations;
+  const counitMetadata = input.comonadStructure?.counit
+    ? mergeMetadataList(
+        COMONAD_COUNIT_METADATA,
+        input.comonadStructure.metadata,
+        input.comonadStructure.counit.metadata,
+      )
+    : undefined;
+
+  const comultiplicationComponent = input.comonadStructure?.comultiplication
+    ? input.comonadStructure.comultiplication.transformation.component
+    : undefined;
+
+  const counitComponent = input.comonadStructure?.counit
+    ? input.comonadStructure.counit.transformation.component
+    : undefined;
+
+  const comonadOperations = (input.comonadCooperations ?? []).map((operation) =>
+    buildComonadOperation(
+      operation,
+      comultiplicationComponent,
+      counitComponent,
+      mergeMetadataList(operation.metadata, comultiplicationMetadata, counitMetadata),
+    ),
+  );
+
+  const operationsMetadata = mergeMetadataList(
+    input.metadata,
+    input.monadStructure?.metadata,
+    input.monadStructure?.unit?.metadata,
+    input.monadStructure?.unit ? MONAD_UNIT_METADATA : undefined,
+    input.comonadStructure?.metadata,
+    input.comonadStructure?.comultiplication?.metadata,
+    input.comonadStructure?.comultiplication ? COMONAD_COMULT_METADATA : undefined,
+    input.comonadStructure?.counit?.metadata,
+    input.comonadStructure?.counit ? COMONAD_COUNIT_METADATA : undefined,
+  );
+
+  return {
+    ...(monadOperations.length > 0 ? { monadOperations } : {}),
+    ...(comonadOperations.length > 0 ? { comonadCooperations: comonadOperations } : {}),
+    ...(operationsMetadata && operationsMetadata.length > 0
+      ? { metadata: operationsMetadata }
+      : {}),
+  };
 };
 
 export interface FunctorInteractionLaw<Obj, Arr, Left, Right, Value>
@@ -575,7 +571,7 @@ export const stretchInteractionLaw = <Obj, Arr, Left, Right, Value, LeftPrime, R
     operations,
   } = options;
 
-  const convolution = dayTensor(law.kernel, left.functor, right.functor);
+  const convolution = dayTensor(law.kernel, left, right);
 
   const pairing = (
     object: Obj,
@@ -591,13 +587,13 @@ export const stretchInteractionLaw = <Obj, Arr, Left, Right, Value, LeftPrime, R
     }
 
     return SetCat.hom(carrier, law.dualizing, (cls) => {
-      const data = cls as unknown as {
+      const data = cls as {
         readonly diagonalObject: Obj;
         readonly witness: {
           readonly kernelLeft: Obj;
           readonly kernelRight: Obj;
           readonly output: Obj;
-          readonly kernelValue: unknown;
+          readonly kernelValue: PromonoidalTensorValue<Obj, Arr>;
           readonly leftElement: LeftPrime;
           readonly rightElement: RightPrime;
         };
@@ -657,6 +653,8 @@ export const stretchInteractionLaw = <Obj, Arr, Left, Right, Value, LeftPrime, R
     return aggregatePostprocess({ baseValue, contributions, mapped });
   };
 
+  const combinedOperations = operations ?? law.operations;
+
   return makeFunctorInteractionLaw({
     kernel: law.kernel,
     left,
@@ -666,7 +664,7 @@ export const stretchInteractionLaw = <Obj, Arr, Left, Right, Value, LeftPrime, R
     pairing,
     aggregate,
     ...(tags ? { tags } : {}),
-    operations: operations ?? law.operations,
+    ...(combinedOperations ? { operations: combinedOperations } : {}),
   });
 };
 
@@ -681,18 +679,18 @@ export const selfDualInteractionLaw = <Obj, Arr, Left, Right, Value>(
   const dualSpace = dualChuSpace(space);
   const dualLeft = oppositeFunctorToContravariant(law.kernel.base, law.right);
   const dualRight = contravariantToOppositeFunctor(law.left);
-  const convolution = dayTensor(law.kernel, dualLeft.functor, dualRight.functor);
+  const convolution = dayTensor(law.kernel, dualLeft, dualRight);
 
   const pairing = (
     _object: Obj,
     carrier: ReturnType<typeof convolution.functor.functor.F0>,
   ) => SetCat.hom(carrier, law.dualizing, (cls) => {
-    const data = cls as unknown as {
+    const data = cls as {
       readonly witness: {
         readonly kernelLeft: Obj;
         readonly kernelRight: Obj;
         readonly output: Obj;
-        readonly kernelValue: unknown;
+        readonly kernelValue: PromonoidalTensorValue<Obj, Arr>;
         readonly leftElement: Right;
         readonly rightElement: Left;
       };
@@ -737,7 +735,7 @@ export const selfDualInteractionLaw = <Obj, Arr, Left, Right, Value>(
     dualizing: law.dualizing,
     pairing,
     aggregate,
-    operations: law.operations,
+    ...(law.operations ? { operations: law.operations } : {}),
     tags: { primal: "SelfDualPrimal", dual: "SelfDualDual" },
   });
 
@@ -961,7 +959,7 @@ export const greatestInteractingFunctor = <Obj, Arr, Left, Right, Value>(
   diagnostics.push(
     options.comma
       ? "Greatest functor: reused cached internal-hom presentation."
-      : "Greatest functor: derived internal-hom presentation [G(-), ⊙].",
+      : "Greatest functor: derived internal-hom presentation [G(-), ?].",
   );
 
   const sigma = comma.sigma;
@@ -972,27 +970,34 @@ export const greatestInteractingFunctor = <Obj, Arr, Left, Right, Value>(
     ["Greatest interacting functor packages Sweedler dual evaluations."],
   );
 
-  const sourceOpposite = law.left.witness.oppositeWitness as FunctorWithWitness<
-    Obj,
-    Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >;
-  const targetOpposite = comma.internalHomOpposite as FunctorWithWitness<
-    Obj,
-    Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >;
+  const sourceOpposite: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    law.left.witness.oppositeWitness as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
+  const targetOpposite: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    comma.internalHomOpposite as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
 
-  const transformation = constructNaturalTransformationWithWitness(
+  const transformation = constructNaturalTransformationWithWitness<
+    Obj,
+    Arr,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
     sourceOpposite,
     targetOpposite,
     (object) => {
       const component = sigma.get(object);
       if (!component) {
         throw new Error(
-          `Greatest interacting functor requires a σ-component for object ${String(object)}.`,
+          `Greatest interacting functor requires a ?-component for object ${String(object)}.`,
         );
       }
       return component as unknown as SetHom<unknown, unknown>;
@@ -1085,7 +1090,7 @@ export const greatestInteractingComonad = <Obj, Arr, Left, Right, Value>(
   diagnostics.push(
     options.comma
       ? "Greatest comonad: reused cached internal-hom presentation."
-      : "Greatest comonad: derived internal-hom presentation [F(-), ⊙].",
+      : "Greatest comonad: derived internal-hom presentation [F(-), ?].",
   );
 
   const sigma = comma.sigma;
@@ -1096,27 +1101,34 @@ export const greatestInteractingComonad = <Obj, Arr, Left, Right, Value>(
     ["Greatest interacting comonad packages Sweedler dual evaluations."],
   );
 
-  const comonadSourceOpposite = dual.law.left.witness.oppositeWitness as FunctorWithWitness<
-    Obj,
-    Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >;
-  const comonadTargetOpposite = comma.internalHomOpposite as FunctorWithWitness<
-    Obj,
-    Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >;
+  const comonadSourceOpposite: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    dual.law.left.witness.oppositeWitness as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
+  const comonadTargetOpposite: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    comma.internalHomOpposite as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
 
-  const transformation = constructNaturalTransformationWithWitness(
+  const transformation = constructNaturalTransformationWithWitness<
+    Obj,
+    Arr,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
     comonadSourceOpposite,
     comonadTargetOpposite,
     (object) => {
       const component = sigma.get(object);
       if (!component) {
         throw new Error(
-          `Greatest interacting comonad requires a σ-component for object ${String(object)}.`,
+          `Greatest interacting comonad requires a ?-component for object ${String(object)}.`,
         );
       }
       return component as unknown as SetHom<unknown, unknown>;
@@ -1307,7 +1319,7 @@ const compareInteractionLaws = <
         mismatches += 1;
         matches = false;
         diagnostics.push(
-          `compareInteractionLaws${mapping.label ? ` (${mapping.label})` : ""}: mismatch for pair ${primalKey} ⊗ ${dualKey}.`,
+          `compareInteractionLaws${mapping.label ? ` (${mapping.label})` : ""}: mismatch for pair ${primalKey} ? ${dualKey}.`,
         );
       } else {
         visitedPairs.add(`${primalKey}||${dualKey}`);
@@ -1440,8 +1452,8 @@ export const dualOfTerminal = <Obj, Arr, Left, Right, Value>(
 
   const diagnostics = [
     ...reference.diagnostics,
-    `dualOfTerminal: reference dual carriers — primal ${referencePrimalSize}, dual ${referenceDualSize}.`,
-    `dualOfTerminal: constructed final law carriers — primal ${finalPrimalSize}, dual ${finalDualSize}.`,
+    `dualOfTerminal: reference dual carriers ? primal ${referencePrimalSize}, dual ${referenceDualSize}.`,
+    `dualOfTerminal: constructed final law carriers ? primal ${finalPrimalSize}, dual ${finalDualSize}.`,
     matchesReference
       ? "dualOfTerminal: both constructions collapse to the constant-zero interaction law."
       : "dualOfTerminal: mismatch between general dual and final-law construction for terminal functor.",
@@ -1609,7 +1621,7 @@ export const dualOfInitial = <Obj, Arr, Left, Right, Value>(
     "dualOfInitial: reused fixed-left initial object witness from Phase I.",
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualOfInitial: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `dualOfInitial: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -1734,7 +1746,7 @@ export const dualOfCoproduct = <
     ...agreement.diagnostics,
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualOfCoproduct: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `dualOfCoproduct: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -1785,7 +1797,7 @@ export const dualOfWeightedSum = <Obj, Arr, Left, Right, Value, Weight>(
     `dualOfWeightedSum: enumerated ${enumeratedWeights.length} weight elements for the Day integral witness.`,
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualOfWeightedSum: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `dualOfWeightedSum: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -1984,7 +1996,7 @@ export const dualLowerBound = <Obj, Arr, Left, Right, Value>(
     ...componentDiagnostics,
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualLowerBound: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `dualLowerBound: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -2065,11 +2077,11 @@ export const dualOfExponentialIdentity = <Obj, Arr, Left, Right, Value, Paramete
     ...reference.diagnostics,
     `dualOfExponentialIdentity: parameter cardinality ${parameterCardinality}.`,
     ...cardinalities.map((entry) =>
-      `dualOfExponentialIdentity: object ${String(entry.object)} — original ${entry.originalCardinality}, dual ${entry.dualCardinality}, expected ${entry.expectedCardinality}.`,
+      `dualOfExponentialIdentity: object ${String(entry.object)} ? original ${entry.originalCardinality}, dual ${entry.dualCardinality}, expected ${entry.expectedCardinality}.`,
     ),
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualOfExponentialIdentity: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `dualOfExponentialIdentity: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -2154,21 +2166,21 @@ export const dualOfPositiveList = <Obj, Arr, Left, Right, Value, Element>(
 
   const diagnostics = [
     ...reference.diagnostics,
-    `dualOfPositiveList: collected θ_n summaries for ${thetaSummaries.length} length classes.`,
+    `dualOfPositiveList: collected ?_n summaries for ${thetaSummaries.length} length classes.`,
     ...thetaSummaries.map((summary) => {
       const preview = summary.sequences
         .slice(0, 3)
         .map((sequence) => `[${sequence.map((value) => String(value)).join(", ")}]`)
         .join(", ");
-      const suffix = summary.sequences.length > 3 ? ", …" : "";
-      return `dualOfPositiveList: θ_${summary.length} on ${String(summary.object)} captures ${summary.sequences.length} sequences${
+      const suffix = summary.sequences.length > 3 ? ", ?" : "";
+      return `dualOfPositiveList: ?_${summary.length} on ${String(summary.object)} captures ${summary.sequences.length} sequences${
         preview ? ` (${preview}${suffix})` : ""
       }.`;
     }),
     ...zeroLengthDiagnostics,
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `dualOfPositiveList: degeneracy metadata propagated — ${degeneracyMetadata.join("; ")}.`,
+          `dualOfPositiveList: degeneracy metadata propagated ? ${degeneracyMetadata.join("; ")}.`,
         ]
       : ["dualOfPositiveList: no degeneracy metadata supplied for positive-list witnesses."]),
   ];
@@ -2359,7 +2371,7 @@ export const laxMonoidalDualComparison = <
             mismatchDiagnostics.push(
               `laxMonoidalDualComparison: mismatch on object ${String(object)} with primal ${JSON.stringify(
                 primal.element,
-              )} and dual ${JSON.stringify(dual.element)} — specialised value ${JSON.stringify(
+              )} and dual ${JSON.stringify(dual.element)} ? specialised value ${JSON.stringify(
                 domainValue,
               )} maps to ${JSON.stringify(mappedValue)} but reference produced ${JSON.stringify(
                 referenceValue,
@@ -2411,7 +2423,7 @@ export const laxMonoidalDualComparison = <
       : "laxMonoidalDualComparison: value-level swap witness is not bijective; lax structure fails to be invertible.",
     ...(degeneracyMetadata && degeneracyMetadata.length > 0
       ? [
-          `laxMonoidalDualComparison: degeneracy metadata propagated — ${degeneracyMetadata.join(
+          `laxMonoidalDualComparison: degeneracy metadata propagated ? ${degeneracyMetadata.join(
             "; ",
           )}.`,
         ]
@@ -2444,30 +2456,42 @@ export const finalInteractionLaw = <Obj, Arr, Value = boolean>(
   kernel: PromonoidalKernel<Obj, Arr>,
   options: FinalInteractionLawOptions<Obj, Arr, Value> = {},
 ): FunctorInteractionLaw<Obj, Arr, SetTerminalObject, never, Value> => {
-  const terminal = SetCat.terminalObj;
-  const initial = SetCat.initialObj;
+  const terminalData = SetCat.terminal();
+  const terminal = terminalData.object;
+  const initialData = SetCat.initial();
+  const initial = initialData.object;
   const evaluationValue = options.evaluationValue ?? ((false as unknown) as Value);
   const dualizing = options.dualizing ?? (SetCat.obj([false, true], { tag: "FinalDualizing" }) as SetObj<Value>);
 
+  const terminalSimpleCategory = setSimpleCategory as unknown as SimpleCat<
+    SetObj<SetTerminalObject>,
+    SetHom<SetTerminalObject, SetTerminalObject>
+  >;
+
   const left = constructContravariantFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    terminalSimpleCategory,
     {
       F0: () => terminal,
       F1: () => SetCat.id(terminal),
     },
   );
 
+  const initialSimpleCategory = setSimpleCategory as unknown as SimpleCat<
+    SetObj<never>,
+    SetHom<never, never>
+  >;
+
   const right = constructFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    initialSimpleCategory,
     {
       F0: () => initial,
       F1: () => SetCat.id(initial),
     },
   );
 
-  const convolution = dayTensor(kernel, left.functor, right.functor);
+  const convolution = dayTensor(kernel, left, right);
 
   const pairing = (
     _object: Obj,
@@ -2485,7 +2509,7 @@ export const finalInteractionLaw = <Obj, Arr, Value = boolean>(
     pairing,
     aggregate,
     ...(options.tags ? { tags: options.tags } : {}),
-    operations: options.operations,
+    ...(options.operations ? { operations: options.operations } : {}),
   });
 };
 
@@ -2534,7 +2558,7 @@ const evaluateWitnessForLaw = <Obj, Arr, Left, Right, Value>(
     readonly kernelLeft: Obj;
     readonly kernelRight: Obj;
     readonly output: Obj;
-    readonly kernelValue: unknown;
+    readonly kernelValue: PromonoidalTensorValue<Obj, Arr>;
     readonly leftElement: Left;
     readonly rightElement: Right;
   },
@@ -2603,9 +2627,14 @@ export const productInteractionLaw = <
     return product;
   };
 
+  const leftPairSimpleCategory = setSimpleCategory as unknown as SimpleCat<
+    SetObj<readonly [Left0, Left1]>,
+    SetHom<readonly [Left0, Left1], readonly [Left0, Left1]>
+  >;
+
   const left = constructContravariantFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    leftPairSimpleCategory,
     {
       F0: (object) => getLeftProduct(object).object,
       F1: (arrow) => {
@@ -2623,9 +2652,14 @@ export const productInteractionLaw = <
     },
   );
 
+  const rightPairSimpleCategory = setSimpleCategory as unknown as SimpleCat<
+    SetObj<readonly [Right0, Right1]>,
+    SetHom<readonly [Right0, Right1], readonly [Right0, Right1]>
+  >;
+
   const right = constructFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    rightPairSimpleCategory,
     {
       F0: (object) => getRightProduct(object).object,
       F1: (arrow) => {
@@ -2643,7 +2677,7 @@ export const productInteractionLaw = <
     },
   );
 
-  const convolution = dayTensor(kernel, left.functor, right.functor);
+  const convolution = dayTensor(kernel, left, right);
   const dualizingProduct = SetCat.product(law0.dualizing, law1.dualizing);
 
   const fiber0 = buildFiberLookup(law0);
@@ -2653,13 +2687,13 @@ export const productInteractionLaw = <
     object: Obj,
     carrier: ReturnType<typeof convolution.functor.functor.F0>,
   ) => SetCat.hom(carrier, dualizingProduct.object, (cls) => {
-    const data = cls as unknown as {
+    const data = cls as {
       readonly diagonalObject: Obj;
       readonly witness: {
         readonly kernelLeft: Obj;
         readonly kernelRight: Obj;
         readonly output: Obj;
-        readonly kernelValue: unknown;
+        readonly kernelValue: PromonoidalTensorValue<Obj, Arr>;
         readonly leftElement: readonly [Left0, Left1];
         readonly rightElement: readonly [Right0, Right1];
       };
@@ -2683,7 +2717,7 @@ export const productInteractionLaw = <
       rightElement: data.witness.rightElement[1],
     });
 
-    return dualizingProduct.lookup(value0, value1);
+    return dualizingProduct.lookup?.(value0, value1) ?? ([value0, value1] as const);
   });
 
   const aggregate: DayPairingAggregator<
@@ -2743,7 +2777,7 @@ export const productInteractionLaw = <
 
     const value0 = law0.aggregate(mapped0);
     const value1 = law1.aggregate(mapped1);
-    return dualizingProduct.lookup(value0, value1);
+    return dualizingProduct.lookup?.(value0, value1) ?? ([value0, value1] as const);
   };
 
   const mergedOperations = mergeOperations(law0.operations, law1.operations);
@@ -2756,7 +2790,7 @@ export const productInteractionLaw = <
     dualizing: dualizingProduct.object,
     pairing,
     aggregate,
-    operations: mergedOperations,
+    ...(mergedOperations ? { operations: mergedOperations } : {}),
   });
 
   const projections: InteractionLawProductProjections<
@@ -2821,9 +2855,14 @@ export const coproductInteractionLaw = <
     return coproduct;
   };
 
+  const leftCoproductSimpleCategory = setSimpleCategory as unknown as SimpleCat<
+    SetObj<Coproduct<Left0, Left1>>,
+    SetHom<Coproduct<Left0, Left1>, Coproduct<Left0, Left1>>
+  >;
+
   const left = constructContravariantFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    leftCoproductSimpleCategory,
     {
       F0: (object) => getLeftCoproduct(object).object,
       F1: (arrow) => {
@@ -2843,9 +2882,14 @@ export const coproductInteractionLaw = <
     },
   );
 
+  const rightCoproductSimpleCategory = setSimpleCategory as unknown as SimpleCat<
+    SetObj<Coproduct<Right0, Right1>>,
+    SetHom<Coproduct<Right0, Right1>, Coproduct<Right0, Right1>>
+  >;
+
   const right = constructFunctorWithWitness(
     kernel.base,
-    setSimpleCategory,
+    rightCoproductSimpleCategory,
     {
       F0: (object) => getRightCoproduct(object).object,
       F1: (arrow) => {
@@ -2865,7 +2909,7 @@ export const coproductInteractionLaw = <
     },
   );
 
-  const convolution = dayTensor(kernel, left.functor, right.functor);
+  const convolution = dayTensor(kernel, left, right);
   const dualizingCoproduct = SetCat.coproduct(law0.dualizing, law1.dualizing);
 
   const fiber0 = buildFiberLookup(law0);
@@ -2875,13 +2919,13 @@ export const coproductInteractionLaw = <
     object: Obj,
     carrier: ReturnType<typeof convolution.functor.functor.F0>,
   ) => SetCat.hom(carrier, dualizingCoproduct.object, (cls) => {
-    const data = cls as unknown as {
+    const data = cls as {
       readonly diagonalObject: Obj;
       readonly witness: {
         readonly kernelLeft: Obj;
         readonly kernelRight: Obj;
         readonly output: Obj;
-        readonly kernelValue: unknown;
+        readonly kernelValue: PromonoidalTensorValue<Obj, Arr>;
         readonly leftElement: Coproduct<Left0, Left1>;
         readonly rightElement: Coproduct<Right0, Right1>;
       };
@@ -3008,7 +3052,7 @@ export const coproductInteractionLaw = <
     dualizing: dualizingCoproduct.object,
     pairing,
     aggregate,
-    operations: mergedOperations,
+    ...(mergedOperations ? { operations: mergedOperations } : {}),
   });
 
   const injections: InteractionLawCoproductInjections<
@@ -3236,17 +3280,17 @@ export const deriveInteractionLawCurrying = <Obj, Arr, Left, Right, Value>(
       }));
 
       const componentDiagnostics: string[] = [
-        `δ^${String(object)}_${String(parameter)} tabulates ${domainElements.length} domain element(s)` +
+        `?^${String(object)}_${String(parameter)} tabulates ${domainElements.length} domain element(s)` +
           ` against ${codomainElements.length} candidate(s) of G(${String(parameter)}).`,
       ];
       if (domainElements.length === 0) {
         componentDiagnostics.push(
-          `F(${String(tensorObject)}) is empty; δ^${String(object)}_${String(parameter)} has no samples to evaluate.`,
+          `F(${String(tensorObject)}) is empty; ?^${String(object)}_${String(parameter)} has no samples to evaluate.`,
         );
       }
       if (codomainElements.length === 0) {
         componentDiagnostics.push(
-          `G(${String(parameter)}) is empty; δ^${String(object)}_${String(parameter)} produces no targets.`,
+          `G(${String(parameter)}) is empty; ?^${String(object)}_${String(parameter)} produces no targets.`,
         );
       }
 
@@ -3261,7 +3305,7 @@ export const deriveInteractionLawCurrying = <Obj, Arr, Left, Right, Value>(
     }
 
     finalDiagnostics.push(
-      `Recorded ${finalComponents.length} component(s) of δ^${String(object)}_(-)` +
+      `Recorded ${finalComponents.length} component(s) of ?^${String(object)}_(-)` +
         " with Day-based evaluation tables.",
     );
 
@@ -3440,13 +3484,23 @@ export const deriveInteractionLawLeftCommaPresentation = <Obj, Arr, Left, Right,
     arrows: base.arrows,
     composablePairs: enumerateComposablePairs(base),
   } as const;
-  const internalHom = constructContravariantFunctorWithWitness(
+  const exponentialSimpleCategory = setSimpleCategory as unknown as SimpleCat<
+    SetObj<ExponentialArrow<Right, Value>>,
+    SetHom<ExponentialArrow<Right, Value>, ExponentialArrow<Right, Value>>
+  >;
+
+  const internalHom = constructContravariantFunctorWithWitness<
+    Obj,
+    Arr,
+    SetObj<ExponentialArrow<Right, Value>>,
+    SetHom<ExponentialArrow<Right, Value>, ExponentialArrow<Right, Value>>
+  >(
     base,
-    setSimpleCategory,
+    exponentialSimpleCategory,
     internalHomFunctor,
     samples,
     [
-      "Internal hom functor X ↦ [G(X), ⊙] induced from the interaction law's right witness.",
+      "Internal hom functor X -> [G(X), ?] induced from the interaction law's right witness.",
       "Targets land in Set thanks to SetCat.exponential carriers registered per object.",
     ],
   );
@@ -3749,7 +3803,7 @@ export const makeFixedLeftInteractionMorphism = <Obj, Arr, Left, RightDomain, Ri
 
     for (const element of primalElements) {
       for (const dual of dualElements) {
-        const mapped = component.map(dual);
+          const mapped = component.map(dual) as RightCodomain;
         const primal: IndexedElement<Obj, Left> = { object, element };
         const domainDual: IndexedElement<Obj, RightDomain> = { object, element: dual };
         const codomainDual: IndexedElement<Obj, RightCodomain> = { object, element: mapped };
@@ -3856,7 +3910,7 @@ export const makeFixedRightInteractionMorphism = <Obj, Arr, LeftDomain, LeftCodo
     const primalElements = enumerateCarrier(domainCarrier);
 
     for (const element of primalElements) {
-      const mapped = component.map(element);
+      const mapped = component.map(element) as LeftCodomain;
       const domainPrimal: IndexedElement<Obj, LeftDomain> = { object, element };
       const codomainPrimal: IndexedElement<Obj, LeftCodomain> = { object, element: mapped };
       for (const dual of dualElements) {
@@ -3905,7 +3959,7 @@ export interface FixedLeftInitialObject<Obj, Arr, Left, Value> {
 export const buildFixedLeftInitialObject = <Obj, Arr, Left, Right, Value>(
   law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
 ): FixedLeftInitialObject<Obj, Arr, Left, Value> => {
-  const terminalElement = enumerateCarrier(SetCat.terminalObj)[0]!;
+  const terminalElement = enumerateCarrier(SetCat.terminal().object)[0]!;
   const finalLaw = finalInteractionLaw<Obj, Arr, Value>(law.kernel, {
     dualizing: law.dualizing,
   });
@@ -3914,11 +3968,11 @@ export const buildFixedLeftInitialObject = <Obj, Arr, Left, Right, Value>(
     right: finalLaw.right,
     mapLeft: () => terminalElement,
     mapRight: (_object, element) => element,
-    operations: law.operations,
+    ...(law.operations ? { operations: law.operations } : {}),
   });
 
   const component = (object: Obj) =>
-    SetCat.hom(law.left.functor.F0(object), SetCat.terminalObj, () => terminalElement);
+    SetCat.hom(law.left.functor.F0(object), SetCat.terminal().object, () => terminalElement);
 
   return {
     law: stretched,
@@ -3941,10 +3995,16 @@ export interface FixedRightInitialObject<Obj, Arr, Right, Value> {
 export const buildFixedRightInitialObject = <Obj, Arr, Left, Right, Value>(
   law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
 ): FixedRightInitialObject<Obj, Arr, Right, Value> => {
-  const terminal = SetCat.terminalObj;
+  const terminal = SetCat.terminal().object;
+  const initialData = SetCat.initial();
+  const initialObject = initialData.object;
+  const terminalSimpleCategory = setSimpleCategory as unknown as SimpleCat<
+    SetObj<SetTerminalObject>,
+    SetHom<SetTerminalObject, SetTerminalObject>
+  >;
   const terminalFunctor = constructContravariantFunctorWithWitness(
     law.kernel.base,
-    setSimpleCategory,
+    terminalSimpleCategory,
     {
       F0: () => terminal,
       F1: () => SetCat.id(terminal),
@@ -3956,7 +4016,7 @@ export const buildFixedRightInitialObject = <Obj, Arr, Left, Right, Value>(
   });
   const collapseValue = finalLaw.aggregate([]);
 
-  const convolution = dayTensor(law.kernel, terminalFunctor.functor, law.right.functor);
+  const convolution = dayTensor(law.kernel, terminalFunctor, law.right);
   const pairing = (
     _object: Obj,
     carrier: ReturnType<typeof convolution.functor.functor.F0>,
@@ -3971,7 +4031,7 @@ export const buildFixedRightInitialObject = <Obj, Arr, Left, Right, Value>(
     dualizing: law.dualizing,
     pairing,
     aggregate,
-    operations: law.operations,
+    ...(law.operations ? { operations: law.operations } : {}),
   });
 
   const collapseDetails: string[] = [];
@@ -3987,7 +4047,7 @@ export const buildFixedRightInitialObject = <Obj, Arr, Left, Right, Value>(
     }
     collapseComponents.set(
       object,
-      SetCat.hom(carrier, SetCat.initialObj, () => {
+      SetCat.hom(carrier, initialObject, () => {
         throw new Error(
           "buildFixedRightInitialObject: collapse map invoked on a non-empty right carrier.",
         );
@@ -4026,12 +4086,7 @@ export interface FixedRightFinalObject<Obj, Arr, Left, Right, Value> {
     Value
   >;
   readonly presentation: InteractionLawLeftCommaPresentation<Obj, Arr, Left, Right, Value>;
-  readonly sigma: NaturalTransformationWithWitness<
-    Obj,
-    Arr,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >;
+  readonly sigma: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
   readonly mediator: FixedRightInteractionMorphism<
     Obj,
     Arr,
@@ -4050,8 +4105,9 @@ const enforceConsistentContributions = <Obj, Arr, Left, Right, Value>(
       "Fixed-slice universal object aggregation requires at least one Day contribution.",
     );
   }
-  const [first, ...rest] = contributions;
-  for (const entry of rest) {
+  const first = contributions[0]!;
+  for (let index = 1; index < contributions.length; index += 1) {
+    const entry = contributions[index]!;
     if (!Object.is(entry.evaluation, first.evaluation)) {
       throw new Error(
         "Fixed-slice universal object aggregation encountered mismatched Day evaluations.",
@@ -4067,13 +4123,13 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
   const presentation = deriveInteractionLawLeftCommaPresentation(law);
   const internalHom = presentation.internalHom;
 
-  const convolution = dayTensor(law.kernel, internalHom.functor, law.right.functor);
+  const convolution = dayTensor(law.kernel, internalHom, law.right);
   const pairing = (
     _object: Obj,
     carrier: ReturnType<typeof convolution.functor.functor.F0>,
   ) =>
     SetCat.hom(carrier, law.dualizing, (cls) => {
-      const data = cls as unknown as {
+      const data = cls as {
         readonly witness: {
           readonly leftElement: ExponentialArrow<Right, Value>;
           readonly rightElement: Right;
@@ -4081,7 +4137,7 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
       };
       const assignment = data.witness.leftElement;
       const element = data.witness.rightElement;
-      return assignment.map(element);
+      return assignment(element);
     });
 
   const aggregate: DayPairingAggregator<
@@ -4100,12 +4156,32 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
     dualizing: law.dualizing,
     pairing,
     aggregate,
-    operations: law.operations,
+    ...(law.operations ? { operations: law.operations } : {}),
   });
 
-  const sigma = constructNaturalTransformationWithWitness(
-    contravariantToOppositeFunctor(law.left),
-    presentation.internalHomOpposite,
+  const sigmaSource: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    contravariantToOppositeFunctor(law.left) as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
+  const sigmaTarget: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>> =
+    presentation.internalHomOpposite as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
+
+  const sigma = constructNaturalTransformationWithWitness<
+    Obj,
+    Arr,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
+    sigmaSource,
+    sigmaTarget,
     (object) => {
       const component = presentation.sigma.get(object);
       if (!component) {
@@ -4113,11 +4189,11 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
           `buildFixedRightFinalObject: missing sigma component for ${String(object)}.`,
         );
       }
-      return component;
+      return component as unknown as SetHom<unknown, unknown>;
     },
     {
       metadata: [
-        "Currying transformation σ : F ⇒ G' supplying the comparison into the fixed-right final object.",
+        "Currying transformation ? : F ? G' supplying the comparison into the fixed-right final object.",
       ],
     },
   );

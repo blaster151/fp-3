@@ -1,7 +1,9 @@
 import {
   deriveInteractionLawCurrying,
   deriveInteractionLawLeftCommaPresentation,
+  deriveInteractionLawLeftCommaEquivalence,
   deriveInteractionLawSweedlerSummary,
+  dualInteractionLaw,
   productInteractionLaw,
   stretchInteractionLaw,
   greatestInteractingComonad,
@@ -63,16 +65,16 @@ import { constructNaturalTransformationWithWitness } from "./natural-transformat
 import type { IndexedElement } from "./chu-space";
 
 export interface MonadStructure<Obj, Arr> {
-  readonly functor: FunctorWithWitness<Obj, Arr, Obj, Arr>;
-  readonly unit: NaturalTransformationWithWitness<Obj, Arr, Obj, Arr>;
-  readonly multiplication: NaturalTransformationWithWitness<Obj, Arr, Obj, Arr>;
+  readonly functor: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly unit: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly multiplication: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
   readonly metadata?: ReadonlyArray<string>;
 }
 
 export interface ComonadStructure<Obj, Arr> {
-  readonly functor: FunctorWithWitness<Obj, Arr, Obj, Arr>;
-  readonly counit: NaturalTransformationWithWitness<Obj, Arr, Obj, Arr>;
-  readonly comultiplication: NaturalTransformationWithWitness<Obj, Arr, Obj, Arr>;
+  readonly functor: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly counit: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly comultiplication: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
   readonly metadata?: ReadonlyArray<string>;
 }
 
@@ -204,7 +206,7 @@ const mergeMetadata = (
 };
 
 const mergeMetadataList = (
-  ...inputs: ReadonlyArray<string> | undefined[]
+  ...inputs: (ReadonlyArray<string> | undefined)[]
 ): ReadonlyArray<string> | undefined =>
   inputs.reduce<ReadonlyArray<string> | undefined>(
     (accumulator, current) => mergeMetadata(accumulator, current),
@@ -293,7 +295,7 @@ const buildComponentDiagnostics = <Obj, Right, Value>(
 ): ReadonlyArray<string> => [
   `${label}: evaluated ${checked} sample pair(s) on ${String(object)}.`,
   mismatches === 0
-    ? `${label}: composite agrees with ψ on ${String(object)}.`
+    ? `${label}: composite agrees with ? on ${String(object)}.`
     : `${label}: detected ${mismatches} mismatch(es) on ${String(object)}; see failure records.`,
 ];
 
@@ -313,8 +315,10 @@ export const makeMonadComonadInteractionLaw = <
 
   const currying = options.currying ?? deriveInteractionLawCurrying(law);
   const comma = options.comma ?? deriveInteractionLawLeftCommaPresentation(law);
+  const commaEquivalence =
+    options.commaEquivalence ?? deriveInteractionLawLeftCommaEquivalence(law);
   const sweedler =
-    options.sweedler ?? deriveInteractionLawSweedlerSummary(law, { currying, comma });
+    options.sweedler ?? deriveInteractionLawSweedlerSummary(law, { currying, comma: commaEquivalence });
   const degeneracy =
     options.degeneracy ?? analyzeFunctorOperationDegeneracy<Obj, Arr, Left, Right, Value, LawObj, LawArr>(law);
 
@@ -347,11 +351,11 @@ export const makeMonadComonadInteractionLaw = <
     currying,
     psiComponents,
     comma,
+    commaEquivalence,
     sweedler,
     degeneracy,
     diagnostics,
     ...(metadata.length > 0 ? { metadata } : {}),
-    ...(options.commaEquivalence ? { commaEquivalence: options.commaEquivalence } : {}),
     ...(options.dual ? { dual: options.dual } : {}),
   };
 };
@@ -419,7 +423,7 @@ export const monadComonadInteractionLawToMonoid = <
         multiplicationChecked += 1;
         const expected = interaction.law.evaluate(primal, dual);
         const actual = arrow(dual);
-        if (!semanticsAwareEquals(expected, actual)) {
+        if (!Object.is(expected, actual)) {
           multiplicationMismatches += 1;
           if (multiplicationFailures.length < sampleLimit) {
             multiplicationFailures.push({
@@ -486,7 +490,7 @@ export const monadComonadInteractionLawToMonoid = <
         unitChecked += 1;
         const expected = interaction.law.evaluate(primal, dual);
         const actual = arrow(dual);
-        if (!semanticsAwareEquals(expected, actual)) {
+        if (!Object.is(expected, actual)) {
           unitMismatches += 1;
           if (unitFailures.length < sampleLimit) {
             unitFailures.push({
@@ -529,7 +533,7 @@ export const monadComonadInteractionLawToMonoid = <
   );
   if (multiplicationMismatchTotal === 0) {
     multiplicationDiagnostics.push(
-      "monadComonadLawToInteractionLawMonoid: multiplication composites matched ψ on all samples.",
+      "monadComonadLawToInteractionLawMonoid: multiplication composites matched ? on all samples.",
     );
   } else {
     multiplicationDiagnostics.push(
@@ -542,7 +546,7 @@ export const monadComonadInteractionLawToMonoid = <
   );
   if (unitMismatchTotal === 0) {
     unitDiagnostics.push(
-      "monadComonadLawToInteractionLawMonoid: unit composites matched ψ on all samples.",
+      "monadComonadLawToInteractionLawMonoid: unit composites matched ? on all samples.",
     );
   } else {
     unitDiagnostics.push(
@@ -560,7 +564,7 @@ export const monadComonadInteractionLawToMonoid = <
   const diagnostics: string[] = [
     `monadComonadLawToInteractionLawMonoid: constructed interaction-law monoid with sample limit ${sampleLimit}.`,
     multiplicationMismatchTotal + unitMismatchTotal === 0
-      ? "monadComonadLawToInteractionLawMonoid: sampled composites agree with ψ across multiplication and unit."
+      ? "monadComonadLawToInteractionLawMonoid: sampled composites agree with ? across multiplication and unit."
       : `monadComonadLawToInteractionLawMonoid: detected ${
           multiplicationMismatchTotal + unitMismatchTotal
         } mismatch(es) across multiplication/unit composites.`,
@@ -610,7 +614,7 @@ export const interactionLawMonoidToMonadComonadLaw = <
     ...(input.monoid.degeneracy ? { degeneracy: input.monoid.degeneracy } : {}),
     ...(input.monoid.commaEquivalence ? { commaEquivalence: input.monoid.commaEquivalence } : {}),
     ...(input.monoid.dual ? { dual: input.monoid.dual } : {}),
-    metadata: input.monoid.metadata,
+    ...(input.monoid.metadata ? { metadata: input.monoid.metadata } : {}),
   };
 
   const metadata = mergeMetadataList(
@@ -624,7 +628,7 @@ export const interactionLawMonoidToMonadComonadLaw = <
     monad: input.monad,
     comonad: input.comonad,
     law: input.monoid.law,
-    metadata,
+    ...(metadata ? { metadata } : {}),
     options,
   });
 };
@@ -679,12 +683,14 @@ export const deriveGreatestInteractingFunctorForMonadComonadLaw = <
     options.metadata,
   );
 
+  const sweedler = options.sweedler ?? interaction.sweedler;
+  const comma = options.comma ?? interaction.comma;
+  const dual = options.dual ?? interaction.dual;
   const greatest = greatestInteractingFunctor(interaction.law, {
-    ...options,
-    sweedler: options.sweedler ?? interaction.sweedler,
-    comma: options.comma ?? interaction.comma,
-    dual: options.dual ?? interaction.dual,
-    metadata,
+    sweedler,
+    comma,
+    ...(dual ? { dual } : {}),
+    ...(metadata ? { metadata } : {}),
   });
 
   const diagnostics: string[] = [];
@@ -767,11 +773,12 @@ export const deriveGreatestInteractingComonadForMonadComonadLaw = <
     options.metadata,
   );
 
+  const sweedler = options.sweedler ?? interaction.sweedler;
+  const dual = options.dual ?? interaction.dual;
   const greatest = greatestInteractingComonad(interaction.law, {
-    ...options,
-    sweedler: options.sweedler ?? interaction.sweedler,
-    dual: options.dual ?? interaction.dual,
-    metadata,
+    sweedler,
+    ...(dual ? { dual } : {}),
+    ...(metadata ? { metadata } : {}),
   });
 
   const diagnostics: string[] = [];
@@ -804,6 +811,602 @@ export const deriveGreatestInteractingComonadForMonadComonadLaw = <
   };
 };
 
+const DEFAULT_DUAL_MAP_SAMPLE_LIMIT = 24;
+const MAX_DUAL_MAP_COUNTEREXAMPLES = 12;
+
+interface DualMapCounterexample<Obj, Left, Right, Value> {
+  readonly object: Obj;
+  readonly left: Left;
+  readonly right: Right;
+  readonly expected: Value;
+  readonly actual: Value;
+}
+
+export interface MonadComonadDualMapDiagramReport<Obj, Left, Right, Value> {
+  readonly holds: boolean;
+  readonly checked: number;
+  readonly mismatches: number;
+  readonly counterexamples: ReadonlyArray<DualMapCounterexample<Obj, Left, Right, Value>>;
+  readonly details: ReadonlyArray<string>;
+}
+
+const compareSigmaWithPsi = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+>(
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, LawObj, LawArr>,
+  sigma: ReadonlyMap<Obj, SetHom<unknown, unknown>>,
+  orientation: "monad" | "comonad",
+  sampleLimit: number,
+): MonadComonadDualMapDiagramReport<Obj, Left, Right, Value> => {
+  const counterexamples: Array<DualMapCounterexample<Obj, Left, Right, Value>> = [];
+  const details: string[] = [];
+  let checked = 0;
+  let mismatches = 0;
+
+  for (const object of interaction.law.kernel.base.objects) {
+    const component = sigma.get(object);
+    if (!component) {
+      details.push(
+        `No dual-map component recorded for object ${String(object)}; skipping ${
+          orientation === "monad" ? "T ? D?" : "D ? T?"
+        } comparison.`,
+      );
+      continue;
+    }
+
+    const leftCarrier = interaction.law.left.functor.F0(object) as SetObj<Left>;
+    const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
+    const leftSamples = enumerateCarrier(leftCarrier, sampleLimit);
+    const rightSamples = enumerateCarrier(rightCarrier, sampleLimit);
+
+    for (const leftElement of leftSamples) {
+      for (const rightElement of rightSamples) {
+        checked += 1;
+        const expected = interaction.law.evaluate(
+          { object, element: leftElement as Left },
+          { object, element: rightElement as Right },
+        ) as Value;
+
+        const reconstructed = orientation === "monad"
+          ? (
+              (component as SetHom<
+                Left,
+                (input: Right) => Value
+              >).map(leftElement as Left)
+            )(rightElement as Right)
+          : (
+              (component as SetHom<
+                Right,
+                (input: Left) => Value
+              >).map(rightElement as Right)
+            )(leftElement as Left);
+
+        if (!Object.is(expected, reconstructed)) {
+          mismatches += 1;
+          if (counterexamples.length < MAX_DUAL_MAP_COUNTEREXAMPLES) {
+            counterexamples.push({
+              object,
+              left: leftElement as Left,
+              right: rightElement as Right,
+              expected,
+              actual: reconstructed,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  details.unshift(
+    `Compared ${checked} ?-evaluation sample(s) against ${
+      orientation === "monad" ? "T ? D?" : "D ? T?"
+    } assignments (limit ${sampleLimit}).`,
+  );
+
+  if (mismatches === 0) {
+    details.push(
+      `All sampled evaluations matched the ${
+        orientation === "monad" ? "monad" : "comonad"
+      } dual map.`,
+    );
+  } else {
+    details.push(
+      `Encountered ${mismatches} mismatch(es) when reconstructing ? via the ${
+        orientation === "monad" ? "monad" : "comonad"
+      } dual map.`,
+    );
+  }
+
+  return {
+    holds: mismatches === 0,
+    checked,
+    mismatches,
+    counterexamples,
+    details,
+  };
+};
+
+export interface MonadComonadDualMapOptions<Obj, Arr, Left, Right, Value> {
+  readonly sampleLimit?: number;
+  readonly dual?: DualInteractionLawResult<Obj, Arr, Left, Right, Value>;
+  readonly dualComma?: InteractionLawLeftCommaPresentation<Obj, Arr, Right, Left, Value>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface MonadComonadDualMapSummary<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+> {
+  readonly interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly monadToDual: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly comonadToDual: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly monadDiagram: MonadComonadDualMapDiagramReport<Obj, Left, Right, Value>;
+  readonly comonadDiagram: MonadComonadDualMapDiagramReport<Obj, Left, Right, Value>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+  readonly dual: DualInteractionLawResult<Obj, Arr, Left, Right, Value>;
+  readonly dualComma: InteractionLawLeftCommaPresentation<Obj, Arr, Right, Left, Value>;
+}
+
+export const interactionLawToDualMap = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+>(
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, LawObj, LawArr>,
+  options: MonadComonadDualMapOptions<Obj, Arr, Left, Right, Value> = {},
+): MonadComonadDualMapSummary<Obj, Arr, Left, Right, Value, LawObj, LawArr> => {
+  const sampleLimit = options.sampleLimit && options.sampleLimit > 0
+    ? options.sampleLimit
+    : DEFAULT_DUAL_MAP_SAMPLE_LIMIT;
+
+  const metadata = mergeMetadataList(
+    interaction.metadata,
+    interaction.monad.metadata,
+    interaction.comonad.metadata,
+    options.metadata,
+  );
+
+  const diagnostics: string[] = [
+    `interactionLawToDualMap: sampling up to ${sampleLimit} element(s) per carrier.`,
+  ];
+
+  const packagedCommaEquivalence =
+    interaction.commaEquivalence ?? deriveInteractionLawLeftCommaEquivalence(interaction.law);
+  diagnostics.push(
+    interaction.commaEquivalence
+      ? "interactionLawToDualMap: reused packaged comma presentation from interaction law."
+      : "interactionLawToDualMap: derived comma equivalence for interaction law on demand.",
+  );
+
+  const dual = options.dual
+    ?? interaction.dual
+    ?? dualInteractionLaw(interaction.law, {
+      space: interaction.sweedler.space,
+      currying: interaction.currying,
+      comma: packagedCommaEquivalence,
+      degeneracy: interaction.degeneracy,
+    });
+  diagnostics.push(
+    options.dual
+      ? "interactionLawToDualMap: used dual interaction law supplied via options."
+      : interaction.dual
+      ? "interactionLawToDualMap: reused dual interaction law cached on interaction record."
+      : "interactionLawToDualMap: computed dual interaction law via helper.",
+  );
+
+  const dualComma = options.dualComma ?? deriveInteractionLawLeftCommaPresentation(dual.law);
+  diagnostics.push(
+    options.dualComma
+      ? "interactionLawToDualMap: used dual comma presentation supplied via options."
+      : "interactionLawToDualMap: derived dual comma presentation for D ? T? translation.",
+  );
+
+  const monadMetadata = mergeMetadataList(metadata, ["interactionLawToDualMap: T ? D?"]);
+  const comonadMetadata = mergeMetadataList(metadata, ["interactionLawToDualMap: D ? T?"]);
+
+  const monadToDual = constructNaturalTransformationWithWitness(
+    interaction.law.left.witness.oppositeWitness as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >,
+    interaction.comma.internalHomOpposite as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >,
+    (object) => {
+      const component = interaction.comma.sigma.get(object);
+      if (!component) {
+        throw new Error(
+          `interactionLawToDualMap: missing ?-component for object ${String(object)} in T ? D? translation.`,
+        );
+      }
+      return component as unknown as SetHom<unknown, unknown>;
+    },
+    monadMetadata ? { metadata: monadMetadata } : undefined,
+  );
+
+  const comonadToDual = constructNaturalTransformationWithWitness(
+    dual.law.left.witness.oppositeWitness as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >,
+    dualComma.internalHomOpposite as FunctorWithWitness<
+      Obj,
+      Arr,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >,
+    (object) => {
+      const component = dualComma.sigma.get(object);
+      if (!component) {
+        throw new Error(
+          `interactionLawToDualMap: missing dual ?-component for object ${String(object)} in D ? T? translation.`,
+        );
+      }
+      return component as unknown as SetHom<unknown, unknown>;
+    },
+    comonadMetadata ? { metadata: comonadMetadata } : undefined,
+  );
+
+  diagnostics.push(
+    monadToDual.report.holds
+      ? "interactionLawToDualMap: T ? D? naturality verified."
+      : `interactionLawToDualMap: T ? D? naturality failed: ${monadToDual.report.details.join(" ")}`,
+  );
+  diagnostics.push(
+    comonadToDual.report.holds
+      ? "interactionLawToDualMap: D ? T? naturality verified."
+      : `interactionLawToDualMap: D ? T? naturality failed: ${comonadToDual.report.details.join(" ")}`,
+  );
+
+  const monadDiagram = compareSigmaWithPsi(
+    interaction,
+    interaction.comma.sigma as ReadonlyMap<Obj, SetHom<unknown, unknown>>,
+    "monad",
+    sampleLimit,
+  );
+  const comonadDiagram = compareSigmaWithPsi(
+    interaction,
+    dualComma.sigma as ReadonlyMap<Obj, SetHom<unknown, unknown>>,
+    "comonad",
+    sampleLimit,
+  );
+
+  if (!monadDiagram.holds || !comonadDiagram.holds) {
+    diagnostics.push(
+      "interactionLawToDualMap: detected mismatches when reconstructing ? via dual maps; see diagram reports.",
+    );
+  } else {
+    diagnostics.push("interactionLawToDualMap: dual maps agree with ? on sampled entries.");
+  }
+
+  return {
+    interaction,
+    monadToDual,
+    comonadToDual,
+    monadDiagram,
+    comonadDiagram,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+    dual,
+    dualComma,
+  };
+};
+
+export interface InteractionLawFromDualMapInput<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+> {
+  readonly interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly monadToDual: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly comonadToDual: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly sampleLimit?: number;
+}
+
+export interface InteractionLawFromDualMapReport<Obj, Left, Right, Value> {
+  readonly monadDiagram: MonadComonadDualMapDiagramReport<Obj, Left, Right, Value>;
+  readonly comonadDiagram: MonadComonadDualMapDiagramReport<Obj, Left, Right, Value>;
+  readonly reconstructsPsi: boolean;
+  readonly details: ReadonlyArray<string>;
+}
+
+export const interactionLawFromDualMap = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+>(
+  input: InteractionLawFromDualMapInput<Obj, Arr, Left, Right, Value, LawObj, LawArr>,
+): InteractionLawFromDualMapReport<Obj, Left, Right, Value> => {
+  const sampleLimit = input.sampleLimit && input.sampleLimit > 0
+    ? input.sampleLimit
+    : DEFAULT_DUAL_MAP_SAMPLE_LIMIT;
+
+  const diagnostics: string[] = [
+    `interactionLawFromDualMap: sampling up to ${sampleLimit} element(s) per carrier.`,
+  ];
+
+  const monadSigma = new Map<Obj, SetHom<unknown, unknown>>();
+  const comonadSigma = new Map<Obj, SetHom<unknown, unknown>>();
+
+  for (const object of input.interaction.law.kernel.base.objects) {
+    monadSigma.set(
+      object,
+      input.monadToDual.transformation.component(object) as SetHom<unknown, unknown>,
+    );
+    comonadSigma.set(
+      object,
+      input.comonadToDual.transformation.component(object) as SetHom<unknown, unknown>,
+    );
+  }
+
+  const monadDiagram = compareSigmaWithPsi(
+    input.interaction,
+    monadSigma,
+    "monad",
+    sampleLimit,
+  );
+  const comonadDiagram = compareSigmaWithPsi(
+    input.interaction,
+    comonadSigma,
+    "comonad",
+    sampleLimit,
+  );
+
+  const reconstructsPsi = monadDiagram.holds && comonadDiagram.holds;
+  diagnostics.push(
+    reconstructsPsi
+      ? "interactionLawFromDualMap: dual maps reconstruct ? on sampled entries."
+      : "interactionLawFromDualMap: mismatches detected when reconstructing ? from supplied dual maps.",
+  );
+
+  return {
+    monadDiagram,
+    comonadDiagram,
+    reconstructsPsi,
+    details: diagnostics,
+  };
+};
+
+interface SweedlerFactorizationWitness<Obj, Right, Value> {
+  readonly object: Obj;
+  readonly input: Right;
+  readonly witness: ExponentialArrow<Right, Value>;
+}
+
+interface SweedlerFactorizationCounterexample<Obj, Right> {
+  readonly object: Obj;
+  readonly input: Right;
+  readonly reason: string;
+}
+
+export interface SweedlerFactorizationReport<Obj, Right, Value> {
+  readonly holds: boolean;
+  readonly checked: number;
+  readonly matched: number;
+  readonly witnesses: ReadonlyArray<SweedlerFactorizationWitness<Obj, Right, Value>>;
+  readonly counterexamples: ReadonlyArray<SweedlerFactorizationCounterexample<Obj, Right>>;
+  readonly details: ReadonlyArray<string>;
+}
+
+export interface SweedlerFactorizationOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+> {
+  readonly sampleLimit?: number;
+  readonly dual?: MonadComonadDualMapSummary<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly greatest?: MonadComonadGreatestComonadResult<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface SweedlerFactorizationSummary<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+> {
+  readonly interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly dual: MonadComonadDualMapSummary<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly greatest: MonadComonadGreatestComonadResult<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly report: SweedlerFactorizationReport<Obj, Right, Value>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export const verifySweedlerDualFactorization = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+>(
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, LawObj, LawArr>,
+  options: SweedlerFactorizationOptions<Obj, Arr, Left, Right, Value, LawObj, LawArr> = {},
+): SweedlerFactorizationSummary<Obj, Arr, Left, Right, Value, LawObj, LawArr> => {
+  const sampleLimit =
+    options.sampleLimit !== undefined && options.sampleLimit > 0
+      ? options.sampleLimit
+      : DEFAULT_SWEEDLER_FACTOR_SAMPLE_LIMIT;
+
+  const dual = options.dual ?? interactionLawToDualMap(interaction, { sampleLimit });
+  const greatest =
+    options.greatest ?? deriveGreatestInteractingComonadForMonadComonadLaw(interaction);
+
+  const diagnostics: string[] = [
+    `verifySweedlerDualFactorization: sampling up to ${sampleLimit} element(s) per carrier.`,
+  ];
+
+  const valueEquals = semanticsAwareEquals(interaction.law.dualizing as SetObj<Value>);
+
+  const witnesses: Array<SweedlerFactorizationWitness<Obj, Right, Value>> = [];
+  const counterexamples: Array<SweedlerFactorizationCounterexample<Obj, Right>> = [];
+
+  let checked = 0;
+  let matched = 0;
+
+  const objects = new Set<Obj>();
+  for (const object of interaction.law.kernel.base.objects) {
+    objects.add(object);
+  }
+  for (const object of interaction.comonad.functor.witness.objectGenerators) {
+    objects.add(object);
+  }
+
+  for (const object of objects) {
+    const comonadCarrier = interaction.comonad.functor.functor.F0(object) as SetObj<Right>;
+    const comonadElements = enumerateWithLimit(comonadCarrier, sampleLimit);
+
+    const sweedlerCarrier = greatest.greatest.functorOpposite.functor.F0(object) as unknown as SetObj<
+      ExponentialArrow<Right, Value>
+    >;
+    const sweedlerElements = enumerateWithLimit(sweedlerCarrier, sampleLimit);
+
+    const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
+    const rightSamples = enumerateWithLimit(rightCarrier, sampleLimit);
+
+    const comonadComponent = dual.comonadToDual.transformation.component(object) as SetHom<
+      Right,
+      ExponentialArrow<Right, Value>
+    >;
+    const sweedlerComponent =
+      greatest.greatest.transformation.transformation.component(object) as unknown as SetHom<
+        ExponentialArrow<Right, Value>,
+        ExponentialArrow<Right, Value>
+      >;
+
+    const compareAssignments = (
+      reference: ExponentialArrow<Right, Value>,
+      candidate: ExponentialArrow<Right, Value>,
+    ): boolean => {
+      if (rightSamples.length === 0) {
+        return true;
+      }
+      for (const sample of rightSamples) {
+        const expected = reference(sample as Right);
+        const actual = candidate(sample as Right);
+        if (!valueEquals(expected, actual)) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    for (const element of comonadElements) {
+      checked += 1;
+      const targetAssignment = comonadComponent.map(element as Right);
+      let witness: ExponentialArrow<Right, Value> | undefined;
+
+      for (const candidate of sweedlerElements) {
+        const candidateAssignment = sweedlerComponent.map(candidate);
+        if (compareAssignments(targetAssignment, candidateAssignment)) {
+          witness = candidate;
+          break;
+        }
+      }
+
+      if (witness) {
+        matched += 1;
+        witnesses.push({ object, input: element as Right, witness });
+      } else {
+        const reason =
+          sweedlerElements.length === 0
+            ? "Sweedler carrier provided no sample elements."
+            : "No Sweedler element reproduced the dual assignment on sampled evaluations.";
+        counterexamples.push({ object, input: element as Right, reason });
+      }
+    }
+  }
+
+  diagnostics.push(
+    `verifySweedlerDualFactorization: sampled ${checked} comonad element(s) across ${objects.size} object(s).`,
+  );
+  diagnostics.push(
+    `verifySweedlerDualFactorization: matched ${matched} of ${checked} sampled assignment(s).`,
+  );
+
+  const holds = counterexamples.length === 0;
+  diagnostics.push(
+    holds
+      ? "verifySweedlerDualFactorization: Sweedler factoring verified on sampled data."
+      : `verifySweedlerDualFactorization: encountered ${counterexamples.length} mismatched assignment(s).`,
+  );
+  if (!holds && counterexamples.length > 0) {
+    const first = counterexamples[0]!;
+    diagnostics.push(
+      `verifySweedlerDualFactorization: first mismatch at object ${String(
+        first.object,
+      )} on input ${String(first.input)} ? ${first.reason}`,
+    );
+  }
+
+  const metadata = mergeMetadataList(
+    interaction.metadata,
+    interaction.comonad.metadata,
+    dual.metadata,
+    greatest.metadata,
+    options.metadata,
+  );
+
+  const report: SweedlerFactorizationReport<Obj, Right, Value> = {
+    holds,
+    checked,
+    matched,
+    witnesses,
+    counterexamples,
+    details: diagnostics,
+  };
+
+  return {
+    interaction,
+    dual,
+    greatest,
+    report,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+const DEFAULT_SWEEDLER_FACTOR_SAMPLE_LIMIT = 12;
 const DEFAULT_RUNNER_TRANSLATION_SAMPLE_LIMIT = 64;
 
 const enumerateWithLimit = <A>(carrier: SetObj<A>, limit: number): ReadonlyArray<A> => {
@@ -847,7 +1450,7 @@ export interface MonadComonadRunnerCostateComponent<Obj, Left, Right, Value> {
   readonly object: Obj;
   readonly costate: SetHom<
     Right,
-    ExponentialArrow<IndexedElement<Obj, Right>, Value>
+    ExponentialArrow<IndexedElement<Obj, Left>, Value>
   >;
   readonly evaluationConsistent: boolean;
   readonly diagnostics: ReadonlyArray<string>;
@@ -857,7 +1460,7 @@ export interface MonadComonadRunnerCoalgebraComponent<Obj, Left, Right, Value> {
   readonly object: Obj;
   readonly coalgebra: SetHom<
     IndexedElement<Obj, Right>,
-    ExponentialArrow<IndexedElement<Obj, Right>, Value>
+    ExponentialArrow<IndexedElement<Obj, Left>, Value>
   >;
   readonly evaluationConsistent: boolean;
   readonly diagnostics: ReadonlyArray<string>;
@@ -940,9 +1543,16 @@ export const deriveMonadComonadRunnerTranslation = <
   > = [];
   const diagnostics: string[] = [];
 
-  const sweedlerFromDual = interaction.sweedler.fromDual;
+  const sweedlerFromDual = interaction.sweedler.fromDual as SetHom<
+    IndexedElement<Obj, Right>,
+    (primal: IndexedElement<Obj, Left>) => Value
+  >;
 
   for (const [object, fiber] of interaction.psiComponents.entries()) {
+    const primalExponential = SetCat.exponential(
+      fiber.primalFiber,
+      interaction.law.dualizing as SetObj<Value>,
+    );
     const thetaDiagnostics: string[] = [];
     let consistentWithDelta = true;
 
@@ -955,7 +1565,7 @@ export const deriveMonadComonadRunnerTranslation = <
           if (!Object.is(lawValue, evaluation.value)) {
             consistentWithDelta = false;
             thetaDiagnostics.push(
-              `δ tables disagree with ψ at object ${String(object)}: expected ${String(
+              `? tables disagree with ? at object ${String(object)}: expected ${String(
                 evaluation.value,
               )} but obtained ${String(lawValue)} for (${String(entry.primal.element)}, ${String(
                 evaluation.dual.element,
@@ -965,14 +1575,14 @@ export const deriveMonadComonadRunnerTranslation = <
         }
         if (entry.evaluations.length > sampledValues.length) {
           thetaDiagnostics.push(
-            `δ^${String(object)}_${String(component.parameter)} truncated to ${sampledValues.length}` +
+            `?^${String(object)}_${String(component.parameter)} truncated to ${sampledValues.length}` +
               ` of ${entry.evaluations.length} dual samples for diagnostics.`,
           );
         }
       }
       if (component.evaluationTable.length > sampledEvaluations.length) {
         thetaDiagnostics.push(
-          `δ^${String(object)}_${String(component.parameter)} truncated to ${sampledEvaluations.length}` +
+          `?^${String(object)}_${String(component.parameter)} truncated to ${sampledEvaluations.length}` +
             ` of ${component.evaluationTable.length} primal samples for diagnostics.`,
         );
       }
@@ -980,7 +1590,7 @@ export const deriveMonadComonadRunnerTranslation = <
 
     if (consistentWithDelta) {
       thetaDiagnostics.push(
-        `δ tables for object ${String(object)} match ψ on sampled entries (limit ${sampleLimit}).`,
+        `? tables for object ${String(object)} match ? on sampled entries (limit ${sampleLimit}).`,
       );
     }
 
@@ -997,10 +1607,10 @@ export const deriveMonadComonadRunnerTranslation = <
     const costateDiagnostics: string[] = [];
     let costateConsistent = true;
 
-    const costate = SetCat.hom(rightCarrier, fiber.exponential.object, (element) => {
+    const costate = SetCat.hom(rightCarrier, primalExponential.object, (element) => {
       const indexed: IndexedElement<Obj, Right> = { object, element };
       const evaluation = sweedlerFromDual.map(indexed);
-      return fiber.exponential.register((primal) => evaluation(primal));
+      return primalExponential.register((primal) => evaluation(primal));
     });
 
     const coalgebraDiagnostics: string[] = [];
@@ -1008,10 +1618,10 @@ export const deriveMonadComonadRunnerTranslation = <
 
     const coalgebra = SetCat.hom(
       fiber.dualFiber,
-      fiber.exponential.object,
+      primalExponential.object,
       (dualElement) => {
         const evaluation = sweedlerFromDual.map(dualElement);
-        return fiber.exponential.register((primal) => evaluation(primal));
+        return primalExponential.register((primal) => evaluation(primal));
       },
     );
 
@@ -1025,26 +1635,24 @@ export const deriveMonadComonadRunnerTranslation = <
 
       for (const primal of sampledPrimal) {
         const expected = fiber.phi.map([primal, dualElement]);
-        const fromCostate = fiber.exponential.evaluation.map([costateArrow, dualElement]);
-        const fromCoalgebra = fiber.exponential.evaluation.map([coalgebraArrow, dualElement]);
+        const fromCostate = primalExponential.evaluation.map([costateArrow, primal]);
+        const fromCoalgebra = primalExponential.evaluation.map([coalgebraArrow, primal]);
 
         if (!Object.is(expected, fromCostate)) {
           costateConsistent = false;
           costateDiagnostics.push(
-            `Costate inconsistency at object ${String(object)}: ψ(${String(
+            `Costate inconsistency at object ${String(object)}: ?(${String(
               primal.element,
-            )}, ${String(rawElement)}) = ${String(expected)} but γ returns ${String(fromCostate)}.`,
+            )}, ${String(rawElement)}) = ${String(expected)} but ? returns ${String(fromCostate)}.`,
           );
         }
 
         if (!Object.is(expected, fromCoalgebra)) {
           coalgebraConsistent = false;
           coalgebraDiagnostics.push(
-            `Coalgebra inconsistency at object ${String(object)}: ψ(${String(
+            `Coalgebra inconsistency at object ${String(object)}: ?(${String(
               primal.element,
-            )}, ${String(rawElement)}) = ${String(expected)} but Sweedler map returns ${String(
-              fromCoalgebra,
-            )}.`,
+            )}, ${String(rawElement)}) = ${String(expected)} but ? returns ${String(fromCoalgebra)}.`,
           );
         }
       }
@@ -1078,13 +1686,13 @@ export const deriveMonadComonadRunnerTranslation = <
 
     if (costateConsistent) {
       costateDiagnostics.push(
-        `Costate translation agrees with ψ on sampled entries for object ${String(object)}.`,
+        `Costate translation agrees with ? on sampled entries for object ${String(object)}.`,
       );
     }
 
     if (coalgebraConsistent) {
       coalgebraDiagnostics.push(
-        `Coalgebra translation agrees with ψ on sampled entries for object ${String(object)}.`,
+        `Coalgebra translation agrees with ? on sampled entries for object ${String(object)}.`,
       );
     }
 
@@ -1104,7 +1712,7 @@ export const deriveMonadComonadRunnerTranslation = <
   }
 
   diagnostics.push(
-    `Runner translation sampled up to ${sampleLimit} element(s) per carrier to align θ, γ, and coalgebra data with recorded δ tables.`,
+    `Runner translation sampled up to ${sampleLimit} element(s) per carrier to align ?, ?, and coalgebra data with recorded ? tables.`,
   );
 
   return {
@@ -1128,8 +1736,8 @@ type Example9Contribution = FunctorInteractionLawContribution<
 const EXAMPLE9_KERNEL = makeTwoObjectPromonoidalKernel();
 
 const buildExample9Law = () => {
-  const left = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
-  const right = covariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
+  const left = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "\u2605");
+  const right = covariantRepresentableFunctorWithWitness(TwoObjectCategory, "\u2605");
   const convolution = dayTensor(EXAMPLE9_KERNEL, left.functor, right.functor);
   const dualizing = SetCat.obj([false, true], { tag: "Example9Bool" });
   const operations = makeFunctorInteractionLawOperations<TwoObject, TwoArrow>({
@@ -1137,20 +1745,20 @@ const buildExample9Law = () => {
     monadOperations: [
       makeCommutativeBinaryMonadOperation<TwoObject, TwoArrow>({
         label: "db",
-        component: (object) => TwoObjectCategory.id(object),
-        swapWitness: TwoObjectCategory.id("★"),
+          component: (object) => TwoObjectCategory.id(object),
+          swapWitness: TwoObjectCategory.id("\u2605"),
         kleisliOnGeneric: (object) => TwoObjectCategory.id(object),
         dayReferences: [
-          {
-            fiber: "★",
-            index: 0,
-            metadata: ["Example9 fiber"],
-          },
+        {
+          fiber: "\u2605",
+          index: 0,
+          metadata: ["Example9 fiber"],
+        },
         ],
         lawvereWitness: {
-          domain: "★",
-          codomain: "★",
-          morphism: TwoObjectCategory.id("★"),
+          domain: "\u2605",
+          codomain: "\u2605",
+          morphism: TwoObjectCategory.id("\u2605"),
           metadata: ["Example9 lawvere witness"],
         },
         metadata: ["Example9 binary operation"],
@@ -1223,6 +1831,20 @@ export type Example14FreeTerm = Example14Term<Example14Symbol>;
 export type Example14NestedTerm = Example14Term<Example14FreeTerm>;
 export type Example14NonemptyList = NonemptyArray<Example14Symbol>;
 export type Example14ListOfLists = NonemptyArray<Example14NonemptyList>;
+
+const toNonemptyArray = <T>(values: ReadonlyArray<T>, context: string): NonemptyArray<T> => {
+  if (values.length === 0) {
+    throw new Error(`${context}: expected a non-empty array.`);
+  }
+  const [first, ...rest] = values;
+  return [first as T, ...rest] as NonemptyArray<T>;
+};
+
+const asUnknownSetHom = <Dom, Cod>(hom: SetHom<Dom, Cod>): SetHom<unknown, unknown> =>
+  hom as unknown as SetHom<unknown, unknown>;
+
+const toUnknownSetHom = <Dom, Cod>(hom: SetHom<Dom, Cod>): SetHom<unknown, unknown> =>
+  hom as unknown as SetHom<unknown, unknown>;
 
 export type Example14CofreeElement =
   | {
@@ -1455,8 +2077,15 @@ const enumerateExample14Lists = function* (): IterableIterator<Example14Nonempty
     const indices = Array.from({ length }, () => 0);
     let finished = false;
     while (!finished) {
-      const list = indices.map((index) => EXAMPLE14_SYMBOLS[index]);
-      yield list as Example14NonemptyList;
+      const list: Example14Symbol[] = [];
+      for (const index of indices) {
+        const symbol = EXAMPLE14_SYMBOLS[index];
+        if (symbol === undefined) {
+          throw new Error(`Example14 enumeration encountered invalid symbol index ${index}.`);
+        }
+        list.push(symbol);
+      }
+      yield toNonemptyArray(list, "Example14 enumeration");
       let position = length - 1;
       while (position >= 0 && indices[position] === EXAMPLE14_SYMBOLS.length - 1) {
         indices[position] = 0;
@@ -1465,7 +2094,13 @@ const enumerateExample14Lists = function* (): IterableIterator<Example14Nonempty
       if (position < 0) {
         finished = true;
       } else {
-        indices[position] += 1;
+      const current = indices[position];
+      if (current === undefined) {
+        throw new Error(
+          `Example14 enumeration index accounting failed for position ${position}.`,
+        );
+      }
+      indices[position] = current + 1;
       }
     }
     length += 1;
@@ -1500,13 +2135,22 @@ const enumerateExample14ListOfLists = function* (): IterableIterator<Example14Li
       if (next.done) {
         break;
       }
-      cachedLists.push(next.value);
+      cachedLists.push(next.value as Example14NonemptyList);
     }
     const indices = Array.from({ length }, () => 0);
     let finished = false;
     while (!finished) {
-      const value = indices.map((index) => cachedLists[index]);
-      yield value as Example14ListOfLists;
+      const value: Example14NonemptyList[] = [];
+      for (const index of indices) {
+        const list = cachedLists[index];
+        if (!list) {
+          throw new Error(
+            `Example14 list-of-lists enumeration missing cached list for index ${index}.`,
+          );
+        }
+        value.push(list);
+      }
+      yield toNonemptyArray(value, "Example14 list-of-lists enumeration");
       let position = length - 1;
       while (position >= 0 && indices[position] === cachedLists.length - 1) {
         indices[position] = 0;
@@ -1515,7 +2159,13 @@ const enumerateExample14ListOfLists = function* (): IterableIterator<Example14Li
       if (position < 0) {
         finished = true;
       } else {
-        indices[position] += 1;
+        const current = indices[position];
+        if (current === undefined) {
+          throw new Error(
+            `Example14 list-of-lists enumeration index accounting failed for position ${position}.`,
+          );
+        }
+        indices[position] = current + 1;
       }
     }
     length += 1;
@@ -1525,12 +2175,22 @@ const enumerateExample14ListOfLists = function* (): IterableIterator<Example14Li
 const example14ListOfListsSemantics = {
   iterate: enumerateExample14ListOfLists,
   has: (candidate: Example14ListOfLists) => isExample14ListOfLists(candidate),
-  equals: (
-    left: Example14ListOfLists,
-    right: Example14ListOfLists,
-  ) =>
-    left.length === right.length &&
-    left.every((value, index) => example14ListEquals(value, right[index])),
+  equals: (left: Example14ListOfLists, right: Example14ListOfLists) => {
+    if (left.length !== right.length) {
+      return false;
+    }
+    for (let index = 0; index < left.length; index += 1) {
+      const leftList = left[index];
+      const rightList = right[index];
+      if (!leftList || !rightList) {
+        return false;
+      }
+      if (!example14ListEquals(leftList, rightList)) {
+        return false;
+      }
+    }
+    return true;
+  },
   tag: "Example14ListOfLists",
 };
 
@@ -1542,11 +2202,11 @@ const flattenExample14Term = (
   term: Example14FreeTerm,
 ): Example14NonemptyList => {
   if (term.tag === "var") {
-    return [term.value as Example14Symbol];
+    return toNonemptyArray([term.value as Example14Symbol], "flattenExample14Term variable");
   }
   const left = flattenExample14Term(term.left as Example14FreeTerm);
   const right = flattenExample14Term(term.right as Example14FreeTerm);
-  return [...left, ...right] as Example14NonemptyList;
+  return toNonemptyArray([...left, ...right], "flattenExample14Term concat");
 };
 
 const flattenExample14NestedTerm = (
@@ -1569,7 +2229,7 @@ const flattenExample14ListOfLists = (
   for (const list of lists) {
     collected.push(...list);
   }
-  return collected as Example14NonemptyList;
+  return toNonemptyArray(collected, "flattenExample14ListOfLists");
 };
 
 const example14FreeMonadFunctor = constructFunctorWithWitness(
@@ -1577,7 +2237,7 @@ const example14FreeMonadFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example14FreeTermCarrier,
-    F1: () => SetCat.id(example14FreeTermCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example14FreeTermCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
   ["Example14 free monad functor"],
@@ -1587,10 +2247,12 @@ const example14FreeMonadUnit = constructNaturalTransformationWithWitness(
   example14FreeMonadFunctor,
   example14FreeMonadFunctor,
   () =>
-    SetCat.hom(example14SymbolCarrier, example14FreeTermCarrier, (symbol) => ({
-      tag: "var",
-      value: symbol as Example14Symbol,
-    })),
+    toUnknownSetHom(
+      SetCat.hom(example14SymbolCarrier, example14FreeTermCarrier, (symbol) => ({
+        tag: "var",
+        value: symbol as Example14Symbol,
+      }) as Example14FreeTerm),
+    ),
   { metadata: ["Example14 free monad unit"] },
 );
 
@@ -1598,8 +2260,10 @@ const example14FreeMonadMultiplication = constructNaturalTransformationWithWitne
   example14FreeMonadFunctor,
   example14FreeMonadFunctor,
   () =>
-    SetCat.hom(example14NestedTermCarrier, example14FreeTermCarrier, (term) =>
-      flattenExample14NestedTerm(term as Example14NestedTerm),
+    toUnknownSetHom(
+      SetCat.hom(example14NestedTermCarrier, example14FreeTermCarrier, (term) =>
+        flattenExample14NestedTerm(term as Example14NestedTerm),
+      ),
     ),
   { metadata: ["Example14 free monad multiplication"] },
 );
@@ -1609,7 +2273,7 @@ const example14NonemptyListFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example14NonemptyListCarrier,
-    F1: () => SetCat.id(example14NonemptyListCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example14NonemptyListCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
   ["Example14 nonempty list functor"],
@@ -1619,9 +2283,11 @@ const example14NonemptyListUnit = constructNaturalTransformationWithWitness(
   example14NonemptyListFunctor,
   example14NonemptyListFunctor,
   () =>
-    SetCat.hom(example14SymbolCarrier, example14NonemptyListCarrier, (symbol) => [
-      symbol as Example14Symbol,
-    ] as Example14NonemptyList),
+    toUnknownSetHom(
+      SetCat.hom(example14SymbolCarrier, example14NonemptyListCarrier, (symbol) =>
+        toNonemptyArray([symbol as Example14Symbol], "Example14 nonempty list unit"),
+      ),
+    ),
   { metadata: ["Example14 nonempty list unit"] },
 );
 
@@ -1629,8 +2295,10 @@ const example14NonemptyListMultiplication = constructNaturalTransformationWithWi
   example14NonemptyListFunctor,
   example14NonemptyListFunctor,
   () =>
-    SetCat.hom(example14ListOfListsCarrier, example14NonemptyListCarrier, (value) =>
-      flattenExample14ListOfLists(value as Example14ListOfLists),
+    toUnknownSetHom(
+      SetCat.hom(example14ListOfListsCarrier, example14NonemptyListCarrier, (value) =>
+        flattenExample14ListOfLists(value as Example14ListOfLists),
+      ),
     ),
   { metadata: ["Example14 nonempty list multiplication"] },
 );
@@ -1670,8 +2338,10 @@ export const nonemptyListQuotient = (): NonemptyListQuotientData => {
     free.monad.functor,
     example14NonemptyListFunctor,
     () =>
-      SetCat.hom(free.freeCarrier, example14NonemptyListCarrier, (term) =>
-        flattenExample14Term(term as Example14FreeTerm),
+      toUnknownSetHom(
+        SetCat.hom(free.freeCarrier, example14NonemptyListCarrier, (term) =>
+          flattenExample14Term(term as Example14FreeTerm),
+        ),
       ),
     { metadata: ["Example14 quotient map"] },
   );
@@ -1734,7 +2404,7 @@ const isRectangularDouble = (value: Example14CofreeDoubleElement): boolean =>
 
 export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
   const quotient = nonemptyListQuotient();
-  const baseCarrier = quotient.monad.functor.functor.F0("•") as SetObj<Example14NonemptyList>;
+  const baseCarrier = quotient.monad.functor.functor.F0("\u2605") as SetObj<Example14NonemptyList>;
   const cofreePair = SetCat.product(baseCarrier, baseCarrier);
   const cofreeData = SetCat.coproduct(baseCarrier, cofreePair.object);
   const cofreeCarrier = cofreeData.object as SetObj<Example14CofreeElement>;
@@ -1747,7 +2417,7 @@ export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
     setSimpleCategory,
     {
       F0: () => cofreeCarrier,
-      F1: () => SetCat.id(cofreeCarrier),
+      F1: () => toUnknownSetHom(SetCat.id(cofreeCarrier)),
     },
     { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
     ["Example14 cofree functor"],
@@ -1757,10 +2427,12 @@ export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
     cofreeFunctor,
     quotient.monad.functor,
     () =>
-      SetCat.hom(
-        cofreeCarrier,
-        baseCarrier,
-        (value) => (value.tag === "inl" ? value.value : value.value[0]),
+      asUnknownSetHom(
+        SetCat.hom(
+          cofreeCarrier,
+          baseCarrier,
+          (value) => (value.tag === "inl" ? value.value : value.value[0]),
+        ),
       ),
     { metadata: ["Example14 cofree counit"] },
   );
@@ -1769,42 +2441,47 @@ export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
     cofreeFunctor,
     cofreeFunctor,
     () =>
-      SetCat.hom(
-        cofreeCarrier,
-        cofreeDoubleCarrier,
-        (raw) => {
-          const value = canonicalizeCofreeElement(cofreeData.injections, cofreePair, raw);
-          if (value.tag === "inl") {
-            return cofreeDoubleData.injections.inl.map(value);
-          }
-          const left = cofreeData.injections.inl.map(value.value[0]);
-          const right = cofreeData.injections.inl.map(value.value[1]);
-          const paired = cofreeDoublePair.lookup(left, right);
-          return cofreeDoubleData.injections.inr.map(paired);
-        },
+      asUnknownSetHom(
+        SetCat.hom(
+          cofreeCarrier,
+          cofreeDoubleCarrier,
+          (raw) => {
+            const value = canonicalizeCofreeElement(cofreeData.injections, cofreePair, raw);
+            if (value.tag === "inl") {
+              return cofreeDoubleData.injections.inl.map(value);
+            }
+            const left = cofreeData.injections.inl.map(value.value[0]);
+            const right = cofreeData.injections.inl.map(value.value[1]);
+            const lookup = cofreeDoublePair.lookup;
+            if (!lookup) {
+              throw new Error("Example14 cofree comultiplication: product lookup unavailable.");
+            }
+            const paired = lookup(left, right);
+            if (!paired) {
+              throw new Error("Example14 cofree comultiplication: missing paired element in product.");
+            }
+            return cofreeDoubleData.injections.inr.map(paired);
+          },
+        ),
       ),
     { metadata: ["Example14 cofree comultiplication"] },
   );
 
-  const rectangularCharacteristic = SetCat.hom(
+  const sweedlerSubset = buildCharacteristicSubset(
     cofreeCarrier,
-    SetOmega,
-    (value) => (isRectangularCofree(value) ? true : false),
+    isRectangularCofree,
+    "Example14SweedlerSubset",
   );
-  const sweedlerSubset = SetCat.subobjectFromCharacteristic(rectangularCharacteristic);
   const sweedlerCarrier = sweedlerSubset.subset as SetObj<Example14CofreeElement>;
   const sweedlerInclusionMap = sweedlerSubset.inclusion as SetHom<
     Example14CofreeElement,
     Example14CofreeElement
   >;
 
-  const rectangularDoubleCharacteristic = SetCat.hom(
+  const sweedlerDoubleSubset = buildCharacteristicSubset(
     cofreeDoubleCarrier,
-    SetOmega,
-    (value) => (isRectangularDouble(value) ? true : false),
-  );
-  const sweedlerDoubleSubset = SetCat.subobjectFromCharacteristic(
-    rectangularDoubleCharacteristic,
+    isRectangularDouble,
+    "Example14SweedlerDoubleSubset",
   );
   const sweedlerDoubleCarrier = sweedlerDoubleSubset.subset as SetObj<Example14CofreeDoubleElement>;
   const sweedlerDoubleInclusion = sweedlerDoubleSubset.inclusion as SetHom<
@@ -1817,46 +2494,59 @@ export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
     setSimpleCategory,
     {
       F0: () => sweedlerCarrier,
-      F1: () => SetCat.id(sweedlerCarrier),
+      F1: () => toUnknownSetHom(SetCat.id(sweedlerCarrier)),
     },
     { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
     ["Example14 Sweedler functor"],
   );
 
-  const sweedlerCounit = constructNaturalTransformationWithWitness(
-    sweedlerFunctor,
-    quotient.monad.functor,
-    () => SetCat.compose(cofreeCounit.transformation.component("•"), sweedlerInclusionMap),
-    { metadata: ["Example14 Sweedler counit"] },
-  );
-
-  const cofreeComponent = cofreeComultiplication.transformation.component("•") as SetHom<
-    Example14CofreeElement,
-    Example14CofreeDoubleElement
-  >;
-
-  const sweedlerComultiplication = constructNaturalTransformationWithWitness(
-    sweedlerFunctor,
-    sweedlerFunctor,
+    const sweedlerCounit = constructNaturalTransformationWithWitness(
+      sweedlerFunctor,
+      quotient.monad.functor,
     () =>
-      SetCat.hom(
-        sweedlerCarrier,
-        sweedlerDoubleCarrier,
-        (value) => cofreeComponent.map(sweedlerInclusionMap.map(value)),
+      toUnknownSetHom(
+        SetCat.compose(
+          cofreeCounit.transformation.component("\u2605"),
+          sweedlerInclusionMap,
+        ),
       ),
-    { metadata: ["Example14 Sweedler comultiplication"] },
-  );
+      { metadata: ["Example14 Sweedler counit"] },
+    );
+
+  const cofreeComponent = cofreeComultiplication.transformation.component("\u2605") as SetHom<
+      Example14CofreeElement,
+      Example14CofreeDoubleElement
+    >;
+
+    const sweedlerComultiplication = constructNaturalTransformationWithWitness(
+      sweedlerFunctor,
+      sweedlerFunctor,
+      () =>
+        toUnknownSetHom(
+          SetCat.hom(
+            sweedlerCarrier,
+            sweedlerDoubleCarrier,
+            (value) => cofreeComponent.map(sweedlerInclusionMap.map(value)),
+          ),
+        ),
+      { metadata: ["Example14 Sweedler comultiplication"] },
+    );
 
   const sweedlerInclusion = constructNaturalTransformationWithWitness(
     sweedlerFunctor,
     cofreeFunctor,
-    () => sweedlerInclusionMap,
+  () => toUnknownSetHom(sweedlerInclusionMap),
     { metadata: ["Example14 Sweedler inclusion"] },
   );
 
-  const sweedlerCoequation = SetCat.compose(
-    sweedlerDoubleInclusion,
-    sweedlerComultiplication.transformation.component("•"),
+  const sweedlerComultiplicationComponent = sweedlerComultiplication.transformation.component(
+    "\u2605",
+  ) as SetHom<Example14CofreeElement, Example14CofreeDoubleElement>;
+
+  const sweedlerCoequation = SetCat.hom(
+    sweedlerCarrier,
+    sweedlerDoubleCarrier,
+    (value) => sweedlerDoubleInclusion.map(sweedlerComultiplicationComponent.map(value)),
   );
 
   return {
@@ -1916,7 +2606,7 @@ export interface NonemptyListCoequationData {
   readonly metadata: ReadonlyArray<string>;
 }
 
-const enumerateCarrier = <A>(carrier: SetObj<A>): ReadonlyArray<A> => {
+const enumerateAllElements = <A>(carrier: SetObj<A>): ReadonlyArray<A> => {
   const semantics = getCarrierSemantics(carrier);
   if (semantics?.iterate) {
     return Array.from(semantics.iterate());
@@ -1930,8 +2620,8 @@ const partitionSweedlerElements = (
   readonly left: ReadonlyArray<Example14CofreeElement>;
   readonly right: ReadonlyArray<Example14CofreeElement>;
 } => {
-  const values = enumerateCarrier(
-    data.sweedler.functor.functor.F0("•") as SetObj<Example14CofreeElement>,
+  const values = enumerateAllElements(
+    data.sweedler.functor.functor.F0("\u2605") as SetObj<Example14CofreeElement>,
   );
   const left: Example14CofreeElement[] = [];
   const right: Example14CofreeElement[] = [];
@@ -1947,19 +2637,31 @@ const partitionSweedlerElements = (
   return { left, right };
 };
 
+const buildCharacteristicSubset = <A>(
+  carrier: SetObj<A>,
+  predicate: (value: A) => boolean,
+  tag: string,
+): { readonly subset: SetObj<A>; readonly inclusion: SetHom<A, A> } => {
+  const members = enumerateAllElements(carrier).filter(predicate);
+  const semantics = SetCat.createSubsetSemantics(carrier, members, { tag });
+  const subset = SetCat.obj(members, { semantics, tag }) as SetObj<A>;
+  const inclusion = SetCat.hom(subset, carrier, (value) => value);
+  return { subset, inclusion };
+};
+
 const makeInclusion = <A>(
   subset: SetObj<A>,
   ambient: SetObj<A>,
 ): SetHom<A, A> =>
   SetCat.hom(subset, ambient, (value) => value);
 
-export const deriveNonemptyListCoequation = (): NonemptyListCoequationData => {
-  const sweedler = sweedlerDualNonemptyList();
+  export const deriveNonemptyListCoequation = (): NonemptyListCoequationData => {
+    const sweedler = sweedlerDualNonemptyList();
   const sweedlerCarrier = sweedler.sweedler.functor.functor.F0(
-    "•",
+    "\u2605",
   ) as SetObj<Example14CofreeElement>;
   const baseCarrier = sweedler.quotient.monad.functor.functor.F0(
-    "•",
+    "\u2605",
   ) as SetObj<Example14NonemptyList>;
 
   const { left, right } = partitionSweedlerElements(sweedler);
@@ -1990,22 +2692,22 @@ export const deriveNonemptyListCoequation = (): NonemptyListCoequationData => {
   const deltaCoproduct = SetCat.coproduct(
     sweedlerCarrier,
     sweedlerCarrier,
-    { tag: "Example14CoequationDelta" },
+    {},
   );
 
   const epsilonCoproduct = SetCat.coproduct(
     baseCarrier,
     baseCarrier,
-    { tag: "Example14CoequationEpsilon" },
+    {},
   );
 
   const leftMembership = semanticsAwareHas(leftPartition);
   const counit = sweedler.sweedler.comonad.counit.transformation.component(
-    "•",
+    "\u2605",
   ) as SetHom<Example14CofreeElement, Example14NonemptyList>;
   const comultiplication =
     sweedler.sweedler.comonad.comultiplication.transformation.component(
-      "•",
+      "\u2605",
     ) as SetHom<Example14CofreeElement, Example14CofreeDoubleElement>;
 
   const cDelta = SetCat.hom(
@@ -2067,9 +2769,9 @@ export const checkRectangularityFromCoequation = (
   data: NonemptyListCoequationData,
 ): NonemptyListRectangularityReport => {
   const sweedlerCarrier = data.sweedler.sweedler.functor.functor.F0(
-    "•",
+    "\u2605",
   ) as SetObj<Example14CofreeElement>;
-  const values = enumerateCarrier(sweedlerCarrier);
+  const values = enumerateAllElements(sweedlerCarrier);
   const doubleEquals = semanticsAwareEquals(
     data.sweedler.cofree.doubleCarrier,
   );
@@ -2077,7 +2779,7 @@ export const checkRectangularityFromCoequation = (
   const rightMembership = semanticsAwareHas(data.rightPartition);
   const comultiplication =
     data.sweedler.sweedler.comonad.comultiplication.transformation.component(
-      "•",
+      "\u2605",
     ) as SetHom<Example14CofreeElement, Example14CofreeDoubleElement>;
   const coequation = data.sweedler.sweedler.coequation;
   const inclusion = data.sweedler.sweedler.doubleInclusion;
@@ -2804,17 +3506,17 @@ const actOnState = (action: Example8Action, state: Example8State): Example8State
   return state === "a0" ? "a1" : "a0";
 };
 
-const actOnY = (action: Example8Action, value: Example8BaseY): Example8BaseY => {
+const actOnExample8Y = (action: Example8Action, value: Example8BaseY): Example8BaseY => {
   if (action === 0) {
     return value;
   }
   return value === "y0" ? "y1" : "y0";
 };
 
-const actOnReader = (
+const actOnExample8Reader = (
   action: Example8Action,
   reader: Example8Reader,
-): Example8Reader => [actOnState(action, reader[0]), actOnY(action, reader[1])];
+): Example8Reader => [actOnState(action, reader[0]), actOnExample8Y(action, reader[1])];
 
 const buildExample8UpdateFunction = (
   first: Example8UpdateArrow,
@@ -2954,19 +3656,19 @@ const evaluateExample8 = (
   if (isExample8UpdateFunctionSquared(left)) {
     const [action, inner] = applyExample8FunctionSquared(left, state);
     if (isExample8Reader(right)) {
-      return [inner, actOnY(action, right[1])];
+      return [inner, actOnExample8Y(action, right[1])];
     }
     if (isExample8ReaderSquared(right)) {
-      return [inner, actOnReader(action, right[1])];
+      return [inner, actOnExample8Reader(action, right[1])];
     }
   }
   if (isExample8UpdateFunction(left)) {
     const [action, value] = applyExample8Function(left, state);
     if (isExample8Reader(right)) {
-      return [value, actOnY(action, right[1])];
+      return [value, actOnExample8Y(action, right[1])];
     }
     if (isExample8ReaderSquared(right)) {
-      return [value, actOnReader(action, right[1])];
+      return [value, actOnExample8Reader(action, right[1])];
     }
   }
   throw new Error("Example8: unsupported combination of left/right elements.");
@@ -2984,22 +3686,22 @@ const registerExample8Value = (value: Example8InteractionValue): void => {
 for (const fn of example8UpdateFunctionElements) {
   for (const reader of example8ReaderElements) {
     const [action, result] = applyExample8Function(fn, reader[0]);
-    registerExample8Value([result, actOnY(action, reader[1])]);
+    registerExample8Value([result, actOnExample8Y(action, reader[1])]);
   }
   for (const readerSquared of example8ReaderSquaredElements) {
     const [action, result] = applyExample8Function(fn, readerSquared[0]);
-    registerExample8Value([result, actOnReader(action, readerSquared[1])]);
+    registerExample8Value([result, actOnExample8Reader(action, readerSquared[1])]);
   }
 }
 
 for (const fn of example8UpdateFunctionSquaredElements) {
   for (const reader of example8ReaderElements) {
     const [action, inner] = applyExample8FunctionSquared(fn, reader[0]);
-    registerExample8Value([inner, actOnY(action, reader[1])]);
+    registerExample8Value([inner, actOnExample8Y(action, reader[1])]);
   }
   for (const readerSquared of example8ReaderSquaredElements) {
     const [action, inner] = applyExample8FunctionSquared(fn, readerSquared[0]);
-    registerExample8Value([inner, actOnReader(action, readerSquared[1])]);
+    registerExample8Value([inner, actOnExample8Reader(action, readerSquared[1])]);
   }
 }
 
@@ -3039,7 +3741,7 @@ const example8LeftFunctor = constructContravariantFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example8UpdateFunctionCarrier,
-    F1: () => SetCat.id(example8UpdateFunctionCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example8UpdateFunctionCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3049,7 +3751,7 @@ const example8RightFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example8ReaderCarrier,
-    F1: () => SetCat.id(example8ReaderCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example8ReaderCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3059,7 +3761,7 @@ const example8MonadFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example8UpdateFunctionCarrier,
-    F1: () => SetCat.id(example8UpdateFunctionCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example8UpdateFunctionCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3069,7 +3771,7 @@ const example8ComonadFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example8ReaderCarrier,
-    F1: () => SetCat.id(example8ReaderCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example8ReaderCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3077,49 +3779,47 @@ const example8ComonadFunctor = constructFunctorWithWitness(
 const example8Unit = constructNaturalTransformationWithWitness(
   example8MonadFunctor,
   example8MonadFunctor,
-  {
-    component: () =>
+  () =>
+    toUnknownSetHom(
       SetCat.hom(example8BaseXCarrier, example8UpdateFunctionCarrier, (value) =>
         makeConstantExample8UpdateFunction(value),
       ),
-  },
+    ),
   { metadata: ["Example8 unit"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example8Multiplication = constructNaturalTransformationWithWitness(
   example8MonadFunctor,
   example8MonadFunctor,
-  {
-    component: () =>
+  () =>
+    toUnknownSetHom(
       SetCat.hom(
         example8UpdateFunctionSquaredCarrier,
         example8UpdateFunctionCarrier,
         (value) => flattenExample8UpdateFunction(value),
       ),
-  },
+    ),
   { metadata: ["Example8 multiplication"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example8Counit = constructNaturalTransformationWithWitness(
   example8ComonadFunctor,
   example8ComonadFunctor,
-  {
-    component: () =>
-      SetCat.hom(example8ReaderCarrier, example8BaseYCarrier, (value) => value[1]),
-  },
+  () =>
+    toUnknownSetHom(SetCat.hom(example8ReaderCarrier, example8BaseYCarrier, (value) => value[1])),
   { metadata: ["Example8 counit"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example8Comultiplication = constructNaturalTransformationWithWitness(
   example8ComonadFunctor,
   example8ComonadFunctor,
-  {
-    component: () =>
+  () =>
+    toUnknownSetHom(
       SetCat.hom(example8ReaderCarrier, example8ReaderSquaredCarrier, (value) => [
         value[0],
         value,
       ]),
-  },
+    ),
   { metadata: ["Example8 comultiplication"], samples: { objects: TwoObjectCategory.objects } },
 );
 
@@ -3183,7 +3883,7 @@ const normalizeLabel = (label: string): string => {
   return index === -1 ? label : label.slice(0, index);
 };
 
-const mergeMetadata = (
+const mergeMetadataUnique = (
   ...sources: ReadonlyArray<ReadonlyArray<string> | undefined>
 ): ReadonlyArray<string> => {
   const aggregate = new Set<string>();
@@ -3295,13 +3995,13 @@ export const checkAssociativeBinaryDegeneracy = <
 
     if (!psiFiber) {
       gaps.push(
-        `Missing ψ fiber for object ${String(
+        `Missing ? fiber for object ${String(
           trace.object,
-        )}; unable to log θ_{X,Y}.`,
+        )}; unable to log ?_{X,Y}.`,
       );
     } else {
       detailEntries.push(
-        `Recovered θ_{X,Y} from the ψ fiber on object ${String(trace.object)}.`,
+        `Recovered ?_{X,Y} from the ? fiber on object ${String(trace.object)}.`,
       );
     }
 
@@ -3311,7 +4011,7 @@ export const checkAssociativeBinaryDegeneracy = <
       );
     } else {
       detailEntries.push(
-        `Logged δ_{X,Y} using the comultiplication component on ${String(trace.object)}.`,
+        `Logged ?_{X,Y} using the comultiplication component on ${String(trace.object)}.`,
       );
     }
 
@@ -3321,7 +4021,7 @@ export const checkAssociativeBinaryDegeneracy = <
       );
     } else {
       detailEntries.push(
-        `Recorded μ_X contributing to the associative comparison on ${String(trace.object)}.`,
+        `Recorded ?_X contributing to the associative comparison on ${String(trace.object)}.`,
       );
     }
 
@@ -3329,17 +4029,17 @@ export const checkAssociativeBinaryDegeneracy = <
       gaps.push(`Unable to reconstruct h_Y for object ${String(trace.object)}.`);
     } else {
       detailEntries.push(
-        `Captured h_Y : GY → 1 using the degeneracy artifacts for ${String(trace.object)}.`,
+        `Captured h_Y : GY ? 1 using the degeneracy artifacts for ${String(trace.object)}.`,
       );
     }
 
     if (!trace.artifacts.terminalDiagonal) {
       gaps.push(
-        `Unable to build δ'_Y : GY → 1 + 1 for object ${String(trace.object)}.`,
+        `Unable to build ?'_Y : GY ? 1 + 1 for object ${String(trace.object)}.`,
       );
     } else {
       detailEntries.push(
-        `Constructed δ'_Y via the canonical injection into 1 + 1 for ${String(trace.object)}.`,
+        `Constructed ?'_Y via the canonical injection into 1 + 1 for ${String(trace.object)}.`,
       );
     }
 
@@ -3355,7 +4055,7 @@ export const checkAssociativeBinaryDegeneracy = <
 
     if (!trace.artifacts.zeroComparison?.toZero) {
       gaps.push(
-        `Zero comparison map k_Y : GY → 0 absent for object ${String(trace.object)}.`,
+        `Zero comparison map k_Y : GY ? 0 absent for object ${String(trace.object)}.`,
       );
     } else {
       detailEntries.push(
@@ -3381,12 +4081,12 @@ export const checkAssociativeBinaryDegeneracy = <
     };
 
     detailEntries.push(
-      `Formed the distributivity coproduct Y + Y with injections ι_Y and κ_Y for ${String(
+      `Formed the distributivity coproduct Y + Y with injections ?_Y and ?_Y for ${String(
         trace.object,
       )}.`,
     );
 
-    const combinedMetadata = mergeMetadata(
+    const combinedMetadata = mergeMetadataUnique(
       operationWitness?.operationMetadata,
       trace.artifacts.operationMetadata,
       interaction.monad.metadata,
@@ -3516,7 +4216,7 @@ export const stretchMonadComonadInteractionLaw = <
     monad: input.monad,
     comonad: input.comonad,
     law: stretchedLaw,
-    metadata,
+    ...(metadata ? { metadata } : {}),
     ...(input.packageOptions ? { options: input.packageOptions } : {}),
   });
 
@@ -3636,7 +4336,7 @@ export const tensorMonadComonadInteractionLaws = <
     monad: input.monad,
     comonad: input.comonad,
     law: product.law,
-    metadata,
+    ...(metadata ? { metadata } : {}),
     ...(input.packageOptions ? { options: input.packageOptions } : {}),
   });
 
@@ -3738,7 +4438,7 @@ export const composeMonadComonadInteractionLaws = <
     monad: input.monad,
     comonad: input.comonad,
     law: input.law,
-    metadata,
+    ...(metadata ? { metadata } : {}),
     ...(input.packageOptions ? { options: input.packageOptions } : {}),
   });
 
@@ -3878,7 +4578,7 @@ export const makeFreeMonadComonadInteractionLaw = <
   const diagnostics = [
     `makeFreeMonadComonadInteractionLaw: recorded ${input.coproductWitnesses.length} coproduct witness${
       input.coproductWitnesses.length === 1 ? "" : "es"
-    } for ψ'.`,
+    } for ?'.`,
     ...(input.base
       ? [
           "makeFreeMonadComonadInteractionLaw: reused base interaction law metadata when building the free law.",

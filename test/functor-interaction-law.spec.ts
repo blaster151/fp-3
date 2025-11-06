@@ -140,7 +140,7 @@ const makeBooleanInteractionInput = () => {
 
 const makeTerminalFunctorInteractionLaw = () => {
   const kernel = makeTwoObjectPromonoidalKernel();
-  const terminal = SetCat.terminalObj;
+  const terminal = SetCat.terminal().object;
   const left = constructContravariantFunctorWithWitness(
     TwoObjectCategory,
     setSimpleCategory,
@@ -177,8 +177,8 @@ const makeTerminalFunctorInteractionLaw = () => {
 
 const makeInitialFunctorInteractionLaw = () => {
   const kernel = makeTwoObjectPromonoidalKernel();
-  const initial = SetCat.initialObj;
-  const terminal = SetCat.terminalObj;
+  const initial = SetCat.initial().object;
+  const terminal = SetCat.terminal().object;
   const left = constructContravariantFunctorWithWitness(
     TwoObjectCategory,
     setSimpleCategory,
@@ -402,9 +402,9 @@ describe("Functor interaction laws", () => {
     expect(nullaryReport.steps.some((step) => step.label === "nullary-collapse")).toBe(true);
     expect(nullaryReport.zeroComparisons.length).toBeGreaterThan(0);
     const nullaryZero = nullaryReport.zeroComparisons[0]!;
-    expect(nullaryZero.zero).toBe(SetCat.initialObj);
-    expect(nullaryZero.toZero.cod).toBe(SetCat.initialObj);
-    expect(nullaryZero.fromZero.dom).toBe(SetCat.initialObj);
+    expect(nullaryZero.zero).toBe(SetCat.initial().object);
+    expect(nullaryZero.toZero.cod).toBe(SetCat.initial().object);
+    expect(nullaryZero.fromZero.dom).toBe(SetCat.initial().object);
     expect(nullaryReport.fixedLeftInitial?.law.left.functor).toBeDefined();
     expect(
       nullaryReport.fixedRightInitial?.collapse.details,
@@ -435,7 +435,7 @@ describe("Functor interaction laws", () => {
     ).toBe(true);
     expect(binaryReport.zeroComparisons.length).toBeGreaterThan(0);
     const binaryTrace = binaryReport.traces[0]!;
-    expect(binaryTrace.zeroComparison?.zero).toBe(SetCat.initialObj);
+    expect(binaryTrace.zeroComparison?.zero).toBe(SetCat.initial().object);
     expect(binaryTrace.artifacts.operationMetadata).toContain("SampleBinaryOperation");
     expect(binaryTrace.artifacts.lawvereMetadata).toContain("BinaryLawvere");
     expect(binaryTrace.artifacts.dayReferenceMetadata).toContain("BinaryFiber");
@@ -474,7 +474,7 @@ describe("Functor interaction laws", () => {
     expect(analysis.finalLaw).toBeDefined();
     expect(analysis.zeroComparisons.length).toBeGreaterThan(0);
     expect(analysis.nullary.fixedLeftInitial?.collapse.component("★").cod).toBe(
-      SetCat.terminalObj,
+      SetCat.terminal().object,
     );
   });
 
@@ -1003,7 +1003,7 @@ describe("Functor interaction laws", () => {
     expect(rightMorphism.holds).toBe(true);
 
     const leftInitial = buildFixedLeftInitialObject(law);
-    expect(leftInitial.collapse.component("★").cod).toBe(SetCat.terminalObj);
+    expect(leftInitial.collapse.component("★").cod).toBe(SetCat.terminal().object);
 
     const rightInitial = buildFixedRightInitialObject(law);
     expect(rightInitial.collapse.finalLaw.dualizing).toBe(law.dualizing);
