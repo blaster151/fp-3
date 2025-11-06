@@ -788,19 +788,20 @@ export const analyzeIndexedContainerRelativeMonad = (
       let assignmentFailed = false;
       for (const assignment of rule.assignments) {
         let value: string | undefined;
-        switch (assignment.expression.kind) {
+        const expression = assignment.expression;
+        switch (expression.kind) {
           case "original": {
-            const original = originalAssignments.get(assignment.expression.position);
+            const original = originalAssignments.get(expression.position);
             if (!original) {
               aggregatedIssues.push(
-                `${ruleContext} references original position "${assignment.expression.position}" which is absent from the element.`,
+                `${ruleContext} references original position "${expression.position}" which is absent from the element.`,
               );
               assignmentFailed = true;
               break;
             }
             if (original.targetIndex !== assignment.targetIndex) {
               aggregatedIssues.push(
-                `${ruleContext} cannot reuse original position "${assignment.expression.position}" because it targets "${original.targetIndex}" rather than "${assignment.targetIndex}".`,
+                `${ruleContext} cannot reuse original position "${expression.position}" because it targets "${original.targetIndex}" rather than "${assignment.targetIndex}".`,
               );
               assignmentFailed = true;
               break;
@@ -809,7 +810,7 @@ export const analyzeIndexedContainerRelativeMonad = (
             break;
           }
           case "bindingValue": {
-            const binderValue = computeBinderValue(assignment.expression.binder);
+            const binderValue = computeBinderValue(expression.binder);
             if (binderValue === undefined) {
               assignmentFailed = true;
               break;
@@ -818,30 +819,26 @@ export const analyzeIndexedContainerRelativeMonad = (
             break;
           }
           case "bindingAssignment": {
-            const bindingExpression = assignment.expression as Extract<
-              IndexedContainerAssignmentExpression,
-              { kind: "bindingAssignment" }
-            >;
-            const binderElement = binderElements.get(bindingExpression.binder);
+            const binderElement = binderElements.get(expression.binder);
             if (!binderElement) {
               aggregatedIssues.push(
-                `${ruleContext} references binder "${bindingExpression.binder}" for position "${assignment.position}" but no replacement was provided.`,
+                `${ruleContext} references binder "${expression.binder}" for position "${assignment.position}" but no replacement was provided.`,
               );
               assignmentFailed = true;
               break;
             }
             const binderAssignment = binderElement.assignments.find(
-              (candidate) => candidate.position === bindingExpression.position,
+              (candidate) => candidate.position === expression.position,
             );
             if (!binderAssignment) {
               aggregatedIssues.push(
-                `${ruleContext} could not find assignment "${bindingExpression.position}" on binder "${bindingExpression.binder}".`,
+                `${ruleContext} could not find assignment "${expression.position}" on binder "${expression.binder}".`,
               );
               assignmentFailed = true;
               break;
             }
             if (binderAssignment.targetIndex !== assignment.targetIndex) {
-              const binding = binderBindings.get(bindingExpression.binder);
+              const binding = binderBindings.get(expression.binder);
               const reindexMap = new Map<string, string>();
               binding?.reindexTargets?.forEach(({ from, to }) => {
                 reindexMap.set(from, to);
@@ -849,7 +846,7 @@ export const analyzeIndexedContainerRelativeMonad = (
               const allowedTarget = reindexMap.get(binderAssignment.targetIndex);
               if (allowedTarget !== assignment.targetIndex) {
                 aggregatedIssues.push(
-                  `${ruleContext} cannot reindex binder "${bindingExpression.binder}" assignment "${bindingExpression.position}" from "${binderAssignment.targetIndex}" to "${assignment.targetIndex}".`,
+                  `${ruleContext} cannot reindex binder "${expression.binder}" assignment "${expression.position}" from "${binderAssignment.targetIndex}" to "${assignment.targetIndex}".`,
                 );
                 assignmentFailed = true;
                 break;
@@ -859,12 +856,12 @@ export const analyzeIndexedContainerRelativeMonad = (
             break;
           }
           case "literal":
-            value = assignment.expression.value;
+            value = expression.value;
             break;
           default: {
-            const _exhaustive: never = assignment.expression;
+            const _exhaustive: never = expression;
             aggregatedIssues.push(
-              `${ruleContext} encountered an unsupported assignment expression ${(assignment.expression as { kind: string }).kind}.`,
+              `${ruleContext} encountered an unsupported assignment expression ${(expression as { kind: string }).kind}.`,
             );
             assignmentFailed = true;
           }

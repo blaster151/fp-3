@@ -986,14 +986,20 @@ export const interactionLawToDualMap = <
     `interactionLawToDualMap: sampling up to ${sampleLimit} element(s) per carrier.`,
   ];
 
-  diagnostics.push("interactionLawToDualMap: reused packaged comma presentation from interaction law.");
+  const packagedCommaEquivalence =
+    interaction.commaEquivalence ?? deriveInteractionLawLeftCommaEquivalence(interaction.law);
+  diagnostics.push(
+    interaction.commaEquivalence
+      ? "interactionLawToDualMap: reused packaged comma presentation from interaction law."
+      : "interactionLawToDualMap: derived comma equivalence for interaction law on demand.",
+  );
 
   const dual = options.dual
     ?? interaction.dual
     ?? dualInteractionLaw(interaction.law, {
       space: interaction.sweedler.space,
       currying: interaction.currying,
-      comma: interaction.commaEquivalence,
+      comma: packagedCommaEquivalence,
       degeneracy: interaction.degeneracy,
     });
   diagnostics.push(
@@ -1290,7 +1296,7 @@ export const verifySweedlerDualFactorization = <
     const comonadCarrier = interaction.comonad.functor.functor.F0(object) as SetObj<Right>;
     const comonadElements = enumerateWithLimit(comonadCarrier, sampleLimit);
 
-    const sweedlerCarrier = greatest.greatest.functorOpposite.functor.F0(object) as SetObj<
+    const sweedlerCarrier = greatest.greatest.functorOpposite.functor.F0(object) as unknown as SetObj<
       ExponentialArrow<Right, Value>
     >;
     const sweedlerElements = enumerateWithLimit(sweedlerCarrier, sampleLimit);
@@ -1302,10 +1308,11 @@ export const verifySweedlerDualFactorization = <
       Right,
       ExponentialArrow<Right, Value>
     >;
-    const sweedlerComponent = greatest.greatest.transformation.transformation.component(object) as SetHom<
-      ExponentialArrow<Right, Value>,
-      ExponentialArrow<Right, Value>
-    >;
+    const sweedlerComponent =
+      greatest.greatest.transformation.transformation.component(object) as unknown as SetHom<
+        ExponentialArrow<Right, Value>,
+        ExponentialArrow<Right, Value>
+      >;
 
     const compareAssignments = (
       reference: ExponentialArrow<Right, Value>,
@@ -1536,7 +1543,10 @@ export const deriveMonadComonadRunnerTranslation = <
   > = [];
   const diagnostics: string[] = [];
 
-  const sweedlerFromDual = interaction.sweedler.fromDual;
+  const sweedlerFromDual = interaction.sweedler.fromDual as SetHom<
+    IndexedElement<Obj, Right>,
+    (primal: IndexedElement<Obj, Left>) => Value
+  >;
 
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     const thetaDiagnostics: string[] = [];
@@ -1595,7 +1605,7 @@ export const deriveMonadComonadRunnerTranslation = <
 
     const costate = SetCat.hom(rightCarrier, fiber.exponential.object, (element) => {
       const indexed: IndexedElement<Obj, Right> = { object, element };
-      const evaluation = sweedlerFromDual.map(indexed);
+      const evaluation = sweedlerFromDual.map(indexed as IndexedElement<Obj, Right>);
       return fiber.exponential.register((primal) => evaluation(primal));
     });
 
@@ -1606,7 +1616,7 @@ export const deriveMonadComonadRunnerTranslation = <
       fiber.dualFiber,
       fiber.exponential.object,
       (dualElement) => {
-        const evaluation = sweedlerFromDual.map(dualElement);
+        const evaluation = sweedlerFromDual.map(dualElement as IndexedElement<Obj, Right>);
         return fiber.exponential.register((primal) => evaluation(primal));
       },
     );
@@ -1819,6 +1829,18 @@ export type Example14FreeTerm = Example14Term<Example14Symbol>;
 export type Example14NestedTerm = Example14Term<Example14FreeTerm>;
 export type Example14NonemptyList = NonemptyArray<Example14Symbol>;
 export type Example14ListOfLists = NonemptyArray<Example14NonemptyList>;
+
+const toNonemptyArray = <T>(values: ReadonlyArray<T>, context: string): NonemptyArray<T> => {
+  if (values.length === 0) {
+    throw new Error(`${context}: expected a non-empty array.`);
+  }
+  const [first, ...rest] = values;
+  return [first as T, ...rest] as NonemptyArray<T>;
+};
+
+const asUnknownSetHom = <Domain, Codomain>(
+  hom: SetHom<Domain, Codomain>,
+): SetHom<unknown, unknown> => hom as unknown as SetHom<unknown, unknown>;
 
 export type Example14CofreeElement =
   | {
@@ -2051,8 +2073,15 @@ const enumerateExample14Lists = function* (): IterableIterator<Example14Nonempty
     const indices = Array.from({ length }, () => 0);
     let finished = false;
     while (!finished) {
-      const list = indices.map((index) => EXAMPLE14_SYMBOLS[index]);
-      yield list as Example14NonemptyList;
+      const list: Example14Symbol[] = [];
+      for (const index of indices) {
+        const symbol = EXAMPLE14_SYMBOLS[index];
+        if (symbol === undefined) {
+          throw new Error(`Example14 enumeration encountered invalid symbol index ${index}.`);
+        }
+        list.push(symbol);
+      }
+      yield toNonemptyArray(list, "Example14 enumeration");
       let position = length - 1;
       while (position >= 0 && indices[position] === EXAMPLE14_SYMBOLS.length - 1) {
         indices[position] = 0;
@@ -2101,8 +2130,14 @@ const enumerateExample14ListOfLists = function* (): IterableIterator<Example14Li
     const indices = Array.from({ length }, () => 0);
     let finished = false;
     while (!finished) {
-      const value = indices.map((index) => cachedLists[index]);
-      yield value as Example14ListOfLists;
+      const value: Example14NonemptyList[] = indices.map((index) => {
+        const list = cachedLists[index];
+        if (!list) {
+          throw new Error(`Example14 list-of-lists enumeration missing cached list for index ${index}.`);
+        }
+        return list;
+      });
+      yield toNonemptyArray(value, "Example14 list-of-lists enumeration");
       let position = length - 1;
       while (position >= 0 && indices[position] === cachedLists.length - 1) {
         indices[position] = 0;
@@ -2138,11 +2173,11 @@ const flattenExample14Term = (
   term: Example14FreeTerm,
 ): Example14NonemptyList => {
   if (term.tag === "var") {
-    return [term.value as Example14Symbol];
+    return toNonemptyArray([term.value as Example14Symbol], "flattenExample14Term variable");
   }
   const left = flattenExample14Term(term.left as Example14FreeTerm);
   const right = flattenExample14Term(term.right as Example14FreeTerm);
-  return [...left, ...right] as Example14NonemptyList;
+  return toNonemptyArray([...left, ...right], "flattenExample14Term concat");
 };
 
 const flattenExample14NestedTerm = (
@@ -2165,7 +2200,7 @@ const flattenExample14ListOfLists = (
   for (const list of lists) {
     collected.push(...list);
   }
-  return collected as Example14NonemptyList;
+  return toNonemptyArray(collected, "flattenExample14ListOfLists");
 };
 
 const example14FreeMonadFunctor = constructFunctorWithWitness(
@@ -2183,10 +2218,12 @@ const example14FreeMonadUnit = constructNaturalTransformationWithWitness(
   example14FreeMonadFunctor,
   example14FreeMonadFunctor,
   () =>
-    SetCat.hom(example14SymbolCarrier, example14FreeTermCarrier, (symbol) => ({
-      tag: "var",
-      value: symbol as Example14Symbol,
-    })),
+    asUnknownSetHom(
+      SetCat.hom(example14SymbolCarrier, example14FreeTermCarrier, (symbol) => ({
+        tag: "var",
+        value: symbol as Example14Symbol,
+      }) as Example14FreeTerm),
+    ),
   { metadata: ["Example14 free monad unit"] },
 );
 
@@ -2194,8 +2231,10 @@ const example14FreeMonadMultiplication = constructNaturalTransformationWithWitne
   example14FreeMonadFunctor,
   example14FreeMonadFunctor,
   () =>
-    SetCat.hom(example14NestedTermCarrier, example14FreeTermCarrier, (term) =>
-      flattenExample14NestedTerm(term as Example14NestedTerm),
+    asUnknownSetHom(
+      SetCat.hom(example14NestedTermCarrier, example14FreeTermCarrier, (term) =>
+        flattenExample14NestedTerm(term as Example14NestedTerm),
+      ),
     ),
   { metadata: ["Example14 free monad multiplication"] },
 );
@@ -2215,9 +2254,11 @@ const example14NonemptyListUnit = constructNaturalTransformationWithWitness(
   example14NonemptyListFunctor,
   example14NonemptyListFunctor,
   () =>
-    SetCat.hom(example14SymbolCarrier, example14NonemptyListCarrier, (symbol) => [
-      symbol as Example14Symbol,
-    ] as Example14NonemptyList),
+    asUnknownSetHom(
+      SetCat.hom(example14SymbolCarrier, example14NonemptyListCarrier, (symbol) =>
+        toNonemptyArray([symbol as Example14Symbol], "Example14 nonempty list unit"),
+      ),
+    ),
   { metadata: ["Example14 nonempty list unit"] },
 );
 
@@ -2225,8 +2266,10 @@ const example14NonemptyListMultiplication = constructNaturalTransformationWithWi
   example14NonemptyListFunctor,
   example14NonemptyListFunctor,
   () =>
-    SetCat.hom(example14ListOfListsCarrier, example14NonemptyListCarrier, (value) =>
-      flattenExample14ListOfLists(value as Example14ListOfLists),
+    asUnknownSetHom(
+      SetCat.hom(example14ListOfListsCarrier, example14NonemptyListCarrier, (value) =>
+        flattenExample14ListOfLists(value as Example14ListOfLists),
+      ),
     ),
   { metadata: ["Example14 nonempty list multiplication"] },
 );
@@ -2266,8 +2309,10 @@ export const nonemptyListQuotient = (): NonemptyListQuotientData => {
     free.monad.functor,
     example14NonemptyListFunctor,
     () =>
-      SetCat.hom(free.freeCarrier, example14NonemptyListCarrier, (term) =>
-        flattenExample14Term(term as Example14FreeTerm),
+      asUnknownSetHom(
+        SetCat.hom(free.freeCarrier, example14NonemptyListCarrier, (term) =>
+          flattenExample14Term(term as Example14FreeTerm),
+        ),
       ),
     { metadata: ["Example14 quotient map"] },
   );
@@ -2353,10 +2398,12 @@ export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
     cofreeFunctor,
     quotient.monad.functor,
     () =>
-      SetCat.hom(
-        cofreeCarrier,
-        baseCarrier,
-        (value) => (value.tag === "inl" ? value.value : value.value[0]),
+      asUnknownSetHom(
+        SetCat.hom(
+          cofreeCarrier,
+          baseCarrier,
+          (value) => (value.tag === "inl" ? value.value : value.value[0]),
+        ),
       ),
     { metadata: ["Example14 cofree counit"] },
   );
@@ -2365,19 +2412,21 @@ export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
     cofreeFunctor,
     cofreeFunctor,
     () =>
-      SetCat.hom(
-        cofreeCarrier,
-        cofreeDoubleCarrier,
-        (raw) => {
-          const value = canonicalizeCofreeElement(cofreeData.injections, cofreePair, raw);
-          if (value.tag === "inl") {
-            return cofreeDoubleData.injections.inl.map(value);
-          }
-          const left = cofreeData.injections.inl.map(value.value[0]);
-          const right = cofreeData.injections.inl.map(value.value[1]);
-          const paired = cofreeDoublePair.lookup(left, right);
-          return cofreeDoubleData.injections.inr.map(paired);
-        },
+      asUnknownSetHom(
+        SetCat.hom(
+          cofreeCarrier,
+          cofreeDoubleCarrier,
+          (raw) => {
+            const value = canonicalizeCofreeElement(cofreeData.injections, cofreePair, raw);
+            if (value.tag === "inl") {
+              return cofreeDoubleData.injections.inl.map(value);
+            }
+            const left = cofreeData.injections.inl.map(value.value[0]);
+            const right = cofreeData.injections.inl.map(value.value[1]);
+            const paired = cofreeDoublePair.lookup(left, right);
+            return cofreeDoubleData.injections.inr.map(paired);
+          },
+        ),
       ),
     { metadata: ["Example14 cofree comultiplication"] },
   );
@@ -2435,10 +2484,12 @@ export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
     sweedlerFunctor,
     sweedlerFunctor,
     () =>
-      SetCat.hom(
-        sweedlerCarrier,
-        sweedlerDoubleCarrier,
-        (value) => cofreeComponent.map(sweedlerInclusionMap.map(value)),
+      asUnknownSetHom(
+        SetCat.hom(
+          sweedlerCarrier,
+          sweedlerDoubleCarrier,
+          (value) => cofreeComponent.map(sweedlerInclusionMap.map(value)),
+        ),
       ),
     { metadata: ["Example14 Sweedler comultiplication"] },
   );

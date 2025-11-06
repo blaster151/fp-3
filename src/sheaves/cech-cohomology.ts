@@ -345,7 +345,12 @@ const keyOf = (indices: ReadonlyArray<number>): string => indices.join("|")
 
 const isStrictlyIncreasing = (values: ReadonlyArray<number>): boolean => {
   for (let index = 1; index < values.length; index += 1) {
-    if (values[index] <= values[index - 1]) {
+    const current = values[index];
+    const previous = values[index - 1];
+    if (current === undefined || previous === undefined) {
+      return false;
+    }
+    if (current <= previous) {
       return false
     }
   }
@@ -373,7 +378,12 @@ const dedupeVectors = <Section>(
       return false
     }
     for (let index = 0; index < left.length; index += 1) {
-      if (!eq(left[index], right[index])) {
+      const leftValue = left[index]
+      const rightValue = right[index]
+      if (leftValue === undefined || rightValue === undefined) {
+        return false
+      }
+      if (!eq(leftValue, rightValue)) {
         return false
       }
     }
@@ -393,7 +403,12 @@ const buildProductModule = <R, Section>(
       return false
     }
     for (let index = 0; index < left.length; index += 1) {
-      if (!eq(left[index], right[index])) {
+      const leftValue = left[index]
+      const rightValue = right[index]
+      if (leftValue === undefined || rightValue === undefined) {
+        return false
+      }
+      if (!eq(leftValue, rightValue)) {
         return false
       }
     }
@@ -406,7 +421,13 @@ const buildProductModule = <R, Section>(
     ring: base.ring,
     zero: zeroVector,
     add: (left, right) =>
-      left.map((value, index) => base.add(value, right[index])) as ReadonlyArray<Section>,
+      left.map((value, index) => {
+        const rightValue = right[index]
+        if (rightValue === undefined) {
+          throw new Error("Čech module addition requires vectors of equal length.")
+        }
+        return base.add(value, rightValue)
+      }) as ReadonlyArray<Section>,
     neg: value => value.map(entry => base.neg(entry)) as ReadonlyArray<Section>,
     scalar: (scalar, value) =>
       value.map(entry => base.scalar(scalar, entry)) as ReadonlyArray<Section>,
@@ -632,6 +653,9 @@ export const buildCechComplex = <Obj, Arr, Section, R>(
               throw new Error(`Čech differential missing source for face ${keyOf(face.targetKey)}.`)
             }
             const section = cochain[sourceIndex]
+            if (section === undefined) {
+              throw new Error(`Čech differential missing cochain component for index ${sourceIndex}.`)
+            }
             const restricted = sheaf.restrict(face.arrow, section)
             const signed = face.omit % 2 === 0 ? restricted : module.neg(restricted)
             value = module.add(value, signed)
