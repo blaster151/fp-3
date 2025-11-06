@@ -52,16 +52,13 @@ import {
   contravariantRepresentableFunctorWithWitness,
   covariantRepresentableFunctorWithWitness,
 } from "../functor-representable";
-import {
-  composeFunctors,
-  identityFunctorWithWitness,
-  type FunctorWithWitness,
-} from "../functor";
+import { constructFunctorWithWitness, composeFunctors, type FunctorWithWitness } from "../functor";
 import {
   constructNaturalTransformationWithWitness,
   identityNaturalTransformation,
 } from "../natural-transformation";
 import { SetCat, getCarrierSemantics, type SetHom, type SetObj } from "../set-cat";
+import { setSimpleCategory } from "../set-simple-category";
 import { makeTwoObjectPromonoidalKernel } from "../promonoidal-structure";
 import { TwoObjectCategory, type TwoArrow, type TwoObject } from "../two-object-cat";
 import {
@@ -70,6 +67,9 @@ import {
   checkNonemptyListQuotient,
   checkNonemptyListSweedler,
 } from "../oracles";
+
+const toUnknownSetHom = <Dom, Cod>(hom: SetHom<Dom, Cod>): SetHom<unknown, unknown> =>
+  hom as unknown as SetHom<unknown, unknown>;
 
 type BooleanContribution = FunctorInteractionLawContribution<
   TwoObject,
@@ -120,19 +120,61 @@ const buildBooleanLaw = () => {
 };
 
 const buildIdentityMonad = (): MonadStructure<TwoObject, TwoArrow> => {
-  const functor = identityFunctorWithWitness(TwoObjectCategory);
-  const unit = identityNaturalTransformation(functor, {
-    metadata: ["Identity monad unit"],
-  });
-  const composite: FunctorWithWitness<TwoObject, TwoArrow, TwoObject, TwoArrow> = composeFunctors(
-    functor,
-    functor,
+  const carriers = new Map<TwoObject, SetObj<TwoObject>>();
+  const carrierFor = (object: TwoObject): SetObj<TwoObject> => {
+    const existing = carriers.get(object);
+    if (existing) return existing;
+    const carrier = SetCat.obj([object], { tag: `IdentityCarrier(${object})` });
+    carriers.set(object, carrier);
+    return carrier;
+  };
+
+  const functor = constructFunctorWithWitness<
+    TwoObject,
+    TwoArrow,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
+    TwoObjectCategory,
+    setSimpleCategory,
+    {
+      F0: (object) => carrierFor(object) as unknown as SetObj<unknown>,
+      F1: (arrow: TwoArrow) =>
+        toUnknownSetHom(
+          SetCat.hom(
+            carrierFor(TwoObjectCategory.src(arrow)),
+            carrierFor(TwoObjectCategory.dst(arrow)),
+            () => TwoObjectCategory.dst(arrow),
+          ),
+        ),
+    },
+    { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
   );
-  const multiplication = constructNaturalTransformationWithWitness(
+  const unit = constructNaturalTransformationWithWitness<
+    TwoObject,
+    TwoArrow,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
+    functor,
+    functor,
+    (object) => toUnknownSetHom(SetCat.id(carrierFor(object))),
+    { metadata: ["Identity monad unit"], samples: { objects: TwoObjectCategory.objects } },
+  );
+  const composite = composeFunctors(functor, functor);
+  const multiplication = constructNaturalTransformationWithWitness<
+    TwoObject,
+    TwoArrow,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
     composite,
     functor,
-    (object) => TwoObjectCategory.id(object),
-    { metadata: ["Identity monad multiplication"] },
+    (object) => toUnknownSetHom(SetCat.id(carrierFor(object))),
+    {
+      metadata: ["Identity monad multiplication"],
+      samples: { objects: TwoObjectCategory.objects },
+    },
   );
   return {
     functor,
@@ -143,19 +185,61 @@ const buildIdentityMonad = (): MonadStructure<TwoObject, TwoArrow> => {
 };
 
 const buildIdentityComonad = (): ComonadStructure<TwoObject, TwoArrow> => {
-  const functor = identityFunctorWithWitness(TwoObjectCategory);
-  const counit = identityNaturalTransformation(functor, {
-    metadata: ["Identity comonad counit"],
-  });
-  const composite: FunctorWithWitness<TwoObject, TwoArrow, TwoObject, TwoArrow> = composeFunctors(
-    functor,
-    functor,
+  const carriers = new Map<TwoObject, SetObj<TwoObject>>();
+  const carrierFor = (object: TwoObject): SetObj<TwoObject> => {
+    const existing = carriers.get(object);
+    if (existing) return existing;
+    const carrier = SetCat.obj([object], { tag: `IdentityCarrier(${object})` });
+    carriers.set(object, carrier);
+    return carrier;
+  };
+
+  const functor = constructFunctorWithWitness<
+    TwoObject,
+    TwoArrow,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
+    TwoObjectCategory,
+    setSimpleCategory,
+    {
+      F0: (object) => carrierFor(object) as unknown as SetObj<unknown>,
+      F1: (arrow: TwoArrow) =>
+        toUnknownSetHom(
+          SetCat.hom(
+            carrierFor(TwoObjectCategory.src(arrow)),
+            carrierFor(TwoObjectCategory.dst(arrow)),
+            () => TwoObjectCategory.dst(arrow),
+          ),
+        ),
+    },
+    { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
   );
-  const comultiplication = constructNaturalTransformationWithWitness(
+  const counit = constructNaturalTransformationWithWitness<
+    TwoObject,
+    TwoArrow,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
+    functor,
+    functor,
+    (object) => toUnknownSetHom(SetCat.id(carrierFor(object))),
+    { metadata: ["Identity comonad counit"], samples: { objects: TwoObjectCategory.objects } },
+  );
+  const composite = composeFunctors(functor, functor);
+  const comultiplication = constructNaturalTransformationWithWitness<
+    TwoObject,
+    TwoArrow,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
     functor,
     composite,
-    (object) => TwoObjectCategory.id(object),
-    { metadata: ["Identity comonad comultiplication"] },
+    (object) => toUnknownSetHom(SetCat.id(carrierFor(object))),
+    {
+      metadata: ["Identity comonad comultiplication"],
+      samples: { objects: TwoObjectCategory.objects },
+    },
   );
   return {
     functor,

@@ -319,10 +319,10 @@ describe("moduli and stack scaffolding", () => {
   if (!covering) {
     throw new Error("Expected two-open covering for UV")
   }
-    const firstCoverArrow = covering.arrows[0]
-    if (!firstCoverArrow) {
-      throw new Error("Expected first covering arrow for UV")
-    }
+  const firstCoverArrow = covering.arrows[0]
+  if (!firstCoverArrow) {
+    throw new Error("Expected first covering arrow for UV")
+  }
   const fibered = buildFiberedCategory()
   const topology = buildEtaleTopology(site)
 

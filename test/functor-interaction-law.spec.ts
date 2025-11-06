@@ -852,7 +852,11 @@ describe("Functor interaction laws", () => {
     expect(rightProjections.fst.map(sampleDual.element)).toBe(sampleDual.element[0]);
     expect(rightProjections.snd.map(sampleDual.element)).toBe(sampleDual.element[1]);
 
-    expect(product.projections.value.lookup(law0Value, law1Value)).toEqual(value);
+    const valueLookup = product.projections.value.lookup;
+    if (!valueLookup) {
+      throw new Error("productInteractionLaw: value lookup unavailable.");
+    }
+    expect(valueLookup(law0Value, law1Value)).toEqual(value);
 
     const productOracle = checkInteractionLawProductUniversalProperty(product, law0, law1);
     expect(productOracle.holds).toBe(true);
@@ -989,18 +993,18 @@ describe("Functor interaction laws", () => {
     const input = makeBooleanInteractionInput();
     const law = makeFunctorInteractionLaw(input);
 
-    const currying = deriveInteractionLawCurrying(law);
-    expect(currying.consistent).toBe(true);
-    expect(currying.doubleTransposeConsistent).toBe(true);
-    expect(currying.hatEvaluationConsistent).toBe(true);
-    const fiber = currying.fibers.get("★");
-    expect(fiber).toBeDefined();
-    const samplePair = Array.from(fiber!.product.object)[0]!;
+      const currying = deriveInteractionLawCurrying(law);
+      expect(currying.consistent).toBe(true);
+      expect(currying.doubleTransposeConsistent).toBe(true);
+      expect(currying.hatEvaluationConsistent).toBe(true);
+      const fiber = currying.fibers.get("★");
+      expect(fiber).toBeDefined();
+      const sampleObject: TwoObject = "★";
+      const samplePair = Array.from(fiber!.product.object)[0]!;
     const original = fiber!.phi.map(samplePair);
     const reconstructed = fiber!.reconstructed.map(samplePair);
     expect(reconstructed).toBe(original);
     expect(fiber!.theta).toBe(fiber!.phiHat);
-    const sampleObject: TwoObject = "★";
     expect(fiber!.phiCheck.dom).toBe(law.left.functor.F0(sampleObject));
     expect(fiber!.evaluation).toBe(fiber!.exponential.evaluation);
     expect(fiber!.hatEvaluationConsistent).toBe(true);
@@ -1038,15 +1042,14 @@ describe("Functor interaction laws", () => {
     const rightFinal = buildFixedRightFinalObject(law);
     expect(rightFinal.presentation.law).toBe(law);
     expect(rightFinal.mediator.holds).toBe(true);
-    const sampleObject: TwoObject = "★";
     const sigmaComponent = rightFinal.presentation.sigma.get(sampleObject);
     expect(sigmaComponent).toBeDefined();
     expect(rightFinal.sigma.transformation.component(sampleObject)).toBe(sigmaComponent);
     const finalLeftCarrier = rightFinal.law.left.functor.F0(sampleObject);
     const finalRightCarrier = rightFinal.law.right.functor.F0(sampleObject);
-    const assignment = Array.from(finalLeftCarrier)[0]! as SetHom<unknown, unknown>;
+      const assignment = Array.from(finalLeftCarrier)[0]! as (value: unknown) => boolean;
     const argument = Array.from(finalRightCarrier)[0]!;
-    const evaluation = assignment.map(argument);
+    const evaluation = assignment(argument);
     const primal = { object: sampleObject, element: assignment } as const;
     const dual = { object: sampleObject, element: argument } as const;
     expect(rightFinal.law.evaluate(primal, dual)).toBe(evaluation);
