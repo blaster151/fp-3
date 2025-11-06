@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  summarizeKernelComputationResources,
+  summarizeUserComputationResources,
+  summarizeValueResources,
+} from '../lambda-coop';
+import type {
   LambdaCoopKernelContinuation,
   LambdaCoopKernelOperation,
   LambdaCoopKernelSignal,
@@ -7,9 +12,6 @@ import {
   LambdaCoopRunnerLiteral,
   LambdaCoopUserComputation,
   LambdaCoopUserOperation,
-  summarizeKernelComputationResources,
-  summarizeUserComputationResources,
-  summarizeValueResources,
 } from '../lambda-coop';
 
 describe('λ_{coop} resource accounting', () => {

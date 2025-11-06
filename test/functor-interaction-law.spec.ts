@@ -69,9 +69,11 @@ const toUnknownSetHom = <Dom, Cod>(hom: SetHom<Dom, Cod>): SetHom<unknown, unkno
 
 const makeBooleanInteractionInput = () => {
   const kernel = makeTwoObjectPromonoidalKernel();
-  const left = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
-  const right = covariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
-  const convolution = dayTensor(kernel, left.functor, right.functor);
+  const leftToolkit = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
+  const rightToolkit = covariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
+  const left = leftToolkit.functor;
+  const right = rightToolkit.functor;
+  const convolution = dayTensor(kernel, left, right);
   const dualizing = buildBoolean();
   const identity = identityFunctorWithWitness(TwoObjectCategory);
   const operations = makeFunctorInteractionLawOperations<TwoObject, TwoArrow>({
@@ -125,8 +127,8 @@ const makeBooleanInteractionInput = () => {
 
   return {
     kernel,
-    left: left.functor,
-    right: right.functor,
+    left,
+    right,
     convolution,
     dualizing,
     pairing: (
@@ -139,7 +141,7 @@ const makeBooleanInteractionInput = () => {
       >,
     ) => contributions.some((entry) => entry.evaluation),
     tags: { primal: "LawPrimal", dual: "LawDual" },
-      operations,
+    operations,
   } as const;
 };
 
@@ -220,7 +222,8 @@ const makeInitialFunctorInteractionLaw = () => {
 
 const makePositiveListInteractionLaw = () => {
   const kernel = makeTwoObjectPromonoidalKernel();
-  const left = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
+  const leftToolkit = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
+  const left = leftToolkit.functor;
 
   const listEquals = (
     leftList: ReadonlyArray<string>,
@@ -767,7 +770,7 @@ describe("Functor interaction laws", () => {
 
     const result = dualOfPositiveList(law, {
       metadata: ["PositiveListTest"],
-      decodeList: ({ element }) => element,
+      decodeList: ({ element }) => element as ReadonlyArray<string>,
     });
 
     expect(result.thetaSummaries.length).toBeGreaterThan(0);
@@ -834,12 +837,20 @@ describe("Functor interaction laws", () => {
     expect(productLaw.aggregate(contributions)).toEqual(value);
 
     const leftProduct = product.projections.left(samplePrimal.object);
-    expect(leftProduct.projections.fst.map(samplePrimal.element)).toBe(samplePrimal.element[0]);
-    expect(leftProduct.projections.snd.map(samplePrimal.element)).toBe(samplePrimal.element[1]);
+    const leftProjections = leftProduct.projections;
+    if (!leftProjections) {
+      throw new Error("productInteractionLaw: left projections unavailable.");
+    }
+    expect(leftProjections.fst.map(samplePrimal.element)).toBe(samplePrimal.element[0]);
+    expect(leftProjections.snd.map(samplePrimal.element)).toBe(samplePrimal.element[1]);
 
     const rightProduct = product.projections.right(sampleDual.object);
-    expect(rightProduct.projections.fst.map(sampleDual.element)).toBe(sampleDual.element[0]);
-    expect(rightProduct.projections.snd.map(sampleDual.element)).toBe(sampleDual.element[1]);
+    const rightProjections = rightProduct.projections;
+    if (!rightProjections) {
+      throw new Error("productInteractionLaw: right projections unavailable.");
+    }
+    expect(rightProjections.fst.map(sampleDual.element)).toBe(sampleDual.element[0]);
+    expect(rightProjections.snd.map(sampleDual.element)).toBe(sampleDual.element[1]);
 
     expect(product.projections.value.lookup(law0Value, law1Value)).toEqual(value);
 
@@ -1027,16 +1038,17 @@ describe("Functor interaction laws", () => {
     const rightFinal = buildFixedRightFinalObject(law);
     expect(rightFinal.presentation.law).toBe(law);
     expect(rightFinal.mediator.holds).toBe(true);
-    const sigmaComponent = rightFinal.presentation.sigma.get(object);
+    const sampleObject: TwoObject = "★";
+    const sigmaComponent = rightFinal.presentation.sigma.get(sampleObject);
     expect(sigmaComponent).toBeDefined();
-    expect(rightFinal.sigma.transformation.component(object)).toBe(sigmaComponent);
-    const finalLeftCarrier = rightFinal.law.left.functor.F0(object);
-    const finalRightCarrier = rightFinal.law.right.functor.F0(object);
-    const assignment = Array.from(finalLeftCarrier)[0]!;
+    expect(rightFinal.sigma.transformation.component(sampleObject)).toBe(sigmaComponent);
+    const finalLeftCarrier = rightFinal.law.left.functor.F0(sampleObject);
+    const finalRightCarrier = rightFinal.law.right.functor.F0(sampleObject);
+    const assignment = Array.from(finalLeftCarrier)[0]! as SetHom<unknown, unknown>;
     const argument = Array.from(finalRightCarrier)[0]!;
     const evaluation = assignment.map(argument);
-    const primal = { object, element: assignment } as const;
-    const dual = { object, element: argument } as const;
+    const primal = { object: sampleObject, element: assignment } as const;
+    const dual = { object: sampleObject, element: argument } as const;
     expect(rightFinal.law.evaluate(primal, dual)).toBe(evaluation);
 
     const cccPresentation = deriveInteractionLawCCCPresentation(law);

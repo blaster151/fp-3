@@ -89,11 +89,13 @@ const enumerate = <T>(carrier: SetObj<T>): ReadonlyArray<T> => {
 
 const buildBooleanLaw = () => {
   const kernel = makeTwoObjectPromonoidalKernel();
-  const left = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
-  const right = covariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
-  const convolution = dayTensor(kernel, left.functor, right.functor);
+  const leftToolkit = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
+  const rightToolkit = covariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
+  const left = leftToolkit.functor;
+  const right = rightToolkit.functor;
+  const convolution = dayTensor(kernel, left, right);
   const dualizing = SetCat.obj([false, true], { tag: "Bool" });
-  const operations = makeFunctorInteractionLawOperations({
+  const operations = makeFunctorInteractionLawOperations<TwoObject, TwoArrow>({
     metadata: ["MonadComonadSpec"],
     monadOperations: [],
   });
@@ -106,8 +108,8 @@ const buildBooleanLaw = () => {
 
   return makeFunctorInteractionLaw({
     kernel,
-    left: left.functor,
-    right: right.functor,
+    left,
+    right,
     convolution,
     dualizing,
     pairing,

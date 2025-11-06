@@ -319,6 +319,10 @@ describe("moduli and stack scaffolding", () => {
   if (!covering) {
     throw new Error("Expected two-open covering for UV")
   }
+    const firstCoverArrow = covering.arrows[0]
+    if (!firstCoverArrow) {
+      throw new Error("Expected first covering arrow for UV")
+    }
   const fibered = buildFiberedCategory()
   const topology = buildEtaleTopology(site)
 
@@ -461,7 +465,7 @@ describe("moduli and stack scaffolding", () => {
       ],
       cartesianLifts: [
         {
-          baseArrow: covering.arrows[0],
+          baseArrow: firstCoverArrow,
           target,
         },
       ],
@@ -486,7 +490,7 @@ describe("moduli and stack scaffolding", () => {
       arrows: [idArrow(target)],
       cartesianLifts: [
         {
-          baseArrow: covering.arrows[0],
+          baseArrow: firstCoverArrow,
           target,
         },
       ],
@@ -558,13 +562,13 @@ describe("moduli and stack scaffolding", () => {
             pullbackIndex: 0,
             target: sampleU.target,
             comparisons: sampleU.comparisons ?? [],
-            label: sampleU.label,
+            label: sampleU.label ?? "SampleU",
           },
           {
             pullbackIndex: 1,
             target: sampleV.target,
             comparisons: sampleV.comparisons ?? [],
-            label: sampleV.label,
+            label: sampleV.label ?? "SampleV",
           },
         ],
       },
@@ -613,7 +617,7 @@ describe("moduli and stack scaffolding", () => {
             pullbackIndex: 0,
             target: sampleU.target,
             comparisons: sampleU.comparisons ?? [],
-            label: sampleU.label,
+            label: sampleU.label ?? "SampleU",
           },
         ],
       },
