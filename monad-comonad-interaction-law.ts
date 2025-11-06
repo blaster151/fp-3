@@ -65,16 +65,16 @@ import { constructNaturalTransformationWithWitness } from "./natural-transformat
 import type { IndexedElement } from "./chu-space";
 
 export interface MonadStructure<Obj, Arr> {
-  readonly functor: FunctorWithWitness<Obj, Arr, Obj, Arr>;
-  readonly unit: NaturalTransformationWithWitness<Obj, Arr, Obj, Arr>;
-  readonly multiplication: NaturalTransformationWithWitness<Obj, Arr, Obj, Arr>;
+  readonly functor: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly unit: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly multiplication: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
   readonly metadata?: ReadonlyArray<string>;
 }
 
 export interface ComonadStructure<Obj, Arr> {
-  readonly functor: FunctorWithWitness<Obj, Arr, Obj, Arr>;
-  readonly counit: NaturalTransformationWithWitness<Obj, Arr, Obj, Arr>;
-  readonly comultiplication: NaturalTransformationWithWitness<Obj, Arr, Obj, Arr>;
+  readonly functor: FunctorWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly counit: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
+  readonly comultiplication: NaturalTransformationWithWitness<Obj, Arr, SetObj<unknown>, SetHom<unknown, unknown>>;
   readonly metadata?: ReadonlyArray<string>;
 }
 
@@ -1736,8 +1736,8 @@ type Example9Contribution = FunctorInteractionLawContribution<
 const EXAMPLE9_KERNEL = makeTwoObjectPromonoidalKernel();
 
 const buildExample9Law = () => {
-  const left = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "?");
-  const right = covariantRepresentableFunctorWithWitness(TwoObjectCategory, "?");
+  const left = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "\u2605");
+  const right = covariantRepresentableFunctorWithWitness(TwoObjectCategory, "\u2605");
   const convolution = dayTensor(EXAMPLE9_KERNEL, left.functor, right.functor);
   const dualizing = SetCat.obj([false, true], { tag: "Example9Bool" });
   const operations = makeFunctorInteractionLawOperations<TwoObject, TwoArrow>({
@@ -1746,21 +1746,21 @@ const buildExample9Law = () => {
       makeCommutativeBinaryMonadOperation<TwoObject, TwoArrow>({
         label: "db",
           component: (object) => TwoObjectCategory.id(object),
-          swapWitness: TwoObjectCategory.id("?"),
+          swapWitness: TwoObjectCategory.id("\u2605"),
         kleisliOnGeneric: (object) => TwoObjectCategory.id(object),
         dayReferences: [
-            {
-              fiber: "?",
-              index: 0,
-              metadata: ["Example9 fiber"],
-            },
+        {
+          fiber: "\u2605",
+          index: 0,
+          metadata: ["Example9 fiber"],
+        },
         ],
-          lawvereWitness: {
-            domain: "?",
-            codomain: "?",
-            morphism: TwoObjectCategory.id("?"),
-            metadata: ["Example9 lawvere witness"],
-          },
+        lawvereWitness: {
+          domain: "\u2605",
+          codomain: "\u2605",
+          morphism: TwoObjectCategory.id("\u2605"),
+          metadata: ["Example9 lawvere witness"],
+        },
         metadata: ["Example9 binary operation"],
         commutativeMetadata: ["Example9 degeneracy"],
       }),
@@ -1839,6 +1839,9 @@ const toNonemptyArray = <T>(values: ReadonlyArray<T>, context: string): Nonempty
   const [first, ...rest] = values;
   return [first as T, ...rest] as NonemptyArray<T>;
 };
+
+const asUnknownSetHom = <Dom, Cod>(hom: SetHom<Dom, Cod>): SetHom<unknown, unknown> =>
+  hom as unknown as SetHom<unknown, unknown>;
 
 const toUnknownSetHom = <Dom, Cod>(hom: SetHom<Dom, Cod>): SetHom<unknown, unknown> =>
   hom as unknown as SetHom<unknown, unknown>;
@@ -2091,7 +2094,13 @@ const enumerateExample14Lists = function* (): IterableIterator<Example14Nonempty
       if (position < 0) {
         finished = true;
       } else {
-        indices[position] += 1;
+      const current = indices[position];
+      if (current === undefined) {
+        throw new Error(
+          `Example14 enumeration index accounting failed for position ${position}.`,
+        );
+      }
+      indices[position] = current + 1;
       }
     }
     length += 1;
@@ -2126,18 +2135,21 @@ const enumerateExample14ListOfLists = function* (): IterableIterator<Example14Li
       if (next.done) {
         break;
       }
-      cachedLists.push(next.value);
+      cachedLists.push(next.value as Example14NonemptyList);
     }
     const indices = Array.from({ length }, () => 0);
     let finished = false;
     while (!finished) {
-      const value: Example14NonemptyList[] = indices.map((index) => {
+      const value: Example14NonemptyList[] = [];
+      for (const index of indices) {
         const list = cachedLists[index];
         if (!list) {
-          throw new Error(`Example14 list-of-lists enumeration missing cached list for index ${index}.`);
+          throw new Error(
+            `Example14 list-of-lists enumeration missing cached list for index ${index}.`,
+          );
         }
-        return list;
-      });
+        value.push(list);
+      }
       yield toNonemptyArray(value, "Example14 list-of-lists enumeration");
       let position = length - 1;
       while (position >= 0 && indices[position] === cachedLists.length - 1) {
@@ -2147,7 +2159,13 @@ const enumerateExample14ListOfLists = function* (): IterableIterator<Example14Li
       if (position < 0) {
         finished = true;
       } else {
-        indices[position] += 1;
+        const current = indices[position];
+        if (current === undefined) {
+          throw new Error(
+            `Example14 list-of-lists enumeration index accounting failed for position ${position}.`,
+          );
+        }
+        indices[position] = current + 1;
       }
     }
     length += 1;
@@ -2157,12 +2175,22 @@ const enumerateExample14ListOfLists = function* (): IterableIterator<Example14Li
 const example14ListOfListsSemantics = {
   iterate: enumerateExample14ListOfLists,
   has: (candidate: Example14ListOfLists) => isExample14ListOfLists(candidate),
-  equals: (
-    left: Example14ListOfLists,
-    right: Example14ListOfLists,
-  ) =>
-    left.length === right.length &&
-    left.every((value, index) => example14ListEquals(value, right[index])),
+  equals: (left: Example14ListOfLists, right: Example14ListOfLists) => {
+    if (left.length !== right.length) {
+      return false;
+    }
+    for (let index = 0; index < left.length; index += 1) {
+      const leftList = left[index];
+      const rightList = right[index];
+      if (!leftList || !rightList) {
+        return false;
+      }
+      if (!example14ListEquals(leftList, rightList)) {
+        return false;
+      }
+    }
+    return true;
+  },
   tag: "Example14ListOfLists",
 };
 
@@ -2209,7 +2237,7 @@ const example14FreeMonadFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example14FreeTermCarrier,
-    F1: () => SetCat.id(example14FreeTermCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example14FreeTermCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
   ["Example14 free monad functor"],
@@ -2219,10 +2247,12 @@ const example14FreeMonadUnit = constructNaturalTransformationWithWitness(
   example14FreeMonadFunctor,
   example14FreeMonadFunctor,
   () =>
-    SetCat.hom(example14SymbolCarrier, example14FreeTermCarrier, (symbol) => ({
-      tag: "var",
-      value: symbol as Example14Symbol,
-    }) as Example14FreeTerm),
+    toUnknownSetHom(
+      SetCat.hom(example14SymbolCarrier, example14FreeTermCarrier, (symbol) => ({
+        tag: "var",
+        value: symbol as Example14Symbol,
+      }) as Example14FreeTerm),
+    ),
   { metadata: ["Example14 free monad unit"] },
 );
 
@@ -2230,8 +2260,10 @@ const example14FreeMonadMultiplication = constructNaturalTransformationWithWitne
   example14FreeMonadFunctor,
   example14FreeMonadFunctor,
   () =>
-    SetCat.hom(example14NestedTermCarrier, example14FreeTermCarrier, (term) =>
-      flattenExample14NestedTerm(term as Example14NestedTerm),
+    toUnknownSetHom(
+      SetCat.hom(example14NestedTermCarrier, example14FreeTermCarrier, (term) =>
+        flattenExample14NestedTerm(term as Example14NestedTerm),
+      ),
     ),
   { metadata: ["Example14 free monad multiplication"] },
 );
@@ -2241,7 +2273,7 @@ const example14NonemptyListFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example14NonemptyListCarrier,
-    F1: () => SetCat.id(example14NonemptyListCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example14NonemptyListCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
   ["Example14 nonempty list functor"],
@@ -2251,8 +2283,10 @@ const example14NonemptyListUnit = constructNaturalTransformationWithWitness(
   example14NonemptyListFunctor,
   example14NonemptyListFunctor,
   () =>
-    SetCat.hom(example14SymbolCarrier, example14NonemptyListCarrier, (symbol) =>
-      toNonemptyArray([symbol as Example14Symbol], "Example14 nonempty list unit"),
+    toUnknownSetHom(
+      SetCat.hom(example14SymbolCarrier, example14NonemptyListCarrier, (symbol) =>
+        toNonemptyArray([symbol as Example14Symbol], "Example14 nonempty list unit"),
+      ),
     ),
   { metadata: ["Example14 nonempty list unit"] },
 );
@@ -2261,8 +2295,10 @@ const example14NonemptyListMultiplication = constructNaturalTransformationWithWi
   example14NonemptyListFunctor,
   example14NonemptyListFunctor,
   () =>
-    SetCat.hom(example14ListOfListsCarrier, example14NonemptyListCarrier, (value) =>
-      flattenExample14ListOfLists(value as Example14ListOfLists),
+    toUnknownSetHom(
+      SetCat.hom(example14ListOfListsCarrier, example14NonemptyListCarrier, (value) =>
+        flattenExample14ListOfLists(value as Example14ListOfLists),
+      ),
     ),
   { metadata: ["Example14 nonempty list multiplication"] },
 );
@@ -2302,8 +2338,10 @@ export const nonemptyListQuotient = (): NonemptyListQuotientData => {
     free.monad.functor,
     example14NonemptyListFunctor,
     () =>
-      SetCat.hom(free.freeCarrier, example14NonemptyListCarrier, (term) =>
-        flattenExample14Term(term as Example14FreeTerm),
+      toUnknownSetHom(
+        SetCat.hom(free.freeCarrier, example14NonemptyListCarrier, (term) =>
+          flattenExample14Term(term as Example14FreeTerm),
+        ),
       ),
     { metadata: ["Example14 quotient map"] },
   );
@@ -2364,9 +2402,9 @@ const isRectangularDouble = (value: Example14CofreeDoubleElement): boolean =>
     ? isRectangularCofree(value.value)
     : isRectangularCofree(value.value[0]) && isRectangularCofree(value.value[1]);
 
-  export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
-    const quotient = nonemptyListQuotient();
-    const baseCarrier = quotient.monad.functor.functor.F0("?") as SetObj<Example14NonemptyList>;
+export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
+  const quotient = nonemptyListQuotient();
+  const baseCarrier = quotient.monad.functor.functor.F0("\u2605") as SetObj<Example14NonemptyList>;
   const cofreePair = SetCat.product(baseCarrier, baseCarrier);
   const cofreeData = SetCat.coproduct(baseCarrier, cofreePair.object);
   const cofreeCarrier = cofreeData.object as SetObj<Example14CofreeElement>;
@@ -2414,7 +2452,14 @@ const isRectangularDouble = (value: Example14CofreeDoubleElement): boolean =>
             }
             const left = cofreeData.injections.inl.map(value.value[0]);
             const right = cofreeData.injections.inl.map(value.value[1]);
-            const paired = cofreeDoublePair.lookup(left, right);
+            const lookup = cofreeDoublePair.lookup;
+            if (!lookup) {
+              throw new Error("Example14 cofree comultiplication: product lookup unavailable.");
+            }
+            const paired = lookup(left, right);
+            if (!paired) {
+              throw new Error("Example14 cofree comultiplication: missing paired element in product.");
+            }
             return cofreeDoubleData.injections.inr.map(paired);
           },
         ),
@@ -2422,25 +2467,21 @@ const isRectangularDouble = (value: Example14CofreeDoubleElement): boolean =>
     { metadata: ["Example14 cofree comultiplication"] },
   );
 
-  const rectangularCharacteristic = SetCat.hom(
+  const sweedlerSubset = buildCharacteristicSubset(
     cofreeCarrier,
-    SetOmega,
-    (value) => (isRectangularCofree(value) ? true : false),
+    isRectangularCofree,
+    "Example14SweedlerSubset",
   );
-  const sweedlerSubset = SetCat.subobjectFromCharacteristic(rectangularCharacteristic);
   const sweedlerCarrier = sweedlerSubset.subset as SetObj<Example14CofreeElement>;
   const sweedlerInclusionMap = sweedlerSubset.inclusion as SetHom<
     Example14CofreeElement,
     Example14CofreeElement
   >;
 
-  const rectangularDoubleCharacteristic = SetCat.hom(
+  const sweedlerDoubleSubset = buildCharacteristicSubset(
     cofreeDoubleCarrier,
-    SetOmega,
-    (value) => (isRectangularDouble(value) ? true : false),
-  );
-  const sweedlerDoubleSubset = SetCat.subobjectFromCharacteristic(
-    rectangularDoubleCharacteristic,
+    isRectangularDouble,
+    "Example14SweedlerDoubleSubset",
   );
   const sweedlerDoubleCarrier = sweedlerDoubleSubset.subset as SetObj<Example14CofreeDoubleElement>;
   const sweedlerDoubleInclusion = sweedlerDoubleSubset.inclusion as SetHom<
@@ -2462,17 +2503,17 @@ const isRectangularDouble = (value: Example14CofreeDoubleElement): boolean =>
     const sweedlerCounit = constructNaturalTransformationWithWitness(
       sweedlerFunctor,
       quotient.monad.functor,
-      () =>
-        toUnknownSetHom(
-          SetCat.compose(
-            cofreeCounit.transformation.component("?"),
-            sweedlerInclusionMap,
-          ),
+    () =>
+      toUnknownSetHom(
+        SetCat.compose(
+          cofreeCounit.transformation.component("\u2605"),
+          sweedlerInclusionMap,
         ),
+      ),
       { metadata: ["Example14 Sweedler counit"] },
     );
 
-    const cofreeComponent = cofreeComultiplication.transformation.component("?") as SetHom<
+  const cofreeComponent = cofreeComultiplication.transformation.component("\u2605") as SetHom<
       Example14CofreeElement,
       Example14CofreeDoubleElement
     >;
@@ -2494,13 +2535,18 @@ const isRectangularDouble = (value: Example14CofreeDoubleElement): boolean =>
   const sweedlerInclusion = constructNaturalTransformationWithWitness(
     sweedlerFunctor,
     cofreeFunctor,
-    () => sweedlerInclusionMap,
+  () => toUnknownSetHom(sweedlerInclusionMap),
     { metadata: ["Example14 Sweedler inclusion"] },
   );
 
-  const sweedlerCoequation = SetCat.compose(
-    sweedlerDoubleInclusion,
-    sweedlerComultiplication.transformation.component("?"),
+  const sweedlerComultiplicationComponent = sweedlerComultiplication.transformation.component(
+    "\u2605",
+  ) as SetHom<Example14CofreeElement, Example14CofreeDoubleElement>;
+
+  const sweedlerCoequation = SetCat.hom(
+    sweedlerCarrier,
+    sweedlerDoubleCarrier,
+    (value) => sweedlerDoubleInclusion.map(sweedlerComultiplicationComponent.map(value)),
   );
 
   return {
@@ -2574,9 +2620,9 @@ const partitionSweedlerElements = (
   readonly left: ReadonlyArray<Example14CofreeElement>;
   readonly right: ReadonlyArray<Example14CofreeElement>;
 } => {
-    const values = enumerateAllElements(
-      data.sweedler.functor.functor.F0("?") as SetObj<Example14CofreeElement>,
-    );
+  const values = enumerateAllElements(
+    data.sweedler.functor.functor.F0("\u2605") as SetObj<Example14CofreeElement>,
+  );
   const left: Example14CofreeElement[] = [];
   const right: Example14CofreeElement[] = [];
   const coequation = data.sweedler.coequation;
@@ -2591,6 +2637,18 @@ const partitionSweedlerElements = (
   return { left, right };
 };
 
+const buildCharacteristicSubset = <A>(
+  carrier: SetObj<A>,
+  predicate: (value: A) => boolean,
+  tag: string,
+): { readonly subset: SetObj<A>; readonly inclusion: SetHom<A, A> } => {
+  const members = enumerateAllElements(carrier).filter(predicate);
+  const semantics = SetCat.createSubsetSemantics(carrier, members, { tag });
+  const subset = SetCat.obj(members, { semantics, tag }) as SetObj<A>;
+  const inclusion = SetCat.hom(subset, carrier, (value) => value);
+  return { subset, inclusion };
+};
+
 const makeInclusion = <A>(
   subset: SetObj<A>,
   ambient: SetObj<A>,
@@ -2599,12 +2657,12 @@ const makeInclusion = <A>(
 
   export const deriveNonemptyListCoequation = (): NonemptyListCoequationData => {
     const sweedler = sweedlerDualNonemptyList();
-    const sweedlerCarrier = sweedler.sweedler.functor.functor.F0(
-      "?",
-    ) as SetObj<Example14CofreeElement>;
-    const baseCarrier = sweedler.quotient.monad.functor.functor.F0(
-      "?",
-    ) as SetObj<Example14NonemptyList>;
+  const sweedlerCarrier = sweedler.sweedler.functor.functor.F0(
+    "\u2605",
+  ) as SetObj<Example14CofreeElement>;
+  const baseCarrier = sweedler.quotient.monad.functor.functor.F0(
+    "\u2605",
+  ) as SetObj<Example14NonemptyList>;
 
   const { left, right } = partitionSweedlerElements(sweedler);
 
@@ -2634,22 +2692,22 @@ const makeInclusion = <A>(
   const deltaCoproduct = SetCat.coproduct(
     sweedlerCarrier,
     sweedlerCarrier,
-    { tag: "Example14CoequationDelta" },
+    {},
   );
 
   const epsilonCoproduct = SetCat.coproduct(
     baseCarrier,
     baseCarrier,
-    { tag: "Example14CoequationEpsilon" },
+    {},
   );
 
   const leftMembership = semanticsAwareHas(leftPartition);
-    const counit = sweedler.sweedler.comonad.counit.transformation.component(
-      "?",
-    ) as SetHom<Example14CofreeElement, Example14NonemptyList>;
+  const counit = sweedler.sweedler.comonad.counit.transformation.component(
+    "\u2605",
+  ) as SetHom<Example14CofreeElement, Example14NonemptyList>;
   const comultiplication =
     sweedler.sweedler.comonad.comultiplication.transformation.component(
-        "?",
+      "\u2605",
     ) as SetHom<Example14CofreeElement, Example14CofreeDoubleElement>;
 
   const cDelta = SetCat.hom(
@@ -2711,7 +2769,7 @@ export const checkRectangularityFromCoequation = (
   data: NonemptyListCoequationData,
 ): NonemptyListRectangularityReport => {
   const sweedlerCarrier = data.sweedler.sweedler.functor.functor.F0(
-    "?",
+    "\u2605",
   ) as SetObj<Example14CofreeElement>;
   const values = enumerateAllElements(sweedlerCarrier);
   const doubleEquals = semanticsAwareEquals(
@@ -2721,7 +2779,7 @@ export const checkRectangularityFromCoequation = (
   const rightMembership = semanticsAwareHas(data.rightPartition);
   const comultiplication =
     data.sweedler.sweedler.comonad.comultiplication.transformation.component(
-      "?",
+      "\u2605",
     ) as SetHom<Example14CofreeElement, Example14CofreeDoubleElement>;
   const coequation = data.sweedler.sweedler.coequation;
   const inclusion = data.sweedler.sweedler.doubleInclusion;
@@ -3683,7 +3741,7 @@ const example8LeftFunctor = constructContravariantFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example8UpdateFunctionCarrier,
-    F1: () => SetCat.id(example8UpdateFunctionCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example8UpdateFunctionCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3693,7 +3751,7 @@ const example8RightFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example8ReaderCarrier,
-    F1: () => SetCat.id(example8ReaderCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example8ReaderCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3703,7 +3761,7 @@ const example8MonadFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example8UpdateFunctionCarrier,
-    F1: () => SetCat.id(example8UpdateFunctionCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example8UpdateFunctionCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3713,7 +3771,7 @@ const example8ComonadFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example8ReaderCarrier,
-    F1: () => SetCat.id(example8ReaderCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example8ReaderCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3721,49 +3779,47 @@ const example8ComonadFunctor = constructFunctorWithWitness(
 const example8Unit = constructNaturalTransformationWithWitness(
   example8MonadFunctor,
   example8MonadFunctor,
-  {
-    component: () =>
+  () =>
+    toUnknownSetHom(
       SetCat.hom(example8BaseXCarrier, example8UpdateFunctionCarrier, (value) =>
         makeConstantExample8UpdateFunction(value),
       ),
-  },
+    ),
   { metadata: ["Example8 unit"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example8Multiplication = constructNaturalTransformationWithWitness(
   example8MonadFunctor,
   example8MonadFunctor,
-  {
-    component: () =>
+  () =>
+    toUnknownSetHom(
       SetCat.hom(
         example8UpdateFunctionSquaredCarrier,
         example8UpdateFunctionCarrier,
         (value) => flattenExample8UpdateFunction(value),
       ),
-  },
+    ),
   { metadata: ["Example8 multiplication"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example8Counit = constructNaturalTransformationWithWitness(
   example8ComonadFunctor,
   example8ComonadFunctor,
-  {
-    component: () =>
-      SetCat.hom(example8ReaderCarrier, example8BaseYCarrier, (value) => value[1]),
-  },
+  () =>
+    toUnknownSetHom(SetCat.hom(example8ReaderCarrier, example8BaseYCarrier, (value) => value[1])),
   { metadata: ["Example8 counit"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example8Comultiplication = constructNaturalTransformationWithWitness(
   example8ComonadFunctor,
   example8ComonadFunctor,
-  {
-    component: () =>
+  () =>
+    toUnknownSetHom(
       SetCat.hom(example8ReaderCarrier, example8ReaderSquaredCarrier, (value) => [
         value[0],
         value,
       ]),
-  },
+    ),
   { metadata: ["Example8 comultiplication"], samples: { objects: TwoObjectCategory.objects } },
 );
 
