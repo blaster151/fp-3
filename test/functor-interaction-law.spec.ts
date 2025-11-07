@@ -986,20 +986,20 @@ describe("Functor interaction laws", () => {
       mapRight: (_object, element: Coproduct<unknown, unknown>) => element,
     });
     const coproductSecond = coproductInteractionLaw(stretched0, stretched1).law;
-    expectInteractionLawsEquivalent(stretchedCoproduct, coproductSecond);
-  });
+      expectInteractionLawsEquivalent(stretchedCoproduct, coproductSecond);
+    });
 
-  it("derives currying data and fixed-side morphisms", () => {
-    const input = makeBooleanInteractionInput();
-    const law = makeFunctorInteractionLaw(input);
+    it("derives currying data and fixed-side morphisms", () => {
+      const input = makeBooleanInteractionInput();
+      const law = makeFunctorInteractionLaw(input);
+      const sampleObject: TwoObject = "★";
 
       const currying = deriveInteractionLawCurrying(law);
       expect(currying.consistent).toBe(true);
       expect(currying.doubleTransposeConsistent).toBe(true);
       expect(currying.hatEvaluationConsistent).toBe(true);
-      const fiber = currying.fibers.get("★");
+      const fiber = currying.fibers.get(sampleObject);
       expect(fiber).toBeDefined();
-      const sampleObject: TwoObject = "★";
       const samplePair = Array.from(fiber!.product.object)[0]!;
     const original = fiber!.phi.map(samplePair);
     const reconstructed = fiber!.reconstructed.map(samplePair);
@@ -1047,7 +1047,7 @@ describe("Functor interaction laws", () => {
     expect(rightFinal.sigma.transformation.component(sampleObject)).toBe(sigmaComponent);
     const finalLeftCarrier = rightFinal.law.left.functor.F0(sampleObject);
     const finalRightCarrier = rightFinal.law.right.functor.F0(sampleObject);
-      const assignment = Array.from(finalLeftCarrier)[0]! as (value: unknown) => boolean;
+    const assignment = Array.from(finalLeftCarrier)[0]!;
     const argument = Array.from(finalRightCarrier)[0]!;
     const evaluation = assignment(argument);
     const primal = { object: sampleObject, element: assignment } as const;

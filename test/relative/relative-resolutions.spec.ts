@@ -326,24 +326,22 @@ describe("Resolution loose adjunction helpers", () => {
       },
     };
 
-    const brokenMetadata =
-      resolution.metadata === undefined
-        ? undefined
-        : {
-            ...resolution.metadata,
-            precompositions: [
-              {
-                tightCell: resolution.inclusion,
-                comparison: brokenComparison,
-                details: "Broken witness",
+      const brokenResolution: TrivialResolutionObject =
+        resolution.metadata === undefined
+          ? resolution
+          : {
+              ...resolution,
+              metadata: {
+                ...resolution.metadata,
+                precompositions: [
+                  {
+                    tightCell: resolution.inclusion,
+                    comparison: brokenComparison,
+                    details: "Broken witness",
+                  },
+                ],
               },
-            ],
-          };
-
-    const brokenResolution: TrivialResolutionObject = {
-      ...resolution,
-      metadata: brokenMetadata,
-    };
+            };
 
     const report = checkLooseMonadIsomorphism(brokenResolution);
 
@@ -425,10 +423,11 @@ describe("Resolution morphism functoriality", () => {
     });
 
     expect(baseMorphism.metadata?.fullyFaithfulPostcompositions).toHaveLength(0);
-    expect(propagation.metadata.fullyFaithfulPostcompositions).toHaveLength(1);
-    expect(propagation.metadata.fullyFaithfulPostcompositions[0]).toBe(witness);
-    expect(propagation.metadata.details).toContain("Base morphism metadata.");
-    expect(propagation.metadata.details).toContain("Example 5.31");
+    const ffMetadata = propagation.metadata;
+    expect((ffMetadata?.fullyFaithfulPostcompositions ?? []).length).toBe(1);
+    expect(ffMetadata?.fullyFaithfulPostcompositions?.[0]).toBe(witness);
+    expect(ffMetadata?.details ?? "").toContain("Base morphism metadata.");
+    expect(ffMetadata?.details ?? "").toContain("Example 5.31");
     expect(propagation.details).toContain("fully faithful postcomposition witness");
 
     const category = categoryOfResolutions({
@@ -470,10 +469,11 @@ describe("Resolution morphism functoriality", () => {
     });
 
     expect(baseMorphism.metadata?.resoluteComposites).toHaveLength(0);
-    expect(propagation.metadata.resoluteComposites).toHaveLength(1);
-    expect(propagation.metadata.resoluteComposites[0]).toBe(witness);
-    expect(propagation.metadata.details).toContain("Base morphism metadata.");
-    expect(propagation.metadata.details).toContain(customNarrative);
+    const resoluteMetadata = propagation.metadata;
+    expect((resoluteMetadata?.resoluteComposites ?? []).length).toBe(1);
+    expect(resoluteMetadata?.resoluteComposites?.[0]).toBe(witness);
+    expect(resoluteMetadata?.details ?? "").toContain("Base morphism metadata.");
+    expect(resoluteMetadata?.details ?? "").toContain(customNarrative);
     expect(propagation.details).toContain("Remark 5.33");
 
     const category = categoryOfResolutions({
@@ -513,10 +513,11 @@ describe("Resolution morphism functoriality", () => {
     });
 
     expect(baseMorphism.metadata?.leftAdjointTransports).toHaveLength(0);
-    expect(propagation.metadata.leftAdjointTransports).toHaveLength(1);
-    expect(propagation.metadata.leftAdjointTransports[0]).toBe(witness);
-    expect(propagation.metadata.details).toContain("Base morphism metadata.");
-    expect(propagation.metadata.details).toContain("(ℓ'!, r')");
+    const transportMetadata = propagation.metadata;
+    expect((transportMetadata?.leftAdjointTransports ?? []).length).toBe(1);
+    expect(transportMetadata?.leftAdjointTransports?.[0]).toBe(witness);
+    expect(transportMetadata?.details ?? "").toContain("Base morphism metadata.");
+    expect(transportMetadata?.details ?? "").toContain("(ℓ'!, r')");
     expect(propagation.details).toContain("Proposition 5.37");
 
     const category = categoryOfResolutions({

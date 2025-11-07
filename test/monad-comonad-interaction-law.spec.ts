@@ -45,6 +45,7 @@ import {
   deriveInteractionLawCurrying,
   deriveInteractionLawLeftCommaPresentation,
   deriveInteractionLawSweedlerSummary,
+  deriveInteractionLawLeftCommaEquivalence,
 } from "../functor-interaction-law";
 import { analyzeFunctorOperationDegeneracy } from "../functor-interaction-law-degeneracy";
 import { dayTensor } from "../day-convolution";
@@ -52,7 +53,7 @@ import {
   contravariantRepresentableFunctorWithWitness,
   covariantRepresentableFunctorWithWitness,
 } from "../functor-representable";
-import { constructFunctorWithWitness, composeFunctors, type FunctorWithWitness } from "../functor";
+import { constructFunctorWithWitness, type FunctorWithWitness } from "../functor";
 import {
   constructNaturalTransformationWithWitness,
   identityNaturalTransformation,
@@ -150,32 +151,14 @@ const buildIdentityMonad = (): MonadStructure<TwoObject, TwoArrow> => {
     },
     { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
   );
-  const unit = constructNaturalTransformationWithWitness<
-    TwoObject,
-    TwoArrow,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >(
-    functor,
-    functor,
-    (object) => toUnknownSetHom(SetCat.id(carrierFor(object))),
-    { metadata: ["Identity monad unit"], samples: { objects: TwoObjectCategory.objects } },
-  );
-  const composite = composeFunctors(functor, functor);
-  const multiplication = constructNaturalTransformationWithWitness<
-    TwoObject,
-    TwoArrow,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >(
-    composite,
-    functor,
-    (object) => toUnknownSetHom(SetCat.id(carrierFor(object))),
-    {
-      metadata: ["Identity monad multiplication"],
-      samples: { objects: TwoObjectCategory.objects },
-    },
-  );
+  const unit = identityNaturalTransformation(functor, {
+    metadata: ["Identity monad unit"],
+    samples: { objects: TwoObjectCategory.objects },
+  });
+  const multiplication = identityNaturalTransformation(functor, {
+    metadata: ["Identity monad multiplication"],
+    samples: { objects: TwoObjectCategory.objects },
+  });
   return {
     functor,
     unit,
@@ -215,32 +198,14 @@ const buildIdentityComonad = (): ComonadStructure<TwoObject, TwoArrow> => {
     },
     { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
   );
-  const counit = constructNaturalTransformationWithWitness<
-    TwoObject,
-    TwoArrow,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >(
-    functor,
-    functor,
-    (object) => toUnknownSetHom(SetCat.id(carrierFor(object))),
-    { metadata: ["Identity comonad counit"], samples: { objects: TwoObjectCategory.objects } },
-  );
-  const composite = composeFunctors(functor, functor);
-  const comultiplication = constructNaturalTransformationWithWitness<
-    TwoObject,
-    TwoArrow,
-    SetObj<unknown>,
-    SetHom<unknown, unknown>
-  >(
-    functor,
-    composite,
-    (object) => toUnknownSetHom(SetCat.id(carrierFor(object))),
-    {
-      metadata: ["Identity comonad comultiplication"],
-      samples: { objects: TwoObjectCategory.objects },
-    },
-  );
+  const counit = identityNaturalTransformation(functor, {
+    metadata: ["Identity comonad counit"],
+    samples: { objects: TwoObjectCategory.objects },
+  });
+  const comultiplication = identityNaturalTransformation(functor, {
+    metadata: ["Identity comonad comultiplication"],
+    samples: { objects: TwoObjectCategory.objects },
+  });
   return {
     functor,
     counit,
@@ -256,8 +221,12 @@ describe("makeMonadComonadInteractionLaw", () => {
     const comonad = buildIdentityComonad();
 
     const currying = deriveInteractionLawCurrying(law);
-    const comma = deriveInteractionLawLeftCommaPresentation(law);
-    const sweedler = deriveInteractionLawSweedlerSummary(law, { currying, comma });
+    const commaPresentation = deriveInteractionLawLeftCommaPresentation(law);
+    const commaEquivalence = deriveInteractionLawLeftCommaEquivalence(law);
+    const sweedler = deriveInteractionLawSweedlerSummary(law, {
+      currying,
+      comma: commaEquivalence,
+    });
     const degeneracy = analyzeFunctorOperationDegeneracy(law);
 
     const packaged = makeMonadComonadInteractionLaw({
@@ -267,7 +236,8 @@ describe("makeMonadComonadInteractionLaw", () => {
       metadata: ["Packaged"],
       options: {
         currying,
-        comma,
+        comma: commaPresentation,
+        commaEquivalence,
         sweedler,
         degeneracy,
         metadata: ["Options"],
@@ -275,7 +245,8 @@ describe("makeMonadComonadInteractionLaw", () => {
     });
 
     expect(packaged.currying).toBe(currying);
-    expect(packaged.comma).toBe(comma);
+    expect(packaged.comma).toBe(commaPresentation);
+    expect(packaged.commaEquivalence).toBe(commaEquivalence);
     expect(packaged.sweedler).toBe(sweedler);
     expect(packaged.degeneracy).toBe(degeneracy);
     expect(packaged.psiComponents).toBe(currying.fibers);
@@ -294,6 +265,7 @@ describe("makeMonadComonadInteractionLaw", () => {
       "makeMonadComonadInteractionLaw: reused supplied comma presentation.",
       "makeMonadComonadInteractionLaw: reused supplied Sweedler summary.",
       "makeMonadComonadInteractionLaw: reused supplied degeneracy analysis.",
+      "makeMonadComonadInteractionLaw: reused supplied comma equivalence diagnostics.",
     ]);
   });
 
@@ -685,7 +657,7 @@ describe("dual map translators", () => {
           return component as unknown as SetHom<unknown, unknown>;
         }
         return SetCat.hom(domain, codomain, (element) => {
-          const baseAssignment = component.map(element);
+          const baseAssignment = component.map(element) as (input: unknown) => unknown;
           const constantValue = baseAssignment(fallbackRight);
           return ((_: unknown) => constantValue) as (input: unknown) => unknown;
         });
