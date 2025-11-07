@@ -293,6 +293,24 @@ export function swap<X, Y>(): Kernel<Pair<X, Y>, Pair<Y, X>> {
   return deterministic(([x, y]: Pair<X, Y>) => [y, x] as const);
 }
 
+// Typed associativity isomorphisms for product (cartesian) reassociation
+export function reassocLR<X, Y, Z>(): Kernel<Pair<X, Pair<Y, Z>>, Pair<Pair<X, Y>, Z>> {
+  // ([x, [y, z]]) -> [[x, y], z]
+  return deterministic(([x, yz]: Pair<X, Pair<Y, Z>>) => {
+    const [y, z] = yz;
+    return [[x, y], z] as const;
+  });
+}
+
+export function reassocRL<X, Y, Z>(): Kernel<Pair<Pair<X, Y>, Z>, Pair<X, Pair<Y, Z>>> {
+  // ([[x, y], z]) -> [x, [y, z]]
+  return deterministic((xy_z: Pair<Pair<X, Y>, Z>) => {
+    const [xy, z] = xy_z;
+    const [x, y] = xy;
+    return [x, [y, z]] as const;
+  });
+}
+
 // ===== Comonoid structure (copy Δ and discard !) ===============================================
 
 // Discard: ! : X -> I  where I = unit object (singleton)
@@ -586,6 +604,8 @@ export const Markov = {
   deterministic,
   tensorObj,
   swap,
+  reassocLR,
+  reassocRL,
   dirac,
   normalize,
   fromWeights,
@@ -633,38 +653,28 @@ export function checkComonoidLaws<X>(
   const discardKernel = morphisms?.discard ?? discard<X>();
 
   const Δ = new FinMarkov(Xf, XxX, copyKernel);
+  // (Δ ⊗ id) : X×X -> (X×X)×X
   const Δ12 = new FinMarkov(
     XxX,
-    XxXxX,
-    tensor(copyKernel as any, idK(Xf).k as any) as any,
+    XxXxX_alt,
+    tensor(copyKernel, idK(Xf).k),
   );
+  // (id ⊗ Δ) followed by reassociation to (X × X) × X
   const Δ23 = new FinMarkov(
     XxX,
     XxXxX_alt,
-    tensor(idK(Xf).k as any, copyKernel as any) as any,
+    compose(tensor(idK(Xf).k, copyKernel), reassocLR<X, X, X>()),
   );
 
   // Coassociativity: (Δ ; (Δ ⊗ id)) == (Δ ; (id ⊗ Δ)) up to reassociation isos (we compare via deterministic rebracketing)
-  const reassocLtoR = detK(
-    XxXxX,
-    XxXxX_alt,
-    (p: any): any => {
-      const [[x, y], z] = p as [[X, X], X];
-      return [x, [y, z]] as any;
-    },
-  );
-  const lhs = Δ.then(
-    new FinMarkov(
-      XxX,
-      XxXxX,
-      tensor(copyKernel as any, deterministic((x: X) => x) as any) as any,
-    ),
-  ).then(reassocLtoR);
+  // Reassociate left to right: ( X×(X×X) ) -> ( (X×X)×X )
+  const reassocLtoR = new FinMarkov(XxXxX, XxXxX_alt, reassocLR<X, X, X>());
+  const lhs = Δ.then(Δ12);
   const rhs = Δ.then(
     new FinMarkov(
       XxX,
       XxXxX_alt,
-      tensor(deterministic((x: X) => x) as any, copyKernel as any) as any,
+      compose(tensor(idK(Xf).k, copyKernel), reassocLR<X, X, X>()),
     ),
   );
 

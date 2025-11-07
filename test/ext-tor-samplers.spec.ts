@@ -7,13 +7,15 @@ import {
   type TensorProductCheckResult,
 } from "../allTS"
 
-type DummyCechResult = CechCohomologyResult
+type DummyCechResult = CechCohomologyResult<unknown, unknown>
 
 type DummyFlatResult = FlatModuleCheckResult<number, number, number, number>
 
 type DummyTensorResult = TensorProductCheckResult<number, number, number>
 
-const buildCech = (ranks: ReadonlyArray<{ readonly degree: number; readonly rank: number }>): DummyCechResult => ({
+const buildCech = (
+  ranks: ReadonlyArray<{ readonly degree: number; readonly rank: number }>,
+): DummyCechResult => ({
   holds: true,
   complex: { levels: [], differentials: [], label: "stub" },
   chainCheck: {

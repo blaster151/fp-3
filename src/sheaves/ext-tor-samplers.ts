@@ -85,9 +85,9 @@ export interface TorSamplerResult {
 const getWitnessKinds = (config: TorDegreeConfig): ReadonlyArray<FlatWitnessKind> =>
   config.witnessKinds ?? ["kernel", "surjection", "composition"]
 
-export const sampleTorFromFlat = <Left, Middle, Right, Candidate>(
+export const sampleTorFromFlat = <Left, Middle, Right, Candidate, Section, R>(
   input: {
-    readonly cech: CechCohomologyResult
+  readonly cech: CechCohomologyResult<Section, R>
     readonly flat: FlatModuleCheckResult<Left, Middle, Right, Candidate>
     readonly options?: TorSamplerOptions
   },
@@ -207,9 +207,9 @@ const relevantTensorViolation = (
   return violation.mapLabel !== undefined && labels.includes(violation.mapLabel)
 }
 
-export const sampleExtFromTensor = <Left, Right, Tensor>(
+export const sampleExtFromTensor = <Left, Right, Tensor, Section, R>(
   input: {
-    readonly cech: CechCohomologyResult
+  readonly cech: CechCohomologyResult<Section, R>
     readonly tensor: TensorProductCheckResult<Left, Right, Tensor>
     readonly options?: ExtSamplerOptions
   },

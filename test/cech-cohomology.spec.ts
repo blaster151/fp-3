@@ -199,7 +199,7 @@ describe("Čech cohomology oracles", () => {
       module,
       label: "{U,V} cover",
     })
-    const chainCheck = checkChainComplex(complex)
+  const chainCheck = checkChainComplex<number, ReadonlyArray<Section>>(complex)
     expect(chainCheck.holds).toBe(true)
     expect(chainCheck.metadata.compositionChecks).toBe(16)
     expect(chainCheck.metadata.samplesTested).toBe(16)
@@ -234,16 +234,17 @@ describe("Čech cohomology oracles", () => {
       intersection: intersectionArrow,
       module,
       label: "{U,V} cover",
-    }) as ChainComplex<number>
+    }) as ChainComplex<number, ReadonlyArray<Section>>
 
     const level1 = complex.levels[1]
     const differential1 = complex.differentials[1]
     if (!level1 || !differential1) {
       throw new Error("Expected level and differential in two-open complex")
     }
-    const badDifferential = {
+    const badDifferential: typeof differential1 = {
       ...differential1,
-      map: (value: Section) => value,
+      // Intentionally wrong: make δ^1 the identity on vectors, so δ^1 ∘ δ^0 ≠ 0 for some samples
+      map: (value: ReadonlyArray<Section>) => value,
     }
 
     const differential0 = complex.differentials[0]
@@ -251,18 +252,18 @@ describe("Čech cohomology oracles", () => {
       throw new Error("Expected initial differential in two-open complex")
     }
 
-    const failing: ChainComplex<number> = {
+  const failing: ChainComplex<number, ReadonlyArray<Section>> = {
       ...complex,
       differentials: [differential0, badDifferential],
     }
 
-    const check = checkChainComplex(failing, { witnessLimit: 1 })
+  const check = checkChainComplex<number, ReadonlyArray<Section>>(failing, { witnessLimit: 1 })
     expect(check.holds).toBe(false)
     expect(check.violations.some(v => v.kind === "composition")).toBe(true)
     expect(check.witnesses).toHaveLength(1)
     const composition = check.violations.find(v => v.kind === "composition")
     const zeroVector = level1.module.zero
-    expect(
+  expect(
       composition &&
         level1.module.eq?.(composition.image as ReadonlyArray<Section>, zeroVector),
     ).toBe(false)
@@ -477,7 +478,7 @@ describe("Multi-open Čech cohomology", () => {
   it("builds multi-level complexes and validates derived comparisons", () => {
     const { setup } = buildThreeOpenSetup()
     const complex = buildCechComplex(setup)
-    const chainCheck = checkChainComplex(complex)
+  const chainCheck = checkChainComplex<number, ReadonlyArray<Section>>(complex)
     expect(chainCheck.holds).toBe(true)
 
     const derivedAnalysis = analyzeCohomology(complex)

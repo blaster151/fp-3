@@ -1,9 +1,15 @@
-import {
-  describeCatalogue,
-  filterRunnableExamplesByTags,
-  findRunnableExample,
-  runnableExamples,
-} from "./examples/runnable/manifest";
+// Defer heavy imports until after CLI parsing for faster startup
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+type ManifestModule = typeof import("./examples/runnable/manifest");
+let manifestPromise: Promise<ManifestModule> | null = null;
+const loadManifest = (): Promise<ManifestModule> => {
+  if (!manifestPromise) {
+  console.log("Loading runnable examples manifest...");
+  manifestPromise = import("./examples/runnable/manifest");
+  }
+  return manifestPromise;
+};
 import type { RunnableRegistry } from "./examples/runnable/types";
 
 declare const process: {
@@ -55,7 +61,56 @@ async function main(): Promise<void> {
     requestedIds.push(token);
   }
 
+  const cachePath = resolve("dist/.cache/runnable-index.json");
   if (listRequested) {
+    // Try fast path: list from cache without importing all examples
+    if (existsSync(cachePath)) {
+      try {
+        const raw = readFileSync(cachePath, "utf8");
+        const items: Array<{ id: string; title: string; outlineReference: number; tags?: readonly string[] }>
+          = JSON.parse(raw);
+        const normalizeTag = (v: string) => v.trim().toLowerCase();
+        const filtered = (requestedTags.length === 0)
+          ? items
+          : items.filter((ex) => {
+              if (!ex.tags || ex.tags.length === 0) return false;
+              const tags = ex.tags.map(normalizeTag);
+              return requestedTags.every((t) => tags.includes(normalizeTag(t)));
+            });
+        const header = "ID  Outline  Title";
+        const separator = "--  -------  -----";
+        if (filtered.length === 0) {
+          console.log(`${header}\n${separator}\n<no matching runnable examples>`);
+          return;
+        }
+        const body = filtered
+          .map((ex) => [ex.id.padStart(3, "0"), ex.outlineReference.toString().padStart(7, " "), ex.title].join("  "))
+          .join("\n");
+        console.log(`${header}\n${separator}\n${body}`);
+        return;
+      } catch {
+        // fall through to slow path if cache is unreadable
+      }
+    }
+  }
+
+  const { describeCatalogue, filterRunnableExamplesByTags, findRunnableExample, runnableExamples } = await loadManifest();
+
+  if (listRequested) {
+    // Populate cache for future fast listings
+    try {
+      const items = runnableExamples.map((ex) => ({
+        id: ex.id,
+        title: ex.title,
+        outlineReference: ex.outlineReference,
+        tags: ex.tags,
+      }));
+      const dir = dirname(cachePath);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(cachePath, JSON.stringify(items, null, 2), "utf8");
+    } catch {
+      // ignore cache write errors
+    }
     console.log(describeCatalogue({ tags: requestedTags }));
     return;
   }

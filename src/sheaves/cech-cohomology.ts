@@ -48,9 +48,10 @@ export interface ChainComplexDifferential<R, Domain, Codomain>
   readonly targetDegree: number
 }
 
-export interface ChainComplex<R> {
-  readonly levels: ReadonlyArray<ChainComplexLevel<R, any>>
-  readonly differentials: ReadonlyArray<ChainComplexDifferential<R, any, any>>
+export interface ChainComplex<R, M = unknown> {
+  readonly levels: ReadonlyArray<ChainComplexLevel<R, M>>
+  // For this Čech usage domain/codomain match; keep generic in signature by fixing to M
+  readonly differentials: ReadonlyArray<ChainComplexDifferential<R, M, M>>
   readonly label?: string
 }
 
@@ -102,20 +103,20 @@ export interface ChainComplexCheckResult {
   readonly metadata: ChainComplexCheckMetadata
 }
 
-export const checkChainComplex = <R>(
-  complex: ChainComplex<R>,
+export const checkChainComplex = <R, M = unknown>(
+  complex: ChainComplex<R, M>,
   options: ChainComplexCheckOptions = {},
 ): ChainComplexCheckResult => {
   const witnessLimit = options.witnessLimit ?? 3
   const violations: ChainComplexViolation[] = []
   const witnesses: ChainComplexWitness[] = []
 
-  const levelByDegree = new Map<number, ChainComplexLevel<R, any>>()
+  const levelByDegree = new Map<number, ChainComplexLevel<R, M>>()
   for (const level of complex.levels) {
     levelByDegree.set(level.degree, level)
   }
 
-  const differentialBySource = new Map<number, ChainComplexDifferential<R, any, any>>()
+  const differentialBySource = new Map<number, ChainComplexDifferential<R, M, M>>()
   for (const differential of complex.differentials) {
     differentialBySource.set(differential.sourceDegree, differential)
   }
@@ -229,8 +230,8 @@ export interface CohomologyGroup<M> {
   readonly details: string
 }
 
-export interface CohomologyAnalysis {
-  readonly groups: ReadonlyArray<CohomologyGroup<any>>
+export interface CohomologyAnalysis<M = unknown> {
+  readonly groups: ReadonlyArray<CohomologyGroup<M>>
   readonly details: string
   readonly metadata: {
     readonly degrees: ReadonlyArray<number>
@@ -239,21 +240,21 @@ export interface CohomologyAnalysis {
   }
 }
 
-export const analyzeCohomology = <R>(complex: ChainComplex<R>): CohomologyAnalysis => {
-  const levelByDegree = new Map<number, ChainComplexLevel<R, any>>()
+export const analyzeCohomology = <R, M>(complex: ChainComplex<R, M>): CohomologyAnalysis<M> => {
+  const levelByDegree = new Map<number, ChainComplexLevel<R, M>>()
   for (const level of complex.levels) {
     levelByDegree.set(level.degree, level)
   }
 
-  const incomingByDegree = new Map<number, ChainComplexDifferential<R, any, any>>()
-  const outgoingByDegree = new Map<number, ChainComplexDifferential<R, any, any>>()
+  const incomingByDegree = new Map<number, ChainComplexDifferential<R, M, M>>()
+  const outgoingByDegree = new Map<number, ChainComplexDifferential<R, M, M>>()
   for (const differential of complex.differentials) {
     outgoingByDegree.set(differential.sourceDegree, differential)
     incomingByDegree.set(differential.targetDegree, differential)
   }
 
   const degrees = [...levelByDegree.keys()].sort((left, right) => left - right)
-  const groups: CohomologyGroup<any>[] = []
+  const groups: CohomologyGroup<M>[] = []
   let totalKernel = 0
   let totalImage = 0
 
@@ -266,7 +267,7 @@ export const analyzeCohomology = <R>(complex: ChainComplex<R>): CohomologyAnalys
     const outgoing = outgoingByDegree.get(degree)
     const incoming = incomingByDegree.get(degree)
 
-    const kernel: any[] = []
+  const kernel: M[] = []
     if (outgoing) {
       const eqTarget = withEquality(outgoing.target.eq)
       const zero = outgoing.target.zero
@@ -280,7 +281,7 @@ export const analyzeCohomology = <R>(complex: ChainComplex<R>): CohomologyAnalys
       kernel.push(...level.elements)
     }
 
-    const image: any[] = []
+  const image: M[] = []
     const zero = level.module.zero
     image.push(zero)
     if (incoming) {
@@ -294,7 +295,7 @@ export const analyzeCohomology = <R>(complex: ChainComplex<R>): CohomologyAnalys
       }
     }
 
-    const representatives: any[] = []
+  const representatives: M[] = []
     for (const element of kernel) {
       let covered = false
       for (const rep of representatives) {
@@ -482,11 +483,11 @@ export interface CechCohomologyOptions {
   readonly derived?: CohomologyAnalysis
 }
 
-export interface CechCohomologyResult {
+export interface CechCohomologyResult<Section = unknown, R = unknown> {
   readonly holds: boolean
-  readonly complex: ChainComplex<any>
+  readonly complex: ChainComplex<R, ReadonlyArray<Section>>
   readonly chainCheck: ChainComplexCheckResult
-  readonly cohomology: CohomologyAnalysis
+  readonly cohomology: CohomologyAnalysis<ReadonlyArray<Section>>
   readonly derivedComparison?: CechDerivedComparison
   readonly details: string
 }
@@ -499,9 +500,9 @@ interface NormalizedCechCell<Obj, Arr, Section> {
   readonly label?: string
 }
 
-interface LevelInfo<R, Section> {
+interface LevelInfo<R, Obj, Arr, Section> {
   readonly degree: number
-  readonly cells: ReadonlyArray<NormalizedCechCell<any, any, Section>>
+  readonly cells: ReadonlyArray<NormalizedCechCell<Obj, Arr, Section>>
   readonly module: Module<R, ReadonlyArray<Section>>
   readonly elements: ReadonlyArray<ReadonlyArray<Section>>
   readonly indexByKey: Map<string, number>
@@ -509,7 +510,7 @@ interface LevelInfo<R, Section> {
 
 export const buildCechComplex = <Obj, Arr, Section, R>(
   setup: MultiOpenCechSetup<Obj, Arr, Section, R>,
-): ChainComplex<R> => {
+): ChainComplex<R, ReadonlyArray<Section>> => {
   const { sheaf, covering, module } = setup
   const coveringArrows = covering.arrows
   if (coveringArrows.length === 0) {
@@ -586,7 +587,7 @@ export const buildCechComplex = <Obj, Arr, Section, R>(
 
   const maxLength = allCells.reduce((current, cell) => Math.max(current, cell.key.length), 1)
   const levels: ChainComplexLevel<R, ReadonlyArray<Section>>[] = []
-  const levelInfos: LevelInfo<R, Section>[] = []
+  const levelInfos: LevelInfo<R, Obj, Arr, Section>[] = []
 
   for (let length = 1; length <= maxLength; length += 1) {
     const degree = length - 1
@@ -727,7 +728,7 @@ const compareDerivedAnalyses = (
 export const checkCechCohomology = <Obj, Arr, Section, R>(
   setup: MultiOpenCechSetup<Obj, Arr, Section, R>,
   options: CechCohomologyOptions = {},
-): CechCohomologyResult => {
+): CechCohomologyResult<Section, R> => {
   const complex = buildCechComplex(setup)
   const chainCheck = checkChainComplex(complex, options.chain)
   const cohomology = analyzeCohomology(complex)
@@ -829,13 +830,13 @@ const twoOpenToMultiOpenSetup = <Obj, Arr, Section, R>(
 
 export const buildTwoOpenCechComplex = <Obj, Arr, Section, R>(
   setup: TwoOpenCechSetup<Obj, Arr, Section, R>,
-): ChainComplex<R> => buildCechComplex(twoOpenToMultiOpenSetup(setup))
+): ChainComplex<R, ReadonlyArray<Section>> => buildCechComplex(twoOpenToMultiOpenSetup(setup))
 
 export type TwoOpenCechCohomologyOptions = CechCohomologyOptions
 
-export type TwoOpenCechCohomologyResult = CechCohomologyResult
+export type TwoOpenCechCohomologyResult<Section = unknown, R = unknown> = CechCohomologyResult<Section, R>
 
 export const checkTwoOpenCechCohomology = <Obj, Arr, Section, R>(
   setup: TwoOpenCechSetup<Obj, Arr, Section, R>,
   options: TwoOpenCechCohomologyOptions = {},
-): TwoOpenCechCohomologyResult => checkCechCohomology(twoOpenToMultiOpenSetup(setup), options)
+): TwoOpenCechCohomologyResult<Section, R> => checkCechCohomology(twoOpenToMultiOpenSetup(setup), options)

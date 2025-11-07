@@ -154,19 +154,19 @@ export interface SchemeGluingCheckOptions {
   readonly requireInverse?: boolean
 }
 
-export type SchemeGluingViolation =
-  | { readonly kind: "chartRingMismatch"; readonly chartIndex: number; readonly chart: SchemeChart<any> }
+export type SchemeGluingViolation<A = any> =
+  | { readonly kind: "chartRingMismatch"; readonly chartIndex: number; readonly chart: SchemeChart<A> }
   | {
       readonly kind: "chartSpectrumFailure"
       readonly chartIndex: number
-      readonly chart: SchemeChart<any>
-      readonly result: PrimeSpectrumCheckResult<any>
+      readonly chart: SchemeChart<A>
+      readonly result: PrimeSpectrumCheckResult<A>
     }
   | {
       readonly kind: "chartStructureSheafFailure"
       readonly chartIndex: number
-      readonly chart: SchemeChart<any>
-      readonly result: StructureSheafCheckResult<any>
+      readonly chart: SchemeChart<A>
+      readonly result: StructureSheafCheckResult<A>
     }
   | { readonly kind: "missingChart"; readonly gluingIndex: number; readonly side: "left" | "right"; readonly index: number }
   | {
@@ -179,36 +179,36 @@ export type SchemeGluingViolation =
       readonly kind: "gluingFailure"
       readonly gluingIndex: number
       readonly direction: "forward" | "backward"
-      readonly result: AffineSchemeMorphismCheckResult<any, any>
+      readonly result: AffineSchemeMorphismCheckResult<A, A>
     }
   | {
       readonly kind: "inverseMismatch"
       readonly gluingIndex: number
       readonly direction: "left" | "right"
       readonly pointIndex: number
-      readonly originalPoint: PrimeSpectrumPoint<any>
-      readonly intermediateIdeal: RingIdeal<any>
-      readonly returnedIdeal: RingIdeal<any>
+      readonly originalPoint: PrimeSpectrumPoint<A>
+      readonly intermediateIdeal: RingIdeal<A>
+      readonly returnedIdeal: RingIdeal<A>
     }
   | {
-      readonly kind: "inverseMissing"
-      readonly gluingIndex: number
-      readonly direction: "left" | "right"
-      readonly pointIndex: number
-      readonly originalPoint: PrimeSpectrumPoint<any>
-      readonly intermediateIdeal: RingIdeal<any>
-    }
+    readonly kind: "inverseMissing"
+    readonly gluingIndex: number
+    readonly direction: "left" | "right"
+    readonly pointIndex: number
+    readonly originalPoint: PrimeSpectrumPoint<A>
+    readonly intermediateIdeal: RingIdeal<A>
+  }
 
-export interface SchemeGluingWitness {
+export interface SchemeGluingWitness<A = any> {
   readonly chartIndex?: number
   readonly gluingIndex?: number
-  readonly violation: SchemeGluingViolation
+  readonly violation: SchemeGluingViolation<A>
 }
 
-export interface SchemeGluingCheckResult {
+export interface SchemeGluingCheckResult<A = any> {
   readonly holds: boolean
-  readonly violations: ReadonlyArray<SchemeGluingViolation>
-  readonly witnesses: ReadonlyArray<SchemeGluingWitness>
+  readonly violations: ReadonlyArray<SchemeGluingViolation<A>>
+  readonly witnesses: ReadonlyArray<SchemeGluingWitness<A>>
   readonly details: string
   readonly metadata: {
     readonly chartCount: number
@@ -227,7 +227,10 @@ export interface SchemeGluingCheckResult {
   }
 }
 
-export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheckOptions = {}): SchemeGluingCheckResult => {
+export const checkSchemeGluing = (
+  atlas: SchemeAtlas,
+  options: SchemeGluingCheckOptions = {},
+): SchemeGluingCheckResult => {
   const witnessLimit = options.witnessLimit ?? 6
   const requireInverse = options.requireInverse ?? true
 
@@ -244,7 +247,7 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
 
   atlas.charts.forEach((chart, chartIndex) => {
     if (chart.spectrum.ring !== chart.structureSheaf.ring) {
-      const violation: SchemeGluingViolation = { kind: "chartRingMismatch", chartIndex, chart }
+  const violation: SchemeGluingViolation = { kind: "chartRingMismatch", chartIndex, chart }
       ringMismatchFailures += 1
       violations.push(violation)
       if (witnesses.length < witnessLimit) {
@@ -254,7 +257,7 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
 
     const spectrumResult = checkPrimeSpectrum(chart.spectrum, chart.options?.spectrum ?? {})
     if (!spectrumResult.holds) {
-      const violation: SchemeGluingViolation = {
+  const violation: SchemeGluingViolation = {
         kind: "chartSpectrumFailure",
         chartIndex,
         chart,
@@ -269,7 +272,7 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
 
     const sheafResult = checkStructureSheaf(chart.structureSheaf, chart.options?.structureSheaf ?? {})
     if (!sheafResult.holds) {
-      const violation: SchemeGluingViolation = {
+  const violation: SchemeGluingViolation = {
         kind: "chartStructureSheafFailure",
         chartIndex,
         chart,
@@ -288,7 +291,7 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
     const rightChart = atlas.charts[gluing.rightChart]
 
     if (!leftChart) {
-      const violation: SchemeGluingViolation = {
+  const violation: SchemeGluingViolation = {
         kind: "missingChart",
         gluingIndex,
         side: "left",
@@ -302,7 +305,7 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
     }
 
     if (!rightChart) {
-      const violation: SchemeGluingViolation = {
+  const violation: SchemeGluingViolation = {
         kind: "missingChart",
         gluingIndex,
         side: "right",
@@ -316,7 +319,7 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
     }
 
     if (gluing.forward.codomain.ring !== leftChart.spectrum.ring) {
-      const violation: SchemeGluingViolation = {
+  const violation: SchemeGluingViolation = {
         kind: "gluingSpectrumMismatch",
         gluingIndex,
         side: "forward",
@@ -329,7 +332,7 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
     }
 
     if (gluing.forward.domain.ring !== rightChart.spectrum.ring) {
-      const violation: SchemeGluingViolation = {
+  const violation: SchemeGluingViolation = {
         kind: "gluingSpectrumMismatch",
         gluingIndex,
         side: "forward",
@@ -342,7 +345,7 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
     }
 
     if (gluing.backward.codomain.ring !== rightChart.spectrum.ring) {
-      const violation: SchemeGluingViolation = {
+  const violation: SchemeGluingViolation = {
         kind: "gluingSpectrumMismatch",
         gluingIndex,
         side: "backward",
@@ -355,7 +358,7 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
     }
 
     if (gluing.backward.domain.ring !== leftChart.spectrum.ring) {
-      const violation: SchemeGluingViolation = {
+  const violation: SchemeGluingViolation = {
         kind: "gluingSpectrumMismatch",
         gluingIndex,
         side: "backward",
@@ -369,7 +372,7 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
 
     const forwardResult = checkAffineSchemeMorphism(gluing.forward, gluing.forwardOptions ?? {})
     if (!forwardResult.holds) {
-      const violation: SchemeGluingViolation = {
+  const violation: SchemeGluingViolation = {
         kind: "gluingFailure",
         gluingIndex,
         direction: "forward",
@@ -384,7 +387,7 @@ export const checkSchemeGluing = (atlas: SchemeAtlas, options: SchemeGluingCheck
 
     const backwardResult = checkAffineSchemeMorphism(gluing.backward, gluing.backwardOptions ?? {})
     if (!backwardResult.holds) {
-      const violation: SchemeGluingViolation = {
+  const violation: SchemeGluingViolation = {
         kind: "gluingFailure",
         gluingIndex,
         direction: "backward",
@@ -692,26 +695,29 @@ export const refineSchemeAtlas = (
   const gluings: SchemeAtlasGluing<any, any>[] = []
   const gluingIndexByKey = new Map<string, number>()
 
-  const registerGluing = <Left, Right>(
-    gluing: SchemeAtlasGluing<Left, Right>,
+  const registerGluing = (
+    gluing: SchemeAtlasGluing<any, any>,
     leftIndex: number,
     rightIndex: number,
   ): void => {
-    const leftChart = charts[leftIndex] as SchemeChart<Left>
-    const rightChart = charts[rightIndex] as SchemeChart<Right>
+    const leftChart = charts[leftIndex]
+    const rightChart = charts[rightIndex]
+    if (!leftChart || !rightChart) {
+      return
+    }
 
-    const normalized: SchemeAtlasGluing<Left, Right> = {
+    const normalized: SchemeAtlasGluing<any, any> = {
       leftChart: leftIndex,
       rightChart: rightIndex,
       forward: {
         ...gluing.forward,
-        domain: rightChart.spectrum,
-        codomain: leftChart.spectrum,
+        domain: rightChart.spectrum as PrimeSpectrum<any>,
+        codomain: leftChart.spectrum as PrimeSpectrum<any>,
       },
       backward: {
         ...gluing.backward,
-        domain: leftChart.spectrum,
-        codomain: rightChart.spectrum,
+        domain: leftChart.spectrum as PrimeSpectrum<any>,
+        codomain: rightChart.spectrum as PrimeSpectrum<any>,
       },
       ...(gluing.forwardOptions ? { forwardOptions: gluing.forwardOptions } : {}),
       ...(gluing.backwardOptions ? { backwardOptions: gluing.backwardOptions } : {}),
@@ -734,16 +740,22 @@ export const refineSchemeAtlas = (
       return
     }
 
-    const existing = gluings[existingIndex] as SchemeAtlasGluing<Left, Right>
+    const existing = gluings[existingIndex]
     const compatibility = mergeCompatibility(
-      leftChart.spectrum.ring,
-      rightChart.spectrum.ring,
-      existing.compatibility,
+      leftChart.spectrum.ring as Ring<any>,
+      rightChart.spectrum.ring as Ring<any>,
+      existing?.compatibility,
       normalized.compatibility,
     )
 
-    const merged: SchemeAtlasGluing<Left, Right> = {
-      ...existing,
+    const merged: SchemeAtlasGluing<any, any> = {
+      leftChart: existing?.leftChart ?? normalized.leftChart,
+      rightChart: existing?.rightChart ?? normalized.rightChart,
+      forward: existing?.forward ?? normalized.forward,
+      backward: existing?.backward ?? normalized.backward,
+      ...(existing?.forwardOptions ? { forwardOptions: existing.forwardOptions } : {}),
+      ...(existing?.backwardOptions ? { backwardOptions: existing.backwardOptions } : {}),
+      ...(existing?.label ? { label: existing.label } : {}),
       ...(compatibility ? { compatibility } : {}),
     }
 
@@ -806,21 +818,21 @@ export interface SchemeFiberProductCheckOptions {
   readonly witnessLimit?: number
 }
 
-export type SchemeFiberProductViolation = {
+export type SchemeFiberProductViolation<Base = unknown, Left = unknown, Right = unknown, Apex = unknown> = {
   readonly kind: "squareFailure"
   readonly index: number
-  readonly result: AffineSchemePullbackCheckResult<any, any, any, any>
+  readonly result: AffineSchemePullbackCheckResult<Base, Left, Right, Apex>
 }
 
-export interface SchemeFiberProductWitness {
+export interface SchemeFiberProductWitness<Base = unknown, Left = unknown, Right = unknown, Apex = unknown> {
   readonly index: number
-  readonly violation: SchemeFiberProductViolation
+  readonly violation: SchemeFiberProductViolation<Base, Left, Right, Apex>
 }
 
-export interface SchemeFiberProductCheckResult {
+export interface SchemeFiberProductCheckResult<Base = unknown, Left = unknown, Right = unknown, Apex = unknown> {
   readonly holds: boolean
-  readonly violations: ReadonlyArray<SchemeFiberProductViolation>
-  readonly witnesses: ReadonlyArray<SchemeFiberProductWitness>
+  readonly violations: ReadonlyArray<SchemeFiberProductViolation<Base, Left, Right, Apex>>
+  readonly witnesses: ReadonlyArray<SchemeFiberProductWitness<Base, Left, Right, Apex>>
   readonly details: string
   readonly metadata: {
     readonly entryCount: number
@@ -830,20 +842,20 @@ export interface SchemeFiberProductCheckResult {
   }
 }
 
-export const checkSchemeFiberProduct = (
-  diagram: SchemeFiberProductDiagram,
+export const checkSchemeFiberProduct = <Base, Left, Right, Apex>(
+  diagram: { readonly entries: ReadonlyArray<SchemeFiberProductEntry<Base, Left, Right, Apex>>; readonly label?: string },
   options: SchemeFiberProductCheckOptions = {},
-): SchemeFiberProductCheckResult => {
+): SchemeFiberProductCheckResult<Base, Left, Right, Apex> => {
   const witnessLimit = options.witnessLimit ?? 4
-  const violations: SchemeFiberProductViolation[] = []
-  const witnesses: SchemeFiberProductWitness[] = []
+  const violations: SchemeFiberProductViolation<Base, Left, Right, Apex>[] = []
+  const witnesses: SchemeFiberProductWitness<Base, Left, Right, Apex>[] = []
 
   let failureCount = 0
 
   diagram.entries.forEach((entry, index) => {
     const result = checkAffineSchemePullbackSquare(entry.square, entry.options ?? {})
     if (!result.holds) {
-      const violation: SchemeFiberProductViolation = { kind: "squareFailure", index, result }
+      const violation: SchemeFiberProductViolation<Base, Left, Right, Apex> = { kind: "squareFailure", index, result }
       failureCount += 1
       violations.push(violation)
       if (witnesses.length < witnessLimit) {

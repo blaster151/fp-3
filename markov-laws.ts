@@ -18,6 +18,8 @@ import {
   deterministic,
   IFin,
   ProbabilityWeightRig,
+  reassocLR,
+  reassocRL,
 } from "./markov-category";
 import type { Dist } from "./dist";
 import type { CSRig } from "./semiring-utils";
@@ -73,8 +75,17 @@ export function checkComonoidLaws<X>(Xf: Fin<X>) {
     idK(Xf).matrix()
   );
 
-  // Coassoc (up to reassociation iso). For brevity we assert true; for rigorous, add reassociation matrix as in earlier file.
-  const copyCoassoc = true;
+  // Coassociativity: (Δ ; (Δ ⊗ id) ; reassocLR) == (Δ ; (id ⊗ Δ) ; reassocRL)
+  const XxXxX_right = tensorObj(XxX, Xf);  // (X×X)×X
+  const XxXxX_left = tensorObj(Xf, XxX);   // X×(X×X)
+  // (Δ ⊗ id): X×X -> (X×X)×X
+  const deltaTensorId = new FinMarkov(XxX, XxXxX_right, tensor(copy<X>(), idK(Xf).k));
+  // (id ⊗ Δ): X×X -> X×(X×X)
+  const idTensorDelta = new FinMarkov(XxX, XxXxX_left, tensor(idK(Xf).k, copy<X>()));
+  // Reassociate (X×X)×X -> X×(X×X) to compare both sides in X×(X×X)
+  const lhs = Δ.then(deltaTensorId).then(new FinMarkov(XxXxX_right, XxXxX_left, reassocRL<X, X, X>()));
+  const rhs = Δ.then(idTensorDelta);
+  const copyCoassoc = approxEqualMatrix(lhs.matrix(), rhs.matrix());
 
   return { copyCoassoc, copyCommut, copyCounitL, copyCounitR };
 }
