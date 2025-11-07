@@ -11,6 +11,7 @@ import {
   makeCommutativeBinaryMonadOperation,
   makeFunctorInteractionLaw,
   makeFunctorInteractionLawOperations,
+  type FunctorInteractionLawOperations,
   type InteractionLawProductProjections,
   type DualInteractionLawResult,
   type FunctorInteractionLaw,
@@ -37,13 +38,13 @@ import type {
 import type {
   NaturalTransformationWithWitness,
 } from "./natural-transformation";
-import { constructContravariantFunctorWithWitness } from "./contravariant";
+import { constructContravariantFunctorWithWitness, type ContravariantFunctorWithWitness } from "./contravariant";
 import { constructFunctorWithWitness } from "./functor";
 import {
   contravariantRepresentableFunctorWithWitness,
   covariantRepresentableFunctorWithWitness,
 } from "./functor-representable";
-import { dayTensor } from "./day-convolution";
+import { dayTensor, type DayConvolutionResult } from "./day-convolution";
 import { setSimpleCategory } from "./set-simple-category";
 import {
   SetCat,
@@ -2329,7 +2330,12 @@ export interface NonemptyListQuotientData {
   readonly quotientCarrier: SetObj<Example14NonemptyList>;
   readonly listOfListsCarrier: SetObj<Example14ListOfLists>;
   readonly monad: MonadStructure<TwoObject, TwoArrow>;
-  readonly quotient: NaturalTransformationWithWitness<TwoObject, TwoArrow, unknown, unknown>;
+  readonly quotient: NaturalTransformationWithWitness<
+    TwoObject,
+    TwoArrow,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >;
 }
 
 export const nonemptyListQuotient = (): NonemptyListQuotientData => {
@@ -2372,7 +2378,12 @@ export interface NonemptyListSweedlerData {
     readonly doubleCarrier: SetObj<Example14CofreeDoubleElement>;
     readonly functor: FunctorWithWitness<TwoObject, TwoArrow, SetObj<unknown>, SetHom<unknown, unknown>>;
     readonly comonad: ComonadStructure<TwoObject, TwoArrow>;
-    readonly inclusion: NaturalTransformationWithWitness<TwoObject, TwoArrow, unknown, unknown>;
+    readonly inclusion: NaturalTransformationWithWitness<
+      TwoObject,
+      TwoArrow,
+      SetObj<unknown>,
+      SetHom<unknown, unknown>
+    >;
     readonly doubleInclusion: SetHom<Example14CofreeDoubleElement, Example14CofreeDoubleElement>;
     readonly coequation: SetHom<Example14CofreeElement, Example14CofreeDoubleElement>;
     readonly metadata: ReadonlyArray<string>;
@@ -2390,7 +2401,17 @@ const canonicalizeCofreeElement = (
 ): Example14CofreeElement =>
   value.tag === "inl"
     ? injections.inl.map(value.value)
-    : injections.inr.map(product.lookup(value.value[0], value.value[1]));
+    : (() => {
+        const lookup = product.lookup;
+        if (!lookup) {
+          throw new Error("Example14 canonicalizeCofreeElement: product lookup unavailable.");
+        }
+        const result = lookup(value.value[0], value.value[1]);
+        if (!result) {
+          throw new Error("Example14 canonicalizeCofreeElement: missing product entry.");
+        }
+        return injections.inr.map(result);
+      })();
 
 const isRectangularCofree = (value: Example14CofreeElement): boolean =>
   value.tag === "inl"
@@ -2450,17 +2471,17 @@ export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
             if (value.tag === "inl") {
               return cofreeDoubleData.injections.inl.map(value);
             }
-            const left = cofreeData.injections.inl.map(value.value[0]);
-            const right = cofreeData.injections.inl.map(value.value[1]);
-            const lookup = cofreeDoublePair.lookup;
-            if (!lookup) {
-              throw new Error("Example14 cofree comultiplication: product lookup unavailable.");
-            }
-            const paired = lookup(left, right);
-            if (!paired) {
-              throw new Error("Example14 cofree comultiplication: missing paired element in product.");
-            }
-            return cofreeDoubleData.injections.inr.map(paired);
+              const left = cofreeData.injections.inl.map(value.value[0]);
+              const right = cofreeData.injections.inl.map(value.value[1]);
+              const lookup = cofreeDoublePair.lookup;
+              if (lookup === undefined) {
+                throw new Error("Example14 cofree comultiplication: product lookup unavailable.");
+              }
+              const paired = lookup(left, right);
+              if (paired === undefined) {
+                throw new Error("Example14 cofree comultiplication: missing paired element in product.");
+              }
+              return cofreeDoubleData.injections.inr.map(paired);
           },
         ),
       ),
@@ -2730,23 +2751,20 @@ const makeInclusion = <A>(
     },
   );
 
-  const metadata = mergeMetadataList(
-    sweedler.metadata,
-    ["Example14CoequationData"],
-  );
+    const metadata = mergeMetadataList(sweedler.metadata, ["Example14CoequationData"]) ?? [];
 
-  return {
-    sweedler,
-    leftPartition,
-    rightPartition,
-    leftInclusion,
-    rightInclusion,
-    cDelta,
-    cEpsilon,
-    deltaCoproduct,
-    epsilonCoproduct,
-    metadata,
-  };
+    return {
+      sweedler,
+      leftPartition,
+      rightPartition,
+      leftInclusion,
+      rightInclusion,
+      cDelta,
+      cEpsilon,
+      deltaCoproduct,
+      epsilonCoproduct,
+      metadata,
+    };
 };
 
 export interface NonemptyListRectangularityWitness {
@@ -2823,9 +2841,9 @@ export const checkRectangularityFromCoequation = (
     );
   }
 
-  const metadata = mergeMetadataList(data.metadata, ["Example14Rectangularity"]);
+    const metadata = mergeMetadataList(data.metadata, ["Example14Rectangularity"]) ?? [];
 
-  return { holds, witnesses, details, metadata };
+    return { holds, witnesses, details, metadata };
 };
 
 type Example6AElement = 0 | 1;
@@ -2955,37 +2973,30 @@ for (const writerSquared of example6WriterSquaredElements) {
 }
 
 const example6ValueCarrier = SetCat.obj(Array.from(example6Values.values()), {
-  equals: semanticsAwareEquals,
   tag: "Example6Value",
 });
 
 const example6WriterCarrier = SetCat.obj(example6WriterElements, {
-  equals: semanticsAwareEquals,
   tag: "Example6Writer",
 });
 
 const example6WriterSquaredCarrier = SetCat.obj(example6WriterSquaredElements, {
-  equals: semanticsAwareEquals,
   tag: "Example6WriterSquared",
 });
 
 const example6ReaderCarrier = SetCat.obj(example6ReaderElements, {
-  equals: semanticsAwareEquals,
   tag: "Example6Reader",
 });
 
 const example6ReaderSquaredCarrier = SetCat.obj(example6ReaderSquaredElements, {
-  equals: semanticsAwareEquals,
   tag: "Example6ReaderSquared",
 });
 
 const example6BaseCarrier = SetCat.obj(EXAMPLE6_BASE_X_VALUES, {
-  equals: semanticsAwareEquals,
   tag: "Example6Base",
 });
 
 const example6BaseYCarrier = SetCat.obj(EXAMPLE6_BASE_Y_VALUES, {
-  equals: semanticsAwareEquals,
   tag: "Example6BaseY",
 });
 
@@ -2996,7 +3007,7 @@ const example6LeftFunctor = constructContravariantFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example6WriterCarrier,
-    F1: () => SetCat.id(example6WriterCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example6WriterCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3006,7 +3017,7 @@ const example6RightFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example6ReaderCarrier,
-    F1: () => SetCat.id(example6ReaderCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example6ReaderCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3016,7 +3027,7 @@ const example6MonadFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example6WriterCarrier,
-    F1: () => SetCat.id(example6WriterCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example6WriterCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3026,7 +3037,7 @@ const example6ComonadFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example6ReaderCarrier,
-    F1: () => SetCat.id(example6ReaderCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example6ReaderCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3034,61 +3045,80 @@ const example6ComonadFunctor = constructFunctorWithWitness(
 const example6Unit = constructNaturalTransformationWithWitness(
   example6MonadFunctor,
   example6MonadFunctor,
-  {
-    component: () =>
-      SetCat.hom(example6BaseCarrier, example6WriterCarrier, (x) => [0, x]),
-  },
+  () =>
+    toUnknownSetHom(
+      SetCat.hom(example6BaseCarrier, example6WriterCarrier, (x) => [0, x] as Example6Writer),
+    ),
   { metadata: ["Example6 unit"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example6Multiplication = constructNaturalTransformationWithWitness(
   example6MonadFunctor,
   example6MonadFunctor,
-  {
-    component: () =>
+  () =>
+    toUnknownSetHom(
       SetCat.hom(example6WriterSquaredCarrier, example6WriterCarrier, (value) => [
         addA(value[0], value[1][0]),
         value[1][1],
-      ]),
-  },
+      ] as Example6Writer),
+    ),
   { metadata: ["Example6 multiplication"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example6Counit = constructNaturalTransformationWithWitness(
   example6ComonadFunctor,
   example6ComonadFunctor,
-  {
-    component: () =>
-      SetCat.hom(example6ReaderCarrier, example6BaseYCarrier, (value) => value[0]),
-  },
+  () =>
+    toUnknownSetHom(SetCat.hom(example6ReaderCarrier, example6BaseYCarrier, (value) => value[0])),
   { metadata: ["Example6 counit"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example6Comultiplication = constructNaturalTransformationWithWitness(
   example6ComonadFunctor,
   example6ComonadFunctor,
-  {
-    component: () =>
+  () =>
+    toUnknownSetHom(
       SetCat.hom(example6ReaderCarrier, example6ReaderSquaredCarrier, (value) => [
         value,
-        [value[1], value[0]],
-      ]),
-  },
+          [value[1], value[0]] as Example6Reader,
+        ] as Example6ReaderSquared),
+    ),
   { metadata: ["Example6 comultiplication"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example6Convolution = dayTensor(
   EXAMPLE6_KERNEL,
-  example6LeftFunctor.functor,
-  example6RightFunctor.functor,
+  example6LeftFunctor,
+  example6RightFunctor,
 );
+
+const example6LeftFunctorForLaw = example6LeftFunctor as unknown as ContravariantFunctorWithWitness<
+  TwoObject,
+  TwoArrow,
+  SetObj<Example6Left>,
+  SetHom<Example6Left, Example6Left>
+>;
+
+const example6RightFunctorForLaw = example6RightFunctor as unknown as FunctorWithWitness<
+  TwoObject,
+  TwoArrow,
+  SetObj<Example6Right>,
+  SetHom<Example6Right, Example6Right>
+>;
+
+const example6ConvolutionForLaw = example6Convolution as unknown as DayConvolutionResult<
+  TwoObject,
+  TwoArrow,
+  Example6Left,
+  Example6Right
+>;
 
 export const makeExample6MonadComonadInteractionLaw = () => {
   const law = makeFunctorInteractionLaw<TwoObject, TwoArrow, Example6Left, Example6Right, Example6InteractionValue>({
     kernel: EXAMPLE6_KERNEL,
-    left: example6LeftFunctor.functor,
-    right: example6RightFunctor.functor,
-    convolution: example6Convolution,
+    left: example6LeftFunctorForLaw,
+    right: example6RightFunctorForLaw,
+    convolution: example6ConvolutionForLaw,
     dualizing: example6ValueCarrier,
     pairing: (
       _object,
@@ -3308,7 +3338,7 @@ const example7LeftFunctor = constructContravariantFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example7WriterCarrier,
-    F1: () => SetCat.id(example7WriterCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example7WriterCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3318,7 +3348,7 @@ const example7RightFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example7ReaderCarrier,
-    F1: () => SetCat.id(example7ReaderCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example7ReaderCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3328,7 +3358,7 @@ const example7MonadFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example7WriterCarrier,
-    F1: () => SetCat.id(example7WriterCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example7WriterCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3338,7 +3368,7 @@ const example7ComonadFunctor = constructFunctorWithWitness(
   setSimpleCategory,
   {
     F0: () => example7ReaderCarrier,
-    F1: () => SetCat.id(example7ReaderCarrier),
+    F1: () => toUnknownSetHom(SetCat.id(example7ReaderCarrier)),
   },
   { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
 );
@@ -3346,46 +3376,44 @@ const example7ComonadFunctor = constructFunctorWithWitness(
 const example7Unit = constructNaturalTransformationWithWitness(
   example7MonadFunctor,
   example7MonadFunctor,
-  {
-    component: () =>
-      SetCat.hom(example7BaseXCarrier, example7WriterCarrier, (value) => [0, value]),
-  },
+  () =>
+    toUnknownSetHom(
+      SetCat.hom(example7BaseXCarrier, example7WriterCarrier, (value) => [0, value] as Example7Writer),
+    ),
   { metadata: ["Example7 unit"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example7Multiplication = constructNaturalTransformationWithWitness(
   example7MonadFunctor,
   example7MonadFunctor,
-  {
-    component: () =>
+  () =>
+    toUnknownSetHom(
       SetCat.hom(example7WriterSquaredCarrier, example7WriterCarrier, (value) => [
         addExample7(value[0], value[1][0]),
         value[1][1],
-      ]),
-  },
+      ] as Example7Writer),
+    ),
   { metadata: ["Example7 multiplication"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example7Counit = constructNaturalTransformationWithWitness(
   example7ComonadFunctor,
   example7ComonadFunctor,
-  {
-    component: () =>
-      SetCat.hom(example7ReaderCarrier, example7BaseYCarrier, (value) => value[1]),
-  },
+  () =>
+    toUnknownSetHom(SetCat.hom(example7ReaderCarrier, example7BaseYCarrier, (value) => value[1])),
   { metadata: ["Example7 counit"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example7Comultiplication = constructNaturalTransformationWithWitness(
   example7ComonadFunctor,
   example7ComonadFunctor,
-  {
-    component: () =>
+  () =>
+    toUnknownSetHom(
       SetCat.hom(example7ReaderCarrier, example7ReaderSquaredCarrier, (value) => [
         value[0],
         value,
-      ]),
-  },
+      ] as Example7ReaderSquared),
+    ),
   {
     metadata: ["Example7 comultiplication"],
     samples: { objects: TwoObjectCategory.objects },
@@ -3394,29 +3422,49 @@ const example7Comultiplication = constructNaturalTransformationWithWitness(
 
 const example7Convolution = dayTensor(
   example7Kernel,
-  example7LeftFunctor.functor,
-  example7RightFunctor.functor,
+  example7LeftFunctor,
+  example7RightFunctor,
 );
+
+const example7LeftFunctorForLaw = example7LeftFunctor as unknown as ContravariantFunctorWithWitness<
+  TwoObject,
+  TwoArrow,
+  SetObj<Example7Left>,
+  SetHom<Example7Left, Example7Left>
+>;
+
+const example7RightFunctorForLaw = example7RightFunctor as unknown as FunctorWithWitness<
+  TwoObject,
+  TwoArrow,
+  SetObj<Example7Right>,
+  SetHom<Example7Right, Example7Right>
+>;
+
+const example7ConvolutionForLaw = example7Convolution as unknown as DayConvolutionResult<
+  TwoObject,
+  TwoArrow,
+  Example7Left,
+  Example7Right
+>;
 
 const example7Operations = makeFunctorInteractionLawOperations<TwoObject, TwoArrow>({
   metadata: ["Example7 operations"],
   monadOperations: [
     makeCommutativeBinaryMonadOperation<TwoObject, TwoArrow>({
       label: "example7-multiply",
-      transformation: example7Multiplication,
       component: (object) => TwoObjectCategory.id(object),
       metadata: ["Example7 associative binary operation"],
       commutativeMetadata: ["Example7 degeneracy"],
     }),
   ],
-});
+}) as unknown as FunctorInteractionLawOperations<TwoObject, TwoArrow>;
 
 export const makeExample7MonadComonadInteractionLaw = () => {
   const law = makeFunctorInteractionLaw<TwoObject, TwoArrow, Example7Left, Example7Right, Example7InteractionValue>({
     kernel: example7Kernel,
-    left: example7LeftFunctor.functor,
-    right: example7RightFunctor.functor,
-    convolution: example7Convolution,
+    left: example7LeftFunctorForLaw,
+    right: example7RightFunctorForLaw,
+    convolution: example7ConvolutionForLaw,
     dualizing: example7ValueCarrier,
     pairing: (_object, carrier) =>
       SetCat.hom(carrier, example7ValueCarrier, (cls) =>
@@ -3435,7 +3483,6 @@ export const makeExample7MonadComonadInteractionLaw = () => {
       );
     },
     tags: { primal: "Example7Primal", dual: "Example7Dual" },
-    metadata: ["Example7 interaction law"],
     operations: example7Operations,
   });
 
@@ -3818,23 +3865,44 @@ const example8Comultiplication = constructNaturalTransformationWithWitness(
       SetCat.hom(example8ReaderCarrier, example8ReaderSquaredCarrier, (value) => [
         value[0],
         value,
-      ]),
+      ] as Example8ReaderSquared),
     ),
   { metadata: ["Example8 comultiplication"], samples: { objects: TwoObjectCategory.objects } },
 );
 
 const example8Convolution = dayTensor(
   example8Kernel,
-  example8LeftFunctor.functor,
-  example8RightFunctor.functor,
+  example8LeftFunctor,
+  example8RightFunctor,
 );
+
+const example8LeftFunctorForLaw = example8LeftFunctor as unknown as ContravariantFunctorWithWitness<
+  TwoObject,
+  TwoArrow,
+  SetObj<Example8Left>,
+  SetHom<Example8Left, Example8Left>
+>;
+
+const example8RightFunctorForLaw = example8RightFunctor as unknown as FunctorWithWitness<
+  TwoObject,
+  TwoArrow,
+  SetObj<Example8Right>,
+  SetHom<Example8Right, Example8Right>
+>;
+
+const example8ConvolutionForLaw = example8Convolution as unknown as DayConvolutionResult<
+  TwoObject,
+  TwoArrow,
+  Example8Left,
+  Example8Right
+>;
 
 export const makeExample8MonadComonadInteractionLaw = () => {
   const law = makeFunctorInteractionLaw<TwoObject, TwoArrow, Example8Left, Example8Right, Example8InteractionValue>({
     kernel: example8Kernel,
-    left: example8LeftFunctor.functor,
-    right: example8RightFunctor.functor,
-    convolution: example8Convolution,
+    left: example8LeftFunctorForLaw,
+    right: example8RightFunctorForLaw,
+    convolution: example8ConvolutionForLaw,
     dualizing: example8ValueCarrier,
     pairing: (_object, carrier) =>
       SetCat.hom(carrier, example8ValueCarrier, (cls) =>
@@ -3853,7 +3921,6 @@ export const makeExample8MonadComonadInteractionLaw = () => {
       );
     },
     tags: { primal: "Example8Primal", dual: "Example8Dual" },
-    metadata: ["Example8 interaction law"],
   });
 
   const monad: MonadStructure<TwoObject, TwoArrow> = {
@@ -3912,7 +3979,7 @@ export interface AssociativeBinaryDegeneracyObjectWitness<
   readonly object: Obj;
   readonly operationLabel: string;
   readonly metadata: ReadonlyArray<string>;
-  readonly injections?: AssociativeBinaryDegeneracyInjections<SetObj<Right>>;
+  readonly injections?: AssociativeBinaryDegeneracyInjections<Right>;
   readonly theta?: SetHom<
     readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>],
     Value
@@ -4074,7 +4141,7 @@ export const checkAssociativeBinaryDegeneracy = <
     if (trace.artifacts.zeroComparisonGap)
       gaps.push(trace.artifacts.zeroComparisonGap);
 
-    const injections: AssociativeBinaryDegeneracyInjections<SetObj<Right>> = {
+    const injections: AssociativeBinaryDegeneracyInjections<Right> = {
       coproduct,
       iota: coproduct.injections.inl,
       kappa: coproduct.injections.inr,
@@ -4095,20 +4162,34 @@ export const checkAssociativeBinaryDegeneracy = <
 
     combinedMetadata.forEach((entry) => metadataAggregate.add(entry));
 
-    witnesses.push({
+    const witness: AssociativeBinaryDegeneracyObjectWitness<
+      Obj,
+      Arr,
+      Left,
+      Right,
+      Value
+    > = {
       object: trace.object,
       operationLabel: baseLabel,
       metadata: combinedMetadata,
       injections,
-      theta: psiFiber?.phi,
-      delta: comultiplication,
-      mu: multiplication,
-      h: trace.artifacts.toTerminal,
-      deltaPrime: trace.artifacts.terminalDiagonal,
-      kPrime: trace.artifacts.kPrime,
-      k: trace.artifacts.zeroComparison?.toZero,
       details: detailEntries,
       gaps,
+    };
+
+    witnesses.push({
+      ...witness,
+      ...(psiFiber?.phi ? { theta: psiFiber.phi } : {}),
+      ...(comultiplication ? { delta: comultiplication } : {}),
+      ...(multiplication ? { mu: multiplication } : {}),
+      ...(trace.artifacts.toTerminal ? { h: trace.artifacts.toTerminal } : {}),
+      ...(trace.artifacts.terminalDiagonal
+        ? { deltaPrime: trace.artifacts.terminalDiagonal }
+        : {}),
+      ...(trace.artifacts.kPrime ? { kPrime: trace.artifacts.kPrime } : {}),
+      ...(trace.artifacts.zeroComparison?.toZero
+        ? { k: trace.artifacts.zeroComparison.toZero }
+        : {}),
     });
   }
 
@@ -4201,32 +4282,33 @@ export const stretchMonadComonadInteractionLaw = <
     LawObj,
     LawArr
   >,
-): StretchMonadComonadInteractionLawResult<Obj, Arr, LeftPrime, RightPrime, Value, LawObj, LawArr> => {
-  const stretchedLaw = stretchInteractionLaw(input.base.law, {
-    ...input.stretch,
-    operations: input.stretch.operations ?? input.base.law.operations,
-  });
+  ): StretchMonadComonadInteractionLawResult<Obj, Arr, LeftPrime, RightPrime, Value, LawObj, LawArr> => {
+    const operations = input.stretch.operations ?? input.base.law.operations;
+    const stretchedLaw = stretchInteractionLaw(input.base.law, {
+      ...input.stretch,
+      ...(operations ? { operations } : {}),
+    });
 
-  const metadata = mergeMetadataList(
-    mergeMetadataList(input.base.metadata, input.metadata),
-    ["StretchMonadComonadInteractionLaw"],
-  );
+    const metadata = mergeMetadataList(
+      mergeMetadataList(input.base.metadata, input.metadata),
+      ["StretchMonadComonadInteractionLaw"],
+    );
 
-  const packaged = makeMonadComonadInteractionLaw({
-    monad: input.monad,
-    comonad: input.comonad,
-    law: stretchedLaw,
-    ...(metadata ? { metadata } : {}),
-    ...(input.packageOptions ? { options: input.packageOptions } : {}),
-  });
+    const packaged = makeMonadComonadInteractionLaw({
+      monad: input.monad,
+      comonad: input.comonad,
+      law: stretchedLaw,
+      ...(metadata ? { metadata } : {}),
+      ...(input.packageOptions ? { options: input.packageOptions } : {}),
+    });
 
-  const diagnostics = [
-    "stretchMonadComonadInteractionLaw: derived stretched functor interaction law via supplied mappings.",
-    ...packaged.diagnostics,
-  ];
+    const diagnostics = [
+      "stretchMonadComonadInteractionLaw: derived stretched functor interaction law via supplied mappings.",
+      ...packaged.diagnostics,
+    ];
 
-  return { interaction: packaged, stretchedLaw, diagnostics };
-};
+    return { interaction: packaged, stretchedLaw, diagnostics };
+  };
 
 export interface TensorMonadComonadInteractionLawInput<
   Obj,

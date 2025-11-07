@@ -208,7 +208,7 @@ export type ADTPolynomialContainerOracles<
     readonly seeds: ReadonlyArray<Seed>
     readonly valueFromSeed: (seed: Seed) => ADTValue<Constructors>
     readonly scenarios: ReadonlyArray<
-      ADTPolynomialContainerCompositionScenario<Constructors, Seed, any, any>
+      ADTPolynomialContainerCompositionScenario<Constructors, Seed, unknown, unknown>
     >
   }) => ADTPolynomialContainerCompositionOracleReport<Constructors, Seed>
 }>
@@ -319,7 +319,7 @@ export type ADTPolynomialOracles<
   readonly analyzeMapPositions: <Seed>(input: {
     readonly seeds: ReadonlyArray<Seed>
     readonly valueFromSeed: (seed: Seed) => ADTValue<Constructors>
-    readonly scenarios: ReadonlyArray<ADTPolynomialMapScenario<Constructors, Seed, any>>
+    readonly scenarios: ReadonlyArray<ADTPolynomialMapScenario<Constructors, Seed, unknown>>
   }) => ADTPolynomialMapOracleReport<Seed>
   readonly analyzeRecursion?: <Seed>(input: {
     readonly seeds: ReadonlyArray<Seed>

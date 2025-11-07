@@ -165,11 +165,11 @@ describe("MNNE Example 4 indexed container relative monad", () => {
     const witness = describeIndexedContainerExample4Witness();
     const tampered = {
       ...witness,
-      substitutions: witness.substitutions?.map((rule) => {
+      substitutions: (witness.substitutions ?? []).map((rule) => {
         if (rule.index === "Stream" && rule.domainShape === "sigmaCons") {
           return {
             ...rule,
-            resultShape: { kind: "composition", cases: [] },
+            resultShape: { kind: "composition" as const, cases: [] as const },
           };
         }
         return rule;

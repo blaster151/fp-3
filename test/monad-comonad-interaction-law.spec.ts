@@ -45,6 +45,7 @@ import {
   deriveInteractionLawCurrying,
   deriveInteractionLawLeftCommaPresentation,
   deriveInteractionLawSweedlerSummary,
+  deriveInteractionLawLeftCommaEquivalence,
 } from "../functor-interaction-law";
 import { analyzeFunctorOperationDegeneracy } from "../functor-interaction-law-degeneracy";
 import { dayTensor } from "../day-convolution";
@@ -52,16 +53,13 @@ import {
   contravariantRepresentableFunctorWithWitness,
   covariantRepresentableFunctorWithWitness,
 } from "../functor-representable";
-import {
-  composeFunctors,
-  identityFunctorWithWitness,
-  type FunctorWithWitness,
-} from "../functor";
+import { constructFunctorWithWitness, type FunctorWithWitness } from "../functor";
 import {
   constructNaturalTransformationWithWitness,
   identityNaturalTransformation,
 } from "../natural-transformation";
 import { SetCat, getCarrierSemantics, type SetHom, type SetObj } from "../set-cat";
+import { setSimpleCategory } from "../set-simple-category";
 import { makeTwoObjectPromonoidalKernel } from "../promonoidal-structure";
 import { TwoObjectCategory, type TwoArrow, type TwoObject } from "../two-object-cat";
 import {
@@ -70,6 +68,9 @@ import {
   checkNonemptyListQuotient,
   checkNonemptyListSweedler,
 } from "../oracles";
+
+const toUnknownSetHom = <Dom, Cod>(hom: SetHom<Dom, Cod>): SetHom<unknown, unknown> =>
+  hom as unknown as SetHom<unknown, unknown>;
 
 type BooleanContribution = FunctorInteractionLawContribution<
   TwoObject,
@@ -89,11 +90,13 @@ const enumerate = <T>(carrier: SetObj<T>): ReadonlyArray<T> => {
 
 const buildBooleanLaw = () => {
   const kernel = makeTwoObjectPromonoidalKernel();
-  const left = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
-  const right = covariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
-  const convolution = dayTensor(kernel, left.functor, right.functor);
+  const leftToolkit = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
+  const rightToolkit = covariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
+  const left = leftToolkit.functor;
+  const right = rightToolkit.functor;
+  const convolution = dayTensor(kernel, left, right);
   const dualizing = SetCat.obj([false, true], { tag: "Bool" });
-  const operations = makeFunctorInteractionLawOperations({
+  const operations = makeFunctorInteractionLawOperations<TwoObject, TwoArrow>({
     metadata: ["MonadComonadSpec"],
     monadOperations: [],
   });
@@ -106,8 +109,8 @@ const buildBooleanLaw = () => {
 
   return makeFunctorInteractionLaw({
     kernel,
-    left: left.functor,
-    right: right.functor,
+    left,
+    right,
     convolution,
     dualizing,
     pairing,
@@ -118,20 +121,44 @@ const buildBooleanLaw = () => {
 };
 
 const buildIdentityMonad = (): MonadStructure<TwoObject, TwoArrow> => {
-  const functor = identityFunctorWithWitness(TwoObjectCategory);
+  const carriers = new Map<TwoObject, SetObj<TwoObject>>();
+  const carrierFor = (object: TwoObject): SetObj<TwoObject> => {
+    const existing = carriers.get(object);
+    if (existing) return existing;
+    const carrier = SetCat.obj([object], { tag: `IdentityCarrier(${object})` });
+    carriers.set(object, carrier);
+    return carrier;
+  };
+
+  const functor = constructFunctorWithWitness<
+    TwoObject,
+    TwoArrow,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
+    TwoObjectCategory,
+    setSimpleCategory,
+    {
+      F0: (object) => carrierFor(object) as unknown as SetObj<unknown>,
+      F1: (arrow: TwoArrow) =>
+        toUnknownSetHom(
+          SetCat.hom(
+            carrierFor(TwoObjectCategory.src(arrow)),
+            carrierFor(TwoObjectCategory.dst(arrow)),
+            () => TwoObjectCategory.dst(arrow),
+          ),
+        ),
+    },
+    { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
+  );
   const unit = identityNaturalTransformation(functor, {
     metadata: ["Identity monad unit"],
+    samples: { objects: TwoObjectCategory.objects },
   });
-  const composite: FunctorWithWitness<TwoObject, TwoArrow, TwoObject, TwoArrow> = composeFunctors(
-    functor,
-    functor,
-  );
-  const multiplication = constructNaturalTransformationWithWitness(
-    composite,
-    functor,
-    (object) => TwoObjectCategory.id(object),
-    { metadata: ["Identity monad multiplication"] },
-  );
+  const multiplication = identityNaturalTransformation(functor, {
+    metadata: ["Identity monad multiplication"],
+    samples: { objects: TwoObjectCategory.objects },
+  });
   return {
     functor,
     unit,
@@ -141,20 +168,44 @@ const buildIdentityMonad = (): MonadStructure<TwoObject, TwoArrow> => {
 };
 
 const buildIdentityComonad = (): ComonadStructure<TwoObject, TwoArrow> => {
-  const functor = identityFunctorWithWitness(TwoObjectCategory);
+  const carriers = new Map<TwoObject, SetObj<TwoObject>>();
+  const carrierFor = (object: TwoObject): SetObj<TwoObject> => {
+    const existing = carriers.get(object);
+    if (existing) return existing;
+    const carrier = SetCat.obj([object], { tag: `IdentityCarrier(${object})` });
+    carriers.set(object, carrier);
+    return carrier;
+  };
+
+  const functor = constructFunctorWithWitness<
+    TwoObject,
+    TwoArrow,
+    SetObj<unknown>,
+    SetHom<unknown, unknown>
+  >(
+    TwoObjectCategory,
+    setSimpleCategory,
+    {
+      F0: (object) => carrierFor(object) as unknown as SetObj<unknown>,
+      F1: (arrow: TwoArrow) =>
+        toUnknownSetHom(
+          SetCat.hom(
+            carrierFor(TwoObjectCategory.src(arrow)),
+            carrierFor(TwoObjectCategory.dst(arrow)),
+            () => TwoObjectCategory.dst(arrow),
+          ),
+        ),
+    },
+    { objects: TwoObjectCategory.objects, arrows: TwoObjectCategory.arrows },
+  );
   const counit = identityNaturalTransformation(functor, {
     metadata: ["Identity comonad counit"],
+    samples: { objects: TwoObjectCategory.objects },
   });
-  const composite: FunctorWithWitness<TwoObject, TwoArrow, TwoObject, TwoArrow> = composeFunctors(
-    functor,
-    functor,
-  );
-  const comultiplication = constructNaturalTransformationWithWitness(
-    functor,
-    composite,
-    (object) => TwoObjectCategory.id(object),
-    { metadata: ["Identity comonad comultiplication"] },
-  );
+  const comultiplication = identityNaturalTransformation(functor, {
+    metadata: ["Identity comonad comultiplication"],
+    samples: { objects: TwoObjectCategory.objects },
+  });
   return {
     functor,
     counit,
@@ -170,8 +221,12 @@ describe("makeMonadComonadInteractionLaw", () => {
     const comonad = buildIdentityComonad();
 
     const currying = deriveInteractionLawCurrying(law);
-    const comma = deriveInteractionLawLeftCommaPresentation(law);
-    const sweedler = deriveInteractionLawSweedlerSummary(law, { currying, comma });
+    const commaPresentation = deriveInteractionLawLeftCommaPresentation(law);
+    const commaEquivalence = deriveInteractionLawLeftCommaEquivalence(law);
+    const sweedler = deriveInteractionLawSweedlerSummary(law, {
+      currying,
+      comma: commaEquivalence,
+    });
     const degeneracy = analyzeFunctorOperationDegeneracy(law);
 
     const packaged = makeMonadComonadInteractionLaw({
@@ -181,7 +236,8 @@ describe("makeMonadComonadInteractionLaw", () => {
       metadata: ["Packaged"],
       options: {
         currying,
-        comma,
+        comma: commaPresentation,
+        commaEquivalence,
         sweedler,
         degeneracy,
         metadata: ["Options"],
@@ -189,7 +245,8 @@ describe("makeMonadComonadInteractionLaw", () => {
     });
 
     expect(packaged.currying).toBe(currying);
-    expect(packaged.comma).toBe(comma);
+    expect(packaged.comma).toBe(commaPresentation);
+    expect(packaged.commaEquivalence).toBe(commaEquivalence);
     expect(packaged.sweedler).toBe(sweedler);
     expect(packaged.degeneracy).toBe(degeneracy);
     expect(packaged.psiComponents).toBe(currying.fibers);
@@ -208,6 +265,7 @@ describe("makeMonadComonadInteractionLaw", () => {
       "makeMonadComonadInteractionLaw: reused supplied comma presentation.",
       "makeMonadComonadInteractionLaw: reused supplied Sweedler summary.",
       "makeMonadComonadInteractionLaw: reused supplied degeneracy analysis.",
+      "makeMonadComonadInteractionLaw: reused supplied comma equivalence diagnostics.",
     ]);
   });
 
@@ -599,7 +657,7 @@ describe("dual map translators", () => {
           return component as unknown as SetHom<unknown, unknown>;
         }
         return SetCat.hom(domain, codomain, (element) => {
-          const baseAssignment = component.map(element);
+          const baseAssignment = component.map(element) as (input: unknown) => unknown;
           const constantValue = baseAssignment(fallbackRight);
           return ((_: unknown) => constantValue) as (input: unknown) => unknown;
         });
