@@ -20,6 +20,9 @@
 - Wrap `buildDayPairingData` outputs into dedicated interaction-law values that mirror the paper’s definitions.
 - Preserve indexed carriers, contribution collectors, and Chu aggregators so no information is lost compared to today’s lower-level API.
 
+### Status
+- ✅ Pass 1 introduced `algebraic-effects.ts`, packaging algebraic signatures, runner co-operations, and Example 1’s state signature/runner with executable `getenv`/`setenv` witnesses plus diagnostics-ready metadata.
+
 ### Tasks
 1. **Module creation (`functor-interaction-law.ts`).**
    - Define a `FunctorInteractionLaw` record that packages: promonoidal kernel reference, left/right witnesses, `DayConvolutionResult`, indexed carriers, contribution aggregator, and the induced `ChuSpace`.
@@ -352,6 +355,9 @@
 - Re-state the concluding observation that the **handler-induced runner map** and the **state runner map** both collapse to the evaluation morphism `ev_Y : T°Y × Y → Y`; ensure the roadmap requires explicit witnesses that `θ^X_Y` factors through this evaluation when translated via the `T°`-coalgebra/Costate equivalences.
 - Encode **Example 12** in detail: update lenses `(hp : Y → A, upd : Y × B → Y)` give rise to runners of the update monad `TX = A ⇒ (B × X)`; plan reusable constructors/oracles that witness the bijection between update lenses, runners, `Cost^Y`-transformations, and coalgebras.
 - Extend the plan’s residual-law preparation so machines that only realise a subset of effects are modelled via partial runners, keeping compatibility with the nullary/binary degeneracy metadata gathered in Phases Ib–III.
+
+### Status
+- ✅ Pass 1 introduced `algebraic-effects.ts`, packaging algebraic signatures, runner co-operations, and Example 1’s state signature/runner with executable `getenv`/`setenv` witnesses plus diagnostics-ready metadata.
 
 ### Tasks
 0. **Algebraic signatures, theories, and Example 1.**
