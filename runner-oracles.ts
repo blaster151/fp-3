@@ -9,6 +9,12 @@ import {
   checkPsiToThetaConsistency,
   checkRunnerCurryingConsistency,
   checkRunnerAxioms,
+  runnerToCoalgebraComponents,
+  coalgebraComponentsToRunner,
+  runnerToCostateComponents,
+  costateComponentsToRunner,
+  coalgebraToCostate,
+  costateToCoalgebra,
 } from "./stateful-runner";
 
 export interface RunnerOracleResult {
@@ -142,6 +148,57 @@ export const RunnerOracles = {
       diagnostics: report,
     };
   },
+  equivalenceCoalgebra: <Obj, Arr, Left, Right, Value>(
+    runner: StatefulRunner<Obj, Left, Right, Value>,
+    law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+    options: RunnerOracleOptions<Obj> = {},
+  ): RunnerOracleResult => {
+    const forward = runnerToCoalgebraComponents(runner, law, options);
+    const back = coalgebraComponentsToRunner(forward.components, law, options);
+    const holds = forward.diagnostics.mismatches === 0 && back.diagnostics.mismatches === 0;
+    return {
+      registryPath: path("equivalence.coalgebra"),
+      holds,
+      details: [...forward.diagnostics.details.slice(0, 6), ...back.diagnostics.details.slice(0, 6)],
+      diagnostics: { forward, back },
+    };
+  },
+  equivalenceCostate: <Obj, Arr, Left, Right, Value>(
+    runner: StatefulRunner<Obj, Left, Right, Value>,
+    law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+    options: RunnerOracleOptions<Obj> = {},
+  ): RunnerOracleResult => {
+    const forward = runnerToCostateComponents(runner, law, options);
+    const back = costateComponentsToRunner(forward.components, law, options);
+    const holds = forward.diagnostics.mismatches === 0 && back.diagnostics.mismatches === 0;
+    return {
+      registryPath: path("equivalence.costate"),
+      holds,
+      details: [...forward.diagnostics.details.slice(0, 6), ...back.diagnostics.details.slice(0, 6)],
+      diagnostics: { forward, back },
+    };
+  },
+  equivalenceTriangle: <Obj, Arr, Left, Right, Value>(
+    runner: StatefulRunner<Obj, Left, Right, Value>,
+    law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+    options: RunnerOracleOptions<Obj> = {},
+  ): RunnerOracleResult => {
+    // Form coalgebra, translate to costate, then back to coalgebra, measuring mismatches.
+    const coal = runnerToCoalgebraComponents(runner, law, options);
+    const cost = coalgebraToCostate(coal.components, law, options);
+    const coalBack = costateToCoalgebra(cost.components, law, options);
+    const holds = coal.diagnostics.mismatches === 0 && cost.diagnostics.mismatches === 0 && coalBack.diagnostics.mismatches === 0;
+    return {
+      registryPath: path("equivalence.triangle"),
+      holds,
+      details: [
+        ...coal.diagnostics.details.slice(0, 4),
+        ...cost.diagnostics.details.slice(0, 4),
+        ...coalBack.diagnostics.details.slice(0, 4),
+      ],
+      diagnostics: { coal, cost, coalBack },
+    };
+  },
 };
 
 export const enumerateRunnerOracles = <Obj, Arr, Left, Right, Value>(
@@ -157,4 +214,7 @@ export const enumerateRunnerOracles = <Obj, Arr, Left, Right, Value>(
   RunnerOracles.handlers(runner, law, options),
   RunnerOracles.psiTheta(runner, law, options),
   RunnerOracles.unified(runner, law, options),
+  RunnerOracles.equivalenceCoalgebra(runner, law, options),
+  RunnerOracles.equivalenceCostate(runner, law, options),
+  RunnerOracles.equivalenceTriangle(runner, law, options),
 ];

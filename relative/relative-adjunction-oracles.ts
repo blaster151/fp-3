@@ -141,7 +141,7 @@ export const RelativeAdjunctionOracles = {
     if (!input) {
       return pendingOracle(
         "pasting",
-        `${descriptor.name} oracle requires nested relative adjunction data and the Proposition 5.30 comparison cell; none was supplied. Summary: ${descriptor.summary}`,
+  `${descriptor.name} oracle requires nested relative adjunction data and the comparison 2-cell for the pasted unit/extension; none was supplied. Summary: ${descriptor.summary}`,
       );
     }
     const report = analyzeRelativeAdjunctionPasting(input);
@@ -237,7 +237,7 @@ export const RelativeAdjunctionOracles = {
     if (!input) {
       return pendingOracle(
         "resoluteLeftMorphism",
-        `${descriptor.name} oracle requires resolute data together with Proposition 5.29 precomposition and Proposition 5.30 pasting witnesses; none were supplied. Summary: ${descriptor.summary}`,
+  `${descriptor.name} oracle requires resolute data together with precomposition and pasting witnesses; none were supplied. Summary: ${descriptor.summary}`,
       );
     }
     const report = analyzeRelativeAdjunctionResoluteLeftMorphism(input);
@@ -275,7 +275,7 @@ export const RelativeAdjunctionOracles = {
     if (!input) {
       return pendingOracle(
         "relativeMonadModule",
-        `${descriptor.name} oracle requires the Corollary 5.34 left-morphism data together with the induced module action; none was supplied. Summary: ${descriptor.summary}`,
+  `${descriptor.name} oracle requires left-morphism data together with the induced module action; none was supplied. Summary: ${descriptor.summary}`,
       );
     }
     const report = analyzeRelativeAdjunctionRelativeMonadModule(input);
@@ -380,7 +380,7 @@ export const RelativeAdjunctionOracles = {
     if (!input) {
       return pendingOracle(
         "relativeMonadAdjunctionOpalgebraTransport",
-        `${descriptor.name} oracle requires Proposition 6.27 transport data, including a pasting witness, source opalgebra, transported algebra, and naturality comparisons. Summary: ${descriptor.summary}`,
+  `${descriptor.name} oracle requires transport data: pasting witness, source opalgebra, transported algebra, and naturality comparisons. Summary: ${descriptor.summary}`,
       );
     }
     const report = analyzeRelativeAdjunctionRelativeMonadOpalgebraTransport(
@@ -409,7 +409,7 @@ export const RelativeAdjunctionOracles = {
     if (!input) {
       return pendingOracle(
         "relativeMonadAdjunctionAlgebraTransport",
-        `${descriptor.name} oracle requires the dual Proposition 6.27 transport data from algebras to opalgebras, including naturality witnesses. Summary: ${descriptor.summary}`,
+  `${descriptor.name} oracle requires the dual transport data from algebras to opalgebras, including naturality witnesses. Summary: ${descriptor.summary}`,
       );
     }
     const report = analyzeRelativeAdjunctionRelativeMonadAlgebraTransport(
@@ -438,7 +438,7 @@ export const RelativeAdjunctionOracles = {
     if (!input) {
       return pendingOracle(
         "relativeMonadAdjunctionTransportEquivalence",
-        `${descriptor.name} oracle requires the Proposition 6.27 transports and Remark 6.28 unit/counit comparisons. Summary: ${descriptor.summary}`,
+  `${descriptor.name} oracle requires both transports and the accompanying unit/counit comparison witnesses. Summary: ${descriptor.summary}`,
       );
     }
     const report = analyzeRelativeAdjunctionRelativeMonadTransportEquivalence(
@@ -460,7 +460,7 @@ export const RelativeAdjunctionOracles = {
     if (!input) {
       return pendingOracle(
         "relativeMonadPastingFullyFaithful",
-        `${descriptor.name} oracle needs the Proposition 5.37 pasting data together with a fully faithful right adjoint witness; none were supplied. Summary: ${descriptor.summary}`,
+  `${descriptor.name} oracle needs pasting data together with a fully faithful right adjoint witness; none were supplied. Summary: ${descriptor.summary}`,
       );
     }
     const report = analyzeRelativeAdjunctionRelativeMonadPastingFullyFaithful(input);
@@ -479,7 +479,7 @@ export const RelativeAdjunctionOracles = {
     if (!input) {
       return pendingOracle(
         "relativeMonadPastingAdjunction",
-        `${descriptor.name} oracle aggregates two Proposition 5.37 pastings; none were supplied. Summary: ${descriptor.summary}`,
+  `${descriptor.name} oracle aggregates two pasting witnesses; none were supplied. Summary: ${descriptor.summary}`,
       );
     }
     const report = analyzeRelativeAdjunctionRelativeMonadPastingAdjunction(input);
@@ -498,7 +498,7 @@ export const RelativeAdjunctionOracles = {
     if (!input) {
       return pendingOracle(
         "relativeMonadCompositeThroughRoot",
-        `${descriptor.name} oracle requires both the module action and pasting witnesses described in Corollary 5.40; none were supplied. Summary: ${descriptor.summary}`,
+  `${descriptor.name} oracle requires both the module action and pasting witnesses for the composite through the root; none were supplied. Summary: ${descriptor.summary}`,
       );
     }
     const report = analyzeRelativeAdjunctionRelativeMonadComposite(input);
@@ -517,7 +517,7 @@ export const RelativeAdjunctionOracles = {
     if (!input) {
       return pendingOracle(
         "relativeMonadLiteratureRecoveries",
-        `${descriptor.name} oracle must compare the Corollary 5.40 output against Hutson and Altenkirch–Chapman–Uustalu witnesses; none were supplied. Summary: ${descriptor.summary}`,
+  `${descriptor.name} oracle must compare the composite-through-root output against witnesses from the literature (e.g., Hutson; Altenkirch–Chapman–Uustalu); none were supplied. Summary: ${descriptor.summary}`,
       );
     }
     const report = analyzeRelativeAdjunctionRelativeMonadLiteratureRecoveries(input);

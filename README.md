@@ -114,6 +114,10 @@ All documentation and support scripts for the system live inside the `pdi/` dire
 
 #### Relative monads at a glance
 
+### FinSet isomorphism adapter
+
+`makeIsoReadyFinSet(universe)` constructs a finite-set category with an added helper `candidatesToInvert(arrow)` that returns inverse candidates for arrows that are injective and surjective. See `test/iso-axioms.finset.spec.ts` for examples (identity is iso, composition closure, inverse uniqueness).
+
 ```typescript
 import {
   fromMonad,

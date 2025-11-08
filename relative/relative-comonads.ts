@@ -184,7 +184,7 @@ export const analyzeRelativeComonadCorepresentability = <Obj, Arr, Payload, Evid
 
   if (witness.orientation !== "right") {
     issues.push(
-      "Corepresentability witness must arise from a right restriction B(1,j) to align with the dual of Theorem 4.16.",
+      "Corepresentability witness must arise from a right restriction B(1,j) so the corepresentability criterion holds (dual form).",
     );
   }
 
@@ -334,7 +334,7 @@ export const analyzeRelativeEnrichedComonad = <
     issues,
     details: holds
       ? witness.details ??
-        "Relative comonad enrichment reuses the counit and coextension witnesses dual to Section 8."
+        "Relative comonad enrichment reuses the counit and coextension witnesses (dual formulation)."
       : `Relative enriched comonad issues: ${issues.join("; ")}`,
     witness,
   };
@@ -354,7 +354,7 @@ export const describeRelativeEnrichedComonadWitness = <
   counitComparison: comonad.counit,
   coextensionComparison: comonad.coextension,
   details:
-    "Enriched relative comonad witness defaults to the carrier, counit, and coextension comparisons promised by Proposition 8.22.",
+    "Enriched relative comonad witness defaults to carrier, counit, and coextension comparisons required by the enrichment criterion.",
 });
 
 export interface RelativeComonadCoopAlgebraDiagrams<
@@ -498,7 +498,7 @@ export const analyzeRelativeComonadCoopAlgebra = <
     issues: holds ? [] : issues,
     details: holds
       ? witness.details ??
-        "Relative comonad coopalgebra reuses the enriched coextension/counit witnesses dual to Theorem 8.24."
+        "Relative comonad coopalgebra reuses the enriched coextension and counit witnesses (dual formulation)."
       : `Relative enriched coopalgebra issues: ${issues.join("; ")}`,
     witness,
     enrichment,
@@ -527,7 +527,7 @@ export const describeRelativeComonadCoopAlgebraWitness = <
     },
   },
   details:
-    "Relative comonad coopalgebra witness defaults to the carrier, coextension, and counit comparisons highlighted in Theorem 8.24.",
+    "Relative comonad coopalgebra witness defaults to carrier, coextension, and counit comparisons reused from the enrichment data.",
 });
 
 export interface RelativeComoduleDiagrams<Obj, Arr, Payload, Evidence> {

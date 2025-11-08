@@ -139,6 +139,10 @@ export {
 } from "./graph-subobject-classifier"
 export * from "./set-subobject-classifier"
 export * from "./adjoint-functor-theorem"
+// Adapters
+export * from "./adapters/iso-ready.finset"
+// Avoid duplicate symbol clash: re-export FreeTreeMonad under adapter namespace if needed.
+export type { FreeTreeMonad as FreeTreeMonadTree } from "./tree-free-monad";
 
 // Aggregated exports for the emerging virtual equipment and relative layers.
 export * from "./src/all/virtual-equipment-relative"
@@ -931,3 +935,6 @@ export { UnionFind } from "./operations/union-find"
 // Namespaces are declared above and exported automatically
 
 // Examples have been moved to examples.ts
+// Re-export FreeTreeMonad members selectively to avoid name collision with stateful-runner's placeholder.
+export { makeFreeTreeMonad, foldTree, Return as treeReturn, Op as treeOp } from "./tree-free-monad";
+export type { Signature, Tree } from "./tree-free-monad";

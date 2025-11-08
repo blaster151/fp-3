@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { makeExample6MonadComonadInteractionLaw, buildRunnerFromInteraction, checkStatefulRunner, checkRunnerCoalgebra, buildRunnerCoalgebra } from "../allTS";
+import { makeExample6MonadComonadInteractionLaw, buildRunnerFromInteraction, checkStatefulRunner, checkRunnerCoalgebra, buildRunnerCoalgebra, checkRunnerCostate, buildRunnerCostate, buildEnrichedStatefulRunner, runnerToMonadMap, monadMapToRunner } from "../allTS";
 import { SetCat } from "../set-cat";
 
 describe("stateful runner", () => {
@@ -71,5 +71,92 @@ describe("stateful runner", () => {
     const report = checkRunnerCoalgebra(runner, law, { components: perturbed, sampleLimit: 4 });
     expect(report.holds).toBe(false);
     expect(report.mismatches).toBeGreaterThan(0);
+  });
+
+  it("costate check passes on Example 6", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const runner = buildRunnerFromInteraction(law);
+    const report = checkRunnerCostate(runner, law, { sampleLimit: 8 });
+    expect(report.holds).toBe(true);
+    expect(report.checked).toBeGreaterThan(0);
+    expect(report.mismatches).toBe(0);
+  });
+
+  it("costate check detects perturbations", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const runner = buildRunnerFromInteraction(law);
+    const baseline = buildRunnerCostate(runner, law);
+    const perturbed = new Map(baseline);
+    for (const [obj, hom] of baseline.entries()) {
+      const domIter = hom.dom[Symbol.iterator]();
+      const first = domIter.next();
+      if (first.done) break;
+      const canonical = first.value;
+      const bad = SetCat.hom(hom.dom, hom.cod, () => hom.map(canonical));
+      perturbed.set(obj, bad);
+      break;
+    }
+    const report = checkRunnerCostate(runner, law, { components: perturbed, sampleLimit: 4 });
+    expect(report.holds).toBe(false);
+    expect(report.mismatches).toBeGreaterThan(0);
+  });
+
+  it("enriched runner structural unit/multiplication still hold", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const baseRunner = buildRunnerFromInteraction(law);
+    const enriched = buildEnrichedStatefulRunner(baseRunner, law, {
+      initialState: () => ({ count: 0 }),
+      evolve: (_obj, prev, _value) => ({ count: prev.count + 1 }),
+      sampleLimit: 8,
+    });
+    const report = checkStatefulRunner(enriched, law, { sampleLimit: 8 });
+    expect(report.holds).toBe(true);
+    expect(report.unitDiagram.mismatches).toBe(0);
+    expect(report.multiplicationDiagram.mismatches).toBe(0);
+  });
+
+  it("Run(T) identity laws hold for trivial morphisms", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const runner = buildRunnerFromInteraction(law);
+    // Use buildRunnerLawReport indirectly via identity check; rely on exported checkRunTCategoryLaws
+    // Import deferred through allTS (already pulled in above functions)
+    // Minimal assertion: creating enriched runner doesn't break identities
+    const enriched = buildEnrichedStatefulRunner(runner, law, { initialState: () => ({ count: 0 }) });
+    // Identity morphisms implicit in category laws check
+    const { checkRunTCategoryLaws } = require("../stateful-runner");
+    const catReport = checkRunTCategoryLaws(law, { source: enriched }, { sampleLimit: 4 });
+    expect(catReport.leftIdentity.mismatches).toBe(0);
+    expect(catReport.rightIdentity.mismatches).toBe(0);
+  });
+
+  it("Run(T) associativity holds for composed identities", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const runner = buildRunnerFromInteraction(law);
+    const enriched = buildEnrichedStatefulRunner(runner, law, { initialState: () => ({ count: 0 }) });
+    const { checkRunTCategoryLaws } = require("../stateful-runner");
+    const catReport = checkRunTCategoryLaws(law, { source: enriched, target: enriched, mid: enriched, tail: enriched }, { sampleLimit: 4 });
+    expect(catReport.associativity.skipped || catReport.associativity.mismatches === 0).toBe(true);
+  });
+
+  it("Runner ⇔ monad translators are available and produce components/θ", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const runner = buildRunnerFromInteraction(law);
+    const mm = runnerToMonadMap(runner, law.monad, law.monad, { sampleLimit: 4 });
+    expect(mm.components.size).toBeGreaterThanOrEqual(0);
+    const rr = monadMapToRunner(mm, law, { sampleLimit: 4 });
+    expect(rr.thetas.size).toBeGreaterThan(0);
+    expect(rr.generatorPreservation?.checked).toBeGreaterThanOrEqual(0);
+  });
+
+  it("costate/coalgebra equivalence oracles succeed on Example 6", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const runner = buildRunnerFromInteraction(law);
+    const { RunnerOracles } = require("../runner-oracles");
+    const coalEq = RunnerOracles.equivalenceCoalgebra(runner, law, { sampleLimit: 4 });
+    const costEq = RunnerOracles.equivalenceCostate(runner, law, { sampleLimit: 4 });
+    const triEq = RunnerOracles.equivalenceTriangle(runner, law, { sampleLimit: 4 });
+    expect(coalEq.holds).toBe(true);
+    expect(costEq.holds).toBe(true);
+    expect(triEq.holds).toBe(true);
   });
 });

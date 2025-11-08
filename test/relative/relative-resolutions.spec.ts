@@ -90,29 +90,29 @@ const makeTrivialResolution = () => {
         {
           tightCell: relativeMonad.root,
           comparison: forward,
-          details: "Identity precomposition realises Proposition 5.29 in the trivial case.",
+          details: "Identity precomposition realises the basic precomposition criterion in the trivial case.",
         },
       ],
       pastings: [
         {
           inner: forward,
           outer: forward,
-          details: "Identity triangles witness Proposition 5.30's pasting condition.",
+          details: "Identity triangles witness the basic pasting condition.",
         },
       ],
       fullyFaithfulPostcompositions: [
         {
           rightLeg: relativeMonad.root,
           inducedAdjunctionSummary:
-            "Identity right leg stays fully faithful so Example 5.31 applies immediately.",
-          identityCollapseSummary: "Corollary 5.32 collapses the adjunction back to the original data.",
+            "Identity right leg stays fully faithful so the fully faithful case applies immediately.",
+          identityCollapseSummary: "Identity collapse criterion reduces the adjunction back to the original data.",
         },
       ],
       resoluteComposites: [
         {
           leftLeg: relativeMonad.root,
           rightAdjoint: relativeMonad.root,
-          details: "Identity adjunction is resolute, matching Remark 5.33 and Corollary 5.34.",
+          details: "Identity adjunction is resolute; the resolute composite matches the expected criterion.",
         },
       ],
       leftAdjointTransports: [
@@ -121,7 +121,7 @@ const makeTrivialResolution = () => {
           transportedMonad: relativeMonad,
           monadMorphism: forward,
           details:
-            "Proposition 5.37 transport along the identity left adjoint keeps the relative monad fixed.",
+            "Transport along the identity left adjoint keeps the relative monad fixed.",
         },
       ],
     },
@@ -201,10 +201,10 @@ describe("Resolution loose adjunction helpers", () => {
 
     expect(result.analysis.holds).toBe(true);
     expect(result.metadata.precompositions?.length).toBe(1);
-    expect(result.details).toContain("Proposition 5.29 witness(es)");
+  expect(result.details).toContain("precomposition witness(es)");
   });
 
-  it("records Proposition 5.29 data when precomposing the loose adjunction", () => {
+  it("records precomposition data when precomposing the loose adjunction", () => {
     const { resolution } = makeTrivialResolution();
 
     const result = precomposeLooseAdjunction({
@@ -215,10 +215,10 @@ describe("Resolution loose adjunction helpers", () => {
 
     expect(result.precompositionWitness.tightCell).toBe(resolution.inclusion);
     expect(result.metadata.precompositions?.length).toBe(2);
-    expect(result.details).toContain("Proposition 5.29 witness(es)");
+  expect(result.details).toContain("precomposition witness(es)");
   });
 
-  it("records Proposition 5.30 data when pasting adjunction triangles", () => {
+  it("records pasting data when pasting adjunction triangles", () => {
     const { resolution, forward } = makeTrivialResolution();
 
     const result = pasteLooseAdjunctionAlongResolution({
@@ -230,10 +230,10 @@ describe("Resolution loose adjunction helpers", () => {
 
     expect(result.pastingWitness.inner).toBe(forward);
     expect(result.metadata.pastings?.length).toBe(2);
-    expect(result.details).toContain("Proposition 5.30 pasting witness(es)");
+  expect(result.details).toContain("pasting witness(es)");
   });
 
-  it("records Example 5.31 data when postcomposing with a fully faithful right leg", () => {
+  it("records fully faithful data when postcomposing with a fully faithful right leg", () => {
     const { resolution } = makeTrivialResolution();
 
     const result = postcomposeLooseAdjunctionAlongFullyFaithful({
@@ -245,10 +245,10 @@ describe("Resolution loose adjunction helpers", () => {
 
     expect(result.fullyFaithfulWitness.rightLeg).toBe(resolution.relativeMonad.root);
     expect(result.metadata.fullyFaithfulPostcompositions?.length).toBe(2);
-    expect(result.details).toContain("Example 5.31 fully faithful witness(es)");
+  expect(result.details).toContain("fully faithful witness(es)");
   });
 
-  it("records Remark 5.33 data when a resolute pair is supplied", () => {
+  it("records resolute data when a resolute pair is supplied", () => {
     const { resolution } = makeTrivialResolution();
 
     const result = composeLooseAdjunctionResolutely({
@@ -260,10 +260,10 @@ describe("Resolution loose adjunction helpers", () => {
 
     expect(result.resoluteWitness.leftLeg).toBe(resolution.inclusion);
     expect(result.metadata.resoluteComposites?.length).toBe(2);
-    expect(result.details).toContain("Remark 5.33 resolute composite witness(es)");
+  expect(result.details).toContain("resolute composite witness(es)");
   });
 
-  it("records Proposition 5.37 data when transporting along a left adjoint", () => {
+  it("records transport data when transporting along a left adjoint", () => {
     const { resolution } = makeTrivialResolution();
 
     const result = transportLooseAdjunctionAlongLeftAdjoint({
@@ -274,7 +274,7 @@ describe("Resolution loose adjunction helpers", () => {
 
     expect(result.transportWitness.leftAdjoint).toBe(resolution.inclusion);
     expect(result.metadata.leftAdjointTransports?.length).toBe(2);
-    expect(result.details).toContain("Proposition 5.37 transport witness(es)");
+  expect(result.details).toContain("transport witness(es)");
     expect(result.details).toContain("(ℓ'!, r')");
   });
 
@@ -285,7 +285,7 @@ describe("Resolution loose adjunction helpers", () => {
 
     expect(report.holds).toBe(true);
     expect(report.induced).toBe(resolution.relativeMonad.looseCell);
-    expect(report.details).toContain("Proposition 5.37 transport witness(es)");
+  expect(report.details).toContain("transport witness(es)");
     expect(report.details).toContain("(ℓ'!, r')");
   });
 
@@ -303,13 +303,13 @@ describe("Resolution loose adjunction helpers", () => {
     expect(report.transportComparisons[0]?.summary).toContain("(ℓ'!, r')");
   });
 
-  it("identifies the loose monad via Corollary 5.28", () => {
+  it("identifies the loose monad via the identity-unit criterion", () => {
     const { resolution } = makeTrivialResolution();
 
     const report = identifyLooseMonadFromResolution(resolution);
 
     expect(report.holds).toBe(true);
-    expect(report.details).toContain("Corollary 5.28");
+  expect(report.details).toContain("identity-unit criterion");
     expect(report.comparison).toBe(resolution.comparison);
     expect(report.transportComparisons.length).toBeGreaterThan(0);
     expect(report.transportComparisons[0]?.summary).toContain("(ℓ'!, r')");
@@ -352,7 +352,7 @@ describe("Resolution loose adjunction helpers", () => {
   });
 });
 
-describe("Corollary 5.32 identity-unit criterion", () => {
+describe("Identity-unit criterion", () => {
   it("certifies the trivial resolution's identity unit", () => {
     const { resolution } = makeTrivialResolution();
 
@@ -361,12 +361,12 @@ describe("Corollary 5.32 identity-unit criterion", () => {
       left: resolution.inclusion,
       right: resolution.relativeMonad.carrier,
       unit: resolution.relativeMonad.unit,
-      details: "Trivial identity-unit witness propagates Corollary 5.32.",
+  details: "Trivial identity-unit witness propagates the identity-unit criterion.",
     });
 
     expect(report.holds).toBe(true);
     expect(report.monadsCoincide).toBe(true);
-    expect(report.details).toContain("Corollary 5.32");
+  expect(report.details).toContain("identity-unit criterion");
   });
 
   it("flags mismatched unit boundaries", () => {
@@ -390,7 +390,7 @@ describe("Corollary 5.32 identity-unit criterion", () => {
     expect(report.holds).toBe(false);
     expect(report.monadsCoincide).toBe(false);
     expect(report.issues).toContain(
-      "Unit 2-cell must use the supplied right leg as its right boundary for Corollary 5.32.",
+  "Unit 2-cell must use the supplied right leg as its right boundary for the identity-unit criterion.",
     );
   });
 });

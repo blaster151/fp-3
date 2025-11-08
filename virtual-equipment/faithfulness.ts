@@ -162,14 +162,14 @@ export const analyzeFullyFaithfulTight1Cell = <Obj, Arr, Payload, Evidence>(
   const leftRestriction = equipment.restrictions.left(data.tight, identityCodomain);
   if (!leftRestriction) {
     issues.push(
-      "Fully faithful tight 1-cells should admit the left restriction B(f,1) of the identity loose arrow (Definition 3.27).",
+  "Fully faithful tight 1-cells should admit the left restriction B(f,1) of the identity loose arrow (fully faithful criterion).",
     );
   }
 
   const rightRestriction = equipment.restrictions.right(identityDomain, data.tight);
   if (!rightRestriction) {
     issues.push(
-      "Fully faithful tight 1-cells should admit the right restriction B(1,f) of the identity loose arrow (Definition 3.27).",
+  "Fully faithful tight 1-cells should admit the right restriction B(1,f) of the identity loose arrow (fully faithful criterion).",
     );
   }
 
@@ -217,7 +217,7 @@ export const analyzeFullyFaithfulTight1Cell = <Obj, Arr, Payload, Evidence>(
     issues,
     details:
       issues.length === 0
-        ? "Identity restrictions exhibit the companion and conjoint required for a fully faithful tight 1-cell (Definition 3.27)."
+  ? "Identity restrictions exhibit the companion and conjoint required for a fully faithful tight 1-cell (fully faithful criterion)."
         : `Fully faithful analysis issues: ${issues.join("; ")}`,
     ...(witness !== undefined && { witness }),
   };

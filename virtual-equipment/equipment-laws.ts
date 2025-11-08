@@ -86,13 +86,13 @@ export const EquipmentLawRegistry = {
     name: "Right extension counit framing",
     registryPath: "virtualEquipment.extensions.rightExtension",
     summary:
-      "Definition 3.2 requires the counit of a right extension q ⋄ f to witness q ⇒ (q ⋄ f) ∘ f with identity vertical boundaries and compatible loose composites.",
+  "Right extension counit should witness q ⇒ (q ⋄ f) ∘ f with identity vertical boundaries and compatible loose composites.",
   },
   rightLiftUnit: {
     name: "Right lift unit framing",
     registryPath: "virtualEquipment.extensions.rightLift",
     summary:
-      "Dual to the counit, the unit of a right lift q^f should witness f-composites landing in q while keeping vertical boundaries tight identities (Definition 3.2).",
+  "Right lift unit should witness f-composites landing in q while keeping vertical boundaries tight identities.",
   },
   rightExtensionLiftCompatibility: {
     name: "Right extension/right lift compatibility",

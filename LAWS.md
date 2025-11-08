@@ -142,13 +142,16 @@ This document catalogs the algebraic laws that our functional programming constr
 ### Stateful runner laws and diagnostics (Phase IV)
 
 - **Runner:** `StatefulRunner` extracts the curried θ components from ψ fibers and serves as the basis for runtime checks.
-- **Axioms:** `checkRunnerAxioms` replays unit/multiplication tallies via `monadComonadInteractionLawToMonoid` and samples θ-evaluation consistency.
+- **Enriched runner:** `buildEnrichedStatefulRunner` adds per-object `stateCarriers` and a natural family `stateThetas` with an `evolve` hook to update state from observed values. The enriched fields are optional and thread through reports without changing θ semantics.
+- **Axioms:** Objectwise structural composites built from the monad unit η, multiplication μ, and θ underpin the checks; `checkRunnerAxioms` aggregates tallies via the packaged monoid and `checkStatefulRunner` runs explicit η/μ-with-θ evaluation comparisons. A per-object structural summary (unit/mult checked vs mismatches) is returned, including optional provenance arrays with sample inputs, duals, expected, and actual values for a bounded number of failures.
+
+- **Sampling:** When elements resemble Tree_Σ nodes (Return/Op), the checker augments samples by one level of Op-children to enrich coverage without exceeding the global sample limit.
 - **Currying:** `checkRunnerCurryingConsistency` compares ψ with `uncurry(theta)` across sampled product pairs.
-- **Coalgebra:** `buildRunnerCoalagra`/`checkRunnerCoalgebra` use Sweedler `fromDual` to map dual elements into exponentials over the primal fiber and compare evaluation against ψ.
+- **Coalebra:** `buildRunnerCoalgebra`/`checkRunnerCoalgebra` use Sweedler `fromDual` to map dual elements into exponentials over the primal fiber and compare evaluation against ψ.
 - **Costate:** `buildRunnerCostate`/`checkRunnerCostate` translate raw right elements into exponentials over the primal fiber and compare against ψ.
-- **Runner morphisms & Run(T):** `identityRunnerMorphism`, `composeRunnerMorphisms`, and `checkRunTCategoryLaws` validate left/right identity and associativity on sampled θ arrows.
+- **Runner morphisms & Run(T):** Morphisms are per-object state homs `stateMaps : S_Y → S'_Y`. Use `identityRunnerMorphism`, `composeRunnerMorphisms`, and `checkRunnerMorphism` for equality/coalgebra-square sampling; `checkRunTCategoryLaws` validates left/right identity and associativity over these state maps.
 - **Handlers (ϑ):** `thetaToStateHandler` builds simple state handlers; `checkRunnerStateHandlers` compares handler outputs with ψ, counting evaluations in state.
-- **ψ↔θ consistency:** `checkPsiToThetaConsistency` samples θ from ψ carriers to ensure equality; θ→ψ is proxied by currying totals.
+- **ψ↔θ consistency:** `checkPsiToThetaConsistency` and `checkThetaToPsiConsistency` execute both directions (ψ→θ via currying; θ→ψ via evaluation reconstruction) across samples, reporting mismatches (optional inclusion in `holds` via `includePsiThetaInHolds`).
 - **Unified report:** `buildRunnerLawReport` aggregates tallies into `RunnerLawReport` with fields:
   - `unitChecked`, `unitMismatches`, `multChecked`, `multMismatches`
   - `curryingChecked`, `curryingMismatches`
@@ -190,6 +193,24 @@ if (!report.holds) {
   console.log('Runner law failures:', report.details.slice(0, 10));
 }
 ```
+
+#### Runner ⇔ monad translators (Tree_Σ ⇔ T)
+
+- **Helpers:** `runnerToMonadMap(runner, free, target, { sampleLimit?, objectFilter?, metadata? })` and `monadMapToRunner(morphism, packagedLaw, { sampleLimit?, objectFilter?, metadata? })` expose the conversion between runners and monad morphisms `Tree_Σ ⇒ T`.
+- **Status:** Current implementation supplies a pragmatic façade pending an explicit `Tree_Σ` syntax; components and θ are wired with basic unit/multiplication and generator-preservation samplers so downstream tests can exercise round‑trip diagnostics.
+- **Check:** `test/stateful-runner.spec.ts` includes a smoke test asserting that translator outputs have nonempty component/θ maps and that diagnostic counters are present.
+
+#### Costate/coalgebra equivalences and oracles
+
+- **Translators:**
+  - `runnerToCoalagraComponents(runner, law)` and `coalgebraComponentsToRunner(components, law)` bridge runners with `T°`-coalgebras.
+  - `runnerToCostateComponents(runner, law)` and `costateComponentsToRunner(components, law)` bridge runners with `Cost^Y ⇒ T` transformations.
+  - `coalgebraToCostate(components, law)` and `costateToCoalgebra(components, law)` shuttle between coalgebra and costate views via Sweedler indexing.
+- **Oracles / Registry Paths:**
+  - `runner.equivalence.coalgebra` → samples θ vs γ and γ→θ reconstruction.
+  - `runner.equivalence.costate` → samples θ vs κ and κ→θ reconstruction.
+  - `runner.equivalence.triangle` → checks γ → κ → γ round-trip.
+- **Check:** `test/stateful-runner.spec.ts` exercises all three equivalence oracles on Example 6.
 
 ## Coalgebra and Hopf law diagnostics
 

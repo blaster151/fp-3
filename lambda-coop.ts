@@ -677,3 +677,92 @@ export function summarizeAnnotation(note: string, annotation?: LambdaCoopResourc
   );
 }
 
+// =============================
+// Phase IV integration: λ_{coop} × runner API adapters
+// =============================
+import type { MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
+import { buildRunnerFromInteraction, type StatefulRunner } from "./stateful-runner";
+import { RunnerOracles, enumerateRunnerOracles, type RunnerOracleOptions, type RunnerOracleResult } from "./runner-oracles";
+import { makeExample6MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
+
+export interface LambdaCoopRunnerAlignmentOptions<Obj> extends RunnerOracleOptions<Obj> {
+  readonly includeTriangleEquivalence?: boolean;
+}
+
+export interface LambdaCoopRunnerAlignmentReport<Obj, Arr, Left, Right, Value> {
+  readonly law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>;
+  readonly runner: StatefulRunner<Obj, Left, Right, Value>;
+  readonly oracles: ReadonlyArray<RunnerOracleResult>;
+  readonly notes: ReadonlyArray<string>;
+}
+
+/**
+ * Analyze a packaged monad–comonad interaction law under the repaired runner API
+ * and return runner oracles aligned with Phase IV checks.
+ */
+export function analyzeLambdaCoopRunnerAlignment<Obj, Arr, Left, Right, Value>(
+  law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: LambdaCoopRunnerAlignmentOptions<Obj> = {},
+): LambdaCoopRunnerAlignmentReport<Obj, Arr, Left, Right, Value> {
+  const runner = buildRunnerFromInteraction(law, { metadata: ["λ_{coop} alignment: runner built from ψ currying"] });
+  // Adjust option shape to satisfy exactOptionalPropertyTypes (omit undefined fields)
+  const oracleOptions: any = {};
+  if (options.sampleLimit !== undefined) oracleOptions.sampleLimit = options.sampleLimit;
+  if (options.objectFilter) oracleOptions.objectFilter = options.objectFilter;
+  const base = enumerateRunnerOracles(runner, law, oracleOptions);
+  const extras: RunnerOracleResult[] = [];
+  if (options.includeTriangleEquivalence) {
+    extras.push(RunnerOracles.equivalenceTriangle(runner, law, oracleOptions));
+  }
+  return {
+    law,
+    runner,
+    oracles: [...base, ...extras],
+    notes: ["λ_{coop}: aligned runner diagnostics with coalgebra/costate equivalences"],
+  };
+}
+
+export interface SupervisedLambdaCoopExampleReport<Obj, Arr, Left, Right, Value> {
+  readonly law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>;
+  readonly runner: StatefulRunner<Obj, Left, Right, Value>;
+  readonly resourceSummary: LambdaCoopResourceSummary;
+  readonly oracles: ReadonlyArray<RunnerOracleResult>;
+}
+
+/**
+ * Build a tiny supervised example: a runner literal + user computation resource trace,
+ * paired with Example 6 runner oracles to keep operational and categorical views in sync.
+ */
+export function supervisedLambdaCoopExample(): SupervisedLambdaCoopExampleReport<any, any, any, any, any> {
+  // Minimal runner literal with one operation and a state tag (for resource tracing only).
+  const runnerLiteral: LambdaCoopValue = {
+    kind: 'runnerLiteral',
+    stateCarrier: 'store',
+    clauses: [
+      {
+        operation: 'op',
+        parameter: 'x',
+        parameterType: { kind: 'base', name: 'X' },
+        body: { kind: 'kernelReturn', value: { kind: 'unitValue' } },
+      },
+    ],
+  };
+  const userComputation: LambdaCoopUserComputation = {
+    kind: 'userRun',
+    runner: runnerLiteral,
+    computation: {
+      kind: 'userOperation',
+      operation: 'op',
+      argument: { kind: 'unitValue' },
+      continuation: { parameter: 'u', body: { kind: 'userReturn', value: { kind: 'unitValue' } } },
+      annotation: { operations: ['op'], states: ['store'] },
+    },
+  };
+  const resourceSummary = summarizeUserComputationResources(userComputation);
+  // Use Example 6 packaged law and runner diagnostics.
+  const law = makeExample6MonadComonadInteractionLaw();
+  const runner = buildRunnerFromInteraction(law);
+  const oracles = enumerateRunnerOracles(runner, law, { sampleLimit: 4 });
+  return { law: law as any, runner: runner as any, resourceSummary, oracles };
+}
+

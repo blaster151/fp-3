@@ -1,6 +1,6 @@
 import type { RunnableExample, RunnableOutcome } from "./types";
 import { makeMonadComonadInteractionLaw } from "../../monad-comonad-interaction-law";
-import { buildRunnerFromInteraction, buildRunnerLawReport, prettyPrintRunnerThetas } from "../../stateful-runner";
+import { buildRunnerFromInteraction, buildRunnerLawReport, prettyPrintRunnerThetas, buildEnrichedStatefulRunner } from "../../stateful-runner";
 import { makeFunctorInteractionLaw, makeFunctorInteractionLawOperations } from "../../functor-interaction-law";
 import { promonoidalKernelFromStrictMonoidal, type PromonoidalKernel } from "../../promonoidal-structure";
 import { dayTensor } from "../../day-convolution";
@@ -107,12 +107,18 @@ export const statefulRunnerLawReport: RunnableExample = {
   tags: ["phase-iv", "runner", "law-report"],
   async run(): Promise<RunnableOutcome> {
     const runner = buildRunnerFromInteraction(interaction);
+    const enriched = buildEnrichedStatefulRunner(interaction, {
+      initialState: () => ({ count: 0 }),
+      evolve: (_obj, prev, _value) => ({ count: (prev as { count: number }).count + 1 }),
+      sampleLimit: 4,
+      metadata: ["enriched-stateful-demo"],
+    });
     const thetaLines = prettyPrintRunnerThetas(runner, { computeIfMissing: true });
     const report = buildRunnerLawReport(runner, interaction, { includeFinite: true, sampleLimit: 8, evaluationSampleLimit: 8 });
     const logs: string[] = [];
     logs.push("θ summary:");
     logs.push(...thetaLines.map((l) => `  ${l}`));
-    logs.push("Unified law report:");
+  logs.push("Unified law report:");
     logs.push(`  holds=${report.holds}`);
     logs.push(`  unit: checked=${report.unitChecked} mismatches=${report.unitMismatches}`);
     logs.push(`  mult: checked=${report.multChecked} mismatches=${report.multMismatches}`);
@@ -123,8 +129,12 @@ export const statefulRunnerLawReport: RunnableExample = {
     if (report.thetaMissing.length > 0 || report.thetaExtra.length > 0) {
       logs.push(`  θ missing=${report.thetaMissing.length} extra=${report.thetaExtra.length}`);
     }
-    for (const line of report.details.slice(0, 10)) {
+    for (const line of report.details.slice(0, 8)) {
       logs.push(`  detail: ${line}`);
+    }
+    logs.push("Enriched stateful runner diagnostics:");
+    for (const line of enriched.diagnostics.slice(0, 6)) {
+      logs.push(`  enriched: ${line}`);
     }
     return { logs };
   },
