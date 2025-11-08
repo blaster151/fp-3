@@ -119,6 +119,7 @@ export * from "./functor-interaction-law-degeneracy"
 export * from "./monad-comonad-interaction-law"
 export * from "./task"
 export * from "./validation"
+export * from "./stateful-runner";
 export * from "./reader-task-option"
 export * from "./json-canonical"
 export * from "./decoder"

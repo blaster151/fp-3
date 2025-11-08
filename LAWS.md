@@ -135,9 +135,61 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Oracle:** `checkMonadComonadInteractionLaw(law, options?)` evaluates the four ψ-coherence diagrams (unit/counit, comultiplication, monad multiplication, and the mixed associativity square) using the cached Day fibers.  The optional `project`/`build` hooks let callers describe how to decompose/reconstruct the interaction-law value when it is not a plain pair.
 - **Witness Builder:** The returned record stores the combined metadata of the monad, comonad, and packaging call, plus a diagnostics array describing which caches were reused versus recomputed. Degeneracy reports and Sweedler summaries flow directly from the underlying `FunctorInteractionLaw`, ensuring later oracles can quote the same constant-zero witnesses and dual evaluations.
 - **Check:** `test/monad-comonad-interaction-law.spec.ts` verifies that cached inputs are reused when provided and that the helper derives currying/degeneracy data when no options are supplied, while also asserting that the packaged metadata aggregates contributions from both structures.
-- **Helper:** `deriveMonadComonadRunnerTranslation(law, { sampleLimit?, metadata? })` repackages each interaction law’s ψ fibers, δ tables, and Sweedler maps into θ, costate, and coalgebra translators ready for runner construction. Diagnostics confirm that the sampled δ tables match ψ evaluations and that the Sweedler-derived coalgebra agrees with the curried θ witnesses.
-- **Check:** `test/monad-comonad-interaction-law.spec.ts` exercises the helper on Example 6, asserting that all θ/costate/coalgebra components report consistent evaluations and that custom sampling bounds appear in the recorded diagnostics.
-- **Module:** `lambda-coop.ts` codifies the λ_{coop} syntax with explicit value, user, and kernel computation categories, resource annotations, and summarizers.  Helpers such as `summarizeUserComputationResources`, `summarizeKernelComputationResources`, and `summarizeValueResources` aggregate the operations, exceptions, signals, and state carriers demanded by a term while emitting provenance traces for each syntactic node.  `test/lambda-coop.spec.ts` exercises the collectors on a supervised file runner, confirming that signatures, state objects, and signal metadata are preserved across runner, kernel, and user layers.
+ - **Helper:** `deriveMonadComonadRunnerTranslation(law, { sampleLimit?, metadata? })` repackages each interaction law’s ψ fibers, δ tables, and Sweedler maps into θ, costate, and coalgebra translators ready for runner construction. Diagnostics confirm that the sampled δ tables match ψ evaluations and that the Sweedler-derived coalgebra agrees with the curried θ witnesses.
+ - **Check:** `test/monad-comonad-interaction-law.spec.ts` exercises the helper on Example 6, asserting that all θ/costate/coalgebra components report consistent evaluations and that custom sampling bounds appear in the recorded diagnostics.
+ - **Module:** `lambda-coop.ts` codifies the λ_{coop} syntax with explicit value, user, and kernel computation categories, resource annotations, and summarizers.  Helpers such as `summarizeUserComputationResources`, `summarizeKernelComputationResources`, and `summarizeValueResources` aggregate the operations, exceptions, signals, and state carriers demanded by a term while emitting provenance traces for each syntactic node.  `test/lambda-coop.spec.ts` exercises the collectors on a supervised file runner, confirming that signatures, state objects, and signal metadata are preserved across runner, kernel, and user layers.
+
+### Stateful runner laws and diagnostics (Phase IV)
+
+- **Runner:** `StatefulRunner` extracts the curried θ components from ψ fibers and serves as the basis for runtime checks.
+- **Axioms:** `checkRunnerAxioms` replays unit/multiplication tallies via `monadComonadInteractionLawToMonoid` and samples θ-evaluation consistency.
+- **Currying:** `checkRunnerCurryingConsistency` compares ψ with `uncurry(theta)` across sampled product pairs.
+- **Coalgebra:** `buildRunnerCoalagra`/`checkRunnerCoalgebra` use Sweedler `fromDual` to map dual elements into exponentials over the primal fiber and compare evaluation against ψ.
+- **Costate:** `buildRunnerCostate`/`checkRunnerCostate` translate raw right elements into exponentials over the primal fiber and compare against ψ.
+- **Runner morphisms & Run(T):** `identityRunnerMorphism`, `composeRunnerMorphisms`, and `checkRunTCategoryLaws` validate left/right identity and associativity on sampled θ arrows.
+- **Handlers (ϑ):** `thetaToStateHandler` builds simple state handlers; `checkRunnerStateHandlers` compares handler outputs with ψ, counting evaluations in state.
+- **ψ↔θ consistency:** `checkPsiToThetaConsistency` samples θ from ψ carriers to ensure equality; θ→ψ is proxied by currying totals.
+- **Unified report:** `buildRunnerLawReport` aggregates tallies into `RunnerLawReport` with fields:
+  - `unitChecked`, `unitMismatches`, `multChecked`, `multMismatches`
+  - `curryingChecked`, `curryingMismatches`
+  - `coalgebraChecked`, `coalgebraMismatches`
+  - `costateChecked`, `costateMismatches`
+  - `leftIdentityChecked`, `leftIdentityMismatches`, `rightIdentityChecked`, `rightIdentityMismatches`, `associativityChecked`, `associativityMismatches`, `associativitySkipped`
+  - `handlerChecked`, `handlerMismatches`
+  - `psiToThetaChecked`, `psiToThetaMismatches`, `thetaToPsiChecked`, `thetaToPsiMismatches`
+  - `thetaMissing`, `thetaExtra`, optional `finiteFailures`
+- **Options:** Most checks accept `{ sampleLimit?, objectFilter? }`; `buildRunnerLawReport` threads `sampleLimit` through, and can include finite exhaustive checks via `includeFinite`.
+- **Notes:** Category and handler checks are reported but do not currently affect `holds`. ψ→θ/θ→ψ consistency likewise reports mismatches without flipping `holds`.
+ - **Oracles / Registry Paths:**
+   - `runner.axioms` → `RunnerOracles.axioms`
+   - `runner.currying` → `RunnerOracles.currying`
+   - `runner.coalgebra` → `RunnerOracles.coalgebra`
+   - `runner.costate` → `RunnerOracles.costate`
+   - `runner.categoryLaws` → `RunnerOracles.category`
+   - `runner.handlers` → `RunnerOracles.handlers`
+   - `runner.psiToTheta` → `RunnerOracles.psiTheta`
+   - `runner.unified` → `RunnerOracles.unified`
+   Use `enumerateRunnerOracles(runner, law, { sampleLimit? })` to collect all reports.
+ - **Optional holds flags:** Pass to `buildRunnerLawReport`:
+   - `includeCategoryInHolds: true` to require identity + associativity success.
+   - `includeHandlersInHolds: true` to fail on handler mismatches.
+   - `includePsiThetaInHolds: true` to fail on ψ→θ or θ→ψ mismatches.
+   - Combine with `includeFinite: true` for exhaustive finite evaluation.
+ - **Example:**
+
+```ts
+const runner = buildRunnerFromInteraction(law, { sampleLimit: 16 });
+const report = buildRunnerLawReport(runner, law, {
+  sampleLimit: 16,
+  includeFinite: true,
+  includeCategoryInHolds: true,
+  includeHandlersInHolds: true,
+  includePsiThetaInHolds: true,
+});
+if (!report.holds) {
+  console.log('Runner law failures:', report.details.slice(0, 10));
+}
+```
 
 ## Coalgebra and Hopf law diagnostics
 

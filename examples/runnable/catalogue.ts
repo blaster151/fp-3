@@ -105,6 +105,7 @@ import { stage099HopfAlgebraMorphismLaboratory } from "./099-hopf-algebra-morphi
 import { stage100HopfModuleComoduleGallery } from "./100-hopf-module-comodule-gallery";
 import { stage101CoordinatewiseVectorRelativeMonad } from "./101-mnne-coordinatewise-vector-relative-monad";
 import { stage102LazyLambdaRelativeMonad } from "./102-mnne-lambda-relative-monad";
+import { statefulRunnerLawReport } from "./103-stateful-runner-law-report";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -213,4 +214,5 @@ export const registry: RunnableRegistry = [
   stage100HopfModuleComoduleGallery,
   stage101CoordinatewiseVectorRelativeMonad,
   stage102LazyLambdaRelativeMonad,
+  statefulRunnerLawReport,
 ];
