@@ -1,5 +1,5 @@
 import type { ExponentialArrow, SetHom, SetObj, SetCarrierSemantics } from "./set-cat";
-import { SetCat, getCarrierSemantics } from "./set-cat";
+import { SetCat, getCarrierSemantics, semanticsAwareEquals } from "./set-cat";
 import type { MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
 import { monadComonadInteractionLawToMonoid } from "./monad-comonad-interaction-law";
 import type { IndexedElement } from "./chu-space";
@@ -227,7 +227,7 @@ export const monadMapToRunner = <
   const details: string[] = [
     "monadMapToRunner: reconstructing θ components from ψ fibers; sampling τ ∘ η vs η.",
   ];
-  // Rebuild θ from the law (prefer stored θ; otherwise curry φ)
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 12);
   const thetas = new Map<
     Obj,
     SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>
@@ -237,39 +237,54 @@ export const monadMapToRunner = <
     SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>
   >();
   let componentsBuilt = 0;
-  // Tree sampling counters (Return + Op heuristic)
+  let reusedTheta = 0;
+  let rebuiltTheta = 0;
   let treeChecked = 0;
   let treeMismatches = 0;
-  // Multiplication sampling (heuristic over nested free-tree elements if available)
   let multChecked = 0;
   let multMismatches = 0;
   let multNote = "no multiplication sampling performed (source not recognised as free tree monad)";
+
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-    const theta = (fiber.theta ?? fiber.exponential.curry({
-      domain: fiber.primalFiber,
-      product: fiber.product,
-      morphism: fiber.phi,
-    })) as SetHom<
+    const storedTheta = fiber.theta;
+    if (storedTheta) {
+      reusedTheta += 1;
+    } else {
+      rebuiltTheta += 1;
+    }
+    const theta = (storedTheta ??
+      fiber.exponential.curry({
+        domain: fiber.primalFiber,
+        product: fiber.product,
+        morphism: fiber.phi,
+      })) as SetHom<
       IndexedElement<Obj, Left>,
       ExponentialArrow<IndexedElement<Obj, Right>, Value>
     >;
     thetas.set(object, theta);
     const uncurried = fiber.exponential.uncurry({ product: fiber.product, morphism: theta });
-    thetaHom.set(object, uncurried as SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>);
-    componentsBuilt++;
+    thetaHom.set(
+      object,
+      uncurried as SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>,
+    );
+    componentsBuilt += 1;
   }
-  details.push(`monadMapToRunner: built θ for ${componentsBuilt} object(s).`);
+  details.push(
+    `monadMapToRunner: built θ for ${componentsBuilt} object(s) (stored=${reusedTheta} rebuilt=${rebuiltTheta}).`,
+  );
 
-  // Sample τ ∘ η_F = η_T
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 12);
   let checked = 0;
   let mismatches = 0;
   for (const [object] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
     const tau = morphism.components.get(object) as SetHom<unknown, unknown> | undefined;
-    const etaF = morphism.source.unit.transformation.component(object) as SetHom<unknown, unknown> | undefined;
-    const etaT = morphism.target.unit.transformation.component(object) as SetHom<unknown, unknown> | undefined;
+    const etaF = morphism.source.unit.transformation.component(object) as
+      | SetHom<unknown, unknown>
+      | undefined;
+    const etaT = morphism.target.unit.transformation.component(object) as
+      | SetHom<unknown, unknown>
+      | undefined;
     if (!tau || !etaF || !etaT) continue;
     const unitInputs = enumerateLimited(etaF.dom as SetObj<unknown>, sampleLimit);
     for (const input of unitInputs) {
@@ -291,11 +306,118 @@ export const monadMapToRunner = <
   details.push(
     `monadMapToRunner: unit-preservation checked=${checked} mismatches=${mismatches} (limit=${sampleLimit}).`,
   );
-  // (Future) tree + multiplication sampling hooks could populate treeChecked/multChecked.
-  details.push(`monadMapToRunner: tree-samples checked=${treeChecked} mismatches=${treeMismatches}.`);
+
+  const treeMonad = morphism.source as Partial<FreeTreeMonad<Obj, Arr>>;
+  for (const [object, fiber] of interaction.psiComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const tau = morphism.components.get(object) as SetHom<Tree<unknown>, unknown> | undefined;
+    const etaTarget = morphism.target.unit.transformation.component(object) as
+      | SetHom<unknown, unknown>
+      | undefined;
+    const thetaEntry = thetaHom.get(object);
+    if (!tau || !thetaEntry || !etaTarget) continue;
+    const treeCarrier = treeMonad?.carriers?.get(object) as SetObj<Tree<unknown>> | undefined;
+    if (!treeCarrier) continue;
+    const treeSamples = enumerateLimited(treeCarrier, sampleLimit);
+    if (treeSamples.length === 0) continue;
+
+    const equalsTarget = semanticsAwareEquals(tau.cod as SetObj<unknown>);
+    const equalsPrimal = semanticsAwareEquals(fiber.primalFiber);
+    const equalsDual = semanticsAwareEquals(fiber.dualFiber);
+    const primalSamples = enumerateLimited(fiber.primalFiber, Math.max(sampleLimit, 16));
+    const dualSamples = enumerateLimited(fiber.dualFiber, Math.max(sampleLimit, 16));
+    const operationLookup = options.operationSemantics;
+
+    const makeIndexedLeft = (value: unknown): IndexedElement<Obj, Left> => {
+      for (const sample of primalSamples) {
+        const probe = { object, element: value as Left } as IndexedElement<Obj, Left>;
+        if (equalsPrimal(sample, probe) || Object.is(sample.element, value)) {
+          return sample;
+        }
+      }
+      return { object, element: value as Left } as IndexedElement<Obj, Left>;
+    };
+
+    const makeIndexedRight = (value: unknown): IndexedElement<Obj, Right> => {
+      for (const sample of dualSamples) {
+        const probe = { object, element: value as Right } as IndexedElement<Obj, Right>;
+        if (equalsDual(sample, probe) || Object.is(sample.element, value)) {
+          return sample;
+        }
+      }
+      return { object, element: value as Right } as IndexedElement<Obj, Right>;
+    };
+
+    const evaluateTree = (node: Tree<unknown>): unknown => {
+      if (node._tag === "Return") {
+        return etaTarget.map(node.value);
+      }
+      if (node._tag === "Op") {
+        const evaluatedChildren = node.children.map(evaluateTree);
+        if (evaluatedChildren.length === 0) {
+          return { op: node.name, children: evaluatedChildren };
+        }
+        const primalValue = evaluatedChildren[0];
+        const dualValue = evaluatedChildren[1] ?? evaluatedChildren[0];
+        const primal = makeIndexedLeft(primalValue);
+        const dual = makeIndexedRight(dualValue);
+        try {
+          return thetaEntry.map([primal, dual]);
+        } catch (error) {
+          const opFn = operationLookup?.get(node.name);
+          if (opFn) {
+            return opFn(evaluatedChildren as ReadonlyArray<unknown>);
+          }
+          throw error;
+        }
+      }
+      return etaTarget.map(node as unknown as never);
+    };
+
+    let objectErrors = 0;
+    for (const treeSample of treeSamples) {
+      treeChecked += 1;
+      try {
+        const reconstructed = evaluateTree(treeSample);
+        const expected = tau.map(treeSample);
+        if (!equalsTarget(expected, reconstructed)) {
+          treeMismatches += 1;
+          if (treeMismatches <= 4) {
+            details.push(
+              `monadMapToRunner.tree-mismatch object=${String(object)} sample=${JSON.stringify(
+                treeSample,
+              )} expected=${String(expected)} actual=${String(reconstructed)}`,
+            );
+          }
+        }
+      } catch (error) {
+        treeMismatches += 1;
+        objectErrors += 1;
+        if (treeMismatches <= 4) {
+          details.push(
+            `monadMapToRunner.tree-eval-error object=${String(object)} sample=${JSON.stringify(
+              treeSample,
+            )} error=${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+    if (objectErrors > 0) {
+      details.push(
+        `monadMapToRunner: object ${String(object)} encountered ${objectErrors} evaluation error(s) while replaying tree samples.`,
+      );
+    }
+  }
+
+  if (treeChecked === 0) {
+    details.push("monadMapToRunner: tree sampling unavailable (no recognised free-tree carriers).");
+  } else {
+    details.push(`monadMapToRunner: tree-samples checked=${treeChecked} mismatches=${treeMismatches}.`);
+  }
   details.push(
     `monadMapToRunner: multiplication-heuristic checked=${multChecked} mismatches=${multMismatches} note=${multNote}.`,
   );
+
   return {
     thetas,
     thetaHom,

@@ -197,7 +197,7 @@ if (!report.holds) {
 #### Runner ⇔ monad translators (Tree_Σ ⇔ T)
 
 - **Helpers:** `runnerToMonadMap(runner, free, target, { sampleLimit?, objectFilter?, metadata? })` and `monadMapToRunner(morphism, packagedLaw, { sampleLimit?, objectFilter?, metadata? })` expose the conversion between runners and monad morphisms `Tree_Σ ⇒ T`.
-- **Status:** Current implementation supplies a pragmatic façade pending an explicit `Tree_Σ` syntax; components and θ are wired with basic unit/multiplication and generator-preservation samplers so downstream tests can exercise round‑trip diagnostics.
+- **Status (update):** `monadMapToRunner` now rebuilds θ-curried maps by replaying the morphism τ against sampled free-tree carriers: it tallies `τ ∘ η` checks (`generatorPreservation`/`unitPreservation`), re-evaluates each sampled tree through the reconstructed θ (`treeSamplePreservation`), and logs whether θ fibers were reused from cached ψ data or rebuilt via currying. Diagnostics surface up to four mismatching tree samples (or evaluation errors) and report when free-tree carriers are unavailable; multiplication sampling remains a stub until explicit Σ syntax lands and is flagged via the returned `multiplicationPreservation.note`.
 - **Check:** `test/stateful-runner.spec.ts` includes a smoke test asserting that translator outputs have nonempty component/θ maps and that diagnostic counters are present.
 
 #### Costate/coalgebra equivalences and oracles
