@@ -1089,6 +1089,11 @@ export const checkRunnerCostate = <
     const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    if (rightSamples.length === 0 || primalSamples.length === 0) {
+      details.push(
+        `coalgebra→costate: object=${String(object)} insufficient samples (primal=${primalSamples.length} right=${rightSamples.length}); coverage limited.`,
+      );
+    }
     let localChecked = 0;
     let localMismatches = 0;
     for (const rightEl of rightSamples) {
@@ -1177,6 +1182,11 @@ export const runnerToCoalgebraComponents = <Obj, Arr, Left, Right, Value>(
     components.set(object, coalgebra);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    if (primalSamples.length === 0 || dualSamples.length === 0) {
+      details.push(
+        `runner→coalgebra: object=${String(object)} insufficient samples (primal=${primalSamples.length} dual=${dualSamples.length}); coverage limited.`,
+      );
+    }
     for (const dual of dualSamples) {
       const arrow = coalgebra.map(dual);
       for (const primal of primalSamples) {
@@ -1243,6 +1253,11 @@ export const coalgebraComponentsToRunner = <Obj, Arr, Left, Right, Value>(
     thetaHomMap.set(object, thetaHom);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    if (primalSamples.length === 0 || dualSamples.length === 0) {
+      details.push(
+        `coalgebra→runner: object=${String(object)} insufficient samples (primal=${primalSamples.length} dual=${dualSamples.length}); coverage limited.`,
+      );
+    }
     for (const dual of dualSamples) {
       const arrow = gamma.map(dual);
       for (const primal of primalSamples) {
@@ -1307,6 +1322,11 @@ export const runnerToCostateComponents = <Obj, Arr, Left, Right, Value>(
     components.set(object, costate);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
+    if (primalSamples.length === 0 || rightSamples.length === 0) {
+      details.push(
+        `runner→costate: object=${String(object)} insufficient samples (primal=${primalSamples.length} right=${rightSamples.length}); coverage limited.`,
+      );
+    }
     for (const right of rightSamples) {
       const arrow = costate.map(right);
       for (const primal of primalSamples) {
@@ -1376,6 +1396,11 @@ export const costateComponentsToRunner = <Obj, Arr, Left, Right, Value>(
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
+    if (primalSamples.length === 0 || rightSamples.length === 0) {
+      details.push(
+        `costate→runner: object=${String(object)} insufficient samples (primal=${primalSamples.length} right=${rightSamples.length}); coverage limited.`,
+      );
+    }
     for (const right of rightSamples) {
       const arrow = kappa.map(right);
       const indexed: IndexedElement<Obj, Right> = { object, element: right };
@@ -1430,6 +1455,11 @@ export const coalgebraToCostate = <Obj, Arr, Left, Right, Value>(
     // Light sampling equivalence: evaluate expected ψ vs composed map
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    if (rightSamples.length === 0 || primalSamples.length === 0) {
+      details.push(
+        `coalgebra→costate: object=${String(object)} insufficient samples (primal=${primalSamples.length} right=${rightSamples.length}); coverage limited.`,
+      );
+    }
     for (const right of rightSamples) {
       const arrow = kappa.map(right);
       for (const primal of primalSamples) {
@@ -1454,8 +1484,9 @@ export const coalgebraToCostate = <Obj, Arr, Left, Right, Value>(
 export const costateToCoalgebra = <Obj, Arr, Left, Right, Value>(
   components: CostateComponents<Obj, Left, Right, Value>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-  options: { objectFilter?: (object: Obj) => boolean } = {},
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { components: CoalgebraComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
   const coalgebra = new Map<Obj, SetHom<IndexedElement<Obj, Right>, ExponentialArrow<IndexedElement<Obj, Left>, Value>>>();
   const details: string[] = ["costateToCoalgebra: translating κ components into γ via reindexing."]; let checked = 0, mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
@@ -1468,8 +1499,13 @@ export const costateToCoalgebra = <Obj, Arr, Left, Right, Value>(
       return primalExp.register((pr) => (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(pr));
     });
     coalgebra.set(object, gamma as unknown as SetHom<IndexedElement<Obj, Right>, ExponentialArrow<IndexedElement<Obj, Left>, Value>>);
-    const dualSamples = enumerateLimited(fiber.dualFiber, 4);
-    const primalSamples = enumerateLimited(fiber.primalFiber, 4);
+    const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    if (dualSamples.length === 0 || primalSamples.length === 0) {
+      details.push(
+        `costate→coalgebra: object=${String(object)} insufficient samples (primal=${primalSamples.length} dual=${dualSamples.length}); coverage limited.`,
+      );
+    }
     for (const dualEl of dualSamples) {
       const arrow = gamma.map(dualEl);
       for (const primal of primalSamples) {
@@ -1477,6 +1513,9 @@ export const costateToCoalgebra = <Obj, Arr, Left, Right, Value>(
         if (!Object.is(expected, actual)) { mismatches++; if (mismatches <= 2) details.push(`costate->coalgebra-mismatch object=${String(object)} left=${String(primal.element)} right=${String(dualEl.element)} expected=${String(expected)} actual=${String(actual)}`); }
       }
     }
+  }
+  if (coalgebra.size === 0) {
+    details.push("costateToCoalgebra: no γ components reconstructed (missing κ inputs?).");
   }
   details.push(`costateToCoalgebra: checked=${checked} mismatches=${mismatches}.`);
   return { components: coalgebra, diagnostics: { checked, mismatches, details } };
