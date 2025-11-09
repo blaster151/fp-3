@@ -29,9 +29,10 @@ Progress:
 - Extended `equivalenceTriangle` to re-check both γ and κ round-trips, adding costate zig-zag sampling alongside the coalgebra comparison.
 - Audited the translator diagnostics to flag low-sample domains and aligned `costateToCoalgebra` with configurable sampling, so diagrams (4)/(5) report when witness coverage is thin.
 - Added explicit `translatorSampleLimit`/`translatorObjectFilter` routing in `runner-oracles.ts`, ensuring oracle callers can tune translator coverage independently of higher-level checks.
+- Translator sample limits now adapt to carrier cardinalities (√-scaling up to 32) and emit truncation notes whenever enumeration hits the cap without exploring the full fibre.
 
 Next:
-- Stress-test translator defaults on large carriers and evaluate adaptive sampling heuristics before loosening the fixed limit of 8.
+- Exercise the adaptive sampling heuristics against large carriers to validate the current cap/clamp strategy before considering higher default limits.
 
 ------
 

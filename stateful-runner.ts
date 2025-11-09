@@ -1143,13 +1143,51 @@ export interface EquivalenceDiagnostics {
   readonly details: ReadonlyArray<string>;
 }
 
+const deriveSampleLimit = (
+  requested: number | undefined,
+  ...cardinalities: Array<number | undefined>
+): number => {
+  if (requested !== undefined) return Math.max(0, requested);
+  const finite = cardinalities.filter(
+    (value): value is number =>
+      value !== undefined && Number.isFinite(value) && (value as number) >= 0,
+  );
+  if (finite.length === 0) return 8;
+  const maxCardinality = Math.max(...finite);
+  if (maxCardinality <= 8) return maxCardinality;
+  const sqrtBound = Math.ceil(Math.sqrt(maxCardinality));
+  return Math.min(32, Math.max(8, sqrtBound));
+};
+
+const recordTruncatedCoverage = <Obj>(
+  details: string[],
+  context: string,
+  object: Obj,
+  label: string,
+  enumerated: number,
+  cardinality: number | undefined,
+  limit: number,
+): void => {
+  if (
+    cardinality === undefined ||
+    !Number.isFinite(cardinality) ||
+    enumerated === 0 ||
+    enumerated < limit ||
+    cardinality <= enumerated
+  ) {
+    return;
+  }
+  details.push(
+    `${context}: object=${String(object)} ${label} truncated at ${enumerated}/${cardinality} samples (limit=${limit}).`,
+  );
+};
+
 // Runner → Coalgebra (reuse existing builder + add θ agreement sampling)
 export const runnerToCoalgebraComponents = <Obj, Arr, Left, Right, Value>(
   runner: StatefulRunner<Obj, Left, Right, Value>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { components: CoalgebraComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
   const details: string[] = ["runner→coalgebra (diagram 4): sampling θ vs γ evaluation."];
   const components = new Map<
     Obj,
@@ -1180,13 +1218,35 @@ export const runnerToCoalgebraComponents = <Obj, Arr, Left, Right, Value>(
       ExponentialArrow<IndexedElement<Obj, Left>, Value>
     >;
     components.set(object, coalgebra);
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const dualCardinality = getCarrierSemantics(fiber.dualFiber)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, primalCardinality, dualCardinality);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
     if (primalSamples.length === 0 || dualSamples.length === 0) {
       details.push(
         `runner→coalgebra: object=${String(object)} insufficient samples (primal=${primalSamples.length} dual=${dualSamples.length}); coverage limited.`,
       );
+      continue;
     }
+    recordTruncatedCoverage(
+      details,
+      "runner→coalgebra",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "runner→coalgebra",
+      object,
+      "dual fibre",
+      dualSamples.length,
+      dualCardinality,
+      sampleLimit,
+    );
     for (const dual of dualSamples) {
       const arrow = coalgebra.map(dual);
       for (const primal of primalSamples) {
@@ -1217,7 +1277,6 @@ export const coalgebraComponentsToRunner = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { runner: StatefulRunner<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
   const details: string[] = ["coalgebra→runner (diagram 4): sampling γ vs reconstructed θ."];
   const thetas = new Map<
     Obj,
@@ -1236,6 +1295,9 @@ export const coalgebraComponentsToRunner = <Obj, Arr, Left, Right, Value>(
       details.push(`coalgebra→runner: object=${String(object)} missing γ component; skipping.`);
       continue;
     }
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const dualCardinality = getCarrierSemantics(fiber.dualFiber)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, primalCardinality, dualCardinality);
     const theta = SetCat.hom(
       fiber.primalFiber,
       fiber.exponential.object,
@@ -1257,7 +1319,26 @@ export const coalgebraComponentsToRunner = <Obj, Arr, Left, Right, Value>(
       details.push(
         `coalgebra→runner: object=${String(object)} insufficient samples (primal=${primalSamples.length} dual=${dualSamples.length}); coverage limited.`,
       );
+      continue;
     }
+    recordTruncatedCoverage(
+      details,
+      "coalgebra→runner",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "coalgebra→runner",
+      object,
+      "dual fibre",
+      dualSamples.length,
+      dualCardinality,
+      sampleLimit,
+    );
     for (const dual of dualSamples) {
       const arrow = gamma.map(dual);
       for (const primal of primalSamples) {
@@ -1291,7 +1372,6 @@ export const runnerToCostateComponents = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { components: CostateComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
   const details: string[] = ["runner→costate (diagram 5): sampling θ vs κ evaluation."];
   const components = new Map<
     Obj,
@@ -1320,13 +1400,35 @@ export const runnerToCostateComponents = <Obj, Arr, Left, Right, Value>(
       },
     ) as SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>;
     components.set(object, costate);
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const rightCardinality = getCarrierSemantics(rightCarrier)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, primalCardinality, rightCardinality);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
     if (primalSamples.length === 0 || rightSamples.length === 0) {
       details.push(
         `runner→costate: object=${String(object)} insufficient samples (primal=${primalSamples.length} right=${rightSamples.length}); coverage limited.`,
       );
+      continue;
     }
+    recordTruncatedCoverage(
+      details,
+      "runner→costate",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "runner→costate",
+      object,
+      "right fibre",
+      rightSamples.length,
+      rightCardinality,
+      sampleLimit,
+    );
     for (const right of rightSamples) {
       const arrow = costate.map(right);
       for (const primal of primalSamples) {
@@ -1358,7 +1460,6 @@ export const costateComponentsToRunner = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { runner: StatefulRunner<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
   const details: string[] = ["costate→runner (diagram 5): reconstructing θ from κ."];
   const thetas = new Map<
     Obj,
@@ -1393,14 +1494,36 @@ export const costateComponentsToRunner = <Obj, Arr, Left, Right, Value>(
       Value
     >;
     thetaHomMap.set(object, thetaHom);
-    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
     const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
+    const rightCardinality = getCarrierSemantics(rightCarrier)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, primalCardinality, rightCardinality);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
     if (primalSamples.length === 0 || rightSamples.length === 0) {
       details.push(
         `costate→runner: object=${String(object)} insufficient samples (primal=${primalSamples.length} right=${rightSamples.length}); coverage limited.`,
       );
+      continue;
     }
+    recordTruncatedCoverage(
+      details,
+      "costate→runner",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "costate→runner",
+      object,
+      "right fibre",
+      rightSamples.length,
+      rightCardinality,
+      sampleLimit,
+    );
     for (const right of rightSamples) {
       const arrow = kappa.map(right);
       const indexed: IndexedElement<Obj, Right> = { object, element: right };
@@ -1435,7 +1558,6 @@ export const coalgebraToCostate = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { components: CostateComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
   const costate = new Map<Obj, SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>>();
   const details: string[] = ["coalgebra→costate (diagram 5): translating γ into κ."];
   let checked = 0;
@@ -1453,13 +1575,35 @@ export const coalgebraToCostate = <Obj, Arr, Left, Right, Value>(
     });
     costate.set(object, kappa as unknown as SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>);
     // Light sampling equivalence: evaluate expected ψ vs composed map
+    const rightCardinality = getCarrierSemantics(rightCarrier)?.cardinality;
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, rightCardinality, primalCardinality);
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     if (rightSamples.length === 0 || primalSamples.length === 0) {
       details.push(
         `coalgebra→costate: object=${String(object)} insufficient samples (primal=${primalSamples.length} right=${rightSamples.length}); coverage limited.`,
       );
+      continue;
     }
+    recordTruncatedCoverage(
+      details,
+      "coalgebra→costate",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "coalgebra→costate",
+      object,
+      "right fibre",
+      rightSamples.length,
+      rightCardinality,
+      sampleLimit,
+    );
     for (const right of rightSamples) {
       const arrow = kappa.map(right);
       for (const primal of primalSamples) {
@@ -1499,13 +1643,35 @@ export const costateToCoalgebra = <Obj, Arr, Left, Right, Value>(
       return primalExp.register((pr) => (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(pr));
     });
     coalgebra.set(object, gamma as unknown as SetHom<IndexedElement<Obj, Right>, ExponentialArrow<IndexedElement<Obj, Left>, Value>>);
+    const dualCardinality = getCarrierSemantics(fiber.dualFiber)?.cardinality;
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, dualCardinality, primalCardinality);
     const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     if (dualSamples.length === 0 || primalSamples.length === 0) {
       details.push(
         `costate→coalgebra: object=${String(object)} insufficient samples (primal=${primalSamples.length} dual=${dualSamples.length}); coverage limited.`,
       );
+      continue;
     }
+    recordTruncatedCoverage(
+      details,
+      "costate→coalgebra",
+      object,
+      "dual fibre",
+      dualSamples.length,
+      dualCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "costate→coalgebra",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
     for (const dualEl of dualSamples) {
       const arrow = gamma.map(dualEl);
       for (const primal of primalSamples) {
