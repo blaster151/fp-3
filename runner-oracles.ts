@@ -173,6 +173,15 @@ export const RunnerOracles = {
     const back = coalgebraComponentsToRunner(forward.components, law, translatorOpts);
     const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
     const zigZagCoalgebra = compareCoalgebraComponents(forward.components, back.components, law, options);
+    const meta: string[] = [];
+    if (options.translatorSampleLimit !== undefined) {
+      meta.push(`translator sampleLimit=${options.translatorSampleLimit}`);
+    } else {
+      meta.push("translator sampleLimit=adaptive");
+    }
+    if (options.translatorObjectFilter) {
+      meta.push("translator objectFilter applied.");
+    }
     const holds =
       forward.diagnostics.mismatches === 0 &&
       back.diagnostics.mismatches === 0 &&
@@ -186,6 +195,7 @@ export const RunnerOracles = {
         ...back.diagnostics.details.slice(0, 4),
         ...zigZagRunner.details.slice(0, 3),
         ...zigZagCoalgebra.details.slice(0, 3),
+        ...meta,
       ],
       diagnostics: { forward, back, zigZagRunner, zigZagCoalgebra },
     };
@@ -200,6 +210,15 @@ export const RunnerOracles = {
     const back = costateComponentsToRunner(forward.components, law, translatorOpts);
     const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
     const zigZagCostate = compareCostateComponents(forward.components, back.components, law, options);
+    const meta: string[] = [];
+    if (options.translatorSampleLimit !== undefined) {
+      meta.push(`translator sampleLimit=${options.translatorSampleLimit}`);
+    } else {
+      meta.push("translator sampleLimit=adaptive");
+    }
+    if (options.translatorObjectFilter) {
+      meta.push("translator objectFilter applied.");
+    }
     const holds =
       forward.diagnostics.mismatches === 0 &&
       back.diagnostics.mismatches === 0 &&
@@ -213,6 +232,7 @@ export const RunnerOracles = {
         ...back.diagnostics.details.slice(0, 4),
         ...zigZagRunner.details.slice(0, 3),
         ...zigZagCostate.details.slice(0, 3),
+        ...meta,
       ],
       diagnostics: { forward, back, zigZagRunner, zigZagCostate },
     };
@@ -230,6 +250,15 @@ export const RunnerOracles = {
     const costBack = coalgebraToCostate(coalBack.components, law, translatorOpts);
     const zigZagCoalgebra = compareCoalgebraComponents(coal.components, coalBack.components, law, options);
     const zigZagCostate = compareCostateComponents(cost.components, costBack.components, law, options);
+    const meta: string[] = [];
+    if (options.translatorSampleLimit !== undefined) {
+      meta.push(`translator sampleLimit=${options.translatorSampleLimit}`);
+    } else {
+      meta.push("translator sampleLimit=adaptive");
+    }
+    if (options.translatorObjectFilter) {
+      meta.push("translator objectFilter applied.");
+    }
     const holds =
       coal.diagnostics.mismatches === 0 &&
       cost.diagnostics.mismatches === 0 &&
@@ -247,6 +276,7 @@ export const RunnerOracles = {
         ...costBack.diagnostics.details.slice(0, 4),
         ...zigZagCoalgebra.details.slice(0, 3),
         ...zigZagCostate.details.slice(0, 3),
+        ...meta,
       ],
       diagnostics: { coal, cost, coalBack, costBack, zigZagCoalgebra, zigZagCostate },
     };
