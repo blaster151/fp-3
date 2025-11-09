@@ -2202,7 +2202,7 @@ const resolveThetaHom = <
   return undefined;
 };
 
-const compareRunnerThetas = <
+export const compareRunnerThetas = <
   Obj,
   Arr,
   Left,
@@ -2248,7 +2248,7 @@ const compareRunnerThetas = <
   return { checked, mismatches, details };
 };
 
-const compareCoalgebraComponents = <
+export const compareCoalgebraComponents = <
   Obj,
   Arr,
   Left,
@@ -2296,7 +2296,7 @@ const compareCoalgebraComponents = <
   return { checked, mismatches, details };
 };
 
-const compareCostateComponents = <
+export const compareCostateComponents = <
   Obj,
   Arr,
   Left,

@@ -17,10 +17,18 @@ Next: —None (rolled into downstream translator work.)
 ------
 
 ### **4. Make Coalgebra and Costate Translators Bidirectional**
+Status: IN PROGRESS
 
 - Rewrite all six translation functions—`runnerToCoalgebraComponents`, `coalgebraComponentsToRunner`, `runnerToCostateComponents`, `costateComponentsToRunner`, `coalgebraToCostate`, and `costateToCoalgebra`—to rebuild θ, γ, γ′ directly (no cached ψ).
 - Prove diagrams (4) and (5) via sampled diagnostics.
 - Extend equivalence oracles to produce zig-zag witnesses (runner → coalgebra → runner, etc.) with explicit mismatches when reconstructions diverge.
+
+Progress:
+- Exported `compareRunnerThetas`, `compareCoalgebraComponents`, and `compareCostateComponents` from `stateful-runner.ts` so the oracle layer can sample zig-zag identities directly.
+- Rebuilt the `runner-oracles.ts` imports, consolidated duplicates, and wired the new comparison helpers into the coalgebra/costate equivalence oracles; `equivalenceCoalgebra` and `equivalenceCostate` now report both runner and component mismatches, while `equivalenceTriangle` reuses the coalgebra component comparison.
+
+Next:
+- Fold the new costate comparison into the triangle oracle (costate leg) and audit remaining translator diagnostics to ensure diagrams (4)/(5) are saturated with sample coverage.
 
 ------
 

@@ -5,19 +5,20 @@ import {
   checkRunnerCoalgebra,
   checkRunnerCostate,
   checkRunTCategoryLaws,
-    checkRunnerStateHandlers,
-    checkPsiToThetaConsistency,
-    checkRunnerCurryingConsistency,
-    checkRunnerAxioms,
-    runnerToCoalgebraComponents,
-    coalgebraComponentsToRunner,
-    runnerToCostateComponents,
-    costateComponentsToRunner,
-      coalgebraToCostate,
-      costateToCoalagra,
-      compareRunnerThetas,
-      compareCoalagraComponents,
-  } from "./stateful-runner";
+  checkRunnerStateHandlers,
+  checkPsiToThetaConsistency,
+  checkRunnerCurryingConsistency,
+  checkRunnerAxioms,
+  runnerToCoalgebraComponents,
+  coalgebraComponentsToRunner,
+  runnerToCostateComponents,
+  costateComponentsToRunner,
+  coalgebraToCostate,
+  costateToCoalgebra,
+  compareRunnerThetas,
+  compareCoalgebraComponents,
+  compareCostateComponents,
+} from "./stateful-runner";
 
 export interface RunnerOracleResult {
   readonly registryPath: string;
@@ -150,52 +151,58 @@ export const RunnerOracles = {
       diagnostics: report,
     };
   },
-  equivalenceCoalgebra: <Obj, Arr, Left, Right, Value>(
-    runner: StatefulRunner<Obj, Left, Right, Value>,
-    law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-    options: RunnerOracleOptions<Obj> = {},
-  ): RunnerOracleResult => {
-    const forward = runnerToCoalgebraComponents(runner, law, options);
-    const back = coalgebraComponentsToRunner(forward.components, law, options);
-      const zigZag = compareRunnerThetas(runner, back.runner, law, options);
+    equivalenceCoalgebra: <Obj, Arr, Left, Right, Value>(
+      runner: StatefulRunner<Obj, Left, Right, Value>,
+      law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+      options: RunnerOracleOptions<Obj> = {},
+    ): RunnerOracleResult => {
+      const forward = runnerToCoalgebraComponents(runner, law, options);
+      const back = coalgebraComponentsToRunner(forward.components, law, options);
+      const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
+      const zigZagCoalgebra = compareCoalgebraComponents(forward.components, back.components, law, options);
       const holds =
         forward.diagnostics.mismatches === 0 &&
         back.diagnostics.mismatches === 0 &&
-        zigZag.mismatches === 0;
-    return {
-      registryPath: path("equivalence.coalgebra"),
-      holds,
+        zigZagRunner.mismatches === 0 &&
+        zigZagCoalgebra.mismatches === 0;
+      return {
+        registryPath: path("equivalence.coalgebra"),
+        holds,
         details: [
           ...forward.diagnostics.details.slice(0, 4),
           ...back.diagnostics.details.slice(0, 4),
-          ...zigZag.details.slice(0, 4),
+          ...zigZagRunner.details.slice(0, 3),
+          ...zigZagCoalgebra.details.slice(0, 3),
         ],
-        diagnostics: { forward, back, zigZag },
-    };
-  },
-  equivalenceCostate: <Obj, Arr, Left, Right, Value>(
-    runner: StatefulRunner<Obj, Left, Right, Value>,
-    law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-    options: RunnerOracleOptions<Obj> = {},
-  ): RunnerOracleResult => {
-    const forward = runnerToCostateComponents(runner, law, options);
-    const back = costateComponentsToRunner(forward.components, law, options);
-      const zigZag = compareRunnerThetas(runner, back.runner, law, options);
+        diagnostics: { forward, back, zigZagRunner, zigZagCoalgebra },
+      };
+    },
+    equivalenceCostate: <Obj, Arr, Left, Right, Value>(
+      runner: StatefulRunner<Obj, Left, Right, Value>,
+      law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+      options: RunnerOracleOptions<Obj> = {},
+    ): RunnerOracleResult => {
+      const forward = runnerToCostateComponents(runner, law, options);
+      const back = costateComponentsToRunner(forward.components, law, options);
+      const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
+      const zigZagCostate = compareCostateComponents(forward.components, back.components, law, options);
       const holds =
         forward.diagnostics.mismatches === 0 &&
         back.diagnostics.mismatches === 0 &&
-        zigZag.mismatches === 0;
-    return {
-      registryPath: path("equivalence.costate"),
-      holds,
+        zigZagRunner.mismatches === 0 &&
+        zigZagCostate.mismatches === 0;
+      return {
+        registryPath: path("equivalence.costate"),
+        holds,
         details: [
           ...forward.diagnostics.details.slice(0, 4),
           ...back.diagnostics.details.slice(0, 4),
-          ...zigZag.details.slice(0, 4),
+          ...zigZagRunner.details.slice(0, 3),
+          ...zigZagCostate.details.slice(0, 3),
         ],
-        diagnostics: { forward, back, zigZag },
-    };
-  },
+        diagnostics: { forward, back, zigZagRunner, zigZagCostate },
+      };
+    },
   equivalenceTriangle: <Obj, Arr, Left, Right, Value>(
     runner: StatefulRunner<Obj, Left, Right, Value>,
     law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
