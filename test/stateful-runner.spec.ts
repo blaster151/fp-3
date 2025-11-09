@@ -19,7 +19,8 @@ describe("stateful runner", () => {
     const runner = buildRunnerFromInteraction(law);
     // Perturb first theta by mapping every left element to a constant arrow returning a fixed value.
     let perturbedRunner = runner;
-    for (const [obj, theta] of runner.thetas.entries()) {
+    const thetaMap = runner.thetas ?? new Map();
+    for (const [obj, theta] of thetaMap.entries()) {
       const fixed = (() => {
         const firstDual = (() => {
           for (const d of law.psiComponents.get(obj)!.dualFiber as Iterable<unknown>) return d;
@@ -34,9 +35,13 @@ describe("stateful runner", () => {
   if (first.done) continue;
   const canonicalLeft = first.value;
   const bad = SetCat.hom(theta.dom, theta.cod, () => theta.map(canonicalLeft));
-      const thetas = new Map(runner.thetas);
+      const thetas = new Map(thetaMap);
       thetas.set(obj, bad);
-      perturbedRunner = { thetas, diagnostics: runner.diagnostics } as typeof runner;
+      perturbedRunner = {
+        thetas,
+        thetaHom: runner.thetaHom,
+        diagnostics: runner.diagnostics,
+      } as typeof runner;
       break; // only perturb one
     }
     const report = checkStatefulRunner(perturbedRunner, law, { sampleLimit: 4 });
@@ -123,7 +128,7 @@ describe("stateful runner", () => {
     // Minimal assertion: creating enriched runner doesn't break identities
     const enriched = buildEnrichedStatefulRunner(runner, law, { initialState: () => ({ count: 0 }) });
     // Identity morphisms implicit in category laws check
-    const { checkRunTCategoryLaws } = require("../stateful-runner");
+    const { checkRunTCategoryLaws } = require("../stateful-runner") as typeof import("../stateful-runner");
     const catReport = checkRunTCategoryLaws(law, { source: enriched }, { sampleLimit: 4 });
     expect(catReport.leftIdentity.mismatches).toBe(0);
     expect(catReport.rightIdentity.mismatches).toBe(0);
@@ -133,7 +138,7 @@ describe("stateful runner", () => {
     const law = makeExample6MonadComonadInteractionLaw();
     const runner = buildRunnerFromInteraction(law);
     const enriched = buildEnrichedStatefulRunner(runner, law, { initialState: () => ({ count: 0 }) });
-    const { checkRunTCategoryLaws } = require("../stateful-runner");
+    const { checkRunTCategoryLaws } = require("../stateful-runner") as typeof import("../stateful-runner");
     const catReport = checkRunTCategoryLaws(law, { source: enriched, target: enriched, mid: enriched, tail: enriched }, { sampleLimit: 4 });
     expect(catReport.associativity.skipped || catReport.associativity.mismatches === 0).toBe(true);
   });
@@ -144,14 +149,14 @@ describe("stateful runner", () => {
     const mm = runnerToMonadMap(runner, law.monad, law.monad, { sampleLimit: 4 });
     expect(mm.components.size).toBeGreaterThanOrEqual(0);
     const rr = monadMapToRunner(mm, law, { sampleLimit: 4 });
-    expect(rr.thetas.size).toBeGreaterThan(0);
+    expect((rr.thetas?.size ?? 0)).toBeGreaterThan(0);
     expect(rr.generatorPreservation?.checked).toBeGreaterThanOrEqual(0);
   });
 
   it("costate/coalgebra equivalence oracles succeed on Example 6", () => {
     const law = makeExample6MonadComonadInteractionLaw();
     const runner = buildRunnerFromInteraction(law);
-    const { RunnerOracles } = require("../runner-oracles");
+    const { RunnerOracles } = require("../runner-oracles") as typeof import("../runner-oracles");
     const coalEq = RunnerOracles.equivalenceCoalgebra(runner, law, { sampleLimit: 4 });
     const costEq = RunnerOracles.equivalenceCostate(runner, law, { sampleLimit: 4 });
     const triEq = RunnerOracles.equivalenceTriangle(runner, law, { sampleLimit: 4 });

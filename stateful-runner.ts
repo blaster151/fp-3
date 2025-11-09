@@ -1,9 +1,14 @@
-import type { ExponentialArrow, SetHom, SetObj } from "./set-cat";
+import type { ExponentialArrow, SetHom, SetObj, SetCarrierSemantics } from "./set-cat";
 import { SetCat, getCarrierSemantics } from "./set-cat";
 import type { MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
 import { monadComonadInteractionLawToMonoid } from "./monad-comonad-interaction-law";
 import type { IndexedElement } from "./chu-space";
 import type { MonadStructure } from "./monad-comonad-interaction-law";
+import {
+  type FreeTreeMonad,
+  type Tree,
+  foldTree,
+} from "./tree-free-monad";
 
 // =============================
 // Runner ⇔ monad translator layer (Tree_Σ ⇔ T)
@@ -11,13 +16,6 @@ import type { MonadStructure } from "./monad-comonad-interaction-law";
 // We introduce a minimal free-tree monad façade and a monad morphism interface
 // so runners can be converted to monad maps and back. The actual operation
 // signature Σ is abstracted as an operation set carried inside metadata.
-
-/** Placeholder free tree monad representation for a signature Σ. */
-// Note: a concrete Tree_Σ free monad is provided in tree-free-monad.ts. The below
-// local interface remains for backwards-compat function signatures.
-export interface FreeTreeMonad<Obj, Arr> extends MonadStructure<Obj, Arr> {
-  readonly signature?: unknown;
-}
 
 /** Minimal monad morphism structure: natural transformation τ: F ⇒ G preserving η and μ. */
 export interface MonadMorphism<Obj, Arr> {
@@ -46,6 +44,7 @@ export interface MonadMapToRunnerOptions<Obj> {
   readonly sampleLimit?: number;
   readonly objectFilter?: (object: Obj) => boolean;
   readonly metadata?: ReadonlyArray<string>;
+  readonly operationSemantics?: ReadonlyMap<string, (args: ReadonlyArray<unknown>) => unknown>;
 }
 
 export interface MonadMapToRunnerResult<Obj, Left, Right, Value> extends StatefulRunner<Obj, Left, Right, Value> {
@@ -60,6 +59,16 @@ export interface MonadMapToRunnerResult<Obj, Left, Right, Value> extends Statefu
  * evaluation will require an explicit tree syntax (future enhancement). Laws
  * are sampled to confirm τ ∘ η_F = η_T and μ_T ∘ Tτ ∘ τF ≈ τ ∘ μ_F.
  */
+const isTreeNode = (value: unknown): value is Tree<unknown> => {
+  if (typeof value !== "object" || value === null) return false;
+  const tag = (value as { _tag?: string })._tag;
+  if (tag === "Return") return true;
+  if (tag !== "Op") return false;
+  const children = (value as { children?: unknown }).children;
+  if (!Array.isArray(children)) return false;
+  return children.every(isTreeNode);
+};
+
 export const runnerToMonadMap = <Obj, Arr, Left, Right, Value>(
   runner: StatefulRunner<Obj, Left, Right, Value>,
   free: MonadStructure<Obj, Arr>,
@@ -68,72 +77,158 @@ export const runnerToMonadMap = <Obj, Arr, Left, Right, Value>(
 ): RunnerToMonadMapResult<Obj, Arr> => {
   const sampleLimit = Math.max(0, options.sampleLimit ?? 12);
   const components = new Map<Obj, SetHom<unknown, unknown>>();
-  const diagnostics: string[] = ["runnerToMonadMap: constructing τ components from θ witnesses (conservative; Tree_Σ ops not interpreted yet)."];
-  let unitChecked = 0, unitMismatches = 0;
-  let multChecked = 0, multMismatches = 0;
-  for (const [object, theta] of (runner.thetas ?? buildThetaCurriedFromHom(runner, free as unknown as MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>)).entries()) {
+  const diagnostics: string[] = ["runnerToMonadMap: constructing τ via structural recursion on Tree_Σ generators."];
+  const treeMonad = free as Partial<FreeTreeMonad<Obj, Arr>>;
+  const opHandlers = options.operationSemantics ?? new Map<string, (args: ReadonlyArray<unknown>) => unknown>();
+  const missingHandlers = new Set<string>();
+  let unitChecked = 0;
+  let unitMismatches = 0;
+  let multChecked = 0;
+  let multMismatches = 0;
+  let treeChecked = 0;
+  let treeMismatches = 0;
+  for (const [object] of runner.thetaHom.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-    // Build τ_X interpreting Tree_Σ nodes. If element is not a tree, lift via η_T.
-    const sourceCarrier = (free.unit.transformation.component(object).cod as SetObj<unknown>) || (free.unit.transformation.component(object).dom as SetObj<unknown>);
-    const targetCarrier = (target.unit.transformation.component(object).cod as SetObj<unknown>) || (target.unit.transformation.component(object).dom as SetObj<unknown>);
     const etaTarget = target.unit.transformation.component(object) as SetHom<unknown, unknown>;
-    const opHandlers = options.operationSemantics ?? new Map<string, (args: ReadonlyArray<unknown>) => unknown>();
+    const targetCarrier = (etaTarget.cod as SetObj<unknown>) ?? (etaTarget.dom as SetObj<unknown>);
+    const sourceCarrier =
+      (treeMonad.carriers?.get(object) as SetObj<unknown> | undefined)
+        ?? (free.functor.functor.F0(object) as SetObj<unknown>)
+        ?? (free.unit.transformation.component(object).cod as SetObj<unknown>);
+    const evaluateTree = (tree: Tree<unknown>): unknown =>
+      foldTree<unknown, unknown>({
+        onReturn: (value) => etaTarget.map(value),
+        onOp: (name, children) => {
+          const handler = opHandlers.get(name);
+          if (!handler) {
+            missingHandlers.add(name);
+            return { op: name, args: children };
+          }
+          return handler(children);
+        },
+      })(tree);
     const tau = SetCat.hom(sourceCarrier, targetCarrier, (element: unknown) => {
-      const isTree = !!(element && typeof element === 'object' && (element as any)._tag);
-      if (!isTree) return etaTarget.map(element);
-      const fold = (t: any): unknown => {
-        if (t._tag === 'Return') return etaTarget.map(t.value);
-        if (t._tag === 'Op') {
-          const handler = opHandlers.get(t.name) ?? ((args: ReadonlyArray<unknown>) => ({ op: t.name, args }));
-          return handler(t.children.map(fold));
-        }
-        return etaTarget.map(t);
-      };
-      return fold(element);
+      if (!isTreeNode(element)) {
+        return etaTarget.map(element);
+      }
+      return evaluateTree(element);
     });
     components.set(object, tau as SetHom<unknown, unknown>);
-    // Sample unit preservation (η_F then τ vs η_T)
+
     const etaF = free.unit.transformation.component(object) as SetHom<unknown, unknown>;
     const unitInputs: unknown[] = [];
     const carrier = etaF.dom as SetObj<unknown>;
     const semantics = getCarrierSemantics(carrier);
     if (sampleLimit > 0) {
       if (semantics?.iterate) {
-        for (const v of semantics.iterate()) { unitInputs.push(v); if (unitInputs.length >= sampleLimit) break; }
+        for (const v of semantics.iterate()) {
+          unitInputs.push(v);
+          if (unitInputs.length >= sampleLimit) break;
+        }
       } else {
-        for (const v of carrier as Iterable<unknown>) { unitInputs.push(v); if (unitInputs.length >= sampleLimit) break; }
+        for (const v of carrier as Iterable<unknown>) {
+          unitInputs.push(v);
+          if (unitInputs.length >= sampleLimit) break;
+        }
       }
     }
     for (const input of unitInputs) {
-      unitChecked++;
-  const leftLifted = etaTarget.map(input);
-      const rightLifted = (components.get(object) as SetHom<unknown, unknown>).map(etaF.map(input));
+      unitChecked += 1;
+      const leftLifted = etaTarget.map(input);
+      const rightLifted = tau.map(etaF.map(input));
       if (!Object.is(leftLifted, rightLifted)) {
-        unitMismatches++; if (unitMismatches <= 4) diagnostics.push(`unit-preservation-mismatch object=${String(object)} input=${String(input)} expected=${String(leftLifted)} actual=${String(rightLifted)}`);
+        unitMismatches += 1;
+        if (unitMismatches <= 4) {
+          diagnostics.push(
+            `unit-preservation-mismatch object=${String(object)} input=${String(input)} expected=${String(leftLifted)} actual=${String(rightLifted)}`,
+          );
+        }
       }
     }
-    // Multiplication preservation sampling (rough placeholder — uses identity substitution)
+
     const muF = free.multiplication.transformation.component(object) as SetHom<unknown, unknown>;
     const muT = target.multiplication.transformation.component(object) as SetHom<unknown, unknown>;
     const multInputs: unknown[] = [];
     const muCarrier = muF.dom as SetObj<unknown>;
     const muSem = getCarrierSemantics(muCarrier);
     if (sampleLimit > 0) {
-      if (muSem?.iterate) { for (const v of muSem.iterate()) { multInputs.push(v); if (multInputs.length >= sampleLimit) break; } }
-      else { for (const v of muCarrier as Iterable<unknown>) { multInputs.push(v); if (multInputs.length >= sampleLimit) break; } }
+      if (muSem?.iterate) {
+        for (const v of muSem.iterate()) {
+          multInputs.push(v);
+          if (multInputs.length >= sampleLimit) break;
+        }
+      } else {
+        for (const v of muCarrier as Iterable<unknown>) {
+          multInputs.push(v);
+          if (multInputs.length >= sampleLimit) break;
+        }
+      }
     }
     for (const input of multInputs) {
-      multChecked++;
+      multChecked += 1;
       const leftCollapsed = muT.map(input);
-      const rightCollapsed = (components.get(object) as SetHom<unknown, unknown>).map(muF.map(input));
+      const rightCollapsed = tau.map(muF.map(input));
       if (!Object.is(leftCollapsed, rightCollapsed)) {
-        multMismatches++; if (multMismatches <= 4) diagnostics.push(`multiplication-preservation-mismatch object=${String(object)} input=${String(input)} expected=${String(leftCollapsed)} actual=${String(rightCollapsed)}`);
+        multMismatches += 1;
+        if (multMismatches <= 4) {
+          diagnostics.push(
+            `multiplication-preservation-mismatch object=${String(object)} input=${String(input)} expected=${String(leftCollapsed)} actual=${String(rightCollapsed)}`,
+          );
+        }
+      }
+    }
+
+    const treeInputs: unknown[] = [];
+    const treeSemantics = getCarrierSemantics(sourceCarrier);
+    if (sampleLimit > 0) {
+      if (treeSemantics?.iterate) {
+        for (const value of treeSemantics.iterate()) {
+          if (isTreeNode(value)) {
+            treeInputs.push(value);
+          }
+          if (treeInputs.length >= sampleLimit) break;
+        }
+      } else {
+        for (const value of sourceCarrier as Iterable<unknown>) {
+          if (isTreeNode(value)) {
+            treeInputs.push(value);
+          }
+          if (treeInputs.length >= sampleLimit) break;
+        }
+      }
+    }
+    for (const tree of treeInputs) {
+      treeChecked += 1;
+      const expected = evaluateTree(tree as Tree<unknown>);
+      const actual = tau.map(tree);
+      if (!Object.is(expected, actual)) {
+        treeMismatches += 1;
+        if (treeMismatches <= 4) {
+          diagnostics.push(
+            `tree-evaluation-mismatch object=${String(object)} tree=${JSON.stringify(tree)} expected=${String(expected)} actual=${String(actual)}`,
+          );
+        }
       }
     }
   }
+  if (missingHandlers.size > 0) {
+    diagnostics.push(
+      `runnerToMonadMap: missing operation handlers for ${Array.from(missingHandlers).join(", ")} (falling back to diagnostic placeholders).`,
+    );
+  }
   if (options.metadata && options.metadata.length > 0) diagnostics.push(...options.metadata);
-  diagnostics.push(`runnerToMonadMap: unitChecked=${unitChecked} unitMismatches=${unitMismatches} multChecked=${multChecked} multMismatches=${multMismatches}.`);
-  return { source: free, target, components, diagnostics, unitPreservation: { checked: unitChecked, mismatches: unitMismatches }, multiplicationPreservation: { checked: multChecked, mismatches: multMismatches }, fromRunner: true };
+  diagnostics.push(
+    `runnerToMonadMap: unitChecked=${unitChecked} unitMismatches=${unitMismatches} multChecked=${multChecked} multMismatches=${multMismatches} treeChecked=${treeChecked} treeMismatches=${treeMismatches}.`,
+  );
+  return {
+    source: free,
+    target,
+    components,
+    diagnostics,
+    unitPreservation: { checked: unitChecked, mismatches: unitMismatches },
+    multiplicationPreservation: { checked: multChecked, mismatches: multMismatches },
+    fromRunner: true,
+  };
 };
 
 /** Reconstruct a runner from a monad morphism τ: Tree_Σ ⇒ T (placeholder: identity θ). */
@@ -142,39 +237,125 @@ export const monadMapToRunner = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: MonadMapToRunnerOptions<Obj> = {},
 ): MonadMapToRunnerResult<Obj, Left, Right, Value> => {
-  const diagnostics: string[] = ["monadMapToRunner: reconstructing θ family from τ components (placeholder implementation)."];
+  const diagnostics: string[] = ["monadMapToRunner: rebuilding θ from τ by uncurry + Tree_Σ generator checks."];
   const thetas = new Map<Obj, SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>>();
   const thetaHom = new Map<Obj, SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>>();
-  let checked = 0, mismatches = 0;
+  const treeMonad = morphism.source as Partial<FreeTreeMonad<Obj, Arr>>;
+  const opHandlers = options.operationSemantics ?? new Map<string, (args: ReadonlyArray<unknown>) => unknown>();
+  const missingHandlers = new Set<string>();
+  const limit = Math.max(0, options.sampleLimit ?? 8);
+  let returnChecked = 0;
+  let returnMismatches = 0;
+  let treeChecked = 0;
+  let treeMismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-    const phiTheta = (fiber.theta ?? fiber.exponential.curry({ domain: fiber.primalFiber, product: fiber.product, morphism: fiber.phi })) as SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
+    const phiTheta = (fiber.theta ?? fiber.exponential.curry({
+      domain: fiber.primalFiber,
+      product: fiber.product,
+      morphism: fiber.phi,
+    })) as SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
     thetas.set(object, phiTheta);
     const uncurried = fiber.exponential.uncurry({ product: fiber.product, morphism: phiTheta });
     thetaHom.set(object, uncurried as SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>);
-    // Sample consistency between τ and θ on lifted η elements (very shallow round-trip check)
+
     const etaSource = morphism.source.unit.transformation.component(object) as SetHom<unknown, unknown>;
+    const etaTarget = morphism.target.unit.transformation.component(object) as SetHom<unknown, unknown>;
+    const tauComponent = morphism.components.get(object) as SetHom<unknown, unknown> | undefined;
+    if (!tauComponent) continue;
     const samples: unknown[] = [];
     const carrier = etaSource.dom as SetObj<unknown>;
     const semantics = getCarrierSemantics(carrier);
-    const limit = Math.max(0, options.sampleLimit ?? 8);
     if (limit > 0) {
-      if (semantics?.iterate) { for (const v of semantics.iterate()) { samples.push(v); if (samples.length >= limit) break; } }
-      else { for (const v of carrier as Iterable<unknown>) { samples.push(v); if (samples.length >= limit) break; } }
+      if (semantics?.iterate) {
+        for (const value of semantics.iterate()) {
+          samples.push(value);
+          if (samples.length >= limit) break;
+        }
+      } else {
+        for (const value of carrier as Iterable<unknown>) {
+          samples.push(value);
+          if (samples.length >= limit) break;
+        }
+      }
     }
-    for (const s of samples) {
-      checked++;
-      // Placeholder comparison: we just ensure identity mapping as we don't yet have tree constructors.
-      const leftLifted = (morphism.target.unit.transformation.component(object) as SetHom<unknown, unknown>).map(s);
-      const rightLifted = (morphism.components.get(object) as SetHom<unknown, unknown>).map((etaSource.map(s)));
-      if (!Object.is(leftLifted, rightLifted)) {
-        mismatches++; if (mismatches <= 4) diagnostics.push(`generator-mismatch object=${String(object)} input=${String(s)} expected=${String(leftLifted)} actual=${String(rightLifted)}`);
+    for (const sample of samples) {
+      returnChecked += 1;
+      const expected = etaTarget.map(sample);
+      const actual = tauComponent.map(etaSource.map(sample));
+      if (!Object.is(expected, actual)) {
+        returnMismatches += 1;
+        if (returnMismatches <= 4) {
+          diagnostics.push(
+            `generator-return-mismatch object=${String(object)} input=${String(sample)} expected=${String(expected)} actual=${String(actual)}`,
+          );
+        }
+      }
+    }
+
+    const sourceCarrier =
+      (treeMonad.carriers?.get(object) as SetObj<unknown> | undefined)
+        ?? (morphism.source.functor.functor.F0(object) as SetObj<unknown>);
+    if (!sourceCarrier) continue;
+    const treeInputs: unknown[] = [];
+    const treeSemantics = getCarrierSemantics(sourceCarrier);
+    if (limit > 0) {
+      if (treeSemantics?.iterate) {
+        for (const candidate of treeSemantics.iterate()) {
+          if (isTreeNode(candidate)) treeInputs.push(candidate);
+          if (treeInputs.length >= limit) break;
+        }
+      } else {
+        for (const candidate of sourceCarrier as Iterable<unknown>) {
+          if (isTreeNode(candidate)) treeInputs.push(candidate);
+          if (treeInputs.length >= limit) break;
+        }
+      }
+    }
+    const evaluateTree = (tree: Tree<unknown>): unknown =>
+      foldTree<unknown, unknown>({
+        onReturn: (value) => etaTarget.map(value),
+        onOp: (name, children) => {
+          const handler = opHandlers.get(name);
+          if (!handler) {
+            missingHandlers.add(name);
+            return { op: name, args: children };
+          }
+          return handler(children);
+        },
+      })(tree);
+    for (const tree of treeInputs) {
+      treeChecked += 1;
+      const expected = evaluateTree(tree as Tree<unknown>);
+      const actual = tauComponent.map(tree);
+      if (!Object.is(expected, actual)) {
+        treeMismatches += 1;
+        if (treeMismatches <= 4) {
+          diagnostics.push(
+            `generator-tree-mismatch object=${String(object)} tree=${JSON.stringify(tree)} expected=${String(expected)} actual=${String(actual)}`,
+          );
+        }
       }
     }
   }
+  if (missingHandlers.size > 0) {
+    diagnostics.push(
+      `monadMapToRunner: missing operation handlers for ${Array.from(missingHandlers).join(", ")} during generator replay.`,
+    );
+  }
   if (options.metadata && options.metadata.length > 0) diagnostics.push(...options.metadata);
-  diagnostics.push(`monadMapToRunner: generatorChecked=${checked} mismatches=${mismatches}.`);
-  return { thetas, thetaHom, diagnostics, fromMonadMap: true, generatorPreservation: { checked, mismatches } };
+  const checked = returnChecked + treeChecked;
+  const mismatches = returnMismatches + treeMismatches;
+  diagnostics.push(
+    `monadMapToRunner: returnChecked=${returnChecked} returnMismatches=${returnMismatches} treeChecked=${treeChecked} treeMismatches=${treeMismatches}.`,
+  );
+  return {
+    thetas,
+    thetaHom,
+    diagnostics,
+    fromMonadMap: true,
+    generatorPreservation: { checked, mismatches },
+  };
 };
 
 export interface StatefulRunner<Obj, Left, Right, Value> {
@@ -1083,6 +1264,36 @@ export interface RunnerMorphismReport<Obj> {
   readonly details: ReadonlyArray<string>;
 }
 
+const evaluateRunnerState = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  State
+>(
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  object: Obj,
+  state: State,
+  left: IndexedElement<Obj, Left>,
+  right: IndexedElement<Obj, Right>,
+): { next: State | undefined; value: Value | undefined } => {
+  const stateTheta = runner.stateThetas?.get(object) as
+    | StatefulTheta<Obj, Left, Right, Value, State>
+    | undefined;
+  if (stateTheta) {
+    const [next, value] = stateTheta.run(state, left, right);
+    return { next, value };
+  }
+  const resolved = runner.thetas ?? buildThetaCurriedFromHom(runner, interaction);
+  const theta = resolved.get(object);
+  if (!theta) return { next: undefined, value: undefined };
+  const arrow = theta.map(left);
+  const value = arrow(right);
+  return { next: undefined, value };
+};
+
 // Identity morphism on a runner: per object, identity on the exponential object.
 export const identityRunnerMorphism = <
   Obj,
@@ -1096,13 +1307,36 @@ export const identityRunnerMorphism = <
   _interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
 ): RunnerMorphism<Obj, Left, Right, Value, State, State> => {
   const stateMaps = new Map<Obj, SetHom<State, State>>();
-  const resolvedThetasId = (runner.thetas ?? buildThetaCurriedFromHom(runner, _interaction));
-  for (const [object] of resolvedThetasId.entries()) {
-    const carrier = (runner.stateCarriers?.get(object) as SetObj<State>) ?? SetCat.obj([] as State[]);
+  const objects = new Set<Obj>();
+  if (runner.stateCarriers) {
+    for (const object of runner.stateCarriers.keys()) {
+      objects.add(object);
+    }
+  }
+  const resolvedThetasId = runner.thetas ?? buildThetaCurriedFromHom(runner, _interaction);
+  for (const object of resolvedThetasId.keys()) {
+    objects.add(object);
+  }
+
+  const fallback = new Map<Obj, SetObj<State>>();
+  for (const object of objects) {
+    const carrier =
+      (runner.stateCarriers?.get(object) as SetObj<State> | undefined) ??
+      fallback.get(object) ??
+      (() => {
+        const created = SetCat.obj([] as State[]);
+        fallback.set(object, created as SetObj<State>);
+        return created as SetObj<State>;
+      })();
     const id = SetCat.hom(carrier, carrier, (s) => s);
     stateMaps.set(object, id);
   }
-  return { stateMaps, details: ["identityRunnerMorphism: identity on state carriers."] };
+  return {
+    stateMaps,
+    details: [
+      `identityRunnerMorphism: realised on ${objects.size} object(s) with concrete state carriers`,
+    ],
+  };
 };
 
 // Compose two runner morphisms (postcomposition): m2 ∘ m1
@@ -1154,29 +1388,78 @@ export const checkRunnerMorphism = <
   let mismatches = 0;
   const coalgebraSource = buildRunnerCoalgebra(source, interaction);
   const coalgebraTarget = buildRunnerCoalgebra(target, interaction);
+  const resolvedThetaSource = source.thetas ?? buildThetaCurriedFromHom(source, interaction);
+  const resolvedThetaTarget = target.thetas ?? buildThetaCurriedFromHom(target, interaction);
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-  const thetaS = (source.thetas ?? buildThetaCurriedFromHom(source, interaction)).get(object);
-  const thetaT = (target.thetas ?? buildThetaCurriedFromHom(target, interaction)).get(object);
     const stateMap = morphism.stateMaps.get(object);
-    if (!thetaS || !thetaT || !stateMap) continue;
+    if (!stateMap) continue;
+    const thetaS = resolvedThetaSource.get(object);
+    const thetaT = resolvedThetaTarget.get(object);
+    const stateCarrierSource = source.stateCarriers?.get(object) as SetObj<StateA> | undefined;
+    const stateCarrierTarget = target.stateCarriers?.get(object) as SetObj<StateB> | undefined;
+    const targetSemantics = stateCarrierTarget ? getCarrierSemantics(stateCarrierTarget) : undefined;
+    if (!thetaS && !(source.stateThetas?.has(object))) continue;
+    if (!thetaT && !(target.stateThetas?.has(object))) continue;
     objects.push(object);
     const leftSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const rightSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    const stateSamples = stateCarrierSource ? enumerateLimited(stateCarrierSource, sampleLimit) : [];
     let localChecked = 0;
     let localMismatches = 0;
-    for (const leftEl of leftSamples) {
-      const arrowS = thetaS.map(leftEl);
-      const arrowT = thetaT.map(leftEl);
-      for (const rightEl of rightSamples) {
-        localChecked++;
-        // Structural equality requirement: evaluation agrees irrespective of state map because θ does not yet depend on state.
-        const vS = arrowS(rightEl);
-        const vT = arrowT(rightEl);
-        if (!Object.is(vS, vT)) {
-          localMismatches++;
-          if (localMismatches <= 3) {
-            details.push(`runner-morphism mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} source=${String(vS)} target=${String(vT)}`);
+    if (stateSamples.length === 0) {
+      details.push(`runner-morphism: no state samples for object=${String(object)} (missing state carrier).`);
+    }
+    for (const state of stateSamples) {
+      const mapped = stateMap.map(state as StateA) as StateB;
+      for (const leftEl of leftSamples) {
+        for (const rightEl of rightSamples) {
+          localChecked++;
+          const srcEval = evaluateRunnerState(source, interaction, object, state as StateA, leftEl, rightEl);
+          const tgtEval = evaluateRunnerState(target, interaction, object, mapped, leftEl, rightEl);
+          if (srcEval.value !== undefined && tgtEval.value !== undefined) {
+            if (!Object.is(srcEval.value, tgtEval.value)) {
+              localMismatches++;
+              if (localMismatches <= 4) {
+                details.push(
+                  `runner-morphism value mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} source=${String(srcEval.value)} target=${String(tgtEval.value)}`,
+                );
+              }
+            }
+          }
+          if (srcEval.next !== undefined && tgtEval.next !== undefined) {
+            const mappedNext = stateMap.map(srcEval.next as StateA) as StateB;
+            const nextEqual = targetSemantics?.equals
+              ? targetSemantics.equals(mappedNext, tgtEval.next as StateB)
+              : Object.is(mappedNext, tgtEval.next);
+            if (!nextEqual) {
+              localMismatches++;
+              if (localMismatches <= 4) {
+                details.push(
+                  `runner-morphism state-square mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} mapped=${String(mappedNext)} target=${String(tgtEval.next)}`,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+    if (localChecked === 0 && leftSamples.length > 0 && rightSamples.length > 0) {
+      for (const leftEl of leftSamples) {
+        const arrowS = thetaS?.map(leftEl);
+        const arrowT = thetaT?.map(leftEl);
+        if (!arrowS || !arrowT) continue;
+        for (const rightEl of rightSamples) {
+          localChecked++;
+          const vS = arrowS(rightEl);
+          const vT = arrowT(rightEl);
+          if (!Object.is(vS, vT)) {
+            localMismatches++;
+            if (localMismatches <= 4) {
+              details.push(
+                `runner-morphism mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} source=${String(vS)} target=${String(vT)}`,
+              );
+            }
           }
         }
       }
@@ -1240,11 +1523,13 @@ const compareRunnerMorphisms = <
   Left,
   Right,
   Value,
-  State
+  StateA,
+  StateB
 >(
-  first: RunnerMorphism<Obj, Left, Right, Value, State, State>,
-  second: RunnerMorphism<Obj, Left, Right, Value, State, State>,
-  sampleRunner: StatefulRunner<Obj, Left, Right, Value>,
+  first: RunnerMorphism<Obj, Left, Right, Value, StateA, StateB>,
+  second: RunnerMorphism<Obj, Left, Right, Value, StateA, StateB>,
+  domainRunner: StatefulRunner<Obj, Left, Right, Value>,
+  codomainRunner: StatefulRunner<Obj, Left, Right, Value>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   sampleLimit: number,
   objectFilter?: (object: Obj) => boolean,
@@ -1252,32 +1537,80 @@ const compareRunnerMorphisms = <
   const details: string[] = [];
   let checked = 0;
   let mismatches = 0;
+  const codThetaCurried = codomainRunner.thetas ?? buildThetaCurriedFromHom(codomainRunner, interaction);
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (objectFilter && !objectFilter(object)) continue;
-  const theta = (sampleRunner.thetas ?? buildThetaCurriedFromHom(sampleRunner, interaction)).get(object);
-    if (!theta) continue;
+    const stateCarrier = domainRunner.stateCarriers?.get(object) as SetObj<StateA> | undefined;
+    if (!stateCarrier) {
+      details.push(`compareRunnerMorphisms: skipped object=${String(object)} (no domain state carrier).`);
+      continue;
+    }
     const f = first.stateMaps.get(object);
     const g = second.stateMaps.get(object);
-    if (!f || !g) continue;
+    if (!f || !g) {
+      details.push(`compareRunnerMorphisms: skipped object=${String(object)} (missing component morphisms).`);
+      continue;
+    }
+    const codCarrier = codomainRunner.stateCarriers?.get(object) as SetObj<StateB> | undefined;
+    const codSemantics = codCarrier ? getCarrierSemantics(codCarrier) : undefined;
     const leftSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const rightSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    const stateSamples = enumerateLimited(stateCarrier, sampleLimit);
+    const codStateTheta = codomainRunner.stateThetas?.get(object) as
+      | StatefulTheta<Obj, Left, Right, Value, StateB>
+      | undefined;
+    const codTheta = codThetaCurried.get(object);
     let localChecked = 0;
     let localMismatches = 0;
-    for (const leftEl of leftSamples) {
-      const baseArrow = theta.map(leftEl);
-      for (const rightEl of rightSamples) {
-        localChecked++;
-        const v1 = baseArrow(rightEl);
-        const v2 = baseArrow(rightEl);
-        if (!Object.is(v1, v2)) {
-          localMismatches++;
-          if (localMismatches <= 3) {
-            details.push(
-              `morphism-eq-mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} first=${String(v1)} second=${String(v2)}`,
-            );
-          }
+    for (const state of stateSamples) {
+      const mappedFirst = f.map(state as StateA) as StateB;
+      const mappedSecond = g.map(state as StateA) as StateB;
+      localChecked += 1;
+      const statesEqual = codSemantics?.equals
+        ? codSemantics.equals(mappedFirst, mappedSecond)
+        : Object.is(mappedFirst, mappedSecond);
+      if (!statesEqual) {
+        localMismatches += 1;
+        if (localMismatches <= 4) {
+          details.push(
+            `compareRunnerMorphisms: state mismatch object=${String(object)} state=${String(state)} first=${String(mappedFirst)} second=${String(mappedSecond)}`,
+          );
         }
       }
+      if (codStateTheta) {
+        for (const leftEl of leftSamples) {
+          for (const rightEl of rightSamples) {
+            const [nextFirst, valueFirst] = codStateTheta.run(mappedFirst, leftEl, rightEl);
+            const [nextSecond, valueSecond] = codStateTheta.run(mappedSecond, leftEl, rightEl);
+            localChecked += 1;
+            const valueEqual = Object.is(valueFirst, valueSecond);
+            if (!valueEqual) {
+              localMismatches += 1;
+              if (localMismatches <= 4) {
+                details.push(
+                  `compareRunnerMorphisms: value mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} first=${String(valueFirst)} second=${String(valueSecond)}`,
+                );
+              }
+            }
+            const nextEqual = codSemantics?.equals
+              ? codSemantics.equals(nextFirst, nextSecond)
+              : Object.is(nextFirst, nextSecond);
+            if (!nextEqual) {
+              localMismatches += 1;
+              if (localMismatches <= 4) {
+                details.push(
+                  `compareRunnerMorphisms: next-state mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} first=${String(nextFirst)} second=${String(nextSecond)}`,
+                );
+              }
+            }
+          }
+        }
+      } else if (codTheta) {
+        details.push(`compareRunnerMorphisms: object=${String(object)} has only stateless θ; skipping value comparison.`);
+      }
+    }
+    if (localChecked === 0) {
+      details.push(`compareRunnerMorphisms: no samples evaluated for object=${String(object)}.`);
     }
     checked += localChecked;
     mismatches += localMismatches;
@@ -1313,11 +1646,11 @@ export const checkRunTCategoryLaws = <
 
   // Left identity: f ∘ id_source == f
   const leftId = composeRunnerMorphisms(idSource, f, interaction);
-  const leftIdCmp = compareRunnerMorphisms(leftId, f, source, interaction, sampleLimit, options.objectFilter);
+  const leftIdCmp = compareRunnerMorphisms(leftId, f, source, target, interaction, sampleLimit, options.objectFilter);
 
   // Right identity: id_target ∘ f == f
   const rightId = composeRunnerMorphisms(f, idTarget, interaction);
-  const rightIdCmp = compareRunnerMorphisms(rightId, f, source, interaction, sampleLimit, options.objectFilter);
+  const rightIdCmp = compareRunnerMorphisms(rightId, f, source, target, interaction, sampleLimit, options.objectFilter);
 
   // Associativity: (h ∘ g) ∘ f == h ∘ (g ∘ f)
   const assocSkipped = !config.mid && !config.tail && !config.g && !config.h;
@@ -1332,7 +1665,7 @@ export const checkRunTCategoryLaws = <
   const hog = composeRunnerMorphisms(g, h, interaction); // h ∘ g
   const leftAssoc = composeRunnerMorphisms(gof, h, interaction); // h ∘ (g ∘ f)
   const rightAssoc = composeRunnerMorphisms(f, hog, interaction); // (h ∘ g) ∘ f
-  const assocCmp = compareRunnerMorphisms(leftAssoc, rightAssoc, source, interaction, sampleLimit, options.objectFilter);
+  const assocCmp = compareRunnerMorphisms(leftAssoc, rightAssoc, source, tail, interaction, sampleLimit, options.objectFilter);
     assocChecked = assocCmp.checked;
     assocMismatches = assocCmp.mismatches;
     if (assocCmp.details.length > 0) details.push(...assocCmp.details);
@@ -1432,7 +1765,7 @@ export const buildRunnerLawReport = <
       options.sampleLimit !== undefined ? { sampleLimit: options.sampleLimit } : {},
     );
   // Handler translation check (ϑ): non-fatal metric
-  const handlerReport = checkRunnerStateHandlers<Obj, Arr, Left, Right, Value, { count: number }>(
+  const handlerReport = checkRunnerStateHandlers<Obj, Arr, Left, Right, Value>(
     runner,
     interaction,
     options.sampleLimit !== undefined ? { sampleLimit: options.sampleLimit } : {},
@@ -2080,43 +2413,209 @@ export const prettyPrintRunnerThetas = <Obj, Left, Right, Value>(
 
 export interface RunnerStateHandler<Obj, Left, Right, Value, State> {
   readonly object: Obj;
-  readonly run: (state: State, left: IndexedElement<Obj, Left>, right: IndexedElement<Obj, Right>) => readonly [State, Value];
+  readonly run: (
+    state: State,
+    left: IndexedElement<Obj, Left>,
+    right: IndexedElement<Obj, Right>,
+  ) => readonly [State, Value];
 }
 
-export interface RunnerStateHandlerSummary<Obj, Left, Right, Value, State> {
-  readonly handlers: ReadonlyArray<RunnerStateHandler<Obj, Left, Right, Value, State>>;
+export interface RunnerStateHandlerEntry<Obj, Left, Right, Value, State> {
+  readonly object: Obj;
+  readonly handler: RunnerStateHandler<Obj, Left, Right, Value, State>;
+  readonly stateCarrier?: SetObj<State>;
+  readonly transformation?: SetHom<
+    readonly [IndexedElement<Obj, Left>, State],
+    readonly [Value, State]
+  >;
+  readonly curriedTransformation?: SetHom<
+    IndexedElement<Obj, Left>,
+    ExponentialArrow<State, readonly [Value, State]>
+  >;
+  readonly canonicalRight?: IndexedElement<Obj, Right>;
+  readonly independenceIssues?: number;
+}
+
+export interface RunnerStateHandlerSummary<Obj, Left, Right, Value> {
+  readonly entries: ReadonlyArray<RunnerStateHandlerEntry<Obj, Left, Right, Value, unknown>>;
   readonly details: ReadonlyArray<string>;
 }
 
-// Simple placeholder: state is a multiset count of evaluations; update increments count.
+const normalizeHandlerResult = <State, Value>(
+  result: readonly [State, Value],
+): { next: State; value: Value } => ({ next: result[0], value: result[1] });
+
+const resultsEqual = <State>(
+  left: { next: State; value: unknown },
+  right: { next: State; value: unknown },
+  stateSemantics: SetCarrierSemantics<State> | undefined,
+  valueSemantics: SetCarrierSemantics<unknown> | undefined,
+): boolean => {
+  const stateEqual = stateSemantics?.equals
+    ? stateSemantics.equals(left.next, right.next)
+    : Object.is(left.next, right.next);
+  if (!stateEqual) return false;
+  const valueEqual = valueSemantics?.equals
+    ? valueSemantics.equals(left.value, right.value)
+    : Object.is(left.value, right.value);
+  return valueEqual;
+};
+
 export const thetaToStateHandler = <
   Obj,
   Arr,
   Left,
   Right,
-  Value,
-  State extends { count: number }
+  Value
 >(
   runner: StatefulRunner<Obj, Left, Right, Value>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-): RunnerStateHandlerSummary<Obj, Left, Right, Value, State> => {
-  const handlers: RunnerStateHandler<Obj, Left, Right, Value, State>[] = [];
+): RunnerStateHandlerSummary<Obj, Left, Right, Value> => {
+  const entries: RunnerStateHandlerEntry<Obj, Left, Right, Value, unknown>[] = [];
   const details: string[] = [];
+  const resolved = runner.thetas ?? buildThetaCurriedFromHom(runner, interaction);
+  let skippedState = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
-  const theta = (runner.thetas ?? buildThetaCurriedFromHom(runner, interaction)).get(object);
-    if (!theta) continue;
-    const h: RunnerStateHandler<Obj, Left, Right, Value, State> = {
+    const stateTheta = runner.stateThetas?.get(object);
+    const theta = resolved.get(object);
+    if (!stateTheta && !theta) continue;
+    const handler: RunnerStateHandler<Obj, Left, Right, Value, unknown> = {
       object,
       run: (state, left, right) => {
-        const arrow = theta.map(left);
-        const value = arrow(right);
-        return [{ count: state.count + 1 } as State, value];
+        if (stateTheta) {
+          return stateTheta.run(state as never, left, right);
+        }
+        if (theta) {
+          const arrow = theta.map(left);
+          const value = arrow(right);
+          return [state, value];
+        }
+        const evaluated = fiber.phi.map([left, right]);
+        return [state, evaluated];
       },
     };
-    handlers.push(h);
+    const stateCarrier = runner.stateCarriers?.get(object);
+    if (!stateCarrier) {
+      skippedState += 1;
+      entries.push({ object, handler });
+      continue;
+    }
+    const leftSamples = enumerateLimited(fiber.primalFiber, 6);
+    const rightSamples = enumerateLimited(fiber.dualFiber, 6);
+    const stateSamples = enumerateLimited(stateCarrier as SetObj<unknown>, 6);
+    const stateSemantics = getCarrierSemantics(stateCarrier as SetObj<unknown>);
+    const valueSemantics = getCarrierSemantics(fiber.phi.cod as SetObj<Value>) as
+      | SetCarrierSemantics<Value>
+      | undefined;
+    let independenceIssues = 0;
+    const independenceDetails: string[] = [];
+    const evaluate = (
+      state: unknown,
+      left: IndexedElement<Obj, Left>,
+      right: IndexedElement<Obj, Right>,
+    ): { next: unknown; value: Value } => normalizeHandlerResult(handler.run(state, left, right));
+    for (const stateSample of stateSamples) {
+      for (const leftSample of leftSamples) {
+        let baseline: { next: unknown; value: unknown } | undefined;
+        for (const rightSample of rightSamples) {
+          const candidate = evaluate(stateSample, leftSample, rightSample);
+          if (!baseline) {
+            baseline = candidate;
+            continue;
+          }
+          if (
+            !resultsEqual(
+              baseline,
+              candidate,
+              stateSemantics,
+              valueSemantics as SetCarrierSemantics<unknown> | undefined,
+            )
+          ) {
+            independenceIssues += 1;
+            if (independenceDetails.length < 6) {
+              independenceDetails.push(
+                `independence-failure object=${String(object)} state=${String(
+                  (stateSample as { element?: unknown }).element ?? stateSample,
+                )} left=${String(leftSample.element)} first=${String(
+                  baseline.value,
+                )}/${String(baseline.next)} second=${String(candidate.value)}/${String(
+                  candidate.next,
+                )}`,
+              );
+            }
+            break;
+          }
+        }
+      }
+    }
+    if (independenceDetails.length > 0) {
+      details.push(...independenceDetails);
+    }
+    const canonicalRight = rightSamples[0];
+    let transformation:
+      | SetHom<readonly [IndexedElement<Obj, Left>, unknown], readonly [Value, unknown]>
+      | undefined;
+    let curriedTransformation:
+      | SetHom<IndexedElement<Obj, Left>, ExponentialArrow<unknown, readonly [Value, unknown]>>
+      | undefined;
+    if (canonicalRight) {
+      const domainProduct = SetCat.product(fiber.primalFiber, stateCarrier as SetObj<unknown>);
+      const codomainProduct = SetCat.product(fiber.phi.cod as SetObj<Value>, stateCarrier as SetObj<unknown>);
+      transformation = SetCat.hom(
+        domainProduct.object,
+        codomainProduct.object,
+        (pair) => {
+          const [left, state] = pair;
+          const result = normalizeHandlerResult(handler.run(state, left, canonicalRight));
+          const nextState = result.next as unknown;
+          const value = result.value as unknown as Value;
+          return (
+            codomainProduct.lookup?.(value as Value, nextState)
+              ?? ([value as Value, nextState] as const)
+          ) as readonly [Value, unknown];
+        },
+      );
+      const exponential = SetCat.exponential(
+        stateCarrier as SetObj<unknown>,
+        codomainProduct.object,
+      );
+      curriedTransformation = exponential.curry({
+        domain: fiber.primalFiber,
+        product: domainProduct,
+        morphism: transformation as SetHom<
+          readonly [IndexedElement<Obj, Left>, unknown],
+          readonly [Value, unknown]
+        >,
+      }) as SetHom<
+        IndexedElement<Obj, Left>,
+        ExponentialArrow<unknown, readonly [Value, unknown]>
+      >;
+    }
+    const baseEntry: RunnerStateHandlerEntry<Obj, Left, Right, Value, unknown> = {
+      object,
+      handler,
+      stateCarrier,
+      ...(canonicalRight ? { canonicalRight } : {}),
+      ...(independenceIssues > 0 ? { independenceIssues } : {}),
+    };
+    if (transformation) {
+      if (curriedTransformation) {
+        entries.push({ ...baseEntry, transformation, curriedTransformation });
+      } else {
+        entries.push({ ...baseEntry, transformation });
+      }
+    } else {
+      entries.push(baseEntry);
+    }
   }
-  details.push(`thetaToStateHandler: constructed ${handlers.length} handler(s).`);
-  return { handlers, details };
+  details.push(`thetaToStateHandler: constructed ${entries.length} handler(s).`);
+  if (skippedState > 0) {
+    details.push(`thetaToStateHandler: ${skippedState} object(s) missing state carriers.`);
+  }
+  if (entries.length === 0) {
+    details.push("thetaToStateHandler: no θ components available for translation.");
+  }
+  return { entries, details };
 };
 
 export interface RunnerStateHandlerReport<Obj> {
@@ -2131,44 +2630,146 @@ export const checkRunnerStateHandlers = <
   Arr,
   Left,
   Right,
-  Value,
-  State extends { count: number }
+  Value
 >(
   runner: StatefulRunner<Obj, Left, Right, Value>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): RunnerStateHandlerReport<Obj> => {
   const sampleLimit = Math.max(0, options.sampleLimit ?? 16);
-  const summary = thetaToStateHandler<Obj, Arr, Left, Right, Value, State>(runner, interaction);
+  const summary = thetaToStateHandler(runner, interaction);
   const details: string[] = [...summary.details];
   let checked = 0;
   let mismatches = 0;
-  for (const handler of summary.handlers) {
-    if (options.objectFilter && !options.objectFilter(handler.object)) continue;
-    const fiber = interaction.psiComponents.get(handler.object);
+  let independenceWarnings = 0;
+  for (const entry of summary.entries) {
+    if (options.objectFilter && !options.objectFilter(entry.object)) continue;
+    const fiber = interaction.psiComponents.get(entry.object);
     if (!fiber) continue;
-    let leftCount = 0;
-    for (const leftEl of fiber.primalFiber) {
-      if (leftCount >= sampleLimit) break;
-      leftCount++;
-      let rightCount = 0;
-      for (const rightEl of fiber.dualFiber) {
-        if (rightCount >= sampleLimit) break;
-        rightCount++;
-        const expected = fiber.phi.map([leftEl, rightEl]);
-        const [newState, actual] = handler.run({ count: 0 } as State, leftEl, rightEl);
-        void newState; // placeholder usage
-        checked++;
-        if (!Object.is(expected, actual)) {
-          mismatches++;
-          if (mismatches <= 4) {
-            details.push(
-              `state-handler-mismatch object=${String(handler.object)} left=${String(leftEl.element)} right=${String(rightEl.element)} expected=${String(expected)} actual=${String(actual)}`,
-            );
+    const leftSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    const rightSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    const valueSemantics = getCarrierSemantics(fiber.phi.cod as SetObj<Value>) as
+      | SetCarrierSemantics<Value>
+      | undefined;
+    const stateCarrier = entry.stateCarrier as SetObj<unknown> | undefined;
+    const stateCarrierSemantics = stateCarrier ? getCarrierSemantics(stateCarrier) : undefined;
+    const stateSamples = stateCarrier
+      ? enumerateLimited(stateCarrier, Math.max(1, sampleLimit))
+      : [undefined];
+    if (entry.independenceIssues && entry.independenceIssues > 0) {
+      independenceWarnings += entry.independenceIssues;
+    }
+    let unitSamplesChecked = 0;
+    let unitSamplesMismatched = 0;
+    for (const state of stateSamples) {
+      for (const leftEl of leftSamples) {
+        const domainProduct = entry.transformation && stateCarrier
+          ? SetCat.product(fiber.primalFiber, stateCarrier)
+          : undefined;
+        const canonicalStatePair = entry.transformation && domainProduct
+          ? domainProduct.lookup?.(leftEl, state as never) ?? ([leftEl, state] as const)
+          : undefined;
+        const transformed = entry.transformation && canonicalStatePair
+          ? entry.transformation.map(canonicalStatePair as readonly [IndexedElement<Obj, Left>, unknown])
+          : undefined;
+        const [transformedValue, transformedNext] = transformed ?? [undefined, undefined];
+        for (const rightEl of rightSamples) {
+          const expected = fiber.phi.map([leftEl, rightEl]);
+          const [nextState, actual] = transformed
+            ? [transformedNext, transformedValue]
+            : entry.handler.run(state as never, leftEl, rightEl);
+          checked++;
+          if (!Object.is(expected, actual)) {
+            mismatches++;
+            if (mismatches <= 4) {
+              details.push(
+                `state-handler-mismatch object=${String(entry.object)} left=${String(leftEl.element)} right=${String(rightEl.element)} expected=${String(expected)} actual=${String(actual)}`,
+              );
+            }
+          }
+          if (transformed) {
+            const rerun = entry.handler.run(state as never, leftEl, rightEl);
+            const nextEqual = stateCarrierSemantics?.equals
+              ? stateCarrierSemantics.equals(rerun[0] as unknown, nextState as unknown)
+              : Object.is(rerun[0], nextState);
+            if (!nextEqual && mismatches < 8) {
+              mismatches++;
+              details.push(
+                `state-handler-next-mismatch object=${String(entry.object)} left=${String(leftEl.element)} right=${String(rightEl.element)} transformed=${String(nextState)} direct=${String(rerun[0])}`,
+              );
+            }
           }
         }
       }
     }
+    if (entry.curriedTransformation && entry.canonicalRight && stateCarrier) {
+      const canonicalRight = entry.canonicalRight;
+      const vartheta = entry.curriedTransformation as SetHom<
+        IndexedElement<Obj, Left>,
+        ExponentialArrow<unknown, readonly [Value, unknown]>
+      >;
+      const eta = interaction.monad.unit.transformation.component(entry.object) as
+        | SetHom<unknown, Left>
+        | undefined;
+      if (!eta) {
+        details.push(
+          `state-handler-unit: skipped object=${String(entry.object)} (missing monad unit component).`,
+        );
+      } else {
+        const unitDomainSamples = enumerateLimited(eta.dom as SetObj<unknown>, sampleLimit);
+        for (const base of unitDomainSamples) {
+          const lifted = eta.map(base as Left);
+          const liftedIndexed: IndexedElement<Obj, Left> = { object: entry.object, element: lifted };
+          const arrow = vartheta.map(liftedIndexed);
+          for (const state of stateSamples) {
+            unitSamplesChecked += 1;
+            const expected = normalizeHandlerResult(
+              entry.handler.run(state as never, liftedIndexed, canonicalRight),
+            );
+            const arrowResult = (arrow as (s: unknown) => readonly [unknown, unknown])(
+              state as never,
+            );
+            const actual = {
+              value: arrowResult[0],
+              next: arrowResult[1],
+            };
+            if (
+              !resultsEqual(
+                expected,
+                actual,
+                stateCarrierSemantics as SetCarrierSemantics<unknown> | undefined,
+                valueSemantics as SetCarrierSemantics<unknown> | undefined,
+              )
+            ) {
+              unitSamplesMismatched += 1;
+              if (unitSamplesMismatched <= 4) {
+                details.push(
+                  `state-handler-unit-mismatch object=${String(entry.object)} state=${String(
+                    (state as { element?: unknown })?.element ?? state,
+                  )} base=${String(base)} expected=${String(expected.value)}/${String(
+                    expected.next,
+                  )} actual=${String(actual.value)}/${String(actual.next)}`,
+                );
+              }
+            }
+          }
+        }
+      }
+    } else {
+      details.push(
+        `state-handler-unit: skipped object=${String(entry.object)} (missing canonical right or curried transformation).`,
+      );
+    }
+    if (unitSamplesChecked > 0) {
+      details.push(
+        `state-handler-unit summary object=${String(entry.object)} checked=${unitSamplesChecked} mismatches=${unitSamplesMismatched}.`,
+      );
+      checked += unitSamplesChecked;
+      mismatches += unitSamplesMismatched;
+    }
+  }
+  if (independenceWarnings > 0) {
+    details.push(`handler-independence warnings=${independenceWarnings}.`);
   }
   details.push(
     `checkRunnerStateHandlers: checked=${checked} mismatch=${mismatches} (limit=${sampleLimit}).`,

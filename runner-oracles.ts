@@ -114,7 +114,7 @@ export const RunnerOracles = {
     law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
     options: RunnerOracleOptions<Obj> = {},
   ): RunnerOracleResult => {
-    const report = checkRunnerStateHandlers<Obj, Arr, Left, Right, Value, { count: number }>(runner, law, options);
+    const report = checkRunnerStateHandlers<Obj, Arr, Left, Right, Value>(runner, law, options);
     return {
       registryPath: path("handlers"),
       holds: report.holds,
