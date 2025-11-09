@@ -2852,7 +2852,7 @@ export interface RunnerStateHandlerEntry<Obj, Left, Right, Value, State> {
     readonly [IndexedElement<Obj, Left>, State],
     readonly [Value, State]
   >;
-  readonly curriedTransformation?: SetHom<
+  readonly vartheta?: SetHom<
     IndexedElement<Obj, Left>,
     ExponentialArrow<State, readonly [Value, State]>
   >;
@@ -2979,7 +2979,7 @@ export const thetaToStateHandler = <
     let transformation:
       | SetHom<readonly [IndexedElement<Obj, Left>, unknown], readonly [Value, unknown]>
       | undefined;
-    let curriedTransformation:
+    let vartheta:
       | SetHom<IndexedElement<Obj, Left>, ExponentialArrow<unknown, readonly [Value, unknown]>>
       | undefined;
     if (canonicalRight) {
@@ -3003,7 +3003,7 @@ export const thetaToStateHandler = <
         stateCarrier as SetObj<unknown>,
         codomainProduct.object,
       );
-      curriedTransformation = exponential.curry({
+      vartheta = exponential.curry({
         domain: fiber.primalFiber,
         product: domainProduct,
         morphism: transformation as SetHom<
@@ -3023,8 +3023,8 @@ export const thetaToStateHandler = <
       ...(independenceIssues > 0 ? { independenceIssues } : {}),
     };
     if (transformation) {
-      if (curriedTransformation) {
-        entries.push({ ...baseEntry, transformation, curriedTransformation });
+      if (vartheta) {
+        entries.push({ ...baseEntry, transformation, vartheta });
       } else {
         entries.push({ ...baseEntry, transformation });
       }
@@ -3126,9 +3126,9 @@ export const checkRunnerStateHandlers = <
         }
       }
     }
-    if (entry.curriedTransformation && entry.canonicalRight && stateCarrier) {
+    if (entry.vartheta && entry.canonicalRight && stateCarrier) {
       const canonicalRight = entry.canonicalRight;
-      const vartheta = entry.curriedTransformation as SetHom<
+      const vartheta = entry.vartheta as SetHom<
         IndexedElement<Obj, Left>,
         ExponentialArrow<unknown, readonly [Value, unknown]>
       >;
