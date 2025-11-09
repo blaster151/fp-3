@@ -28,9 +28,10 @@ Progress:
 - Rebuilt the `runner-oracles.ts` imports, consolidated duplicates, and wired the new comparison helpers into the coalgebra/costate equivalence oracles; `equivalenceCoalgebra` and `equivalenceCostate` now report both runner and component mismatches, while `equivalenceTriangle` reuses the coalgebra component comparison.
 - Extended `equivalenceTriangle` to re-check both γ and κ round-trips, adding costate zig-zag sampling alongside the coalgebra comparison.
 - Audited the translator diagnostics to flag low-sample domains and aligned `costateToCoalgebra` with configurable sampling, so diagrams (4)/(5) report when witness coverage is thin.
+- Added explicit `translatorSampleLimit`/`translatorObjectFilter` routing in `runner-oracles.ts`, ensuring oracle callers can tune translator coverage independently of higher-level checks.
 
 Next:
-- Plumb the configurable sampling knobs through the oracle entry-points (expose translator `sampleLimit`/filters) and review if default limits need to scale with object size.
+- Stress-test translator defaults on large carriers and evaluate adaptive sampling heuristics before loosening the fixed limit of 8.
 
 ------
 

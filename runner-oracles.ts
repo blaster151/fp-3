@@ -30,9 +30,21 @@ export interface RunnerOracleResult {
 export interface RunnerOracleOptions<Obj> {
   readonly sampleLimit?: number;
   readonly objectFilter?: (object: Obj) => boolean;
+  readonly translatorSampleLimit?: number;
+  readonly translatorObjectFilter?: (object: Obj) => boolean;
 }
 
 const path = (suffix: string): string => `runner.${suffix}`;
+
+const translatorOptions = <Obj>(
+  options: RunnerOracleOptions<Obj>,
+): { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } => {
+  const sampleLimit =
+    options.translatorSampleLimit !== undefined ? options.translatorSampleLimit : options.sampleLimit;
+  const objectFilter =
+    options.translatorObjectFilter !== undefined ? options.translatorObjectFilter : options.objectFilter;
+  return { sampleLimit, objectFilter };
+};
 
 export const RunnerOracles = {
   axioms: <Obj, Arr, Left, Right, Value>(
@@ -156,8 +168,9 @@ export const RunnerOracles = {
     law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
     options: RunnerOracleOptions<Obj> = {},
   ): RunnerOracleResult => {
-    const forward = runnerToCoalgebraComponents(runner, law, options);
-    const back = coalgebraComponentsToRunner(forward.components, law, options);
+    const translatorOpts = translatorOptions(options);
+    const forward = runnerToCoalgebraComponents(runner, law, translatorOpts);
+    const back = coalgebraComponentsToRunner(forward.components, law, translatorOpts);
     const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
     const zigZagCoalgebra = compareCoalgebraComponents(forward.components, back.components, law, options);
     const holds =
@@ -182,8 +195,9 @@ export const RunnerOracles = {
     law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
     options: RunnerOracleOptions<Obj> = {},
   ): RunnerOracleResult => {
-    const forward = runnerToCostateComponents(runner, law, options);
-    const back = costateComponentsToRunner(forward.components, law, options);
+    const translatorOpts = translatorOptions(options);
+    const forward = runnerToCostateComponents(runner, law, translatorOpts);
+    const back = costateComponentsToRunner(forward.components, law, translatorOpts);
     const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
     const zigZagCostate = compareCostateComponents(forward.components, back.components, law, options);
     const holds =
@@ -208,11 +222,12 @@ export const RunnerOracles = {
     law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
     options: RunnerOracleOptions<Obj> = {},
   ): RunnerOracleResult => {
+    const translatorOpts = translatorOptions(options);
     // Form coalgebra, translate to costate, then back to coalgebra, measuring mismatches.
-    const coal = runnerToCoalgebraComponents(runner, law, options);
-    const cost = coalgebraToCostate(coal.components, law, options);
-    const coalBack = costateToCoalgebra(cost.components, law, options);
-    const costBack = coalgebraToCostate(coalBack.components, law, options);
+    const coal = runnerToCoalgebraComponents(runner, law, translatorOpts);
+    const cost = coalgebraToCostate(coal.components, law, translatorOpts);
+    const coalBack = costateToCoalgebra(cost.components, law, translatorOpts);
+    const costBack = coalgebraToCostate(coalBack.components, law, translatorOpts);
     const zigZagCoalgebra = compareCoalgebraComponents(coal.components, coalBack.components, law, options);
     const zigZagCostate = compareCostateComponents(cost.components, costBack.components, law, options);
     const holds =
