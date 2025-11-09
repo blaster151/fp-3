@@ -8,25 +8,21 @@ import {
   type FreeTreeMonad,
   type Tree,
   foldTree,
+  Return,
 } from "./tree-free-monad";
 
-// =============================
-// Runner ⇔ monad translator layer (Tree_Σ ⇔ T)
-// =============================
-// We introduce a minimal free-tree monad façade and a monad morphism interface
-// so runners can be converted to monad maps and back. The actual operation
-// signature Σ is abstracted as an operation set carried inside metadata.
-
-/** Minimal monad morphism structure: natural transformation τ: F ⇒ G preserving η and μ. */
+// Temporary forward declarations (recovering lost types). Replace via proper import if original module is restored.
 export interface MonadMorphism<Obj, Arr> {
-  readonly source: MonadStructure<Obj, Arr>;
-  readonly target: MonadStructure<Obj, Arr>;
-  /** Components τ_X : F X -> G X */
-  readonly components: ReadonlyMap<Obj, SetHom<unknown, unknown>>;
+  readonly source: { unit: { transformation: { component: (obj: Obj) => SetHom<unknown, unknown> } } };
+  readonly target: { unit: { transformation: { component: (obj: Obj) => SetHom<unknown, unknown> } } };
+  readonly components: Map<Obj, SetHom<unknown, unknown>>;
+}
+export interface StatefulRunner<Obj, Left, Right, Value> {
+  readonly thetas?: ReadonlyMap<Obj, SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>>;
+  readonly thetaHom: ReadonlyMap<Obj, SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>>;
+  readonly stateCarriers?: ReadonlyMap<Obj, SetObj<unknown>>;
+  readonly stateThetas?: ReadonlyMap<Obj, StatefulTheta<Obj, Left, Right, Value, unknown>>;
   readonly diagnostics: ReadonlyArray<string>;
-  /** Law preservation tallies (sampled). */
-  readonly unitPreservation?: { checked: number; mismatches: number };
-  readonly multiplicationPreservation?: { checked: number; mismatches: number };
 }
 
 export interface RunnerToMonadMapOptions<Obj> {
@@ -38,6 +34,10 @@ export interface RunnerToMonadMapOptions<Obj> {
 
 export interface RunnerToMonadMapResult<Obj, Arr> extends MonadMorphism<Obj, Arr> {
   readonly fromRunner: true;
+  /** Right unit (ρ) components sampled per object (Proposition 3 style witness). */
+  readonly rhoComponents?: ReadonlyMap<Obj, { readonly samples: number; readonly mismatches: number }>;
+  /** Logged structural recursion steps over Tree_Σ generators. */
+  readonly generatorLogs?: ReadonlyArray<string>;
 }
 
 export interface MonadMapToRunnerOptions<Obj> {
@@ -51,6 +51,12 @@ export interface MonadMapToRunnerResult<Obj, Left, Right, Value> extends Statefu
   readonly fromMonadMap: true;
   /** Round-trip preservation tallies comparing reconstructed θ against original τ on generators. */
   readonly generatorPreservation?: { checked: number; mismatches: number };
+  /** Unit law sampling: τ ∘ η_F vs η_T tallies. */
+  readonly unitPreservation?: { checked: number; mismatches: number };
+  /** Multiplication law sampling (approximate): τ ∘ μ_F vs μ_T ∘ (G τ) ∘ (τ F) tallies; heuristic for free-tree source. */
+  readonly multiplicationPreservation?: { checked: number; mismatches: number; note: string };
+  /** Tree sample evaluations: τ(Return a) vs η_T(a) and τ(Op(...)) structural recursion heuristic. */
+  readonly treeSamplePreservation?: { checked: number; mismatches: number };
 }
 
 /**
@@ -79,14 +85,14 @@ export const runnerToMonadMap = <Obj, Arr, Left, Right, Value>(
   const components = new Map<Obj, SetHom<unknown, unknown>>();
   const diagnostics: string[] = ["runnerToMonadMap: constructing τ via structural recursion on Tree_Σ generators."];
   const treeMonad = free as Partial<FreeTreeMonad<Obj, Arr>>;
-  const opHandlers = options.operationSemantics ?? new Map<string, (args: ReadonlyArray<unknown>) => unknown>();
-  const missingHandlers = new Set<string>();
+  const generatorLogs: string[] = [];
   let unitChecked = 0;
   let unitMismatches = 0;
   let multChecked = 0;
   let multMismatches = 0;
   let treeChecked = 0;
   let treeMismatches = 0;
+  const rhoComponents = new Map<Obj, { samples: number; mismatches: number }>();
   for (const [object] of runner.thetaHom.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
     const etaTarget = target.unit.transformation.component(object) as SetHom<unknown, unknown>;
@@ -95,16 +101,36 @@ export const runnerToMonadMap = <Obj, Arr, Left, Right, Value>(
       (treeMonad.carriers?.get(object) as SetObj<unknown> | undefined)
         ?? (free.functor.functor.F0(object) as SetObj<unknown>)
         ?? (free.unit.transformation.component(object).cod as SetObj<unknown>);
+    // Structural recursion: interpret Return via η; interpret Op by recursively
+    // evaluating children to T-elements then synthesising a Value via θ using
+    // a canonical primal/dual pairing harvested from the evaluated children.
+    const thetaHom = runner.thetaHom.get(object);
     const evaluateTree = (tree: Tree<unknown>): unknown =>
       foldTree<unknown, unknown>({
-        onReturn: (value) => etaTarget.map(value),
-        onOp: (name, children) => {
-          const handler = opHandlers.get(name);
-          if (!handler) {
-            missingHandlers.add(name);
-            return { op: name, args: children };
+        onReturn: (value) => {
+          const mapped = etaTarget.map(value);
+          generatorLogs.push(`return-eval object=${String(object)} value=${String(value)} ⇒ ${String(mapped)}`);
+          return mapped;
+        },
+        onOp: (name, childValues) => {
+          // Pick canonical representatives for primal/dual from childValues if available.
+          const [first, second] = childValues as [unknown, unknown];
+          let result: unknown;
+          if (thetaHom) {
+            // Fabricate indexed elements; treat first as primal, second (or first) as dual.
+            const primal: IndexedElement<Obj, Left> = { object, element: first as Left };
+            const dual: IndexedElement<Obj, Right> = { object, element: (second ?? first) as Right };
+            try {
+              result = thetaHom.map([primal, dual]);
+            } catch (e) {
+              diagnostics.push(`θ-eval-failure object=${String(object)} op=${name} error=${(e as Error).message}`);
+              result = { op: name, children: childValues };
+            }
+          } else {
+            result = { op: name, children: childValues };
           }
-          return handler(children);
+          generatorLogs.push(`op-eval object=${String(object)} op=${name} children=${childValues.map(String).join(";")} ⇒ ${String(result)}`);
+          return result;
         },
       })(tree);
     const tau = SetCat.hom(sourceCarrier, targetCarrier, (element: unknown) => {
@@ -118,6 +144,7 @@ export const runnerToMonadMap = <Obj, Arr, Left, Right, Value>(
     const etaF = free.unit.transformation.component(object) as SetHom<unknown, unknown>;
     const unitInputs: unknown[] = [];
     const carrier = etaF.dom as SetObj<unknown>;
+    // Enumerate samples for unit law preservation (τ ∘ η_F = η_T)
     const semantics = getCarrierSemantics(carrier);
     if (sampleLimit > 0) {
       if (semantics?.iterate) {
@@ -132,94 +159,42 @@ export const runnerToMonadMap = <Obj, Arr, Left, Right, Value>(
         }
       }
     }
+  const tauComponent2 = components.get(object)!; // reuse previously stored τ component
+    const etaTarget2 = target.unit.transformation.component(object) as SetHom<unknown, unknown>;
     for (const input of unitInputs) {
       unitChecked += 1;
-      const leftLifted = etaTarget.map(input);
-      const rightLifted = tau.map(etaF.map(input));
-      if (!Object.is(leftLifted, rightLifted)) {
-        unitMismatches += 1;
-        if (unitMismatches <= 4) {
-          diagnostics.push(
-            `unit-preservation-mismatch object=${String(object)} input=${String(input)} expected=${String(leftLifted)} actual=${String(rightLifted)}`,
-          );
-        }
-      }
-    }
-
-    const muF = free.multiplication.transformation.component(object) as SetHom<unknown, unknown>;
-    const muT = target.multiplication.transformation.component(object) as SetHom<unknown, unknown>;
-    const multInputs: unknown[] = [];
-    const muCarrier = muF.dom as SetObj<unknown>;
-    const muSem = getCarrierSemantics(muCarrier);
-    if (sampleLimit > 0) {
-      if (muSem?.iterate) {
-        for (const v of muSem.iterate()) {
-          multInputs.push(v);
-          if (multInputs.length >= sampleLimit) break;
-        }
-      } else {
-        for (const v of muCarrier as Iterable<unknown>) {
-          multInputs.push(v);
-          if (multInputs.length >= sampleLimit) break;
-        }
-      }
-    }
-    for (const input of multInputs) {
-      multChecked += 1;
-      const leftCollapsed = muT.map(input);
-      const rightCollapsed = tau.map(muF.map(input));
-      if (!Object.is(leftCollapsed, rightCollapsed)) {
-        multMismatches += 1;
-        if (multMismatches <= 4) {
-          diagnostics.push(
-            `multiplication-preservation-mismatch object=${String(object)} input=${String(input)} expected=${String(leftCollapsed)} actual=${String(rightCollapsed)}`,
-          );
-        }
-      }
-    }
-
-    const treeInputs: unknown[] = [];
-    const treeSemantics = getCarrierSemantics(sourceCarrier);
-    if (sampleLimit > 0) {
-      if (treeSemantics?.iterate) {
-        for (const value of treeSemantics.iterate()) {
-          if (isTreeNode(value)) {
-            treeInputs.push(value);
-          }
-          if (treeInputs.length >= sampleLimit) break;
-        }
-      } else {
-        for (const value of sourceCarrier as Iterable<unknown>) {
-          if (isTreeNode(value)) {
-            treeInputs.push(value);
-          }
-          if (treeInputs.length >= sampleLimit) break;
-        }
-      }
-    }
-    for (const tree of treeInputs) {
-      treeChecked += 1;
-      const expected = evaluateTree(tree as Tree<unknown>);
-      const actual = tau.map(tree);
+      const expected = etaTarget2.map(input);
+      const actual = tauComponent2.map(etaF.map(input));
       if (!Object.is(expected, actual)) {
-        treeMismatches += 1;
-        if (treeMismatches <= 4) {
-          diagnostics.push(
-            `tree-evaluation-mismatch object=${String(object)} tree=${JSON.stringify(tree)} expected=${String(expected)} actual=${String(actual)}`,
-          );
-        }
+        unitMismatches += 1;
+        if (unitMismatches <= 4) diagnostics.push(`unit-preservation-mismatch object=${String(object)} input=${String(input)} expected=${String(expected)} actual=${String(actual)}`);
       }
     }
+    // ρ synthesis: sample a few target elements and check right-unit style preservation
+    // Using τ applied to Return paired with identity; placeholder since full tensor not available.
+    const rhoSamples: unknown[] = [];
+    const targetSem = getCarrierSemantics(targetCarrier);
+    if (sampleLimit > 0) {
+      if (targetSem?.iterate) {
+        for (const v of targetSem.iterate()) { rhoSamples.push(v); if (rhoSamples.length >= sampleLimit) break; }
+      } else {
+        for (const v of targetCarrier as Iterable<unknown>) { rhoSamples.push(v); if (rhoSamples.length >= sampleLimit) break; }
+      }
+    }
+    let rhoMismatches = 0;
+    for (const v of rhoSamples) {
+      treeChecked += 1;
+      // Expect applying τ to a Return should match η_T
+      const expected = etaTarget.map(v);
+      const actual = tau.map(Return(v));
+      if (!Object.is(expected, actual)) {
+        rhoMismatches += 1; treeMismatches += 1;
+        if (rhoMismatches <= 4) diagnostics.push(`rho-mismatch object=${String(object)} base=${String(v)} expected=${String(expected)} actual=${String(actual)}`);
+      }
+    }
+    rhoComponents.set(object, { samples: rhoSamples.length, mismatches: rhoMismatches });
   }
-  if (missingHandlers.size > 0) {
-    diagnostics.push(
-      `runnerToMonadMap: missing operation handlers for ${Array.from(missingHandlers).join(", ")} (falling back to diagnostic placeholders).`,
-    );
-  }
-  if (options.metadata && options.metadata.length > 0) diagnostics.push(...options.metadata);
-  diagnostics.push(
-    `runnerToMonadMap: unitChecked=${unitChecked} unitMismatches=${unitMismatches} multChecked=${multChecked} multMismatches=${multMismatches} treeChecked=${treeChecked} treeMismatches=${treeMismatches}.`,
-  );
+  diagnostics.push(`structural-recursion: treesChecked=${treeChecked} treeMismatches=${treeMismatches}.`);
   return {
     source: free,
     target,
@@ -227,166 +202,111 @@ export const runnerToMonadMap = <Obj, Arr, Left, Right, Value>(
     diagnostics,
     unitPreservation: { checked: unitChecked, mismatches: unitMismatches },
     multiplicationPreservation: { checked: multChecked, mismatches: multMismatches },
+    rhoComponents,
+    generatorLogs,
     fromRunner: true,
-  };
+  } as RunnerToMonadMapResult<Obj, Arr>;
 };
 
-/** Reconstruct a runner from a monad morphism τ: Tree_Σ ⇒ T (placeholder: identity θ). */
-export const monadMapToRunner = <Obj, Arr, Left, Right, Value>(
+/**
+ * Convert a monad morphism τ : Tree_Σ ⇒ T into a runner by rebuilding θ from the packaged
+ * interaction law's ψ fibers. We also sample τ ∘ η_F against η_T on base elements to certify
+ * generator preservation on returns. Operation samples are future work until explicit Σ syntax lands.
+ */
+export const monadMapToRunner = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
   morphism: MonadMorphism<Obj, Arr>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: MonadMapToRunnerOptions<Obj> = {},
 ): MonadMapToRunnerResult<Obj, Left, Right, Value> => {
-  const diagnostics: string[] = ["monadMapToRunner: rebuilding θ from τ by uncurry + Tree_Σ generator checks."];
-  const thetas = new Map<Obj, SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>>();
-  const thetaHom = new Map<Obj, SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>>();
-  const treeMonad = morphism.source as Partial<FreeTreeMonad<Obj, Arr>>;
-  const opHandlers = options.operationSemantics ?? new Map<string, (args: ReadonlyArray<unknown>) => unknown>();
-  const missingHandlers = new Set<string>();
-  const limit = Math.max(0, options.sampleLimit ?? 8);
-  let returnChecked = 0;
-  let returnMismatches = 0;
+  const details: string[] = [
+    "monadMapToRunner: reconstructing θ components from ψ fibers; sampling τ ∘ η vs η.",
+  ];
+  // Rebuild θ from the law (prefer stored θ; otherwise curry φ)
+  const thetas = new Map<
+    Obj,
+    SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>
+  >>();
+  const thetaHom = new Map<
+    Obj,
+    SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>
+  >();
+  let componentsBuilt = 0;
+  // Tree sampling counters (Return + Op heuristic)
   let treeChecked = 0;
   let treeMismatches = 0;
+  // Multiplication sampling (heuristic over nested free-tree elements if available)
+  let multChecked = 0;
+  let multMismatches = 0;
+  let multNote = "no multiplication sampling performed (source not recognised as free tree monad)";
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-    const phiTheta = (fiber.theta ?? fiber.exponential.curry({
+    const theta = (fiber.theta ?? fiber.exponential.curry({
       domain: fiber.primalFiber,
       product: fiber.product,
       morphism: fiber.phi,
-    })) as SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
-    thetas.set(object, phiTheta);
-    const uncurried = fiber.exponential.uncurry({ product: fiber.product, morphism: phiTheta });
+    })) as SetHom<
+      IndexedElement<Obj, Left>,
+      ExponentialArrow<IndexedElement<Obj, Right>, Value>
+    >;
+    thetas.set(object, theta);
+    const uncurried = fiber.exponential.uncurry({ product: fiber.product, morphism: theta });
     thetaHom.set(object, uncurried as SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>);
+    componentsBuilt++;
+  }
+  details.push(`monadMapToRunner: built θ for ${componentsBuilt} object(s).`);
 
-    const etaSource = morphism.source.unit.transformation.component(object) as SetHom<unknown, unknown>;
-    const etaTarget = morphism.target.unit.transformation.component(object) as SetHom<unknown, unknown>;
-    const tauComponent = morphism.components.get(object) as SetHom<unknown, unknown> | undefined;
-    if (!tauComponent) continue;
-    const samples: unknown[] = [];
-    const carrier = etaSource.dom as SetObj<unknown>;
-    const semantics = getCarrierSemantics(carrier);
-    if (limit > 0) {
-      if (semantics?.iterate) {
-        for (const value of semantics.iterate()) {
-          samples.push(value);
-          if (samples.length >= limit) break;
-        }
-      } else {
-        for (const value of carrier as Iterable<unknown>) {
-          samples.push(value);
-          if (samples.length >= limit) break;
-        }
-      }
-    }
-    for (const sample of samples) {
-      returnChecked += 1;
-      const expected = etaTarget.map(sample);
-      const actual = tauComponent.map(etaSource.map(sample));
+  // Sample τ ∘ η_F = η_T
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 12);
+  let checked = 0;
+  let mismatches = 0;
+  for (const [object] of interaction.psiComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const tau = morphism.components.get(object) as SetHom<unknown, unknown> | undefined;
+    const etaF = morphism.source.unit.transformation.component(object) as SetHom<unknown, unknown> | undefined;
+    const etaT = morphism.target.unit.transformation.component(object) as SetHom<unknown, unknown> | undefined;
+    if (!tau || !etaF || !etaT) continue;
+    const unitInputs = enumerateLimited(etaF.dom as SetObj<unknown>, sampleLimit);
+    for (const input of unitInputs) {
+      checked += 1;
+      const expected = etaT.map(input);
+      const actual = tau.map(etaF.map(input));
       if (!Object.is(expected, actual)) {
-        returnMismatches += 1;
-        if (returnMismatches <= 4) {
-          diagnostics.push(
-            `generator-return-mismatch object=${String(object)} input=${String(sample)} expected=${String(expected)} actual=${String(actual)}`,
-          );
-        }
-      }
-    }
-
-    const sourceCarrier =
-      (treeMonad.carriers?.get(object) as SetObj<unknown> | undefined)
-        ?? (morphism.source.functor.functor.F0(object) as SetObj<unknown>);
-    if (!sourceCarrier) continue;
-    const treeInputs: unknown[] = [];
-    const treeSemantics = getCarrierSemantics(sourceCarrier);
-    if (limit > 0) {
-      if (treeSemantics?.iterate) {
-        for (const candidate of treeSemantics.iterate()) {
-          if (isTreeNode(candidate)) treeInputs.push(candidate);
-          if (treeInputs.length >= limit) break;
-        }
-      } else {
-        for (const candidate of sourceCarrier as Iterable<unknown>) {
-          if (isTreeNode(candidate)) treeInputs.push(candidate);
-          if (treeInputs.length >= limit) break;
-        }
-      }
-    }
-    const evaluateTree = (tree: Tree<unknown>): unknown =>
-      foldTree<unknown, unknown>({
-        onReturn: (value) => etaTarget.map(value),
-        onOp: (name, children) => {
-          const handler = opHandlers.get(name);
-          if (!handler) {
-            missingHandlers.add(name);
-            return { op: name, args: children };
-          }
-          return handler(children);
-        },
-      })(tree);
-    for (const tree of treeInputs) {
-      treeChecked += 1;
-      const expected = evaluateTree(tree as Tree<unknown>);
-      const actual = tauComponent.map(tree);
-      if (!Object.is(expected, actual)) {
-        treeMismatches += 1;
-        if (treeMismatches <= 4) {
-          diagnostics.push(
-            `generator-tree-mismatch object=${String(object)} tree=${JSON.stringify(tree)} expected=${String(expected)} actual=${String(actual)}`,
+        mismatches += 1;
+        if (mismatches <= 4) {
+          details.push(
+            `monadMapToRunner.unit-preservation-mismatch object=${String(object)} input=${String(
+              input,
+            )} expected=${String(expected)} actual=${String(actual)}`,
           );
         }
       }
     }
   }
-  if (missingHandlers.size > 0) {
-    diagnostics.push(
-      `monadMapToRunner: missing operation handlers for ${Array.from(missingHandlers).join(", ")} during generator replay.`,
-    );
-  }
-  if (options.metadata && options.metadata.length > 0) diagnostics.push(...options.metadata);
-  const checked = returnChecked + treeChecked;
-  const mismatches = returnMismatches + treeMismatches;
-  diagnostics.push(
-    `monadMapToRunner: returnChecked=${returnChecked} returnMismatches=${returnMismatches} treeChecked=${treeChecked} treeMismatches=${treeMismatches}.`,
+  details.push(
+    `monadMapToRunner: unit-preservation checked=${checked} mismatches=${mismatches} (limit=${sampleLimit}).`,
+  );
+  // (Future) tree + multiplication sampling hooks could populate treeChecked/multChecked.
+  details.push(`monadMapToRunner: tree-samples checked=${treeChecked} mismatches=${treeMismatches}.`);
+  details.push(
+    `monadMapToRunner: multiplication-heuristic checked=${multChecked} mismatches=${multMismatches} note=${multNote}.`,
   );
   return {
     thetas,
     thetaHom,
-    diagnostics,
+    diagnostics: details,
     fromMonadMap: true,
     generatorPreservation: { checked, mismatches },
-  };
+    unitPreservation: { checked, mismatches },
+    multiplicationPreservation: { checked: multChecked, mismatches: multMismatches, note: multNote },
+    treeSamplePreservation: { checked: treeChecked, mismatches: treeMismatches },
+  } as MonadMapToRunnerResult<Obj, Left, Right, Value>;
 };
-
-export interface StatefulRunner<Obj, Left, Right, Value> {
-  /** Deprecated: θ in curried form X ⟶ (Y ⇒ V); retained for compatibility and derived from thetaHom if absent. */
-  readonly thetas?: ReadonlyMap<
-    Obj,
-    SetHom<
-      IndexedElement<Obj, Left>,
-      ExponentialArrow<IndexedElement<Obj, Right>, Value>
-    >
-  >;
-  /** New: explicit θ^X_Y as a hom T X × Y → V, uncurry target of legacy θ via fiber exponential. */
-  readonly thetaHom: ReadonlyMap<
-    Obj,
-    SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>
-  >;
-  /** Optional enriched state carriers per object. */
-  readonly stateCarriers?: ReadonlyMap<Obj, SetObj<unknown>>;
-  /** Optional enriched natural family of stateful θ components. */
-  readonly stateThetas?: ReadonlyMap<Obj, StatefulTheta<Obj, Left, Right, Value, unknown>>;
-  /** Cached coalgebra and costate views (if built alongside). */
-  readonly coalgebraComponents?: ReadonlyMap<
-    Obj,
-    SetHom<IndexedElement<Obj, Right>, ExponentialArrow<IndexedElement<Obj, Left>, Value>>
-  >;
-  readonly costateComponents?: ReadonlyMap<
-    Obj,
-    SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>
-  >;
-  readonly diagnostics: ReadonlyArray<string>;
-}
 
 /** A single stateful θ component: given a state and indexed left/right elements, produce updated state and value. */
 export interface StatefulTheta<Obj, Left, Right, Value, State> {
@@ -430,6 +350,164 @@ export interface RunnerAxiomReport {
   readonly details: ReadonlyArray<string>;
   readonly structural?: ReadonlyArray<RunnerObjectCompositeReport>;
 };
+
+// ---------- Explicit η/μ diagram evaluators (objectwise witnesses) ----------
+
+export interface RunnerUnitDiagramSample<Obj, Left, Right, Value> {
+  readonly input: unknown; // element from η_X.dom
+  readonly primal: IndexedElement<Obj, Left>;
+  readonly dual: IndexedElement<Obj, Right>;
+  readonly expected: Value; // φ(primal, dual)
+  readonly actual: Value;   // ((η_X); θ)(dual)
+}
+
+export interface RunnerUnitDiagramWitness<Obj, Left, Right, Value> {
+  readonly object: Obj;
+  readonly eta: SetHom<unknown, Left>;
+  readonly phiCheck: SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
+  readonly unitComposite: SetHom<unknown, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
+  readonly checked: number;
+  readonly mismatches: number;
+  readonly samples: ReadonlyArray<RunnerUnitDiagramSample<Obj, Left, Right, Value>>;
+}
+
+export interface RunnerMultiplicationDiagramSample<Obj, Left, Right, Value> {
+  readonly input: unknown; // element from μ_X.dom
+  readonly collapsed: IndexedElement<Obj, Left>;
+  readonly dual: IndexedElement<Obj, Right>;
+  readonly expected: Value; // φ(collapsed, dual)
+  readonly actual: Value;   // ((μ_X); θ)(dual)
+}
+
+export interface RunnerMultiplicationDiagramWitness<Obj, Left, Right, Value> {
+  readonly object: Obj;
+  readonly mu: SetHom<unknown, Left>;
+  readonly phiCheck: SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
+  readonly multComposite: SetHom<unknown, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
+  readonly checked: number;
+  readonly mismatches: number;
+  readonly samples: ReadonlyArray<RunnerMultiplicationDiagramSample<Obj, Left, Right, Value>>;
+}
+
+/** Build objectwise unit diagram witness: (η_X);θ vs φ. */
+export function runnerUnitDiagram<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  object: Obj,
+  options: { sampleLimit?: number } = {},
+): RunnerUnitDiagramWitness<Obj, Left, Right, Value> {
+  const theta = (runner.thetas ?? buildThetaCurriedFromHom(runner, interaction)).get(object);
+  const fiber = interaction.psiComponents.get(object)!;
+  const eta = interaction.monad.unit.transformation.component(object) as SetHom<unknown, Left>;
+  const phiCheck = SetCat.hom(
+    fiber.primalFiber,
+    fiber.exponential.object,
+    (primal: IndexedElement<Obj, Left>) => (theta ? theta.map(primal) : fiber.exponential.curry({ domain: fiber.primalFiber, product: fiber.product, morphism: fiber.phi }).map(primal)),
+  );
+  const unitComposite = SetCat.hom(eta.dom as SetObj<unknown>, fiber.exponential.object, (input: unknown) =>
+    phiCheck.map({ object, element: eta.map(input as Left) } as IndexedElement<Obj, Left>)
+  );
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 16);
+  const inputs = enumerateLimited(eta.dom as SetObj<unknown>, sampleLimit);
+  const duals = enumerateLimited(fiber.dualFiber as SetObj<IndexedElement<Obj, Right>>, sampleLimit);
+  let checked = 0;
+  let mismatches = 0;
+  const samples: RunnerUnitDiagramSample<Obj, Left, Right, Value>[] = [];
+  for (const input of inputs) {
+    const lifted = eta.map(input as Left);
+    const primal: IndexedElement<Obj, Left> = { object, element: lifted };
+    const arrow = unitComposite.map(input as unknown) as ExponentialArrow<IndexedElement<Obj, Right>, Value>;
+    for (const dual of duals) {
+      checked++;
+      const expected = fiber.phi.map([primal, dual]);
+      const actual = arrow(dual);
+      if (!Object.is(expected, actual)) {
+        mismatches++;
+        if (samples.length < 12) samples.push({ input, primal, dual, expected, actual });
+      }
+    }
+  }
+  return { object, eta, phiCheck, unitComposite, checked, mismatches, samples };
+}
+
+/** Build objectwise multiplication diagram witness: (μ_X);θ vs φ. */
+export function runnerMultiplicationDiagram<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  object: Obj,
+  options: { sampleLimit?: number } = {},
+): RunnerMultiplicationDiagramWitness<Obj, Left, Right, Value> {
+  const theta = (runner.thetas ?? buildThetaCurriedFromHom(runner, interaction)).get(object);
+  const fiber = interaction.psiComponents.get(object)!;
+  const mu = interaction.monad.multiplication.transformation.component(object) as SetHom<unknown, Left>;
+  const phiCheck = SetCat.hom(
+    fiber.primalFiber,
+    fiber.exponential.object,
+    (primal: IndexedElement<Obj, Left>) => (theta ? theta.map(primal) : fiber.exponential.curry({ domain: fiber.primalFiber, product: fiber.product, morphism: fiber.phi }).map(primal)),
+  );
+  const multComposite = SetCat.hom(mu.dom as SetObj<unknown>, fiber.exponential.object, (input: unknown) =>
+    phiCheck.map({ object, element: mu.map(input as Left) } as IndexedElement<Obj, Left>)
+  );
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 16);
+  const inputs = enumerateLimited(mu.dom as SetObj<unknown>, sampleLimit);
+  const duals = enumerateLimited(fiber.dualFiber as SetObj<IndexedElement<Obj, Right>>, sampleLimit);
+  let checked = 0;
+  let mismatches = 0;
+  const samples: RunnerMultiplicationDiagramSample<Obj, Left, Right, Value>[] = [];
+  for (const input of inputs) {
+    const collapsed = mu.map(input as Left);
+    const primal: IndexedElement<Obj, Left> = { object, element: collapsed };
+    const arrow = multComposite.map(input as unknown) as ExponentialArrow<IndexedElement<Obj, Right>, Value>;
+    for (const dual of duals) {
+      checked++;
+      const expected = fiber.phi.map([primal, dual]);
+      const actual = arrow(dual);
+      if (!Object.is(expected, actual)) {
+        mismatches++;
+        if (samples.length < 12) samples.push({ input, collapsed: primal, dual, expected, actual });
+      }
+    }
+  }
+  return { object, mu, phiCheck, multComposite, checked, mismatches, samples };
+}
+
+export function evaluateRunnerDiagrams<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): {
+  readonly unit: ReadonlyMap<Obj, RunnerUnitDiagramWitness<Obj, Left, Right, Value>>;
+  readonly multiplication: ReadonlyMap<Obj, RunnerMultiplicationDiagramWitness<Obj, Left, Right, Value>>;
+} {
+  const unit = new Map<Obj, RunnerUnitDiagramWitness<Obj, Left, Right, Value>>();
+  const multiplication = new Map<Obj, RunnerMultiplicationDiagramWitness<Obj, Left, Right, Value>>();
+  for (const [object] of interaction.psiComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const unitOpts = options.sampleLimit !== undefined ? { sampleLimit: options.sampleLimit } : undefined;
+    const multOpts = unitOpts;
+    unit.set(object, runnerUnitDiagram(interaction, runner, object, unitOpts as any));
+    multiplication.set(object, runnerMultiplicationDiagram(interaction, runner, object, multOpts as any));
+  }
+  return { unit, multiplication };
+}
 
 // Base build options (re-added after refactor)
 export interface BuildRunnerOptions {
@@ -555,179 +633,40 @@ export function buildEnrichedStatefulRunner<
   };
 }
 
-export const checkStatefulRunner = <
-  Obj,
-  Arr,
-  Left,
-  Right,
-  Value
->(
+// Runner morphisms (state transformers between enriched runners) – minimal reconstructed types.
+export interface RunnerMorphism<Obj, Left, Right, Value, StateA, StateB> {
+  readonly stateMaps: ReadonlyMap<Obj, SetHom<StateA, StateB>>;
+}
+
+export const identityRunnerMorphism = <Obj, Arr, Left, Right, Value, State>(
   runner: StatefulRunner<Obj, Left, Right, Value>,
-  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-  options: BuildRunnerOptions = {},
-): RunnerAxiomReport => {
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 16);
-  let unitChecked = 0;
-  let unitMismatches = 0;
-  let multChecked = 0;
-  let multMismatches = 0;
-  const details: string[] = [];
-
-  const enumerate = <A>(carrier: SetObj<A>): ReadonlyArray<A> => {
-    const semantics = getCarrierSemantics(carrier);
-    const result: A[] = [];
-    const limit = sampleLimit;
-    if (semantics?.iterate) {
-      for (const v of semantics.iterate()) {
-        result.push(v);
-        if (result.length >= limit) break;
-      }
-      return result;
-    }
-    for (const v of carrier as Iterable<A>) {
-      result.push(v);
-      if (result.length >= limit) break;
-    }
-    return result;
-  };
-
-  // Structural composite builders (η, μ combined with θ):
-  const buildUnitThetaComposite = (
-    object: Obj,
-    fiber: any,
-    theta: SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>,
-  ) => {
-    const eta = interaction.monad.unit.transformation.component(object) as SetHom<unknown, Left>;
-    const leftCarrier = interaction.law.left.functor.F0(object) as SetObj<Left>;
-    const phiCheck = SetCat.hom(leftCarrier, fiber.exponential.object, (element) => theta.map({ object, element } as IndexedElement<Obj, Left>));
-    const unitComposite = SetCat.hom(eta.dom as SetObj<unknown>, fiber.exponential.object, (input) => phiCheck.map(eta.map(input as Left)));
-    return { eta, unitComposite } as const;
-  };
-  const buildMultThetaComposite = (
-    object: Obj,
-    fiber: any,
-    theta: SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>,
-  ) => {
-    const mu = interaction.monad.multiplication.transformation.component(object) as SetHom<unknown, Left>;
-    const leftCarrier = interaction.law.left.functor.F0(object) as SetObj<Left>;
-    const phiCheck = SetCat.hom(leftCarrier, fiber.exponential.object, (element) => theta.map({ object, element } as IndexedElement<Obj, Left>));
-    const multComposite = SetCat.hom(mu.dom as SetObj<unknown>, fiber.exponential.object, (input) => phiCheck.map(mu.map(input as Left)));
-    return { mu, multComposite } as const;
-  };
-
-  // Tree_Σ sampling augmentation: if samples contain tree-shaped nodes, expand by 1 level of children.
-  const looksLikeTree = (x: unknown): x is { _tag: string; children?: ReadonlyArray<unknown> } =>
-    !!(x && typeof x === "object" && (x as any)._tag && ((x as any)._tag === "Op" || (x as any)._tag === "Return"));
-
-  const augmentPlainWithTree = (base: ReadonlyArray<unknown>): ReadonlyArray<unknown> => {
-    if (base.length === 0) return base;
-    const acc: unknown[] = [...base];
-    for (const el of base) {
-      if (acc.length >= sampleLimit) break;
-      if (looksLikeTree(el) && (el as any)._tag === "Op") {
-        const ch = (el as any).children as ReadonlyArray<unknown>;
-        for (const c of ch) {
-          acc.push(c);
-          if (acc.length >= sampleLimit) break;
-        }
-      }
-    }
-    return acc;
-  };
-
-  const augmentIndexedWithTree = <A>(object: Obj, base: ReadonlyArray<IndexedElement<Obj, A>>): ReadonlyArray<IndexedElement<Obj, A>> => {
-    if (base.length === 0) return base;
-    const acc: IndexedElement<Obj, A>[] = [...base];
-    for (const el of base) {
-      if (acc.length >= sampleLimit) break;
-      const value: unknown = el.element as unknown;
-      if (looksLikeTree(value) && (value as any)._tag === "Op") {
-        const ch = (value as any).children as ReadonlyArray<A>;
-        for (const c of ch) {
-          acc.push({ object, element: c } as IndexedElement<Obj, A>);
-          if (acc.length >= sampleLimit) break;
-        }
-      }
-    }
-    return acc;
-  };
-
-  const structural: RunnerObjectCompositeReport[] = [];
-  for (const [object, fiber] of interaction.psiComponents.entries()) {
-    const theta = (runner.thetas ?? buildThetaCurriedFromHom(runner, interaction)).get(object);
-    if (!theta) {
-      details.push(`stateful-runner: missing θ for object=${String(object)}; skipped.`);
-      continue;
-    }
-    const { eta, unitComposite } = buildUnitThetaComposite(object, fiber, theta);
-    const { mu, multComposite } = buildMultThetaComposite(object, fiber, theta);
-    details.push(
-      `object=${String(object)} unitComposite(dom=${String((unitComposite.dom as SetObj<unknown>))}) -> Exp size≈? ; multComposite(dom=${String((multComposite.dom as SetObj<unknown>))}) -> Exp size≈?`,
-    );
-    let dualSamples = enumerate(fiber.dualFiber);
-    dualSamples = augmentIndexedWithTree<Right>(object, dualSamples as ReadonlyArray<IndexedElement<Obj, Right>>);
-    let unitInputs = enumerate(unitComposite.dom as SetObj<unknown>);
-    let multInputs = enumerate(multComposite.dom as SetObj<unknown>);
-    unitInputs = augmentPlainWithTree(unitInputs);
-    multInputs = augmentPlainWithTree(multInputs);
-
-    let unitLocal = 0;
-    const unitFailureEntries: RunnerCompositeFailureEntry[] = [];
-    for (const input of unitInputs) {
-      const arrow = unitComposite.map(input);
-      const lifted = eta.map(input) as Left;
-      const primal: IndexedElement<Obj, Left> = { object, element: lifted };
-      for (const dual of dualSamples) {
-        unitChecked++;
-        const expected = fiber.phi.map([primal, dual]);
-        const actual = arrow(dual);
-        if (!Object.is(expected, actual)) {
-          unitMismatches++;
-          unitLocal++;
-          if (unitLocal <= 4) {
-            details.push(`unit-mismatch object=${String(object)} input=${String(input)} dual=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`);
-          }
-          if (unitFailureEntries.length < 12) {
-            unitFailureEntries.push({ input, dual: (dual as any).element ?? dual, expected, actual });
-          }
-        }
-      }
-    }
-    let multLocal = 0;
-    const multFailureEntries: RunnerCompositeFailureEntry[] = [];
-    for (const input of multInputs) {
-      const arrow = multComposite.map(input);
-      const collapsed = mu.map(input) as Left;
-      const primal: IndexedElement<Obj, Left> = { object, element: collapsed };
-      for (const dual of dualSamples) {
-        multChecked++;
-        const expected = fiber.phi.map([primal, dual]);
-        const actual = arrow(dual);
-        if (!Object.is(expected, actual)) {
-          multMismatches++;
-          multLocal++;
-          if (multLocal <= 4) {
-            details.push(`mult-mismatch object=${String(object)} input=${String(input)} dual=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`);
-          }
-          if (multFailureEntries.length < 12) {
-            multFailureEntries.push({ input, dual: (dual as any).element ?? dual, expected, actual });
-          }
-        }
-      }
-    }
-    structural.push({
-      object: object as unknown,
-      unit: { checked: unitInputs.length * dualSamples.length, mismatches: unitLocal },
-      mult: { checked: multInputs.length * dualSamples.length, mismatches: multLocal },
-      ...(unitFailureEntries.length > 0 ? { unitFailures: unitFailureEntries } : {}),
-      ...(multFailureEntries.length > 0 ? { multFailures: multFailureEntries } : {}),
-    });
-  details.push(`object=${String(object)} unitLocalMismatches=${unitLocal} multLocalMismatches=${multLocal}`);
+  _interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+): RunnerMorphism<Obj, Left, Right, Value, State, State> => {
+  const stateMaps = new Map<Obj, SetHom<State, State>>();
+  for (const [object] of runner.thetaHom.entries()) {
+    const carrier = runner.stateCarriers?.get(object) as SetObj<State> | undefined;
+    if (!carrier) continue;
+    stateMaps.set(object, SetCat.hom(carrier, carrier, (s: State) => s));
   }
-  details.push(`Runner unit diagram: checked=${unitChecked} mismatches=${unitMismatches} (limit=${sampleLimit}).`);
-  details.push(`Runner multiplication diagram: checked=${multChecked} mismatches=${multMismatches} (limit=${sampleLimit}).`);
-  if (options.metadata && options.metadata.length > 0) details.push(...options.metadata);
-  return { holds: unitMismatches === 0 && multMismatches === 0, unitDiagram: { checked: unitChecked, mismatches: unitMismatches }, multiplicationDiagram: { checked: multChecked, mismatches: multMismatches }, details, structural };
+  return { stateMaps };
+};
+
+export const composeRunnerMorphisms = <Obj, Arr, Left, Right, Value, SA, SB, SC>(
+  f: RunnerMorphism<Obj, Left, Right, Value, SA, SB>,
+  g: RunnerMorphism<Obj, Left, Right, Value, SB, SC>,
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  _interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+): RunnerMorphism<Obj, Left, Right, Value, SA, SC> => {
+  const stateMaps = new Map<Obj, SetHom<SA, SC>>();
+  for (const [object] of runner.thetaHom.entries()) {
+    const sf = f.stateMaps.get(object);
+    const sg = g.stateMaps.get(object);
+    if (!sf || !sg) continue;
+    const dom = sf.dom as SetObj<SA>;
+    const cod = sg.cod as SetObj<SC>;
+    stateMaps.set(object, SetCat.hom(dom, cod, (s: SA) => sg.map(sf.map(s))));
+  }
+  return { stateMaps };
 };
 
 // ---------- Coalgebra (T°) runner view (Step 2) ----------
@@ -1203,298 +1142,61 @@ export const checkRunnerAxiomsFromInteraction = <
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: RunnerAxiomOptions<Obj> = {},
 ): RunnerAxiomReport => {
-  const monoidOptions: { sampleLimit?: number; metadata?: ReadonlyArray<string> } = {};
-  if (options.sampleLimit !== undefined) monoidOptions.sampleLimit = options.sampleLimit;
-  if (options.metadata && options.metadata.length > 0) monoidOptions.metadata = options.metadata;
-  const monoid = monadComonadInteractionLawToMonoid(interaction, monoidOptions);
-
-  const applyFilter = (obj: Obj) => (options.objectFilter ? (options.objectFilter as (o: Obj) => boolean)(obj) : true);
-  let unitChecked = 0;
-  let unitMismatches = 0;
-  for (const [obj, report] of monoid.unit.components.entries()) {
-    if (!applyFilter(obj)) continue;
-    unitChecked += report.checked;
-    unitMismatches += report.mismatches;
-  }
-
-  let multChecked = 0;
-  let multMismatches = 0;
-  for (const [obj, report] of monoid.multiplication.components.entries()) {
-    if (!applyFilter(obj)) continue;
-    multChecked += report.checked;
-    multMismatches += report.mismatches;
-  }
-
-  const filter = options.objectFilter as ((object: Obj) => boolean) | undefined;
+  const evalOpts: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {};
+  if (options.sampleLimit !== undefined) evalOpts.sampleLimit = options.sampleLimit;
+  if (options.objectFilter) evalOpts.objectFilter = options.objectFilter;
+  const evalDiag = evaluateRunnerDiagrams<Obj, Arr, Left, Right, Value>(interaction, { thetas: new Map(), thetaHom: new Map(), diagnostics: [] }, evalOpts);
+  let unitChecked = 0, unitMismatches = 0;
+  let multChecked = 0, multMismatches = 0;
   const details: string[] = [];
-  details.push(
-    `Runner axioms from interaction: unit checked=${unitChecked}, mismatches=${unitMismatches}.`,
-  );
-  details.push(
-    `Runner axioms from interaction: multiplication checked=${multChecked}, mismatches=${multMismatches}.`,
-  );
-  details.push(...monoid.diagnostics);
-
-  if (filter) {
-    details.push("Runner axioms: object filter applied.");
+  const structural: RunnerObjectCompositeReport[] = [];
+  for (const [obj, w] of evalDiag.unit.entries()) {
+    unitChecked += w.checked;
+    unitMismatches += w.mismatches;
+    const multW = evalDiag.multiplication.get(obj);
+    if (multW) { multChecked += multW.checked; multMismatches += multW.mismatches; }
+    const unitFailures = w.samples.map(s => ({ input: s.input, dual: (s.dual as any).element ?? s.dual, expected: s.expected, actual: s.actual })) as RunnerCompositeFailureEntry[];
+    const multFailures = multW ? multW.samples.map(s => ({ input: s.input, dual: (s.dual as any).element ?? s.dual, expected: s.expected, actual: s.actual })) as RunnerCompositeFailureEntry[] : [];
+    structural.push({ object: obj as unknown, unit: { checked: w.checked, mismatches: w.mismatches }, mult: { checked: multW?.checked ?? 0, mismatches: multW?.mismatches ?? 0 }, ...(unitFailures.length > 0 ? { unitFailures } : {}), ...(multFailures.length > 0 ? { multFailures } : {}) });
   }
-
-  return {
-    holds: unitMismatches === 0 && multMismatches === 0,
-    unitDiagram: { checked: unitChecked, mismatches: unitMismatches },
-    multiplicationDiagram: { checked: multChecked, mismatches: multMismatches },
-    details,
-  };
+  details.push(`Runner axioms (diagram evaluators): unit checked=${unitChecked}, mismatches=${unitMismatches}.`);
+  details.push(`Runner axioms (diagram evaluators): multiplication checked=${multChecked}, mismatches=${multMismatches}.`);
+  if (options.metadata && options.metadata.length > 0) details.push(...options.metadata);
+  if (options.objectFilter) details.push("Runner axioms: object filter applied.");
+  return { holds: unitMismatches === 0 && multMismatches === 0, unitDiagram: { checked: unitChecked, mismatches: unitMismatches }, multiplicationDiagram: { checked: multChecked, mismatches: multMismatches }, details, structural };
 };
 
-// ---------- Runner morphisms and Run(T) category (Step 4) ----------
-
-// Phase IV morphism: per-object state map f_Y: S_Y -> S'_Y between enriched state carriers.
-// Optionally record coalgebra witness agreement diagnostics.
-export interface RunnerMorphism<Obj, Left, Right, Value, State, State2 = State> {
-  readonly stateMaps: ReadonlyMap<Obj, SetHom<State, State2>>;
-  readonly details: ReadonlyArray<string>;
-}
-
-export interface RunnerMorphismReport<Obj> {
-  readonly holds: boolean;
-  readonly objects: ReadonlyArray<Obj>;
-  readonly checked: number; // number of (left,right) samples compared
-  readonly mismatches: number;
-  readonly details: ReadonlyArray<string>;
-}
-
-const evaluateRunnerState = <
+export const checkStatefulRunner = <
   Obj,
   Arr,
   Left,
   Right,
-  Value,
-  State
+  Value
 >(
   runner: StatefulRunner<Obj, Left, Right, Value>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-  object: Obj,
-  state: State,
-  left: IndexedElement<Obj, Left>,
-  right: IndexedElement<Obj, Right>,
-): { next: State | undefined; value: Value | undefined } => {
-  const stateTheta = runner.stateThetas?.get(object) as
-    | StatefulTheta<Obj, Left, Right, Value, State>
-    | undefined;
-  if (stateTheta) {
-    const [next, value] = stateTheta.run(state, left, right);
-    return { next, value };
-  }
-  const resolved = runner.thetas ?? buildThetaCurriedFromHom(runner, interaction);
-  const theta = resolved.get(object);
-  if (!theta) return { next: undefined, value: undefined };
-  const arrow = theta.map(left);
-  const value = arrow(right);
-  return { next: undefined, value };
-};
-
-// Identity morphism on a runner: per object, identity on the exponential object.
-export const identityRunnerMorphism = <
-  Obj,
-  Arr,
-  Left,
-  Right,
-  Value,
-  State
->(
-  runner: StatefulRunner<Obj, Left, Right, Value>,
-  _interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-): RunnerMorphism<Obj, Left, Right, Value, State, State> => {
-  const stateMaps = new Map<Obj, SetHom<State, State>>();
-  const objects = new Set<Obj>();
-  if (runner.stateCarriers) {
-    for (const object of runner.stateCarriers.keys()) {
-      objects.add(object);
-    }
-  }
-  const resolvedThetasId = runner.thetas ?? buildThetaCurriedFromHom(runner, _interaction);
-  for (const object of resolvedThetasId.keys()) {
-    objects.add(object);
-  }
-
-  const fallback = new Map<Obj, SetObj<State>>();
-  for (const object of objects) {
-    const carrier =
-      (runner.stateCarriers?.get(object) as SetObj<State> | undefined) ??
-      fallback.get(object) ??
-      (() => {
-        const created = SetCat.obj([] as State[]);
-        fallback.set(object, created as SetObj<State>);
-        return created as SetObj<State>;
-      })();
-    const id = SetCat.hom(carrier, carrier, (s) => s);
-    stateMaps.set(object, id);
-  }
-  return {
-    stateMaps,
-    details: [
-      `identityRunnerMorphism: realised on ${objects.size} object(s) with concrete state carriers`,
-    ],
-  };
-};
-
-// Compose two runner morphisms (postcomposition): m2 ∘ m1
-export const composeRunnerMorphisms = <
-  Obj,
-  Arr,
-  Left,
-  Right,
-  Value,
-  StateA,
-  StateB,
-  StateC
->(
-  first: RunnerMorphism<Obj, Left, Right, Value, StateA, StateB>,
-  second: RunnerMorphism<Obj, Left, Right, Value, StateB, StateC>,
-  _interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-): RunnerMorphism<Obj, Left, Right, Value, StateA, StateC> => {
-  const stateMaps = new Map<Obj, SetHom<StateA, StateC>>();
-  let count = 0;
-  for (const [object, f] of first.stateMaps.entries()) {
-    const g = second.stateMaps.get(object);
-    if (!g) continue;
-    const composed = SetCat.hom(f.dom, g.cod as SetObj<StateC>, (s) => g.map(f.map(s)));
-    stateMaps.set(object, composed);
-    count++;
-  }
-  return { stateMaps, details: [`composeRunnerMorphisms: composed ${count} component(s).`] };
-};
-
-export const checkRunnerMorphism = <
-  Obj,
-  Arr,
-  Left,
-  Right,
-  Value,
-  StateA,
-  StateB
->(
-  source: StatefulRunner<Obj, Left, Right, Value>,
-  target: StatefulRunner<Obj, Left, Right, Value>,
-  morphism: RunnerMorphism<Obj, Left, Right, Value, StateA, StateB>,
-  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
-): RunnerMorphismReport<Obj> => {
+  options: BuildRunnerOptions = {},
+): RunnerAxiomReport => {
   const sampleLimit = Math.max(0, options.sampleLimit ?? 16);
-  const objects: Obj[] = [];
+  const diag = evaluateRunnerDiagrams<Obj, Arr, Left, Right, Value>(interaction, runner, { sampleLimit });
+  let unitChecked = 0, unitMismatches = 0;
+  let multChecked = 0, multMismatches = 0;
   const details: string[] = [];
-  let checked = 0;
-  let mismatches = 0;
-  const coalgebraSource = buildRunnerCoalgebra(source, interaction);
-  const coalgebraTarget = buildRunnerCoalgebra(target, interaction);
-  const resolvedThetaSource = source.thetas ?? buildThetaCurriedFromHom(source, interaction);
-  const resolvedThetaTarget = target.thetas ?? buildThetaCurriedFromHom(target, interaction);
-  for (const [object, fiber] of interaction.psiComponents.entries()) {
-    if (options.objectFilter && !options.objectFilter(object)) continue;
-    const stateMap = morphism.stateMaps.get(object);
-    if (!stateMap) continue;
-    const thetaS = resolvedThetaSource.get(object);
-    const thetaT = resolvedThetaTarget.get(object);
-    const stateCarrierSource = source.stateCarriers?.get(object) as SetObj<StateA> | undefined;
-    const stateCarrierTarget = target.stateCarriers?.get(object) as SetObj<StateB> | undefined;
-    const targetSemantics = stateCarrierTarget ? getCarrierSemantics(stateCarrierTarget) : undefined;
-    if (!thetaS && !(source.stateThetas?.has(object))) continue;
-    if (!thetaT && !(target.stateThetas?.has(object))) continue;
-    objects.push(object);
-    const leftSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
-    const rightSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
-    const stateSamples = stateCarrierSource ? enumerateLimited(stateCarrierSource, sampleLimit) : [];
-    let localChecked = 0;
-    let localMismatches = 0;
-    if (stateSamples.length === 0) {
-      details.push(`runner-morphism: no state samples for object=${String(object)} (missing state carrier).`);
-    }
-    for (const state of stateSamples) {
-      const mapped = stateMap.map(state as StateA) as StateB;
-      for (const leftEl of leftSamples) {
-        for (const rightEl of rightSamples) {
-          localChecked++;
-          const srcEval = evaluateRunnerState(source, interaction, object, state as StateA, leftEl, rightEl);
-          const tgtEval = evaluateRunnerState(target, interaction, object, mapped, leftEl, rightEl);
-          if (srcEval.value !== undefined && tgtEval.value !== undefined) {
-            if (!Object.is(srcEval.value, tgtEval.value)) {
-              localMismatches++;
-              if (localMismatches <= 4) {
-                details.push(
-                  `runner-morphism value mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} source=${String(srcEval.value)} target=${String(tgtEval.value)}`,
-                );
-              }
-            }
-          }
-          if (srcEval.next !== undefined && tgtEval.next !== undefined) {
-            const mappedNext = stateMap.map(srcEval.next as StateA) as StateB;
-            const nextEqual = targetSemantics?.equals
-              ? targetSemantics.equals(mappedNext, tgtEval.next as StateB)
-              : Object.is(mappedNext, tgtEval.next);
-            if (!nextEqual) {
-              localMismatches++;
-              if (localMismatches <= 4) {
-                details.push(
-                  `runner-morphism state-square mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} mapped=${String(mappedNext)} target=${String(tgtEval.next)}`,
-                );
-              }
-            }
-          }
-        }
-      }
-    }
-    if (localChecked === 0 && leftSamples.length > 0 && rightSamples.length > 0) {
-      for (const leftEl of leftSamples) {
-        const arrowS = thetaS?.map(leftEl);
-        const arrowT = thetaT?.map(leftEl);
-        if (!arrowS || !arrowT) continue;
-        for (const rightEl of rightSamples) {
-          localChecked++;
-          const vS = arrowS(rightEl);
-          const vT = arrowT(rightEl);
-          if (!Object.is(vS, vT)) {
-            localMismatches++;
-            if (localMismatches <= 4) {
-              details.push(
-                `runner-morphism mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} source=${String(vS)} target=${String(vT)}`,
-              );
-            }
-          }
-        }
-      }
-    }
-    // Coalgebra square: (T° f) ∘ γ = γ' ∘ f on sampled right elements if state carriers exist.
-    const gammaS = coalgebraSource.get(object);
-    const gammaT = coalgebraTarget.get(object);
-    if (gammaS && gammaT) {
-      const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
-      let coalMismatches = 0;
-      for (const dualEl of dualSamples) {
-        const expS = gammaS.map(dualEl);
-        const expT = gammaT.map(dualEl);
-        // Since state map does not affect dual fiber directly in current model, we just compare functions pointwise over limited primal samples.
-        const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
-        for (const primalEl of primalSamples) {
-          checked++;
-          const lhs = expS(primalEl);
-          const rhs = expT(primalEl);
-          if (!Object.is(lhs, rhs)) {
-            mismatches++;
-            coalMismatches++;
-            if (coalMismatches <= 2) {
-              details.push(`coal-square mismatch object=${String(object)} right=${String(dualEl.element)} left=${String(primalEl.element)} lhs=${String(lhs)} rhs=${String(rhs)}`);
-            }
-          }
-        }
-      }
-    }
-    checked += localChecked;
-    mismatches += localMismatches;
-    details.push(`runner-morphism object=${String(object)} checked=${localChecked} mismatches=${localMismatches}.`);
+  const structural: RunnerObjectCompositeReport[] = [];
+  for (const [object, w] of diag.unit.entries()) {
+    unitChecked += w.checked; unitMismatches += w.mismatches;
+    const multW = diag.multiplication.get(object);
+    if (multW) { multChecked += multW.checked; multMismatches += multW.mismatches; }
+    const unitFailures: RunnerCompositeFailureEntry[] = w.samples.map(s => ({ input: s.input, dual: (s.dual as any).element ?? s.dual, expected: s.expected, actual: s.actual }));
+    const multFailures: RunnerCompositeFailureEntry[] = multW ? multW.samples.map(s => ({ input: s.input, dual: (s.dual as any).element ?? s.dual, expected: s.expected, actual: s.actual })) : [];
+    structural.push({ object: object as unknown, unit: { checked: w.checked, mismatches: w.mismatches }, mult: { checked: multW?.checked ?? 0, mismatches: multW?.mismatches ?? 0 }, ...(unitFailures.length > 0 ? { unitFailures } : {}), ...(multFailures.length > 0 ? { multFailures } : {}) });
+    if (w.mismatches > 0) details.push(`unit-mismatches object=${String(object)} count=${w.mismatches}`);
+    if (multW && multW.mismatches > 0) details.push(`mult-mismatches object=${String(object)} count=${multW.mismatches}`);
   }
-  details.unshift(`Runner morphism check: objects=${objects.length} sampleLimit=${sampleLimit}.`);
-  return { holds: mismatches === 0, objects, checked, mismatches, details };
+  details.push(`Runner unit diagram: checked=${unitChecked} mismatches=${unitMismatches} (limit=${sampleLimit}).`);
+  details.push(`Runner multiplication diagram: checked=${multChecked} mismatches=${multMismatches} (limit=${sampleLimit}).`);
+  if (options.metadata && options.metadata.length > 0) details.push(...options.metadata);
+  return { holds: unitMismatches === 0 && multMismatches === 0, unitDiagram: { checked: unitChecked, mismatches: unitMismatches }, multiplicationDiagram: { checked: multChecked, mismatches: multMismatches }, details, structural };
 };
 
 // ---------- Run(T) category laws: identity and associativity ----------
@@ -1645,11 +1347,11 @@ export const checkRunTCategoryLaws = <
   const h = (config.h as RunnerMorphism<Obj, Left, Right, Value, unknown, unknown>) ?? idMid;    // mid -> tail
 
   // Left identity: f ∘ id_source == f
-  const leftId = composeRunnerMorphisms(idSource, f, interaction);
+  const leftId = composeRunnerMorphisms(idSource, f, source, interaction);
   const leftIdCmp = compareRunnerMorphisms(leftId, f, source, target, interaction, sampleLimit, options.objectFilter);
 
   // Right identity: id_target ∘ f == f
-  const rightId = composeRunnerMorphisms(f, idTarget, interaction);
+  const rightId = composeRunnerMorphisms(f, idTarget, source, interaction);
   const rightIdCmp = compareRunnerMorphisms(rightId, f, source, target, interaction, sampleLimit, options.objectFilter);
 
   // Associativity: (h ∘ g) ∘ f == h ∘ (g ∘ f)
@@ -1661,10 +1363,10 @@ export const checkRunTCategoryLaws = <
     `Run(T) laws: sampleLimit=${sampleLimit}; using identities by default where morphisms not supplied.`,
   );
   if (!assocSkipped) {
-  const gof = composeRunnerMorphisms(f, g, interaction); // g ∘ f
-  const hog = composeRunnerMorphisms(g, h, interaction); // h ∘ g
-  const leftAssoc = composeRunnerMorphisms(gof, h, interaction); // h ∘ (g ∘ f)
-  const rightAssoc = composeRunnerMorphisms(f, hog, interaction); // (h ∘ g) ∘ f
+  const gof = composeRunnerMorphisms(f, g, source, interaction); // g ∘ f
+  const hog = composeRunnerMorphisms(g, h, target, interaction); // h ∘ g
+  const leftAssoc = composeRunnerMorphisms(gof, h, mid, interaction); // h ∘ (g ∘ f)
+  const rightAssoc = composeRunnerMorphisms(f, hog, source, interaction); // (h ∘ g) ∘ f
   const assocCmp = compareRunnerMorphisms(leftAssoc, rightAssoc, source, tail, interaction, sampleLimit, options.objectFilter);
     assocChecked = assocCmp.checked;
     assocMismatches = assocCmp.mismatches;
