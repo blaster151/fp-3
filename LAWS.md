@@ -150,7 +150,7 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Coalebra:** `buildRunnerCoalgebra`/`checkRunnerCoalgebra` use Sweedler `fromDual` to map dual elements into exponentials over the primal fiber and compare evaluation against ψ.
 - **Costate:** `buildRunnerCostate`/`checkRunnerCostate` translate raw right elements into exponentials over the primal fiber and compare against ψ.
 - **Runner morphisms & Run(T):** Morphisms are per-object state homs `stateMaps : S_Y → S'_Y`. Use `identityRunnerMorphism`, `composeRunnerMorphisms`, and `checkRunnerMorphism` for equality/coalgebra-square sampling; `checkRunTCategoryLaws` validates left/right identity and associativity over these state maps.
-- **Handlers (ϑ):** `thetaToStateHandler` builds simple state handlers; `checkRunnerStateHandlers` compares handler outputs with ψ, counting evaluations in state.
+- **Handlers (ϑ):** `thetaToStateHandler` now rebuilds the `T ⇒ St^Y` natural transformation by sampling θ against each state carrier, checking that results are independent of ψ’s dual inputs, and materialising the induced `TX × Y → X × Y` homs. `checkRunnerStateHandlers` consumes those transformations, replaying ψ evaluations, verifying unit-diagram witnesses via the curried maps, and flagging independence and state-update mismatches.
 - **ψ↔θ consistency:** `checkPsiToThetaConsistency` and `checkThetaToPsiConsistency` execute both directions (ψ→θ via currying; θ→ψ via evaluation reconstruction) across samples, reporting mismatches (optional inclusion in `holds` via `includePsiThetaInHolds`).
 - **Unified report:** `buildRunnerLawReport` aggregates tallies into `RunnerLawReport` with fields:
   - `unitChecked`, `unitMismatches`, `multChecked`, `multMismatches`
