@@ -1,6 +1,7 @@
 import type { ExponentialArrow, SetHom, SetObj, SetCarrierSemantics } from "./set-cat";
 import { SetCat, getCarrierSemantics, semanticsAwareEquals } from "./set-cat";
 import type { MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
+import type { InteractionLawFiberCurrying } from "./functor-interaction-law";
 import { monadComonadInteractionLawToMonoid } from "./monad-comonad-interaction-law";
 import type { IndexedElement } from "./chu-space";
 import type { MonadStructure } from "./monad-comonad-interaction-law";
@@ -1143,31 +1144,61 @@ export const runnerToCoalgebraComponents = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { components: CoalgebraComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const coalgebra = buildRunnerCoalgebra(runner, interaction) as CoalgebraComponents<Obj, Left, Right, Value>;
   const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
-  const details: string[] = ["runnerToCoalgebraComponents: sampling θ vs coalgebra evaluation."];
-  let checked = 0, mismatches = 0;
+  const details: string[] = ["runner→coalgebra (diagram 4): sampling θ vs γ evaluation."];
+  const components = new Map<
+    Obj,
+    SetHom<IndexedElement<Obj, Right>, ExponentialArrow<IndexedElement<Obj, Left>, Value>>
+  >();
+  let checked = 0;
+  let mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-  const theta = (runner.thetas ?? buildThetaCurriedFromHom(runner, interaction)).get(object);
-    const gamma = coalgebra.get(object);
-    if (!theta || !gamma) continue;
+    const thetaHom = resolveThetaHom(runner, interaction, object, fiber);
+    if (!thetaHom) {
+      details.push(`runner→coalgebra: object=${String(object)} missing θ witness; skipping.`);
+      continue;
+    }
+    const primalExp = SetCat.exponential(
+      fiber.primalFiber,
+      interaction.law.dualizing as SetObj<Value>,
+    );
+    const coalgebra = SetCat.hom(
+      fiber.dualFiber,
+      primalExp.object,
+      (dualEl) =>
+        primalExp.register((primalEl) =>
+          thetaHom.map([primalEl, dualEl]),
+        ),
+    ) as SetHom<
+      IndexedElement<Obj, Right>,
+      ExponentialArrow<IndexedElement<Obj, Left>, Value>
+    >;
+    components.set(object, coalgebra);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
     for (const dual of dualSamples) {
-      const arrow = gamma.map(dual);
+      const arrow = coalgebra.map(dual);
       for (const primal of primalSamples) {
         checked++;
-        const expected = fiber.phi.map([primal, dual]);
+        const expected = thetaHom.map([primal, dual]);
         const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
         if (!Object.is(expected, actual)) {
-          mismatches++; if (mismatches <= 4) details.push(`coalgebra-eval-mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`);
+          mismatches++;
+          if (mismatches <= 6) {
+            details.push(
+              `diagram(4) mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
         }
       }
     }
   }
-  details.push(`runnerToCoalgebraComponents: checked=${checked} mismatches=${mismatches}.`);
-  return { components: coalgebra, diagnostics: { checked, mismatches, details } };
+  if (components.size === 0) {
+    details.push("runner→coalgebra: no components constructed (likely due to missing θ witnesses).");
+  }
+  details.push(`runner→coalgebra: checked=${checked} mismatches=${mismatches}.`);
+  return { components, diagnostics: { checked, mismatches, details } };
 };
 
 // Coalgebra → Runner (recover θ via ψ consistency) – currently returns original θ via interaction since coalgebra is derived.
@@ -1176,30 +1207,67 @@ export const coalgebraComponentsToRunner = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { runner: StatefulRunner<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const thetas = new Map<Obj, SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>>();
   const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
-  const details: string[] = ["coalgebraComponentsToRunner: reconstructing θ via currying consistency."];
-  let checked = 0, mismatches = 0;
+  const details: string[] = ["coalgebra→runner (diagram 4): sampling γ vs reconstructed θ."];
+  const thetas = new Map<
+    Obj,
+    SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>
+  >();
+  const thetaHomMap = new Map<
+    Obj,
+    SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>
+  >();
+  let checked = 0;
+  let mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-    // Use existing φ currying as θ.
-    const theta = (fiber.theta ?? fiber.exponential.curry({ domain: fiber.primalFiber, product: fiber.product, morphism: fiber.phi })) as SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
-    thetas.set(object, theta);
     const gamma = components.get(object);
-    if (!gamma) continue;
+    if (!gamma) {
+      details.push(`coalgebra→runner: object=${String(object)} missing γ component; skipping.`);
+      continue;
+    }
+    const theta = SetCat.hom(
+      fiber.primalFiber,
+      fiber.exponential.object,
+      (primalEl) =>
+        fiber.exponential.register((dualEl) => {
+          const arrow = gamma.map(dualEl);
+          return (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primalEl);
+        }),
+    ) as SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
+    thetas.set(object, theta);
+    const thetaHom = fiber.exponential.uncurry({ product: fiber.product, morphism: theta }) as SetHom<
+      readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>],
+      Value
+    >;
+    thetaHomMap.set(object, thetaHom);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
-    for (const primal of primalSamples) {
-      const arrow = theta.map(primal);
-      for (const dual of dualSamples) {
-        checked++; const expected = fiber.phi.map([primal, dual]); const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Right>, Value>)(dual);
-        if (!Object.is(expected, actual)) { mismatches++; if (mismatches <= 4) details.push(`theta-reconstruction-mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`); }
+    for (const dual of dualSamples) {
+      const arrow = gamma.map(dual);
+      for (const primal of primalSamples) {
+        checked += 1;
+        const expected = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        const actual = thetaHom.map([primal, dual]);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `diagram(4) zig-zag mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
       }
     }
   }
-  details.push(`coalgebraComponentsToRunner: checked=${checked} mismatches=${mismatches}.`);
-  const thetaHom = buildPhiFromRunnerPerObject({ thetas, thetaHom: new Map(), diagnostics: [] } as unknown as StatefulRunner<Obj, Left, Right, Value>, interaction);
-  return { runner: { thetas, thetaHom, diagnostics: details }, diagnostics: { checked, mismatches, details } };
+  if (thetas.size === 0) {
+    details.push("coalgebra→runner: no θ reconstructed (missing γ inputs?).");
+  }
+  details.push(`coalgebra→runner: checked=${checked} mismatches=${mismatches}.`);
+  return {
+    runner: { thetas, thetaHom: thetaHomMap, diagnostics: details },
+    diagnostics: { checked, mismatches, details },
+  };
 };
 
 // Runner → Costate (reuse builder + θ agreement)
@@ -1208,28 +1276,60 @@ export const runnerToCostateComponents = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { components: CostateComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const costate = buildRunnerCostate(runner, interaction) as CostateComponents<Obj, Left, Right, Value>;
   const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
-  const details: string[] = ["runnerToCostateComponents: sampling θ vs costate evaluation."];
-  let checked = 0, mismatches = 0;
+  const details: string[] = ["runner→costate (diagram 5): sampling θ vs κ evaluation."];
+  const components = new Map<
+    Obj,
+    SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>
+  >();
+  let checked = 0;
+  let mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-  const theta = (runner.thetas ?? buildThetaCurriedFromHom(runner, interaction)).get(object);
-    const kappa = costate.get(object);
-    if (!theta || !kappa) continue;
-    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    const thetaHom = resolveThetaHom(runner, interaction, object, fiber);
+    if (!thetaHom) {
+      details.push(`runner→costate: object=${String(object)} missing θ witness; skipping.`);
+      continue;
+    }
+    const primalExp = SetCat.exponential(
+      fiber.primalFiber,
+      interaction.law.dualizing as SetObj<Value>,
+    );
     const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
+    const costate = SetCat.hom(
+      rightCarrier,
+      primalExp.object,
+      (rightEl) => {
+        const indexed: IndexedElement<Obj, Right> = { object, element: rightEl };
+        return primalExp.register((primalEl) => thetaHom.map([primalEl, indexed]));
+      },
+    ) as SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>;
+    components.set(object, costate);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
     for (const right of rightSamples) {
-      const arrow = kappa.map(right);
+      const arrow = costate.map(right);
       for (const primal of primalSamples) {
-        checked++; const expected = fiber.phi.map([primal, { object, element: right }]); const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
-        if (!Object.is(expected, actual)) { mismatches++; if (mismatches <= 4) details.push(`costate-eval-mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`); }
+        checked += 1;
+        const indexed: IndexedElement<Obj, Right> = { object, element: right };
+        const expected = thetaHom.map([primal, indexed]);
+        const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `diagram(5) mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
       }
     }
   }
-  details.push(`runnerToCostateComponents: checked=${checked} mismatches=${mismatches}.`);
-  return { components: costate, diagnostics: { checked, mismatches, details } };
+  if (components.size === 0) {
+    details.push("runner→costate: no κ components constructed (missing θ data?).");
+  }
+  details.push(`runner→costate: checked=${checked} mismatches=${mismatches}.`);
+  return { components, diagnostics: { checked, mismatches, details } };
 };
 
 // Costate → Runner (similar to coalgebra path)
@@ -1238,40 +1338,83 @@ export const costateComponentsToRunner = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { runner: StatefulRunner<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const thetas = new Map<Obj, SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>>();
   const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
-  const details: string[] = ["costateComponentsToRunner: reconstructing θ via ψ evaluation."];
-  let checked = 0, mismatches = 0;
+  const details: string[] = ["costate→runner (diagram 5): reconstructing θ from κ."];
+  const thetas = new Map<
+    Obj,
+    SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>
+  >();
+  const thetaHomMap = new Map<
+    Obj,
+    SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>
+  >();
+  let checked = 0;
+  let mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-    const theta = (fiber.theta ?? fiber.exponential.curry({ domain: fiber.primalFiber, product: fiber.product, morphism: fiber.phi })) as SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
-    thetas.set(object, theta);
     const kappa = components.get(object);
-    if (!kappa) continue;
+    if (!kappa) {
+      details.push(`costate→runner: object=${String(object)} missing κ component; skipping.`);
+      continue;
+    }
+    const theta = SetCat.hom(
+      fiber.primalFiber,
+      fiber.exponential.object,
+      (primalEl) =>
+        fiber.exponential.register((dualEl) => {
+          const rightValue = dualEl.element as Right;
+          const arrow = kappa.map(rightValue);
+          return (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primalEl);
+        }),
+    ) as SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
+    thetas.set(object, theta);
+    const thetaHom = fiber.exponential.uncurry({ product: fiber.product, morphism: theta }) as SetHom<
+      readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>],
+      Value
+    >;
+    thetaHomMap.set(object, thetaHom);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
-    for (const primal of primalSamples) {
-      const arrow = theta.map(primal);
-      for (const right of rightSamples) {
-        checked++; const expected = fiber.phi.map([primal, { object, element: right }]); const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Right>, Value>)({ object, element: right });
-        if (!Object.is(expected, actual)) { mismatches++; if (mismatches <= 4) details.push(`theta-reconstruction-mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`); }
+    for (const right of rightSamples) {
+      const arrow = kappa.map(right);
+      const indexed: IndexedElement<Obj, Right> = { object, element: right };
+      for (const primal of primalSamples) {
+        checked += 1;
+        const expected = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        const actual = thetaHom.map([primal, indexed]);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `diagram(5) zig-zag mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
       }
     }
   }
-  details.push(`costateComponentsToRunner: checked=${checked} mismatches=${mismatches}.`);
-  const thetaHom2 = buildPhiFromRunnerPerObject({ thetas, thetaHom: new Map(), diagnostics: [] } as unknown as StatefulRunner<Obj, Left, Right, Value>, interaction);
-  return { runner: { thetas, thetaHom: thetaHom2, diagnostics: details }, diagnostics: { checked, mismatches, details } };
+  if (thetas.size === 0) {
+    details.push("costate→runner: no θ reconstructed (missing κ inputs?).");
+  }
+  details.push(`costate→runner: checked=${checked} mismatches=${mismatches}.`);
+  return {
+    runner: { thetas, thetaHom: thetaHomMap, diagnostics: details },
+    diagnostics: { checked, mismatches, details },
+  };
 };
 
 // Coalgebra ↔ Costate (factor through Sweedler fromDual indexing)
 export const coalgebraToCostate = <Obj, Arr, Left, Right, Value>(
   components: CoalgebraComponents<Obj, Left, Right, Value>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-  options: { objectFilter?: (object: Obj) => boolean } = {},
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { components: CostateComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
   const costate = new Map<Obj, SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>>();
-  const details: string[] = ["coalgebraToCostate: translating γ components into κ via indexing."]; let checked = 0, mismatches = 0;
+  const details: string[] = ["coalgebra→costate (diagram 5): translating γ into κ."];
+  let checked = 0;
+  let mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
     const gamma = components.get(object);
@@ -1285,17 +1428,26 @@ export const coalgebraToCostate = <Obj, Arr, Left, Right, Value>(
     });
     costate.set(object, kappa as unknown as SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>);
     // Light sampling equivalence: evaluate expected ψ vs composed map
-    const rightSamples = enumerateLimited(rightCarrier, 4);
-    const primalSamples = enumerateLimited(fiber.primalFiber, 4);
+    const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     for (const right of rightSamples) {
       const arrow = kappa.map(right);
       for (const primal of primalSamples) {
-        checked++; const expected = fiber.phi.map([primal, { object, element: right }]); const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
-        if (!Object.is(expected, actual)) { mismatches++; if (mismatches <= 2) details.push(`coalgebra->costate-mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`); }
+        checked += 1;
+        const expected = fiber.phi.map([primal, { object, element: right }]);
+        const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 4) {
+            details.push(
+              `diagram(5) cast mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
       }
     }
   }
-  details.push(`coalgebraToCostate: checked=${checked} mismatches=${mismatches}.`);
+  details.push(`coalgebra→costate: checked=${checked} mismatches=${mismatches}.`);
   return { components: costate, diagnostics: { checked, mismatches, details } };
 };
 
@@ -2024,6 +2176,173 @@ const enumerateLimited = <A>(carrier: SetObj<A>, limit: number): ReadonlyArray<A
     if (result.length >= limit) break;
   }
   return result;
+};
+
+const resolveThetaHom = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  object: Obj,
+  fiber: InteractionLawFiberCurrying<Obj, Arr, Left, Right, Value>,
+): SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value> | undefined => {
+  const direct = runner.thetaHom.get(object);
+  if (direct) return direct;
+  const curried = runner.thetas?.get(object);
+  if (curried) {
+    return fiber.exponential.uncurry({ product: fiber.product, morphism: curried }) as SetHom<
+      readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>],
+      Value
+    >;
+  }
+  return undefined;
+};
+
+const compareRunnerThetas = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  original: StatefulRunner<Obj, Left, Right, Value>,
+  reconstructed: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): EquivalenceDiagnostics => {
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
+  const details: string[] = ["runner zig-zag (θ comparison): sampling primal/dual pairs."];
+  let checked = 0;
+  let mismatches = 0;
+  for (const [object, fiber] of interaction.psiComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const leftHom = resolveThetaHom(original, interaction, object, fiber);
+    const rightHom = resolveThetaHom(reconstructed, interaction, object, fiber);
+    if (!leftHom || !rightHom) {
+      details.push(`runner zig-zag: object=${String(object)} missing θ data (left=${Boolean(leftHom)} right=${Boolean(rightHom)}).`);
+      continue;
+    }
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    for (const primal of primalSamples) {
+      for (const dual of dualSamples) {
+        checked += 1;
+        const expected = leftHom.map([primal, dual]);
+        const actual = rightHom.map([primal, dual]);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `runner zig-zag mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
+      }
+    }
+  }
+  details.push(`runner zig-zag: checked=${checked} mismatches=${mismatches}.`);
+  return { checked, mismatches, details };
+};
+
+const compareCoalgebraComponents = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  left: CoalgebraComponents<Obj, Left, Right, Value>,
+  right: CoalgebraComponents<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): EquivalenceDiagnostics => {
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
+  const details: string[] = ["coalgebra zig-zag: comparing γ components."];
+  let checked = 0;
+  let mismatches = 0;
+  for (const [object, fiber] of interaction.psiComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const leftGamma = left.get(object);
+    const rightGamma = right.get(object);
+    if (!leftGamma || !rightGamma) {
+      details.push(`coalgebra zig-zag: object=${String(object)} missing component (left=${Boolean(leftGamma)} right=${Boolean(rightGamma)}).`);
+      continue;
+    }
+    const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    for (const dual of dualSamples) {
+      const leftArrow = leftGamma.map(dual);
+      const rightArrow = rightGamma.map(dual);
+      for (const primal of primalSamples) {
+        checked += 1;
+        const expected = (leftArrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        const actual = (rightArrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `coalgebra zig-zag mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
+      }
+    }
+  }
+  details.push(`coalgebra zig-zag: checked=${checked} mismatches=${mismatches}.`);
+  return { checked, mismatches, details };
+};
+
+const compareCostateComponents = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  left: CostateComponents<Obj, Left, Right, Value>,
+  right: CostateComponents<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): EquivalenceDiagnostics => {
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
+  const details: string[] = ["costate zig-zag: comparing κ components."];
+  let checked = 0;
+  let mismatches = 0;
+  for (const [object, fiber] of interaction.psiComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const leftKappa = left.get(object);
+    const rightKappa = right.get(object);
+    if (!leftKappa || !rightKappa) {
+      details.push(`costate zig-zag: object=${String(object)} missing component (left=${Boolean(leftKappa)} right=${Boolean(rightKappa)}).`);
+      continue;
+    }
+    const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
+    const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    for (const rightEl of rightSamples) {
+      const leftArrow = leftKappa.map(rightEl);
+      const rightArrow = rightKappa.map(rightEl);
+      for (const primal of primalSamples) {
+        checked += 1;
+        const expected = (leftArrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        const actual = (rightArrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `costate zig-zag mismatch object=${String(object)} left=${String(primal.element)} right=${String(rightEl)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
+      }
+    }
+  }
+  details.push(`costate zig-zag: checked=${checked} mismatches=${mismatches}.`);
+  return { checked, mismatches, details };
 };
 
 export interface RunnerPhiHomComponentReport<Obj, Left, Right, Value> {
