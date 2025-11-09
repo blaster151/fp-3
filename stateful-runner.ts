@@ -11,15 +11,21 @@ import {
   Return,
 } from "./tree-free-monad";
 
-// Temporary forward declarations (recovering lost types). Replace via proper import if original module is restored.
 export interface MonadMorphism<Obj, Arr> {
-  readonly source: { unit: { transformation: { component: (obj: Obj) => SetHom<unknown, unknown> } } };
-  readonly target: { unit: { transformation: { component: (obj: Obj) => SetHom<unknown, unknown> } } };
-  readonly components: Map<Obj, SetHom<unknown, unknown>>;
+  readonly source: MonadStructure<Obj, Arr>;
+  readonly target: MonadStructure<Obj, Arr>;
+  readonly components: ReadonlyMap<Obj, SetHom<unknown, unknown>>;
 }
+
 export interface StatefulRunner<Obj, Left, Right, Value> {
-  readonly thetas?: ReadonlyMap<Obj, SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>>;
-  readonly thetaHom: ReadonlyMap<Obj, SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>>;
+  readonly thetas?: ReadonlyMap<
+    Obj,
+    SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>
+  >;
+  readonly thetaHom: ReadonlyMap<
+    Obj,
+    SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>
+  >;
   readonly stateCarriers?: ReadonlyMap<Obj, SetObj<unknown>>;
   readonly stateThetas?: ReadonlyMap<Obj, StatefulTheta<Obj, Left, Right, Value, unknown>>;
   readonly diagnostics: ReadonlyArray<string>;
@@ -243,6 +249,7 @@ export const monadMapToRunner = <
   let treeMismatches = 0;
   let multChecked = 0;
   let multMismatches = 0;
+  const multiplicationSummary: string[] = [];
   let multNote = "no multiplication sampling performed (source not recognised as free tree monad)";
 
   for (const [object, fiber] of interaction.psiComponents.entries()) {
@@ -338,41 +345,55 @@ export const monadMapToRunner = <
       return { object, element: value as Left } as IndexedElement<Obj, Left>;
     };
 
-    const makeIndexedRight = (value: unknown): IndexedElement<Obj, Right> => {
-      for (const sample of dualSamples) {
-        const probe = { object, element: value as Right } as IndexedElement<Obj, Right>;
-        if (equalsDual(sample, probe) || Object.is(sample.element, value)) {
-          return sample;
-        }
-      }
-      return { object, element: value as Right } as IndexedElement<Obj, Right>;
-    };
-
-    const evaluateTree = (node: Tree<unknown>): unknown => {
-      if (node._tag === "Return") {
-        return etaTarget.map(node.value);
-      }
-      if (node._tag === "Op") {
-        const evaluatedChildren = node.children.map(evaluateTree);
-        if (evaluatedChildren.length === 0) {
-          return { op: node.name, children: evaluatedChildren };
-        }
-        const primalValue = evaluatedChildren[0];
-        const dualValue = evaluatedChildren[1] ?? evaluatedChildren[0];
-        const primal = makeIndexedLeft(primalValue);
-        const dual = makeIndexedRight(dualValue);
-        try {
-          return thetaEntry.map([primal, dual]);
-        } catch (error) {
-          const opFn = operationLookup?.get(node.name);
-          if (opFn) {
-            return opFn(evaluatedChildren as ReadonlyArray<unknown>);
+      const makeIndexedRight = (value: unknown): IndexedElement<Obj, Right> => {
+        for (const sample of dualSamples) {
+          const probe = { object, element: value as Right } as IndexedElement<Obj, Right>;
+          if (equalsDual(sample, probe) || Object.is(sample.element, value)) {
+            return sample;
           }
-          throw error;
         }
-      }
-      return etaTarget.map(node as unknown as never);
-    };
+        return { object, element: value as Right } as IndexedElement<Obj, Right>;
+      };
+
+      const evaluateWith = (
+        node: Tree<unknown>,
+        onReturn: (value: unknown) => unknown,
+      ): unknown => {
+        if (node._tag === "Return") {
+          return onReturn(node.value);
+        }
+        if (node._tag === "Op") {
+          const evaluatedChildren = node.children.map((child) => evaluateWith(child, onReturn));
+          if (evaluatedChildren.length === 0) {
+            return { op: node.name, children: evaluatedChildren };
+          }
+          const primalValue = evaluatedChildren[0];
+          const dualValue = evaluatedChildren[1] ?? evaluatedChildren[0];
+          const primal = makeIndexedLeft(primalValue);
+          const dual = makeIndexedRight(dualValue);
+          try {
+            return thetaEntry.map([primal, dual]);
+          } catch (error) {
+            const opFn = operationLookup?.get(node.name);
+            if (opFn) {
+              return opFn(evaluatedChildren as ReadonlyArray<unknown>);
+            }
+            throw error;
+          }
+        }
+        return onReturn(node as unknown as never);
+      };
+
+      const evaluateTree = (node: Tree<unknown>): unknown =>
+        evaluateWith(node, (value) => etaTarget.map(value));
+
+      const evaluateNestedTree = (node: Tree<unknown>): unknown =>
+        evaluateWith(node, (value) => {
+          if (isTreeNode(value)) {
+            return evaluateTree(value as Tree<unknown>);
+          }
+          return etaTarget.map(value);
+        });
 
     let objectErrors = 0;
     for (const treeSample of treeSamples) {
@@ -407,6 +428,58 @@ export const monadMapToRunner = <
         `monadMapToRunner: object ${String(object)} encountered ${objectErrors} evaluation error(s) while replaying tree samples.`,
       );
     }
+
+      const muSource = morphism.source.multiplication.transformation.component(object) as
+        | SetHom<unknown, unknown>
+        | undefined;
+      const muTarget = morphism.target.multiplication.transformation.component(object) as
+        | SetHom<unknown, unknown>
+        | undefined;
+      if (!muSource || !muTarget) {
+        multiplicationSummary.push(
+          `object ${String(object)}: skipped μ sampling (missing ${!muSource ? "source μ" : "target μ"})`,
+        );
+        continue;
+      }
+      const nestedSamples = enumerateLimited(muSource.dom as SetObj<unknown>, sampleLimit);
+      if (nestedSamples.length === 0) {
+        multiplicationSummary.push(`object ${String(object)}: no samples available from μ domain`);
+        continue;
+      }
+      multiplicationSummary.push(`object ${String(object)}: sampled ${nestedSamples.length} μ-elements`);
+      for (const nested of nestedSamples) {
+        if (!isTreeNode(nested)) {
+          continue;
+        }
+        multChecked += 1;
+        try {
+          const flattened = muSource.map(nested) as unknown;
+          if (!isTreeNode(flattened)) {
+            continue;
+          }
+          const expected = tau.map(flattened as Tree<unknown>);
+          const actual = evaluateNestedTree(nested as Tree<unknown>);
+          if (!equalsTarget(expected, actual)) {
+            multMismatches += 1;
+            if (multMismatches <= 4) {
+              details.push(
+                `monadMapToRunner.multiplication-mismatch object=${String(object)} sample=${JSON.stringify(
+                  nested,
+                )} expected=${String(expected)} actual=${String(actual)}`,
+              );
+            }
+          }
+        } catch (error) {
+          multMismatches += 1;
+          if (multMismatches <= 4) {
+            details.push(
+              `monadMapToRunner.multiplication-eval-error object=${String(object)} sample=${JSON.stringify(
+                nested,
+              )} error=${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
   }
 
   if (treeChecked === 0) {
@@ -414,6 +487,9 @@ export const monadMapToRunner = <
   } else {
     details.push(`monadMapToRunner: tree-samples checked=${treeChecked} mismatches=${treeMismatches}.`);
   }
+    if (multiplicationSummary.length > 0) {
+      multNote = multiplicationSummary.join(" | ");
+    }
   details.push(
     `monadMapToRunner: multiplication-heuristic checked=${multChecked} mismatches=${multMismatches} note=${multNote}.`,
   );

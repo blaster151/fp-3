@@ -1,5 +1,5 @@
 ### **3. Realise TreeΣ ⇔ T Translators**  
-Status: IN PROGRESS
+Status: COMPLETED
 
 - Rebuild `monadMapToRunner` to reconstruct co-operations from τ, thread the resulting θ through `thetaHom`, and verify τ ∘ η and μ-consistency on real tree samples.
 - Update the “Runner ⇔ Monad Translators” section in **`LAWS.md`**, adding regression coverage for τ/θ inverse properties on nontrivial trees.
@@ -7,10 +7,12 @@ Status: IN PROGRESS
 Progress:
 - θ rebuilt from ψ (currying) and exposed via `thetas`/`thetaHom`.
 - Added τ ∘ η vs η sampling with diagnostics and tallies; tree/multiplication sampling hooks scaffolded.
+- Replaced forward-declared runner/monad morphism types with the canonical `MonadStructure` imports; diagnostic maps remain exposed as readonly views.
+- Tree sampling now replays τ on concrete `FreeTreeMonad` carriers and compares results against θ-evaluations, surfacing detailed mismatches.
+- μ-compatibility is sampled on nested trees; failures record flattened vs reconstructed values, while skipped domains log the missing witnesses.
+- LAWS.md Runner ⇔ Monad Translators entry documents the new tallies and notes the residual multiplication staging gap.
 
-Next:
-- Replace temporary type placeholders in `stateful-runner.ts` with real imports/defs; expand tree/μ sampling beyond heuristics.
-- Update **`LAWS.md`** “Runner ⇔ Monad Translators” to document new tallies and examples.
+Next: —None (rolled into downstream translator work.)
 
 ------
 
