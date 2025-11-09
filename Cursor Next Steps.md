@@ -26,9 +26,10 @@ Status: IN PROGRESS
 Progress:
 - Exported `compareRunnerThetas`, `compareCoalgebraComponents`, and `compareCostateComponents` from `stateful-runner.ts` so the oracle layer can sample zig-zag identities directly.
 - Rebuilt the `runner-oracles.ts` imports, consolidated duplicates, and wired the new comparison helpers into the coalgebra/costate equivalence oracles; `equivalenceCoalgebra` and `equivalenceCostate` now report both runner and component mismatches, while `equivalenceTriangle` reuses the coalgebra component comparison.
+- Extended `equivalenceTriangle` to re-check both γ and κ round-trips, adding costate zig-zag sampling alongside the coalgebra comparison.
 
 Next:
-- Fold the new costate comparison into the triangle oracle (costate leg) and audit remaining translator diagnostics to ensure diagrams (4)/(5) are saturated with sample coverage.
+- Audit remaining translator diagnostics to ensure diagrams (4)/(5) are saturated with sample coverage.
 
 ------
 
