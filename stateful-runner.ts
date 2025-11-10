@@ -3126,6 +3126,8 @@ export const checkRunnerStateHandlers = <
         }
       }
     }
+    let stUnitChecked = 0;
+    let stUnitMismatches = 0;
     if (entry.vartheta && entry.canonicalRight && stateCarrier) {
       const canonicalRight = entry.canonicalRight;
       const vartheta = entry.vartheta as SetHom<
@@ -3178,6 +3180,34 @@ export const checkRunnerStateHandlers = <
             }
           }
         }
+        for (const base of unitDomainSamples) {
+          const lifted = eta.map(base as Left);
+          const liftedIndexed: IndexedElement<Obj, Left> = { object: entry.object, element: lifted };
+          const arrow = vartheta.map(liftedIndexed) as (state: unknown) => readonly [Value, unknown];
+          const expectedValue = fiber.phi.map([liftedIndexed, canonicalRight]);
+          for (const state of stateSamples) {
+            stUnitChecked += 1;
+            const actualPair = arrow(state as never);
+            const valueMatches = valueSemantics?.equals
+              ? valueSemantics.equals(actualPair[0] as Value, expectedValue)
+              : Object.is(actualPair[0], expectedValue);
+            const stateMatches = stateCarrierSemantics?.equals
+              ? stateCarrierSemantics.equals(actualPair[1] as unknown, state as unknown)
+              : Object.is(actualPair[1], state);
+            if (!valueMatches || !stateMatches) {
+              stUnitMismatches += 1;
+              if (stUnitMismatches <= 4) {
+                details.push(
+                  `state-handler-St-unit-mismatch object=${String(entry.object)} state=${String(
+                    (state as { element?: unknown })?.element ?? state,
+                  )} base=${String(base)} expected=${String(expectedValue)}/${String(state)} actual=${String(
+                    actualPair[0],
+                  )}/${String(actualPair[1])}`,
+                );
+              }
+            }
+          }
+        }
       }
     } else {
       details.push(
@@ -3190,6 +3220,28 @@ export const checkRunnerStateHandlers = <
       );
       checked += unitSamplesChecked;
       mismatches += unitSamplesMismatched;
+    }
+    if (entry.vartheta && entry.canonicalRight && stateCarrier) {
+      const stUnitSummary = `state-handler-St-unit summary object=${String(entry.object)} checked=${stUnitChecked} mismatches=${stUnitMismatches}.`;
+      details.push(stUnitSummary);
+      checked += stUnitChecked;
+      mismatches += stUnitMismatches;
+    } else {
+      details.push(
+        `state-handler-St-unit: skipped object=${String(entry.object)} (missing vartheta, state carrier, or canonical right).`,
+      );
+    }
+    const muComponent = interaction.monad.multiplication.transformation.component(entry.object) as
+      | SetHom<unknown, Left>
+      | undefined;
+    if (!muComponent) {
+      details.push(
+        `state-handler-St-mult: skipped object=${String(entry.object)} (missing monad multiplication component).`,
+      );
+    } else {
+      details.push(
+        `state-handler-St-mult: TODO object=${String(entry.object)} (multiplication replay pending θ_{TX} instrumentation).`,
+      );
     }
   }
   if (independenceWarnings > 0) {
