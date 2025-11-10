@@ -352,22 +352,53 @@ describe("stateful runner", () => {
     expect(residualSummary.diagnostics.some((line) => line.includes("TODO"))).toBe(true);
   });
 
-  describe.skip("Supervised kernel/user stack (planning placeholder)", () => {
+  describe("Supervised kernel/user stack scaffold", () => {
     it("constructs the supervised stack example once builders are implemented", () => {
-      // Placeholder: enable this test when the supervised stack builders are fully implemented.
       const law = makeExample6MonadComonadInteractionLaw();
-      const kernelSpec: KernelMonadSpec<unknown, unknown, unknown> = {
+      type Obj = (typeof law.kernel.base.objects)[number];
+      const residualSpecs = new Map<Obj, ResidualHandlerSpec<Obj, unknown, unknown>>();
+      for (const object of law.kernel.base.objects) {
+        residualSpecs.set(object, {
+          description: "all handled",
+          predicate: () => true,
+        });
+      }
+      const kernelSpec: KernelMonadSpec<Obj, unknown, unknown> = {
         name: "ExampleKernel",
         description: "Scaffold kernel signature",
+        operations: [
+          { name: "getenv", kind: "state" },
+          { name: "raise", kind: "exception" },
+        ],
+        residualHandlers: residualSpecs,
       };
-      const userSpec: UserMonadSpec<unknown> = {
+      const userSpec: UserMonadSpec<Obj> = {
         name: "ExampleUser",
         description: "Scaffold user specification",
         boundaryDescription: "Comparison morphism TBD",
+        allowedKernelOperations: ["getenv"],
       };
-      const stack = makeSupervisedStack(law as unknown as any, kernelSpec as any, userSpec as any);
-      expect(stack.diagnostics.length).toBeGreaterThan(0);
-      const runner = stackToRunner(law as unknown as any, kernelSpec as any, userSpec as any);
+      const stack = makeSupervisedStack(
+        law as unknown as any,
+        kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
+        userSpec as UserMonadSpec<Obj>,
+        { sampleLimit: 4, includeResidualAnalysis: true },
+      );
+      expect(stack.kernel.diagnostics.some((line) => line.includes("Kernel operations"))).toBe(true);
+      expect(stack.user.diagnostics.some((line) => line.includes("User boundary expectations"))).toBe(true);
+      expect(stack.residualSummary).toBeDefined();
+      expect(
+        stack.residualSummary?.reports.every((report) => report.unhandledSamples === 0),
+      ).toBe(true);
+
+      const runner = stackToRunner(
+        law as unknown as any,
+        kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
+        userSpec as UserMonadSpec<Obj>,
+        { sampleLimit: 4 },
+      );
+      expect(runner.residualHandlers?.reports.length).toBeGreaterThan(0);
+
       const back = runnerToStack(runner as any, law as unknown as any);
       expect(back.diagnostics.length).toBeGreaterThan(0);
     });

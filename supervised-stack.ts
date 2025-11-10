@@ -9,9 +9,19 @@ import {
   type StatefulRunner,
 } from "./stateful-runner";
 
+export type KernelEffectKind = "state" | "exception" | "signal" | "external";
+
+export interface KernelOperationSpec<Obj, Left, Right> {
+  readonly name: string;
+  readonly kind: KernelEffectKind;
+  readonly description?: string;
+  readonly residualHandler?: ResidualHandlerSpec<Obj, Left, Right>;
+}
+
 export interface KernelMonadSpec<Obj, Left, Right> {
   readonly name: string;
   readonly description?: string;
+  readonly operations?: ReadonlyArray<KernelOperationSpec<Obj, Left, Right>>;
   readonly residualHandlers?: ReadonlyMap<Obj, ResidualHandlerSpec<Obj, Left, Right>>;
   readonly metadata?: ReadonlyArray<string>;
 }
@@ -25,6 +35,7 @@ export interface UserMonadSpec<Obj> {
   readonly name: string;
   readonly description?: string;
   readonly boundaryDescription?: string;
+  readonly allowedKernelOperations?: ReadonlyArray<string>;
   readonly metadata?: ReadonlyArray<string>;
 }
 
@@ -61,6 +72,40 @@ export const makeKernelMonad = <Obj, Left, Right>(
   if (spec.metadata && spec.metadata.length > 0) {
     diagnostics.push(`Metadata: ${spec.metadata.join(", ")}`);
   }
+
+  const operations = spec.operations ?? [];
+  const operationNames = new Set<string>();
+  const duplicateOperations: string[] = [];
+  const operationSummaries = operations.map((op) => {
+    if (operationNames.has(op.name)) {
+      duplicateOperations.push(op.name);
+    } else {
+      operationNames.add(op.name);
+    }
+    return `${op.kind}:${op.name}`;
+  });
+
+  if (operations.length === 0) {
+    diagnostics.push("Kernel operations: none specified (placeholder only).");
+  } else {
+    diagnostics.push(
+      `Kernel operations (${operations.length}): ${operationSummaries.join(", ")}`,
+    );
+    if (duplicateOperations.length > 0) {
+      diagnostics.push(
+        `Kernel operations warning: duplicate operation names detected (${duplicateOperations.join(
+          ", ",
+        )}).`,
+      );
+    }
+    const operationsWithHandlers = operations.filter((op) => op.residualHandler);
+    if (operationsWithHandlers.length > 0 && (!spec.residualHandlers || spec.residualHandlers.size === 0)) {
+      diagnostics.push(
+        "Kernel operations note: operation-level residual handlers supplied but no object-level residual mapping provided.",
+      );
+    }
+  }
+
   if (!spec.residualHandlers || spec.residualHandlers.size === 0) {
     diagnostics.push("Residual coverage: no handler specifications supplied (all effects treated as unhandled until implemented).");
   } else {
@@ -80,6 +125,15 @@ export const makeUserMonad = <Obj>(
     diagnostics.push(`Boundary: ${spec.boundaryDescription}`);
   } else {
     diagnostics.push("Boundary: TODO — comparison morphism not yet implemented.");
+  }
+  if (spec.allowedKernelOperations && spec.allowedKernelOperations.length > 0) {
+    diagnostics.push(
+      `User boundary expectations (${spec.allowedKernelOperations.length} operation(s)): ${spec.allowedKernelOperations.join(
+        ", ",
+      )}`,
+    );
+  } else {
+    diagnostics.push("User boundary expectations: none declared.");
   }
   if (spec.metadata && spec.metadata.length > 0) {
     diagnostics.push(`Metadata: ${spec.metadata.join(", ")}`);
@@ -106,8 +160,21 @@ export const makeSupervisedStack = <
     metadata: [`supervised-stack:${kernelSpec.name}/${userSpec.name}`],
   });
 
-  const residualSpecs =
-    kernelSpec.residualHandlers ?? new Map<Obj, ResidualHandlerSpec<Obj, Left, Right>>();
+  const residualSpecs: Map<Obj, ResidualHandlerSpec<Obj, Left, Right>> =
+    kernelSpec.residualHandlers
+      ? new Map(kernelSpec.residualHandlers)
+      : new Map();
+
+  // Promote operation-level residual handlers into the residual spec map if provided.
+  for (const op of kernelSpec.operations ?? []) {
+    if (op.residualHandler) {
+      for (const object of interaction.kernel.base.objects) {
+        if (!residualSpecs.has(object)) {
+          residualSpecs.set(object, op.residualHandler);
+        }
+      }
+    }
+  }
 
   const runner = attachResidualHandlers(baseRunner, interaction, residualSpecs, {
     sampleLimit: options.sampleLimit,
@@ -117,9 +184,35 @@ export const makeSupervisedStack = <
 
   const diagnostics: string[] = [
     `Supervised stack scaffold: kernel="${kernelSpec.name}", user="${userSpec.name}".`,
-    ...kernel.diagnostics,
-    ...user.diagnostics,
   ];
+  diagnostics.push(...kernel.diagnostics);
+  diagnostics.push(...user.diagnostics);
+
+  const kernelOperationNames = new Set<string>(
+    (kernelSpec.operations ?? []).map((op) => op.name),
+  );
+  if (userSpec.allowedKernelOperations && userSpec.allowedKernelOperations.length > 0) {
+    const unknownOps = userSpec.allowedKernelOperations.filter(
+      (name) => !kernelOperationNames.has(name),
+    );
+    if (unknownOps.length > 0) {
+      diagnostics.push(
+        `Boundary warning: user references kernel operations that are not declared (${unknownOps.join(
+          ", ",
+        )}).`,
+      );
+    }
+    const missingOps = [...kernelOperationNames].filter(
+      (name) => !userSpec.allowedKernelOperations!.includes(name),
+    );
+    if (missingOps.length > 0) {
+      diagnostics.push(
+        `Boundary note: kernel operations not explicitly acknowledged by user spec (${missingOps.join(
+          ", ",
+        )}).`,
+      );
+    }
+  }
 
   let residualSummary: ResidualHandlerSummary<Obj, Left, Right> | undefined = runner.residualHandlers;
   if (options.includeResidualAnalysis) {
@@ -171,6 +264,6 @@ export const runnerToStack = <
   _interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
 ): RunnerToStackResult => ({
   diagnostics: [
-    "runnerToStack: TODO — reconstruction of supervised stack from runner is not implemented yet.",
+    `runnerToStack scaffold: residual reports=${runner.residualHandlers?.reports.length ?? 0}, diagnostics lines=${runner.diagnostics.length}.`,
   ],
 });
