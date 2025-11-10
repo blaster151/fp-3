@@ -346,4 +346,15 @@ describe("stateful runner", () => {
     const residualSummary = makeResidualInteractionLaw(law, { residualMonadName: "Maybe" });
     expect(residualSummary.diagnostics.some((line) => line.includes("TODO"))).toBe(true);
   });
+
+  describe.skip("Supervised kernel/user stack (planning placeholder)", () => {
+    it("constructs the supervised stack example once builders are implemented", () => {
+      // Placeholder: enable this test when `makeSupervisedStack` becomes available.
+      // Expected steps:
+      // 1. Build kernel + user specs.
+      // 2. Invoke makeSupervisedStack and verify comparison morphisms.
+      // 3. Translate to a runner via stackToRunner and inspect residual coverage.
+      // 4. Exercise λ₍coop₎ integration once semantics are fully wired.
+    });
+  });
 });

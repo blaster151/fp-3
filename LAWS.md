@@ -223,6 +223,12 @@ if (!report.holds) {
     - `runner.equivalence.triangle` → checks γ → κ → γ round-trip.
   - **Check:** `test/stateful-runner.spec.ts` exercises the equivalence oracles on Example 6 and the Example 12 update-lens suite against the Example 8 interaction.
 
+### Supervised kernel/user stack (Phase IV c — scaffolding)
+
+- **Status:** Planning. See `SUPERVISED_STACK_PLAN.md` for the staged implementation outline.
+- **Upcoming work:** kernel/user monad constructors, comparison morphism diagnostics, residual coverage integration, and supervised runner/oracle wiring.
+- **Tests:** placeholder `describe.skip` in `test/stateful-runner.spec.ts`, to be enabled once the stack constructors are executable.
+
 ## Coalgebra and Hopf law diagnostics
 
 ### Bialgebra compatibility witness registry

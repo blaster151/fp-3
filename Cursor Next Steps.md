@@ -111,11 +111,22 @@ Status: COMPLETED
 ------
 
 ### **10. Build the Supervised Kernel/User Monad Stack**
-Status: TODO — Follows residual runner hooks
+Status: IN PROGRESS
 
-- Implement kernel monads combining **state**, **exception**, and **signal** signatures with external effects, alongside user monads that supervise them.
-  - Expose comparison morphisms defining the supervised boundary.
-- Integrate λ₍coop₎’s front end with these monads so sample programs (like the file-handle scenario) type-check, execute, and emit resource/finalisation diagnostics.
+- **Plan (Stage 1 scaffolding)**
+  - Capture the supervised stack in a dedicated module `supervised-stack.ts`, introducing:
+    - `KernelSignature`/`KernelMonadSpec` bundling state/exception/signal metadata plus the residual monad hook from item 9.
+    - `UserMonadSpec` describing user-space capabilities together with the comparison morphism into the kernel monad.
+    - Builders `makeKernelMonad`, `makeUserMonad`, and `makeSupervisedStack` returning the promised monads with diagnostics (resource catalogue, comparison morphisms, residual notes).
+  - Provide adaptors tying the stack to runner infrastructure:
+    - `stackToRunner(interaction, stack)` to emit a `StatefulRunner` annotated with residual coverage (kernel-only effects flagged).
+    - `runnerToStack` placeholder (documented TODO) for reconstructing the stack from a runner once the full translation is implemented.
+  - Document the design in a new `SUPERVISED_STACK_PLAN.md` outlining the signature data model, monad construction steps, boundary morphisms, λ₍coop₎ integration points, and residual-analysis workflow.
+  - Update `LAWS.md` with a “Supervised kernel/user stack” stub referencing the plan, enumerating upcoming diagnostics (comparison morphism checker, supervised runner oracle).
+  - Add a planning placeholder in `test/stateful-runner.spec.ts` (`describe.skip`) capturing the intended supervised scenario, ready to be enabled once the constructors are executable.
+
+- **Next Implementation Steps**
+  - Flesh out the kernel/user monad constructors, expose the comparison morphisms, and integrate the λ₍coop₎ interpreter with the new stack once the scaffolding is merged.
 
 ---
 
