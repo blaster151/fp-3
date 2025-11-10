@@ -111,22 +111,17 @@ Status: COMPLETED
 ------
 
 ### **10. Build the Supervised Kernel/User Monad Stack**
-Status: IN PROGRESS
+Status: IN PROGRESS — kernel/user constructors wired, λ₍coop₎ integration pending
 
-- **Plan (Stage 1 scaffolding)**
-  - Capture the supervised stack in a dedicated module `supervised-stack.ts`, introducing:
-    - `KernelSignature`/`KernelMonadSpec` bundling state/exception/signal metadata plus the residual monad hook from item 9.
-    - `UserMonadSpec` describing user-space capabilities together with the comparison morphism into the kernel monad.
-    - Builders `makeKernelMonad`, `makeUserMonad`, and `makeSupervisedStack` returning the promised monads with diagnostics (resource catalogue, comparison morphisms, residual notes).
-  - Provide adaptors tying the stack to runner infrastructure:
-    - `stackToRunner(interaction, stack)` to emit a `StatefulRunner` annotated with residual coverage (kernel-only effects flagged).
-    - `runnerToStack` placeholder (documented TODO) for reconstructing the stack from a runner once the full translation is implemented.
-  - Document the design in a new `SUPERVISED_STACK_PLAN.md` outlining the signature data model, monad construction steps, boundary morphisms, λ₍coop₎ integration points, and residual-analysis workflow.
-  - Update `LAWS.md` with a “Supervised kernel/user stack” stub referencing the plan, enumerating upcoming diagnostics (comparison morphism checker, supervised runner oracle).
-  - Add a planning placeholder in `test/stateful-runner.spec.ts` (`describe.skip`) capturing the intended supervised scenario, ready to be enabled once the constructors are executable.
+Progress:
+- `supervised-stack.ts` now materialises executable kernel semantics: `makeKernelMonad` builds state/exception/signal/external operations with structured `KernelOperationResult`s, default fallbacks, per-operation diagnostics, and residual delegation.
+- `makeUserMonad` computes boundary morphisms by mapping declared user operations into the kernel, exposes an `invoke` helper that delegates to the kernel semantics, and reports unsupported/unused operations through `UserKernelComparison`.
+- `makeSupervisedStack` enriches the ψ-derived runner with kernel state carriers, promotes operation-level residual specs, attaches residual diagnostics, and returns comparison metadata (`userToKernel`, boundary warnings, residual summaries). `stackToRunner` now reuses the builders, while `runnerToStack` surfaces scaffold diagnostics about available state/residual witnesses.
+- `test/stateful-runner.spec.ts` exercises the supervised scenario end-to-end (state read, exception fallback, residual coverage, comparison wiring), replacing the earlier planning placeholder.
 
-- **Next Implementation Steps**
-  - Flesh out the kernel/user monad constructors, expose the comparison morphisms, and integrate the λ₍coop₎ interpreter with the new stack once the scaffolding is merged.
+Next:
+- Extend `runnerToStack` into a real inverse translation and surface the comparison morphisms through λ₍coop₎ once the interpreter hooks are ready.
+- Document the new semantics in `LAWS.md` (oracles/diagnostics) and wire the supervised stack into the broader oracle registry.
 
 ---
 

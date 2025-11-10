@@ -223,11 +223,12 @@ if (!report.holds) {
     - `runner.equivalence.triangle` → checks γ → κ → γ round-trip.
   - **Check:** `test/stateful-runner.spec.ts` exercises the equivalence oracles on Example 6 and the Example 12 update-lens suite against the Example 8 interaction.
 
-### Supervised kernel/user stack (Phase IV c — scaffolding)
+### Supervised kernel/user stack (Phase IV c)
 
-- **Status:** Planning. See `SUPERVISED_STACK_PLAN.md` for the staged implementation outline.
-- **Upcoming work:** kernel/user monad constructors, comparison morphism diagnostics, residual coverage integration, and supervised runner/oracle wiring.
-- **Tests:** placeholder `describe.skip` in `test/stateful-runner.spec.ts`, to be enabled once the stack constructors are executable.
+- **Status:** Kernel/user constructors implemented; λ₍coop₎ alignment and inverse translation remain TODO (see `SUPERVISED_STACK_PLAN.md` for the longer roadmap).
+- **Constructors:** `makeKernelMonad` classifies each kernel operation (state/exception/signal/external) into a structured `KernelOperationResult` with default fallbacks, handler integration, and per-operation diagnostics. `makeUserMonad` maps declared user operations into the kernel, reporting unsupported/unused signatures via `UserKernelComparison` and exposing an `invoke` helper that delegates to the kernel semantics.
+- **Stack builder:** `makeSupervisedStack(interaction, kernelSpec, userSpec, options?)` enriches the ψ-derived runner with kernel state carriers, promotes operation-level residual handlers, attaches residual diagnostics (`attachResidualHandlers`/`analyzeResidualHandlerCoverage`), and packages comparison metadata (`userToKernel`, `unsupportedByKernel`, `unacknowledgedByUser`). `stackToRunner` reuses these builders; `runnerToStack` currently reports available state/residual witnesses pending a full inverse.
+- **Tests:** `test/stateful-runner.spec.ts` now executes the supervised scenario (state read, exception fallback, residual coverage, comparison wiring) with diagnostics asserted; this replaces the earlier planning placeholder.
 
 ## Coalgebra and Hopf law diagnostics
 

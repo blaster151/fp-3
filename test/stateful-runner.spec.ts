@@ -357,56 +357,81 @@ describe("stateful runner", () => {
       const law = makeExample6MonadComonadInteractionLaw();
       type Obj = (typeof law.kernel.base.objects)[number];
       const residualSpecs = new Map<Obj, ResidualHandlerSpec<Obj, unknown, unknown>>();
-      for (const object of law.kernel.base.objects) {
-        residualSpecs.set(object, {
-          description: "all handled",
-          predicate: () => true,
-        });
-      }
-      const kernelSpec: KernelMonadSpec<Obj, unknown, unknown> = {
-        name: "ExampleKernel",
-        description: "Scaffold kernel signature",
-        operations: [
-          {
-            name: "getenv",
-            kind: "state",
-            description: "read current state",
-            handle: (state) => ({ state, output: state }),
-          },
-          {
-            name: "raise",
-            kind: "exception",
-            description: "raise error",
-          },
-        ],
-        residualHandlers: residualSpecs,
-      };
-      const userSpec: UserMonadSpec<Obj> = {
-        name: "ExampleUser",
-        description: "Scaffold user specification",
-        boundaryDescription: "Comparison morphism TBD",
-        allowedKernelOperations: ["getenv"],
-      };
-      const stack = makeSupervisedStack(
-        law as unknown as any,
-        kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
-        userSpec as UserMonadSpec<Obj>,
-        { sampleLimit: 4, includeResidualAnalysis: true },
-      );
-      expect(stack.kernel.monad?.operations.map((op) => op.name)).toContain("getenv");
-      expect(stack.kernel.monad?.initialState).toBeNull();
-      expect(
-        stack.kernel.diagnostics.some((line) => line.includes("state carrier source")),
-      ).toBe(true);
-      expect(stack.kernel.diagnostics.some((line) => line.includes("Kernel operations"))).toBe(true);
-      expect(stack.user.diagnostics.some((line) => line.includes("User boundary expectations"))).toBe(true);
-      expect(stack.residualSummary).toBeDefined();
-      expect(
-        stack.residualSummary?.reports.every((report) => report.unhandledSamples === 0),
-      ).toBe(true);
-      expect(stack.user.monad?.allowedKernelOperations.has("getenv")).toBe(true);
-      expect(stack.comparison.unsupportedByKernel.length).toBe(0);
-      expect(stack.comparison.unacknowledgedByUser).toEqual(["raise"]);
+        for (const object of law.kernel.base.objects) {
+          residualSpecs.set(object, {
+            description: "all handled",
+            predicate: () => true,
+          });
+        }
+        const kernelSpec: KernelMonadSpec<Obj, unknown, unknown> = {
+          name: "ExampleKernel",
+          description: "Scaffold kernel signature",
+          initialState: { env: "init" },
+          operations: [
+            {
+              name: "getenv",
+              kind: "state",
+              description: "read current state",
+              handle: (state) => ({ state, output: state }),
+            },
+            {
+              name: "raise",
+              kind: "exception",
+              description: "raise error",
+            },
+          ],
+          residualHandlers: residualSpecs,
+        };
+        const userSpec: UserMonadSpec<Obj> = {
+          name: "ExampleUser",
+          description: "Scaffold user specification",
+          boundaryDescription: "Comparison morphism TBD",
+          allowedKernelOperations: ["getenv"],
+        };
+        const stack = makeSupervisedStack(
+          law as unknown as any,
+          kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
+          userSpec as UserMonadSpec<Obj>,
+          { sampleLimit: 4, includeResidualAnalysis: true },
+        );
+        expect(stack.kernel.monad?.operations.map((op) => op.name)).toContain("getenv");
+        expect(stack.kernel.monad?.initialState).toEqual({ env: "init" });
+        expect(
+          stack.kernel.diagnostics.some((line) => line.includes("assembling operation semantics")),
+        ).toBe(true);
+        expect(
+          stack.kernel.diagnostics.some((line) => line.includes("Kernel operation handlers provided for: getenv")),
+        ).toBe(true);
+        expect(stack.user.diagnostics.some((line) => line.includes("User boundary expectations"))).toBe(true);
+        expect(stack.user.diagnostics.some((line) => line.includes("Comparison:"))).toBe(true);
+
+        const getenv = stack.kernel.monad?.operations.find((op) => op.name === "getenv");
+        expect(getenv).toBeDefined();
+        const sampleState = { env: "sample" };
+        const getenvResult = getenv?.execute(sampleState, undefined);
+        expect(getenvResult).toMatchObject({ kind: "return", state: sampleState, value: sampleState });
+        expect(getenvResult?.diagnostics?.some((line) => line.includes("Handler executed"))).toBe(true);
+
+        const raise = stack.kernel.monad?.operations.find((op) => op.name === "raise");
+        expect(raise).toBeDefined();
+        const raiseResult = raise?.execute(sampleState, "boom");
+        expect(raiseResult).toMatchObject({ kind: "raise", payload: "boom" });
+        expect(raiseResult?.diagnostics?.some((line) => line.includes("Default exception"))).toBe(true);
+
+        expect(stack.residualSummary).toBeDefined();
+        expect(
+          stack.residualSummary?.reports.every((report) => report.unhandledSamples === 0),
+        ).toBe(true);
+        expect(stack.user.monad?.allowedKernelOperations.has("getenv")).toBe(true);
+        const invoked = stack.user.monad?.invoke("getenv", sampleState, null);
+        expect(invoked).toMatchObject({ kind: "return", state: sampleState, value: sampleState });
+        expect(invoked?.diagnostics?.[0]).toContain('delegated to kernel operation "getenv"');
+
+        expect(stack.comparison.userToKernel.has("getenv")).toBe(true);
+        expect(stack.comparison.unsupportedByKernel.length).toBe(0);
+        expect(stack.comparison.unacknowledgedByUser).toEqual(["raise"]);
+        expect(stack.comparison.diagnostics.length).toBeGreaterThan(0);
+        expect(stack.runner.stateCarriers?.size).toBeGreaterThan(0);
 
       const runner = stackToRunner(
         law as unknown as any,

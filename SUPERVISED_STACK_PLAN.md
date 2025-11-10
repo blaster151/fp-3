@@ -31,24 +31,22 @@ diagnostics, and the existing runner infrastructure together.
 3. `makeSupervisedStack(interaction, kernelSpec, userSpec)` orchestrates the
    previous steps and records:
    - residual coverage information (reuse `attachResidualHandlers`),
-   - verification that the comparison morphisms respect the intended boundary
-     (placeholder until semantics are implemented).
+   - comparison summaries (`userToKernel`, unsupported/unused operations),
+     plus stack-level diagnostics.
 
 ## 3. Runner integration
 
 1. `stackToRunner(interaction, stack)` produces a `StatefulRunner` annotated
-   with residual coverage and stack metadata.
-2. `runnerToStack` is a documented TODO, to be implemented once the supervised
-   stack semantics are finalised.
+   with residual coverage, stack metadata, and kernel state carriers.
+2. `runnerToStack` currently reports available state/residual witnesses; a full
+   inverse will complete once the supervised stack semantics are finalised.
 
 ## 4. Testing roadmap
 
-1. Add a planning placeholder (`describe.skip`) in `test/stateful-runner.spec.ts`
-   outlining an Example-style supervised scenario (file-handle runner).
-2. When the constructors are ready, unskip and extend the tests to:
-   - assert comparison morphism diagnostics,
-   - confirm the residual coverage report,
-   - check the runner translation.
+1. `test/stateful-runner.spec.ts` now executes an Example-style supervised
+   scenario once the constructors are active.
+2. Regression assertions cover comparison diagnostics, residual coverage, kernel
+   operation semantics (state read/exception), and runner translation scaffolding.
 
 ## 5. Documentation updates
 
@@ -58,6 +56,6 @@ diagnostics, and the existing runner infrastructure together.
 
 ## 6. Next steps
 
-1. Implement the builders in `supervised-stack.ts`.
-2. Populate the comparison morphism checker.
-3. Connect the λ₍coop₎ interpreter once the stack can execute example programs.
+1. Extend `runnerToStack` into a full inverse and surface comparison morphisms
+   for λ₍coop₎.
+2. Integrate the λ₍coop₎ interpreter and add supervised stack oracles/reporting.
