@@ -15,6 +15,9 @@ import {
   costateComponentsToRunner,
   coalgebraToCostate,
   costateToCoalgebra,
+  compareRunnerThetas,
+  compareCoalgebraComponents,
+  compareCostateComponents,
 } from "./stateful-runner";
 
 export interface RunnerOracleResult {
@@ -27,9 +30,21 @@ export interface RunnerOracleResult {
 export interface RunnerOracleOptions<Obj> {
   readonly sampleLimit?: number;
   readonly objectFilter?: (object: Obj) => boolean;
+  readonly translatorSampleLimit?: number;
+  readonly translatorObjectFilter?: (object: Obj) => boolean;
 }
 
 const path = (suffix: string): string => `runner.${suffix}`;
+
+const translatorOptions = <Obj>(
+  options: RunnerOracleOptions<Obj>,
+): { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } => {
+  const sampleLimit =
+    options.translatorSampleLimit !== undefined ? options.translatorSampleLimit : options.sampleLimit;
+  const objectFilter =
+    options.translatorObjectFilter !== undefined ? options.translatorObjectFilter : options.objectFilter;
+  return { sampleLimit, objectFilter };
+};
 
 export const RunnerOracles = {
   axioms: <Obj, Arr, Left, Right, Value>(
@@ -153,14 +168,36 @@ export const RunnerOracles = {
     law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
     options: RunnerOracleOptions<Obj> = {},
   ): RunnerOracleResult => {
-    const forward = runnerToCoalgebraComponents(runner, law, options);
-    const back = coalgebraComponentsToRunner(forward.components, law, options);
-    const holds = forward.diagnostics.mismatches === 0 && back.diagnostics.mismatches === 0;
+    const translatorOpts = translatorOptions(options);
+    const forward = runnerToCoalgebraComponents(runner, law, translatorOpts);
+    const back = coalgebraComponentsToRunner(forward.components, law, translatorOpts);
+    const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
+    const zigZagCoalgebra = compareCoalgebraComponents(forward.components, back.components, law, options);
+    const meta: string[] = [];
+    if (options.translatorSampleLimit !== undefined) {
+      meta.push(`translator sampleLimit=${options.translatorSampleLimit}`);
+    } else {
+      meta.push("translator sampleLimit=adaptive");
+    }
+    if (options.translatorObjectFilter) {
+      meta.push("translator objectFilter applied.");
+    }
+    const holds =
+      forward.diagnostics.mismatches === 0 &&
+      back.diagnostics.mismatches === 0 &&
+      zigZagRunner.mismatches === 0 &&
+      zigZagCoalgebra.mismatches === 0;
     return {
       registryPath: path("equivalence.coalgebra"),
       holds,
-      details: [...forward.diagnostics.details.slice(0, 6), ...back.diagnostics.details.slice(0, 6)],
-      diagnostics: { forward, back },
+      details: [
+        ...forward.diagnostics.details.slice(0, 4),
+        ...back.diagnostics.details.slice(0, 4),
+        ...zigZagRunner.details.slice(0, 3),
+        ...zigZagCoalgebra.details.slice(0, 3),
+        ...meta,
+      ],
+      diagnostics: { forward, back, zigZagRunner, zigZagCoalgebra },
     };
   },
   equivalenceCostate: <Obj, Arr, Left, Right, Value>(
@@ -168,14 +205,36 @@ export const RunnerOracles = {
     law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
     options: RunnerOracleOptions<Obj> = {},
   ): RunnerOracleResult => {
-    const forward = runnerToCostateComponents(runner, law, options);
-    const back = costateComponentsToRunner(forward.components, law, options);
-    const holds = forward.diagnostics.mismatches === 0 && back.diagnostics.mismatches === 0;
+    const translatorOpts = translatorOptions(options);
+    const forward = runnerToCostateComponents(runner, law, translatorOpts);
+    const back = costateComponentsToRunner(forward.components, law, translatorOpts);
+    const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
+    const zigZagCostate = compareCostateComponents(forward.components, back.components, law, options);
+    const meta: string[] = [];
+    if (options.translatorSampleLimit !== undefined) {
+      meta.push(`translator sampleLimit=${options.translatorSampleLimit}`);
+    } else {
+      meta.push("translator sampleLimit=adaptive");
+    }
+    if (options.translatorObjectFilter) {
+      meta.push("translator objectFilter applied.");
+    }
+    const holds =
+      forward.diagnostics.mismatches === 0 &&
+      back.diagnostics.mismatches === 0 &&
+      zigZagRunner.mismatches === 0 &&
+      zigZagCostate.mismatches === 0;
     return {
       registryPath: path("equivalence.costate"),
       holds,
-      details: [...forward.diagnostics.details.slice(0, 6), ...back.diagnostics.details.slice(0, 6)],
-      diagnostics: { forward, back },
+      details: [
+        ...forward.diagnostics.details.slice(0, 4),
+        ...back.diagnostics.details.slice(0, 4),
+        ...zigZagRunner.details.slice(0, 3),
+        ...zigZagCostate.details.slice(0, 3),
+        ...meta,
+      ],
+      diagnostics: { forward, back, zigZagRunner, zigZagCostate },
     };
   },
   equivalenceTriangle: <Obj, Arr, Left, Right, Value>(
@@ -183,11 +242,30 @@ export const RunnerOracles = {
     law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
     options: RunnerOracleOptions<Obj> = {},
   ): RunnerOracleResult => {
+    const translatorOpts = translatorOptions(options);
     // Form coalgebra, translate to costate, then back to coalgebra, measuring mismatches.
-    const coal = runnerToCoalgebraComponents(runner, law, options);
-    const cost = coalgebraToCostate(coal.components, law, options);
-    const coalBack = costateToCoalgebra(cost.components, law, options);
-    const holds = coal.diagnostics.mismatches === 0 && cost.diagnostics.mismatches === 0 && coalBack.diagnostics.mismatches === 0;
+    const coal = runnerToCoalgebraComponents(runner, law, translatorOpts);
+    const cost = coalgebraToCostate(coal.components, law, translatorOpts);
+    const coalBack = costateToCoalgebra(cost.components, law, translatorOpts);
+    const costBack = coalgebraToCostate(coalBack.components, law, translatorOpts);
+    const zigZagCoalgebra = compareCoalgebraComponents(coal.components, coalBack.components, law, options);
+    const zigZagCostate = compareCostateComponents(cost.components, costBack.components, law, options);
+    const meta: string[] = [];
+    if (options.translatorSampleLimit !== undefined) {
+      meta.push(`translator sampleLimit=${options.translatorSampleLimit}`);
+    } else {
+      meta.push("translator sampleLimit=adaptive");
+    }
+    if (options.translatorObjectFilter) {
+      meta.push("translator objectFilter applied.");
+    }
+    const holds =
+      coal.diagnostics.mismatches === 0 &&
+      cost.diagnostics.mismatches === 0 &&
+      coalBack.diagnostics.mismatches === 0 &&
+      costBack.diagnostics.mismatches === 0 &&
+      zigZagCoalgebra.mismatches === 0 &&
+      zigZagCostate.mismatches === 0;
     return {
       registryPath: path("equivalence.triangle"),
       holds,
@@ -195,8 +273,12 @@ export const RunnerOracles = {
         ...coal.diagnostics.details.slice(0, 4),
         ...cost.diagnostics.details.slice(0, 4),
         ...coalBack.diagnostics.details.slice(0, 4),
+        ...costBack.diagnostics.details.slice(0, 4),
+        ...zigZagCoalgebra.details.slice(0, 3),
+        ...zigZagCostate.details.slice(0, 3),
+        ...meta,
       ],
-      diagnostics: { coal, cost, coalBack },
+      diagnostics: { coal, cost, coalBack, costBack, zigZagCoalgebra, zigZagCostate },
     };
   },
 };

@@ -1,5 +1,5 @@
 ### **3. Realise TreeΣ ⇔ T Translators**  
-Status: IN PROGRESS
+Status: COMPLETED
 
 - Rebuild `monadMapToRunner` to reconstruct co-operations from τ, thread the resulting θ through `thetaHom`, and verify τ ∘ η and μ-consistency on real tree samples.
 - Update the “Runner ⇔ Monad Translators” section in **`LAWS.md`**, adding regression coverage for τ/θ inverse properties on nontrivial trees.
@@ -7,18 +7,32 @@ Status: IN PROGRESS
 Progress:
 - θ rebuilt from ψ (currying) and exposed via `thetas`/`thetaHom`.
 - Added τ ∘ η vs η sampling with diagnostics and tallies; tree/multiplication sampling hooks scaffolded.
+- Replaced forward-declared runner/monad morphism types with the canonical `MonadStructure` imports; diagnostic maps remain exposed as readonly views.
+- Tree sampling now replays τ on concrete `FreeTreeMonad` carriers and compares results against θ-evaluations, surfacing detailed mismatches.
+- μ-compatibility is sampled on nested trees; failures record flattened vs reconstructed values, while skipped domains log the missing witnesses.
+- LAWS.md Runner ⇔ Monad Translators entry documents the new tallies and notes the residual multiplication staging gap.
 
-Next:
-- Replace temporary type placeholders in `stateful-runner.ts` with real imports/defs; expand tree/μ sampling beyond heuristics.
-- Update **`LAWS.md`** “Runner ⇔ Monad Translators” to document new tallies and examples.
+Next: —None (rolled into downstream translator work.)
 
 ------
 
 ### **4. Make Coalgebra and Costate Translators Bidirectional**
+Status: IN PROGRESS
 
 - Rewrite all six translation functions—`runnerToCoalgebraComponents`, `coalgebraComponentsToRunner`, `runnerToCostateComponents`, `costateComponentsToRunner`, `coalgebraToCostate`, and `costateToCoalgebra`—to rebuild θ, γ, γ′ directly (no cached ψ).
 - Prove diagrams (4) and (5) via sampled diagnostics.
 - Extend equivalence oracles to produce zig-zag witnesses (runner → coalgebra → runner, etc.) with explicit mismatches when reconstructions diverge.
+
+Progress:
+- Exported `compareRunnerThetas`, `compareCoalgebraComponents`, and `compareCostateComponents` from `stateful-runner.ts` so the oracle layer can sample zig-zag identities directly.
+- Rebuilt the `runner-oracles.ts` imports, consolidated duplicates, and wired the new comparison helpers into the coalgebra/costate equivalence oracles; `equivalenceCoalgebra` and `equivalenceCostate` now report both runner and component mismatches, while `equivalenceTriangle` reuses the coalgebra component comparison.
+- Extended `equivalenceTriangle` to re-check both γ and κ round-trips, adding costate zig-zag sampling alongside the coalgebra comparison.
+- Audited the translator diagnostics to flag low-sample domains and aligned `costateToCoalgebra` with configurable sampling, so diagrams (4)/(5) report when witness coverage is thin.
+- Added explicit `translatorSampleLimit`/`translatorObjectFilter` routing in `runner-oracles.ts`, ensuring oracle callers can tune translator coverage independently of higher-level checks.
+- Translator sample limits now adapt to carrier cardinalities (√-scaling up to 32) and emit truncation notes whenever enumeration hits the cap without exploring the full fibre.
+
+Next:
+- Exercise the adaptive sampling heuristics against large carriers to validate the current cap/clamp strategy before considering higher default limits.
 
 ------
 
@@ -36,6 +50,15 @@ Next:
 - Expand `thetaToStateHandler` to return the full natural family `ϑ_X : TX → Stʸ X`, reconstructing the curried `TX×Y → X×Y` maps.
   - Log when ψ-dependence breaks independence from the dual fibre.
 - Extend `checkRunnerStateHandlers` to replay `(Stʸ η_X)` and `(Stʸ μ_X)` diagrams, log mismatches, and fold them into the unified law report.
+
+Progress:
+- `thetaToStateHandler` now materialises each `ϑ_X` as an explicit `SetHom<IndexedElement<Obj, Left>, ExponentialArrow<State, [Value, State]>>`, while recording fibre-independence and sampling truncation diagnostics for every object.
+- `RunnerStateHandlerEntry` exposes these `ϑ` components (and the associated `TX×Y → X×Y` homs) so downstream oracles can compose them with state-monad structure; translator metadata surfaces through the handler report for future diagram checks.
+- `checkRunnerStateHandlers` now replays the `(Stʸ η_X)` triangle using the `ϑ` data, logging per-object summaries and detailed mismatches when the state/value pair diverges from the canonical unit evaluation.
+- Multiplication scaffolding now locates the requisite `ϑ_{TX}`/`ϑ_{StʸX}` witnesses, reporting exactly which components are missing so the forthcoming `(Stʸ μ_X)` replay can reuse the cached data instead of emitting generic TODOs.
+
+Next:
+- Implement the `(Stʸ μ_X)` replay using the collected `ϑ` witnesses, comparing both sides of the diagram and folding the tallies into the unified law report.
 
 ------
 

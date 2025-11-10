@@ -1,6 +1,7 @@
 import type { ExponentialArrow, SetHom, SetObj, SetCarrierSemantics } from "./set-cat";
-import { SetCat, getCarrierSemantics } from "./set-cat";
+import { SetCat, getCarrierSemantics, semanticsAwareEquals } from "./set-cat";
 import type { MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
+import type { InteractionLawFiberCurrying } from "./functor-interaction-law";
 import { monadComonadInteractionLawToMonoid } from "./monad-comonad-interaction-law";
 import type { IndexedElement } from "./chu-space";
 import type { MonadStructure } from "./monad-comonad-interaction-law";
@@ -11,15 +12,21 @@ import {
   Return,
 } from "./tree-free-monad";
 
-// Temporary forward declarations (recovering lost types). Replace via proper import if original module is restored.
 export interface MonadMorphism<Obj, Arr> {
-  readonly source: { unit: { transformation: { component: (obj: Obj) => SetHom<unknown, unknown> } } };
-  readonly target: { unit: { transformation: { component: (obj: Obj) => SetHom<unknown, unknown> } } };
-  readonly components: Map<Obj, SetHom<unknown, unknown>>;
+  readonly source: MonadStructure<Obj, Arr>;
+  readonly target: MonadStructure<Obj, Arr>;
+  readonly components: ReadonlyMap<Obj, SetHom<unknown, unknown>>;
 }
+
 export interface StatefulRunner<Obj, Left, Right, Value> {
-  readonly thetas?: ReadonlyMap<Obj, SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>>;
-  readonly thetaHom: ReadonlyMap<Obj, SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>>;
+  readonly thetas?: ReadonlyMap<
+    Obj,
+    SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>
+  >;
+  readonly thetaHom: ReadonlyMap<
+    Obj,
+    SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>
+  >;
   readonly stateCarriers?: ReadonlyMap<Obj, SetObj<unknown>>;
   readonly stateThetas?: ReadonlyMap<Obj, StatefulTheta<Obj, Left, Right, Value, unknown>>;
   readonly diagnostics: ReadonlyArray<string>;
@@ -227,7 +234,7 @@ export const monadMapToRunner = <
   const details: string[] = [
     "monadMapToRunner: reconstructing θ components from ψ fibers; sampling τ ∘ η vs η.",
   ];
-  // Rebuild θ from the law (prefer stored θ; otherwise curry φ)
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 12);
   const thetas = new Map<
     Obj,
     SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>
@@ -237,39 +244,55 @@ export const monadMapToRunner = <
     SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>
   >();
   let componentsBuilt = 0;
-  // Tree sampling counters (Return + Op heuristic)
+  let reusedTheta = 0;
+  let rebuiltTheta = 0;
   let treeChecked = 0;
   let treeMismatches = 0;
-  // Multiplication sampling (heuristic over nested free-tree elements if available)
   let multChecked = 0;
   let multMismatches = 0;
+  const multiplicationSummary: string[] = [];
   let multNote = "no multiplication sampling performed (source not recognised as free tree monad)";
+
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-    const theta = (fiber.theta ?? fiber.exponential.curry({
-      domain: fiber.primalFiber,
-      product: fiber.product,
-      morphism: fiber.phi,
-    })) as SetHom<
+    const storedTheta = fiber.theta;
+    if (storedTheta) {
+      reusedTheta += 1;
+    } else {
+      rebuiltTheta += 1;
+    }
+    const theta = (storedTheta ??
+      fiber.exponential.curry({
+        domain: fiber.primalFiber,
+        product: fiber.product,
+        morphism: fiber.phi,
+      })) as SetHom<
       IndexedElement<Obj, Left>,
       ExponentialArrow<IndexedElement<Obj, Right>, Value>
     >;
     thetas.set(object, theta);
     const uncurried = fiber.exponential.uncurry({ product: fiber.product, morphism: theta });
-    thetaHom.set(object, uncurried as SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>);
-    componentsBuilt++;
+    thetaHom.set(
+      object,
+      uncurried as SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>,
+    );
+    componentsBuilt += 1;
   }
-  details.push(`monadMapToRunner: built θ for ${componentsBuilt} object(s).`);
+  details.push(
+    `monadMapToRunner: built θ for ${componentsBuilt} object(s) (stored=${reusedTheta} rebuilt=${rebuiltTheta}).`,
+  );
 
-  // Sample τ ∘ η_F = η_T
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 12);
   let checked = 0;
   let mismatches = 0;
   for (const [object] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
     const tau = morphism.components.get(object) as SetHom<unknown, unknown> | undefined;
-    const etaF = morphism.source.unit.transformation.component(object) as SetHom<unknown, unknown> | undefined;
-    const etaT = morphism.target.unit.transformation.component(object) as SetHom<unknown, unknown> | undefined;
+    const etaF = morphism.source.unit.transformation.component(object) as
+      | SetHom<unknown, unknown>
+      | undefined;
+    const etaT = morphism.target.unit.transformation.component(object) as
+      | SetHom<unknown, unknown>
+      | undefined;
     if (!tau || !etaF || !etaT) continue;
     const unitInputs = enumerateLimited(etaF.dom as SetObj<unknown>, sampleLimit);
     for (const input of unitInputs) {
@@ -291,11 +314,187 @@ export const monadMapToRunner = <
   details.push(
     `monadMapToRunner: unit-preservation checked=${checked} mismatches=${mismatches} (limit=${sampleLimit}).`,
   );
-  // (Future) tree + multiplication sampling hooks could populate treeChecked/multChecked.
-  details.push(`monadMapToRunner: tree-samples checked=${treeChecked} mismatches=${treeMismatches}.`);
+
+  const treeMonad = morphism.source as Partial<FreeTreeMonad<Obj, Arr>>;
+  for (const [object, fiber] of interaction.psiComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const tau = morphism.components.get(object) as SetHom<Tree<unknown>, unknown> | undefined;
+    const etaTarget = morphism.target.unit.transformation.component(object) as
+      | SetHom<unknown, unknown>
+      | undefined;
+    const thetaEntry = thetaHom.get(object);
+    if (!tau || !thetaEntry || !etaTarget) continue;
+    const treeCarrier = treeMonad?.carriers?.get(object) as SetObj<Tree<unknown>> | undefined;
+    if (!treeCarrier) continue;
+    const treeSamples = enumerateLimited(treeCarrier, sampleLimit);
+    if (treeSamples.length === 0) continue;
+
+    const equalsTarget = semanticsAwareEquals(tau.cod as SetObj<unknown>);
+    const equalsPrimal = semanticsAwareEquals(fiber.primalFiber);
+    const equalsDual = semanticsAwareEquals(fiber.dualFiber);
+    const primalSamples = enumerateLimited(fiber.primalFiber, Math.max(sampleLimit, 16));
+    const dualSamples = enumerateLimited(fiber.dualFiber, Math.max(sampleLimit, 16));
+    const operationLookup = options.operationSemantics;
+
+    const makeIndexedLeft = (value: unknown): IndexedElement<Obj, Left> => {
+      for (const sample of primalSamples) {
+        const probe = { object, element: value as Left } as IndexedElement<Obj, Left>;
+        if (equalsPrimal(sample, probe) || Object.is(sample.element, value)) {
+          return sample;
+        }
+      }
+      return { object, element: value as Left } as IndexedElement<Obj, Left>;
+    };
+
+      const makeIndexedRight = (value: unknown): IndexedElement<Obj, Right> => {
+        for (const sample of dualSamples) {
+          const probe = { object, element: value as Right } as IndexedElement<Obj, Right>;
+          if (equalsDual(sample, probe) || Object.is(sample.element, value)) {
+            return sample;
+          }
+        }
+        return { object, element: value as Right } as IndexedElement<Obj, Right>;
+      };
+
+      const evaluateWith = (
+        node: Tree<unknown>,
+        onReturn: (value: unknown) => unknown,
+      ): unknown => {
+        if (node._tag === "Return") {
+          return onReturn(node.value);
+        }
+        if (node._tag === "Op") {
+          const evaluatedChildren = node.children.map((child) => evaluateWith(child, onReturn));
+          if (evaluatedChildren.length === 0) {
+            return { op: node.name, children: evaluatedChildren };
+          }
+          const primalValue = evaluatedChildren[0];
+          const dualValue = evaluatedChildren[1] ?? evaluatedChildren[0];
+          const primal = makeIndexedLeft(primalValue);
+          const dual = makeIndexedRight(dualValue);
+          try {
+            return thetaEntry.map([primal, dual]);
+          } catch (error) {
+            const opFn = operationLookup?.get(node.name);
+            if (opFn) {
+              return opFn(evaluatedChildren as ReadonlyArray<unknown>);
+            }
+            throw error;
+          }
+        }
+        return onReturn(node as unknown as never);
+      };
+
+      const evaluateTree = (node: Tree<unknown>): unknown =>
+        evaluateWith(node, (value) => etaTarget.map(value));
+
+      const evaluateNestedTree = (node: Tree<unknown>): unknown =>
+        evaluateWith(node, (value) => {
+          if (isTreeNode(value)) {
+            return evaluateTree(value as Tree<unknown>);
+          }
+          return etaTarget.map(value);
+        });
+
+    let objectErrors = 0;
+    for (const treeSample of treeSamples) {
+      treeChecked += 1;
+      try {
+        const reconstructed = evaluateTree(treeSample);
+        const expected = tau.map(treeSample);
+        if (!equalsTarget(expected, reconstructed)) {
+          treeMismatches += 1;
+          if (treeMismatches <= 4) {
+            details.push(
+              `monadMapToRunner.tree-mismatch object=${String(object)} sample=${JSON.stringify(
+                treeSample,
+              )} expected=${String(expected)} actual=${String(reconstructed)}`,
+            );
+          }
+        }
+      } catch (error) {
+        treeMismatches += 1;
+        objectErrors += 1;
+        if (treeMismatches <= 4) {
+          details.push(
+            `monadMapToRunner.tree-eval-error object=${String(object)} sample=${JSON.stringify(
+              treeSample,
+            )} error=${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+    if (objectErrors > 0) {
+      details.push(
+        `monadMapToRunner: object ${String(object)} encountered ${objectErrors} evaluation error(s) while replaying tree samples.`,
+      );
+    }
+
+      const muSource = morphism.source.multiplication.transformation.component(object) as
+        | SetHom<unknown, unknown>
+        | undefined;
+      const muTarget = morphism.target.multiplication.transformation.component(object) as
+        | SetHom<unknown, unknown>
+        | undefined;
+      if (!muSource || !muTarget) {
+        multiplicationSummary.push(
+          `object ${String(object)}: skipped μ sampling (missing ${!muSource ? "source μ" : "target μ"})`,
+        );
+        continue;
+      }
+      const nestedSamples = enumerateLimited(muSource.dom as SetObj<unknown>, sampleLimit);
+      if (nestedSamples.length === 0) {
+        multiplicationSummary.push(`object ${String(object)}: no samples available from μ domain`);
+        continue;
+      }
+      multiplicationSummary.push(`object ${String(object)}: sampled ${nestedSamples.length} μ-elements`);
+      for (const nested of nestedSamples) {
+        if (!isTreeNode(nested)) {
+          continue;
+        }
+        multChecked += 1;
+        try {
+          const flattened = muSource.map(nested) as unknown;
+          if (!isTreeNode(flattened)) {
+            continue;
+          }
+          const expected = tau.map(flattened as Tree<unknown>);
+          const actual = evaluateNestedTree(nested as Tree<unknown>);
+          if (!equalsTarget(expected, actual)) {
+            multMismatches += 1;
+            if (multMismatches <= 4) {
+              details.push(
+                `monadMapToRunner.multiplication-mismatch object=${String(object)} sample=${JSON.stringify(
+                  nested,
+                )} expected=${String(expected)} actual=${String(actual)}`,
+              );
+            }
+          }
+        } catch (error) {
+          multMismatches += 1;
+          if (multMismatches <= 4) {
+            details.push(
+              `monadMapToRunner.multiplication-eval-error object=${String(object)} sample=${JSON.stringify(
+                nested,
+              )} error=${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
+  }
+
+  if (treeChecked === 0) {
+    details.push("monadMapToRunner: tree sampling unavailable (no recognised free-tree carriers).");
+  } else {
+    details.push(`monadMapToRunner: tree-samples checked=${treeChecked} mismatches=${treeMismatches}.`);
+  }
+    if (multiplicationSummary.length > 0) {
+      multNote = multiplicationSummary.join(" | ");
+    }
   details.push(
     `monadMapToRunner: multiplication-heuristic checked=${multChecked} mismatches=${multMismatches} note=${multNote}.`,
   );
+
   return {
     thetas,
     thetaHom,
@@ -890,6 +1089,11 @@ export const checkRunnerCostate = <
     const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    if (rightSamples.length === 0 || primalSamples.length === 0) {
+      details.push(
+        `coalgebra→costate: object=${String(object)} insufficient samples (primal=${primalSamples.length} right=${rightSamples.length}); coverage limited.`,
+      );
+    }
     let localChecked = 0;
     let localMismatches = 0;
     for (const rightEl of rightSamples) {
@@ -939,37 +1143,132 @@ export interface EquivalenceDiagnostics {
   readonly details: ReadonlyArray<string>;
 }
 
+const deriveSampleLimit = (
+  requested: number | undefined,
+  ...cardinalities: Array<number | undefined>
+): number => {
+  if (requested !== undefined) return Math.max(0, requested);
+  const finite = cardinalities.filter(
+    (value): value is number =>
+      value !== undefined && Number.isFinite(value) && (value as number) >= 0,
+  );
+  if (finite.length === 0) return 8;
+  const maxCardinality = Math.max(...finite);
+  if (maxCardinality <= 8) return maxCardinality;
+  const sqrtBound = Math.ceil(Math.sqrt(maxCardinality));
+  return Math.min(32, Math.max(8, sqrtBound));
+};
+
+const recordTruncatedCoverage = <Obj>(
+  details: string[],
+  context: string,
+  object: Obj,
+  label: string,
+  enumerated: number,
+  cardinality: number | undefined,
+  limit: number,
+): void => {
+  if (
+    cardinality === undefined ||
+    !Number.isFinite(cardinality) ||
+    enumerated === 0 ||
+    enumerated < limit ||
+    cardinality <= enumerated
+  ) {
+    return;
+  }
+  details.push(
+    `${context}: object=${String(object)} ${label} truncated at ${enumerated}/${cardinality} samples (limit=${limit}).`,
+  );
+};
+
 // Runner → Coalgebra (reuse existing builder + add θ agreement sampling)
 export const runnerToCoalgebraComponents = <Obj, Arr, Left, Right, Value>(
   runner: StatefulRunner<Obj, Left, Right, Value>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { components: CoalgebraComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const coalgebra = buildRunnerCoalgebra(runner, interaction) as CoalgebraComponents<Obj, Left, Right, Value>;
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
-  const details: string[] = ["runnerToCoalgebraComponents: sampling θ vs coalgebra evaluation."];
-  let checked = 0, mismatches = 0;
+  const details: string[] = ["runner→coalgebra (diagram 4): sampling θ vs γ evaluation."];
+  const components = new Map<
+    Obj,
+    SetHom<IndexedElement<Obj, Right>, ExponentialArrow<IndexedElement<Obj, Left>, Value>>
+  >();
+  let checked = 0;
+  let mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-  const theta = (runner.thetas ?? buildThetaCurriedFromHom(runner, interaction)).get(object);
-    const gamma = coalgebra.get(object);
-    if (!theta || !gamma) continue;
+    const thetaHom = resolveThetaHom(runner, interaction, object, fiber);
+    if (!thetaHom) {
+      details.push(`runner→coalgebra: object=${String(object)} missing θ witness; skipping.`);
+      continue;
+    }
+    const primalExp = SetCat.exponential(
+      fiber.primalFiber,
+      interaction.law.dualizing as SetObj<Value>,
+    );
+    const coalgebra = SetCat.hom(
+      fiber.dualFiber,
+      primalExp.object,
+      (dualEl) =>
+        primalExp.register((primalEl) =>
+          thetaHom.map([primalEl, dualEl]),
+        ),
+    ) as SetHom<
+      IndexedElement<Obj, Right>,
+      ExponentialArrow<IndexedElement<Obj, Left>, Value>
+    >;
+    components.set(object, coalgebra);
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const dualCardinality = getCarrierSemantics(fiber.dualFiber)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, primalCardinality, dualCardinality);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    if (primalSamples.length === 0 || dualSamples.length === 0) {
+      details.push(
+        `runner→coalgebra: object=${String(object)} insufficient samples (primal=${primalSamples.length} dual=${dualSamples.length}); coverage limited.`,
+      );
+      continue;
+    }
+    recordTruncatedCoverage(
+      details,
+      "runner→coalgebra",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "runner→coalgebra",
+      object,
+      "dual fibre",
+      dualSamples.length,
+      dualCardinality,
+      sampleLimit,
+    );
     for (const dual of dualSamples) {
-      const arrow = gamma.map(dual);
+      const arrow = coalgebra.map(dual);
       for (const primal of primalSamples) {
         checked++;
-        const expected = fiber.phi.map([primal, dual]);
+        const expected = thetaHom.map([primal, dual]);
         const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
         if (!Object.is(expected, actual)) {
-          mismatches++; if (mismatches <= 4) details.push(`coalgebra-eval-mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`);
+          mismatches++;
+          if (mismatches <= 6) {
+            details.push(
+              `diagram(4) mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
         }
       }
     }
   }
-  details.push(`runnerToCoalgebraComponents: checked=${checked} mismatches=${mismatches}.`);
-  return { components: coalgebra, diagnostics: { checked, mismatches, details } };
+  if (components.size === 0) {
+    details.push("runner→coalgebra: no components constructed (likely due to missing θ witnesses).");
+  }
+  details.push(`runner→coalgebra: checked=${checked} mismatches=${mismatches}.`);
+  return { components, diagnostics: { checked, mismatches, details } };
 };
 
 // Coalgebra → Runner (recover θ via ψ consistency) – currently returns original θ via interaction since coalgebra is derived.
@@ -978,30 +1277,93 @@ export const coalgebraComponentsToRunner = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { runner: StatefulRunner<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const thetas = new Map<Obj, SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>>();
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
-  const details: string[] = ["coalgebraComponentsToRunner: reconstructing θ via currying consistency."];
-  let checked = 0, mismatches = 0;
+  const details: string[] = ["coalgebra→runner (diagram 4): sampling γ vs reconstructed θ."];
+  const thetas = new Map<
+    Obj,
+    SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>
+  >();
+  const thetaHomMap = new Map<
+    Obj,
+    SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>
+  >();
+  let checked = 0;
+  let mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-    // Use existing φ currying as θ.
-    const theta = (fiber.theta ?? fiber.exponential.curry({ domain: fiber.primalFiber, product: fiber.product, morphism: fiber.phi })) as SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
-    thetas.set(object, theta);
     const gamma = components.get(object);
-    if (!gamma) continue;
+    if (!gamma) {
+      details.push(`coalgebra→runner: object=${String(object)} missing γ component; skipping.`);
+      continue;
+    }
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const dualCardinality = getCarrierSemantics(fiber.dualFiber)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, primalCardinality, dualCardinality);
+    const theta = SetCat.hom(
+      fiber.primalFiber,
+      fiber.exponential.object,
+      (primalEl) =>
+        fiber.exponential.register((dualEl) => {
+          const arrow = gamma.map(dualEl);
+          return (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primalEl);
+        }),
+    ) as SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
+    thetas.set(object, theta);
+    const thetaHom = fiber.exponential.uncurry({ product: fiber.product, morphism: theta }) as SetHom<
+      readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>],
+      Value
+    >;
+    thetaHomMap.set(object, thetaHom);
     const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
-    for (const primal of primalSamples) {
-      const arrow = theta.map(primal);
-      for (const dual of dualSamples) {
-        checked++; const expected = fiber.phi.map([primal, dual]); const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Right>, Value>)(dual);
-        if (!Object.is(expected, actual)) { mismatches++; if (mismatches <= 4) details.push(`theta-reconstruction-mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`); }
+    if (primalSamples.length === 0 || dualSamples.length === 0) {
+      details.push(
+        `coalgebra→runner: object=${String(object)} insufficient samples (primal=${primalSamples.length} dual=${dualSamples.length}); coverage limited.`,
+      );
+      continue;
+    }
+    recordTruncatedCoverage(
+      details,
+      "coalgebra→runner",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "coalgebra→runner",
+      object,
+      "dual fibre",
+      dualSamples.length,
+      dualCardinality,
+      sampleLimit,
+    );
+    for (const dual of dualSamples) {
+      const arrow = gamma.map(dual);
+      for (const primal of primalSamples) {
+        checked += 1;
+        const expected = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        const actual = thetaHom.map([primal, dual]);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `diagram(4) zig-zag mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
       }
     }
   }
-  details.push(`coalgebraComponentsToRunner: checked=${checked} mismatches=${mismatches}.`);
-  const thetaHom = buildPhiFromRunnerPerObject({ thetas, thetaHom: new Map(), diagnostics: [] } as unknown as StatefulRunner<Obj, Left, Right, Value>, interaction);
-  return { runner: { thetas, thetaHom, diagnostics: details }, diagnostics: { checked, mismatches, details } };
+  if (thetas.size === 0) {
+    details.push("coalgebra→runner: no θ reconstructed (missing γ inputs?).");
+  }
+  details.push(`coalgebra→runner: checked=${checked} mismatches=${mismatches}.`);
+  return {
+    runner: { thetas, thetaHom: thetaHomMap, diagnostics: details },
+    diagnostics: { checked, mismatches, details },
+  };
 };
 
 // Runner → Costate (reuse builder + θ agreement)
@@ -1010,28 +1372,86 @@ export const runnerToCostateComponents = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { components: CostateComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const costate = buildRunnerCostate(runner, interaction) as CostateComponents<Obj, Left, Right, Value>;
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
-  const details: string[] = ["runnerToCostateComponents: sampling θ vs costate evaluation."];
-  let checked = 0, mismatches = 0;
+  const details: string[] = ["runner→costate (diagram 5): sampling θ vs κ evaluation."];
+  const components = new Map<
+    Obj,
+    SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>
+  >();
+  let checked = 0;
+  let mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-  const theta = (runner.thetas ?? buildThetaCurriedFromHom(runner, interaction)).get(object);
-    const kappa = costate.get(object);
-    if (!theta || !kappa) continue;
-    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    const thetaHom = resolveThetaHom(runner, interaction, object, fiber);
+    if (!thetaHom) {
+      details.push(`runner→costate: object=${String(object)} missing θ witness; skipping.`);
+      continue;
+    }
+    const primalExp = SetCat.exponential(
+      fiber.primalFiber,
+      interaction.law.dualizing as SetObj<Value>,
+    );
     const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
+    const costate = SetCat.hom(
+      rightCarrier,
+      primalExp.object,
+      (rightEl) => {
+        const indexed: IndexedElement<Obj, Right> = { object, element: rightEl };
+        return primalExp.register((primalEl) => thetaHom.map([primalEl, indexed]));
+      },
+    ) as SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>;
+    components.set(object, costate);
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const rightCardinality = getCarrierSemantics(rightCarrier)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, primalCardinality, rightCardinality);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
+    if (primalSamples.length === 0 || rightSamples.length === 0) {
+      details.push(
+        `runner→costate: object=${String(object)} insufficient samples (primal=${primalSamples.length} right=${rightSamples.length}); coverage limited.`,
+      );
+      continue;
+    }
+    recordTruncatedCoverage(
+      details,
+      "runner→costate",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "runner→costate",
+      object,
+      "right fibre",
+      rightSamples.length,
+      rightCardinality,
+      sampleLimit,
+    );
     for (const right of rightSamples) {
-      const arrow = kappa.map(right);
+      const arrow = costate.map(right);
       for (const primal of primalSamples) {
-        checked++; const expected = fiber.phi.map([primal, { object, element: right }]); const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
-        if (!Object.is(expected, actual)) { mismatches++; if (mismatches <= 4) details.push(`costate-eval-mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`); }
+        checked += 1;
+        const indexed: IndexedElement<Obj, Right> = { object, element: right };
+        const expected = thetaHom.map([primal, indexed]);
+        const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `diagram(5) mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
       }
     }
   }
-  details.push(`runnerToCostateComponents: checked=${checked} mismatches=${mismatches}.`);
-  return { components: costate, diagnostics: { checked, mismatches, details } };
+  if (components.size === 0) {
+    details.push("runner→costate: no κ components constructed (missing θ data?).");
+  }
+  details.push(`runner→costate: checked=${checked} mismatches=${mismatches}.`);
+  return { components, diagnostics: { checked, mismatches, details } };
 };
 
 // Costate → Runner (similar to coalgebra path)
@@ -1040,40 +1460,108 @@ export const costateComponentsToRunner = <Obj, Arr, Left, Right, Value>(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { runner: StatefulRunner<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
-  const thetas = new Map<Obj, SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>>();
-  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
-  const details: string[] = ["costateComponentsToRunner: reconstructing θ via ψ evaluation."];
-  let checked = 0, mismatches = 0;
+  const details: string[] = ["costate→runner (diagram 5): reconstructing θ from κ."];
+  const thetas = new Map<
+    Obj,
+    SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>
+  >();
+  const thetaHomMap = new Map<
+    Obj,
+    SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>
+  >();
+  let checked = 0;
+  let mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
-    const theta = (fiber.theta ?? fiber.exponential.curry({ domain: fiber.primalFiber, product: fiber.product, morphism: fiber.phi })) as SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
-    thetas.set(object, theta);
     const kappa = components.get(object);
-    if (!kappa) continue;
-    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    if (!kappa) {
+      details.push(`costate→runner: object=${String(object)} missing κ component; skipping.`);
+      continue;
+    }
+    const theta = SetCat.hom(
+      fiber.primalFiber,
+      fiber.exponential.object,
+      (primalEl) =>
+        fiber.exponential.register((dualEl) => {
+          const rightValue = dualEl.element as Right;
+          const arrow = kappa.map(rightValue);
+          return (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primalEl);
+        }),
+    ) as SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
+    thetas.set(object, theta);
+    const thetaHom = fiber.exponential.uncurry({ product: fiber.product, morphism: theta }) as SetHom<
+      readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>],
+      Value
+    >;
+    thetaHomMap.set(object, thetaHom);
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
     const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
+    const rightCardinality = getCarrierSemantics(rightCarrier)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, primalCardinality, rightCardinality);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
     const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
-    for (const primal of primalSamples) {
-      const arrow = theta.map(primal);
-      for (const right of rightSamples) {
-        checked++; const expected = fiber.phi.map([primal, { object, element: right }]); const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Right>, Value>)({ object, element: right });
-        if (!Object.is(expected, actual)) { mismatches++; if (mismatches <= 4) details.push(`theta-reconstruction-mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`); }
+    if (primalSamples.length === 0 || rightSamples.length === 0) {
+      details.push(
+        `costate→runner: object=${String(object)} insufficient samples (primal=${primalSamples.length} right=${rightSamples.length}); coverage limited.`,
+      );
+      continue;
+    }
+    recordTruncatedCoverage(
+      details,
+      "costate→runner",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "costate→runner",
+      object,
+      "right fibre",
+      rightSamples.length,
+      rightCardinality,
+      sampleLimit,
+    );
+    for (const right of rightSamples) {
+      const arrow = kappa.map(right);
+      const indexed: IndexedElement<Obj, Right> = { object, element: right };
+      for (const primal of primalSamples) {
+        checked += 1;
+        const expected = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        const actual = thetaHom.map([primal, indexed]);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `diagram(5) zig-zag mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
       }
     }
   }
-  details.push(`costateComponentsToRunner: checked=${checked} mismatches=${mismatches}.`);
-  const thetaHom2 = buildPhiFromRunnerPerObject({ thetas, thetaHom: new Map(), diagnostics: [] } as unknown as StatefulRunner<Obj, Left, Right, Value>, interaction);
-  return { runner: { thetas, thetaHom: thetaHom2, diagnostics: details }, diagnostics: { checked, mismatches, details } };
+  if (thetas.size === 0) {
+    details.push("costate→runner: no θ reconstructed (missing κ inputs?).");
+  }
+  details.push(`costate→runner: checked=${checked} mismatches=${mismatches}.`);
+  return {
+    runner: { thetas, thetaHom: thetaHomMap, diagnostics: details },
+    diagnostics: { checked, mismatches, details },
+  };
 };
 
 // Coalgebra ↔ Costate (factor through Sweedler fromDual indexing)
 export const coalgebraToCostate = <Obj, Arr, Left, Right, Value>(
   components: CoalgebraComponents<Obj, Left, Right, Value>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-  options: { objectFilter?: (object: Obj) => boolean } = {},
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { components: CostateComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
   const costate = new Map<Obj, SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>>();
-  const details: string[] = ["coalgebraToCostate: translating γ components into κ via indexing."]; let checked = 0, mismatches = 0;
+  const details: string[] = ["coalgebra→costate (diagram 5): translating γ into κ."];
+  let checked = 0;
+  let mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (options.objectFilter && !options.objectFilter(object)) continue;
     const gamma = components.get(object);
@@ -1087,25 +1575,62 @@ export const coalgebraToCostate = <Obj, Arr, Left, Right, Value>(
     });
     costate.set(object, kappa as unknown as SetHom<Right, ExponentialArrow<IndexedElement<Obj, Left>, Value>>);
     // Light sampling equivalence: evaluate expected ψ vs composed map
-    const rightSamples = enumerateLimited(rightCarrier, 4);
-    const primalSamples = enumerateLimited(fiber.primalFiber, 4);
+    const rightCardinality = getCarrierSemantics(rightCarrier)?.cardinality;
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, rightCardinality, primalCardinality);
+    const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    if (rightSamples.length === 0 || primalSamples.length === 0) {
+      details.push(
+        `coalgebra→costate: object=${String(object)} insufficient samples (primal=${primalSamples.length} right=${rightSamples.length}); coverage limited.`,
+      );
+      continue;
+    }
+    recordTruncatedCoverage(
+      details,
+      "coalgebra→costate",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "coalgebra→costate",
+      object,
+      "right fibre",
+      rightSamples.length,
+      rightCardinality,
+      sampleLimit,
+    );
     for (const right of rightSamples) {
       const arrow = kappa.map(right);
       for (const primal of primalSamples) {
-        checked++; const expected = fiber.phi.map([primal, { object, element: right }]); const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
-        if (!Object.is(expected, actual)) { mismatches++; if (mismatches <= 2) details.push(`coalgebra->costate-mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`); }
+        checked += 1;
+        const expected = fiber.phi.map([primal, { object, element: right }]);
+        const actual = (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 4) {
+            details.push(
+              `diagram(5) cast mismatch object=${String(object)} left=${String(primal.element)} right=${String(right)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
       }
     }
   }
-  details.push(`coalgebraToCostate: checked=${checked} mismatches=${mismatches}.`);
+  details.push(`coalgebra→costate: checked=${checked} mismatches=${mismatches}.`);
   return { components: costate, diagnostics: { checked, mismatches, details } };
 };
 
 export const costateToCoalgebra = <Obj, Arr, Left, Right, Value>(
   components: CostateComponents<Obj, Left, Right, Value>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-  options: { objectFilter?: (object: Obj) => boolean } = {},
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): { components: CoalgebraComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
   const coalgebra = new Map<Obj, SetHom<IndexedElement<Obj, Right>, ExponentialArrow<IndexedElement<Obj, Left>, Value>>>();
   const details: string[] = ["costateToCoalgebra: translating κ components into γ via reindexing."]; let checked = 0, mismatches = 0;
   for (const [object, fiber] of interaction.psiComponents.entries()) {
@@ -1118,8 +1643,35 @@ export const costateToCoalgebra = <Obj, Arr, Left, Right, Value>(
       return primalExp.register((pr) => (arrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(pr));
     });
     coalgebra.set(object, gamma as unknown as SetHom<IndexedElement<Obj, Right>, ExponentialArrow<IndexedElement<Obj, Left>, Value>>);
-    const dualSamples = enumerateLimited(fiber.dualFiber, 4);
-    const primalSamples = enumerateLimited(fiber.primalFiber, 4);
+    const dualCardinality = getCarrierSemantics(fiber.dualFiber)?.cardinality;
+    const primalCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, dualCardinality, primalCardinality);
+    const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    if (dualSamples.length === 0 || primalSamples.length === 0) {
+      details.push(
+        `costate→coalgebra: object=${String(object)} insufficient samples (primal=${primalSamples.length} dual=${dualSamples.length}); coverage limited.`,
+      );
+      continue;
+    }
+    recordTruncatedCoverage(
+      details,
+      "costate→coalgebra",
+      object,
+      "dual fibre",
+      dualSamples.length,
+      dualCardinality,
+      sampleLimit,
+    );
+    recordTruncatedCoverage(
+      details,
+      "costate→coalgebra",
+      object,
+      "primal fibre",
+      primalSamples.length,
+      primalCardinality,
+      sampleLimit,
+    );
     for (const dualEl of dualSamples) {
       const arrow = gamma.map(dualEl);
       for (const primal of primalSamples) {
@@ -1127,6 +1679,9 @@ export const costateToCoalgebra = <Obj, Arr, Left, Right, Value>(
         if (!Object.is(expected, actual)) { mismatches++; if (mismatches <= 2) details.push(`costate->coalgebra-mismatch object=${String(object)} left=${String(primal.element)} right=${String(dualEl.element)} expected=${String(expected)} actual=${String(actual)}`); }
       }
     }
+  }
+  if (coalgebra.size === 0) {
+    details.push("costateToCoalgebra: no γ components reconstructed (missing κ inputs?).");
   }
   details.push(`costateToCoalgebra: checked=${checked} mismatches=${mismatches}.`);
   return { components: coalgebra, diagnostics: { checked, mismatches, details } };
@@ -1828,6 +2383,173 @@ const enumerateLimited = <A>(carrier: SetObj<A>, limit: number): ReadonlyArray<A
   return result;
 };
 
+const resolveThetaHom = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  object: Obj,
+  fiber: InteractionLawFiberCurrying<Obj, Arr, Left, Right, Value>,
+): SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value> | undefined => {
+  const direct = runner.thetaHom.get(object);
+  if (direct) return direct;
+  const curried = runner.thetas?.get(object);
+  if (curried) {
+    return fiber.exponential.uncurry({ product: fiber.product, morphism: curried }) as SetHom<
+      readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>],
+      Value
+    >;
+  }
+  return undefined;
+};
+
+export const compareRunnerThetas = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  original: StatefulRunner<Obj, Left, Right, Value>,
+  reconstructed: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): EquivalenceDiagnostics => {
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
+  const details: string[] = ["runner zig-zag (θ comparison): sampling primal/dual pairs."];
+  let checked = 0;
+  let mismatches = 0;
+  for (const [object, fiber] of interaction.psiComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const leftHom = resolveThetaHom(original, interaction, object, fiber);
+    const rightHom = resolveThetaHom(reconstructed, interaction, object, fiber);
+    if (!leftHom || !rightHom) {
+      details.push(`runner zig-zag: object=${String(object)} missing θ data (left=${Boolean(leftHom)} right=${Boolean(rightHom)}).`);
+      continue;
+    }
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    for (const primal of primalSamples) {
+      for (const dual of dualSamples) {
+        checked += 1;
+        const expected = leftHom.map([primal, dual]);
+        const actual = rightHom.map([primal, dual]);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `runner zig-zag mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
+      }
+    }
+  }
+  details.push(`runner zig-zag: checked=${checked} mismatches=${mismatches}.`);
+  return { checked, mismatches, details };
+};
+
+export const compareCoalgebraComponents = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  left: CoalgebraComponents<Obj, Left, Right, Value>,
+  right: CoalgebraComponents<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): EquivalenceDiagnostics => {
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
+  const details: string[] = ["coalgebra zig-zag: comparing γ components."];
+  let checked = 0;
+  let mismatches = 0;
+  for (const [object, fiber] of interaction.psiComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const leftGamma = left.get(object);
+    const rightGamma = right.get(object);
+    if (!leftGamma || !rightGamma) {
+      details.push(`coalgebra zig-zag: object=${String(object)} missing component (left=${Boolean(leftGamma)} right=${Boolean(rightGamma)}).`);
+      continue;
+    }
+    const dualSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    for (const dual of dualSamples) {
+      const leftArrow = leftGamma.map(dual);
+      const rightArrow = rightGamma.map(dual);
+      for (const primal of primalSamples) {
+        checked += 1;
+        const expected = (leftArrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        const actual = (rightArrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `coalgebra zig-zag mismatch object=${String(object)} left=${String(primal.element)} right=${String(dual.element)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
+      }
+    }
+  }
+  details.push(`coalgebra zig-zag: checked=${checked} mismatches=${mismatches}.`);
+  return { checked, mismatches, details };
+};
+
+export const compareCostateComponents = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  left: CostateComponents<Obj, Left, Right, Value>,
+  right: CostateComponents<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): EquivalenceDiagnostics => {
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 8);
+  const details: string[] = ["costate zig-zag: comparing κ components."];
+  let checked = 0;
+  let mismatches = 0;
+  for (const [object, fiber] of interaction.psiComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const leftKappa = left.get(object);
+    const rightKappa = right.get(object);
+    if (!leftKappa || !rightKappa) {
+      details.push(`costate zig-zag: object=${String(object)} missing component (left=${Boolean(leftKappa)} right=${Boolean(rightKappa)}).`);
+      continue;
+    }
+    const rightCarrier = interaction.law.right.functor.F0(object) as SetObj<Right>;
+    const rightSamples = enumerateLimited(rightCarrier, sampleLimit);
+    const primalSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    for (const rightEl of rightSamples) {
+      const leftArrow = leftKappa.map(rightEl);
+      const rightArrow = rightKappa.map(rightEl);
+      for (const primal of primalSamples) {
+        checked += 1;
+        const expected = (leftArrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        const actual = (rightArrow as ExponentialArrow<IndexedElement<Obj, Left>, Value>)(primal);
+        if (!Object.is(expected, actual)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `costate zig-zag mismatch object=${String(object)} left=${String(primal.element)} right=${String(rightEl)} expected=${String(expected)} actual=${String(actual)}`,
+            );
+          }
+        }
+      }
+    }
+  }
+  details.push(`costate zig-zag: checked=${checked} mismatches=${mismatches}.`);
+  return { checked, mismatches, details };
+};
+
 export interface RunnerPhiHomComponentReport<Obj, Left, Right, Value> {
   readonly object: Obj;
   readonly checked: number;
@@ -2130,7 +2852,7 @@ export interface RunnerStateHandlerEntry<Obj, Left, Right, Value, State> {
     readonly [IndexedElement<Obj, Left>, State],
     readonly [Value, State]
   >;
-  readonly curriedTransformation?: SetHom<
+  readonly vartheta?: SetHom<
     IndexedElement<Obj, Left>,
     ExponentialArrow<State, readonly [Value, State]>
   >;
@@ -2257,7 +2979,7 @@ export const thetaToStateHandler = <
     let transformation:
       | SetHom<readonly [IndexedElement<Obj, Left>, unknown], readonly [Value, unknown]>
       | undefined;
-    let curriedTransformation:
+    let vartheta:
       | SetHom<IndexedElement<Obj, Left>, ExponentialArrow<unknown, readonly [Value, unknown]>>
       | undefined;
     if (canonicalRight) {
@@ -2281,7 +3003,7 @@ export const thetaToStateHandler = <
         stateCarrier as SetObj<unknown>,
         codomainProduct.object,
       );
-      curriedTransformation = exponential.curry({
+      vartheta = exponential.curry({
         domain: fiber.primalFiber,
         product: domainProduct,
         morphism: transformation as SetHom<
@@ -2298,11 +3020,12 @@ export const thetaToStateHandler = <
       handler,
       stateCarrier,
       ...(canonicalRight ? { canonicalRight } : {}),
+      ...(vartheta ? { vartheta } : {}),
       ...(independenceIssues > 0 ? { independenceIssues } : {}),
     };
     if (transformation) {
-      if (curriedTransformation) {
-        entries.push({ ...baseEntry, transformation, curriedTransformation });
+      if (vartheta) {
+        entries.push({ ...baseEntry, transformation, vartheta });
       } else {
         entries.push({ ...baseEntry, transformation });
       }
@@ -2341,6 +3064,10 @@ export const checkRunnerStateHandlers = <
   const sampleLimit = Math.max(0, options.sampleLimit ?? 16);
   const summary = thetaToStateHandler(runner, interaction);
   const details: string[] = [...summary.details];
+  const entryMap = new Map<Obj, RunnerStateHandlerEntry<Obj, Left, Right, Value, unknown>>();
+  for (const entry of summary.entries) {
+    entryMap.set(entry.object, entry);
+  }
   let checked = 0;
   let mismatches = 0;
   let independenceWarnings = 0;
@@ -2404,9 +3131,11 @@ export const checkRunnerStateHandlers = <
         }
       }
     }
-    if (entry.curriedTransformation && entry.canonicalRight && stateCarrier) {
+    let stUnitChecked = 0;
+    let stUnitMismatches = 0;
+    if (entry.vartheta && entry.canonicalRight && stateCarrier) {
       const canonicalRight = entry.canonicalRight;
-      const vartheta = entry.curriedTransformation as SetHom<
+      const vartheta = entry.vartheta as SetHom<
         IndexedElement<Obj, Left>,
         ExponentialArrow<unknown, readonly [Value, unknown]>
       >;
@@ -2456,6 +3185,34 @@ export const checkRunnerStateHandlers = <
             }
           }
         }
+        for (const base of unitDomainSamples) {
+          const lifted = eta.map(base as Left);
+          const liftedIndexed: IndexedElement<Obj, Left> = { object: entry.object, element: lifted };
+          const arrow = vartheta.map(liftedIndexed) as (state: unknown) => readonly [Value, unknown];
+          const expectedValue = fiber.phi.map([liftedIndexed, canonicalRight]);
+          for (const state of stateSamples) {
+            stUnitChecked += 1;
+            const actualPair = arrow(state as never);
+            const valueMatches = valueSemantics?.equals
+              ? valueSemantics.equals(actualPair[0] as Value, expectedValue)
+              : Object.is(actualPair[0], expectedValue);
+            const stateMatches = stateCarrierSemantics?.equals
+              ? stateCarrierSemantics.equals(actualPair[1] as unknown, state as unknown)
+              : Object.is(actualPair[1], state);
+            if (!valueMatches || !stateMatches) {
+              stUnitMismatches += 1;
+              if (stUnitMismatches <= 4) {
+                details.push(
+                  `state-handler-St-unit-mismatch object=${String(entry.object)} state=${String(
+                    (state as { element?: unknown })?.element ?? state,
+                  )} base=${String(base)} expected=${String(expectedValue)}/${String(state)} actual=${String(
+                    actualPair[0],
+                  )}/${String(actualPair[1])}`,
+                );
+              }
+            }
+          }
+        }
       }
     } else {
       details.push(
@@ -2468,6 +3225,90 @@ export const checkRunnerStateHandlers = <
       );
       checked += unitSamplesChecked;
       mismatches += unitSamplesMismatched;
+    }
+    if (entry.vartheta && entry.canonicalRight && stateCarrier) {
+      const stUnitSummary = `state-handler-St-unit summary object=${String(entry.object)} checked=${stUnitChecked} mismatches=${stUnitMismatches}.`;
+      details.push(stUnitSummary);
+      checked += stUnitChecked;
+      mismatches += stUnitMismatches;
+    } else {
+      details.push(
+        `state-handler-St-unit: skipped object=${String(entry.object)} (missing vartheta, state carrier, or canonical right).`,
+      );
+    }
+    const muComponent = interaction.monad.multiplication.transformation.component(entry.object) as
+      | SetHom<unknown, Left>
+      | undefined;
+    const txObject = interaction.monad.functor.F0(entry.object) as Obj;
+    const txEntry = entryMap.get(txObject);
+    const varthetaTX = txEntry?.vartheta;
+    if (!muComponent) {
+      details.push(
+        `state-handler-St-mult: skipped object=${String(entry.object)} (missing monad multiplication component).`,
+      );
+    } else if (!entry.vartheta) {
+      details.push(
+        `state-handler-St-mult: skipped object=${String(entry.object)} (missing vartheta witness).`,
+      );
+    } else if (!txEntry || !txEntry.vartheta) {
+      details.push(
+        `state-handler-St-mult: skipped object=${String(entry.object)} (missing vartheta for TX).`,
+      );
+    } else {
+      const varthetaY = entry.vartheta as SetHom<
+        IndexedElement<Obj, Left>,
+        ExponentialArrow<unknown, readonly [Value, unknown]>
+      >;
+      const varthetaTX = txEntry.vartheta as SetHom<
+        IndexedElement<Obj, Left>,
+        ExponentialArrow<unknown, readonly [Value, unknown]>
+      >;
+      const stateHom = interaction.comonad.functor.F1(entry.object) as SetHom<
+        IndexedElement<Obj, Left>,
+        IndexedElement<Obj, Left>
+      > | undefined;
+      let stMultChecked = 0;
+      let stMultMismatches = 0;
+      const txStateCarrier = txEntry.stateCarrier as SetObj<unknown> | undefined;
+      const txStateSamples = txStateCarrier
+        ? enumerateLimited(txStateCarrier, Math.max(1, sampleLimit))
+        : [undefined];
+      for (const txState of txStateSamples) {
+        for (const leftEl of leftSamples) {
+          const liftedIndexed: IndexedElement<Obj, Left> = {
+            object: entry.object,
+            element: muComponent.map(leftEl.element as unknown as Left),
+          };
+          const arrow = varthetaY.map(liftedIndexed) as (s: unknown) => readonly [Value, unknown];
+          const expectedPair = arrow(txState as never);
+          const txArrow = varthetaTX.map(leftEl) as (s: unknown) => readonly [Value, unknown];
+          const txResult = txArrow(txState as never);
+          stMultChecked += 1;
+          const valueMatches = valueSemantics?.equals
+            ? valueSemantics.equals(expectedPair[0] as Value, txResult[0] as Value)
+            : Object.is(expectedPair[0], txResult[0]);
+          const stateMatches = stateCarrierSemantics?.equals
+            ? stateCarrierSemantics.equals(expectedPair[1] as unknown, txResult[1] as unknown)
+            : Object.is(expectedPair[1], txResult[1]);
+          if (!valueMatches || !stateMatches) {
+            stMultMismatches += 1;
+            if (stMultMismatches <= 4) {
+              details.push(
+                `state-handler-St-mult-mismatch object=${String(entry.object)} state=${String(
+                  (txState as { element?: unknown })?.element ?? txState,
+                )} left=${String(leftEl.element)} expected=${String(expectedPair[0])}/${String(expectedPair[1])} actual=${String(
+                  txResult[0],
+                )}/${String(txResult[1])}`,
+              );
+            }
+          }
+        }
+      }
+      details.push(
+        `state-handler-St-mult summary object=${String(entry.object)} checked=${stMultChecked} mismatches=${stMultMismatches}.`,
+      );
+      checked += stMultChecked;
+      mismatches += stMultMismatches;
     }
   }
   if (independenceWarnings > 0) {
