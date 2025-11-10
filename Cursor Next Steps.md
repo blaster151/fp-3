@@ -55,9 +55,10 @@ Progress:
 - `thetaToStateHandler` now materialises each `ϑ_X` as an explicit `SetHom<IndexedElement<Obj, Left>, ExponentialArrow<State, [Value, State]>>`, while recording fibre-independence and sampling truncation diagnostics for every object.
 - `RunnerStateHandlerEntry` exposes these `ϑ` components (and the associated `TX×Y → X×Y` homs) so downstream oracles can compose them with state-monad structure; translator metadata surfaces through the handler report for future diagram checks.
 - `checkRunnerStateHandlers` now replays the `(Stʸ η_X)` triangle using the `ϑ` data, logging per-object summaries and detailed mismatches when the state/value pair diverges from the canonical unit evaluation.
+- Multiplication scaffolding now locates the requisite `ϑ_{TX}`/`ϑ_{StʸX}` witnesses, reporting exactly which components are missing so the forthcoming `(Stʸ μ_X)` replay can reuse the cached data instead of emitting generic TODOs.
 
 Next:
-- Extend `checkRunnerStateHandlers` to compute the `(Stʸ η_X)` and `(Stʸ μ_X)` triangles with the new `ϑ` data, logging mismatches alongside independence summaries and feeding the results into the unified law report.
+- Implement the `(Stʸ μ_X)` replay using the collected `ϑ` witnesses, comparing both sides of the diagram and folding the tallies into the unified law report.
 
 ------
 

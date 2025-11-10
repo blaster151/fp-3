@@ -3064,6 +3064,10 @@ export const checkRunnerStateHandlers = <
   const sampleLimit = Math.max(0, options.sampleLimit ?? 16);
   const summary = thetaToStateHandler(runner, interaction);
   const details: string[] = [...summary.details];
+  const entryMap = new Map<Obj, RunnerStateHandlerEntry<Obj, Left, Right, Value, unknown>>();
+  for (const entry of summary.entries) {
+    entryMap.set(entry.object, entry);
+  }
   let checked = 0;
   let mismatches = 0;
   let independenceWarnings = 0;
@@ -3235,13 +3239,30 @@ export const checkRunnerStateHandlers = <
     const muComponent = interaction.monad.multiplication.transformation.component(entry.object) as
       | SetHom<unknown, Left>
       | undefined;
+    const txObject = interaction.monad.functor.F0(entry.object) as Obj;
+    const stYXObject = entry.vartheta
+      ? (SetCat.exponential(entry.stateCarrier as SetObj<unknown>, SetCat.product(fiber.primalFiber, entry.stateCarrier as SetObj<unknown>).object).object as Obj)
+      : undefined;
+    const txEntry = entryMap.get(txObject);
     if (!muComponent) {
       details.push(
         `state-handler-St-mult: skipped object=${String(entry.object)} (missing monad multiplication component).`,
       );
+    } else if (!entry.vartheta) {
+      details.push(
+        `state-handler-St-mult: skipped object=${String(entry.object)} (missing vartheta witness).`,
+      );
+    } else if (!txEntry || !txEntry.vartheta) {
+      details.push(
+        `state-handler-St-mult: skipped object=${String(entry.object)} (missing vartheta for TX).`,
+      );
+    } else if (!stYXObject) {
+      details.push(
+        `state-handler-St-mult: skipped object=${String(entry.object)} (unable to reconstruct St^Y X object).`,
+      );
     } else {
       details.push(
-        `state-handler-St-mult: TODO object=${String(entry.object)} (multiplication replay pending θ_{TX} instrumentation).`,
+        `state-handler-St-mult: TODO object=${String(entry.object)} (multiplication replay pending θ_{TX}/St^Y data instrumentation).`,
       );
     }
   }
