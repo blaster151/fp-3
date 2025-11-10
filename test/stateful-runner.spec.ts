@@ -395,6 +395,9 @@ describe("stateful runner", () => {
       );
       expect(stack.kernel.monad?.operations.map((op) => op.name)).toContain("getenv");
       expect(stack.kernel.monad?.initialState).toBeNull();
+      expect(
+        stack.kernel.diagnostics.some((line) => line.includes("state carrier source")),
+      ).toBe(true);
       expect(stack.kernel.diagnostics.some((line) => line.includes("Kernel operations"))).toBe(true);
       expect(stack.user.diagnostics.some((line) => line.includes("User boundary expectations"))).toBe(true);
       expect(stack.residualSummary).toBeDefined();
@@ -402,6 +405,8 @@ describe("stateful runner", () => {
         stack.residualSummary?.reports.every((report) => report.unhandledSamples === 0),
       ).toBe(true);
       expect(stack.user.monad?.allowedKernelOperations.has("getenv")).toBe(true);
+      expect(stack.comparison.unsupportedByKernel.length).toBe(0);
+      expect(stack.comparison.unacknowledgedByUser).toEqual(["raise"]);
 
       const runner = stackToRunner(
         law as unknown as any,

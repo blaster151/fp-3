@@ -77,6 +77,10 @@ export interface SupervisedStack<
   readonly runner: StatefulRunner<Obj, Left, Right, Value>;
   readonly residualSummary?: ResidualHandlerSummary<Obj, Left, Right>;
   readonly diagnostics: ReadonlyArray<string>;
+  readonly comparison: {
+    readonly unsupportedByKernel: ReadonlyArray<string>;
+    readonly unacknowledgedByUser: ReadonlyArray<string>;
+  };
 }
 
 export const makeKernelMonad = <Obj, Left, Right>(
@@ -260,27 +264,26 @@ export const makeSupervisedStack = <
   const kernelOperationNames = new Set<string>(
     (kernelSpec.operations ?? []).map((op) => op.name),
   );
-  if (userSpec.allowedKernelOperations && userSpec.allowedKernelOperations.length > 0) {
-    const unknownOps = userSpec.allowedKernelOperations.filter(
-      (name) => !kernelOperationNames.has(name),
+  const boundarySet = user.monad?.allowedKernelOperations ?? new Set<string>();
+  const unsupportedByKernel = [...boundarySet].filter(
+    (name) => !kernelOperationNames.has(name),
+  );
+  const unacknowledgedByUser = [...kernelOperationNames].filter(
+    (name) => !boundarySet.has(name),
+  );
+  if (unsupportedByKernel.length > 0) {
+    diagnostics.push(
+      `Boundary warning: user references kernel operations that are not declared (${unsupportedByKernel.join(
+        ", ",
+      )}).`,
     );
-    if (unknownOps.length > 0) {
-      diagnostics.push(
-        `Boundary warning: user references kernel operations that are not declared (${unknownOps.join(
-          ", ",
-        )}).`,
-      );
-    }
-    const missingOps = [...kernelOperationNames].filter(
-      (name) => !userSpec.allowedKernelOperations!.includes(name),
+  }
+  if (unacknowledgedByUser.length > 0) {
+    diagnostics.push(
+      `Boundary note: kernel operations not explicitly acknowledged by user spec (${unacknowledgedByUser.join(
+        ", ",
+      )}).`,
     );
-    if (missingOps.length > 0) {
-      diagnostics.push(
-        `Boundary note: kernel operations not explicitly acknowledged by user spec (${missingOps.join(
-          ", ",
-        )}).`,
-      );
-    }
   }
 
   let residualSummary: ResidualHandlerSummary<Obj, Left, Right> | undefined = runner.residualHandlers;
@@ -301,6 +304,10 @@ export const makeSupervisedStack = <
     runner,
     residualSummary,
     diagnostics,
+    comparison: {
+      unsupportedByKernel,
+      unacknowledgedByUser,
+    },
   };
 };
 
