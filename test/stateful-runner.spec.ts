@@ -163,9 +163,13 @@ describe("stateful runner", () => {
     const { RunnerOracles } = require("../runner-oracles") as typeof import("../runner-oracles");
     const coalEq = RunnerOracles.equivalenceCoalgebra(runner, law, { sampleLimit: 4 });
     const costEq = RunnerOracles.equivalenceCostate(runner, law, { sampleLimit: 4 });
+    const costTEq = RunnerOracles.equivalenceCostT(runner, law, { sampleLimit: 4 });
+    const sweedlerEq = RunnerOracles.equivalenceSweedler(runner, law, { sampleLimit: 4 });
     const triEq = RunnerOracles.equivalenceTriangle(runner, law, { sampleLimit: 4 });
     expect(coalEq.holds).toBe(true);
     expect(costEq.holds).toBe(true);
+    expect(costTEq.holds).toBe(true);
+    expect(sweedlerEq.holds).toBe(true);
     expect(triEq.holds).toBe(true);
   });
 

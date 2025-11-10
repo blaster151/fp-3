@@ -4062,3 +4062,141 @@ export const compareStateHandlerComponents = <
   details.push(`stateHandler comparison: checked=${checked} mismatches=${mismatches}.`);
   return { checked, mismatches, details };
 };
+
+// ---------- Cost^T coalgebra translators (alias of T° coalgebras with diagnostics) ----------
+
+export const runnerToCostTCoalgebraComponents = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): { components: CoalgebraComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
+  const base = runnerToCoalgebraComponents(runner, interaction, options);
+  const details = [
+    "runner→Cost^T-coalgebra: packaging γ_Y with identity inclusion into Cost^T.",
+    ...base.diagnostics.details,
+  ];
+  return {
+    components: base.components,
+    diagnostics: { checked: base.diagnostics.checked, mismatches: base.diagnostics.mismatches, details },
+  };
+};
+
+export const costTCoalgebraComponentsToRunner = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  components: CoalgebraComponents<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): { runner: StatefulRunner<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
+  const base = coalgebraComponentsToRunner(components, interaction, options);
+  const details = [
+    "Cost^T-coalgebra→runner: unwrapping γ_Y components back into θ.",
+    ...base.diagnostics.details,
+  ];
+  return {
+    runner: base.runner,
+    diagnostics: { checked: base.diagnostics.checked, mismatches: base.diagnostics.mismatches, details },
+  };
+};
+
+export const compareCostTCoalgebraComponents = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  left: CoalgebraComponents<Obj, Left, Right, Value>,
+  right: CoalgebraComponents<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): EquivalenceDiagnostics => {
+  const base = compareCoalgebraComponents(left, right, interaction, options);
+  return {
+    checked: base.checked,
+    mismatches: base.mismatches,
+    details: [
+      "Cost^T-coalgebra comparison: delegating to γ evaluation.",
+      ...base.details,
+    ],
+  };
+};
+
+// ---------- Sweedler-dual coalgebra translators (alias with diagnostics) ----------
+
+export const runnerToSweedlerCoalgebraComponents = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): { components: CoalgebraComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
+  const base = runnerToCoalgebraComponents(runner, interaction, options);
+  const details = [
+    "runner→Sweedler-coalgebra: viewing γ via the interaction’s Sweedler dual.",
+    ...base.diagnostics.details,
+  ];
+  return {
+    components: base.components,
+    diagnostics: { checked: base.diagnostics.checked, mismatches: base.diagnostics.mismatches, details },
+  };
+};
+
+export const sweedlerCoalgebraComponentsToRunner = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  components: CoalgebraComponents<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): { runner: StatefulRunner<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
+  const base = coalgebraComponentsToRunner(components, interaction, options);
+  const details = [
+    "Sweedler-coalgebra→runner: recovering θ from the Sweedler dual coalgebra.",
+    ...base.diagnostics.details,
+  ];
+  return {
+    runner: base.runner,
+    diagnostics: { checked: base.diagnostics.checked, mismatches: base.diagnostics.mismatches, details },
+  };
+};
+
+export const compareSweedlerCoalgebraComponents = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  left: CoalgebraComponents<Obj, Left, Right, Value>,
+  right: CoalgebraComponents<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): EquivalenceDiagnostics => {
+  const base = compareCoalgebraComponents(left, right, interaction, options);
+  return {
+    checked: base.checked,
+    mismatches: base.mismatches,
+    details: [
+      "Sweedler-coalgebra comparison: delegating to γ evaluation.",
+      ...base.details,
+    ],
+  };
+};

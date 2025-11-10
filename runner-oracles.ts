@@ -12,6 +12,12 @@ import {
   runnerToStateHandlerComponents,
   stateHandlerComponentsToRunner,
   compareStateHandlerComponents,
+  runnerToCostTCoalgebraComponents,
+  costTCoalgebraComponentsToRunner,
+  compareCostTCoalgebraComponents,
+  runnerToSweedlerCoalgebraComponents,
+  sweedlerCoalgebraComponentsToRunner,
+  compareSweedlerCoalgebraComponents,
   checkRunnerMorphism,
   runnerToCoalgebraComponents,
   coalgebraComponentsToRunner,
@@ -292,6 +298,64 @@ export const RunnerOracles = {
       diagnostics: { forward, back, zigZagRunner, zigZagCostate },
     };
   },
+    equivalenceCostT: <Obj, Arr, Left, Right, Value>(
+      runner: StatefulRunner<Obj, Left, Right, Value>,
+      law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+      options: RunnerOracleOptions<Obj> = {},
+    ): RunnerOracleResult => {
+      const translatorOpts = translatorOptions(options);
+      const forward = runnerToCostTCoalgebraComponents(runner, law, translatorOpts);
+      const back = costTCoalgebraComponentsToRunner(forward.components, law, translatorOpts);
+      const backComponents = runnerToCostTCoalgebraComponents(back.runner, law, translatorOpts);
+      const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
+      const zigZagCoalgebra = compareCostTCoalgebraComponents(forward.components, backComponents.components, law, options);
+      const holds =
+        forward.diagnostics.mismatches === 0 &&
+        back.diagnostics.mismatches === 0 &&
+        zigZagRunner.mismatches === 0 &&
+        zigZagCoalgebra.mismatches === 0;
+      return {
+        registryPath: path("equivalence.costT"),
+        holds,
+        details: [
+          ...forward.diagnostics.details.slice(0, 4),
+          ...back.diagnostics.details.slice(0, 4),
+          ...backComponents.diagnostics.details.slice(0, 4),
+          ...zigZagRunner.details.slice(0, 3),
+          ...zigZagCoalgebra.details.slice(0, 3),
+        ],
+        diagnostics: { forward, back, backComponents, zigZagRunner, zigZagCoalgebra },
+      };
+    },
+    equivalenceSweedler: <Obj, Arr, Left, Right, Value>(
+      runner: StatefulRunner<Obj, Left, Right, Value>,
+      law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+      options: RunnerOracleOptions<Obj> = {},
+    ): RunnerOracleResult => {
+      const translatorOpts = translatorOptions(options);
+      const forward = runnerToSweedlerCoalgebraComponents(runner, law, translatorOpts);
+      const back = sweedlerCoalgebraComponentsToRunner(forward.components, law, translatorOpts);
+      const backComponents = runnerToSweedlerCoalgebraComponents(back.runner, law, translatorOpts);
+      const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
+      const zigZagCoalgebra = compareSweedlerCoalgebraComponents(forward.components, backComponents.components, law, options);
+      const holds =
+        forward.diagnostics.mismatches === 0 &&
+        back.diagnostics.mismatches === 0 &&
+        zigZagRunner.mismatches === 0 &&
+        zigZagCoalgebra.mismatches === 0;
+      return {
+        registryPath: path("equivalence.sweedler"),
+        holds,
+        details: [
+          ...forward.diagnostics.details.slice(0, 4),
+          ...back.diagnostics.details.slice(0, 4),
+          ...backComponents.diagnostics.details.slice(0, 4),
+          ...zigZagRunner.details.slice(0, 3),
+          ...zigZagCoalgebra.details.slice(0, 3),
+        ],
+        diagnostics: { forward, back, backComponents, zigZagRunner, zigZagCoalgebra },
+      };
+    },
   equivalenceTriangle: <Obj, Arr, Left, Right, Value>(
     runner: StatefulRunner<Obj, Left, Right, Value>,
     law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
@@ -354,5 +418,7 @@ export const enumerateRunnerOracles = <Obj, Arr, Left, Right, Value>(
   RunnerOracles.unified(runner, law, options),
   RunnerOracles.equivalenceCoalgebra(runner, law, options),
   RunnerOracles.equivalenceCostate(runner, law, options),
+  RunnerOracles.equivalenceCostT(runner, law, options),
+  RunnerOracles.equivalenceSweedler(runner, law, options),
   RunnerOracles.equivalenceTriangle(runner, law, options),
 ];

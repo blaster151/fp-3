@@ -83,9 +83,10 @@ Status: IN PROGRESS
 Progress:
 - Added `runnerToStateHandlerComponents`, `stateHandlerComponentsToRunner`, and `compareStateHandlerComponents`, providing the Run(T) ↔ `Stʸ` translators with diagnostics that sample ϑ outputs, handler independence, and θ reconstructions.
 - Registered `RunnerOracles.stateHandlerEquivalence`, combining forward/backward translations with runner/handler zig-zag checks, and covered the new oracle in `test/stateful-runner.spec.ts`.
+- Introduced `Cost^T` and Sweedler-dual coalgebra translators/oracles by wrapping the γ-components, so the equivalence suite now covers `T°`, `Cost^Y ⇒ T`, `Cost^T`, and Sweedler coalgebras alongside `Stʸ`.
 
 Next:
-- Extend the equivalence layer with `Costᵗ`-coalgebra and Sweedler-dual translators, mirroring the state-handler workflow.
+- Integrate these translators into documentation/tests and finish wiring the remaining categorical functors promised in the paper (e.g., explicit quasi-inverse functors between all six categories).
 
 ------
 
