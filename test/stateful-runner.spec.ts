@@ -24,7 +24,12 @@ import {
   analyzeResidualHandlerCoverage,
   attachResidualHandlers,
   makeResidualInteractionLaw,
+  makeSupervisedStack,
+  stackToRunner,
+  runnerToStack,
   type ResidualHandlerSpec,
+  type KernelMonadSpec,
+  type UserMonadSpec,
 } from "../allTS";
 import { SetCat } from "../set-cat";
 
@@ -349,12 +354,22 @@ describe("stateful runner", () => {
 
   describe.skip("Supervised kernel/user stack (planning placeholder)", () => {
     it("constructs the supervised stack example once builders are implemented", () => {
-      // Placeholder: enable this test when `makeSupervisedStack` becomes available.
-      // Expected steps:
-      // 1. Build kernel + user specs.
-      // 2. Invoke makeSupervisedStack and verify comparison morphisms.
-      // 3. Translate to a runner via stackToRunner and inspect residual coverage.
-      // 4. Exercise λ₍coop₎ integration once semantics are fully wired.
+      // Placeholder: enable this test when the supervised stack builders are fully implemented.
+      const law = makeExample6MonadComonadInteractionLaw();
+      const kernelSpec: KernelMonadSpec<unknown, unknown, unknown> = {
+        name: "ExampleKernel",
+        description: "Scaffold kernel signature",
+      };
+      const userSpec: UserMonadSpec<unknown> = {
+        name: "ExampleUser",
+        description: "Scaffold user specification",
+        boundaryDescription: "Comparison morphism TBD",
+      };
+      const stack = makeSupervisedStack(law as unknown as any, kernelSpec as any, userSpec as any);
+      expect(stack.diagnostics.length).toBeGreaterThan(0);
+      const runner = stackToRunner(law as unknown as any, kernelSpec as any, userSpec as any);
+      const back = runnerToStack(runner as any, law as unknown as any);
+      expect(back.diagnostics.length).toBeGreaterThan(0);
     });
   });
 });
