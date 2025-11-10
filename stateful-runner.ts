@@ -3240,10 +3240,8 @@ export const checkRunnerStateHandlers = <
       | SetHom<unknown, Left>
       | undefined;
     const txObject = interaction.monad.functor.F0(entry.object) as Obj;
-    const stYXObject = entry.vartheta
-      ? (SetCat.exponential(entry.stateCarrier as SetObj<unknown>, SetCat.product(fiber.primalFiber, entry.stateCarrier as SetObj<unknown>).object).object as Obj)
-      : undefined;
     const txEntry = entryMap.get(txObject);
+    const varthetaTX = txEntry?.vartheta;
     if (!muComponent) {
       details.push(
         `state-handler-St-mult: skipped object=${String(entry.object)} (missing monad multiplication component).`,
@@ -3255,10 +3253,6 @@ export const checkRunnerStateHandlers = <
     } else if (!txEntry || !txEntry.vartheta) {
       details.push(
         `state-handler-St-mult: skipped object=${String(entry.object)} (missing vartheta for TX).`,
-      );
-    } else if (!stYXObject) {
-      details.push(
-        `state-handler-St-mult: skipped object=${String(entry.object)} (unable to reconstruct St^Y X object).`,
       );
     } else {
       details.push(
