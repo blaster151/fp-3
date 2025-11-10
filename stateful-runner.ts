@@ -3255,9 +3255,60 @@ export const checkRunnerStateHandlers = <
         `state-handler-St-mult: skipped object=${String(entry.object)} (missing vartheta for TX).`,
       );
     } else {
+      const varthetaY = entry.vartheta as SetHom<
+        IndexedElement<Obj, Left>,
+        ExponentialArrow<unknown, readonly [Value, unknown]>
+      >;
+      const varthetaTX = txEntry.vartheta as SetHom<
+        IndexedElement<Obj, Left>,
+        ExponentialArrow<unknown, readonly [Value, unknown]>
+      >;
+      const stateHom = interaction.comonad.functor.F1(entry.object) as SetHom<
+        IndexedElement<Obj, Left>,
+        IndexedElement<Obj, Left>
+      > | undefined;
+      let stMultChecked = 0;
+      let stMultMismatches = 0;
+      const txStateCarrier = txEntry.stateCarrier as SetObj<unknown> | undefined;
+      const txStateSamples = txStateCarrier
+        ? enumerateLimited(txStateCarrier, Math.max(1, sampleLimit))
+        : [undefined];
+      for (const txState of txStateSamples) {
+        for (const leftEl of leftSamples) {
+          const liftedIndexed: IndexedElement<Obj, Left> = {
+            object: entry.object,
+            element: muComponent.map(leftEl.element as unknown as Left),
+          };
+          const arrow = varthetaY.map(liftedIndexed) as (s: unknown) => readonly [Value, unknown];
+          const expectedPair = arrow(txState as never);
+          const txArrow = varthetaTX.map(leftEl) as (s: unknown) => readonly [Value, unknown];
+          const txResult = txArrow(txState as never);
+          stMultChecked += 1;
+          const valueMatches = valueSemantics?.equals
+            ? valueSemantics.equals(expectedPair[0] as Value, txResult[0] as Value)
+            : Object.is(expectedPair[0], txResult[0]);
+          const stateMatches = stateCarrierSemantics?.equals
+            ? stateCarrierSemantics.equals(expectedPair[1] as unknown, txResult[1] as unknown)
+            : Object.is(expectedPair[1], txResult[1]);
+          if (!valueMatches || !stateMatches) {
+            stMultMismatches += 1;
+            if (stMultMismatches <= 4) {
+              details.push(
+                `state-handler-St-mult-mismatch object=${String(entry.object)} state=${String(
+                  (txState as { element?: unknown })?.element ?? txState,
+                )} left=${String(leftEl.element)} expected=${String(expectedPair[0])}/${String(expectedPair[1])} actual=${String(
+                  txResult[0],
+                )}/${String(txResult[1])}`,
+              );
+            }
+          }
+        }
+      }
       details.push(
-        `state-handler-St-mult: TODO object=${String(entry.object)} (multiplication replay pending θ_{TX}/St^Y data instrumentation).`,
+        `state-handler-St-mult summary object=${String(entry.object)} checked=${stMultChecked} mismatches=${stMultMismatches}.`,
       );
+      checked += stMultChecked;
+      mismatches += stMultMismatches;
     }
   }
   if (independenceWarnings > 0) {
