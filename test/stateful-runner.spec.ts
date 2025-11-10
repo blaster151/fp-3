@@ -367,8 +367,17 @@ describe("stateful runner", () => {
         name: "ExampleKernel",
         description: "Scaffold kernel signature",
         operations: [
-          { name: "getenv", kind: "state" },
-          { name: "raise", kind: "exception" },
+          {
+            name: "getenv",
+            kind: "state",
+            description: "read current state",
+            handle: (state) => ({ state, output: state }),
+          },
+          {
+            name: "raise",
+            kind: "exception",
+            description: "raise error",
+          },
         ],
         residualHandlers: residualSpecs,
       };
@@ -384,12 +393,15 @@ describe("stateful runner", () => {
         userSpec as UserMonadSpec<Obj>,
         { sampleLimit: 4, includeResidualAnalysis: true },
       );
+      expect(stack.kernel.monad?.operations.map((op) => op.name)).toContain("getenv");
+      expect(stack.kernel.monad?.initialState).toBeNull();
       expect(stack.kernel.diagnostics.some((line) => line.includes("Kernel operations"))).toBe(true);
       expect(stack.user.diagnostics.some((line) => line.includes("User boundary expectations"))).toBe(true);
       expect(stack.residualSummary).toBeDefined();
       expect(
         stack.residualSummary?.reports.every((report) => report.unhandledSamples === 0),
       ).toBe(true);
+      expect(stack.user.monad?.allowedKernelOperations.has("getenv")).toBe(true);
 
       const runner = stackToRunner(
         law as unknown as any,

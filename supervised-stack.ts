@@ -1,4 +1,5 @@
 import type { MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
+import { SetCat, type SetObj } from "./set-cat";
 import {
   attachResidualHandlers,
   analyzeResidualHandlerCoverage,
@@ -16,11 +17,18 @@ export interface KernelOperationSpec<Obj, Left, Right> {
   readonly kind: KernelEffectKind;
   readonly description?: string;
   readonly residualHandler?: ResidualHandlerSpec<Obj, Left, Right>;
+  readonly handle?: (
+    state: unknown,
+    input: unknown,
+  ) => { readonly state: unknown; readonly output: unknown };
+  readonly defaultResidual?: boolean;
 }
 
 export interface KernelMonadSpec<Obj, Left, Right> {
   readonly name: string;
   readonly description?: string;
+  readonly stateCarrier?: SetObj<unknown>;
+  readonly initialState?: unknown;
   readonly operations?: ReadonlyArray<KernelOperationSpec<Obj, Left, Right>>;
   readonly residualHandlers?: ReadonlyMap<Obj, ResidualHandlerSpec<Obj, Left, Right>>;
   readonly metadata?: ReadonlyArray<string>;
@@ -28,6 +36,12 @@ export interface KernelMonadSpec<Obj, Left, Right> {
 
 export interface KernelMonadResult<Obj, Left, Right> {
   readonly spec: KernelMonadSpec<Obj, Left, Right>;
+  readonly monad?: {
+    readonly stateCarrier: SetObj<unknown>;
+    readonly initialState: unknown;
+    readonly return: (state: unknown, value: unknown) => { readonly state: unknown; readonly value: unknown };
+    readonly operations: ReadonlyArray<KernelOperationSpec<Obj, Left, Right>>;
+  };
   readonly diagnostics: ReadonlyArray<string>;
 }
 
@@ -41,6 +55,9 @@ export interface UserMonadSpec<Obj> {
 
 export interface UserMonadResult<Obj> {
   readonly spec: UserMonadSpec<Obj>;
+  readonly monad?: {
+    readonly allowedKernelOperations: ReadonlySet<string>;
+  };
   readonly diagnostics: ReadonlyArray<string>;
 }
 
@@ -72,6 +89,16 @@ export const makeKernelMonad = <Obj, Left, Right>(
   if (spec.metadata && spec.metadata.length > 0) {
     diagnostics.push(`Metadata: ${spec.metadata.join(", ")}`);
   }
+
+  const stateCarrier =
+    spec.stateCarrier ??
+    SetCat.obj([spec.initialState ?? null], { tag: `${spec.name}:stateCarrier` });
+  diagnostics.push(
+    `State carrier source: ${spec.stateCarrier ? "custom" : "auto-generated placeholder"}`,
+  );
+  diagnostics.push(
+    `Initial state: ${spec.initialState !== undefined ? "provided" : "defaulted to null"}`,
+  );
 
   const operations = spec.operations ?? [];
   const operationNames = new Set<string>();
@@ -111,7 +138,38 @@ export const makeKernelMonad = <Obj, Left, Right>(
   } else {
     diagnostics.push(`Residual coverage: ${spec.residualHandlers.size} handler specification(s) supplied.`);
   }
-  return { spec, diagnostics };
+  const operationsWithHandles = operations.filter((op) => op.handle);
+  if (operationsWithHandles.length > 0) {
+    diagnostics.push(
+      `Kernel operation handlers provided for: ${operationsWithHandles
+        .map((op) => op.name)
+        .join(", ")}`,
+    );
+  } else if (operations.length > 0) {
+    diagnostics.push("Kernel operation handlers: none provided (using identity state transitions).");
+  }
+  const defaultResidualOps = operations.filter((op) => op.defaultResidual);
+  if (defaultResidualOps.length > 0) {
+    diagnostics.push(
+      `Kernel operations marked as residual-only: ${defaultResidualOps
+        .map((op) => op.name)
+        .join(", ")}`,
+    );
+  }
+
+  return {
+    spec,
+    monad:
+      spec.operations && spec.operations.length > 0
+        ? {
+            stateCarrier,
+            initialState: spec.initialState ?? null,
+            return: (state: unknown, value: unknown) => ({ state, value }),
+            operations,
+          }
+        : undefined,
+    diagnostics,
+  };
 };
 
 export const makeUserMonad = <Obj>(
@@ -138,7 +196,8 @@ export const makeUserMonad = <Obj>(
   if (spec.metadata && spec.metadata.length > 0) {
     diagnostics.push(`Metadata: ${spec.metadata.join(", ")}`);
   }
-  return { spec, diagnostics };
+  const allowedKernelOperations = new Set(spec.allowedKernelOperations ?? []);
+  return { spec, monad: { allowedKernelOperations }, diagnostics };
 };
 
 export const makeSupervisedStack = <
@@ -171,6 +230,16 @@ export const makeSupervisedStack = <
       for (const object of interaction.kernel.base.objects) {
         if (!residualSpecs.has(object)) {
           residualSpecs.set(object, op.residualHandler);
+        }
+      }
+    }
+    if (op.defaultResidual) {
+      for (const object of interaction.kernel.base.objects) {
+        if (!residualSpecs.has(object)) {
+          residualSpecs.set(object, {
+            description: `Default residual for ${op.name}`,
+            predicate: () => false,
+          });
         }
       }
     }
