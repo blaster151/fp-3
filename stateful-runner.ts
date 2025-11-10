@@ -3020,6 +3020,7 @@ export const thetaToStateHandler = <
       handler,
       stateCarrier,
       ...(canonicalRight ? { canonicalRight } : {}),
+      ...(vartheta ? { vartheta } : {}),
       ...(independenceIssues > 0 ? { independenceIssues } : {}),
     };
     if (transformation) {
