@@ -206,19 +206,20 @@ if (!report.holds) {
 
 #### Costate/coalgebra equivalences and oracles
 
-- **Translators:**
-  - `runnerToCoalgebraComponents(runner, law)` and `coalgebraComponentsToRunner(components, law)` bridge runners with `T°`-coalgebras.
-  - `runnerToCostateComponents(runner, law)` and `costateComponentsToRunner(components, law)` bridge runners with `Cost^Y ⇒ T` transformations.
-  - `coalgebraToCostate(components, law)` and `costateToCoalgebra(components, law)` shuttle between coalgebra and costate views via Sweedler indexing.
-  - `runnerToCostTCoalgebraComponents(runner, law)` / `costTCoalgebraComponentsToRunner(components, law)` package the canonical inclusion of `γ_Y : Y → T°Y` into `Cost^T` coalgebras.
-  - `runnerToSweedlerCoalgebraComponents(runner, law)` / `sweedlerCoalgebraComponentsToRunner(components, law)` expose the Sweedler-dual perspective using the interaction law’s cached dual data.
-- **Oracles / Registry Paths:**
-  - `runner.equivalence.coalgebra` → samples θ vs γ and γ→θ reconstruction.
-  - `runner.equivalence.costate` → samples θ vs κ and κ→θ reconstruction.
-  - `runner.equivalence.costT` → validates the Cost^T view via γ-inclusion.
-  - `runner.equivalence.sweedler` → validates the Sweedler-dual coalgebra view.
-  - `runner.equivalence.triangle` → checks γ → κ → γ round-trip.
-- **Check:** `test/stateful-runner.spec.ts` exercises all equivalence oracles on Example 6.
+  - **Translators:**
+    - `runnerToCoalgebraComponents(runner, law)` and `coalgebraComponentsToRunner(components, law)` bridge runners with `T°`-coalgebras.
+    - `runnerToCostateComponents(runner, law)` and `costateComponentsToRunner(components, law)` bridge runners with `Cost^Y ⇒ T` transformations.
+    - `coalgebraToCostate(components, law)` and `costateToCoalgebra(components, law)` shuttle between coalgebra and costate views via Sweedler indexing.
+    - `runnerToCostTCoalgebraComponents(runner, law)` / `costTCoalgebraComponentsToRunner(components, law)` package the canonical inclusion of `γ_Y : Y → T°Y` into `Cost^T` coalgebras.
+    - `runnerToSweedlerCoalgebraComponents(runner, law)` / `sweedlerCoalgebraComponentsToRunner(components, law)` expose the Sweedler-dual perspective using the interaction law’s cached dual data.
+    - `buildExample12UpdateLensRunner(spec, { interaction? })` reconstructs Example 12’s update-lens runner from `(hp, upd)` data, and `buildExample12UpdateLensSuite()` packages the runner with its costate/coalgebra/`Cost^T` witnesses for comparisons.
+  - **Oracles / Registry Paths:**
+    - `runner.equivalence.coalgebra` → samples θ vs γ and γ→θ reconstruction.
+    - `runner.equivalence.costate` → samples θ vs κ and κ→θ reconstruction.
+    - `runner.equivalence.costT` → validates the Cost^T view via γ-inclusion.
+    - `runner.equivalence.sweedler` → validates the Sweedler-dual coalgebra view.
+    - `runner.equivalence.triangle` → checks γ → κ → γ round-trip.
+  - **Check:** `test/stateful-runner.spec.ts` exercises the equivalence oracles on Example 6 and the Example 12 update-lens suite against the Example 8 interaction.
 
 ## Coalgebra and Hopf law diagnostics
 

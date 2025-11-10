@@ -1,5 +1,27 @@
 import { describe, it, expect } from "vitest";
-import { makeExample6MonadComonadInteractionLaw, buildRunnerFromInteraction, checkStatefulRunner, checkRunnerCoalgebra, buildRunnerCoalgebra, checkRunnerCostate, buildRunnerCostate, buildEnrichedStatefulRunner, runnerToMonadMap, monadMapToRunner } from "../allTS";
+import {
+  makeExample6MonadComonadInteractionLaw,
+  makeExample8MonadComonadInteractionLaw,
+  buildRunnerFromInteraction,
+  checkStatefulRunner,
+  checkRunnerCoalgebra,
+  buildRunnerCoalgebra,
+  checkRunnerCostate,
+  buildRunnerCostate,
+  buildEnrichedStatefulRunner,
+  runnerToMonadMap,
+  monadMapToRunner,
+  compareCostateComponents,
+  compareCoalgebraComponents,
+  compareCostTCoalgebraComponents,
+  runnerToCostateComponents,
+  runnerToCoalgebraComponents,
+  runnerToCostTCoalgebraComponents,
+  buildExample12UpdateLensSuite,
+  buildExample12UpdateLensRunner,
+  makeExample12UpdateLensSpec,
+  compareExample12Runners,
+} from "../allTS";
 import { SetCat } from "../set-cat";
 
 describe("stateful runner", () => {
@@ -239,5 +261,46 @@ describe("stateful runner", () => {
     const badMorphism = { stateMaps: badStateMaps } as typeof baseline;
     const report = checkRunnerMorphism(badMorphism, enriched, enriched, law, { sampleLimit: 4 });
     expect(report.thetaSquare.mismatches + report.coalgebraSquare.mismatches).toBeGreaterThan(0);
+  });
+
+  it("Example 12 update lens reproduces Example 8 runner", () => {
+    const spec = makeExample12UpdateLensSpec();
+    const interaction = makeExample8MonadComonadInteractionLaw();
+    const { runner } = buildExample12UpdateLensRunner(spec, {
+      interaction,
+      metadata: ["Example 12 update lens runner"],
+    });
+    const canonical = buildRunnerFromInteraction(interaction);
+    const comparison = compareExample12Runners(interaction, canonical, runner, 12);
+    expect(comparison.mismatches).toBe(0);
+    const report = checkStatefulRunner(runner, interaction, { sampleLimit: 8 });
+    expect(report.holds).toBe(true);
+  });
+
+  it("Example 12 update lens suite aligns with costate and coalgebra translations", () => {
+    const { interaction, runner, canonical, costate, coalgebra, costT } = buildExample12UpdateLensSuite();
+    const canonicalCostate = runnerToCostateComponents(canonical, interaction);
+    const canonicalCoalgebra = runnerToCoalgebraComponents(canonical, interaction);
+    const canonicalCostT = runnerToCostTCoalgebraComponents(canonical, interaction);
+    const costateCompare = compareCostateComponents(canonicalCostate.components, costate.components, interaction, {
+      sampleLimit: 8,
+    });
+    const coalgebraCompare = compareCoalgebraComponents(
+      canonicalCoalgebra.components,
+      coalgebra.components,
+      interaction,
+      { sampleLimit: 8 },
+    );
+    const costTCompare = compareCostTCoalgebraComponents(
+      canonicalCostT.components,
+      costT.components,
+      interaction,
+      { sampleLimit: 8 },
+    );
+    expect(costateCompare.mismatches).toBe(0);
+    expect(coalgebraCompare.mismatches).toBe(0);
+    expect(costTCompare.mismatches).toBe(0);
+    const runnerComparison = compareExample12Runners(interaction, canonical, runner, 8);
+    expect(runnerComparison.mismatches).toBe(0);
   });
 });

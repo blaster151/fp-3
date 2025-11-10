@@ -120,6 +120,7 @@ export * from "./monad-comonad-interaction-law"
 export * from "./task"
 export * from "./validation"
 export * from "./stateful-runner";
+export * from "./update-lens";
 export * from "./reader-task-option"
 export * from "./json-canonical"
 export * from "./decoder"

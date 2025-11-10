@@ -93,11 +93,11 @@ Next:
 ------
 
 ### **8. Deliver Example 12 Update-Lens Tooling**
-Status: TODO
+Status: COMPLETED
 
-- Add a module packaging lenses `(hp, upd)` into runners of the update monad.
-  - Export costate/coalgebra translations and verify the bijection among lenses, runners, costate maps, and `T°`-coalgebras through dedicated oracles.
-- Supply regression cases showing round-trip equivalence between lens data and runner diagnostics, and register documentation/oracle entries.
+- Added `update-lens.ts` with `makeExample12UpdateLensSpec`, `buildExample12UpdateLensRunner`, and `buildExample12UpdateLensSuite`, deriving θ from `(hp, upd)` and bundling the corresponding costate/coalgebra/`Cost^T` components.
+- Exported the new helpers through `allTS.ts` and documented the workflow in `LAWS.md` under the costate/coalgebra equivalence section.
+- Extended `test/stateful-runner.spec.ts` with Example 12 regression coverage comparing the lens-derived runner against the Example 8 interaction (θ agreement plus costate/coalgebra/`Cost^T` component comparisons).
 
 ------
 

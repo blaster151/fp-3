@@ -3508,64 +3508,64 @@ export const makeExample7MonadComonadInteractionLaw = () => {
   });
 };
 
-type Example8State = "a0" | "a1";
-type Example8Action = 0 | 1;
-type Example8BaseX = "x0" | "x1";
-type Example8BaseY = "y0" | "y1";
+export type Example8State = "a0" | "a1";
+export type Example8Action = 0 | 1;
+export type Example8BaseX = "x0" | "x1";
+export type Example8BaseY = "y0" | "y1";
 
-type Example8UpdateArrow = readonly [Example8State, Example8Action, Example8BaseX];
-type Example8UpdateFunction = readonly [Example8UpdateArrow, Example8UpdateArrow];
-type Example8UpdateArrowSquared = readonly [
+export type Example8UpdateArrow = readonly [Example8State, Example8Action, Example8BaseX];
+export type Example8UpdateFunction = readonly [Example8UpdateArrow, Example8UpdateArrow];
+export type Example8UpdateArrowSquared = readonly [
   Example8State,
   Example8Action,
   Example8UpdateFunction,
 ];
-type Example8UpdateFunctionSquared = readonly [
+export type Example8UpdateFunctionSquared = readonly [
   Example8UpdateArrowSquared,
   Example8UpdateArrowSquared,
 ];
 
-type Example8Reader = readonly [Example8State, Example8BaseY];
-type Example8ReaderSquared = readonly [Example8State, Example8Reader];
+export type Example8Reader = readonly [Example8State, Example8BaseY];
+export type Example8ReaderSquared = readonly [Example8State, Example8Reader];
 
-type Example8Left = Example8UpdateFunction | Example8UpdateFunctionSquared;
-type Example8Right = Example8Reader | Example8ReaderSquared;
-type Example8InteractionValue =
+export type Example8Left = Example8UpdateFunction | Example8UpdateFunctionSquared;
+export type Example8Right = Example8Reader | Example8ReaderSquared;
+export type Example8InteractionValue =
   | readonly [Example8BaseX, Example8BaseY]
   | readonly [Example8BaseX, Example8Reader]
   | readonly [Example8UpdateFunction, Example8BaseY]
   | readonly [Example8UpdateFunction, Example8Reader];
 
-const EXAMPLE8_STATES: ReadonlyArray<Example8State> = ["a0", "a1"];
-const EXAMPLE8_ACTIONS: ReadonlyArray<Example8Action> = [0, 1];
-const EXAMPLE8_BASE_X_VALUES: ReadonlyArray<Example8BaseX> = ["x0", "x1"];
-const EXAMPLE8_BASE_Y_VALUES: ReadonlyArray<Example8BaseY> = ["y0", "y1"];
+export const EXAMPLE8_STATES: ReadonlyArray<Example8State> = ["a0", "a1"];
+export const EXAMPLE8_ACTIONS: ReadonlyArray<Example8Action> = [0, 1];
+export const EXAMPLE8_BASE_X_VALUES: ReadonlyArray<Example8BaseX> = ["x0", "x1"];
+export const EXAMPLE8_BASE_Y_VALUES: ReadonlyArray<Example8BaseY> = ["y0", "y1"];
 
-const combineExample8Actions = (
+export const combineExample8Actions = (
   first: Example8Action,
   second: Example8Action,
 ): Example8Action => ((first + second) % 2) as Example8Action;
 
-const actOnState = (action: Example8Action, state: Example8State): Example8State => {
+export const actOnExample8State = (action: Example8Action, state: Example8State): Example8State => {
   if (action === 0) {
     return state;
   }
   return state === "a0" ? "a1" : "a0";
 };
 
-const actOnExample8Y = (action: Example8Action, value: Example8BaseY): Example8BaseY => {
+export const actOnExample8Y = (action: Example8Action, value: Example8BaseY): Example8BaseY => {
   if (action === 0) {
     return value;
   }
   return value === "y0" ? "y1" : "y0";
 };
 
-const actOnExample8Reader = (
+export const actOnExample8Reader = (
   action: Example8Action,
   reader: Example8Reader,
-): Example8Reader => [actOnState(action, reader[0]), actOnExample8Y(action, reader[1])];
+): Example8Reader => [actOnExample8State(action, reader[0]), actOnExample8Y(action, reader[1])];
 
-const buildExample8UpdateFunction = (
+export const buildExample8UpdateFunction = (
   first: Example8UpdateArrow,
   second: Example8UpdateArrow,
 ): Example8UpdateFunction => [first, second];
@@ -3606,7 +3606,7 @@ const example8ReaderSquaredElements: ReadonlyArray<Example8ReaderSquared> =
     example8ReaderElements.map((reader) => [state, reader] as const),
   );
 
-const isExample8UpdateFunction = (
+export const isExample8UpdateFunction = (
   candidate: unknown,
 ): candidate is Example8UpdateFunction =>
   Array.isArray(candidate) &&
@@ -3620,7 +3620,7 @@ const isExample8UpdateFunction = (
       EXAMPLE8_BASE_X_VALUES.includes(entry[2] as Example8BaseX),
   );
 
-const isExample8UpdateFunctionSquared = (
+export const isExample8UpdateFunctionSquared = (
   candidate: unknown,
 ): candidate is Example8UpdateFunctionSquared =>
   Array.isArray(candidate) &&
@@ -3634,13 +3634,13 @@ const isExample8UpdateFunctionSquared = (
       isExample8UpdateFunction(entry[2]),
   );
 
-const isExample8Reader = (candidate: unknown): candidate is Example8Reader =>
+export const isExample8Reader = (candidate: unknown): candidate is Example8Reader =>
   Array.isArray(candidate) &&
   candidate.length === 2 &&
   EXAMPLE8_STATES.includes(candidate[0] as Example8State) &&
   EXAMPLE8_BASE_Y_VALUES.includes(candidate[1] as Example8BaseY);
 
-const isExample8ReaderSquared = (
+export const isExample8ReaderSquared = (
   candidate: unknown,
 ): candidate is Example8ReaderSquared =>
   Array.isArray(candidate) &&
@@ -3648,7 +3648,7 @@ const isExample8ReaderSquared = (
   EXAMPLE8_STATES.includes(candidate[0] as Example8State) &&
   isExample8Reader(candidate[1]);
 
-const applyExample8Function = (
+export const applyExample8Function = (
   fn: Example8UpdateFunction,
   state: Example8State,
 ): readonly [Example8Action, Example8BaseX] => {
@@ -3660,7 +3660,7 @@ const applyExample8Function = (
   throw new Error("Example8: missing state in update function.");
 };
 
-const applyExample8FunctionSquared = (
+export const applyExample8FunctionSquared = (
   fn: Example8UpdateFunctionSquared,
   state: Example8State,
 ): readonly [Example8Action, Example8UpdateFunction] => {
@@ -3677,19 +3677,19 @@ const makeConstantExample8UpdateFunction = (
 ): Example8UpdateFunction =>
   buildExample8UpdateFunction(["a0", 0, value], ["a1", 0, value]);
 
-const flattenExample8UpdateFunction = (
+export const flattenExample8UpdateFunction = (
   value: Example8UpdateFunctionSquared,
 ): Example8UpdateFunction =>
   buildExample8UpdateFunction(
     (() => {
       const [outerAction, inner] = applyExample8FunctionSquared(value, "a0");
-      const nextState = actOnState(outerAction, "a0");
+      const nextState = actOnExample8State(outerAction, "a0");
       const [innerAction, result] = applyExample8Function(inner, nextState);
       return ["a0", combineExample8Actions(outerAction, innerAction), result];
     })(),
     (() => {
       const [outerAction, inner] = applyExample8FunctionSquared(value, "a1");
-      const nextState = actOnState(outerAction, "a1");
+      const nextState = actOnExample8State(outerAction, "a1");
       const [innerAction, result] = applyExample8Function(inner, nextState);
       return ["a1", combineExample8Actions(outerAction, innerAction), result];
     })(),
