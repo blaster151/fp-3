@@ -592,7 +592,43 @@ export const makeSupervisedStack = <
     );
   }
 
-  let residualSummary: ResidualHandlerSummary<Obj, Left, Right> | undefined = runner.residualHandlers;
+  const metadataEntries = new Set(runner.metadata ?? []);
+  const metadataJson = (key: string, value: unknown) =>
+    `supervised-stack.${key}=${JSON.stringify(value)}`;
+  metadataEntries.add(metadataJson("kernel", { name: kernelSpec.name }));
+  metadataEntries.add(metadataJson("user", { name: userSpec.name }));
+  metadataEntries.add(
+    metadataJson(
+      "kernel.operations",
+      (kernel.monad?.operations ?? []).map((op) => ({ name: op.name, kind: op.kind })),
+    ),
+  );
+  metadataEntries.add(metadataJson("user.allowed", [...boundarySet]));
+  metadataEntries.add(metadataJson("comparison.unsupportedByKernel", unsupportedByKernel));
+  metadataEntries.add(metadataJson("comparison.unacknowledgedByUser", unacknowledgedByUser));
+  if (runner.residualHandlers) {
+    metadataEntries.add(
+      metadataJson("residual.summary", {
+        reports: runner.residualHandlers.reports.length,
+        sampleLimit: runner.residualHandlers.sampleLimit,
+      }),
+    );
+  }
+
+  const annotatedRunner: StatefulRunner<Obj, Left, Right, Value> = {
+    ...runner,
+    metadata: [...metadataEntries],
+    diagnostics: [
+      ...runner.diagnostics,
+      `supervised-stack.kernel.operations=${(kernel.monad?.operations ?? [])
+        .map((op) => `${op.kind}:${op.name}`)
+        .join(", ") || "none"}`,
+      `supervised-stack.user.allowed=${[...boundarySet].join(", ") || "none"}`,
+    ],
+  };
+
+  let residualSummary: ResidualHandlerSummary<Obj, Left, Right> | undefined =
+    annotatedRunner.residualHandlers;
   if (options.includeResidualAnalysis) {
     residualSummary = analyzeResidualHandlerCoverage(enrichedRunner, interaction, residualSpecs, {
       sampleLimit: options.sampleLimit,
@@ -604,10 +640,15 @@ export const makeSupervisedStack = <
     diagnostics.push(...runner.residualHandlers.diagnostics);
   }
 
+  const finalRunner: StatefulRunner<Obj, Left, Right, Value> =
+    options.includeResidualAnalysis && residualSummary
+      ? { ...annotatedRunner, residualHandlers: residualSummary }
+      : annotatedRunner;
+
   return {
     kernel,
     user,
-    runner,
+    runner: finalRunner,
     residualSummary,
     diagnostics: [
       ...diagnostics,
@@ -635,7 +676,29 @@ export const stackToRunner = <
 ): StatefulRunner<Obj, Left, Right, Value> =>
   makeSupervisedStack(interaction, kernelSpec, userSpec, options).runner;
 
-export interface RunnerToStackResult {
+export interface RunnerToStackKernelSummary {
+  readonly name?: string;
+  readonly operations: ReadonlyArray<{
+    readonly name: string;
+    readonly kind: KernelEffectKind;
+  }>;
+}
+
+export interface RunnerToStackUserSummary {
+  readonly name?: string;
+  readonly allowedOperations: ReadonlyArray<string>;
+}
+
+export interface RunnerToStackComparisonSummary {
+  readonly unsupportedByKernel: ReadonlyArray<string>;
+  readonly unacknowledgedByUser: ReadonlyArray<string>;
+}
+
+export interface RunnerToStackResult<Obj, Left, Right> {
+  readonly kernel?: RunnerToStackKernelSummary;
+  readonly user?: RunnerToStackUserSummary;
+  readonly comparison: RunnerToStackComparisonSummary;
+  readonly residualSummary?: ResidualHandlerSummary<Obj, Left, Right>;
   readonly diagnostics: ReadonlyArray<string>;
 }
 
@@ -648,17 +711,77 @@ export const runnerToStack = <
 >(
   runner: StatefulRunner<Obj, Left, Right, Value>,
   _interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-): RunnerToStackResult => {
+): RunnerToStackResult<Obj, Left, Right> => {
   const diagnostics: string[] = [
-    "runnerToStack scaffold: translation pending.",
-    `Residual reports=${runner.residualHandlers?.reports.length ?? 0}.`,
-    `Runner diagnostics lines=${runner.diagnostics.length}.`,
+    "runnerToStack: attempting supervised stack reconstruction.",
+    `runner.diagnostics.size=${runner.diagnostics.length}`,
+    `runner.metadata.size=${runner.metadata?.length ?? 0}`,
   ];
+
+  const parseMetadata = <T>(key: string): T | undefined => {
+    const entry = runner.metadata?.find((value) => value.startsWith(`supervised-stack.${key}=`));
+    if (!entry) return undefined;
+    const raw = entry.slice(entry.indexOf("=") + 1);
+    try {
+      return JSON.parse(raw) as T;
+    } catch (error) {
+      diagnostics.push(
+        `runnerToStack: failed to parse metadata for key "${key}" → ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return undefined;
+    }
+  };
+
+  const kernelMeta = parseMetadata<{ name?: string }>("kernel");
+  const kernelOperations =
+    parseMetadata<ReadonlyArray<{ name: string; kind: KernelEffectKind }>>(
+      "kernel.operations",
+    ) ?? [];
+  const userMeta = parseMetadata<{ name?: string }>("user");
+  const userAllowed = parseMetadata<ReadonlyArray<string>>("user.allowed") ?? [];
+  const comparisonUnsupported =
+    parseMetadata<ReadonlyArray<string>>("comparison.unsupportedByKernel") ?? [];
+  const comparisonUnacknowledged =
+    parseMetadata<ReadonlyArray<string>>("comparison.unacknowledgedByUser") ?? [];
+
+  const residualSummaryMeta = parseMetadata<{ reports?: number; sampleLimit?: number }>(
+    "residual.summary",
+  );
+  if (residualSummaryMeta) {
+    diagnostics.push(
+      `runnerToStack: residual metadata reports=${residualSummaryMeta.reports ?? "?"} sampleLimit=${residualSummaryMeta.sampleLimit ?? "?"}`,
+    );
+  }
+
+  if (!kernelMeta?.name) diagnostics.push("runnerToStack: kernel name metadata missing.");
+  if (!userMeta?.name) diagnostics.push("runnerToStack: user name metadata missing.");
+  diagnostics.push(`runnerToStack: kernel operations detected=${kernelOperations.length}.`);
+  diagnostics.push(`runnerToStack: user allowed operations=${userAllowed.length}.`);
+
   if (runner.stateCarriers && runner.stateCarriers.size > 0) {
-    diagnostics.push(`State carriers detected for ${runner.stateCarriers.size} object(s).`);
+    diagnostics.push(`runnerToStack: state carriers=${runner.stateCarriers.size}.`);
   }
   if (runner.stateThetas && runner.stateThetas.size > 0) {
-    diagnostics.push(`Stateful θ components available for ${runner.stateThetas.size} object(s).`);
+    diagnostics.push(`runnerToStack: stateful θ components=${runner.stateThetas.size}.`);
   }
-  return { diagnostics };
+  diagnostics.push(
+    `runnerToStack: residual reports=${runner.residualHandlers?.reports.length ?? 0}.`,
+  );
+
+  return {
+    kernel: {
+      name: kernelMeta?.name,
+      operations: kernelOperations,
+    },
+    user: {
+      name: userMeta?.name,
+      allowedOperations: userAllowed,
+    },
+    comparison: {
+      unsupportedByKernel: comparisonUnsupported,
+      unacknowledgedByUser: comparisonUnacknowledged,
+    },
+    residualSummary: runner.residualHandlers as ResidualHandlerSummary<Obj, Left, Right> | undefined,
+    diagnostics,
+  };
 };

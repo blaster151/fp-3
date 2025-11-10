@@ -418,31 +418,50 @@ describe("stateful runner", () => {
         expect(raiseResult).toMatchObject({ kind: "raise", payload: "boom" });
         expect(raiseResult?.diagnostics?.some((line) => line.includes("Default exception"))).toBe(true);
 
-        expect(stack.residualSummary).toBeDefined();
-        expect(
-          stack.residualSummary?.reports.every((report) => report.unhandledSamples === 0),
-        ).toBe(true);
-        expect(stack.user.monad?.allowedKernelOperations.has("getenv")).toBe(true);
-        const invoked = stack.user.monad?.invoke("getenv", sampleState, null);
-        expect(invoked).toMatchObject({ kind: "return", state: sampleState, value: sampleState });
-        expect(invoked?.diagnostics?.[0]).toContain('delegated to kernel operation "getenv"');
+          expect(stack.residualSummary).toBeDefined();
+          expect(
+            stack.residualSummary?.reports.every((report) => report.unhandledSamples === 0),
+          ).toBe(true);
+          expect(stack.user.monad?.allowedKernelOperations.has("getenv")).toBe(true);
+          const invoked = stack.user.monad?.invoke("getenv", sampleState, null);
+          expect(invoked).toMatchObject({ kind: "return", state: sampleState, value: sampleState });
+          expect(invoked?.diagnostics?.[0]).toContain('delegated to kernel operation "getenv"');
 
-        expect(stack.comparison.userToKernel.has("getenv")).toBe(true);
-        expect(stack.comparison.unsupportedByKernel.length).toBe(0);
-        expect(stack.comparison.unacknowledgedByUser).toEqual(["raise"]);
-        expect(stack.comparison.diagnostics.length).toBeGreaterThan(0);
-        expect(stack.runner.stateCarriers?.size).toBeGreaterThan(0);
+          expect(stack.comparison.userToKernel.has("getenv")).toBe(true);
+          expect(stack.comparison.unsupportedByKernel.length).toBe(0);
+          expect(stack.comparison.unacknowledgedByUser).toEqual(["raise"]);
+          expect(stack.comparison.diagnostics.length).toBeGreaterThan(0);
+          expect(stack.runner.stateCarriers?.size).toBeGreaterThan(0);
+          expect(
+            stack.runner.metadata?.some((entry) => entry.startsWith("supervised-stack.kernel")),
+          ).toBe(true);
 
-      const runner = stackToRunner(
-        law as unknown as any,
-        kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
-        userSpec as UserMonadSpec<Obj>,
-        { sampleLimit: 4 },
-      );
-      expect(runner.residualHandlers?.reports.length).toBeGreaterThan(0);
+          const runner = stackToRunner(
+            law as unknown as any,
+            kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
+            userSpec as UserMonadSpec<Obj>,
+            { sampleLimit: 4 },
+          );
+          expect(runner.residualHandlers?.reports.length).toBeGreaterThan(0);
+          expect(
+            runner.metadata?.some((entry) => entry.startsWith("supervised-stack.kernel")),
+          ).toBe(true);
 
-      const back = runnerToStack(runner as any, law as unknown as any);
-      expect(back.diagnostics.length).toBeGreaterThan(0);
+          const back = runnerToStack(runner as any, law as unknown as any);
+          expect(back.kernel?.name).toBe("ExampleKernel");
+          expect(back.kernel?.operations).toEqual([
+            { name: "getenv", kind: "state" },
+            { name: "raise", kind: "exception" },
+          ]);
+          expect(back.user?.name).toBe("ExampleUser");
+          expect(back.user?.allowedOperations).toEqual(["getenv"]);
+          expect(back.comparison.unsupportedByKernel).toEqual([]);
+          expect(back.comparison.unacknowledgedByUser).toEqual(["raise"]);
+          expect(back.residualSummary?.reports.length).toBeGreaterThan(0);
+          expect(back.diagnostics.length).toBeGreaterThan(0);
+          expect(
+            back.diagnostics.some((line) => line.includes("kernel operations detected=2")),
+          ).toBe(true);
     });
   });
 });

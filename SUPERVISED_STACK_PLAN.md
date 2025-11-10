@@ -38,8 +38,9 @@ diagnostics, and the existing runner infrastructure together.
 
 1. `stackToRunner(interaction, stack)` produces a `StatefulRunner` annotated
    with residual coverage, stack metadata, and kernel state carriers.
-2. `runnerToStack` currently reports available state/residual witnesses; a full
-   inverse will complete once the supervised stack semantics are finalised.
+2. `runnerToStack` reads the embedded metadata to recover kernel/user names,
+   operation catalogues, and residual summary counts; a full inverse will attach
+   concrete specs once the supervised stack semantics are finalised.
 
 ## 4. Testing roadmap
 
@@ -57,5 +58,5 @@ diagnostics, and the existing runner infrastructure together.
 ## 6. Next steps
 
 1. Extend `runnerToStack` into a full inverse and surface comparison morphisms
-   for λ₍coop₎.
+   for λ₍coop₎ (reconstruct per-operation handlers, diagnostics, and specs).
 2. Integrate the λ₍coop₎ interpreter and add supervised stack oracles/reporting.
