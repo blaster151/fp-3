@@ -29,6 +29,7 @@ export interface StatefulRunner<Obj, Left, Right, Value> {
   >;
   readonly stateCarriers?: ReadonlyMap<Obj, SetObj<unknown>>;
   readonly stateThetas?: ReadonlyMap<Obj, StatefulTheta<Obj, Left, Right, Value, unknown>>;
+  readonly residualHandlers?: ResidualHandlerSummary<Obj, Left, Right>;
   readonly diagnostics: ReadonlyArray<string>;
 }
 
@@ -45,6 +46,30 @@ export interface RunnerToMonadMapResult<Obj, Arr> extends MonadMorphism<Obj, Arr
   readonly rhoComponents?: ReadonlyMap<Obj, { readonly samples: number; readonly mismatches: number }>;
   /** Logged structural recursion steps over Tree_Σ generators. */
   readonly generatorLogs?: ReadonlyArray<string>;
+}
+
+export interface ResidualHandlerSpec<Obj, Left, Right> {
+  readonly description?: string;
+  readonly predicate: (
+    sample: readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>],
+  ) => boolean;
+}
+
+export interface ResidualHandlerObjectReport<Obj, Left, Right> {
+  readonly object: Obj;
+  readonly handledSamples: number;
+  readonly unhandledSamples: number;
+  readonly sampleLimit: number;
+  readonly description?: string;
+  readonly firstUnhandled?: ReadonlyArray<
+    readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>]
+  >;
+}
+
+export interface ResidualHandlerSummary<Obj, Left, Right> {
+  readonly reports: ReadonlyArray<ResidualHandlerObjectReport<Obj, Left, Right>>;
+  readonly sampleLimit: number;
+  readonly diagnostics: ReadonlyArray<string>;
 }
 
 export interface MonadMapToRunnerOptions<Obj> {
@@ -1180,6 +1205,126 @@ const recordTruncatedCoverage = <Obj>(
   details.push(
     `${context}: object=${String(object)} ${label} truncated at ${enumerated}/${cardinality} samples (limit=${limit}).`,
   );
+};
+
+export interface ResidualHandlerAnalysisOptions<Obj> {
+  readonly sampleLimit?: number;
+  readonly objectFilter?: (object: Obj) => boolean;
+  readonly maxLoggedUnhandled?: number;
+}
+
+export const analyzeResidualHandlerCoverage = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  specs: ReadonlyMap<Obj, ResidualHandlerSpec<Obj, Left, Right>> = new Map(),
+  options: ResidualHandlerAnalysisOptions<Obj> = {},
+): ResidualHandlerSummary<Obj, Left, Right> => {
+  const sampleLimit = Math.max(1, options.sampleLimit ?? 16);
+  const maxLoggedUnhandled = Math.max(0, options.maxLoggedUnhandled ?? 4);
+  const reports: Array<ResidualHandlerObjectReport<Obj, Left, Right>> = [];
+  const diagnostics: string[] = ["residual handler coverage: sampling summary."];
+
+  for (const [object, fiber] of interaction.psiComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+
+    const spec = specs.get(object);
+    const predicate =
+      spec?.predicate ??
+      (() => {
+        return false;
+      });
+    const description = spec?.description;
+
+    const samples = enumerateLimited(fiber.product.object, sampleLimit);
+    let handledSamples = 0;
+    let unhandledSamples = 0;
+    const firstUnhandled: Array<
+      readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>]
+    > = [];
+
+    for (const sample of samples) {
+      if (predicate(sample)) {
+        handledSamples += 1;
+      } else {
+        unhandledSamples += 1;
+        if (firstUnhandled.length < maxLoggedUnhandled) {
+          firstUnhandled.push(sample);
+        }
+      }
+    }
+
+    const report: ResidualHandlerObjectReport<Obj, Left, Right> = {
+      object,
+      handledSamples,
+      unhandledSamples,
+      sampleLimit: samples.length,
+      description,
+      ...(firstUnhandled.length > 0 ? { firstUnhandled } : {}),
+    };
+    reports.push(report);
+
+    const summaryLine = [
+      `residual handlers: object=${String(object)}`,
+      `handled=${handledSamples}`,
+      `unhandled=${unhandledSamples}`,
+      `limit=${samples.length}`,
+      description ? `note=${description}` : undefined,
+      spec ? undefined : "note=no specification",
+    ]
+      .filter((segment): segment is string => segment !== undefined)
+      .join(" ");
+    diagnostics.push(summaryLine);
+
+    if (firstUnhandled.length > 0) {
+      const preview = firstUnhandled
+        .map(
+          ([primal, dual]) =>
+            `⟨${String(primal.element)}, ${String(dual.element)}⟩`,
+        )
+        .join("; ");
+      diagnostics.push(
+        `residual handlers: sample counterexamples for object=${String(object)} → ${preview}`,
+      );
+    }
+  }
+
+  if (reports.length === 0) {
+    diagnostics.push(
+      "residual handlers: no objects analysed (object filter excluded all objects).",
+    );
+  }
+
+  return {
+    reports,
+    sampleLimit,
+    diagnostics,
+  };
+};
+
+export const attachResidualHandlers = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  specs: ReadonlyMap<Obj, ResidualHandlerSpec<Obj, Left, Right>> = new Map(),
+  options: ResidualHandlerAnalysisOptions<Obj> = {},
+): StatefulRunner<Obj, Left, Right, Value> => {
+  const summary = analyzeResidualHandlerCoverage(runner, interaction, specs, options);
+  return {
+    ...runner,
+    residualHandlers: summary,
+    diagnostics: [...runner.diagnostics, ...summary.diagnostics],
+  };
 };
 
 // Runner → Coalgebra (reuse existing builder + add θ agreement sampling)

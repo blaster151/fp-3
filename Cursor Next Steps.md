@@ -102,11 +102,11 @@ Status: COMPLETED
 ------
 
 ### **9. Add Residual Hooks to Ordinary Runners**
-Status: TODO — Prerequisite for Phase IV b
+Status: COMPLETED
 
-- Extend `StatefulRunner` with residual metadata (`residualFunctor`, partial θ domains, etc.).
-  - Implement `makeResidualInteractionLaw` and `attachRunner` scaffolding that logs unsupported effects instead of placeholders.
-- Update **`LAWS.md`** and runner oracles to describe residual compatibility checks and TODO diagnostics pending full support.
+- Extended `StatefulRunner` with optional residual handler summaries via `analyzeResidualHandlerCoverage`/`attachResidualHandlers`, so partial θ coverage now surfaces handled vs unhandled samples alongside diagnostics.
+- Added `makeResidualInteractionLaw` (documented in `LAWS.md`) to emit structured TODO diagnostics while the Section 5 residual witnesses remain outstanding.
+- Augmented `test/stateful-runner.spec.ts` with residual coverage regressions (full coverage and no-spec scenarios) plus a sanity check on the new residual interaction law placeholder output.
 
 ------
 

@@ -21,6 +21,10 @@ import {
   buildExample12UpdateLensRunner,
   makeExample12UpdateLensSpec,
   compareExample12Runners,
+  analyzeResidualHandlerCoverage,
+  attachResidualHandlers,
+  makeResidualInteractionLaw,
+  type ResidualHandlerSpec,
 } from "../allTS";
 import { SetCat } from "../set-cat";
 
@@ -302,5 +306,44 @@ describe("stateful runner", () => {
     expect(costTCompare.mismatches).toBe(0);
     const runnerComparison = compareExample12Runners(interaction, canonical, runner, 8);
     expect(runnerComparison.mismatches).toBe(0);
+  });
+
+  it("residual handler coverage reports full support", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const runner = buildRunnerFromInteraction(law);
+    const specs = new Map<
+      (typeof law.kernel.base.objects)[number],
+      ResidualHandlerSpec<(typeof law.kernel.base.objects)[number], unknown, unknown>
+    >();
+    for (const object of law.kernel.base.objects) {
+      specs.set(object, {
+        description: "identity residual coverage",
+        predicate: () => true,
+      });
+    }
+    const annotated = attachResidualHandlers(runner, law, specs, { sampleLimit: 6 });
+    const summary = annotated.residualHandlers;
+    expect(summary).toBeDefined();
+    const totalUnhandled =
+      summary?.reports.reduce((acc, report) => acc + report.unhandledSamples, 0) ?? 0;
+    expect(totalUnhandled).toBe(0);
+    expect(annotated.diagnostics.some((line: string) => line.includes("unhandled=0"))).toBe(true);
+  });
+
+  it("residual handler coverage highlights missing support when unspecified", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const runner = buildRunnerFromInteraction(law);
+    const summary = analyzeResidualHandlerCoverage(runner, law, new Map(), {
+      sampleLimit: 6,
+    });
+    expect(summary.reports.length).toBeGreaterThan(0);
+    expect(summary.reports.some((report) => report.unhandledSamples > 0)).toBe(true);
+    expect(summary.diagnostics.some((line) => line.includes("note=no specification"))).toBe(true);
+  });
+
+  it("makeResidualInteractionLaw surfaces TODO diagnostics", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const residualSummary = makeResidualInteractionLaw(law, { residualMonadName: "Maybe" });
+    expect(residualSummary.diagnostics.some((line) => line.includes("TODO"))).toBe(true);
   });
 });
