@@ -422,3 +422,23 @@ export const enumerateRunnerOracles = <Obj, Arr, Left, Right, Value>(
   RunnerOracles.equivalenceSweedler(runner, law, options),
   RunnerOracles.equivalenceTriangle(runner, law, options),
 ];
+
+export const evaluateRunnerEquivalences = <Obj, Arr, Left, Right, Value>(
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: RunnerOracleOptions<Obj> = {},
+): {
+  readonly stateHandler: RunnerOracleResult;
+  readonly coalgebra: RunnerOracleResult;
+  readonly costate: RunnerOracleResult;
+  readonly costT: RunnerOracleResult;
+  readonly sweedler: RunnerOracleResult;
+  readonly triangle: RunnerOracleResult;
+} => ({
+  stateHandler: RunnerOracles.stateHandlerEquivalence(runner, law, options),
+  coalgebra: RunnerOracles.equivalenceCoalgebra(runner, law, options),
+  costate: RunnerOracles.equivalenceCostate(runner, law, options),
+  costT: RunnerOracles.equivalenceCostT(runner, law, options),
+  sweedler: RunnerOracles.equivalenceSweedler(runner, law, options),
+  triangle: RunnerOracles.equivalenceTriangle(runner, law, options),
+});

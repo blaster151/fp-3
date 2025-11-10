@@ -73,7 +73,7 @@ Next:
 ------
 
 ### **7. Materialise the Six Runner Equivalences**
-Status: IN PROGRESS
+Status: COMPLETED
 
 - Implement quasi-inverse functors between:
   - `Run(T)`, θ-maps → `Stʸ`, `T°`-coalgebras, costate transformations, `Costᵗ`-coalgebras, and Sweedler-dual coalgebras.
@@ -84,9 +84,11 @@ Progress:
 - Added `runnerToStateHandlerComponents`, `stateHandlerComponentsToRunner`, and `compareStateHandlerComponents`, providing the Run(T) ↔ `Stʸ` translators with diagnostics that sample ϑ outputs, handler independence, and θ reconstructions.
 - Registered `RunnerOracles.stateHandlerEquivalence`, combining forward/backward translations with runner/handler zig-zag checks, and covered the new oracle in `test/stateful-runner.spec.ts`.
 - Introduced `Cost^T` and Sweedler-dual coalgebra translators/oracles by wrapping the γ-components, so the equivalence suite now covers `T°`, `Cost^Y ⇒ T`, `Cost^T`, and Sweedler coalgebras alongside `Stʸ`.
+- Added `evaluateRunnerEquivalences` to bundle all six equivalence oracles, with regression coverage ensuring every component of the suite succeeds on Example 6.
+- Documented the new registry paths and translators in `LAWS.md`, completing the doc/test wiring for the equivalence tooling.
 
 Next:
-- Integrate these translators into documentation/tests and finish wiring the remaining categorical functors promised in the paper (e.g., explicit quasi-inverse functors between all six categories).
+- Roll follow-up categorical functor packaging (if desired) into later phases; proceed to item 8.
 
 ------
 

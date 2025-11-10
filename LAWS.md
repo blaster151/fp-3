@@ -163,16 +163,20 @@ This document catalogs the algebraic laws that our functional programming constr
   - `thetaMissing`, `thetaExtra`, optional `finiteFailures`
 - **Options:** Most checks accept `{ sampleLimit?, objectFilter? }`; `buildRunnerLawReport` threads `sampleLimit` through, and can include finite exhaustive checks via `includeFinite`.
 - **Notes:** Category and handler checks are reported but do not currently affect `holds`. ψ→θ/θ→ψ consistency likewise reports mismatches without flipping `holds`.
- - **Oracles / Registry Paths:**
-   - `runner.axioms` → `RunnerOracles.axioms`
-   - `runner.currying` → `RunnerOracles.currying`
-   - `runner.coalgebra` → `RunnerOracles.coalgebra`
-   - `runner.costate` → `RunnerOracles.costate`
-   - `runner.categoryLaws` → `RunnerOracles.category`
-   - `runner.handlers` → `RunnerOracles.handlers`
-   - `runner.psiToTheta` → `RunnerOracles.psiTheta`
-   - `runner.unified` → `RunnerOracles.unified`
-   Use `enumerateRunnerOracles(runner, law, { sampleLimit? })` to collect all reports.
+  - **Oracles / Registry Paths:**
+    - `runner.axioms` → `RunnerOracles.axioms`
+    - `runner.currying` → `RunnerOracles.currying`
+    - `runner.coalgebra` → `RunnerOracles.coalgebra`
+    - `runner.costate` → `RunnerOracles.costate`
+    - `runner.categoryLaws` → `RunnerOracles.category`
+    - `runner.equivalence.stateHandler` → `RunnerOracles.stateHandlerEquivalence`
+    - `runner.handlers` → `RunnerOracles.handlers`
+    - `runner.psiToTheta` → `RunnerOracles.psiTheta`
+    - `runner.unified` → `RunnerOracles.unified`
+    - `runner.equivalence.costT` → `RunnerOracles.equivalenceCostT`
+    - `runner.equivalence.sweedler` → `RunnerOracles.equivalenceSweedler`
+    - Use `enumerateRunnerOracles(runner, law, { sampleLimit? })` to collect all reports.
+    - Use `evaluateRunnerEquivalences(runner, law, { sampleLimit?, objectFilter? })` to retrieve the focused equivalence suite (state handler, coalgebra, costate, Cost^T, Sweedler, triangle).
  - **Optional holds flags:** Pass to `buildRunnerLawReport`:
    - `includeCategoryInHolds: true` to require identity + associativity success.
    - `includeHandlersInHolds: true` to fail on handler mismatches.
@@ -203,14 +207,18 @@ if (!report.holds) {
 #### Costate/coalgebra equivalences and oracles
 
 - **Translators:**
-  - `runnerToCoalagraComponents(runner, law)` and `coalgebraComponentsToRunner(components, law)` bridge runners with `T°`-coalgebras.
+  - `runnerToCoalgebraComponents(runner, law)` and `coalgebraComponentsToRunner(components, law)` bridge runners with `T°`-coalgebras.
   - `runnerToCostateComponents(runner, law)` and `costateComponentsToRunner(components, law)` bridge runners with `Cost^Y ⇒ T` transformations.
   - `coalgebraToCostate(components, law)` and `costateToCoalgebra(components, law)` shuttle between coalgebra and costate views via Sweedler indexing.
+  - `runnerToCostTCoalgebraComponents(runner, law)` / `costTCoalgebraComponentsToRunner(components, law)` package the canonical inclusion of `γ_Y : Y → T°Y` into `Cost^T` coalgebras.
+  - `runnerToSweedlerCoalgebraComponents(runner, law)` / `sweedlerCoalgebraComponentsToRunner(components, law)` expose the Sweedler-dual perspective using the interaction law’s cached dual data.
 - **Oracles / Registry Paths:**
   - `runner.equivalence.coalgebra` → samples θ vs γ and γ→θ reconstruction.
   - `runner.equivalence.costate` → samples θ vs κ and κ→θ reconstruction.
+  - `runner.equivalence.costT` → validates the Cost^T view via γ-inclusion.
+  - `runner.equivalence.sweedler` → validates the Sweedler-dual coalgebra view.
   - `runner.equivalence.triangle` → checks γ → κ → γ round-trip.
-- **Check:** `test/stateful-runner.spec.ts` exercises all three equivalence oracles on Example 6.
+- **Check:** `test/stateful-runner.spec.ts` exercises all equivalence oracles on Example 6.
 
 ## Coalgebra and Hopf law diagnostics
 

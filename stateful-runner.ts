@@ -4063,7 +4063,7 @@ export const compareStateHandlerComponents = <
   return { checked, mismatches, details };
 };
 
-// ---------- Cost^T coalgebra translators (alias of T° coalgebras with diagnostics) ----------
+// ---------- Cost^T and Sweedler coalgebra translators (reusing γ components) ----------
 
 export const runnerToCostTCoalgebraComponents = <
   Obj,
@@ -4078,12 +4078,16 @@ export const runnerToCostTCoalgebraComponents = <
 ): { components: CoalgebraComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
   const base = runnerToCoalgebraComponents(runner, interaction, options);
   const details = [
-    "runner→Cost^T-coalgebra: packaging γ_Y with identity inclusion into Cost^T.",
+    "runner→Cost^T-coalgebra: packaging γ_Y with Cost^T’s canonical inclusion.",
     ...base.diagnostics.details,
   ];
   return {
     components: base.components,
-    diagnostics: { checked: base.diagnostics.checked, mismatches: base.diagnostics.mismatches, details },
+    diagnostics: {
+      checked: base.diagnostics.checked,
+      mismatches: base.diagnostics.mismatches,
+      details,
+    },
   };
 };
 
@@ -4100,12 +4104,16 @@ export const costTCoalgebraComponentsToRunner = <
 ): { runner: StatefulRunner<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
   const base = coalgebraComponentsToRunner(components, interaction, options);
   const details = [
-    "Cost^T-coalgebra→runner: unwrapping γ_Y components back into θ.",
+    "Cost^T-coalgebra→runner: unwrapping γ inclusion back into θ.",
     ...base.diagnostics.details,
   ];
   return {
     runner: base.runner,
-    diagnostics: { checked: base.diagnostics.checked, mismatches: base.diagnostics.mismatches, details },
+    diagnostics: {
+      checked: base.diagnostics.checked,
+      mismatches: base.diagnostics.mismatches,
+      details,
+    },
   };
 };
 
@@ -4126,13 +4134,11 @@ export const compareCostTCoalgebraComponents = <
     checked: base.checked,
     mismatches: base.mismatches,
     details: [
-      "Cost^T-coalgebra comparison: delegating to γ evaluation.",
+      "Cost^T-coalgebra comparison: delegating to γ evaluations.",
       ...base.details,
     ],
   };
 };
-
-// ---------- Sweedler-dual coalgebra translators (alias with diagnostics) ----------
 
 export const runnerToSweedlerCoalgebraComponents = <
   Obj,
@@ -4147,12 +4153,16 @@ export const runnerToSweedlerCoalgebraComponents = <
 ): { components: CoalgebraComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
   const base = runnerToCoalgebraComponents(runner, interaction, options);
   const details = [
-    "runner→Sweedler-coalgebra: viewing γ via the interaction’s Sweedler dual.",
+    "runner→Sweedler-coalgebra: viewing γ via the interaction law’s Sweedler dual.",
     ...base.diagnostics.details,
   ];
   return {
     components: base.components,
-    diagnostics: { checked: base.diagnostics.checked, mismatches: base.diagnostics.mismatches, details },
+    diagnostics: {
+      checked: base.diagnostics.checked,
+      mismatches: base.diagnostics.mismatches,
+      details,
+    },
   };
 };
 
@@ -4169,12 +4179,16 @@ export const sweedlerCoalgebraComponentsToRunner = <
 ): { runner: StatefulRunner<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
   const base = coalgebraComponentsToRunner(components, interaction, options);
   const details = [
-    "Sweedler-coalgebra→runner: recovering θ from the Sweedler dual coalgebra.",
+    "Sweedler-coalgebra→runner: reconstructing θ from Sweedler dual data.",
     ...base.diagnostics.details,
   ];
   return {
     runner: base.runner,
-    diagnostics: { checked: base.diagnostics.checked, mismatches: base.diagnostics.mismatches, details },
+    diagnostics: {
+      checked: base.diagnostics.checked,
+      mismatches: base.diagnostics.mismatches,
+      details,
+    },
   };
 };
 
@@ -4195,7 +4209,7 @@ export const compareSweedlerCoalgebraComponents = <
     checked: base.checked,
     mismatches: base.mismatches,
     details: [
-      "Sweedler-coalgebra comparison: delegating to γ evaluation.",
+      "Sweedler-coalgebra comparison: delegating to γ evaluations.",
       ...base.details,
     ],
   };

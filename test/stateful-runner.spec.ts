@@ -181,6 +181,19 @@ describe("stateful runner", () => {
     expect(handlerEq.holds).toBe(true);
   });
 
+  it("runner equivalence suite reports success on Example 6", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const runner = buildRunnerFromInteraction(law);
+    const { evaluateRunnerEquivalences } = require("../runner-oracles") as typeof import("../runner-oracles");
+    const suite = evaluateRunnerEquivalences(runner, law, { sampleLimit: 4 });
+    expect(suite.stateHandler.holds).toBe(true);
+    expect(suite.coalgebra.holds).toBe(true);
+    expect(suite.costate.holds).toBe(true);
+    expect(suite.costT.holds).toBe(true);
+    expect(suite.sweedler.holds).toBe(true);
+    expect(suite.triangle.holds).toBe(true);
+  });
+
   it("Runner morphism squares hold for identity morphism", () => {
     const law = makeExample6MonadComonadInteractionLaw();
     const base = buildRunnerFromInteraction(law);
