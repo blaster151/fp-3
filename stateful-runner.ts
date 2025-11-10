@@ -1771,8 +1771,241 @@ export interface RunTCategoryLawsReport<Obj> {
   readonly leftIdentity: { checked: number; mismatches: number };
   readonly rightIdentity: { checked: number; mismatches: number };
   readonly associativity: { checked: number; mismatches: number; skipped: boolean };
+  readonly thetaSquare: { checked: number; mismatches: number };
+  readonly coalgebraSquare: { checked: number; mismatches: number };
   readonly details: ReadonlyArray<string>;
 }
+
+interface RunnerMorphismComparisonReport {
+  readonly equality: { checked: number; mismatches: number };
+  readonly thetaSquare: { checked: number; mismatches: number };
+  readonly coalgebraSquare: { checked: number; mismatches: number };
+  readonly details: ReadonlyArray<string>;
+}
+
+interface RunnerMorphismSquareReport {
+  readonly thetaSquare: { checked: number; mismatches: number };
+  readonly coalgebraSquare: { checked: number; mismatches: number };
+  readonly details: ReadonlyArray<string>;
+}
+
+const applyStateMap = (map: SetHom<unknown, unknown>, value: unknown): unknown | undefined => {
+  try {
+    return map.map(value as never);
+  } catch {
+    return undefined;
+  }
+};
+
+const mapRightElementWithState = <Obj, Right>(
+  element: IndexedElement<Obj, Right>,
+  map: SetHom<unknown, unknown>,
+): IndexedElement<Obj, Right> | undefined => {
+  const mapped = applyStateMap(map, element.element);
+  if (mapped === undefined) return undefined;
+  return { object: element.object, element: mapped as Right };
+};
+
+const evaluateRunnerMorphismSquares = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  morphism: RunnerMorphism<Obj, Left, Right, Value, unknown, unknown>,
+  source: StatefulRunner<Obj, Left, Right, Value>,
+  target: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  sampleLimit: number,
+  objectFilter: ((object: Obj) => boolean) | undefined,
+  sourceCoalgebra: ReadonlyMap<
+    Obj,
+    SetHom<IndexedElement<Obj, Right>, ExponentialArrow<IndexedElement<Obj, Left>, Value>>
+  >,
+  targetCoalgebra: ReadonlyMap<
+    Obj,
+    SetHom<IndexedElement<Obj, Right>, ExponentialArrow<IndexedElement<Obj, Left>, Value>>
+  >,
+): RunnerMorphismSquareReport => {
+  const details: string[] = [];
+  let thetaChecked = 0;
+  let thetaMismatches = 0;
+  let coalgebraChecked = 0;
+  let coalgebraMismatches = 0;
+
+  for (const [object, fiber] of interaction.psiComponents.entries()) {
+    if (objectFilter && !objectFilter(object)) continue;
+    const stateMapRaw = morphism.stateMaps.get(object);
+    if (!stateMapRaw) {
+      details.push(`morphism-square: skipped object=${String(object)} (no state map provided).`);
+      continue;
+    }
+    const stateMap = stateMapRaw as SetHom<unknown, unknown>;
+    const leftSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    const rightSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    if (leftSamples.length === 0 || rightSamples.length === 0) {
+      details.push(
+        `morphism-square: skipped object=${String(object)} (insufficient primal/dual samples).`,
+      );
+      continue;
+    }
+
+    const sourceStateTheta = source.stateThetas?.get(object) as
+      | StatefulTheta<Obj, Left, Right, Value, unknown>
+      | undefined;
+    const targetStateTheta = target.stateThetas?.get(object) as
+      | StatefulTheta<Obj, Left, Right, Value, unknown>
+      | undefined;
+    const sourceStateCarrier = source.stateCarriers?.get(object) as SetObj<unknown> | undefined;
+    const targetStateCarrier = target.stateCarriers?.get(object) as SetObj<unknown> | undefined;
+
+    if (sourceStateTheta && targetStateTheta && sourceStateCarrier && targetStateCarrier) {
+      const stateSamples = enumerateLimited(sourceStateCarrier, Math.max(1, sampleLimit));
+      const targetStateSemantics = getCarrierSemantics(targetStateCarrier);
+      for (const state of stateSamples) {
+        const mappedState = applyStateMap(stateMap, state);
+        if (mappedState === undefined) {
+          details.push(
+            `morphism-square: skipped state ${String(state)} at object=${String(
+              object,
+            )} (state map undefined).`,
+          );
+          continue;
+        }
+        for (const leftEl of leftSamples) {
+          for (const rightEl of rightSamples) {
+            const mappedRight = mapRightElementWithState(rightEl, stateMap) ?? rightEl;
+            const [nextSource, valueSource] = sourceStateTheta.run(
+              state as never,
+              leftEl,
+              rightEl,
+            );
+            const [nextTarget, valueTarget] = targetStateTheta.run(
+              mappedState as never,
+              leftEl,
+              mappedRight,
+            );
+            thetaChecked += 1;
+            if (!Object.is(valueSource, valueTarget)) {
+              thetaMismatches += 1;
+              if (thetaMismatches <= 6) {
+                details.push(
+                  `theta-square mismatch object=${String(object)} state=${String(state)} left=${String(
+                    leftEl.element,
+                  )} right=${String(rightEl.element)} sourceValue=${String(
+                    valueSource,
+                  )} targetValue=${String(valueTarget)}`,
+                );
+              }
+            }
+            const mappedNext = applyStateMap(stateMap, nextSource);
+            if (mappedNext === undefined) {
+              details.push(
+                `theta-square next-state skipped object=${String(object)} state=${String(
+                  state,
+                )} (state map undefined for next state).`,
+              );
+              continue;
+            }
+            const stateEqual = targetStateSemantics?.equals
+              ? targetStateSemantics.equals(mappedNext, nextTarget)
+              : Object.is(mappedNext, nextTarget);
+            if (!stateEqual) {
+              thetaMismatches += 1;
+              if (thetaMismatches <= 6) {
+                details.push(
+                  `theta-square state mismatch object=${String(object)} state=${String(
+                    state,
+                  )} left=${String(leftEl.element)} right=${String(rightEl.element)} mapped=${String(
+                    mappedNext,
+                  )} target=${String(nextTarget)}`,
+                );
+              }
+            }
+          }
+        }
+      }
+    } else {
+      const sourceThetaHom = resolveThetaHom(source, interaction, object, fiber);
+      const targetThetaHom = resolveThetaHom(target, interaction, object, fiber);
+      if (!sourceThetaHom || !targetThetaHom) {
+        details.push(
+          `morphism-square: skipped object=${String(
+            object,
+          )} (θ data unavailable for stateless comparison).`,
+        );
+      } else {
+        for (const leftEl of leftSamples) {
+          for (const rightEl of rightSamples) {
+            const mappedRight = mapRightElementWithState(rightEl, stateMap) ?? rightEl;
+            thetaChecked += 1;
+            const sourceValue = sourceThetaHom.map([leftEl, rightEl]);
+            const targetValue = targetThetaHom.map([leftEl, mappedRight]);
+            if (!Object.is(sourceValue, targetValue)) {
+              thetaMismatches += 1;
+              if (thetaMismatches <= 6) {
+                details.push(
+                  `theta-square stateless mismatch object=${String(object)} left=${String(
+                    leftEl.element,
+                  )} right=${String(rightEl.element)} source=${String(
+                    sourceValue,
+                  )} target=${String(targetValue)}`,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const gammaSource = sourceCoalgebra.get(object);
+    const gammaTarget = targetCoalgebra.get(object);
+    if (!gammaSource || !gammaTarget) {
+      details.push(
+        `morphism-square: skipped coalgebra check for object=${String(
+          object,
+        )} (missing γ component).`,
+      );
+      continue;
+    }
+
+    for (const rightEl of rightSamples) {
+      const mappedRight = mapRightElementWithState(rightEl, stateMap) ?? rightEl;
+      const sourceArrow = gammaSource.map(rightEl) as ExponentialArrow<
+        IndexedElement<Obj, Left>,
+        Value
+      >;
+      const targetArrow = gammaTarget.map(mappedRight) as ExponentialArrow<
+        IndexedElement<Obj, Left>,
+        Value
+      >;
+      for (const leftEl of leftSamples) {
+        coalgebraChecked += 1;
+        const sourceValue = sourceArrow(leftEl);
+        const targetValue = targetArrow(leftEl);
+        if (!Object.is(sourceValue, targetValue)) {
+          coalgebraMismatches += 1;
+          if (coalgebraMismatches <= 6) {
+            details.push(
+              `coalgebra-square mismatch object=${String(object)} left=${String(
+                leftEl.element,
+              )} right=${String(rightEl.element)} source=${String(sourceValue)} target=${String(
+                targetValue,
+              )}`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    thetaSquare: { checked: thetaChecked, mismatches: thetaMismatches },
+    coalgebraSquare: { checked: coalgebraChecked, mismatches: coalgebraMismatches },
+    details,
+  };
+};
 
 const compareRunnerMorphisms = <
   Obj,
@@ -1790,22 +2023,28 @@ const compareRunnerMorphisms = <
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   sampleLimit: number,
   objectFilter?: (object: Obj) => boolean,
-): { checked: number; mismatches: number; details: ReadonlyArray<string> } => {
+): RunnerMorphismComparisonReport => {
   const details: string[] = [];
-  let checked = 0;
-  let mismatches = 0;
-  const codThetaCurried = codomainRunner.thetas ?? buildThetaCurriedFromHom(codomainRunner, interaction);
+  let equalityChecked = 0;
+  let equalityMismatches = 0;
+  const codThetaCurried =
+    codomainRunner.thetas ?? buildThetaCurriedFromHom(codomainRunner, interaction);
+
   for (const [object, fiber] of interaction.psiComponents.entries()) {
     if (objectFilter && !objectFilter(object)) continue;
     const stateCarrier = domainRunner.stateCarriers?.get(object) as SetObj<StateA> | undefined;
     if (!stateCarrier) {
-      details.push(`compareRunnerMorphisms: skipped object=${String(object)} (no domain state carrier).`);
+      details.push(
+        `compareRunnerMorphisms: skipped object=${String(object)} (no domain state carrier).`,
+      );
       continue;
     }
     const f = first.stateMaps.get(object);
     const g = second.stateMaps.get(object);
     if (!f || !g) {
-      details.push(`compareRunnerMorphisms: skipped object=${String(object)} (missing component morphisms).`);
+      details.push(
+        `compareRunnerMorphisms: skipped object=${String(object)} (missing component morphisms).`,
+      );
       continue;
     }
     const codCarrier = codomainRunner.stateCarriers?.get(object) as SetObj<StateB> | undefined;
@@ -1830,7 +2069,9 @@ const compareRunnerMorphisms = <
         localMismatches += 1;
         if (localMismatches <= 4) {
           details.push(
-            `compareRunnerMorphisms: state mismatch object=${String(object)} state=${String(state)} first=${String(mappedFirst)} second=${String(mappedSecond)}`,
+            `compareRunnerMorphisms: state mismatch object=${String(object)} state=${String(
+              state,
+            )} first=${String(mappedFirst)} second=${String(mappedSecond)}`,
           );
         }
       }
@@ -1845,7 +2086,11 @@ const compareRunnerMorphisms = <
               localMismatches += 1;
               if (localMismatches <= 4) {
                 details.push(
-                  `compareRunnerMorphisms: value mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} first=${String(valueFirst)} second=${String(valueSecond)}`,
+                  `compareRunnerMorphisms: value mismatch object=${String(object)} left=${String(
+                    leftEl.element,
+                  )} right=${String(rightEl.element)} first=${String(valueFirst)} second=${String(
+                    valueSecond,
+                  )}`,
                 );
               }
             }
@@ -1856,23 +2101,120 @@ const compareRunnerMorphisms = <
               localMismatches += 1;
               if (localMismatches <= 4) {
                 details.push(
-                  `compareRunnerMorphisms: next-state mismatch object=${String(object)} left=${String(leftEl.element)} right=${String(rightEl.element)} first=${String(nextFirst)} second=${String(nextSecond)}`,
+                  `compareRunnerMorphisms: next-state mismatch object=${String(object)} left=${String(
+                    leftEl.element,
+                  )} right=${String(rightEl.element)} first=${String(nextFirst)} second=${String(
+                    nextSecond,
+                  )}`,
                 );
               }
             }
           }
         }
       } else if (codTheta) {
-        details.push(`compareRunnerMorphisms: object=${String(object)} has only stateless θ; skipping value comparison.`);
+        details.push(
+          `compareRunnerMorphisms: object=${String(
+            object,
+          )} has only stateless θ; skipping value comparison.`,
+        );
       }
     }
     if (localChecked === 0) {
       details.push(`compareRunnerMorphisms: no samples evaluated for object=${String(object)}.`);
     }
-    checked += localChecked;
-    mismatches += localMismatches;
+    equalityChecked += localChecked;
+    equalityMismatches += localMismatches;
   }
-  return { checked, mismatches, details };
+
+  const translatorOptions = { sampleLimit, objectFilter };
+  const sourceCoal = runnerToCoalgebraComponents(domainRunner, interaction, translatorOptions);
+  const targetCoal = runnerToCoalgebraComponents(codomainRunner, interaction, translatorOptions);
+  const firstSquares = evaluateRunnerMorphismSquares(
+    first as RunnerMorphism<Obj, Left, Right, Value, unknown, unknown>,
+    domainRunner,
+    codomainRunner,
+    interaction,
+    sampleLimit,
+    objectFilter,
+    sourceCoal.components,
+    targetCoal.components,
+  );
+  const secondSquares = evaluateRunnerMorphismSquares(
+    second as RunnerMorphism<Obj, Left, Right, Value, unknown, unknown>,
+    domainRunner,
+    codomainRunner,
+    interaction,
+    sampleLimit,
+    objectFilter,
+    sourceCoal.components,
+    targetCoal.components,
+  );
+  if (firstSquares.details.length > 0) {
+    details.push(...firstSquares.details.map((entry) => `first: ${entry}`));
+  }
+  if (secondSquares.details.length > 0) {
+    details.push(...secondSquares.details.map((entry) => `second: ${entry}`));
+  }
+  const thetaSquareChecked =
+    firstSquares.thetaSquare.checked + secondSquares.thetaSquare.checked;
+  const thetaSquareMismatches =
+    firstSquares.thetaSquare.mismatches + secondSquares.thetaSquare.mismatches;
+  const coalgebraSquareChecked =
+    firstSquares.coalgebraSquare.checked + secondSquares.coalgebraSquare.checked;
+  const coalgebraSquareMismatches =
+    firstSquares.coalgebraSquare.mismatches + secondSquares.coalgebraSquare.mismatches;
+
+  return {
+    equality: { checked: equalityChecked, mismatches: equalityMismatches },
+    thetaSquare: { checked: thetaSquareChecked, mismatches: thetaSquareMismatches },
+    coalgebraSquare: { checked: coalgebraSquareChecked, mismatches: coalgebraSquareMismatches },
+    details,
+  };
+};
+
+export interface RunnerMorphismReport {
+  readonly holds: boolean;
+  readonly thetaSquare: { checked: number; mismatches: number };
+  readonly coalgebraSquare: { checked: number; mismatches: number };
+  readonly details: ReadonlyArray<string>;
+}
+
+export const checkRunnerMorphism = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  StateA,
+  StateB
+>(
+  morphism: RunnerMorphism<Obj, Left, Right, Value, StateA, StateB>,
+  source: StatefulRunner<Obj, Left, Right, Value>,
+  target: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): RunnerMorphismReport => {
+  const sampleLimit = Math.max(0, options.sampleLimit ?? 16);
+  const translatorOptions = { sampleLimit, objectFilter: options.objectFilter };
+  const sourceCoal = runnerToCoalgebraComponents(source, interaction, translatorOptions);
+  const targetCoal = runnerToCoalgebraComponents(target, interaction, translatorOptions);
+  const squares = evaluateRunnerMorphismSquares(
+    morphism as RunnerMorphism<Obj, Left, Right, Value, unknown, unknown>,
+    source,
+    target,
+    interaction,
+    sampleLimit,
+    options.objectFilter,
+    sourceCoal.components,
+    targetCoal.components,
+  );
+  const holds = squares.thetaSquare.mismatches === 0 && squares.coalgebraSquare.mismatches === 0;
+  return {
+    holds,
+    thetaSquare: squares.thetaSquare,
+    coalgebraSquare: squares.coalgebraSquare,
+    details: squares.details,
+  };
 };
 
 export const checkRunTCategoryLaws = <
@@ -1903,16 +2245,36 @@ export const checkRunTCategoryLaws = <
 
   // Left identity: f ∘ id_source == f
   const leftId = composeRunnerMorphisms(idSource, f, source, interaction);
-  const leftIdCmp = compareRunnerMorphisms(leftId, f, source, target, interaction, sampleLimit, options.objectFilter);
+  const leftIdCmp = compareRunnerMorphisms(
+    leftId,
+    f,
+    source,
+    target,
+    interaction,
+    sampleLimit,
+    options.objectFilter,
+  );
 
   // Right identity: id_target ∘ f == f
   const rightId = composeRunnerMorphisms(f, idTarget, source, interaction);
-  const rightIdCmp = compareRunnerMorphisms(rightId, f, source, target, interaction, sampleLimit, options.objectFilter);
+  const rightIdCmp = compareRunnerMorphisms(
+    rightId,
+    f,
+    source,
+    target,
+    interaction,
+    sampleLimit,
+    options.objectFilter,
+  );
 
   // Associativity: (h ∘ g) ∘ f == h ∘ (g ∘ f)
   const assocSkipped = !config.mid && !config.tail && !config.g && !config.h;
   let assocChecked = 0;
   let assocMismatches = 0;
+  let assocThetaChecked = 0;
+  let assocThetaMismatches = 0;
+  let assocCoalChecked = 0;
+  let assocCoalMismatches = 0;
   const details: string[] = [];
   details.push(
     `Run(T) laws: sampleLimit=${sampleLimit}; using identities by default where morphisms not supplied.`,
@@ -1922,27 +2284,68 @@ export const checkRunTCategoryLaws = <
   const hog = composeRunnerMorphisms(g, h, target, interaction); // h ∘ g
   const leftAssoc = composeRunnerMorphisms(gof, h, mid, interaction); // h ∘ (g ∘ f)
   const rightAssoc = composeRunnerMorphisms(f, hog, source, interaction); // (h ∘ g) ∘ f
-  const assocCmp = compareRunnerMorphisms(leftAssoc, rightAssoc, source, tail, interaction, sampleLimit, options.objectFilter);
-    assocChecked = assocCmp.checked;
-    assocMismatches = assocCmp.mismatches;
+  const assocCmp = compareRunnerMorphisms(
+    leftAssoc,
+    rightAssoc,
+    source,
+    tail,
+    interaction,
+    sampleLimit,
+    options.objectFilter,
+  );
+    assocChecked = assocCmp.equality.checked;
+    assocMismatches = assocCmp.equality.mismatches;
+    assocThetaChecked = assocCmp.thetaSquare.checked;
+    assocThetaMismatches = assocCmp.thetaSquare.mismatches;
+    assocCoalChecked = assocCmp.coalgebraSquare.checked;
+    assocCoalMismatches = assocCmp.coalgebraSquare.mismatches;
     if (assocCmp.details.length > 0) details.push(...assocCmp.details);
   } else {
     details.push("Run(T) associativity: skipped (no non-trivial triple supplied).");
   }
 
   const allHolds =
-    leftIdCmp.mismatches === 0 &&
-    rightIdCmp.mismatches === 0 &&
-    (assocSkipped || assocMismatches === 0);
+    leftIdCmp.equality.mismatches === 0 &&
+    rightIdCmp.equality.mismatches === 0 &&
+    (assocSkipped || assocMismatches === 0) &&
+    leftIdCmp.thetaSquare.mismatches === 0 &&
+    rightIdCmp.thetaSquare.mismatches === 0 &&
+    assocThetaMismatches === 0 &&
+    leftIdCmp.coalgebraSquare.mismatches === 0 &&
+    rightIdCmp.coalgebraSquare.mismatches === 0 &&
+    assocCoalMismatches === 0;
 
-  if (leftIdCmp.details.length > 0) details.push(...leftIdCmp.details.map((s) => `left-id: ${s}`));
-  if (rightIdCmp.details.length > 0) details.push(...rightIdCmp.details.map((s) => `right-id: ${s}`));
+  if (leftIdCmp.details.length > 0) {
+    details.push(...leftIdCmp.details.map((s) => `left-id: ${s}`));
+  }
+  if (rightIdCmp.details.length > 0) {
+    details.push(...rightIdCmp.details.map((s) => `right-id: ${s}`));
+  }
+
+  const thetaSquareChecked =
+    leftIdCmp.thetaSquare.checked +
+    rightIdCmp.thetaSquare.checked +
+    assocThetaChecked;
+  const thetaSquareMismatches =
+    leftIdCmp.thetaSquare.mismatches +
+    rightIdCmp.thetaSquare.mismatches +
+    assocThetaMismatches;
+  const coalgebraSquareChecked =
+    leftIdCmp.coalgebraSquare.checked +
+    rightIdCmp.coalgebraSquare.checked +
+    assocCoalChecked;
+  const coalgebraSquareMismatches =
+    leftIdCmp.coalgebraSquare.mismatches +
+    rightIdCmp.coalgebraSquare.mismatches +
+    assocCoalMismatches;
 
   return {
     holds: allHolds,
-    leftIdentity: { checked: leftIdCmp.checked, mismatches: leftIdCmp.mismatches },
-    rightIdentity: { checked: rightIdCmp.checked, mismatches: rightIdCmp.mismatches },
+    leftIdentity: { checked: leftIdCmp.equality.checked, mismatches: leftIdCmp.equality.mismatches },
+    rightIdentity: { checked: rightIdCmp.equality.checked, mismatches: rightIdCmp.equality.mismatches },
     associativity: { checked: assocChecked, mismatches: assocMismatches, skipped: assocSkipped },
+    thetaSquare: { checked: thetaSquareChecked, mismatches: thetaSquareMismatches },
+    coalgebraSquare: { checked: coalgebraSquareChecked, mismatches: coalgebraSquareMismatches },
     details,
   };
 };
@@ -1961,6 +2364,10 @@ export interface RunnerLawReport<Obj, Left, Right, Value> {
   readonly coalgebraMismatches?: number;
   readonly costateChecked?: number;
   readonly costateMismatches?: number;
+  readonly thetaSquareChecked?: number;
+  readonly thetaSquareMismatches?: number;
+  readonly coalgebraSquareChecked?: number;
+  readonly coalgebraSquareMismatches?: number;
   readonly leftIdentityChecked?: number;
   readonly leftIdentityMismatches?: number;
   readonly rightIdentityChecked?: number;
@@ -2093,6 +2500,12 @@ export const buildRunnerLawReport = <
         : ` assoc ${catLaws.associativity.checked}/${catLaws.associativity.mismatches}`) +
       `.`,
   );
+    details.push(
+      `Run(T) θ-square: checked=${catLaws.thetaSquare.checked}, mismatches=${catLaws.thetaSquare.mismatches}.`,
+    );
+    details.push(
+      `Run(T) γ-square: checked=${catLaws.coalgebraSquare.checked}, mismatches=${catLaws.coalgebraSquare.mismatches}.`,
+    );
   if (options.includeCategoryInHolds) {
     details.push(`(holds includes category laws)`);
   }
@@ -2124,17 +2537,21 @@ export const buildRunnerLawReport = <
     multMismatches: axiomTallies.multiplicationDiagram.mismatches,
     curryingChecked: currying.checkedTotal,
     curryingMismatches: currying.mismatchesTotal,
-  coalgebraChecked: coalgebra.checked,
-  coalgebraMismatches: coalgebra.mismatches,
-  costateChecked: costate.checked,
-  costateMismatches: costate.mismatches,
-  leftIdentityChecked: catLaws.leftIdentity.checked,
-  leftIdentityMismatches: catLaws.leftIdentity.mismatches,
-  rightIdentityChecked: catLaws.rightIdentity.checked,
-  rightIdentityMismatches: catLaws.rightIdentity.mismatches,
-  associativityChecked: catLaws.associativity.checked,
-  associativityMismatches: catLaws.associativity.mismatches,
-  associativitySkipped: catLaws.associativity.skipped,
+    coalgebraChecked: coalgebra.checked,
+    coalgebraMismatches: coalgebra.mismatches,
+    costateChecked: costate.checked,
+    costateMismatches: costate.mismatches,
+    thetaSquareChecked: catLaws.thetaSquare.checked,
+    thetaSquareMismatches: catLaws.thetaSquare.mismatches,
+    coalgebraSquareChecked: catLaws.coalgebraSquare.checked,
+    coalgebraSquareMismatches: catLaws.coalgebraSquare.mismatches,
+    leftIdentityChecked: catLaws.leftIdentity.checked,
+    leftIdentityMismatches: catLaws.leftIdentity.mismatches,
+    rightIdentityChecked: catLaws.rightIdentity.checked,
+    rightIdentityMismatches: catLaws.rightIdentity.mismatches,
+    associativityChecked: catLaws.associativity.checked,
+    associativityMismatches: catLaws.associativity.mismatches,
+    associativitySkipped: catLaws.associativity.skipped,
   handlerChecked: handlerReport.checked,
   handlerMismatches: handlerReport.mismatches,
   psiToThetaChecked: psiToTheta.checked,

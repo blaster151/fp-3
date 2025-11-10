@@ -1,5 +1,5 @@
 import type { MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
-import type { StatefulRunner } from "./stateful-runner";
+import type { RunnerMorphism, StatefulRunner } from "./stateful-runner";
 import {
   buildRunnerLawReport,
   checkRunnerCoalgebra,
@@ -9,6 +9,7 @@ import {
   checkPsiToThetaConsistency,
   checkRunnerCurryingConsistency,
   checkRunnerAxioms,
+  checkRunnerMorphism,
   runnerToCoalgebraComponents,
   coalgebraComponentsToRunner,
   runnerToCostateComponents,
@@ -124,6 +125,24 @@ export const RunnerOracles = {
       diagnostics: report,
     };
   },
+    morphism: <Obj, Arr, Left, Right, Value>(
+      morphism: RunnerMorphism<Obj, Left, Right, Value, unknown, unknown>,
+      source: StatefulRunner<Obj, Left, Right, Value>,
+      target: StatefulRunner<Obj, Left, Right, Value>,
+      law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+      options: RunnerOracleOptions<Obj> = {},
+    ): RunnerOracleResult => {
+      const morphismOptions: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {};
+      if (options.sampleLimit !== undefined) morphismOptions.sampleLimit = options.sampleLimit;
+      if (options.objectFilter) morphismOptions.objectFilter = options.objectFilter;
+      const report = checkRunnerMorphism(morphism, source, target, law, morphismOptions);
+      return {
+        registryPath: path("morphism"),
+        holds: report.holds,
+        details: report.details.slice(0, 12),
+        diagnostics: report,
+      };
+    },
   handlers: <Obj, Arr, Left, Right, Value>(
     runner: StatefulRunner<Obj, Left, Right, Value>,
     law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,

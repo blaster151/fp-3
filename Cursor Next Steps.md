@@ -17,7 +17,7 @@ Next: —None (rolled into downstream translator work.)
 ------
 
 ### **4. Make Coalgebra and Costate Translators Bidirectional**
-Status: IN PROGRESS
+Status: COMPLETED
 
 - Rewrite all six translation functions—`runnerToCoalgebraComponents`, `coalgebraComponentsToRunner`, `runnerToCostateComponents`, `costateComponentsToRunner`, `coalgebraToCostate`, and `costateToCoalgebra`—to rebuild θ, γ, γ′ directly (no cached ψ).
 - Prove diagrams (4) and (5) via sampled diagnostics.
@@ -32,11 +32,12 @@ Progress:
 - Translator sample limits now adapt to carrier cardinalities (√-scaling up to 32) and emit truncation notes whenever enumeration hits the cap without exploring the full fibre.
 
 Next:
-- Exercise the adaptive sampling heuristics against large carriers to validate the current cap/clamp strategy before considering higher default limits.
+- —None (complete; continue monitoring translator diagnostics alongside broader equivalence work).
 
 ------
 
 ### **5. Enforce Run(T) Morphism Squares**
+Status: TODO — High priority
 
 - Strengthen `RunnerMorphism` and `compareRunnerMorphisms` to test both
    `(id_X×f);θ′ = θ;(T×f)` and `(T°f)∘γ = γ′∘f`
@@ -46,6 +47,7 @@ Next:
 ------
 
 ### **6. Finish θ ↔ Stʸ Handler Translation**
+Status: COMPLETED
 
 - Expand `thetaToStateHandler` to return the full natural family `ϑ_X : TX → Stʸ X`, reconstructing the curried `TX×Y → X×Y` maps.
   - Log when ψ-dependence breaks independence from the dual fibre.
@@ -58,11 +60,12 @@ Progress:
 - Multiplication scaffolding now locates the requisite `ϑ_{TX}`/`ϑ_{StʸX}` witnesses, reporting exactly which components are missing so the forthcoming `(Stʸ μ_X)` replay can reuse the cached data instead of emitting generic TODOs.
 
 Next:
-- Implement the `(Stʸ μ_X)` replay using the collected `ϑ` witnesses, comparing both sides of the diagram and folding the tallies into the unified law report.
+- —None (handler diagrams now replay both `(Stʸ η_X)` and `(Stʸ μ_X)`; future enhancements roll into item 7).
 
 ------
 
 ### **7. Materialise the Six Runner Equivalences**
+Status: TODO — Pending Run(T) morphism enforcement
 
 - Implement quasi-inverse functors between:
   - `Run(T)`, θ-maps → `Stʸ`, `T°`-coalgebras, costate transformations, `Costᵗ`-coalgebras, and Sweedler-dual coalgebras.
@@ -72,6 +75,7 @@ Next:
 ------
 
 ### **8. Deliver Example 12 Update-Lens Tooling**
+Status: TODO
 
 - Add a module packaging lenses `(hp, upd)` into runners of the update monad.
   - Export costate/coalgebra translations and verify the bijection among lenses, runners, costate maps, and `T°`-coalgebras through dedicated oracles.
@@ -80,6 +84,7 @@ Next:
 ------
 
 ### **9. Add Residual Hooks to Ordinary Runners**
+Status: TODO — Prerequisite for Phase IV b
 
 - Extend `StatefulRunner` with residual metadata (`residualFunctor`, partial θ domains, etc.).
   - Implement `makeResidualInteractionLaw` and `attachRunner` scaffolding that logs unsupported effects instead of placeholders.
@@ -88,6 +93,7 @@ Next:
 ------
 
 ### **10. Build the Supervised Kernel/User Monad Stack**
+Status: TODO — Follows residual runner hooks
 
 - Implement kernel monads combining **state**, **exception**, and **signal** signatures with external effects, alongside user monads that supervise them.
   - Expose comparison morphisms defining the supervised boundary.

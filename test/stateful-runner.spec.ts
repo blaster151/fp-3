@@ -132,6 +132,8 @@ describe("stateful runner", () => {
     const catReport = checkRunTCategoryLaws(law, { source: enriched }, { sampleLimit: 4 });
     expect(catReport.leftIdentity.mismatches).toBe(0);
     expect(catReport.rightIdentity.mismatches).toBe(0);
+    expect(catReport.thetaSquare.mismatches).toBe(0);
+    expect(catReport.coalgebraSquare.mismatches).toBe(0);
   });
 
   it("Run(T) associativity holds for composed identities", () => {
@@ -141,6 +143,8 @@ describe("stateful runner", () => {
     const { checkRunTCategoryLaws } = require("../stateful-runner") as typeof import("../stateful-runner");
     const catReport = checkRunTCategoryLaws(law, { source: enriched, target: enriched, mid: enriched, tail: enriched }, { sampleLimit: 4 });
     expect(catReport.associativity.skipped || catReport.associativity.mismatches === 0).toBe(true);
+    expect(catReport.thetaSquare.mismatches).toBe(0);
+    expect(catReport.coalgebraSquare.mismatches).toBe(0);
   });
 
   it("Runner ⇔ monad translators are available and produce components/θ", () => {
@@ -163,5 +167,52 @@ describe("stateful runner", () => {
     expect(coalEq.holds).toBe(true);
     expect(costEq.holds).toBe(true);
     expect(triEq.holds).toBe(true);
+  });
+
+  it("Runner morphism squares hold for identity morphism", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const base = buildRunnerFromInteraction(law);
+    const stateCarrierMap = new Map<typeof law.kernel.base.objects[number], ReturnType<typeof SetCat.obj>>();
+    for (const object of law.kernel.base.objects) {
+      stateCarrierMap.set(object, SetCat.obj([0, 1]));
+    }
+    const enriched = buildEnrichedStatefulRunner(base, law, {
+      initialState: () => 0,
+      stateCarrierMap,
+      evolve: (_obj, prev: number) => (prev === 0 ? 1 : 0),
+    });
+    const { identityRunnerMorphism, checkRunnerMorphism } = require("../stateful-runner") as typeof import("../stateful-runner");
+    const morphism = identityRunnerMorphism(enriched, law);
+    const report = checkRunnerMorphism(morphism, enriched, enriched, law, { sampleLimit: 4 });
+    expect(report.thetaSquare.mismatches).toBe(0);
+    expect(report.coalgebraSquare.mismatches).toBe(0);
+  });
+
+  it("Runner morphism square check detects mismatched state maps", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const base = buildRunnerFromInteraction(law);
+    const stateCarrierMap = new Map<typeof law.kernel.base.objects[number], ReturnType<typeof SetCat.obj>>();
+    for (const object of law.kernel.base.objects) {
+      stateCarrierMap.set(object, SetCat.obj([0, 1]));
+    }
+    const enriched = buildEnrichedStatefulRunner(base, law, {
+      initialState: () => 0,
+      stateCarrierMap,
+      evolve: (_obj, prev: number) => (prev === 0 ? 1 : 0),
+    });
+    const { identityRunnerMorphism, checkRunnerMorphism } = require("../stateful-runner") as typeof import("../stateful-runner");
+    const baseline = identityRunnerMorphism(enriched, law);
+    const badStateMaps = new Map(baseline.stateMaps);
+    for (const [object, hom] of badStateMaps.entries()) {
+      const dom = hom.dom as ReturnType<typeof SetCat.obj>;
+      const cod = hom.cod as ReturnType<typeof SetCat.obj>;
+      const iterator = cod[Symbol.iterator]();
+      const first = iterator.next().value ?? 0;
+      const constant = SetCat.hom(dom, cod, () => first);
+      badStateMaps.set(object, constant as typeof hom);
+    }
+    const badMorphism = { stateMaps: badStateMaps } as typeof baseline;
+    const report = checkRunnerMorphism(badMorphism, enriched, enriched, law, { sampleLimit: 4 });
+    expect(report.thetaSquare.mismatches + report.coalgebraSquare.mismatches).toBeGreaterThan(0);
   });
 });
