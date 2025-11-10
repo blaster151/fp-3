@@ -169,6 +169,14 @@ describe("stateful runner", () => {
     expect(triEq.holds).toBe(true);
   });
 
+  it("state handler equivalence oracle succeeds on Example 6", () => {
+    const law = makeExample6MonadComonadInteractionLaw();
+    const runner = buildRunnerFromInteraction(law);
+    const { RunnerOracles } = require("../runner-oracles") as typeof import("../runner-oracles");
+    const handlerEq = RunnerOracles.stateHandlerEquivalence(runner, law, { sampleLimit: 4 });
+    expect(handlerEq.holds).toBe(true);
+  });
+
   it("Runner morphism squares hold for identity morphism", () => {
     const law = makeExample6MonadComonadInteractionLaw();
     const base = buildRunnerFromInteraction(law);

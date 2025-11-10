@@ -9,6 +9,9 @@ import {
   checkPsiToThetaConsistency,
   checkRunnerCurryingConsistency,
   checkRunnerAxioms,
+  runnerToStateHandlerComponents,
+  stateHandlerComponentsToRunner,
+  compareStateHandlerComponents,
   checkRunnerMorphism,
   runnerToCoalgebraComponents,
   coalgebraComponentsToRunner,
@@ -125,6 +128,39 @@ export const RunnerOracles = {
       diagnostics: report,
     };
   },
+    stateHandlerEquivalence: <Obj, Arr, Left, Right, Value>(
+      runner: StatefulRunner<Obj, Left, Right, Value>,
+      law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+      options: RunnerOracleOptions<Obj> = {},
+    ): RunnerOracleResult => {
+      const translatorOpts = translatorOptions(options);
+      const forward = runnerToStateHandlerComponents(runner, law, translatorOpts);
+      const back = stateHandlerComponentsToRunner(forward.components, law, translatorOpts);
+      const reconstructed = runnerToStateHandlerComponents(back.runner, law, translatorOpts);
+      const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
+      const zigZagHandlers = compareStateHandlerComponents(
+        forward.components,
+        reconstructed.components,
+        law,
+        options,
+      );
+      const holds =
+        forward.diagnostics.mismatches === 0 &&
+        back.diagnostics.mismatches === 0 &&
+        zigZagRunner.mismatches === 0 &&
+        zigZagHandlers.mismatches === 0;
+      return {
+        registryPath: path("equivalence.stateHandler"),
+        holds,
+        details: [
+          ...forward.diagnostics.details.slice(0, 4),
+          ...back.diagnostics.details.slice(0, 4),
+          ...zigZagRunner.details.slice(0, 3),
+          ...zigZagHandlers.details.slice(0, 3),
+        ],
+        diagnostics: { forward, back, zigZagRunner, zigZagHandlers },
+      };
+    },
     morphism: <Obj, Arr, Left, Right, Value>(
       morphism: RunnerMorphism<Obj, Left, Right, Value, unknown, unknown>,
       source: StatefulRunner<Obj, Left, Right, Value>,
@@ -312,6 +348,7 @@ export const enumerateRunnerOracles = <Obj, Arr, Left, Right, Value>(
   RunnerOracles.coalgebra(runner, law, options),
   RunnerOracles.costate(runner, law, options),
   RunnerOracles.category(runner, law, options),
+  RunnerOracles.stateHandlerEquivalence(runner, law, options),
   RunnerOracles.handlers(runner, law, options),
   RunnerOracles.psiTheta(runner, law, options),
   RunnerOracles.unified(runner, law, options),

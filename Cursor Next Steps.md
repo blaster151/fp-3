@@ -37,12 +37,20 @@ Next:
 ------
 
 ### **5. Enforce Run(T) Morphism Squares**
-Status: TODO — High priority
+Status: COMPLETED
 
 - Strengthen `RunnerMorphism` and `compareRunnerMorphisms` to test both
    `(id_X×f);θ′ = θ;(T×f)` and `(T°f)∘γ = γ′∘f`
    for sampled X, using `thetaHom` and the new coalgebra components.
 - Enhance `checkRunnerMorphism` and `checkRunTCategoryLaws` to report concrete samples that violate either square and to aggregate these tallies into category-law results.
+
+Progress:
+- `compareRunnerMorphisms` now samples the θ- and γ-square conditions alongside equality, reporting dedicated tallies for each square and surfacing component-level diagnostics.
+- `checkRunnerMorphism` aggregates those tallies while returning square-specific mismatches so callers can distinguish equality failures from diagram violations.
+- `checkRunTCategoryLaws` threads the new square metrics into its report, and morphism oracles surface them for registry consumers.
+
+Next:
+- —None (square enforcement feeds the remaining equivalence work).
 
 ------
 
@@ -65,12 +73,19 @@ Next:
 ------
 
 ### **7. Materialise the Six Runner Equivalences**
-Status: TODO — Pending Run(T) morphism enforcement
+Status: IN PROGRESS
 
 - Implement quasi-inverse functors between:
   - `Run(T)`, θ-maps → `Stʸ`, `T°`-coalgebras, costate transformations, `Costᵗ`-coalgebras, and Sweedler-dual coalgebras.
   - Provide witnesses for each zig-zag identity.
 - Extend **`runner-oracles.ts`** to exercise all equivalence pairs and integrate translator diagnostics.
+
+Progress:
+- Added `runnerToStateHandlerComponents`, `stateHandlerComponentsToRunner`, and `compareStateHandlerComponents`, providing the Run(T) ↔ `Stʸ` translators with diagnostics that sample ϑ outputs, handler independence, and θ reconstructions.
+- Registered `RunnerOracles.stateHandlerEquivalence`, combining forward/backward translations with runner/handler zig-zag checks, and covered the new oracle in `test/stateful-runner.spec.ts`.
+
+Next:
+- Extend the equivalence layer with `Costᵗ`-coalgebra and Sweedler-dual translators, mirroring the state-handler workflow.
 
 ------
 

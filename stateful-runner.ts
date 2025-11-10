@@ -3736,3 +3736,329 @@ export const checkRunnerStateHandlers = <
   );
   return { holds: mismatches === 0, checked, mismatches, details };
 };
+
+// ---------- State handler equivalence translators (Run(T) ↔ St^Y) ----------
+
+export type StateHandlerComponents<Obj, Left, Right, Value> = ReadonlyMap<
+  Obj,
+  RunnerStateHandlerEntry<Obj, Left, Right, Value, unknown>
+>;
+
+export const runnerToStateHandlerComponents = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  runner: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): { components: StateHandlerComponents<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
+  const details: string[] = ["runner→stateHandler: translating θ data into ϑ components."];
+  const components = new Map<Obj, RunnerStateHandlerEntry<Obj, Left, Right, Value, unknown>>();
+  const summary = thetaToStateHandler(runner, interaction);
+  let checked = 0;
+  let mismatches = 0;
+  for (const entry of summary.entries) {
+    const object = entry.object;
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    components.set(object, entry);
+    if (entry.independenceIssues && entry.independenceIssues > 0) {
+      mismatches += entry.independenceIssues;
+      details.push(
+        `stateHandler independence issues object=${String(object)} count=${entry.independenceIssues}.`,
+      );
+    }
+    const fiber = interaction.psiComponents.get(object);
+    if (!fiber) {
+      details.push(`stateHandler: missing ψ fiber for object=${String(object)}.`);
+      continue;
+    }
+    const stateCarrier = entry.stateCarrier as SetObj<unknown> | undefined;
+    const vartheta = entry.vartheta as SetHom<
+      IndexedElement<Obj, Left>,
+      ExponentialArrow<unknown, readonly [Value, unknown]>
+    > | undefined;
+    if (!stateCarrier || !vartheta) {
+      details.push(
+        `stateHandler: object=${String(object)} missing state carrier or vartheta component.`,
+      );
+      continue;
+    }
+    const stateCardinality = getCarrierSemantics(stateCarrier)?.cardinality;
+    const leftCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const sampleLimit = deriveSampleLimit(
+      options.sampleLimit,
+      stateCardinality,
+      leftCardinality,
+    );
+    const leftSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    const stateSamples = enumerateLimited(stateCarrier, sampleLimit);
+    if (leftSamples.length === 0 || stateSamples.length === 0) {
+      details.push(
+        `stateHandler: object=${String(object)} insufficient samples (left=${leftSamples.length} state=${stateSamples.length}).`,
+      );
+      continue;
+    }
+    const canonicalRight =
+      entry.canonicalRight ??
+      enumerateLimited(fiber.dualFiber, 1)[0];
+    if (!canonicalRight) {
+      details.push(
+        `stateHandler: object=${String(object)} missing canonical right element for diagnostics.`,
+      );
+      continue;
+    }
+    for (const leftEl of leftSamples) {
+      const arrow = vartheta.map(leftEl) as (state: unknown) => readonly [Value, unknown];
+      for (const stateSample of stateSamples) {
+        checked += 1;
+        const [valueViaVartheta, nextViaVartheta] = arrow(stateSample as never);
+        const [nextViaHandler, valueViaHandler] = entry.handler.run(
+          stateSample as never,
+          leftEl,
+          canonicalRight,
+        );
+        if (!Object.is(valueViaVartheta, valueViaHandler) || !Object.is(nextViaVartheta, nextViaHandler)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `stateHandler mismatch object=${String(object)} state=${String(
+                stateSample,
+              )} left=${String(leftEl.element)} vartheta=[${String(valueViaVartheta)}, ${String(
+                nextViaVartheta,
+              )}] handler=[${String(valueViaHandler)}, ${String(nextViaHandler)}].`,
+            );
+          }
+        }
+      }
+    }
+  }
+  details.push(
+    `runner→stateHandler: checked=${checked} mismatches=${mismatches}.`,
+  );
+  return { components, diagnostics: { checked, mismatches, details } };
+};
+
+const selectRepresentativeState = (carrier: SetObj<unknown> | undefined): unknown => {
+  if (!carrier) return undefined;
+  const semantics = getCarrierSemantics(carrier);
+  if (semantics?.iterate) {
+    const iterator = semantics.iterate();
+    const first = iterator.next();
+    if (!first.done) return first.value;
+  }
+  for (const value of carrier as Iterable<unknown>) {
+    return value;
+  }
+  return undefined;
+};
+
+export const stateHandlerComponentsToRunner = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  components: StateHandlerComponents<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): { runner: StatefulRunner<Obj, Left, Right, Value>; diagnostics: EquivalenceDiagnostics } => {
+  const details: string[] = ["stateHandler→runner: reconstructing θ from ϑ components."];
+  const thetas = new Map<
+    Obj,
+    SetHom<IndexedElement<Obj, Left>, ExponentialArrow<IndexedElement<Obj, Right>, Value>>
+  >();
+  const thetaHom = new Map<
+    Obj,
+    SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>
+  >();
+  const stateCarriers = new Map<Obj, SetObj<unknown>>();
+  const stateThetas = new Map<
+    Obj,
+    StatefulTheta<Obj, Left, Right, Value, unknown>
+  >();
+  let checked = 0;
+  let mismatches = 0;
+  for (const [object, entry] of components.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const fiber = interaction.psiComponents.get(object);
+    if (!fiber) {
+      details.push(`stateHandler→runner: missing ψ fiber for object=${String(object)}.`);
+      continue;
+    }
+    if (entry.stateCarrier) {
+      stateCarriers.set(object, entry.stateCarrier as SetObj<unknown>);
+      const handler = entry.handler;
+      stateThetas.set(object, {
+        object,
+        run: (state, left, right) => handler.run(state as never, left, right),
+      } as StatefulTheta<Obj, Left, Right, Value, unknown>);
+    }
+    const representativeState = selectRepresentativeState(entry.stateCarrier as SetObj<unknown> | undefined);
+    const theta = SetCat.hom(
+      fiber.primalFiber,
+      fiber.exponential.object,
+      (leftEl) =>
+        fiber.exponential.register((rightEl) => {
+          const [, value] = entry.handler.run(
+            representativeState as never,
+            leftEl,
+            rightEl,
+          );
+          return value as Value;
+        }),
+    ) as SetHom<
+      IndexedElement<Obj, Left>,
+      ExponentialArrow<IndexedElement<Obj, Right>, Value>
+    >;
+    thetas.set(object, theta);
+    const thetaHomEntry = fiber.exponential.uncurry({
+      product: fiber.product,
+      morphism: theta,
+    }) as SetHom<
+      readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>],
+      Value
+    >;
+    thetaHom.set(object, thetaHomEntry);
+    const leftCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const rightCardinality = getCarrierSemantics(fiber.dualFiber)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, leftCardinality, rightCardinality);
+    const leftSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    const rightSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    if (leftSamples.length === 0 || rightSamples.length === 0) {
+      details.push(
+        `stateHandler→runner: object=${String(object)} insufficient samples (left=${leftSamples.length} right=${rightSamples.length}).`,
+      );
+      continue;
+    }
+    for (const leftEl of leftSamples) {
+      for (const rightEl of rightSamples) {
+        checked += 1;
+        const valueFromTheta = thetaHomEntry.map([leftEl, rightEl]);
+        const [, valueFromHandler] = entry.handler.run(
+          representativeState as never,
+          leftEl,
+          rightEl,
+        );
+        if (!Object.is(valueFromTheta, valueFromHandler)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `stateHandler→runner mismatch object=${String(object)} left=${String(
+                leftEl.element,
+              )} right=${String(rightEl.element)} theta=${String(valueFromTheta)} handler=${String(
+                valueFromHandler,
+              )}`,
+            );
+          }
+        }
+      }
+    }
+  }
+  details.push(
+    `stateHandler→runner: checked=${checked} mismatches=${mismatches}.`,
+  );
+  const runner: StatefulRunner<Obj, Left, Right, Value> = {
+    thetas,
+    thetaHom,
+    ...(stateCarriers.size > 0 ? { stateCarriers } : {}),
+    ...(stateThetas.size > 0 ? { stateThetas } : {}),
+    diagnostics: details,
+  };
+  return { runner, diagnostics: { checked, mismatches, details } };
+};
+
+export const compareStateHandlerComponents = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  leftComponents: StateHandlerComponents<Obj, Left, Right, Value>,
+  rightComponents: StateHandlerComponents<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
+): EquivalenceDiagnostics => {
+  const details: string[] = ["stateHandler comparison: sampling handler outputs."];
+  let checked = 0;
+  let mismatches = 0;
+  for (const [object, leftEntry] of leftComponents.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const rightEntry = rightComponents.get(object);
+    if (!rightEntry) {
+      mismatches += 1;
+      details.push(`stateHandler comparison: missing component for object=${String(object)} on right.`);
+      continue;
+    }
+    const fiber = interaction.psiComponents.get(object);
+    if (!fiber) {
+      details.push(`stateHandler comparison: missing ψ fiber for object=${String(object)}.`);
+      continue;
+    }
+    const stateCarrier = leftEntry.stateCarrier ?? rightEntry.stateCarrier;
+    const leftState = selectRepresentativeState(leftEntry.stateCarrier as SetObj<unknown> | undefined);
+    const rightState = selectRepresentativeState(rightEntry.stateCarrier as SetObj<unknown> | undefined);
+    const leftCardinality = getCarrierSemantics(fiber.primalFiber)?.cardinality;
+    const rightCardinality = getCarrierSemantics(fiber.dualFiber)?.cardinality;
+    const sampleLimit = deriveSampleLimit(options.sampleLimit, leftCardinality, rightCardinality);
+    const leftSamples = enumerateLimited(fiber.primalFiber, sampleLimit);
+    const rightSamples = enumerateLimited(fiber.dualFiber, sampleLimit);
+    if (leftSamples.length === 0 || rightSamples.length === 0) {
+      details.push(
+        `stateHandler comparison: object=${String(object)} insufficient samples (left=${leftSamples.length} right=${rightSamples.length}).`,
+      );
+      continue;
+    }
+    for (const leftEl of leftSamples) {
+      for (const rightEl of rightSamples) {
+        checked += 1;
+        const [, leftValue] = leftEntry.handler.run(leftState as never, leftEl, rightEl);
+        const [, rightValue] = rightEntry.handler.run(rightState as never, leftEl, rightEl);
+        if (!Object.is(leftValue, rightValue)) {
+          mismatches += 1;
+          if (mismatches <= 6) {
+            details.push(
+              `stateHandler comparison mismatch object=${String(object)} left=${String(
+                leftEl.element,
+              )} right=${String(rightEl.element)} leftValue=${String(leftValue)} rightValue=${String(
+                rightValue,
+              )}`,
+            );
+          }
+        }
+      }
+    }
+    if (stateCarrier && leftEntry.stateCarrier && rightEntry.stateCarrier) {
+      const leftSem = getCarrierSemantics(leftEntry.stateCarrier as SetObj<unknown>);
+      const rightSem = getCarrierSemantics(rightEntry.stateCarrier as SetObj<unknown>);
+      const sampleStateLimit = deriveSampleLimit(
+        options.sampleLimit,
+        leftSem?.cardinality,
+        rightSem?.cardinality,
+      );
+      const leftStates = enumerateLimited(leftEntry.stateCarrier as SetObj<unknown>, sampleStateLimit);
+      const rightStates = enumerateLimited(rightEntry.stateCarrier as SetObj<unknown>, sampleStateLimit);
+      if (leftStates.length !== rightStates.length) {
+        mismatches += 1;
+        details.push(
+          `stateHandler comparison: state carrier sample size mismatch object=${String(
+            object,
+          )} left=${leftStates.length} right=${rightStates.length}.`,
+        );
+      }
+    }
+  }
+  for (const object of rightComponents.keys()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    if (!leftComponents.has(object)) {
+      mismatches += 1;
+      details.push(`stateHandler comparison: missing component for object=${String(object)} on left.`);
+    }
+  }
+  details.push(`stateHandler comparison: checked=${checked} mismatches=${mismatches}.`);
+  return { checked, mismatches, details };
+};
