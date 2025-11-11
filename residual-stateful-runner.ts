@@ -2,6 +2,7 @@ import type { IndexedElement } from "./chu-space";
 import {
   composeSet,
   getCarrierSemantics,
+  SetCat,
 } from "./set-cat";
 import type { SetHom, SetObj } from "./set-cat";
 import type {
@@ -127,6 +128,15 @@ const selectRepresentativeState = (carrier?: SetObj<unknown>): unknown | undefin
 
 const isIterable = (value: unknown): value is Iterable<unknown> =>
   typeof (value as { [Symbol.iterator]?: unknown })[Symbol.iterator] === "function";
+
+const residualValuesEqual = (left: unknown, right: unknown): boolean => {
+  if (Object.is(left, right)) return true;
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+};
 
 const defaultResidualValue = <
   Obj,
@@ -483,6 +493,7 @@ export interface ResidualRunnerMorphismReport {
   readonly holds: boolean;
   readonly thetaSquare: { readonly checked: number; readonly mismatches: number };
   readonly coalgebraSquare: { readonly checked: number; readonly mismatches: number };
+  readonly residualSquare: { readonly checked: number; readonly mismatches: number };
   readonly diagnostics: ReadonlyArray<string>;
 }
 
@@ -510,14 +521,83 @@ export const checkResidualRunnerMorphism = <
       ...(options.objectFilter ? { objectFilter: options.objectFilter } : {}),
     },
   );
+  const residualSquare = { checked: 0, mismatches: 0 };
+  const residualDetails: string[] = [];
+  const sampleLimit = Math.max(1, options.sampleLimit ?? 12);
+  for (const [object, residualTheta] of residualRunner.residualThetas.entries()) {
+    if (options.objectFilter && !options.objectFilter(object)) continue;
+    const baseTheta = residualRunner.baseRunner.thetaHom.get(object);
+    if (!baseTheta) {
+      residualDetails.push(
+        `residual-square: skipped object=${String(object)} (base θ missing).`,
+      );
+      continue;
+    }
+    const semantics = getCarrierSemantics(baseTheta.dom);
+    if (!semantics) {
+      residualDetails.push(
+        `residual-square: skipped object=${String(object)} (carrier semantics unavailable).`,
+      );
+      continue;
+    }
+    const residualMap = morphism.residualComponents.get(object)?.map;
+    const iterator = semantics.iterate();
+    let localChecked = 0;
+    let localMismatches = 0;
+    while (localChecked < sampleLimit) {
+      const next = iterator.next();
+      if (next.done) break;
+      const sample = next.value as readonly [
+        IndexedElement<Obj, Left>,
+        IndexedElement<Obj, Right>
+      ];
+      localChecked += 1;
+      residualSquare.checked += 1;
+      let domainValue: unknown;
+      try {
+        domainValue = residualTheta.evaluate(sample);
+      } catch (error) {
+        localMismatches += 1;
+        residualSquare.mismatches += 1;
+        residualDetails.push(
+          `residual-square: evaluation error (domain) object=${String(object)} sample=${JSON.stringify(sample)} error=${String(error)}`,
+        );
+        continue;
+      }
+      const mappedValue = residualMap ? residualMap.map(domainValue) : domainValue;
+      let codomainValue: unknown;
+      try {
+        codomainValue = residualTheta.evaluate(sample);
+      } catch (error) {
+        localMismatches += 1;
+        residualSquare.mismatches += 1;
+        residualDetails.push(
+          `residual-square: evaluation error (codomain) object=${String(object)} sample=${JSON.stringify(sample)} error=${String(error)}`,
+        );
+        continue;
+      }
+      if (!residualValuesEqual(mappedValue, codomainValue)) {
+        localMismatches += 1;
+        residualSquare.mismatches += 1;
+        residualDetails.push(
+          `residual-square: mismatch object=${String(object)} sample=${JSON.stringify(sample)} mapped=${JSON.stringify(mappedValue)} expected=${JSON.stringify(codomainValue)}`,
+        );
+      }
+    }
+    residualDetails.push(
+      `residual-square summary object=${String(object)} checked=${localChecked} mismatches=${localMismatches}.`,
+    );
+  }
   const diagnostics = [
     ...morphism.diagnostics,
     ...baseReport.details,
+    ...residualDetails,
   ];
   return {
-    holds: baseReport.holds,
+    holds: baseReport.holds && residualSquare.mismatches === 0,
     thetaSquare: baseReport.thetaSquare,
     coalgebraSquare: baseReport.coalgebraSquare,
+    residualSquare,
     diagnostics,
   };
 };

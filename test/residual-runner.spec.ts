@@ -4,11 +4,16 @@ import {
   buildRunnerFromInteraction,
   makeResidualStatefulRunner,
   residualRunnerToMonadMap,
+  identityResidualRunnerMorphism,
+  makeResidualRunnerMorphism,
+  checkResidualRunnerMorphism,
 } from "../allTS";
-import { getCarrierSemantics } from "../set-cat";
+import { getCarrierSemantics, SetCat } from "../set-cat";
 import type {
   ResidualFunctorSummary,
   ResidualThetaEvaluationContext,
+  ResidualMorphismComponent,
+  ResidualThetaComponent,
 } from "../residual-stateful-runner";
 
 describe("ResidualStatefulRunner semantics", () => {
@@ -80,5 +85,52 @@ describe("ResidualStatefulRunner semantics", () => {
       { includeThetaWitness: true },
     );
     expect(result.residualDiagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("verifies residual morphism identity squares", () => {
+    const residualRunner = makeResidualStatefulRunner(baseRunner, {
+      residualFunctor,
+    });
+    const identity = identityResidualRunnerMorphism(residualRunner, law);
+    const report = checkResidualRunnerMorphism(residualRunner, identity, law, {
+      sampleLimit: 4,
+    });
+    expect(report.residualSquare.checked).toBeGreaterThan(0);
+    expect(report.residualSquare.mismatches).toBe(0);
+  });
+
+  it("detects residual morphism mismatches", () => {
+    const residualRunner = makeResidualStatefulRunner(baseRunner, {
+      residualFunctor,
+    });
+    const identity = identityResidualRunnerMorphism(residualRunner, law);
+    const iterator = residualRunner.residualThetas.entries().next();
+    if (iterator.done) {
+      throw new Error("residual runner lacks θ components");
+    }
+    const [object, thetaComponent] = iterator.value as [
+      Obj,
+      ResidualThetaComponent<Obj, unknown, unknown, unknown>
+    ];
+    const residualComponents = new Map<Obj, ResidualMorphismComponent<Obj>>();
+    const badMap = SetCat.hom(
+      thetaComponent.residualCarrier,
+      thetaComponent.residualCarrier,
+      () => ({ kind: "bad" }),
+    ) as unknown as ResidualMorphismComponent<Obj>["map"];
+    residualComponents.set(object, {
+      object,
+      map: badMap,
+      diagnostics: ["forced residual mismatch"],
+    });
+    const badMorphism = makeResidualRunnerMorphism(
+      identity.base,
+      residualComponents,
+      [...identity.diagnostics, "forced residual mismatch"],
+    );
+    const report = checkResidualRunnerMorphism(residualRunner, badMorphism, law, {
+      sampleLimit: 1,
+    });
+    expect(report.residualSquare.mismatches).toBeGreaterThan(0);
   });
 });
