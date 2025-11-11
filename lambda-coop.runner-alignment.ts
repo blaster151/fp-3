@@ -12,7 +12,7 @@ import {
 } from "./runner-oracles";
 import { makeExample6MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
 import type { LambdaCoopResourceSummary, LambdaCoopUserComputation, LambdaCoopValue } from "./lambda-coop";
-import { summarizeUserComputationResources } from "./lambda-coop";
+import { summarizeUserComputationResources, summarizeValueResources } from "./lambda-coop";
 import type { SupervisedStack } from "./supervised-stack";
 import {
   buildLambdaCoopComparisonArtifacts,
@@ -43,6 +43,7 @@ export interface SupervisedStackLambdaCoopAlignmentReport<
   readonly oracles: ReadonlyArray<RunnerOracleResult>;
   readonly equivalences: ReturnType<typeof evaluateRunnerEquivalences<Obj, Arr, Left, Right, Value>>;
   readonly lambdaCoop: LambdaCoopComparisonArtifacts & { readonly metadata: ReadonlyArray<string> };
+  readonly runnerSummary: ReturnType<typeof summarizeValueResources>;
   readonly comparison: {
     readonly unsupportedByKernel: ReadonlyArray<string>;
     readonly unacknowledgedByUser: ReadonlyArray<string>;
@@ -98,6 +99,8 @@ export function analyzeSupervisedStackLambdaCoopAlignment<
       metadata: [] as ReadonlyArray<string>,
     } as LambdaCoopComparisonArtifacts & { readonly metadata: ReadonlyArray<string> });
 
+  const runnerSummary = summarizeValueResources(lambdaCoop.runnerLiteral);
+
   const notes: string[] = [
     ...stack.diagnostics,
     ...stack.comparison.diagnostics,
@@ -105,6 +108,7 @@ export function analyzeSupervisedStackLambdaCoopAlignment<
     ...lambdaCoop.metadata,
     `λ₍coop₎ alignment status: ${lambdaCoop.aligned ? "aligned" : "issues detected"}`,
     `λ₍coop₎ equivalence summary: stateHandler=${equivalences.stateHandler.holds ? "ok" : "fail"}, coalgebra=${equivalences.coalgebra.holds ? "ok" : "fail"}, costate=${equivalences.costate.holds ? "ok" : "fail"}, costT=${equivalences.costT.holds ? "ok" : "fail"}, sweedler=${equivalences.sweedler.holds ? "ok" : "fail"}, triangle=${equivalences.triangle.holds ? "ok" : "fail"}`,
+    `λ₍coop₎ runner resources: signatures=${Array.from(runnerSummary.usage.signatures).join(",") || "∅"} exceptions=${Array.from(runnerSummary.usage.exceptions).join(",") || "∅"} signals=${Array.from(runnerSummary.usage.signals).join(",") || "∅"} states=${Array.from(runnerSummary.usage.states).join(",") || "∅"}`,
   ];
   if (lambdaCoop.issues.length > 0) notes.push(...lambdaCoop.issues);
   if (stack.residualSummary) {
@@ -118,6 +122,7 @@ export function analyzeSupervisedStackLambdaCoopAlignment<
     oracles,
     equivalences,
     lambdaCoop,
+    runnerSummary,
     comparison: {
       unsupportedByKernel: lambdaCoop.unsupportedByKernel,
       unacknowledgedByUser: lambdaCoop.unacknowledgedByUser,
