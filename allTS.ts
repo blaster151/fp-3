@@ -121,6 +121,7 @@ export * from "./task"
 export * from "./validation"
 export * from "./stateful-runner";
 export * from "./residual-interaction-law";
+export * from "./residual-stateful-runner";
 export * from "./update-lens";
 export * from "./supervised-stack";
 export * from "./supervised-stack-lambda-coop";

@@ -128,6 +128,9 @@ Next:
 
 # **Phase IV b — Residual Runner Support**
 
+Progress:
+- Pass 1 scaffolding: introduced `residual-stateful-runner.ts` with `ResidualStatefulRunner` records, residual functor summaries, diagram witness shells, and helper constructors that wrap existing `StatefulRunner` instances while preserving diagnostics/metadata.
+
 1. **Introduce `ResidualStatefulRunner` Records**
    - Define `ResidualStatefulRunner<T,R>` that captures θ-components in `R(X×Y)` and caches ηᴿ/μᴿ diagram witnesses, degenerating to `StatefulRunner` when `R = Id`.
 2. **Implement `Run_R(T)` Morphisms and Checks**
