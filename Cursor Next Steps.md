@@ -144,6 +144,21 @@ Progress:
 5. **Document and Test Residual Runner Support**
    - Add an “R-residual runners” entry in `LAWS.md`, regression examples (e.g., `R X = X + E`), and integrate into the law registry.
 
+## Appendix: Archived Implementation Notes
+
+### Item 10 – Supervised Kernel/User Stack
+- **Data model**: `KernelMonadSpec` tracks state/exception/signal footprints plus residual hooks; `UserMonadSpec` lists delegated operations and boundary morphisms; `SupervisedStack` packages both with diagnostics.
+- **Builders**: `makeKernelMonad`, `makeUserMonad`, and `makeSupervisedStack` assemble semantics, residual coverage, comparison summaries, and metadata.
+- **Runner integration**: `stackToRunner` enriches the interaction-law runner with kernel state carriers, while `runnerToStack` recovers kernel/user summaries and residual tallies from embedded metadata.
+- **Tests & docs**: `test/stateful-runner.spec.ts` exercises the Example 6 supervised scenario; `LAWS.md` notes the supervised stack diagnostics and λ₍coop₎ roadmap.
+- **λ₍coop₎ alignment**: `buildLambdaCoopComparisonArtifacts` and `analyzeSupervisedStackLambdaCoopAlignment` translate the stack into λ₍coop₎ clauses, log alignment issues, and replay interpreter diagnostics.
+
+### Phase IV b – Residual Runner Roadmap Details
+- **Scaffold**: `ResidualStatefulRunner` wraps the base runner with residual θ-components, diagram witnesses, and metadata.
+- **Morphism utilities**: Residual morphisms reuse Run(T) square checks (`checkResidualRunnerMorphism`), and `composeResidualRunnerMorphisms` records per-object diagnostics.
+- **Diagnostics**: θ-alignment witnesses report sample coverage/mismatches; diagram updates add `Residual diagram …` summary lines for quick inspection.
+- **Planned tests**: the skipped `test/residual-runner.spec.ts` will grow into identity/compose checks and θ-alignment mismatch cases once the translators land.
+
 ------
 
 # **Phase V — Residual Interaction Law Infrastructure**

@@ -6,12 +6,12 @@ import {
 import type { SetHom, SetObj } from "./set-cat";
 import type {
   MonadComonadInteractionLaw,
-  MonadMorphism,
   MonadStructure,
 } from "./monad-comonad-interaction-law";
 import type {
   RunnerMorphism,
   StatefulRunner,
+  MonadMorphism,
 } from "./stateful-runner";
 import {
   checkRunnerMorphism,
@@ -518,4 +518,121 @@ export const withResidualDiagramWitnesses = <
     diagnostics,
     metadata,
   };
+};
+
+export interface ResidualRunnerToMonadMapOptions<Obj>
+  extends RunnerToMonadMapOptions<Obj> {
+  readonly includeThetaWitness?: boolean;
+}
+
+export interface ResidualRunnerToMonadMapResult<Obj, Arr>
+  extends RunnerToMonadMapResult<Obj, Arr> {
+  readonly residualDiagnostics: ReadonlyArray<string>;
+}
+
+export const residualRunnerToMonadMap = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+  free: MonadStructure<Obj, Arr>,
+  target: MonadStructure<Obj, Arr>,
+  options: ResidualRunnerToMonadMapOptions<Obj> = {},
+): ResidualRunnerToMonadMapResult<Obj, Arr> => {
+  const base = runnerToMonadMap(
+    residualRunner.baseRunner,
+    free,
+    target,
+    options,
+  );
+  const residualDiagnostics: string[] = [
+    "residualRunnerToMonadMap: delegated to base runner.",
+  ];
+  if (residualRunner.thetaWitness) {
+    residualDiagnostics.push(
+      summarizeResidualDiagramWitness(residualRunner.thetaWitness),
+    );
+  }
+  if (residualRunner.etaWitness) {
+    residualDiagnostics.push(
+      summarizeResidualDiagramWitness(residualRunner.etaWitness),
+    );
+  }
+  if (residualRunner.muWitness) {
+    residualDiagnostics.push(
+      summarizeResidualDiagramWitness(residualRunner.muWitness),
+    );
+  }
+  return {
+    ...base,
+    residualDiagnostics,
+  } as ResidualRunnerToMonadMapResult<Obj, Arr>;
+};
+
+export interface MonadMapToResidualRunnerOptions<Obj>
+  extends MonadMapToRunnerOptions<Obj> {
+  readonly residualMetadata?: ReadonlyArray<string>;
+  readonly residualDiagnostics?: ReadonlyArray<string>;
+  readonly sampleLimit?: number;
+}
+
+export const monadMapToResidualRunner = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  morphism: MonadMorphism<Obj, Arr>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  residualFunctor: ResidualFunctorSummary<Obj>,
+  options: MonadMapToResidualRunnerOptions<Obj> = {},
+): ResidualStatefulRunner<Obj, Left, Right, Value> => {
+  const {
+    residualMetadata,
+    residualDiagnostics,
+    ...runnerOptions
+  } = options;
+  const baseRunner = monadMapToRunner(
+    morphism,
+    interaction,
+    runnerOptions,
+  );
+  const residualThetas = new Map<
+    Obj,
+    ResidualThetaComponent<Obj, Left, Right, Value>
+  >();
+  for (const [object, theta] of baseRunner.thetaHom.entries()) {
+    residualThetas.set(object, {
+      object,
+      residualCarrier: residualFunctor.objectCarrier(object),
+      evaluate: (sample) => theta.map(sample),
+      diagnostics: [
+        `monadMapToResidualRunner: residual θ delegates to base θ for object=${String(
+          object,
+        )}.`,
+      ],
+    });
+  }
+  const residualRunner = makeResidualStatefulRunner(baseRunner, {
+    residualFunctor,
+    residualThetas,
+    diagnostics: [
+      "monadMapToResidualRunner: wrapped monad-map runner with residual scaffold.",
+      ...(residualDiagnostics ?? []),
+    ],
+    ...(residualMetadata ? { metadata: residualMetadata } : {}),
+  });
+  const sampleLimit = options.sampleLimit;
+  if (sampleLimit !== undefined && sampleLimit < 0) {
+    return residualRunner;
+  }
+  const thetaWitness = checkResidualThetaAlignment(
+    residualRunner,
+    sampleLimit !== undefined ? { sampleLimit } : {},
+  );
+  return withResidualDiagramWitnesses(residualRunner, { theta: thetaWitness });
 };
