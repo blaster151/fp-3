@@ -228,7 +228,8 @@ if (!report.holds) {
 - **Status:** Kernel/user constructors implemented; λ₍coop₎ alignment and inverse translation remain TODO (see `SUPERVISED_STACK_PLAN.md` for the longer roadmap).
 - **Constructors:** `makeKernelMonad` classifies each kernel operation (state/exception/signal/external) into a structured `KernelOperationResult` with default fallbacks, handler integration, and per-operation diagnostics. `makeUserMonad` maps declared user operations into the kernel, reporting unsupported/unused signatures via `UserKernelComparison` and exposing an `invoke` helper that delegates to the kernel semantics.
 - **Stack builder:** `makeSupervisedStack(interaction, kernelSpec, userSpec, options?)` enriches the ψ-derived runner with kernel state carriers, promotes operation-level residual handlers, attaches residual diagnostics (`attachResidualHandlers`/`analyzeResidualHandlerCoverage`), and packages comparison metadata (`userToKernel`, `unsupportedByKernel`, `unacknowledgedByUser`). `stackToRunner` reuses these builders; `runnerToStack` currently reports available state/residual witnesses pending a full inverse.
-- **Tests:** `test/stateful-runner.spec.ts` now executes the supervised scenario (state read, exception fallback, residual coverage, comparison wiring) with diagnostics asserted; this replaces the earlier planning placeholder.
+- **λ₍coop₎ comparison:** `buildLambdaCoopComparisonArtifacts` translates kernel operations into λ₍coop₎ runner literals and aligns the user boundary, emitting comparison diagnostics and embedding the summary in stack metadata so `runnerToStack` can reconstruct the λ₍coop₎ view.
+- **Tests:** `test/stateful-runner.spec.ts` now executes the supervised scenario (state read, exception fallback, residual coverage, λ₍coop₎ comparison wiring) with diagnostics asserted; this replaces the earlier planning placeholder.
 
 ## Coalgebra and Hopf law diagnostics
 

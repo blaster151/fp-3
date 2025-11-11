@@ -30,6 +30,7 @@ import {
   type ResidualHandlerSpec,
   type KernelMonadSpec,
   type UserMonadSpec,
+  buildLambdaCoopComparisonArtifacts,
 } from "../allTS";
 import { SetCat } from "../set-cat";
 
@@ -418,50 +419,85 @@ describe("stateful runner", () => {
         expect(raiseResult).toMatchObject({ kind: "raise", payload: "boom" });
         expect(raiseResult?.diagnostics?.some((line) => line.includes("Default exception"))).toBe(true);
 
-          expect(stack.residualSummary).toBeDefined();
-          expect(
-            stack.residualSummary?.reports.every((report) => report.unhandledSamples === 0),
-          ).toBe(true);
-          expect(stack.user.monad?.allowedKernelOperations.has("getenv")).toBe(true);
-          const invoked = stack.user.monad?.invoke("getenv", sampleState, null);
-          expect(invoked).toMatchObject({ kind: "return", state: sampleState, value: sampleState });
-          expect(invoked?.diagnostics?.[0]).toContain('delegated to kernel operation "getenv"');
+        expect(stack.residualSummary).toBeDefined();
+        expect(
+          stack.residualSummary?.reports.every((report) => report.unhandledSamples === 0),
+        ).toBe(true);
+        expect(stack.user.monad?.allowedKernelOperations.has("getenv")).toBe(true);
+        const invoked = stack.user.monad?.invoke("getenv", sampleState, null);
+        expect(invoked).toMatchObject({ kind: "return", state: sampleState, value: sampleState });
+        expect(invoked?.diagnostics?.[0]).toContain('delegated to kernel operation "getenv"');
 
-          expect(stack.comparison.userToKernel.has("getenv")).toBe(true);
-          expect(stack.comparison.unsupportedByKernel.length).toBe(0);
-          expect(stack.comparison.unacknowledgedByUser).toEqual(["raise"]);
-          expect(stack.comparison.diagnostics.length).toBeGreaterThan(0);
-          expect(stack.runner.stateCarriers?.size).toBeGreaterThan(0);
-          expect(
-            stack.runner.metadata?.some((entry) => entry.startsWith("supervised-stack.kernel")),
-          ).toBe(true);
+        expect(stack.comparison.userToKernel.has("getenv")).toBe(true);
+        expect(stack.comparison.unsupportedByKernel.length).toBe(0);
+        expect(stack.comparison.unacknowledgedByUser).toEqual(["raise"]);
+        expect(stack.comparison.diagnostics.length).toBeGreaterThan(0);
+        expect(stack.runner.stateCarriers?.size).toBeGreaterThan(0);
+        expect(
+          stack.runner.metadata?.some((entry) => entry.startsWith("supervised-stack.kernel")),
+        ).toBe(true);
+        expect(stack.lambdaCoopComparison?.kernelClauses).toEqual([
+          { name: "getenv", kind: "state" },
+          { name: "raise", kind: "exception" },
+        ]);
+        expect(stack.lambdaCoopComparison?.runnerLiteral?.clauses.length).toBe(2);
 
-          const runner = stackToRunner(
-            law as unknown as any,
-            kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
-            userSpec as UserMonadSpec<Obj>,
-            { sampleLimit: 4 },
-          );
-          expect(runner.residualHandlers?.reports.length).toBeGreaterThan(0);
-          expect(
-            runner.metadata?.some((entry) => entry.startsWith("supervised-stack.kernel")),
-          ).toBe(true);
+        const runner = stackToRunner(
+          law as unknown as any,
+          kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
+          userSpec as UserMonadSpec<Obj>,
+          { sampleLimit: 4 },
+        );
+        expect(runner.residualHandlers?.reports.length).toBeGreaterThan(0);
+        expect(
+          runner.metadata?.some((entry) => entry.startsWith("supervised-stack.kernel")),
+        ).toBe(true);
+        expect(
+          runner.metadata?.some((entry) =>
+            entry.startsWith("supervised-stack.lambdaCoop.runnerLiteral"),
+          ),
+        ).toBe(true);
 
-          const back = runnerToStack(runner as any, law as unknown as any);
-          expect(back.kernel?.name).toBe("ExampleKernel");
-          expect(back.kernel?.operations).toEqual([
-            { name: "getenv", kind: "state" },
-            { name: "raise", kind: "exception" },
-          ]);
-          expect(back.user?.name).toBe("ExampleUser");
-          expect(back.user?.allowedOperations).toEqual(["getenv"]);
-          expect(back.comparison.unsupportedByKernel).toEqual([]);
-          expect(back.comparison.unacknowledgedByUser).toEqual(["raise"]);
-          expect(back.residualSummary?.reports.length).toBeGreaterThan(0);
-          expect(back.diagnostics.length).toBeGreaterThan(0);
-          expect(
-            back.diagnostics.some((line) => line.includes("kernel operations detected=2")),
-          ).toBe(true);
+        const back = runnerToStack(runner as any, law as unknown as any);
+        expect(back.kernel?.name).toBe("ExampleKernel");
+        expect(back.kernel?.operations).toEqual([
+          { name: "getenv", kind: "state" },
+          { name: "raise", kind: "exception" },
+        ]);
+        expect(back.user?.name).toBe("ExampleUser");
+        expect(back.user?.allowedOperations).toEqual(["getenv"]);
+        expect(back.comparison.unsupportedByKernel).toEqual([]);
+        expect(back.comparison.unacknowledgedByUser).toEqual(["raise"]);
+        expect(back.residualSummary?.reports.length).toBeGreaterThan(0);
+        expect(back.diagnostics.length).toBeGreaterThan(0);
+        expect(
+          back.diagnostics.some((line) => line.includes("kernel operations detected=2")),
+        ).toBe(true);
+        expect(back.lambdaCoop?.kernelClauses).toEqual([
+          { name: "getenv", kind: "state" },
+          { name: "raise", kind: "exception" },
+        ]);
+        expect(back.lambdaCoop?.userAllowed).toEqual(["getenv"]);
+        expect(back.lambdaCoop?.runnerLiteral?.stateCarrier).toBe("ExampleKernel");
+        expect(back.lambdaCoop?.runnerLiteral?.clauses.length).toBe(2);
+    });
+
+    it("buildLambdaCoopComparisonArtifacts summarises kernel/user operations", () => {
+      const artifacts = buildLambdaCoopComparisonArtifacts(
+        [
+          { name: "stateOp", kind: "state" },
+          { name: "excOp", kind: "exception" },
+        ],
+        new Set(["stateOp", "userOnly"]),
+        { stateCarrierName: "ExampleState" },
+      );
+      expect(artifacts.runnerLiteral.stateCarrier).toBe("ExampleState");
+      expect(artifacts.runnerLiteral.clauses).toHaveLength(2);
+      expect(artifacts.kernelClauses.map((clause) => clause.name)).toEqual(["stateOp", "excOp"]);
+      expect(artifacts.userAllowed).toEqual(["stateOp", "userOnly"]);
+      expect(artifacts.unsupportedByKernel).toEqual(["userOnly"]);
+      expect(artifacts.unacknowledgedByUser).toEqual(["excOp"]);
+      expect(artifacts.diagnostics.length).toBeGreaterThan(0);
     });
   });
 });

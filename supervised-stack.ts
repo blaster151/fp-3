@@ -10,6 +10,8 @@ import {
   type ResidualHandlerSummary,
   type StatefulRunner,
 } from "./stateful-runner";
+import { buildLambdaCoopComparisonArtifacts } from "./supervised-stack-lambda-coop";
+import type { LambdaCoopRunnerLiteral } from "./lambda-coop";
 
 export type KernelEffectKind = "state" | "exception" | "signal" | "external";
 
@@ -619,21 +621,20 @@ export const makeSupervisedStack = <
       }),
     );
   }
-  const lambdaCoopMetadata: string[] = [];
-  const lambdaCoopKernelClauses = (kernel.monad?.operations ?? []).map((op) => ({
-    name: op.name,
-    kind: op.kind,
-  }));
-  metadataEntries.add(metadataJson("lambdaCoop.kernelClauses", lambdaCoopKernelClauses));
-  metadataEntries.add(metadataJson("lambdaCoop.userAllowed", [...boundarySet]));
-  lambdaCoopMetadata.push(
-    `λ₍coop₎ kernel clauses: ${lambdaCoopKernelClauses
-      .map((clause) => `${clause.kind}:${clause.name}`)
-      .join(", ") || "none"}`,
+  const lambdaCoopArtifacts = buildLambdaCoopComparisonArtifacts(
+    (kernel.monad?.operations ?? []).map((op) => ({
+      name: op.name,
+      kind: op.kind,
+    })),
+    boundarySet,
+    { stateCarrierName: kernelSpec.name },
   );
-  lambdaCoopMetadata.push(
-    `λ₍coop₎ user allowed: ${[...boundarySet].join(", ") || "none"}`,
+  metadataEntries.add(
+    metadataJson("lambdaCoop.kernelClauses", lambdaCoopArtifacts.kernelClauses),
   );
+  metadataEntries.add(metadataJson("lambdaCoop.userAllowed", lambdaCoopArtifacts.userAllowed));
+  metadataEntries.add(metadataJson("lambdaCoop.runnerLiteral", lambdaCoopArtifacts.runnerLiteral));
+  const lambdaCoopMetadata = [...lambdaCoopArtifacts.diagnostics];
 
   const annotatedRunner: StatefulRunner<Obj, Left, Right, Value> = {
     ...runner,
@@ -681,8 +682,12 @@ export const makeSupervisedStack = <
       diagnostics: user.comparison?.diagnostics ?? [],
     },
     lambdaCoopComparison: {
-      kernelClauses: lambdaCoopKernelClauses,
-      userAllowed: [...boundarySet],
+      runnerLiteral: lambdaCoopArtifacts.runnerLiteral,
+      kernelClauses: lambdaCoopArtifacts.kernelClauses,
+      userAllowed: lambdaCoopArtifacts.userAllowed,
+      unsupportedByKernel: lambdaCoopArtifacts.unsupportedByKernel,
+      unacknowledgedByUser: lambdaCoopArtifacts.unacknowledgedByUser,
+      diagnostics: lambdaCoopArtifacts.diagnostics,
       metadata: lambdaCoopMetadata,
     },
   };
@@ -723,6 +728,7 @@ export interface RunnerToStackComparisonSummary {
 export interface RunnerToStackLambdaCoopSummary {
   readonly kernelClauses: ReadonlyArray<{ readonly name: string; readonly kind: KernelEffectKind }>;
   readonly userAllowed: ReadonlyArray<string>;
+  readonly runnerLiteral?: LambdaCoopRunnerLiteral;
 }
 
 export interface RunnerToStackResult<Obj, Left, Right> {
@@ -781,6 +787,9 @@ export const runnerToStack = <
     ) ?? [];
   const lambdaCoopUserAllowed =
     parseMetadata<ReadonlyArray<string>>("lambdaCoop.userAllowed") ?? [];
+  const lambdaCoopRunnerLiteral = parseMetadata<LambdaCoopRunnerLiteral>(
+    "lambdaCoop.runnerLiteral",
+  );
 
   const residualSummaryMeta = parseMetadata<{ reports?: number; sampleLimit?: number }>(
     "residual.summary",
@@ -805,6 +814,11 @@ export const runnerToStack = <
   diagnostics.push(
     `runnerToStack: residual reports=${runner.residualHandlers?.reports.length ?? 0}.`,
   );
+  if (lambdaCoopRunnerLiteral) {
+    diagnostics.push(
+      `runnerToStack: λ₍coop₎ runner clauses=${lambdaCoopRunnerLiteral.clauses.length} state=${lambdaCoopRunnerLiteral.stateCarrier}`,
+    );
+  }
 
   return {
     kernel: {
@@ -824,6 +838,7 @@ export const runnerToStack = <
       ? {
           kernelClauses: lambdaCoopKernelClauses,
           userAllowed: lambdaCoopUserAllowed,
+          runnerLiteral: lambdaCoopRunnerLiteral,
         }
       : undefined,
     diagnostics,
