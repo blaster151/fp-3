@@ -46,6 +46,7 @@ export interface ResidualThetaEvaluationContext<
   readonly stateTheta?: StatefulTheta<Obj, Left, Right, Value, unknown>;
   readonly baseValue?: Value;
   readonly residualCarrier: SetObj<unknown>;
+  readonly stateCarrier?: SetObj<unknown>;
 }
 
 export interface ResidualFunctorSummary<
@@ -108,6 +109,25 @@ export const summarizeResidualDiagramWitness = <Obj>(
   return `Residual diagram ${witness.diagram}: checked=${checked} mismatches=${mismatches}`;
 };
 
+const selectRepresentativeState = (carrier?: SetObj<unknown>): unknown | undefined => {
+  if (!carrier) return undefined;
+  const semantics = getCarrierSemantics(carrier);
+  if (semantics?.iterate) {
+    const iterator = semantics.iterate();
+    const first = iterator.next();
+    if (!first.done) return first.value;
+  }
+  if (isIterable(carrier)) {
+    for (const value of carrier as Iterable<unknown>) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const isIterable = (value: unknown): value is Iterable<unknown> =>
+  typeof (value as { [Symbol.iterator]?: unknown })[Symbol.iterator] === "function";
+
 const defaultResidualValue = <
   Obj,
   Left,
@@ -117,11 +137,40 @@ const defaultResidualValue = <
   context: ResidualThetaEvaluationContext<Obj, Left, Right, Value>,
 ): unknown => {
   const [leftSample, rightSample] = context.sample;
-  const notes: string[] = [];
+  const notes: string[] = [`residual θ default lift: object=${String(context.object)}.`];
   if (!context.baseTheta) {
     notes.push(
-      `residual θ default lift: base θ missing for object=${String(context.object)}; wrapping sample.`,
+      "base θ missing; residual value wraps raw sample.",
     );
+  }
+  if (context.stateTheta) {
+    const initialState = selectRepresentativeState(context.stateCarrier);
+    if (initialState !== undefined) {
+      try {
+        const [nextState, value] = context.stateTheta.run(
+          initialState,
+          leftSample,
+          rightSample,
+        );
+        return {
+          kind: "residual.stateful",
+          object: context.object,
+          initialState,
+          nextState,
+          value,
+          baseValue: context.baseValue ?? value,
+          left: leftSample.element,
+          right: rightSample.element,
+          diagnostics: notes,
+        };
+      } catch (error) {
+        notes.push(
+          `stateful lift failed: ${(error as Error).message ?? String(error)}.`,
+        );
+      }
+    } else {
+      notes.push("stateful lift: no representative state available; falling back to sample wrapper.");
+    }
   }
   return {
     kind: "residual.defaultValue",
@@ -148,6 +197,7 @@ const buildResidualThetaComponent = <
   const stateTheta = baseRunner.stateThetas?.get(object) as
     | StatefulTheta<Obj, Left, Right, Value, unknown>
     | undefined;
+  const stateCarrier = baseRunner.stateCarriers?.get(object);
   const componentDiagnostics: string[] = [
     `residual θ component initialised for object=${String(object)} using functor ${residualFunctor.name}.`,
   ];
@@ -170,6 +220,7 @@ const buildResidualThetaComponent = <
       sample,
       baseRunner,
       residualCarrier,
+      ...(stateCarrier ? { stateCarrier } : {}),
       ...(baseTheta ? { baseTheta } : {}),
       ...(stateTheta ? { stateTheta } : {}),
       ...(baseValue !== undefined ? { baseValue } : {}),
@@ -189,10 +240,8 @@ const buildResidualThetaComponent = <
         }
       }
     }
-    try {
-      (residualCarrier as Set<unknown>).add(residualValue);
-    } catch {
-      // ignore carrier mutation errors; some callers may supply readonly carrier views
+    if (residualCarrier instanceof Set) {
+      residualCarrier.add(residualValue);
     }
     return residualValue;
   };
