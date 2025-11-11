@@ -111,7 +111,7 @@ Status: COMPLETED
 ------
 
 ### **10. Build the Supervised Kernel/User Monad Stack**
-Status: IN PROGRESS — kernel/user constructors wired, λ₍coop₎ integration pending
+Status: COMPLETED — constructors, diagnostics, docs, and λ₍coop₎ interpreter alignment landed
 
 Progress:
 - `supervised-stack.ts` now materialises executable kernel semantics: `makeKernelMonad` builds state/exception/signal/external operations with structured `KernelOperationResult`s, default fallbacks, per-operation diagnostics, and residual delegation.
@@ -122,8 +122,7 @@ Progress:
 - `lambda-coop.runner-alignment.ts` now offers `analyzeSupervisedStackLambdaCoopAlignment`, running the standard runner oracles against the supervised stack and replaying the embedded λ₍coop₎ comparison diagnostics.
 
 Next:
-- Integrate the λ₍coop₎ runner-literal execution path (interpreter alignment) to close item 10.
-- Finalise documentation and registry wiring once interpreter alignment is complete.
+- Stabilise λ₍coop₎ interpreter-driven examples as future tunables if extended coverage is desired.
 
 ---
 
