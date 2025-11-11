@@ -131,6 +131,7 @@ Next:
 Progress:
 - Pass 1 scaffolding: introduced `residual-stateful-runner.ts` with `ResidualStatefulRunner` records, residual functor summaries, diagram witness shells, and helper constructors that wrap existing `StatefulRunner` instances while preserving diagnostics/metadata.
 - Pass 2 semantics & diagnostics: added residual runner morphism helpers (`make/identity/compose`), a `checkResidualRunnerMorphism` wrapper over the existing Run(T) square checks, and `checkResidualThetaAlignment`/`withResidualDiagramWitnesses` utilities to sample residual θ evaluations and attach structured diagram summaries.
+- Pass 3 documentation/test outline: drafted `RESIDUAL_RUNNER_PLAN.md` describing remaining milestones plus planned regression suites, and introduced `test/residual-runner.spec.ts` (skipped skeleton) to earmark upcoming coverage.
 
 1. **Introduce `ResidualStatefulRunner` Records**
    - Define `ResidualStatefulRunner<T,R>` that captures θ-components in `R(X×Y)` and caches ηᴿ/μᴿ diagram witnesses, degenerating to `StatefulRunner` when `R = Id`.
