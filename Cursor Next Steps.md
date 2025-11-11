@@ -122,8 +122,8 @@ Progress:
 - `lambda-coop.runner-alignment.ts` now offers `analyzeSupervisedStackLambdaCoopAlignment`, running the standard runner oracles against the supervised stack and replaying the embedded λ₍coop₎ comparison diagnostics.
 
 Next:
-- Extend `runnerToStack` into a real inverse translation and surface the comparison morphisms through λ₍coop₎ once the interpreter hooks are ready.
-- Document the new semantics in `LAWS.md` (oracles/diagnostics) and wire the supervised stack into the broader oracle registry.
+- Integrate the λ₍coop₎ runner-literal execution path (interpreter alignment) to close item 10.
+- Finalise documentation and registry wiring once interpreter alignment is complete.
 
 ---
 

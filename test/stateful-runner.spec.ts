@@ -558,6 +558,8 @@ describe("stateful runner", () => {
       expect(report.equivalences.coalgebra.holds).toBe(true);
       expect(Array.from(report.runnerSummary.usage.signatures)).toEqual(["getenv", "raise"]);
       expect(Array.from(report.runnerSummary.usage.states)).toEqual(["ExampleKernel"]);
+      expect(report.interpreterResult.status).toBe("value");
+      expect(report.interpreterResult.operations).toEqual(["getenv"]);
       expect(report.notes.length).toBeGreaterThan(0);
       expect(report.oracles.length).toBeGreaterThan(0);
     });
