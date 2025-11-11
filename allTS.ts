@@ -124,6 +124,7 @@ export * from "./residual-interaction-law";
 export * from "./update-lens";
 export * from "./supervised-stack";
 export * from "./supervised-stack-lambda-coop";
+export * from "./lambda-coop.runner-alignment";
 export * from "./reader-task-option"
 export * from "./json-canonical"
 export * from "./decoder"

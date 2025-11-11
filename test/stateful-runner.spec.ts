@@ -31,6 +31,7 @@ import {
   type KernelMonadSpec,
   type UserMonadSpec,
   buildLambdaCoopComparisonArtifacts,
+  analyzeSupervisedStackLambdaCoopAlignment,
 } from "../allTS";
 import { SetCat } from "../set-cat";
 
@@ -498,6 +499,49 @@ describe("stateful runner", () => {
       expect(artifacts.unsupportedByKernel).toEqual(["userOnly"]);
       expect(artifacts.unacknowledgedByUser).toEqual(["excOp"]);
       expect(artifacts.diagnostics.length).toBeGreaterThan(0);
+    });
+
+    it("analyzeSupervisedStackLambdaCoopAlignment reports runner literal and diagnostics", () => {
+      const law = makeExample6MonadComonadInteractionLaw();
+      type Obj = (typeof law.kernel.base.objects)[number];
+      const residualSpecs = new Map<Obj, ResidualHandlerSpec<Obj, unknown, unknown>>();
+      for (const object of law.kernel.base.objects) {
+        residualSpecs.set(object, {
+          description: "all handled",
+          predicate: () => true,
+        });
+      }
+      const kernelSpec: KernelMonadSpec<Obj, unknown, unknown> = {
+        name: "ExampleKernel",
+        operations: [
+          { name: "getenv", kind: "state" },
+          { name: "raise", kind: "exception" },
+        ],
+        residualHandlers: residualSpecs,
+      };
+      const userSpec: UserMonadSpec<Obj> = {
+        name: "ExampleUser",
+        allowedKernelOperations: ["getenv"],
+      };
+      const stack = makeSupervisedStack(
+        law as unknown as any,
+        kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
+        userSpec as UserMonadSpec<Obj>,
+        { sampleLimit: 4 },
+      );
+      const report = analyzeSupervisedStackLambdaCoopAlignment(
+        law as unknown as any,
+        stack as any,
+        { sampleLimit: 4 },
+      );
+      expect(report.lambdaCoop.runnerLiteral.stateCarrier).toBe("ExampleKernel");
+      expect(report.lambdaCoop.kernelClauses.map((clause) => clause.name)).toEqual([
+        "getenv",
+        "raise",
+      ]);
+      expect(report.comparison.unacknowledgedByUser).toEqual(["raise"]);
+      expect(report.notes.length).toBeGreaterThan(0);
+      expect(report.oracles.length).toBeGreaterThan(0);
     });
   });
 });

@@ -10,7 +10,10 @@ import {
   type ResidualHandlerSummary,
   type StatefulRunner,
 } from "./stateful-runner";
-import { buildLambdaCoopComparisonArtifacts } from "./supervised-stack-lambda-coop";
+import {
+  buildLambdaCoopComparisonArtifacts,
+  type LambdaCoopComparisonArtifacts,
+} from "./supervised-stack-lambda-coop";
 import type { LambdaCoopRunnerLiteral } from "./lambda-coop";
 
 export type KernelEffectKind = "state" | "exception" | "signal" | "external";
@@ -139,9 +142,7 @@ export interface SupervisedStack<
     readonly unacknowledgedByUser: ReadonlyArray<string>;
     readonly diagnostics: ReadonlyArray<string>;
   };
-  readonly lambdaCoopComparison?: {
-    readonly kernelClauses: ReadonlyArray<{ readonly name: string; readonly kind: KernelEffectKind }>;
-    readonly userAllowed: ReadonlyArray<string>;
+  readonly lambdaCoopComparison?: LambdaCoopComparisonArtifacts & {
     readonly metadata: ReadonlyArray<string>;
   };
 }
@@ -682,12 +683,7 @@ export const makeSupervisedStack = <
       diagnostics: user.comparison?.diagnostics ?? [],
     },
     lambdaCoopComparison: {
-      runnerLiteral: lambdaCoopArtifacts.runnerLiteral,
-      kernelClauses: lambdaCoopArtifacts.kernelClauses,
-      userAllowed: lambdaCoopArtifacts.userAllowed,
-      unsupportedByKernel: lambdaCoopArtifacts.unsupportedByKernel,
-      unacknowledgedByUser: lambdaCoopArtifacts.unacknowledgedByUser,
-      diagnostics: lambdaCoopArtifacts.diagnostics,
+      ...lambdaCoopArtifacts,
       metadata: lambdaCoopMetadata,
     },
   };

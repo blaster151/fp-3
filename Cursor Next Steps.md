@@ -119,6 +119,7 @@ Progress:
 - `makeSupervisedStack` enriches the ψ-derived runner with kernel state carriers, promotes operation-level residual specs, attaches residual diagnostics, and returns comparison metadata (`userToKernel`, boundary warnings, residual summaries). `stackToRunner` now reuses the builders, while `runnerToStack` parses the embedded metadata to recover kernel/user names, operation catalogues, and residual coverage summaries.
 - `test/stateful-runner.spec.ts` exercises the supervised scenario end-to-end (state read, exception fallback, residual coverage, comparison wiring) and validates the new λ₍coop₎ metadata, replacing the earlier planning placeholder.
 - Drafted a λ₍coop₎ comparison roadmap in `SUPERVISED_STACK_PLAN.md` covering kernel clause synthesis, user boundary alignment, comparison morphism exports, and integration tests.
+- `lambda-coop.runner-alignment.ts` now offers `analyzeSupervisedStackLambdaCoopAlignment`, running the standard runner oracles against the supervised stack and replaying the embedded λ₍coop₎ comparison diagnostics.
 
 Next:
 - Extend `runnerToStack` into a real inverse translation and surface the comparison morphisms through λ₍coop₎ once the interpreter hooks are ready.
