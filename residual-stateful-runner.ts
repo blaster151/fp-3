@@ -1,6 +1,19 @@
 import type { IndexedElement } from "./chu-space";
-import type { StatefulRunner } from "./stateful-runner";
-import type { SetObj } from "./set-cat";
+import {
+  composeSet,
+  getCarrierSemantics,
+} from "./set-cat";
+import type { SetHom, SetObj } from "./set-cat";
+import type { MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
+import type {
+  RunnerMorphism,
+  StatefulRunner,
+} from "./stateful-runner";
+import {
+  checkRunnerMorphism,
+  composeRunnerMorphisms,
+  identityRunnerMorphism,
+} from "./stateful-runner";
 
 /**
  * Residual functor summary describing how the residual endofunctor R acts on
@@ -46,6 +59,14 @@ export interface ResidualDiagramWitness<Obj> {
   readonly diagnostics: ReadonlyArray<string>;
 }
 
+export const summarizeResidualDiagramWitness = <Obj>(
+  witness: ResidualDiagramWitness<Obj>,
+): string => {
+  const checked = witness.objects.reduce((acc, entry) => acc + entry.checked, 0);
+  const mismatches = witness.objects.reduce((acc, entry) => acc + entry.mismatches, 0);
+  return `Residual diagram ${witness.diagram}: checked=${checked} mismatches=${mismatches}`;
+};
+
 export interface ResidualStatefulRunner<
   Obj,
   Left,
@@ -55,6 +76,7 @@ export interface ResidualStatefulRunner<
   readonly baseRunner: StatefulRunner<Obj, Left, Right, Value>;
   readonly residualFunctor: ResidualFunctorSummary<Obj>;
   readonly residualThetas: ReadonlyMap<Obj, ResidualThetaComponent<Obj, Left, Right, Value>>;
+  readonly thetaWitness?: ResidualDiagramWitness<Obj>;
   readonly etaWitness?: ResidualDiagramWitness<Obj>;
   readonly muWitness?: ResidualDiagramWitness<Obj>;
   readonly diagnostics: ReadonlyArray<string>;
@@ -69,6 +91,7 @@ export interface ResidualStatefulRunnerOptions<
 > {
   readonly residualFunctor: ResidualFunctorSummary<Obj>;
   readonly residualThetas?: ReadonlyMap<Obj, ResidualThetaComponent<Obj, Left, Right, Value>>;
+  readonly thetaWitness?: ResidualDiagramWitness<Obj>;
   readonly etaWitness?: ResidualDiagramWitness<Obj>;
   readonly muWitness?: ResidualDiagramWitness<Obj>;
   readonly diagnostics?: ReadonlyArray<string>;
@@ -95,6 +118,9 @@ export const makeResidualStatefulRunner = <
   const diagnostics: ReadonlyArray<string> = [
     ...baseRunner.diagnostics,
     ...(options.diagnostics ?? []),
+    ...(options.thetaWitness ? [summarizeResidualDiagramWitness(options.thetaWitness)] : []),
+    ...(options.etaWitness ? [summarizeResidualDiagramWitness(options.etaWitness)] : []),
+    ...(options.muWitness ? [summarizeResidualDiagramWitness(options.muWitness)] : []),
   ];
   const metadata: ReadonlyArray<string> = [
     ...(baseRunner.metadata ?? []),
@@ -104,10 +130,11 @@ export const makeResidualStatefulRunner = <
     baseRunner,
     residualFunctor: options.residualFunctor,
     residualThetas,
-    diagnostics,
-    metadata,
+    ...(options.thetaWitness ? { thetaWitness: options.thetaWitness } : {}),
     ...(options.etaWitness ? { etaWitness: options.etaWitness } : {}),
     ...(options.muWitness ? { muWitness: options.muWitness } : {}),
+    diagnostics,
+    metadata,
   };
 };
 
@@ -122,3 +149,361 @@ export const residualRunnerToStatefulRunner = <
 >(
   residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
 ): StatefulRunner<Obj, Left, Right, Value> => residualRunner.baseRunner;
+
+export interface ResidualMorphismComponent<Obj> {
+  readonly object: Obj;
+  readonly map: SetHom<unknown, unknown>;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export interface ResidualRunnerMorphism<
+  Obj,
+  Left,
+  Right,
+  Value,
+  StateA,
+  StateB
+> {
+  readonly base: RunnerMorphism<Obj, Left, Right, Value, StateA, StateB>;
+  readonly residualComponents: ReadonlyMap<Obj, ResidualMorphismComponent<Obj>>;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export const makeResidualRunnerMorphism = <
+  Obj,
+  Left,
+  Right,
+  Value,
+  StateA,
+  StateB
+>(
+  base: RunnerMorphism<Obj, Left, Right, Value, StateA, StateB>,
+  residualComponents: ReadonlyMap<Obj, ResidualMorphismComponent<Obj>> = new Map(),
+  diagnostics: ReadonlyArray<string> = [],
+): ResidualRunnerMorphism<Obj, Left, Right, Value, StateA, StateB> => ({
+  base,
+  residualComponents,
+  diagnostics,
+});
+
+export const identityResidualRunnerMorphism = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  State
+>(
+  residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+): ResidualRunnerMorphism<Obj, Left, Right, Value, State, State> =>
+  makeResidualRunnerMorphism(
+    identityRunnerMorphism<Obj, Arr, Left, Right, Value, State>(
+      residualRunner.baseRunner,
+      interaction,
+    ),
+  );
+
+export const composeResidualRunnerMorphisms = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  SA,
+  SB,
+  SC
+>(
+  first: ResidualRunnerMorphism<Obj, Left, Right, Value, SA, SB>,
+  second: ResidualRunnerMorphism<Obj, Left, Right, Value, SB, SC>,
+  residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+): ResidualRunnerMorphism<Obj, Left, Right, Value, SA, SC> => {
+  const composedResidual = new Map<Obj, ResidualMorphismComponent<Obj>>();
+  for (const [object, component] of first.residualComponents) {
+    const next = second.residualComponents.get(object);
+    if (next) {
+      composedResidual.set(object, {
+        object,
+        map: composeSet(next.map, component.map),
+        diagnostics: [
+          ...component.diagnostics,
+          ...next.diagnostics,
+          `Residual morphism composed for object=${String(object)}.`,
+        ],
+      });
+    } else {
+      composedResidual.set(object, component);
+    }
+  }
+  for (const [object, component] of second.residualComponents) {
+    if (!composedResidual.has(object)) {
+      composedResidual.set(object, component);
+    }
+  }
+  return makeResidualRunnerMorphism(
+    composeRunnerMorphisms(
+      first.base,
+      second.base,
+      residualRunner.baseRunner,
+      interaction,
+    ),
+    composedResidual,
+    [
+      ...first.diagnostics,
+      ...second.diagnostics,
+      "Residual morphism composition executed.",
+    ],
+  );
+};
+
+export interface ResidualRunnerMorphismCheckOptions<
+  Obj
+> {
+  readonly sampleLimit?: number;
+  readonly objectFilter?: (object: Obj) => boolean;
+}
+
+export interface ResidualRunnerMorphismReport {
+  readonly holds: boolean;
+  readonly thetaSquare: { readonly checked: number; readonly mismatches: number };
+  readonly coalgebraSquare: { readonly checked: number; readonly mismatches: number };
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export const checkResidualRunnerMorphism = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  StateA,
+  StateB
+>(
+  residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+  morphism: ResidualRunnerMorphism<Obj, Left, Right, Value, StateA, StateB>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: ResidualRunnerMorphismCheckOptions<Obj> = {},
+): ResidualRunnerMorphismReport => {
+  const baseReport = checkRunnerMorphism(
+    morphism.base,
+    residualRunner.baseRunner,
+    residualRunner.baseRunner,
+    interaction,
+    {
+      ...(options.sampleLimit !== undefined ? { sampleLimit: options.sampleLimit } : {}),
+      ...(options.objectFilter ? { objectFilter: options.objectFilter } : {}),
+    },
+  );
+  const diagnostics = [
+    ...morphism.diagnostics,
+    ...baseReport.details,
+  ];
+  return {
+    holds: baseReport.holds,
+    thetaSquare: baseReport.thetaSquare,
+    coalgebraSquare: baseReport.coalgebraSquare,
+    diagnostics,
+  };
+};
+
+export type ResidualThetaComparisonResult =
+  | boolean
+  | { holds: boolean; message?: string };
+
+export interface ResidualThetaComparisonContext<
+  Obj,
+  Left,
+  Right,
+  Value
+> {
+  readonly object: Obj;
+  readonly sample: readonly [
+    IndexedElement<Obj, Left>,
+    IndexedElement<Obj, Right>
+  ];
+  readonly baseResult: Value;
+  readonly residualResult: unknown;
+}
+
+export interface ResidualThetaAlignmentOptions<
+  Obj,
+  Left,
+  Right,
+  Value
+> {
+  readonly sampleLimit?: number;
+  readonly compare?: (
+    context: ResidualThetaComparisonContext<Obj, Left, Right, Value>,
+  ) => ResidualThetaComparisonResult;
+}
+
+export const checkResidualThetaAlignment = <
+  Obj,
+  Left,
+  Right,
+  Value
+>(
+  residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+  options: ResidualThetaAlignmentOptions<Obj, Left, Right, Value> = {},
+): ResidualDiagramWitness<Obj> => {
+  const sampleLimit = Math.max(1, options.sampleLimit ?? 12);
+  const objectSet = new Set<Obj>();
+  for (const object of residualRunner.baseRunner.thetaHom.keys()) {
+    objectSet.add(object);
+  }
+  for (const object of residualRunner.residualThetas.keys()) {
+    objectSet.add(object);
+  }
+  const objects: ResidualDiagramObjectWitness<Obj>[] = [];
+  const diagnostics: string[] = [];
+  for (const object of objectSet) {
+    const objectDiagnostics: string[] = [];
+    const residualTheta = residualRunner.residualThetas.get(object);
+    const baseTheta = residualRunner.baseRunner.thetaHom.get(object);
+    if (!residualTheta) {
+      objectDiagnostics.push(
+        `Residual θ alignment: missing residual component for object=${String(object)}.`,
+      );
+      objects.push({
+        object,
+        checked: 0,
+        mismatches: 0,
+        diagnostics: objectDiagnostics,
+      });
+      continue;
+    }
+    if (!baseTheta) {
+      objectDiagnostics.push(
+        `Residual θ alignment: base runner missing θ component for object=${String(object)}.`,
+      );
+      objects.push({
+        object,
+        checked: 0,
+        mismatches: 0,
+        diagnostics: objectDiagnostics,
+      });
+      continue;
+    }
+    const semantics = getCarrierSemantics(baseTheta.dom);
+    if (!semantics) {
+      objectDiagnostics.push(
+        `Residual θ alignment: no carrier semantics for object=${String(object)}.`,
+      );
+      objects.push({
+        object,
+        checked: 0,
+        mismatches: 0,
+        diagnostics: objectDiagnostics,
+      });
+      continue;
+    }
+    const iterator = semantics.iterate();
+    let checked = 0;
+    let mismatches = 0;
+    while (checked < sampleLimit) {
+      const next = iterator.next();
+      if (next.done) break;
+      const sample = next.value as readonly [
+        IndexedElement<Obj, Left>,
+        IndexedElement<Obj, Right>
+      ];
+      checked += 1;
+      let residualResult: unknown;
+      try {
+        residualResult = residualTheta.evaluate(sample);
+      } catch (error) {
+        mismatches += 1;
+        objectDiagnostics.push(
+          `Residual θ alignment: evaluation error object=${String(object)} sample=${JSON.stringify(sample)} error=${String(error)}`,
+        );
+        continue;
+      }
+      let baseResult: Value;
+      try {
+        baseResult = baseTheta.map(sample);
+      } catch (error) {
+        mismatches += 1;
+        objectDiagnostics.push(
+          `Residual θ alignment: base θ evaluation error object=${String(object)} sample=${JSON.stringify(sample)} error=${String(error)}`,
+        );
+        continue;
+      }
+      const comparison = options.compare?.({
+        object,
+        sample,
+        baseResult,
+        residualResult,
+      });
+      const holds = typeof comparison === "boolean"
+        ? comparison
+        : comparison?.holds ?? Object.is(residualResult, baseResult);
+      if (!holds) {
+        mismatches += 1;
+        const message =
+          typeof comparison === "boolean"
+            ? undefined
+            : comparison?.message;
+        objectDiagnostics.push(
+          message ??
+            `Residual θ alignment: mismatch object=${String(object)} sample=${JSON.stringify(sample)} base=${String(
+              baseResult,
+            )} residual=${String(residualResult)}`,
+        );
+      }
+    }
+    if (checked === 0) {
+      objectDiagnostics.push(
+        `Residual θ alignment: no samples evaluated for object=${String(object)}.`,
+      );
+    }
+    objects.push({
+      object,
+      checked,
+      mismatches,
+      diagnostics: objectDiagnostics,
+    });
+  }
+  diagnostics.push(summarizeResidualDiagramWitness({ diagram: "theta-alignment", objects, diagnostics: [] }));
+  return {
+    diagram: "theta-alignment",
+    objects,
+    diagnostics,
+  };
+};
+
+export interface ResidualDiagramUpdates<
+  Obj
+> {
+  readonly theta?: ResidualDiagramWitness<Obj>;
+  readonly eta?: ResidualDiagramWitness<Obj>;
+  readonly mu?: ResidualDiagramWitness<Obj>;
+  readonly diagnostics?: ReadonlyArray<string>;
+}
+
+export const withResidualDiagramWitnesses = <
+  Obj,
+  Left,
+  Right,
+  Value
+>(
+  residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+  updates: ResidualDiagramUpdates<Obj>,
+): ResidualStatefulRunner<Obj, Left, Right, Value> => {
+  const diagnostics: ReadonlyArray<string> = [
+    ...residualRunner.diagnostics,
+    ...(updates.theta ? [summarizeResidualDiagramWitness(updates.theta)] : []),
+    ...(updates.eta ? [summarizeResidualDiagramWitness(updates.eta)] : []),
+    ...(updates.mu ? [summarizeResidualDiagramWitness(updates.mu)] : []),
+    ...(updates.diagnostics ?? []),
+  ];
+  const metadata: ReadonlyArray<string> = [...residualRunner.metadata];
+  return {
+    ...residualRunner,
+    ...(updates.theta ? { thetaWitness: updates.theta } : {}),
+    ...(updates.eta ? { etaWitness: updates.eta } : {}),
+    ...(updates.mu ? { muWitness: updates.mu } : {}),
+    diagnostics,
+    metadata,
+  };
+};
