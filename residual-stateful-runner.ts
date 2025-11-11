@@ -12,6 +12,7 @@ import type {
   RunnerMorphism,
   StatefulRunner,
   MonadMorphism,
+  StatefulTheta,
 } from "./stateful-runner";
 import {
   checkRunnerMorphism,
@@ -32,11 +33,39 @@ import type {
  * objects.  Future passes will refine this with full functor witnesses; for
  * now it provides enough structure to track carrier assignments and metadata.
  */
-export interface ResidualFunctorSummary<Obj> {
+export interface ResidualThetaEvaluationContext<
+  Obj,
+  Left,
+  Right,
+  Value
+> {
+  readonly object: Obj;
+  readonly sample: readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>];
+  readonly baseRunner: StatefulRunner<Obj, Left, Right, Value>;
+  readonly baseTheta?: SetHom<readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>], Value>;
+  readonly stateTheta?: StatefulTheta<Obj, Left, Right, Value, unknown>;
+  readonly baseValue?: Value;
+  readonly residualCarrier: SetObj<unknown>;
+}
+
+export interface ResidualFunctorSummary<
+  Obj,
+  Left,
+  Right,
+  Value
+> {
   readonly name: string;
   readonly description?: string;
   readonly objectCarrier: (object: Obj) => SetObj<unknown>;
   readonly metadata?: ReadonlyArray<string>;
+  readonly lift?: (
+    context: ResidualThetaEvaluationContext<Obj, Left, Right, Value>,
+  ) => unknown;
+  readonly describeEvaluation?: (
+    context: ResidualThetaEvaluationContext<Obj, Left, Right, Value> & {
+      readonly residualValue: unknown;
+    },
+  ) => ReadonlyArray<string>;
 }
 
 /**
@@ -79,6 +108,127 @@ export const summarizeResidualDiagramWitness = <Obj>(
   return `Residual diagram ${witness.diagram}: checked=${checked} mismatches=${mismatches}`;
 };
 
+const defaultResidualValue = <
+  Obj,
+  Left,
+  Right,
+  Value
+>(
+  context: ResidualThetaEvaluationContext<Obj, Left, Right, Value>,
+): unknown => {
+  const [leftSample, rightSample] = context.sample;
+  const notes: string[] = [];
+  if (!context.baseTheta) {
+    notes.push(
+      `residual θ default lift: base θ missing for object=${String(context.object)}; wrapping sample.`,
+    );
+  }
+  return {
+    kind: "residual.defaultValue",
+    object: context.object,
+    baseValue: context.baseValue,
+    left: leftSample.element,
+    right: rightSample.element,
+    diagnostics: notes,
+  };
+};
+
+const buildResidualThetaComponent = <
+  Obj,
+  Left,
+  Right,
+  Value
+>(
+  object: Obj,
+  baseRunner: StatefulRunner<Obj, Left, Right, Value>,
+  residualFunctor: ResidualFunctorSummary<Obj, Left, Right, Value>,
+): ResidualThetaComponent<Obj, Left, Right, Value> => {
+  const residualCarrier = residualFunctor.objectCarrier(object);
+  const baseTheta = baseRunner.thetaHom.get(object);
+  const stateTheta = baseRunner.stateThetas?.get(object) as
+    | StatefulTheta<Obj, Left, Right, Value, unknown>
+    | undefined;
+  const componentDiagnostics: string[] = [
+    `residual θ component initialised for object=${String(object)} using functor ${residualFunctor.name}.`,
+  ];
+  if (!baseTheta) {
+    componentDiagnostics.push(
+      "residual θ component: base runner lacks θ witness; evaluations wrap samples directly.",
+    );
+  }
+  if (stateTheta) {
+    componentDiagnostics.push(
+      "residual θ component: stateful θ witness available; residual lift may leverage next-state semantics.",
+    );
+  }
+  const evaluate = (
+    sample: readonly [IndexedElement<Obj, Left>, IndexedElement<Obj, Right>],
+  ): unknown => {
+    const baseValue = baseTheta?.map(sample);
+    const context: ResidualThetaEvaluationContext<Obj, Left, Right, Value> = {
+      object,
+      sample,
+      baseRunner,
+      residualCarrier,
+      ...(baseTheta ? { baseTheta } : {}),
+      ...(stateTheta ? { stateTheta } : {}),
+      ...(baseValue !== undefined ? { baseValue } : {}),
+    };
+    const residualValue =
+      residualFunctor.lift?.(context) ?? defaultResidualValue(context);
+    if (residualFunctor.describeEvaluation) {
+      const notes = residualFunctor.describeEvaluation({
+        ...context,
+        residualValue,
+      });
+      if (notes && notes.length > 0) {
+        for (const note of notes) {
+          if (!componentDiagnostics.includes(note)) {
+            componentDiagnostics.push(note);
+          }
+        }
+      }
+    }
+    try {
+      (residualCarrier as Set<unknown>).add(residualValue);
+    } catch {
+      // ignore carrier mutation errors; some callers may supply readonly carrier views
+    }
+    return residualValue;
+  };
+  return {
+    object,
+    residualCarrier,
+    evaluate,
+    diagnostics: componentDiagnostics,
+  };
+};
+
+const deriveResidualThetaComponents = <
+  Obj,
+  Left,
+  Right,
+  Value
+>(
+  baseRunner: StatefulRunner<Obj, Left, Right, Value>,
+  residualFunctor: ResidualFunctorSummary<Obj, Left, Right, Value>,
+): ReadonlyMap<Obj, ResidualThetaComponent<Obj, Left, Right, Value>> => {
+  const objects = new Set<Obj>();
+  for (const object of baseRunner.thetaHom.keys()) {
+    objects.add(object);
+  }
+  if (baseRunner.stateThetas) {
+    for (const object of baseRunner.stateThetas.keys()) {
+      objects.add(object as Obj);
+    }
+  }
+  const map = new Map<Obj, ResidualThetaComponent<Obj, Left, Right, Value>>();
+  for (const object of objects) {
+    map.set(object, buildResidualThetaComponent(object, baseRunner, residualFunctor));
+  }
+  return map;
+};
+
 export interface ResidualStatefulRunner<
   Obj,
   Left,
@@ -86,7 +236,7 @@ export interface ResidualStatefulRunner<
   Value
 > {
   readonly baseRunner: StatefulRunner<Obj, Left, Right, Value>;
-  readonly residualFunctor: ResidualFunctorSummary<Obj>;
+  readonly residualFunctor: ResidualFunctorSummary<Obj, Left, Right, Value>;
   readonly residualThetas: ReadonlyMap<Obj, ResidualThetaComponent<Obj, Left, Right, Value>>;
   readonly thetaWitness?: ResidualDiagramWitness<Obj>;
   readonly etaWitness?: ResidualDiagramWitness<Obj>;
@@ -101,7 +251,7 @@ export interface ResidualStatefulRunnerOptions<
   Right,
   Value
 > {
-  readonly residualFunctor: ResidualFunctorSummary<Obj>;
+  readonly residualFunctor: ResidualFunctorSummary<Obj, Left, Right, Value>;
   readonly residualThetas?: ReadonlyMap<Obj, ResidualThetaComponent<Obj, Left, Right, Value>>;
   readonly thetaWitness?: ResidualDiagramWitness<Obj>;
   readonly etaWitness?: ResidualDiagramWitness<Obj>;
@@ -126,17 +276,21 @@ export const makeResidualStatefulRunner = <
   options: ResidualStatefulRunnerOptions<Obj, Left, Right, Value>,
 ): ResidualStatefulRunner<Obj, Left, Right, Value> => {
   const residualThetas =
-    options.residualThetas ?? new Map<Obj, ResidualThetaComponent<Obj, Left, Right, Value>>();
+    options.residualThetas ??
+    deriveResidualThetaComponents(baseRunner, options.residualFunctor);
   const diagnostics: ReadonlyArray<string> = [
+    `Residual functor engaged: ${options.residualFunctor.name}.`,
     ...baseRunner.diagnostics,
     ...(options.diagnostics ?? []),
     ...(options.thetaWitness ? [summarizeResidualDiagramWitness(options.thetaWitness)] : []),
     ...(options.etaWitness ? [summarizeResidualDiagramWitness(options.etaWitness)] : []),
     ...(options.muWitness ? [summarizeResidualDiagramWitness(options.muWitness)] : []),
+    ...(options.residualFunctor.metadata ?? []),
   ];
   const metadata: ReadonlyArray<string> = [
     ...(baseRunner.metadata ?? []),
     ...(options.metadata ?? []),
+    ...(options.residualFunctor.metadata ?? []),
   ];
   return {
     baseRunner,
@@ -555,6 +709,12 @@ export const residualRunnerToMonadMap = <
     residualDiagnostics.push(
       summarizeResidualDiagramWitness(residualRunner.thetaWitness),
     );
+  } else if (options.includeThetaWitness) {
+    const witness = checkResidualThetaAlignment(
+      residualRunner,
+      options.sampleLimit !== undefined ? { sampleLimit: options.sampleLimit } : {},
+    );
+    residualDiagnostics.push(summarizeResidualDiagramWitness(witness));
   }
   if (residualRunner.etaWitness) {
     residualDiagnostics.push(
@@ -588,7 +748,7 @@ export const monadMapToResidualRunner = <
 >(
   morphism: MonadMorphism<Obj, Arr>,
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-  residualFunctor: ResidualFunctorSummary<Obj>,
+  residualFunctor: ResidualFunctorSummary<Obj, Left, Right, Value>,
   options: MonadMapToResidualRunnerOptions<Obj> = {},
 ): ResidualStatefulRunner<Obj, Left, Right, Value> => {
   const {
@@ -601,25 +761,8 @@ export const monadMapToResidualRunner = <
     interaction,
     runnerOptions,
   );
-  const residualThetas = new Map<
-    Obj,
-    ResidualThetaComponent<Obj, Left, Right, Value>
-  >();
-  for (const [object, theta] of baseRunner.thetaHom.entries()) {
-    residualThetas.set(object, {
-      object,
-      residualCarrier: residualFunctor.objectCarrier(object),
-      evaluate: (sample) => theta.map(sample),
-      diagnostics: [
-        `monadMapToResidualRunner: residual θ delegates to base θ for object=${String(
-          object,
-        )}.`,
-      ],
-    });
-  }
   const residualRunner = makeResidualStatefulRunner(baseRunner, {
     residualFunctor,
-    residualThetas,
     diagnostics: [
       "monadMapToResidualRunner: wrapped monad-map runner with residual scaffold.",
       ...(residualDiagnostics ?? []),
