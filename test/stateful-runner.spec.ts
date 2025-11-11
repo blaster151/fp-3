@@ -33,7 +33,7 @@ import {
   buildLambdaCoopComparisonArtifacts,
   analyzeSupervisedStackLambdaCoopAlignment,
 } from "../allTS";
-import { SetCat } from "../set-cat";
+import { SetCat, type SetObj } from "../set-cat";
 
 describe("stateful runner", () => {
   it("checks runner unit/multiplication diagrams on Example 6", () => {
@@ -230,13 +230,14 @@ describe("stateful runner", () => {
   it("Runner morphism squares hold for identity morphism", () => {
     const law = makeExample6MonadComonadInteractionLaw();
     const base = buildRunnerFromInteraction(law);
-    const stateCarrierMap = new Map<typeof law.kernel.base.objects[number], ReturnType<typeof SetCat.obj>>();
-    for (const object of law.kernel.base.objects) {
+    const kernelObjects = law.law.kernel.base.objects;
+    const stateCarrierMap = new Map<(typeof kernelObjects)[number], SetObj<number>>();
+    for (const object of kernelObjects) {
       stateCarrierMap.set(object, SetCat.obj([0, 1]));
     }
     const enriched = buildEnrichedStatefulRunner(base, law, {
       initialState: () => 0,
-      stateCarrierMap,
+      stateCarrierMap: stateCarrierMap as ReadonlyMap<(typeof kernelObjects)[number], SetObj<number>>,
       evolve: (_obj, prev: number) => (prev === 0 ? 1 : 0),
     });
     const { identityRunnerMorphism, checkRunnerMorphism } = require("../stateful-runner") as typeof import("../stateful-runner");
@@ -249,13 +250,14 @@ describe("stateful runner", () => {
   it("Runner morphism square check detects mismatched state maps", () => {
     const law = makeExample6MonadComonadInteractionLaw();
     const base = buildRunnerFromInteraction(law);
-    const stateCarrierMap = new Map<typeof law.kernel.base.objects[number], ReturnType<typeof SetCat.obj>>();
-    for (const object of law.kernel.base.objects) {
+    const kernelObjects = law.law.kernel.base.objects;
+    const stateCarrierMap = new Map<(typeof kernelObjects)[number], SetObj<number>>();
+    for (const object of kernelObjects) {
       stateCarrierMap.set(object, SetCat.obj([0, 1]));
     }
     const enriched = buildEnrichedStatefulRunner(base, law, {
       initialState: () => 0,
-      stateCarrierMap,
+      stateCarrierMap: stateCarrierMap as ReadonlyMap<(typeof kernelObjects)[number], SetObj<number>>,
       evolve: (_obj, prev: number) => (prev === 0 ? 1 : 0),
     });
     const { identityRunnerMorphism, checkRunnerMorphism } = require("../stateful-runner") as typeof import("../stateful-runner");
@@ -318,17 +320,23 @@ describe("stateful runner", () => {
   it("residual handler coverage reports full support", () => {
     const law = makeExample6MonadComonadInteractionLaw();
     const runner = buildRunnerFromInteraction(law);
+    const kernelObjects = law.law.kernel.base.objects;
     const specs = new Map<
-      (typeof law.kernel.base.objects)[number],
-      ResidualHandlerSpec<(typeof law.kernel.base.objects)[number], unknown, unknown>
+      (typeof kernelObjects)[number],
+      ResidualHandlerSpec<(typeof kernelObjects)[number], unknown, unknown>
     >();
-    for (const object of law.kernel.base.objects) {
+    for (const object of kernelObjects) {
       specs.set(object, {
         description: "identity residual coverage",
         predicate: () => true,
       });
     }
-    const annotated = attachResidualHandlers(runner, law, specs, { sampleLimit: 6 });
+    const annotated = attachResidualHandlers(
+      runner as unknown as Parameters<typeof attachResidualHandlers>[0],
+      law as unknown as Parameters<typeof attachResidualHandlers>[1],
+      specs as unknown as Parameters<typeof attachResidualHandlers>[2],
+      { sampleLimit: 6 },
+    );
     const summary = annotated.residualHandlers;
     expect(summary).toBeDefined();
     const totalUnhandled =
@@ -350,52 +358,56 @@ describe("stateful runner", () => {
 
   it("makeResidualInteractionLaw surfaces TODO diagnostics", () => {
     const law = makeExample6MonadComonadInteractionLaw();
-    const residualSummary = makeResidualInteractionLaw(law, { residualMonadName: "Maybe" });
+    const residualSummary = makeResidualInteractionLaw(
+      law as unknown as Parameters<typeof makeResidualInteractionLaw>[0],
+      { residualMonadName: "Maybe" },
+    );
     expect(residualSummary.diagnostics.some((line) => line.includes("TODO"))).toBe(true);
   });
 
   describe("Supervised kernel/user stack scaffold", () => {
     it("constructs the supervised stack example once builders are implemented", () => {
       const law = makeExample6MonadComonadInteractionLaw();
-      type Obj = (typeof law.kernel.base.objects)[number];
+      const kernelObjects = law.law.kernel.base.objects;
+      type Obj = (typeof kernelObjects)[number];
       const residualSpecs = new Map<Obj, ResidualHandlerSpec<Obj, unknown, unknown>>();
-        for (const object of law.kernel.base.objects) {
-          residualSpecs.set(object, {
-            description: "all handled",
-            predicate: () => true,
-          });
-        }
-        const kernelSpec: KernelMonadSpec<Obj, unknown, unknown> = {
-          name: "ExampleKernel",
-          description: "Scaffold kernel signature",
-          initialState: { env: "init" },
-          operations: [
-            {
-              name: "getenv",
-              kind: "state",
-              description: "read current state",
-              handle: (state) => ({ state, output: state }),
-            },
-            {
-              name: "raise",
-              kind: "exception",
-              description: "raise error",
-            },
-          ],
-          residualHandlers: residualSpecs,
-        };
-        const userSpec: UserMonadSpec<Obj> = {
-          name: "ExampleUser",
-          description: "Scaffold user specification",
-          boundaryDescription: "Comparison morphism TBD",
-          allowedKernelOperations: ["getenv"],
-        };
-        const stack = makeSupervisedStack(
-          law as unknown as any,
-          kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
-          userSpec as UserMonadSpec<Obj>,
-          { sampleLimit: 4, includeResidualAnalysis: true },
-        );
+      for (const object of kernelObjects) {
+        residualSpecs.set(object, {
+          description: "all handled",
+          predicate: () => true,
+        });
+      }
+      const kernelSpec: KernelMonadSpec<Obj, unknown, unknown> = {
+        name: "ExampleKernel",
+        description: "Scaffold kernel signature",
+        initialState: { env: "init" },
+        operations: [
+          {
+            name: "getenv",
+            kind: "state",
+            description: "read current state",
+            handle: (state) => ({ state, output: state }),
+          },
+          {
+            name: "raise",
+            kind: "exception",
+            description: "raise error",
+          },
+        ],
+        residualHandlers: residualSpecs,
+      };
+      const userSpec: UserMonadSpec<Obj> = {
+        name: "ExampleUser",
+        description: "Scaffold user specification",
+        boundaryDescription: "Comparison morphism TBD",
+        allowedKernelOperations: ["getenv"],
+      };
+      const stack = makeSupervisedStack(
+        law as unknown as any,
+        kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
+        userSpec as UserMonadSpec<Obj>,
+        { sampleLimit: 4, includeResidualAnalysis: true },
+      );
         expect(stack.kernel.monad?.operations.map((op) => op.name)).toContain("getenv");
         expect(stack.kernel.monad?.initialState).toEqual({ env: "init" });
         expect(
@@ -411,14 +423,23 @@ describe("stateful runner", () => {
         expect(getenv).toBeDefined();
         const sampleState = { env: "sample" };
         const getenvResult = getenv?.execute(sampleState, undefined);
-        expect(getenvResult).toMatchObject({ kind: "return", state: sampleState, value: sampleState });
-        expect(getenvResult?.diagnostics?.some((line) => line.includes("Handler executed"))).toBe(true);
+        expect(getenvResult).toBeDefined();
+        if (!getenvResult || getenvResult.kind !== "return") {
+          throw new Error("expected return result");
+        }
+        expect(getenvResult.state).toEqual(sampleState);
+        expect(getenvResult.value).toEqual(sampleState);
+        expect(getenvResult.diagnostics?.some((line) => line.includes("Handler executed"))).toBe(true);
 
         const raise = stack.kernel.monad?.operations.find((op) => op.name === "raise");
         expect(raise).toBeDefined();
         const raiseResult = raise?.execute(sampleState, "boom");
-        expect(raiseResult).toMatchObject({ kind: "raise", payload: "boom" });
-        expect(raiseResult?.diagnostics?.some((line) => line.includes("Default exception"))).toBe(true);
+        expect(raiseResult).toBeDefined();
+        if (!raiseResult || raiseResult.kind !== "raise") {
+          throw new Error("expected raise result");
+        }
+        expect(raiseResult.payload).toBe("boom");
+        expect(raiseResult.diagnostics?.some((line) => line.includes("Default exception"))).toBe(true);
 
         expect(stack.residualSummary).toBeDefined();
         expect(
@@ -426,8 +447,13 @@ describe("stateful runner", () => {
         ).toBe(true);
         expect(stack.user.monad?.allowedKernelOperations.has("getenv")).toBe(true);
         const invoked = stack.user.monad?.invoke("getenv", sampleState, null);
-        expect(invoked).toMatchObject({ kind: "return", state: sampleState, value: sampleState });
-        expect(invoked?.diagnostics?.[0]).toContain('delegated to kernel operation "getenv"');
+        expect(invoked).toBeDefined();
+        if (!invoked || invoked.kind !== "return") {
+          throw new Error("expected delegated return result");
+        }
+        expect(invoked.state).toEqual(sampleState);
+        expect(invoked.value).toEqual(sampleState);
+        expect(invoked.diagnostics?.[0]).toContain('delegated to kernel operation "getenv"');
 
         expect(stack.comparison.userToKernel.has("getenv")).toBe(true);
         expect(stack.comparison.unsupportedByKernel.length).toBe(0);
@@ -513,9 +539,10 @@ describe("stateful runner", () => {
 
     it("analyzeSupervisedStackLambdaCoopAlignment reports runner literal and diagnostics", () => {
       const law = makeExample6MonadComonadInteractionLaw();
-      type Obj = (typeof law.kernel.base.objects)[number];
+      const kernelObjects = law.law.kernel.base.objects;
+      type Obj = (typeof kernelObjects)[number];
       const residualSpecs = new Map<Obj, ResidualHandlerSpec<Obj, unknown, unknown>>();
-      for (const object of law.kernel.base.objects) {
+      for (const object of kernelObjects) {
         residualSpecs.set(object, {
           description: "all handled",
           predicate: () => true,

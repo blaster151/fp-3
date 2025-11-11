@@ -12,6 +12,7 @@ import {
   isExample8UpdateFunction,
   isExample8UpdateFunctionSquared,
   makeExample8MonadComonadInteractionLaw,
+  type MonadComonadInteractionLaw,
   type Example8Action,
   type Example8InteractionValue,
   type Example8Left,
@@ -23,7 +24,6 @@ import {
   type Example8UpdateFunctionSquared,
 } from "./monad-comonad-interaction-law";
 import {
-  type MonadComonadInteractionLaw,
   type StatefulRunner,
   buildRunnerFromInteraction,
   compareRunnerThetas,

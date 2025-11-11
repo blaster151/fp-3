@@ -49,11 +49,18 @@ const path = (suffix: string): string => `runner.${suffix}`;
 const translatorOptions = <Obj>(
   options: RunnerOracleOptions<Obj>,
 ): { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } => {
+  const result: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {};
   const sampleLimit =
     options.translatorSampleLimit !== undefined ? options.translatorSampleLimit : options.sampleLimit;
+  if (sampleLimit !== undefined) {
+    result.sampleLimit = sampleLimit;
+  }
   const objectFilter =
     options.translatorObjectFilter !== undefined ? options.translatorObjectFilter : options.objectFilter;
-  return { sampleLimit, objectFilter };
+  if (objectFilter) {
+    result.objectFilter = objectFilter;
+  }
+  return result;
 };
 
 export const RunnerOracles = {
@@ -232,8 +239,9 @@ export const RunnerOracles = {
     const translatorOpts = translatorOptions(options);
     const forward = runnerToCoalgebraComponents(runner, law, translatorOpts);
     const back = coalgebraComponentsToRunner(forward.components, law, translatorOpts);
+    const backComponents = runnerToCoalgebraComponents(back.runner, law, translatorOpts);
     const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
-    const zigZagCoalgebra = compareCoalgebraComponents(forward.components, back.components, law, options);
+    const zigZagCoalgebra = compareCoalgebraComponents(forward.components, backComponents.components, law, options);
     const meta: string[] = [];
     if (options.translatorSampleLimit !== undefined) {
       meta.push(`translator sampleLimit=${options.translatorSampleLimit}`);
@@ -246,6 +254,7 @@ export const RunnerOracles = {
     const holds =
       forward.diagnostics.mismatches === 0 &&
       back.diagnostics.mismatches === 0 &&
+      backComponents.diagnostics.mismatches === 0 &&
       zigZagRunner.mismatches === 0 &&
       zigZagCoalgebra.mismatches === 0;
     return {
@@ -254,11 +263,12 @@ export const RunnerOracles = {
       details: [
         ...forward.diagnostics.details.slice(0, 4),
         ...back.diagnostics.details.slice(0, 4),
+        ...backComponents.diagnostics.details.slice(0, 4),
         ...zigZagRunner.details.slice(0, 3),
         ...zigZagCoalgebra.details.slice(0, 3),
         ...meta,
       ],
-      diagnostics: { forward, back, zigZagRunner, zigZagCoalgebra },
+      diagnostics: { forward, back, backComponents, zigZagRunner, zigZagCoalgebra },
     };
   },
   equivalenceCostate: <Obj, Arr, Left, Right, Value>(
@@ -269,8 +279,9 @@ export const RunnerOracles = {
     const translatorOpts = translatorOptions(options);
     const forward = runnerToCostateComponents(runner, law, translatorOpts);
     const back = costateComponentsToRunner(forward.components, law, translatorOpts);
+    const backComponents = runnerToCostateComponents(back.runner, law, translatorOpts);
     const zigZagRunner = compareRunnerThetas(runner, back.runner, law, options);
-    const zigZagCostate = compareCostateComponents(forward.components, back.components, law, options);
+    const zigZagCostate = compareCostateComponents(forward.components, backComponents.components, law, options);
     const meta: string[] = [];
     if (options.translatorSampleLimit !== undefined) {
       meta.push(`translator sampleLimit=${options.translatorSampleLimit}`);
@@ -283,6 +294,7 @@ export const RunnerOracles = {
     const holds =
       forward.diagnostics.mismatches === 0 &&
       back.diagnostics.mismatches === 0 &&
+      backComponents.diagnostics.mismatches === 0 &&
       zigZagRunner.mismatches === 0 &&
       zigZagCostate.mismatches === 0;
     return {
@@ -291,11 +303,12 @@ export const RunnerOracles = {
       details: [
         ...forward.diagnostics.details.slice(0, 4),
         ...back.diagnostics.details.slice(0, 4),
+        ...backComponents.diagnostics.details.slice(0, 4),
         ...zigZagRunner.details.slice(0, 3),
         ...zigZagCostate.details.slice(0, 3),
         ...meta,
       ],
-      diagnostics: { forward, back, zigZagRunner, zigZagCostate },
+      diagnostics: { forward, back, backComponents, zigZagRunner, zigZagCostate },
     };
   },
     equivalenceCostT: <Obj, Arr, Left, Right, Value>(

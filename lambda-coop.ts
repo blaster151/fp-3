@@ -1107,7 +1107,7 @@ export function evaluateKernel(term: LambdaCoopKernelComputation, options: Lambd
       case 'kernelTry': {
         tracePush(trace, 'Kernel-Try', 'enter kernel try', current.kind, current.computation.kind, summarizeKernelComputationResources(current));
         const inner = evaluateKernel(current.computation, options);
-        trace.push(...inner.trace);
+          trace.push(...inner.trace);
           operations.push(...inner.operations);
         if (inner.status === 'value') {
           // apply return handler
@@ -1190,22 +1190,23 @@ export function evaluateUser(term: LambdaCoopUserComputationExtended, options: L
         // Evaluate computation under runner, then apply equations: run(return)=return, run(raise)=raise, run(kill)=kill, run(op)=kernel clause body.
         const inner = evaluateUser(current.computation, options); // treat as user-level first
         trace.push(...inner.trace);
+          operations.push(...inner.operations);
         if (inner.status === 'value') {
           // Equation: run (return V) finally F = return V (finaliser not executed here per Section 4.4 excerpt)
           const ret: LambdaCoopUserComputation = { kind: 'userReturn', value: inner.value ?? { kind: 'unitValue' } };
           const summary = summarizeUserComputationResources(ret);
           tracePush(trace, 'Run-Return', 'finaliser bypass (return)', current.kind, ret.kind, summary);
-          return { status: 'value', value: inner.value as LambdaCoopValue, trace, finalResources: summary };
+            return { status: 'value', value: inner.value as LambdaCoopValue, trace, finalResources: summary, operations };
         }
         if (inner.status === 'exception') {
           const summary = summarizeUserComputationResources(current.computation);
           tracePush(trace, 'Run-Raise', `propagate exception ${inner.exception}`, current.computation.kind, current.computation.kind, summary);
-          return { status: 'exception', exception: inner.exception as string, trace, finalResources: summary };
+            return { status: 'exception', exception: inner.exception as string, trace, finalResources: summary, operations };
         }
         if (inner.status === 'signal') {
           const summary = summarizeUserComputationResources(current.computation);
           tracePush(trace, 'Run-Kill', `propagate signal ${inner.signal}`, current.computation.kind, current.computation.kind, summary);
-          return { status: 'signal', signal: inner.signal as string, trace, finalResources: summary };
+            return { status: 'signal', signal: inner.signal as string, trace, finalResources: summary, operations };
         }
         break;
       }
@@ -1215,15 +1216,15 @@ export function evaluateUser(term: LambdaCoopUserComputationExtended, options: L
         current = expanded; continue;
       }
       default: {
-        const summary = summarizeUserComputationResources(current as LambdaCoopUserComputation);
-        tracePush(trace, 'User-Stuck', 'no rule applies', current.kind, current.kind, summary);
-        return { status: 'error', error: 'stuck', trace, finalResources: summary };
+          const summary = summarizeUserComputationResources(current as LambdaCoopUserComputation);
+          tracePush(trace, 'User-Stuck', 'no rule applies', current.kind, current.kind, summary);
+          return { status: 'error', error: 'stuck', trace, finalResources: summary, operations };
       }
     }
   }
-  const summary = summarizeUserComputationResources(current as LambdaCoopUserComputation);
-  tracePush(trace, 'User-StepLimit', 'step limit exceeded', current.kind, current.kind, summary);
-  return { status: 'error', error: 'stepLimit', trace, finalResources: summary, operations };
+    const summary = summarizeUserComputationResources(current as LambdaCoopUserComputation);
+    tracePush(trace, 'User-StepLimit', 'step limit exceeded', current.kind, current.kind, summary);
+    return { status: 'error', error: 'stepLimit', trace, finalResources: summary, operations };
 }
 
 // Describe evaluation trace for oracle diagnostics.

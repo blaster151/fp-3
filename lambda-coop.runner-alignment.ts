@@ -29,6 +29,9 @@ const buildUserOperationChain = (
     return { kind: "userReturn", value: UNIT_VALUE };
   }
   const [head, ...rest] = operations;
+  if (head === undefined) {
+    return { kind: "userReturn", value: UNIT_VALUE };
+  }
   return {
     kind: "userOperation",
     operation: head,

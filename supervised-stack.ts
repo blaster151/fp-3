@@ -500,7 +500,7 @@ export const makeUserMonad = <Obj, Left, Right>(
       invoke,
     },
     diagnostics,
-    comparison,
+    ...(comparison ? { comparison } : {}),
   };
 };
 
@@ -523,9 +523,11 @@ export const makeSupervisedStack = <
     metadata: [`supervised-stack:${kernelSpec.name}/${userSpec.name}`],
   });
 
+  const kernelObjects = interaction.law.kernel.base.objects;
+
   const stateCarrierMap = new Map<Obj, SetObj<unknown>>();
   if (kernel.monad) {
-    for (const object of interaction.kernel.base.objects) {
+    for (const object of kernelObjects) {
       stateCarrierMap.set(object, kernel.monad.stateCarrier);
     }
   }
@@ -547,14 +549,14 @@ export const makeSupervisedStack = <
   // Promote operation-level residual handlers into the residual spec map if provided.
   for (const op of kernelSpec.operations ?? []) {
     if (op.residualHandler) {
-      for (const object of interaction.kernel.base.objects) {
+      for (const object of kernelObjects) {
         if (!residualSpecs.has(object)) {
           residualSpecs.set(object, op.residualHandler);
         }
       }
     }
     if (op.defaultResidual) {
-      for (const object of interaction.kernel.base.objects) {
+      for (const object of kernelObjects) {
         if (!residualSpecs.has(object)) {
           residualSpecs.set(object, {
             description: `Default residual for ${op.name}`,
@@ -565,11 +567,15 @@ export const makeSupervisedStack = <
     }
   }
 
-  const runner = attachResidualHandlers(enrichedRunner, interaction, residualSpecs, {
-    sampleLimit: options.sampleLimit,
-    objectFilter: options.objectFilter,
-    maxLoggedUnhandled: options.maxLoggedUnhandled,
-  });
+  const residualOptions: ResidualHandlerAnalysisOptions<Obj> = {
+    ...(options.sampleLimit !== undefined ? { sampleLimit: options.sampleLimit } : {}),
+    ...(options.objectFilter ? { objectFilter: options.objectFilter } : {}),
+    ...(options.maxLoggedUnhandled !== undefined
+      ? { maxLoggedUnhandled: options.maxLoggedUnhandled }
+      : {}),
+  };
+
+  const runner = attachResidualHandlers(enrichedRunner, interaction, residualSpecs, residualOptions);
 
   const diagnostics: string[] = [
     `Supervised stack scaffold: kernel="${kernelSpec.name}", user="${userSpec.name}".`,
@@ -653,14 +659,22 @@ export const makeSupervisedStack = <
   let residualSummary: ResidualHandlerSummary<Obj, Left, Right> | undefined =
     annotatedRunner.residualHandlers;
   if (options.includeResidualAnalysis) {
-    residualSummary = analyzeResidualHandlerCoverage(enrichedRunner, interaction, residualSpecs, {
-      sampleLimit: options.sampleLimit,
-      objectFilter: options.objectFilter,
-      maxLoggedUnhandled: options.maxLoggedUnhandled,
-    });
+    const analysisOptions: ResidualHandlerAnalysisOptions<Obj> = {
+      ...(options.sampleLimit !== undefined ? { sampleLimit: options.sampleLimit } : {}),
+      ...(options.objectFilter ? { objectFilter: options.objectFilter } : {}),
+      ...(options.maxLoggedUnhandled !== undefined
+        ? { maxLoggedUnhandled: options.maxLoggedUnhandled }
+        : {}),
+    };
+    residualSummary = analyzeResidualHandlerCoverage(
+      enrichedRunner,
+      interaction,
+      residualSpecs,
+      analysisOptions,
+    );
     diagnostics.push(...residualSummary.diagnostics);
-  } else if (runner.residualHandlers) {
-    diagnostics.push(...runner.residualHandlers.diagnostics);
+  } else if (annotatedRunner.residualHandlers) {
+    diagnostics.push(...annotatedRunner.residualHandlers.diagnostics);
   }
 
   const finalRunner: StatefulRunner<Obj, Left, Right, Value> =
@@ -668,11 +682,10 @@ export const makeSupervisedStack = <
       ? { ...annotatedRunner, residualHandlers: residualSummary }
       : annotatedRunner;
 
-  return {
+  const result: SupervisedStack<Obj, Arr, Left, Right, Value> = {
     kernel,
     user,
     runner: finalRunner,
-    residualSummary,
     diagnostics: [
       ...diagnostics,
     ],
@@ -682,11 +695,14 @@ export const makeSupervisedStack = <
       unacknowledgedByUser,
       diagnostics: user.comparison?.diagnostics ?? [],
     },
+    ...(residualSummary ? { residualSummary } : {}),
     lambdaCoopComparison: {
       ...lambdaCoopArtifacts,
       metadata: lambdaCoopMetadata,
     },
   };
+
+  return result;
 };
 
 export const stackToRunner = <
@@ -818,29 +834,36 @@ export const runnerToStack = <
     );
   }
 
+  const kernelSummary: RunnerToStackKernelSummary = {
+    ...(kernelMeta?.name ? { name: kernelMeta.name } : {}),
+    operations: kernelOperations,
+  };
+  const userSummary: RunnerToStackUserSummary = {
+    ...(userMeta?.name ? { name: userMeta.name } : {}),
+    allowedOperations: userAllowed,
+  };
+
   return {
-    kernel: {
-      name: kernelMeta?.name,
-      operations: kernelOperations,
-    },
-    user: {
-      name: userMeta?.name,
-      allowedOperations: userAllowed,
-    },
+    kernel: kernelSummary,
+    user: userSummary,
     comparison: {
       unsupportedByKernel: comparisonUnsupported,
       unacknowledgedByUser: comparisonUnacknowledged,
     },
-    residualSummary: runner.residualHandlers as ResidualHandlerSummary<Obj, Left, Right> | undefined,
-    lambdaCoop: lambdaCoopKernelClauses.length > 0 || lambdaCoopUserAllowed.length > 0
+    ...(runner.residualHandlers
+      ? { residualSummary: runner.residualHandlers as ResidualHandlerSummary<Obj, Left, Right> }
+      : {}),
+    ...(lambdaCoopKernelClauses.length > 0 ||
+    lambdaCoopUserAllowed.length > 0 ||
+    lambdaCoopRunnerLiteral
       ? {
-          kernelClauses: lambdaCoopKernelClauses,
-          userAllowed: lambdaCoopUserAllowed,
-          runnerLiteral: lambdaCoopRunnerLiteral,
-          aligned: stack.lambdaCoopComparison?.aligned,
-          issues: stack.lambdaCoopComparison?.issues,
+          lambdaCoop: {
+            kernelClauses: lambdaCoopKernelClauses,
+            userAllowed: lambdaCoopUserAllowed,
+            ...(lambdaCoopRunnerLiteral ? { runnerLiteral: lambdaCoopRunnerLiteral } : {}),
+          },
         }
-      : undefined,
+      : {}),
     diagnostics,
   };
 };

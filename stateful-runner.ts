@@ -31,6 +31,7 @@ export interface StatefulRunner<Obj, Left, Right, Value> {
   readonly stateThetas?: ReadonlyMap<Obj, StatefulTheta<Obj, Left, Right, Value, unknown>>;
   readonly residualHandlers?: ResidualHandlerSummary<Obj, Left, Right>;
   readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
 }
 
 export interface RunnerToMonadMapOptions<Obj> {
@@ -1264,7 +1265,7 @@ export const analyzeResidualHandlerCoverage = <
       handledSamples,
       unhandledSamples,
       sampleLimit: samples.length,
-      description,
+      ...(description !== undefined ? { description } : {}),
       ...(firstUnhandled.length > 0 ? { firstUnhandled } : {}),
     };
     reports.push(report);
@@ -2271,9 +2272,12 @@ const compareRunnerMorphisms = <
     equalityMismatches += localMismatches;
   }
 
-  const translatorOptions = { sampleLimit, objectFilter };
-  const sourceCoal = runnerToCoalgebraComponents(domainRunner, interaction, translatorOptions);
-  const targetCoal = runnerToCoalgebraComponents(codomainRunner, interaction, translatorOptions);
+  const translatorOptionsForCoalgebra =
+    objectFilter !== undefined
+      ? { sampleLimit, objectFilter }
+      : { sampleLimit };
+  const sourceCoal = runnerToCoalgebraComponents(domainRunner, interaction, translatorOptionsForCoalgebra);
+  const targetCoal = runnerToCoalgebraComponents(codomainRunner, interaction, translatorOptionsForCoalgebra);
   const firstSquares = evaluateRunnerMorphismSquares(
     first as RunnerMorphism<Obj, Left, Right, Value, unknown, unknown>,
     domainRunner,
@@ -2340,7 +2344,12 @@ export const checkRunnerMorphism = <
   options: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {},
 ): RunnerMorphismReport => {
   const sampleLimit = Math.max(0, options.sampleLimit ?? 16);
-  const translatorOptions = { sampleLimit, objectFilter: options.objectFilter };
+  const translatorOptions: { sampleLimit: number; objectFilter?: (object: Obj) => boolean } = {
+    sampleLimit,
+  };
+  if (options.objectFilter) {
+    translatorOptions.objectFilter = options.objectFilter;
+  }
   const sourceCoal = runnerToCoalgebraComponents(source, interaction, translatorOptions);
   const targetCoal = runnerToCoalgebraComponents(target, interaction, translatorOptions);
   const squares = evaluateRunnerMorphismSquares(
@@ -3801,7 +3810,7 @@ export const checkRunnerStateHandlers = <
     const muComponent = interaction.monad.multiplication.transformation.component(entry.object) as
       | SetHom<unknown, Left>
       | undefined;
-    const txObject = interaction.monad.functor.F0(entry.object) as Obj;
+    const txObject = interaction.monad.functor.functor.F0(entry.object) as Obj;
     const txEntry = entryMap.get(txObject);
     const varthetaTX = txEntry?.vartheta;
     if (!muComponent) {
@@ -3825,10 +3834,6 @@ export const checkRunnerStateHandlers = <
         IndexedElement<Obj, Left>,
         ExponentialArrow<unknown, readonly [Value, unknown]>
       >;
-      const stateHom = interaction.comonad.functor.F1(entry.object) as SetHom<
-        IndexedElement<Obj, Left>,
-        IndexedElement<Obj, Left>
-      > | undefined;
       let stMultChecked = 0;
       let stMultMismatches = 0;
       const txStateCarrier = txEntry.stateCarrier as SetObj<unknown> | undefined;
