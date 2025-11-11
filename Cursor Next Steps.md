@@ -117,7 +117,7 @@ Progress:
 - `supervised-stack.ts` now materialises executable kernel semantics: `makeKernelMonad` builds state/exception/signal/external operations with structured `KernelOperationResult`s, default fallbacks, per-operation diagnostics, and residual delegation.
 - `makeUserMonad` computes boundary morphisms by mapping declared user operations into the kernel, exposes an `invoke` helper that delegates to the kernel semantics, and reports unsupported/unused operations through `UserKernelComparison`.
 - `makeSupervisedStack` enriches the ψ-derived runner with kernel state carriers, promotes operation-level residual specs, attaches residual diagnostics, and returns comparison metadata (`userToKernel`, boundary warnings, residual summaries). `stackToRunner` now reuses the builders, while `runnerToStack` parses the embedded metadata to recover kernel/user names, operation catalogues, and residual coverage summaries.
-- `test/stateful-runner.spec.ts` exercises the supervised scenario end-to-end (state read, exception fallback, residual coverage, comparison wiring), replacing the earlier planning placeholder.
+- `test/stateful-runner.spec.ts` exercises the supervised scenario end-to-end (state read, exception fallback, residual coverage, comparison wiring) and validates the new λ₍coop₎ metadata, replacing the earlier planning placeholder.
 - Drafted a λ₍coop₎ comparison roadmap in `SUPERVISED_STACK_PLAN.md` covering kernel clause synthesis, user boundary alignment, comparison morphism exports, and integration tests.
 
 Next:

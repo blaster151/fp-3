@@ -137,6 +137,11 @@ export interface SupervisedStack<
     readonly unacknowledgedByUser: ReadonlyArray<string>;
     readonly diagnostics: ReadonlyArray<string>;
   };
+  readonly lambdaCoopComparison?: {
+    readonly kernelClauses: ReadonlyArray<{ readonly name: string; readonly kind: KernelEffectKind }>;
+    readonly userAllowed: ReadonlyArray<string>;
+    readonly metadata: ReadonlyArray<string>;
+  };
 }
 
 export const makeKernelMonad = <Obj, Left, Right>(
@@ -614,6 +619,21 @@ export const makeSupervisedStack = <
       }),
     );
   }
+  const lambdaCoopMetadata: string[] = [];
+  const lambdaCoopKernelClauses = (kernel.monad?.operations ?? []).map((op) => ({
+    name: op.name,
+    kind: op.kind,
+  }));
+  metadataEntries.add(metadataJson("lambdaCoop.kernelClauses", lambdaCoopKernelClauses));
+  metadataEntries.add(metadataJson("lambdaCoop.userAllowed", [...boundarySet]));
+  lambdaCoopMetadata.push(
+    `λ₍coop₎ kernel clauses: ${lambdaCoopKernelClauses
+      .map((clause) => `${clause.kind}:${clause.name}`)
+      .join(", ") || "none"}`,
+  );
+  lambdaCoopMetadata.push(
+    `λ₍coop₎ user allowed: ${[...boundarySet].join(", ") || "none"}`,
+  );
 
   const annotatedRunner: StatefulRunner<Obj, Left, Right, Value> = {
     ...runner,
@@ -624,6 +644,7 @@ export const makeSupervisedStack = <
         .map((op) => `${op.kind}:${op.name}`)
         .join(", ") || "none"}`,
       `supervised-stack.user.allowed=${[...boundarySet].join(", ") || "none"}`,
+      ...lambdaCoopMetadata,
     ],
   };
 
@@ -658,6 +679,11 @@ export const makeSupervisedStack = <
       unsupportedByKernel,
       unacknowledgedByUser,
       diagnostics: user.comparison?.diagnostics ?? [],
+    },
+    lambdaCoopComparison: {
+      kernelClauses: lambdaCoopKernelClauses,
+      userAllowed: [...boundarySet],
+      metadata: lambdaCoopMetadata,
     },
   };
 };
@@ -694,11 +720,17 @@ export interface RunnerToStackComparisonSummary {
   readonly unacknowledgedByUser: ReadonlyArray<string>;
 }
 
+export interface RunnerToStackLambdaCoopSummary {
+  readonly kernelClauses: ReadonlyArray<{ readonly name: string; readonly kind: KernelEffectKind }>;
+  readonly userAllowed: ReadonlyArray<string>;
+}
+
 export interface RunnerToStackResult<Obj, Left, Right> {
   readonly kernel?: RunnerToStackKernelSummary;
   readonly user?: RunnerToStackUserSummary;
   readonly comparison: RunnerToStackComparisonSummary;
   readonly residualSummary?: ResidualHandlerSummary<Obj, Left, Right>;
+  readonly lambdaCoop?: RunnerToStackLambdaCoopSummary;
   readonly diagnostics: ReadonlyArray<string>;
 }
 
@@ -743,6 +775,12 @@ export const runnerToStack = <
     parseMetadata<ReadonlyArray<string>>("comparison.unsupportedByKernel") ?? [];
   const comparisonUnacknowledged =
     parseMetadata<ReadonlyArray<string>>("comparison.unacknowledgedByUser") ?? [];
+  const lambdaCoopKernelClauses =
+    parseMetadata<ReadonlyArray<{ name: string; kind: KernelEffectKind }>>(
+      "lambdaCoop.kernelClauses",
+    ) ?? [];
+  const lambdaCoopUserAllowed =
+    parseMetadata<ReadonlyArray<string>>("lambdaCoop.userAllowed") ?? [];
 
   const residualSummaryMeta = parseMetadata<{ reports?: number; sampleLimit?: number }>(
     "residual.summary",
@@ -782,6 +820,12 @@ export const runnerToStack = <
       unacknowledgedByUser: comparisonUnacknowledged,
     },
     residualSummary: runner.residualHandlers as ResidualHandlerSummary<Obj, Left, Right> | undefined,
+    lambdaCoop: lambdaCoopKernelClauses.length > 0 || lambdaCoopUserAllowed.length > 0
+      ? {
+          kernelClauses: lambdaCoopKernelClauses,
+          userAllowed: lambdaCoopUserAllowed,
+        }
+      : undefined,
     diagnostics,
   };
 };
