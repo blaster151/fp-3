@@ -4,7 +4,11 @@ import {
   getCarrierSemantics,
 } from "./set-cat";
 import type { SetHom, SetObj } from "./set-cat";
-import type { MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
+import type {
+  MonadComonadInteractionLaw,
+  MonadMorphism,
+  MonadStructure,
+} from "./monad-comonad-interaction-law";
 import type {
   RunnerMorphism,
   StatefulRunner,
@@ -13,6 +17,14 @@ import {
   checkRunnerMorphism,
   composeRunnerMorphisms,
   identityRunnerMorphism,
+  runnerToMonadMap,
+  monadMapToRunner,
+} from "./stateful-runner";
+import type {
+  RunnerToMonadMapOptions,
+  RunnerToMonadMapResult,
+  MonadMapToRunnerOptions,
+  MonadMapToRunnerResult,
 } from "./stateful-runner";
 
 /**
