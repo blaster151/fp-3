@@ -64,7 +64,8 @@ diagnostics, and the existing runner infrastructure together.
 ## 7. λ₍coop₎ comparison roadmap
 
 Progress:
-- Added `buildLambdaCoopComparisonArtifacts` to translate kernel operations and user boundaries into λ₍coop₎ runner literals, embed comparison metadata, and expose diagnostics through `makeSupervisedStack`/`runnerToStack`.
+- Added `buildLambdaCoopComparisonArtifacts` to translate kernel operations and user boundaries into λ₍coop₎ runner literals, embed comparison metadata (`aligned` + `issues`), and expose diagnostics through `makeSupervisedStack`/`runnerToStack`.
+- `lambda-coop.runner-alignment.ts` now provides `analyzeSupervisedStackLambdaCoopAlignment`, reusing the embedded metadata together with the standard runner oracles.
 
 1. **Kernel clause synthesis**
    - Derive λ₍coop₎ kernel runners from `KernelMonadSpec` operations (state / exception / signal / external),

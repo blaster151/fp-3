@@ -13,6 +13,8 @@ export interface LambdaCoopComparisonArtifacts {
   readonly userAllowed: ReadonlyArray<string>;
   readonly unsupportedByKernel: ReadonlyArray<string>;
   readonly unacknowledgedByUser: ReadonlyArray<string>;
+  readonly aligned: boolean;
+  readonly issues: ReadonlyArray<string>;
   readonly diagnostics: ReadonlyArray<string>;
 }
 
@@ -99,25 +101,30 @@ export const buildLambdaCoopComparisonArtifacts = (
   const diagnostics: string[] = [
     `λ₍coop₎ comparison: kernel clauses=${kernelClauses.length} userAllowed=${userAllowedList.length}`,
   ];
+  const issues: string[] = [];
   if (unsupportedByKernel.length > 0) {
-    diagnostics.push(
-      `λ₍coop₎ comparison warning: user references operations missing from kernel (${unsupportedByKernel.join(
-        ", ",
-      )}).`,
-    );
+    const message = `λ₍coop₎ comparison warning: user references operations missing from kernel (${unsupportedByKernel.join(
+      ", ",
+    )}).`;
+    diagnostics.push(message);
+    issues.push(message);
   }
   if (unacknowledgedByUser.length > 0) {
-    diagnostics.push(
-      `λ₍coop₎ comparison note: kernel exposes operations not acknowledged by user (${unacknowledgedByUser.join(
-        ", ",
-      )}).`,
-    );
+    const message = `λ₍coop₎ comparison note: kernel exposes operations not acknowledged by user (${unacknowledgedByUser.join(
+      ", ",
+    )}).`;
+    diagnostics.push(message);
+    issues.push(message);
   }
   if (kernelClauses.length === 0) {
-    diagnostics.push("λ₍coop₎ comparison note: kernel exposes no operations (residual-only).");
+    const message = "λ₍coop₎ comparison note: kernel exposes no operations (residual-only).";
+    diagnostics.push(message);
+    issues.push(message);
   }
   if (userAllowedList.length === 0) {
-    diagnostics.push("λ₍coop₎ comparison note: user declares no allowed operations.");
+    const message = "λ₍coop₎ comparison note: user declares no allowed operations.";
+    diagnostics.push(message);
+    issues.push(message);
   }
 
   return {
@@ -126,6 +133,8 @@ export const buildLambdaCoopComparisonArtifacts = (
     userAllowed: userAllowedList,
     unsupportedByKernel,
     unacknowledgedByUser,
+    aligned: issues.length === 0,
+    issues,
     diagnostics,
   };
 };

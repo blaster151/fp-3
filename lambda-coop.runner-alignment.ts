@@ -100,7 +100,9 @@ export function analyzeSupervisedStackLambdaCoopAlignment<
     ...stack.comparison.diagnostics,
     ...lambdaCoop.diagnostics,
     ...lambdaCoop.metadata,
+    `λ₍coop₎ alignment status: ${lambdaCoop.aligned ? "aligned" : "issues detected"}`,
   ];
+  if (lambdaCoop.issues.length > 0) notes.push(...lambdaCoop.issues);
   if (stack.residualSummary) {
     notes.push(...stack.residualSummary.diagnostics);
   }

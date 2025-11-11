@@ -442,6 +442,10 @@ describe("stateful runner", () => {
           { name: "raise", kind: "exception" },
         ]);
         expect(stack.lambdaCoopComparison?.runnerLiteral?.clauses.length).toBe(2);
+        expect(stack.lambdaCoopComparison?.aligned).toBe(false);
+        expect(stack.lambdaCoopComparison?.issues).toContain(
+          "λ₍coop₎ comparison note: kernel exposes operations not acknowledged by user (raise).",
+        );
 
         const runner = stackToRunner(
           law as unknown as any,
@@ -481,6 +485,10 @@ describe("stateful runner", () => {
         expect(back.lambdaCoop?.userAllowed).toEqual(["getenv"]);
         expect(back.lambdaCoop?.runnerLiteral?.stateCarrier).toBe("ExampleKernel");
         expect(back.lambdaCoop?.runnerLiteral?.clauses.length).toBe(2);
+        expect(back.lambdaCoop?.aligned).toBe(false);
+        expect(back.lambdaCoop?.issues).toContain(
+          "λ₍coop₎ comparison note: kernel exposes operations not acknowledged by user (raise).",
+        );
     });
 
     it("buildLambdaCoopComparisonArtifacts summarises kernel/user operations", () => {
@@ -498,6 +506,8 @@ describe("stateful runner", () => {
       expect(artifacts.userAllowed).toEqual(["stateOp", "userOnly"]);
       expect(artifacts.unsupportedByKernel).toEqual(["userOnly"]);
       expect(artifacts.unacknowledgedByUser).toEqual(["excOp"]);
+      expect(artifacts.aligned).toBe(false);
+      expect(artifacts.issues.length).toBeGreaterThan(0);
       expect(artifacts.diagnostics.length).toBeGreaterThan(0);
     });
 
@@ -540,6 +550,10 @@ describe("stateful runner", () => {
         "raise",
       ]);
       expect(report.comparison.unacknowledgedByUser).toEqual(["raise"]);
+      expect(report.lambdaCoop.aligned).toBe(false);
+      expect(report.lambdaCoop.issues).toContain(
+        "λ₍coop₎ comparison note: kernel exposes operations not acknowledged by user (raise).",
+      );
       expect(report.notes.length).toBeGreaterThan(0);
       expect(report.oracles.length).toBeGreaterThan(0);
     });

@@ -725,6 +725,8 @@ export interface RunnerToStackLambdaCoopSummary {
   readonly kernelClauses: ReadonlyArray<{ readonly name: string; readonly kind: KernelEffectKind }>;
   readonly userAllowed: ReadonlyArray<string>;
   readonly runnerLiteral?: LambdaCoopRunnerLiteral;
+  readonly aligned?: boolean;
+  readonly issues?: ReadonlyArray<string>;
 }
 
 export interface RunnerToStackResult<Obj, Left, Right> {
@@ -835,6 +837,8 @@ export const runnerToStack = <
           kernelClauses: lambdaCoopKernelClauses,
           userAllowed: lambdaCoopUserAllowed,
           runnerLiteral: lambdaCoopRunnerLiteral,
+          aligned: stack.lambdaCoopComparison?.aligned,
+          issues: stack.lambdaCoopComparison?.issues,
         }
       : undefined,
     diagnostics,
