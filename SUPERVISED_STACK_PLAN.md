@@ -60,3 +60,25 @@ diagnostics, and the existing runner infrastructure together.
 1. Extend `runnerToStack` into a full inverse and surface comparison morphisms
    for λ₍coop₎ (reconstruct per-operation handlers, diagnostics, and specs).
 2. Integrate the λ₍coop₎ interpreter and add supervised stack oracles/reporting.
+
+## 7. λ₍coop₎ comparison roadmap
+
+1. **Kernel clause synthesis**
+   - Derive λ₍coop₎ kernel runners from `KernelMonadSpec` operations (state / exception / signal / external),
+     packaging each as a `LambdaCoopKernelOperation` with the residual diagnostics captured in metadata.
+   - Encode comparison notes in runner metadata (`supervised-stack.lacoop.kernel`) for later reconstruction.
+
+2. **User boundary alignment**
+   - Translate `UserMonadSpec.allowedKernelOperations` into λ₍coop₎ boundary annotations, verifying
+     that every allowed operation has a matching kernel clause.
+   - Record mismatches (unsupported / unacknowledged) in both stack diagnostics and λ₍coop₎ metadata.
+
+3. **Comparison morphism export**
+   - Implement `makeSupervisedComparisonMorphism` returning the λ₍coop₎ morphism witness and attach it to
+     the stack payload (both from `makeSupervisedStack` and via `runnerToStack` reconstruction).
+   - Provide an adapter `lambdaCoopComparisonFromStack(stack)` producing ready-to-run λ₍coop₎ scripts.
+
+4. **Integration and tests**
+   - Update `lambda-coop.runner-alignment.ts` to consume supervised stacks and report comparison diagnostics.
+   - Extend `test/stateful-runner.spec.ts` (or a dedicated λ₍coop₎ suite) with a supervised example asserting
+     that λ₍coop₎ execution traces align with stack diagnostics (state reads, exceptions, residual fallbacks).
