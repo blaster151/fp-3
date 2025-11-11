@@ -8,6 +8,7 @@ import {
   enumerateRunnerOracles,
   type RunnerOracleOptions,
   type RunnerOracleResult,
+  evaluateRunnerEquivalences,
 } from "./runner-oracles";
 import { makeExample6MonadComonadInteractionLaw } from "./monad-comonad-interaction-law";
 import type { LambdaCoopResourceSummary, LambdaCoopUserComputation, LambdaCoopValue } from "./lambda-coop";
@@ -40,6 +41,7 @@ export interface SupervisedStackLambdaCoopAlignmentReport<
   readonly stack: SupervisedStack<Obj, Arr, Left, Right, Value>;
   readonly runner: StatefulRunner<Obj, Left, Right, Value>;
   readonly oracles: ReadonlyArray<RunnerOracleResult>;
+  readonly equivalences: ReturnType<typeof evaluateRunnerEquivalences<Obj, Arr, Left, Right, Value>>;
   readonly lambdaCoop: LambdaCoopComparisonArtifacts & { readonly metadata: ReadonlyArray<string> };
   readonly comparison: {
     readonly unsupportedByKernel: ReadonlyArray<string>;
@@ -80,6 +82,7 @@ export function analyzeSupervisedStackLambdaCoopAlignment<
   if (options.sampleLimit !== undefined) oracleOptions.sampleLimit = options.sampleLimit;
   if (options.objectFilter) oracleOptions.objectFilter = options.objectFilter;
   const oracles = enumerateRunnerOracles(runner, interaction, oracleOptions);
+  const equivalences = evaluateRunnerEquivalences(runner, interaction, oracleOptions);
 
   const lambdaCoop =
     stack.lambdaCoopComparison ??
@@ -101,6 +104,7 @@ export function analyzeSupervisedStackLambdaCoopAlignment<
     ...lambdaCoop.diagnostics,
     ...lambdaCoop.metadata,
     `λ₍coop₎ alignment status: ${lambdaCoop.aligned ? "aligned" : "issues detected"}`,
+    `λ₍coop₎ equivalence summary: stateHandler=${equivalences.stateHandler.holds ? "ok" : "fail"}, coalgebra=${equivalences.coalgebra.holds ? "ok" : "fail"}, costate=${equivalences.costate.holds ? "ok" : "fail"}, costT=${equivalences.costT.holds ? "ok" : "fail"}, sweedler=${equivalences.sweedler.holds ? "ok" : "fail"}, triangle=${equivalences.triangle.holds ? "ok" : "fail"}`,
   ];
   if (lambdaCoop.issues.length > 0) notes.push(...lambdaCoop.issues);
   if (stack.residualSummary) {
@@ -112,6 +116,7 @@ export function analyzeSupervisedStackLambdaCoopAlignment<
     stack,
     runner,
     oracles,
+    equivalences,
     lambdaCoop,
     comparison: {
       unsupportedByKernel: lambdaCoop.unsupportedByKernel,

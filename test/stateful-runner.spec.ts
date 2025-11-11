@@ -554,6 +554,8 @@ describe("stateful runner", () => {
       expect(report.lambdaCoop.issues).toContain(
         "λ₍coop₎ comparison note: kernel exposes operations not acknowledged by user (raise).",
       );
+      expect(report.equivalences.stateHandler.holds).toBe(true);
+      expect(report.equivalences.coalgebra.holds).toBe(true);
       expect(report.notes.length).toBeGreaterThan(0);
       expect(report.oracles.length).toBeGreaterThan(0);
     });
