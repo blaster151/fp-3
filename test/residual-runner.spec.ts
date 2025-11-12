@@ -8,6 +8,8 @@ import {
   makeResidualRunnerMorphism,
   checkResidualRunnerMorphism,
   RunnerOracles,
+  monadMapToResidualRunner,
+  runnerToMonadMap,
 } from "../allTS";
 import { getCarrierSemantics, SetCat } from "../set-cat";
 import type {
@@ -144,5 +146,15 @@ describe("ResidualStatefulRunner semantics", () => {
     });
     expect(oracle.holds).toBe(false);
     expect(oracle.details[0]).toContain("mismatches=");
+  });
+
+  it("attaches residual eta and mu witnesses via monad-map round trip", () => {
+    const morphism = runnerToMonadMap(baseRunner, law.monad, law.monad);
+    const residualRunner = monadMapToResidualRunner(morphism, law, residualFunctor, {
+      sampleLimit: 4,
+    });
+    expect(residualRunner.thetaWitness).toBeDefined();
+    expect(residualRunner.etaWitness).toBeDefined();
+    expect(residualRunner.muWitness).toBeDefined();
   });
 });

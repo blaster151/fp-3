@@ -21,6 +21,8 @@ import {
   identityRunnerMorphism,
   runnerToMonadMap,
   monadMapToRunner,
+  runnerUnitDiagram,
+  runnerMultiplicationDiagram,
 } from "./stateful-runner";
 import type {
   RunnerToMonadMapOptions,
@@ -189,6 +191,142 @@ const defaultResidualValue = <
     left: leftSample.element,
     right: rightSample.element,
     diagnostics: notes,
+  };
+};
+
+const buildResidualEtaWitness = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  sampleLimit = 12,
+): ResidualDiagramWitness<Obj> => {
+  const objects: ResidualDiagramObjectWitness<Obj>[] = [];
+  let totalChecked = 0;
+  let totalMismatches = 0;
+  for (const [object, residualTheta] of residualRunner.residualThetas.entries()) {
+    const objectDiagnostics: string[] = [];
+    const baseUnit = runnerUnitDiagram(interaction, residualRunner.baseRunner, object, {
+      sampleLimit,
+    });
+    const samples = baseUnit.samples.slice(0, Math.max(1, sampleLimit));
+    if (samples.length === 0) {
+      objectDiagnostics.push(
+        `residual-unit: no unit samples available for object=${String(object)}.`,
+      );
+      objects.push({
+        object,
+        checked: 0,
+        mismatches: 0,
+        diagnostics: objectDiagnostics,
+      });
+      continue;
+    }
+    let checked = 0;
+    let mismatches = 0;
+    for (const sample of samples) {
+      checked += 1;
+      totalChecked += 1;
+      try {
+        residualTheta.evaluate([sample.primal, sample.dual]);
+      } catch (error) {
+        mismatches += 1;
+        totalMismatches += 1;
+        objectDiagnostics.push(
+          `residual-unit: evaluation error object=${String(object)} input=${JSON.stringify(sample.input)} error=${String(error)}`,
+        );
+      }
+    }
+    objectDiagnostics.push(
+      `residual-unit summary object=${String(object)} checked=${checked} mismatches=${mismatches}.`,
+    );
+    objects.push({
+      object,
+      checked,
+      mismatches,
+      diagnostics: objectDiagnostics,
+    });
+  }
+  const diagnostics = [
+    `residual-unit totals checked=${totalChecked} mismatches=${totalMismatches}.`,
+  ];
+  return {
+    diagram: "eta",
+    objects,
+    diagnostics,
+  };
+};
+
+const buildResidualMultiplicationWitness = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  sampleLimit = 12,
+): ResidualDiagramWitness<Obj> => {
+  const objects: ResidualDiagramObjectWitness<Obj>[] = [];
+  let totalChecked = 0;
+  let totalMismatches = 0;
+  for (const [object, residualTheta] of residualRunner.residualThetas.entries()) {
+    const objectDiagnostics: string[] = [];
+    const baseMult = runnerMultiplicationDiagram(interaction, residualRunner.baseRunner, object, {
+      sampleLimit,
+    });
+    const samples = baseMult.samples.slice(0, Math.max(1, sampleLimit));
+    if (samples.length === 0) {
+      objectDiagnostics.push(
+        `residual-multiplication: no multiplication samples available for object=${String(
+          object,
+        )}.`,
+      );
+      objects.push({
+        object,
+        checked: 0,
+        mismatches: 0,
+        diagnostics: objectDiagnostics,
+      });
+      continue;
+    }
+    let checked = 0;
+    let mismatches = 0;
+    for (const sample of samples) {
+      checked += 1;
+      totalChecked += 1;
+      try {
+        residualTheta.evaluate([sample.collapsed, sample.dual]);
+      } catch (error) {
+        mismatches += 1;
+        totalMismatches += 1;
+        objectDiagnostics.push(
+          `residual-multiplication: evaluation error object=${String(object)} sample=${JSON.stringify(sample.input)} error=${String(error)}`,
+        );
+      }
+    }
+    objectDiagnostics.push(
+      `residual-multiplication summary object=${String(object)} checked=${checked} mismatches=${mismatches}.`,
+    );
+    objects.push({
+      object,
+      checked,
+      mismatches,
+      diagnostics: objectDiagnostics,
+    });
+  }
+  const diagnostics = [
+    `residual-multiplication totals checked=${totalChecked} mismatches=${totalMismatches}.`,
+  ];
+  return {
+    diagram: "mu",
+    objects,
+    diagnostics,
   };
 };
 
@@ -898,13 +1036,16 @@ export const monadMapToResidualRunner = <
     ],
     ...(residualMetadata ? { metadata: residualMetadata } : {}),
   });
-  const sampleLimit = options.sampleLimit;
-  if (sampleLimit !== undefined && sampleLimit < 0) {
+  const sampleLimit = options.sampleLimit ?? 12;
+  if (options.sampleLimit !== undefined && options.sampleLimit < 0) {
     return residualRunner;
   }
-  const thetaWitness = checkResidualThetaAlignment(
-    residualRunner,
-    sampleLimit !== undefined ? { sampleLimit } : {},
-  );
-  return withResidualDiagramWitnesses(residualRunner, { theta: thetaWitness });
+  const thetaWitness = checkResidualThetaAlignment(residualRunner, { sampleLimit });
+  const etaWitness = buildResidualEtaWitness(residualRunner, interaction, sampleLimit);
+  const muWitness = buildResidualMultiplicationWitness(residualRunner, interaction, sampleLimit);
+  return withResidualDiagramWitnesses(residualRunner, {
+    theta: thetaWitness,
+    eta: etaWitness,
+    mu: muWitness,
+  });
 };
