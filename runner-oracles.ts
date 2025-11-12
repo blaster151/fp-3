@@ -29,6 +29,11 @@ import {
   compareCoalgebraComponents,
   compareCostateComponents,
 } from "./stateful-runner";
+import {
+  checkResidualRunnerMorphism,
+  type ResidualRunnerMorphism,
+  type ResidualStatefulRunner,
+} from "./residual-stateful-runner";
 
 export interface RunnerOracleResult {
   readonly registryPath: string;
@@ -189,6 +194,26 @@ export const RunnerOracles = {
         registryPath: path("morphism"),
         holds: report.holds,
         details: report.details.slice(0, 12),
+        diagnostics: report,
+      };
+    },
+    residualMorphism: <Obj, Arr, Left, Right, Value>(
+      morphism: ResidualRunnerMorphism<Obj, Left, Right, Value, unknown, unknown>,
+      runner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+      law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+      options: RunnerOracleOptions<Obj> = {},
+    ): RunnerOracleResult => {
+      const checkOptions: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {};
+      if (options.sampleLimit !== undefined) checkOptions.sampleLimit = options.sampleLimit;
+      if (options.objectFilter) checkOptions.objectFilter = options.objectFilter;
+      const report = checkResidualRunnerMorphism(runner, morphism, law, checkOptions);
+      return {
+        registryPath: path("residual.morphism"),
+        holds: report.holds,
+        details: [
+          `residualSquare checked=${report.residualSquare.checked} mismatches=${report.residualSquare.mismatches}`,
+          ...report.diagnostics.slice(0, 8),
+        ],
         diagnostics: report,
       };
     },

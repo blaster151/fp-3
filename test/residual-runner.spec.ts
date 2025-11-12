@@ -7,6 +7,7 @@ import {
   identityResidualRunnerMorphism,
   makeResidualRunnerMorphism,
   checkResidualRunnerMorphism,
+  RunnerOracles,
 } from "../allTS";
 import { getCarrierSemantics, SetCat } from "../set-cat";
 import type {
@@ -97,6 +98,12 @@ describe("ResidualStatefulRunner semantics", () => {
     });
     expect(report.residualSquare.checked).toBeGreaterThan(0);
     expect(report.residualSquare.mismatches).toBe(0);
+    const oracle = RunnerOracles.residualMorphism(identity, residualRunner, law, {
+      sampleLimit: 4,
+    });
+    expect(oracle.registryPath).toBe("runner.residual.morphism");
+    expect(oracle.holds).toBe(true);
+    expect(oracle.details[0]).toContain("mismatches=0");
   });
 
   it("detects residual morphism mismatches", () => {
@@ -132,5 +139,10 @@ describe("ResidualStatefulRunner semantics", () => {
       sampleLimit: 1,
     });
     expect(report.residualSquare.mismatches).toBeGreaterThan(0);
+    const oracle = RunnerOracles.residualMorphism(badMorphism, residualRunner, law, {
+      sampleLimit: 1,
+    });
+    expect(oracle.holds).toBe(false);
+    expect(oracle.details[0]).toContain("mismatches=");
   });
 });

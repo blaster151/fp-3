@@ -133,6 +133,7 @@ Progress:
 - Pass 2 semantics & diagnostics: added residual runner morphism helpers (`make/identity/compose`), a `checkResidualRunnerMorphism` wrapper over the existing Run(T) square checks, and `checkResidualThetaAlignment`/`withResidualDiagramWitnesses` utilities to sample residual θ evaluations and attach structured diagram summaries.
 - Pass 3 documentation/test outline: drafted `RESIDUAL_RUNNER_PLAN.md` describing remaining milestones plus planned regression suites, and introduced `test/residual-runner.spec.ts` (skipped skeleton) to earmark upcoming coverage.
 - Pass 4 residual semantics: default residual θ components now lift base θ evaluations into residual carriers via `ResidualFunctorSummary.lift`, automatically synthesise per-object carriers, expose optional alignment witnesses through the new monad-map translators, and extend `checkResidualRunnerMorphism` with explicit residual-square sampling (backed by new regression tests).
+- Pass 5 residual oracles: exported `RunnerOracles.residualMorphism` so the residual square checks surface through the standard oracle registry, with identity/mismatch regression coverage in `test/residual-runner.spec.ts`.
 
 1. **Introduce `ResidualStatefulRunner` Records**
    - Define `ResidualStatefulRunner<T,R>` that captures θ-components in `R(X×Y)` and caches ηᴿ/μᴿ diagram witnesses, degenerating to `StatefulRunner` when `R = Id`.
