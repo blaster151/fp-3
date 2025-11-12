@@ -226,6 +226,16 @@ if (!report.holds) {
     - `runner.residual.interaction` → replays θ/η/μ residual witnesses against `ResidualInteractionLawSummary`s, combining law-provided diagnostics with freshly sampled runner witnesses.
   - **Check:** `test/stateful-runner.spec.ts` exercises the equivalence oracles on Example 6 and the Example 12 update-lens suite against the Example 8 interaction, while `test/residual-runner.spec.ts` covers residual morphism and residual interaction oracles (success and mismatch scenarios).
 
+### Residual runners (Phase IV b)
+
+- **Domain:** Residual stateful runners derived from a `MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value>` together with an endofunctor `R` that augments each θ-component.
+- **Statement:** The residual layer preserves the base Run(T) structure: θ-components land in `R(X × Y)` while ηᴿ and μᴿ witnesses respect the residual monad diagrams, and residual morphisms commute with base morphisms across θ/η/μ squares.
+- **Rationale:** Residual runners let us track post-processing metadata (e.g. diagnostics, error channels) without breaking the categorical structure. They serve as the bridge between abstract residual interaction laws and executable runners.
+- **Oracle:** `RunnerOracles.residualInteraction(runner, law, residualLaw, options?)` → `{ holds, details, diagnostics: {theta, eta, mu, law} }` and `RunnerOracles.residualMorphism(morphism, runner, law, options?)` report residual diagram mismatches and square tallies.
+- **Witness:** `ResidualDiagramWitness` entries for θ/η/μ (automatically synthesised via `getResidual{Theta,Eta,Mu}Witness` when absent) plus `ResidualRunnerMorphismReport` residual-square tallies.
+- **Tests:** `test/residual-runner.spec.ts` (identity/mismatch morphisms, residual interaction oracle success/failure, Example 6 residual maybe functor) and supporting coverage in `test/stateful-runner.spec.ts`.
+- **Examples:** Example 6 residual maybe functor (`R X = X + E`) shows parity-triggered error branches propagated through `RunnerOracles.residualInteraction`.
+
 ### Supervised kernel/user stack (Phase IV c / Final Integration)
 
 - **Status:** Kernel/user constructors implemented; λ₍coop₎ alignment and inverse translation remain TODO (see `SUPERVISED_STACK_PLAN.md` for the longer roadmap).

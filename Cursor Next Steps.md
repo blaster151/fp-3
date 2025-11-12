@@ -127,6 +127,7 @@ Next:
 ---
 
 # **Phase IV b — Residual Runner Support**
+Status: COMPLETED
 
 Progress:
 - Pass 1 scaffolding: introduced `residual-stateful-runner.ts` with `ResidualStatefulRunner` records, residual functor summaries, diagram witness shells, and helper constructors that wrap existing `StatefulRunner` instances while preserving diagnostics/metadata.
@@ -145,7 +146,10 @@ Progress:
 4. **Bridge Residual Runners to Residual Laws**
    - ✅ Residual laws now propagate functors and θ/η/μ witnesses into `ResidualStatefulRunner`s via `makeResidualRunnerFromInteractionLaw`; `RunnerOracles.residualInteraction` checks those witnesses against live samples.
 5. **Document and Test Residual Runner Support**
-   - Add an “R-residual runners” entry in `LAWS.md`, regression examples (e.g., `R X = X + E`), and integrate into the law registry.
+   - ✅ `LAWS.md` now documents residual runner structure/oracles (including the Example 6 `R X = X + E` case), `test/residual-runner.spec.ts` exercises residual morphism + interaction oracles alongside the new example, and `RunnerOracles` exposes the residual registry entries.
+
+Next:
+- Transition into **Phase IV c – Supervised kernel/user stack** workstreams (λ₍coop₎ alignment, inverse translation, residual metadata propagation).
 
 ## Appendix: Archived Implementation Notes
 

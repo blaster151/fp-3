@@ -15,6 +15,9 @@ import {
   makeResidualInteractionLaw,
 } from "../allTS";
 import { getCarrierSemantics, SetCat } from "../set-cat";
+import type { SetObj } from "../set-cat";
+import type { IndexedElement } from "../chu-space";
+import type { StatefulRunner } from "../stateful-runner";
 import type {
   ResidualFunctorSummary,
   ResidualThetaEvaluationContext,
@@ -250,5 +253,148 @@ describe("ResidualStatefulRunner semantics", () => {
     expect(oracle.registryPath).toBe("runner.residual.interaction");
     expect(oracle.holds).toBe(false);
     expect(oracle.details.some((line) => line.includes("eta: mismatches="))).toBe(true);
+  });
+
+  describe("Example 6 residual maybe functor (R X = X + E)", () => {
+    type Example6ResidualMaybe =
+      | { readonly kind: "ok"; readonly value: unknown }
+      | { readonly kind: "error"; readonly reason: string; readonly sampleKey: string };
+
+    type Example6Left = typeof baseRunner extends StatefulRunner<Obj, infer L, any, any> ? L : never;
+    type Example6Right = typeof baseRunner extends StatefulRunner<Obj, any, infer R, any> ? R : never;
+    type Example6Value = typeof baseRunner extends StatefulRunner<Obj, any, any, infer V> ? V : never;
+
+    const encodeSample = (
+      sample: readonly [IndexedElement<Obj, Example6Left>, IndexedElement<Obj, Example6Right>],
+    ): string =>
+      JSON.stringify({
+        left: { object: String(sample[0].object), element: sample[0].element },
+        right: { object: String(sample[1].object), element: sample[1].element },
+      });
+
+    const isExample6ResidualMaybe = (candidate: unknown): candidate is Example6ResidualMaybe => {
+      if (typeof candidate !== "object" || candidate === null || !("kind" in candidate)) {
+        return false;
+      }
+      const kind = (candidate as { kind?: unknown }).kind;
+      if (kind === "ok") {
+        return "value" in (candidate as { value?: unknown });
+      }
+      if (kind === "error") {
+        const reason = (candidate as { reason?: unknown }).reason;
+        const sampleKey = (candidate as { sampleKey?: unknown }).sampleKey;
+        return typeof reason === "string" && typeof sampleKey === "string";
+      }
+      return false;
+    };
+
+    const makeExample6ResidualMaybeFunctor = (): ResidualFunctorSummary<
+      Obj,
+      Example6Left,
+      Example6Right,
+      Example6Value
+      > => ({
+        name: "Example6ResidualMaybe",
+        description: "R X = X + E with parity-triggered residual errors.",
+        metadata: ["example6 residual maybe (X + E)"],
+        objectCarrier: (object) =>
+          SetCat.lazyObj<Example6ResidualMaybe>({
+            semantics: {
+              iterate: function* iterate() {
+                yield { kind: "error", reason: "placeholder", sampleKey: "[]" } as const;
+              },
+              has: isExample6ResidualMaybe,
+              equals: (left, right) => JSON.stringify(left) === JSON.stringify(right),
+              tag: `Example6ResidualMaybe(${String(object)})`,
+            },
+          }),
+        lift: (context) => {
+          const sampleKey = encodeSample(context.sample);
+          const baseValue = context.baseValue ?? context.baseTheta?.map(context.sample);
+          if (baseValue === undefined) {
+            return {
+              kind: "error",
+              reason: "base θ evaluation unavailable",
+              sampleKey,
+            };
+          }
+          const leftElement = context.sample[0].element;
+          if (
+            Array.isArray(leftElement) &&
+            typeof leftElement[0] === "number" &&
+            leftElement[0] === 1
+          ) {
+            return {
+              kind: "error",
+              reason: "writer parity triggered residual branch",
+              sampleKey,
+            };
+          }
+          return { kind: "ok", value: baseValue };
+        },
+        describeEvaluation: (
+          context: ResidualThetaEvaluationContext<Obj, Example6Left, Example6Right, Example6Value> & {
+            readonly residualValue: unknown;
+          },
+        ) => {
+          const residualValue = context.residualValue as Example6ResidualMaybe;
+          return [
+            `example6 residual maybe: sample=${encodeSample(
+              context.sample,
+            )} outcome=${residualValue.kind}`,
+          ];
+        },
+    });
+
+    it("produces both ok and error branches while sampling residual θ", () => {
+      const maybeResidualFunctor = makeExample6ResidualMaybeFunctor();
+      const residualRunner = makeResidualStatefulRunner(baseRunner, {
+        residualFunctor: maybeResidualFunctor,
+        diagnostics: ["example6 residual maybe"],
+      });
+      const seenKinds = new Set<string>();
+      for (const [object, residualTheta] of residualRunner.residualThetas.entries()) {
+        const thetaHom = baseRunner.thetaHom.get(object);
+        if (!thetaHom) continue;
+        for (const sample of thetaHom.dom as SetObj<
+          readonly [IndexedElement<Obj, Example6Left>, IndexedElement<Obj, Example6Right>]
+        >) {
+          const residualValue = residualTheta.evaluate(sample);
+          if (
+            typeof residualValue === "object" &&
+            residualValue !== null &&
+            "kind" in residualValue
+          ) {
+            seenKinds.add(String((residualValue as { kind: unknown }).kind));
+          }
+        }
+      }
+      expect(seenKinds.has("ok")).toBe(true);
+      expect(seenKinds.has("error")).toBe(true);
+    });
+
+    it("registers residual interaction oracle success for R X = X + E", () => {
+      const maybeResidualFunctor = makeExample6ResidualMaybeFunctor();
+      const residualLaw = makeResidualInteractionLaw(law.law, {
+        residualMonadName: "Example6 Maybe Residual",
+        notes: ["Example6 residual maybe (X + E)"],
+        residualFunctor: maybeResidualFunctor,
+      });
+      const residualRunner = makeResidualRunnerFromInteractionLaw(baseRunner, law, residualLaw, {
+        diagnostics: ["example6 residual maybe via law"],
+      });
+      const oracle = RunnerOracles.residualInteraction(residualRunner, law, residualLaw, {
+        sampleLimit: 6,
+      });
+      expect(oracle.registryPath).toBe("runner.residual.interaction");
+      expect(oracle.holds).toBe(true);
+      expect(
+        (oracle.diagnostics as {
+          theta: { mismatches: number };
+          eta: { mismatches: number };
+          mu: { mismatches: number };
+        }).theta.mismatches,
+      ).toBe(0);
+    });
   });
 });
