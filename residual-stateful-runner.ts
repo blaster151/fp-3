@@ -30,6 +30,7 @@ import type {
   MonadMapToRunnerOptions,
   MonadMapToRunnerResult,
 } from "./stateful-runner";
+import type { ResidualInteractionLawSummary } from "./residual-interaction-law";
 
 /**
  * Residual functor summary describing how the residual endofunctor R acts on
@@ -940,6 +941,43 @@ export const withResidualDiagramWitnesses = <
     metadata,
   };
 };
+
+export const residualFunctorFromInteractionLaw = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  residualLaw: ResidualInteractionLawSummary<Obj, Arr, Left, Right, Value>,
+): ResidualFunctorSummary<Obj, Left, Right, Value> => ({
+  name: residualLaw.residualMonadName,
+  description: `Residual functor derived from interaction law ${residualLaw.residualMonadName}`,
+  objectCarrier: () => new Set<unknown>(),
+  metadata: residualLaw.diagnostics,
+});
+
+export const makeResidualRunnerFromInteractionLaw = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  baseRunner: StatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  residualLaw: ResidualInteractionLawSummary<Obj, Arr, Left, Right, Value>,
+  options: Omit<ResidualStatefulRunnerOptions<Obj, Left, Right, Value>, "residualFunctor"> = {},
+): ResidualStatefulRunner<Obj, Left, Right, Value> =>
+  makeResidualStatefulRunner(baseRunner, {
+    residualFunctor: residualFunctorFromInteractionLaw(residualLaw),
+    diagnostics: [
+      `Residual interaction law applied: ${residualLaw.residualMonadName}.`,
+      ...residualLaw.diagnostics,
+      ...(options.diagnostics ?? []),
+    ],
+    ...options,
+  });
 
 export interface ResidualRunnerToMonadMapOptions<Obj>
   extends RunnerToMonadMapOptions<Obj> {

@@ -10,6 +10,9 @@ import {
   RunnerOracles,
   monadMapToResidualRunner,
   runnerToMonadMap,
+  makeResidualRunnerFromInteractionLaw,
+  residualFunctorFromInteractionLaw,
+  makeResidualInteractionLaw,
 } from "../allTS";
 import { getCarrierSemantics, SetCat } from "../set-cat";
 import type {
@@ -156,5 +159,19 @@ describe("ResidualStatefulRunner semantics", () => {
     expect(residualRunner.thetaWitness).toBeDefined();
     expect(residualRunner.etaWitness).toBeDefined();
     expect(residualRunner.muWitness).toBeDefined();
+  });
+
+  it("bridges residual interaction laws into residual functors and runners", () => {
+    const residualLaw = makeResidualInteractionLaw(law.law, {
+      residualMonadName: "ResidualExample",
+      notes: ["integration test"],
+    });
+    const functor = residualFunctorFromInteractionLaw(residualLaw);
+    expect(functor.name).toBe("ResidualExample");
+    const runnerFromLaw = makeResidualRunnerFromInteractionLaw(baseRunner, law, residualLaw);
+    expect(runnerFromLaw.residualFunctor.name).toBe("ResidualExample");
+    expect(
+      runnerFromLaw.diagnostics.some((line) => line.includes("Residual interaction law applied")),
+    ).toBe(true);
   });
 });
