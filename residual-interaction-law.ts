@@ -1,14 +1,31 @@
 import type { FunctorInteractionLaw } from "./functor-interaction-law";
+import type {
+  ResidualFunctorSummary,
+  ResidualDiagramWitness,
+} from "./residual-stateful-runner";
 
 export interface ResidualInteractionLawSummary<Obj, Arr, Left, Right, Value> {
   readonly base: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>;
   readonly residualMonadName: string;
   readonly diagnostics: ReadonlyArray<string>;
+  readonly residualFunctor: ResidualFunctorSummary<Obj, Left, Right, Value>;
+  readonly thetaWitness?: ResidualDiagramWitness<Obj>;
+  readonly etaWitness?: ResidualDiagramWitness<Obj>;
+  readonly muWitness?: ResidualDiagramWitness<Obj>;
 }
 
-export interface ResidualInteractionLawOptions {
+export interface ResidualInteractionLawOptions<
+  Obj,
+  Left,
+  Right,
+  Value
+> {
   readonly residualMonadName?: string;
   readonly notes?: ReadonlyArray<string>;
+  readonly residualFunctor?: ResidualFunctorSummary<Obj, Left, Right, Value>;
+  readonly thetaWitness?: ResidualDiagramWitness<Obj>;
+  readonly etaWitness?: ResidualDiagramWitness<Obj>;
+  readonly muWitness?: ResidualDiagramWitness<Obj>;
 }
 
 export const makeResidualInteractionLaw = <
@@ -19,21 +36,41 @@ export const makeResidualInteractionLaw = <
   Value
 >(
   law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
-  options: ResidualInteractionLawOptions = {},
+  options: ResidualInteractionLawOptions<Obj, Left, Right, Value> = {},
 ): ResidualInteractionLawSummary<Obj, Arr, Left, Right, Value> => {
   const residualMonadName = options.residualMonadName ?? "R";
+  const residualFunctor: ResidualFunctorSummary<Obj, Left, Right, Value> =
+    options.residualFunctor ?? {
+      name: residualMonadName,
+      description: `Residual functor for ${residualMonadName}`,
+      objectCarrier: () => new Set<unknown>(),
+      metadata: [`Residual interaction law ${residualMonadName}: default residual functor.`],
+    };
   const diagnostics: string[] = [
-    `Residual interaction law placeholder for ${residualMonadName}: TODO materialise Section 5 residual diagrams.`,
-    "Pending witnesses: residual unit compatibility, residual multiplication compatibility, morphism square `(id×f);θ' = θ;R(id×f)`, and monad-map bridge `ϑ : T ⇒ S^{t,Y}_R`.",
-    "Callers may supply notes to track provisional witnesses; use attachResidualHandlers to record partial effect coverage on associated runners.",
+    `Residual interaction law ${residualMonadName}: ${
+      options.residualFunctor ? "custom residual functor supplied." : "using default residual functor (Set carrier)."
+    }`,
   ];
   if (options.notes && options.notes.length > 0) {
     diagnostics.push(
-      `User notes: ${options.notes
+      `Notes: ${options.notes
         .map((note) => note.trim())
         .filter(Boolean)
         .join("; ")}`,
     );
   }
-  return { base: law, residualMonadName, diagnostics };
+  if (!options.thetaWitness || !options.etaWitness || !options.muWitness) {
+    diagnostics.push(
+      "Residual witnesses (theta/eta/mu) not provided; downstream builders may synthesise defaults from runners.",
+    );
+  }
+  return {
+    base: law,
+    residualMonadName,
+    diagnostics,
+    residualFunctor,
+    ...(options.thetaWitness ? { thetaWitness: options.thetaWitness } : {}),
+    ...(options.etaWitness ? { etaWitness: options.etaWitness } : {}),
+    ...(options.muWitness ? { muWitness: options.muWitness } : {}),
+  };
 };

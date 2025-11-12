@@ -162,16 +162,38 @@ describe("ResidualStatefulRunner semantics", () => {
   });
 
   it("bridges residual interaction laws into residual functors and runners", () => {
+    const thetaWitness = { diagram: "theta", objects: [], diagnostics: [] } as const;
+    const etaWitness = { diagram: "eta", objects: [], diagnostics: [] } as const;
+    const muWitness = { diagram: "mu", objects: [], diagnostics: [] } as const;
+    const customResidualFunctor: ResidualFunctorSummary<any, any, any, any> = {
+      name: "ResidualExample",
+      description: "custom residual functor",
+      objectCarrier: () => new Set<unknown>(),
+      metadata: ["custom functor"],
+      lift: (context: ResidualThetaEvaluationContext<any, any, any, any>) => ({
+        kind: "residual.custom",
+        object: context.object,
+        left: context.sample[0].element,
+        right: context.sample[1].element,
+      }),
+    };
     const residualLaw = makeResidualInteractionLaw(law.law, {
       residualMonadName: "ResidualExample",
       notes: ["integration test"],
+      residualFunctor: customResidualFunctor,
+      thetaWitness,
+      etaWitness,
+      muWitness,
     });
     const functor = residualFunctorFromInteractionLaw(residualLaw);
-    expect(functor.name).toBe("ResidualExample");
+    expect(functor).toBe(customResidualFunctor);
     const runnerFromLaw = makeResidualRunnerFromInteractionLaw(baseRunner, law, residualLaw);
-    expect(runnerFromLaw.residualFunctor.name).toBe("ResidualExample");
+    expect(runnerFromLaw.residualFunctor).toBe(customResidualFunctor);
     expect(
       runnerFromLaw.diagnostics.some((line) => line.includes("Residual interaction law applied")),
     ).toBe(true);
+    expect(runnerFromLaw.thetaWitness).toBe(thetaWitness);
+    expect(runnerFromLaw.etaWitness).toBe(etaWitness);
+    expect(runnerFromLaw.muWitness).toBe(muWitness);
   });
 });

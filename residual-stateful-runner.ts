@@ -950,12 +950,7 @@ export const residualFunctorFromInteractionLaw = <
   Value
 >(
   residualLaw: ResidualInteractionLawSummary<Obj, Arr, Left, Right, Value>,
-): ResidualFunctorSummary<Obj, Left, Right, Value> => ({
-  name: residualLaw.residualMonadName,
-  description: `Residual functor derived from interaction law ${residualLaw.residualMonadName}`,
-  objectCarrier: () => new Set<unknown>(),
-  metadata: residualLaw.diagnostics,
-});
+): ResidualFunctorSummary<Obj, Left, Right, Value> => residualLaw.residualFunctor;
 
 export const makeResidualRunnerFromInteractionLaw = <
   Obj,
@@ -968,8 +963,8 @@ export const makeResidualRunnerFromInteractionLaw = <
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
   residualLaw: ResidualInteractionLawSummary<Obj, Arr, Left, Right, Value>,
   options: Omit<ResidualStatefulRunnerOptions<Obj, Left, Right, Value>, "residualFunctor"> = {},
-): ResidualStatefulRunner<Obj, Left, Right, Value> =>
-  makeResidualStatefulRunner(baseRunner, {
+): ResidualStatefulRunner<Obj, Left, Right, Value> => {
+  const residualRunner = makeResidualStatefulRunner(baseRunner, {
     residualFunctor: residualFunctorFromInteractionLaw(residualLaw),
     diagnostics: [
       `Residual interaction law applied: ${residualLaw.residualMonadName}.`,
@@ -978,6 +973,18 @@ export const makeResidualRunnerFromInteractionLaw = <
     ],
     ...options,
   });
+  const thetaWitness =
+    residualLaw.thetaWitness ?? options.thetaWitness ?? residualRunner.thetaWitness;
+  const etaWitness =
+    residualLaw.etaWitness ?? options.etaWitness ?? residualRunner.etaWitness;
+  const muWitness =
+    residualLaw.muWitness ?? options.muWitness ?? residualRunner.muWitness;
+  return withResidualDiagramWitnesses(residualRunner, {
+    ...(thetaWitness ? { theta: thetaWitness } : {}),
+    ...(etaWitness ? { eta: etaWitness } : {}),
+    ...(muWitness ? { mu: muWitness } : {}),
+  });
+};
 
 export interface ResidualRunnerToMonadMapOptions<Obj>
   extends RunnerToMonadMapOptions<Obj> {
