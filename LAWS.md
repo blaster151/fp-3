@@ -163,16 +163,20 @@ This document catalogs the algebraic laws that our functional programming constr
   - `thetaMissing`, `thetaExtra`, optional `finiteFailures`
 - **Options:** Most checks accept `{ sampleLimit?, objectFilter? }`; `buildRunnerLawReport` threads `sampleLimit` through, and can include finite exhaustive checks via `includeFinite`.
 - **Notes:** Category and handler checks are reported but do not currently affect `holds`. ψ→θ/θ→ψ consistency likewise reports mismatches without flipping `holds`.
- - **Oracles / Registry Paths:**
-   - `runner.axioms` → `RunnerOracles.axioms`
-   - `runner.currying` → `RunnerOracles.currying`
-   - `runner.coalgebra` → `RunnerOracles.coalgebra`
-   - `runner.costate` → `RunnerOracles.costate`
-   - `runner.categoryLaws` → `RunnerOracles.category`
-   - `runner.handlers` → `RunnerOracles.handlers`
-   - `runner.psiToTheta` → `RunnerOracles.psiTheta`
-   - `runner.unified` → `RunnerOracles.unified`
-   Use `enumerateRunnerOracles(runner, law, { sampleLimit? })` to collect all reports.
+  - **Oracles / Registry Paths:**
+    - `runner.axioms` → `RunnerOracles.axioms`
+    - `runner.currying` → `RunnerOracles.currying`
+    - `runner.coalgebra` → `RunnerOracles.coalgebra`
+    - `runner.costate` → `RunnerOracles.costate`
+    - `runner.categoryLaws` → `RunnerOracles.category`
+    - `runner.equivalence.stateHandler` → `RunnerOracles.stateHandlerEquivalence`
+    - `runner.handlers` → `RunnerOracles.handlers`
+    - `runner.psiToTheta` → `RunnerOracles.psiTheta`
+    - `runner.unified` → `RunnerOracles.unified`
+    - `runner.equivalence.costT` → `RunnerOracles.equivalenceCostT`
+    - `runner.equivalence.sweedler` → `RunnerOracles.equivalenceSweedler`
+    - Use `enumerateRunnerOracles(runner, law, { sampleLimit? })` to collect all reports.
+    - Use `evaluateRunnerEquivalences(runner, law, { sampleLimit?, objectFilter? })` to retrieve the focused equivalence suite (state handler, coalgebra, costate, Cost^T, Sweedler, triangle).
  - **Optional holds flags:** Pass to `buildRunnerLawReport`:
    - `includeCategoryInHolds: true` to require identity + associativity success.
    - `includeHandlersInHolds: true` to fail on handler mismatches.
@@ -202,15 +206,43 @@ if (!report.holds) {
 
 #### Costate/coalgebra equivalences and oracles
 
-- **Translators:**
-  - `runnerToCoalagraComponents(runner, law)` and `coalgebraComponentsToRunner(components, law)` bridge runners with `T°`-coalgebras.
-  - `runnerToCostateComponents(runner, law)` and `costateComponentsToRunner(components, law)` bridge runners with `Cost^Y ⇒ T` transformations.
-  - `coalgebraToCostate(components, law)` and `costateToCoalgebra(components, law)` shuttle between coalgebra and costate views via Sweedler indexing.
-- **Oracles / Registry Paths:**
-  - `runner.equivalence.coalgebra` → samples θ vs γ and γ→θ reconstruction.
-  - `runner.equivalence.costate` → samples θ vs κ and κ→θ reconstruction.
-  - `runner.equivalence.triangle` → checks γ → κ → γ round-trip.
-- **Check:** `test/stateful-runner.spec.ts` exercises all three equivalence oracles on Example 6.
+  - **Translators:**
+    - `runnerToCoalgebraComponents(runner, law)` and `coalgebraComponentsToRunner(components, law)` bridge runners with `T°`-coalgebras.
+    - `runnerToCostateComponents(runner, law)` and `costateComponentsToRunner(components, law)` bridge runners with `Cost^Y ⇒ T` transformations.
+    - `coalgebraToCostate(components, law)` and `costateToCoalgebra(components, law)` shuttle between coalgebra and costate views via Sweedler indexing.
+    - `runnerToCostTCoalgebraComponents(runner, law)` / `costTCoalgebraComponentsToRunner(components, law)` package the canonical inclusion of `γ_Y : Y → T°Y` into `Cost^T` coalgebras.
+    - `runnerToSweedlerCoalgebraComponents(runner, law)` / `sweedlerCoalgebraComponentsToRunner(components, law)` expose the Sweedler-dual perspective using the interaction law’s cached dual data.
+    - `buildExample12UpdateLensRunner(spec, { interaction? })` reconstructs Example 12’s update-lens runner from `(hp, upd)` data, and `buildExample12UpdateLensSuite()` packages the runner with its costate/coalgebra/`Cost^T` witnesses for comparisons.
+    - `attachResidualHandlers(runner, law, specs, { sampleLimit?, objectFilter? })` samples θ-domain pairs to track partial residual handler coverage, emitting diagnostics and a per-object report; use `analyzeResidualHandlerCoverage` for analysis without mutating the runner.
+    - `makeResidualInteractionLaw(law, { residualMonadName?, notes?, residualFunctor?, thetaWitness?, etaWitness?, muWitness? })` now accepts custom residual functors and precomputed θ/η/μ witnesses, threading them into `ResidualInteractionLawSummary` entries alongside optional notes.
+    - `getResidualThetaWitness(runner, sampleLimit?)`, `getResidualEtaWitness(runner, law, sampleLimit?)`, and `getResidualMuWitness(runner, law, sampleLimit?)` synthesise diagram witnesses when they are absent on the runner, while `compareResidualDiagramWitness(label, actual, expected?)` reports aggregate checked counts and mismatches for residual diagnostics.
+  - **Oracles / Registry Paths:**
+    - `runner.equivalence.coalgebra` → samples θ vs γ and γ→θ reconstruction.
+    - `runner.equivalence.costate` → samples θ vs κ and κ→θ reconstruction.
+    - `runner.equivalence.costT` → validates the Cost^T view via γ-inclusion.
+    - `runner.equivalence.sweedler` → validates the Sweedler-dual coalgebra view.
+    - `runner.equivalence.triangle` → checks γ → κ → γ round-trip.
+    - `runner.residual.morphism` → enforces residual Run(T) morphism squares, reporting sampled residual-square mismatches.
+    - `runner.residual.interaction` → replays θ/η/μ residual witnesses against `ResidualInteractionLawSummary`s, combining law-provided diagnostics with freshly sampled runner witnesses.
+  - **Check:** `test/stateful-runner.spec.ts` exercises the equivalence oracles on Example 6 and the Example 12 update-lens suite against the Example 8 interaction, while `test/residual-runner.spec.ts` covers residual morphism and residual interaction oracles (success and mismatch scenarios).
+
+### Residual runners (Phase IV b)
+
+- **Domain:** Residual stateful runners derived from a `MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value>` together with an endofunctor `R` that augments each θ-component.
+- **Statement:** The residual layer preserves the base Run(T) structure: θ-components land in `R(X × Y)` while ηᴿ and μᴿ witnesses respect the residual monad diagrams, and residual morphisms commute with base morphisms across θ/η/μ squares.
+- **Rationale:** Residual runners let us track post-processing metadata (e.g. diagnostics, error channels) without breaking the categorical structure. They serve as the bridge between abstract residual interaction laws and executable runners.
+- **Oracle:** `RunnerOracles.residualInteraction(runner, law, residualLaw, options?)` → `{ holds, details, diagnostics: {theta, eta, mu, law} }` and `RunnerOracles.residualMorphism(morphism, runner, law, options?)` report residual diagram mismatches and square tallies.
+- **Witness:** `ResidualDiagramWitness` entries for θ/η/μ (automatically synthesised via `getResidual{Theta,Eta,Mu}Witness` when absent) plus `ResidualRunnerMorphismReport` residual-square tallies.
+- **Tests:** `test/residual-runner.spec.ts` (identity/mismatch morphisms, residual interaction oracle success/failure, Example 6 residual maybe functor) and supporting coverage in `test/stateful-runner.spec.ts`.
+- **Examples:** Example 6 residual maybe functor (`R X = X + E`) shows parity-triggered error branches propagated through `RunnerOracles.residualInteraction`.
+
+### Supervised kernel/user stack (Phase IV c / Final Integration)
+
+- **Status:** Kernel/user constructors implemented; λ₍coop₎ alignment and inverse translation remain TODO (see `SUPERVISED_STACK_PLAN.md` for the longer roadmap).
+- **Constructors:** `makeKernelMonad` classifies each kernel operation (state/exception/signal/external) into a structured `KernelOperationResult` with default fallbacks, handler integration, and per-operation diagnostics. `makeUserMonad` maps declared user operations into the kernel, reporting unsupported/unused signatures via `UserKernelComparison` and exposing an `invoke` helper that delegates to the kernel semantics.
+- **Stack builder:** `makeSupervisedStack(interaction, kernelSpec, userSpec, options?)` enriches the ψ-derived runner with kernel state carriers, promotes operation-level residual handlers, attaches residual diagnostics (`attachResidualHandlers`/`analyzeResidualHandlerCoverage`), and packages comparison metadata (`userToKernel`, `unsupportedByKernel`, `unacknowledgedByUser`). `stackToRunner` reuses these builders; `runnerToStack` reconstructs the embedded λ₍coop₎ artifacts (runner literal, alignment status, issues) alongside residual witness summaries.
+- **λ₍coop₎ comparison:** `buildLambdaCoopComparisonArtifacts` translates kernel operations into λ₍coop₎ runner literals and aligns the user boundary, emitting comparison diagnostics (`aligned` flag plus `issues`) and embedding the summary in stack metadata so `runnerToStack` and `lambda-coop.runner-alignment.ts` can reconstruct the λ₍coop₎ view. `analyzeSupervisedStackLambdaCoopAlignment` runs the standard runner oracles alongside the embedded λ₍coop₎ metadata, reporting equivalence results, resource summaries, and alignment notes ready for interpreter integration.
+- **Tests:** `test/stateful-runner.spec.ts` now executes the supervised scenario (state read, exception fallback, residual coverage, λ₍coop₎ comparison wiring) with diagnostics asserted; this replaces the earlier planning placeholder.
 
 ## Coalgebra and Hopf law diagnostics
 

@@ -17,7 +17,7 @@ Next: —None (rolled into downstream translator work.)
 ------
 
 ### **4. Make Coalgebra and Costate Translators Bidirectional**
-Status: IN PROGRESS
+Status: COMPLETED
 
 - Rewrite all six translation functions—`runnerToCoalgebraComponents`, `coalgebraComponentsToRunner`, `runnerToCostateComponents`, `costateComponentsToRunner`, `coalgebraToCostate`, and `costateToCoalgebra`—to rebuild θ, γ, γ′ directly (no cached ψ).
 - Prove diagrams (4) and (5) via sampled diagnostics.
@@ -32,20 +32,30 @@ Progress:
 - Translator sample limits now adapt to carrier cardinalities (√-scaling up to 32) and emit truncation notes whenever enumeration hits the cap without exploring the full fibre.
 
 Next:
-- Exercise the adaptive sampling heuristics against large carriers to validate the current cap/clamp strategy before considering higher default limits.
+- —None (complete; continue monitoring translator diagnostics alongside broader equivalence work).
 
 ------
 
 ### **5. Enforce Run(T) Morphism Squares**
+Status: COMPLETED
 
 - Strengthen `RunnerMorphism` and `compareRunnerMorphisms` to test both
    `(id_X×f);θ′ = θ;(T×f)` and `(T°f)∘γ = γ′∘f`
    for sampled X, using `thetaHom` and the new coalgebra components.
 - Enhance `checkRunnerMorphism` and `checkRunTCategoryLaws` to report concrete samples that violate either square and to aggregate these tallies into category-law results.
 
+Progress:
+- `compareRunnerMorphisms` now samples the θ- and γ-square conditions alongside equality, reporting dedicated tallies for each square and surfacing component-level diagnostics.
+- `checkRunnerMorphism` aggregates those tallies while returning square-specific mismatches so callers can distinguish equality failures from diagram violations.
+- `checkRunTCategoryLaws` threads the new square metrics into its report, and morphism oracles surface them for registry consumers.
+
+Next:
+- —None (square enforcement feeds the remaining equivalence work).
+
 ------
 
 ### **6. Finish θ ↔ Stʸ Handler Translation**
+Status: COMPLETED
 
 - Expand `thetaToStateHandler` to return the full natural family `ϑ_X : TX → Stʸ X`, reconstructing the curried `TX×Y → X×Y` maps.
   - Log when ψ-dependence breaks independence from the dual fibre.
@@ -58,44 +68,74 @@ Progress:
 - Multiplication scaffolding now locates the requisite `ϑ_{TX}`/`ϑ_{StʸX}` witnesses, reporting exactly which components are missing so the forthcoming `(Stʸ μ_X)` replay can reuse the cached data instead of emitting generic TODOs.
 
 Next:
-- Implement the `(Stʸ μ_X)` replay using the collected `ϑ` witnesses, comparing both sides of the diagram and folding the tallies into the unified law report.
+- —None (handler diagrams now replay both `(Stʸ η_X)` and `(Stʸ μ_X)`; future enhancements roll into item 7).
 
 ------
 
 ### **7. Materialise the Six Runner Equivalences**
+Status: COMPLETED
 
 - Implement quasi-inverse functors between:
   - `Run(T)`, θ-maps → `Stʸ`, `T°`-coalgebras, costate transformations, `Costᵗ`-coalgebras, and Sweedler-dual coalgebras.
   - Provide witnesses for each zig-zag identity.
 - Extend **`runner-oracles.ts`** to exercise all equivalence pairs and integrate translator diagnostics.
 
+Progress:
+- Added `runnerToStateHandlerComponents`, `stateHandlerComponentsToRunner`, and `compareStateHandlerComponents`, providing the Run(T) ↔ `Stʸ` translators with diagnostics that sample ϑ outputs, handler independence, and θ reconstructions.
+- Registered `RunnerOracles.stateHandlerEquivalence`, combining forward/backward translations with runner/handler zig-zag checks, and covered the new oracle in `test/stateful-runner.spec.ts`.
+- Introduced `Cost^T` and Sweedler-dual coalgebra translators/oracles by wrapping the γ-components, so the equivalence suite now covers `T°`, `Cost^Y ⇒ T`, `Cost^T`, and Sweedler coalgebras alongside `Stʸ`.
+- Added `evaluateRunnerEquivalences` to bundle all six equivalence oracles, with regression coverage ensuring every component of the suite succeeds on Example 6.
+- Documented the new registry paths and translators in `LAWS.md`, completing the doc/test wiring for the equivalence tooling.
+
+Next:
+- Roll follow-up categorical functor packaging (if desired) into later phases; proceed to item 8.
+
 ------
 
 ### **8. Deliver Example 12 Update-Lens Tooling**
+Status: COMPLETED
 
-- Add a module packaging lenses `(hp, upd)` into runners of the update monad.
-  - Export costate/coalgebra translations and verify the bijection among lenses, runners, costate maps, and `T°`-coalgebras through dedicated oracles.
-- Supply regression cases showing round-trip equivalence between lens data and runner diagnostics, and register documentation/oracle entries.
+- Added `update-lens.ts` with `makeExample12UpdateLensSpec`, `buildExample12UpdateLensRunner`, and `buildExample12UpdateLensSuite`, deriving θ from `(hp, upd)` and bundling the corresponding costate/coalgebra/`Cost^T` components.
+- Exported the new helpers through `allTS.ts` and documented the workflow in `LAWS.md` under the costate/coalgebra equivalence section.
+- Extended `test/stateful-runner.spec.ts` with Example 12 regression coverage comparing the lens-derived runner against the Example 8 interaction (θ agreement plus costate/coalgebra/`Cost^T` component comparisons).
 
 ------
 
 ### **9. Add Residual Hooks to Ordinary Runners**
+Status: COMPLETED
 
-- Extend `StatefulRunner` with residual metadata (`residualFunctor`, partial θ domains, etc.).
-  - Implement `makeResidualInteractionLaw` and `attachRunner` scaffolding that logs unsupported effects instead of placeholders.
-- Update **`LAWS.md`** and runner oracles to describe residual compatibility checks and TODO diagnostics pending full support.
+- Extended `StatefulRunner` with optional residual handler summaries via `analyzeResidualHandlerCoverage`/`attachResidualHandlers`, so partial θ coverage now surfaces handled vs unhandled samples alongside diagnostics.
+- Added `makeResidualInteractionLaw` (documented in `LAWS.md`) to emit structured TODO diagnostics while the Section 5 residual witnesses remain outstanding.
+- Augmented `test/stateful-runner.spec.ts` with residual coverage regressions (full coverage and no-spec scenarios) plus a sanity check on the new residual interaction law placeholder output.
 
 ------
 
 ### **10. Build the Supervised Kernel/User Monad Stack**
+Status: COMPLETED — constructors, diagnostics, docs, and λ₍coop₎ interpreter alignment landed
 
-- Implement kernel monads combining **state**, **exception**, and **signal** signatures with external effects, alongside user monads that supervise them.
-  - Expose comparison morphisms defining the supervised boundary.
-- Integrate λ₍coop₎’s front end with these monads so sample programs (like the file-handle scenario) type-check, execute, and emit resource/finalisation diagnostics.
+Progress:
+- `supervised-stack.ts` now materialises executable kernel semantics: `makeKernelMonad` builds state/exception/signal/external operations with structured `KernelOperationResult`s, default fallbacks, per-operation diagnostics, and residual delegation.
+- `makeUserMonad` computes boundary morphisms by mapping declared user operations into the kernel, exposes an `invoke` helper that delegates to the kernel semantics, and reports unsupported/unused operations through `UserKernelComparison`.
+- `makeSupervisedStack` enriches the ψ-derived runner with kernel state carriers, promotes operation-level residual specs, attaches residual diagnostics, and returns comparison metadata (`userToKernel`, boundary warnings, residual summaries). `stackToRunner` now reuses the builders, while `runnerToStack` parses the embedded metadata to recover kernel/user names, operation catalogues, and residual coverage summaries.
+- `test/stateful-runner.spec.ts` exercises the supervised scenario end-to-end (state read, exception fallback, residual coverage, comparison wiring) and validates the new λ₍coop₎ metadata, replacing the earlier planning placeholder.
+- Drafted a λ₍coop₎ comparison roadmap in `SUPERVISED_STACK_PLAN.md` covering kernel clause synthesis, user boundary alignment, comparison morphism exports, and integration tests.
+- `lambda-coop.runner-alignment.ts` now offers `analyzeSupervisedStackLambdaCoopAlignment`, running the standard runner oracles against the supervised stack and replaying the embedded λ₍coop₎ comparison diagnostics.
+
+Next:
+- Stabilise λ₍coop₎ interpreter-driven examples as future tunables if extended coverage is desired.
 
 ---
 
 # **Phase IV b — Residual Runner Support**
+Status: COMPLETED
+
+Progress:
+- Pass 1 scaffolding: introduced `residual-stateful-runner.ts` with `ResidualStatefulRunner` records, residual functor summaries, diagram witness shells, and helper constructors that wrap existing `StatefulRunner` instances while preserving diagnostics/metadata.
+- Pass 2 semantics & diagnostics: added residual runner morphism helpers (`make/identity/compose`), a `checkResidualRunnerMorphism` wrapper over the existing Run(T) square checks, and `checkResidualThetaAlignment`/`withResidualDiagramWitnesses` utilities to sample residual θ evaluations and attach structured diagram summaries.
+- Pass 3 documentation/test outline: drafted `RESIDUAL_RUNNER_PLAN.md` describing remaining milestones plus planned regression suites, and introduced `test/residual-runner.spec.ts` (skipped skeleton) to earmark upcoming coverage.
+- Pass 4 residual semantics: default residual θ components now lift base θ evaluations into residual carriers via `ResidualFunctorSummary.lift`, automatically synthesise per-object carriers, expose optional alignment witnesses through the new monad-map translators, and extend `checkResidualRunnerMorphism` with explicit residual-square sampling (backed by new regression tests).
+- Pass 5 residual oracles: exported `RunnerOracles.residualMorphism` so the residual square checks surface through the standard oracle registry, enriched `makeResidualInteractionLaw` with custom functor/witness support, bridged those summaries via `makeResidualRunnerFromInteractionLaw`, and exercised identity/mismatch/round-trip coverage in `test/residual-runner.spec.ts`.
+- Pass 6 residual law oracles: added `RunnerOracles.residualInteraction` to replay θ/η/μ witness comparisons against residual laws, introduced witness helpers (`getResidual{Theta,Eta,Mu}Witness`, `compareResidualDiagramWitness`), and extended `test/residual-runner.spec.ts` with success/failure coverage for the new oracle.
 
 1. **Introduce `ResidualStatefulRunner` Records**
    - Define `ResidualStatefulRunner<T,R>` that captures θ-components in `R(X×Y)` and caches ηᴿ/μᴿ diagram witnesses, degenerating to `StatefulRunner` when `R = Id`.
@@ -104,9 +144,27 @@ Next:
 3. **Translate Residual Runners ⇔ Monad Maps**
    - Add `residualRunnerToMonadMap` and `monadMapToResidualRunner` adapters that replay η/μ compatibility triangles and log counterexamples.
 4. **Bridge Residual Runners to Residual Laws**
-   - Connect residual runners to the residual interaction-law API so `(F,G,ρ)` can instantiate `Run_R(T)` objects while preserving Kleisli-pure annotations and diagnostics.
+   - ✅ Residual laws now propagate functors and θ/η/μ witnesses into `ResidualStatefulRunner`s via `makeResidualRunnerFromInteractionLaw`; `RunnerOracles.residualInteraction` checks those witnesses against live samples.
 5. **Document and Test Residual Runner Support**
-   - Add an “R-residual runners” entry in `LAWS.md`, regression examples (e.g., `R X = X + E`), and integrate into the law registry.
+   - ✅ `LAWS.md` now documents residual runner structure/oracles (including the Example 6 `R X = X + E` case), `test/residual-runner.spec.ts` exercises residual morphism + interaction oracles alongside the new example, and `RunnerOracles` exposes the residual registry entries.
+
+Next:
+- Transition into **Phase IV c – Supervised kernel/user stack** workstreams (λ₍coop₎ alignment, inverse translation, residual metadata propagation).
+
+## Appendix: Archived Implementation Notes
+
+### Item 10 – Supervised Kernel/User Stack
+- **Data model**: `KernelMonadSpec` tracks state/exception/signal footprints plus residual hooks; `UserMonadSpec` lists delegated operations and boundary morphisms; `SupervisedStack` packages both with diagnostics.
+- **Builders**: `makeKernelMonad`, `makeUserMonad`, and `makeSupervisedStack` assemble semantics, residual coverage, comparison summaries, and metadata.
+- **Runner integration**: `stackToRunner` enriches the interaction-law runner with kernel state carriers, while `runnerToStack` recovers kernel/user summaries and residual tallies from embedded metadata.
+- **Tests & docs**: `test/stateful-runner.spec.ts` exercises the Example 6 supervised scenario; `LAWS.md` notes the supervised stack diagnostics and λ₍coop₎ roadmap.
+- **λ₍coop₎ alignment**: `buildLambdaCoopComparisonArtifacts` and `analyzeSupervisedStackLambdaCoopAlignment` translate the stack into λ₍coop₎ clauses, log alignment issues, and replay interpreter diagnostics.
+
+### Phase IV b – Residual Runner Roadmap Details
+- **Scaffold**: `ResidualStatefulRunner` wraps the base runner with residual θ-components, diagram witnesses, and metadata.
+- **Morphism utilities**: Residual morphisms reuse Run(T) square checks (`checkResidualRunnerMorphism`), and `composeResidualRunnerMorphisms` records per-object diagnostics.
+- **Diagnostics**: θ-alignment witnesses report sample coverage/mismatches; diagram updates add `Residual diagram …` summary lines for quick inspection.
+- **Planned tests**: the skipped `test/residual-runner.spec.ts` will grow into identity/compose checks and θ-alignment mismatch cases once the translators land.
 
 ------
 

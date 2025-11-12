@@ -120,6 +120,13 @@ export * from "./monad-comonad-interaction-law"
 export * from "./task"
 export * from "./validation"
 export * from "./stateful-runner";
+export * from "./runner-oracles";
+export * from "./residual-interaction-law";
+export * from "./residual-stateful-runner";
+export * from "./update-lens";
+export * from "./supervised-stack";
+export * from "./supervised-stack-lambda-coop";
+export * from "./lambda-coop.runner-alignment";
 export * from "./reader-task-option"
 export * from "./json-canonical"
 export * from "./decoder"

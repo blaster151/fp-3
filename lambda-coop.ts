@@ -1007,6 +1007,7 @@ export interface LambdaCoopUserEvalResult {
   readonly error?: string;
   readonly trace: ReadonlyArray<LambdaCoopReductionTraceEntry>;
   readonly finalResources: LambdaCoopResourceSummary;
+  readonly operations: ReadonlyArray<string>;
 }
 
 export interface LambdaCoopKernelEvalResult {
@@ -1016,6 +1017,7 @@ export interface LambdaCoopKernelEvalResult {
   readonly signal?: string;
   readonly trace: ReadonlyArray<LambdaCoopReductionTraceEntry>;
   readonly finalResources: LambdaCoopResourceSummary;
+  readonly operations: ReadonlyArray<string>;
 }
 
 export interface LambdaCoopEvalOptions { readonly stepLimit?: number; readonly enforceRunner?: boolean; }
@@ -1056,25 +1058,27 @@ export function evaluateKernel(term: LambdaCoopKernelComputation, options: Lambd
   const stepLimit = Math.max(0, options.stepLimit ?? 512);
   let current: LambdaCoopKernelComputation = term;
   let steps = 0;
+  const operations: string[] = [];
   while (steps < stepLimit) {
     steps++;
     switch (current.kind) {
       case 'kernelReturn': {
         const summary = summarizeKernelComputationResources(current);
         tracePush(trace, 'Kernel-Return', 'return value', current.kind, current.kind, summary);
-        return { status: 'value', value: current.value, trace, finalResources: summary };
+        return { status: 'value', value: current.value, trace, finalResources: summary, operations };
       }
       case 'kernelRaise': {
         const summary = summarizeKernelComputationResources(current);
         tracePush(trace, 'Kernel-Raise', `raise ${current.exception}`, current.kind, current.kind, summary);
-        return { status: 'exception', exception: current.exception, trace, finalResources: summary };
+        return { status: 'exception', exception: current.exception, trace, finalResources: summary, operations };
       }
       case 'kernelSignal': {
         const summary = summarizeKernelComputationResources(current);
         tracePush(trace, 'Kernel-Signal', `signal ${current.signal}`, current.kind, current.kind, summary);
-        return { status: 'signal', signal: current.signal, trace, finalResources: summary };
+        return { status: 'signal', signal: current.signal, trace, finalResources: summary, operations };
       }
       case 'kernelOperation': {
+        operations.push(current.operation);
         // Evaluate continuation body immediately (call-by-value assumption on argument already value-like)
         const contBody = current.continuation.body;
         tracePush(trace, 'Kernel-Op', `invoke kernel op ${current.operation}`, current.kind, contBody.kind, summarizeKernelComputationResources(current));
@@ -1086,6 +1090,7 @@ export function evaluateKernel(term: LambdaCoopKernelComputation, options: Lambd
         // Evaluate first computation; if value, substitute binder variable occurrences in body if body is kernelReturn variable pattern
         const first = evaluateKernel(current.computation, options);
         trace.push(...first.trace);
+          operations.push(...first.operations);
         if (first.status === 'value') {
           // naive substitution inside body if occurrences of binder appear as variable
           const body = current.body;
@@ -1094,15 +1099,16 @@ export function evaluateKernel(term: LambdaCoopKernelComputation, options: Lambd
         } else {
           // propagate with precise variant
           if (first.status === 'exception') {
-            return { status: 'exception', exception: first.exception as string, trace, finalResources: first.finalResources };
+              return { status: 'exception', exception: first.exception as string, trace, finalResources: first.finalResources, operations };
           }
-          return { status: 'signal', signal: first.signal as string, trace, finalResources: first.finalResources };
+            return { status: 'signal', signal: first.signal as string, trace, finalResources: first.finalResources, operations };
         }
       }
       case 'kernelTry': {
         tracePush(trace, 'Kernel-Try', 'enter kernel try', current.kind, current.computation.kind, summarizeKernelComputationResources(current));
         const inner = evaluateKernel(current.computation, options);
-        trace.push(...inner.trace);
+          trace.push(...inner.trace);
+          operations.push(...inner.operations);
         if (inner.status === 'value') {
           // apply return handler
             const handlerBody = current.returnHandler.body;
@@ -1111,21 +1117,21 @@ export function evaluateKernel(term: LambdaCoopKernelComputation, options: Lambd
         } else if (inner.status === 'exception') {
           const handler = current.exceptionHandlers.find(h => h.exception === inner.exception);
           if (handler) { tracePush(trace, 'Kernel-Try-Exception', `handle ${inner.exception}`, current.computation.kind, handler.body.kind, summarizeKernelComputationResources(current)); current = handler.body; continue; }
-          return { status: 'exception', exception: inner.exception as string, trace, finalResources: inner.finalResources };
+            return { status: 'exception', exception: inner.exception as string, trace, finalResources: inner.finalResources, operations };
         } else { // signal
-          return { status: 'signal', signal: inner.signal as string, trace, finalResources: inner.finalResources };
+            return { status: 'signal', signal: inner.signal as string, trace, finalResources: inner.finalResources, operations };
         }
       }
       default: {
         const summary = summarizeKernelComputationResources(current);
         tracePush(trace, 'Kernel-Stuck', 'no rule applies', current.kind, current.kind, summary);
-        return { status: 'signal', signal: 'stuck', trace, finalResources: summary };
+          return { status: 'signal', signal: 'stuck', trace, finalResources: summary, operations };
       }
     }
   }
   const summary = summarizeKernelComputationResources(current);
   tracePush(trace, 'Kernel-StepLimit', 'step limit exceeded', current.kind, current.kind, summary);
-  return { status: 'signal', signal: 'stepLimit', trace, finalResources: summary };
+    return { status: 'signal', signal: 'stepLimit', trace, finalResources: summary, operations };
 }
 
 export function evaluateUser(term: LambdaCoopUserComputationExtended, options: LambdaCoopEvalOptions = {}): LambdaCoopUserEvalResult {
@@ -1133,20 +1139,22 @@ export function evaluateUser(term: LambdaCoopUserComputationExtended, options: L
   const stepLimit = Math.max(0, options.stepLimit ?? 512);
   let current: LambdaCoopUserComputationExtended = term;
   let steps = 0;
+  const operations: string[] = [];
   while (steps < stepLimit) {
     steps++;
     switch (current.kind) {
       case 'userReturn': {
         const summary = summarizeUserComputationResources(current);
         tracePush(trace, 'User-Return', 'return value', current.kind, current.kind, summary);
-        return { status: 'value', value: current.value, trace, finalResources: summary };
+          return { status: 'value', value: current.value, trace, finalResources: summary, operations };
       }
       case 'userRaise': {
         const summary = summarizeUserComputationResources(current);
         tracePush(trace, 'User-Raise', `raise ${current.exception}`, current.kind, current.kind, summary);
-        return { status: 'exception', exception: current.exception, trace, finalResources: summary };
+          return { status: 'exception', exception: current.exception, trace, finalResources: summary, operations };
       }
       case 'userOperation': {
+          operations.push(current.operation);
         tracePush(trace, 'User-Op', `user op ${current.operation}`, current.kind, current.continuation.body.kind, summarizeUserComputationResources(current));
         current = current.continuation.body; continue;
       }
@@ -1154,19 +1162,21 @@ export function evaluateUser(term: LambdaCoopUserComputationExtended, options: L
         tracePush(trace, 'User-Let', `let ${current.binder}`, current.kind, current.computation.kind, summarizeUserComputationResources(current));
         const first = evaluateUser(current.computation, options);
         trace.push(...first.trace);
+          operations.push(...first.operations);
   if (first.status === 'value') { current = current.body; continue; }
-  if (first.status === 'exception') return { status: 'exception', exception: first.exception as string, trace, finalResources: first.finalResources };
-  if (first.status === 'signal') return { status: 'signal', signal: first.signal as string, trace, finalResources: first.finalResources };
-  return { status: 'error', error: first.error ?? 'error', trace, finalResources: first.finalResources };
+    if (first.status === 'exception') return { status: 'exception', exception: first.exception as string, trace, finalResources: first.finalResources, operations };
+    if (first.status === 'signal') return { status: 'signal', signal: first.signal as string, trace, finalResources: first.finalResources, operations };
+    return { status: 'error', error: first.error ?? 'error', trace, finalResources: first.finalResources, operations };
       }
       case 'userTry': {
         tracePush(trace, 'User-Try', 'enter user try', current.kind, current.computation.kind, summarizeUserComputationResources(current));
         const inner = evaluateUser(current.computation, options);
         trace.push(...inner.trace);
+          operations.push(...inner.operations);
         if (inner.status === 'value') { const handlerBody = current.returnHandler.body; tracePush(trace, 'User-Try-Return', 'return handler', current.computation.kind, handlerBody.kind, summarizeUserComputationResources(current)); current = handlerBody; continue; }
-  if (inner.status === 'exception') { const handler = current.exceptionHandlers.find(h => h.exception === inner.exception); if (handler) { tracePush(trace, 'User-Try-Exception', `handle ${inner.exception}`, current.computation.kind, handler.body.kind, summarizeUserComputationResources(current)); current = handler.body; continue; } return { status: 'exception', exception: inner.exception as string, trace, finalResources: inner.finalResources }; }
-  if (inner.status === 'signal') return { status: 'signal', signal: inner.signal as string, trace, finalResources: inner.finalResources };
-  return { status: 'error', error: 'unexpected-status', trace, finalResources: inner.finalResources };
+    if (inner.status === 'exception') { const handler = current.exceptionHandlers.find(h => h.exception === inner.exception); if (handler) { tracePush(trace, 'User-Try-Exception', `handle ${inner.exception}`, current.computation.kind, handler.body.kind, summarizeUserComputationResources(current)); current = handler.body; continue; } return { status: 'exception', exception: inner.exception as string, trace, finalResources: inner.finalResources, operations }; }
+    if (inner.status === 'signal') return { status: 'signal', signal: inner.signal as string, trace, finalResources: inner.finalResources, operations };
+    return { status: 'error', error: 'unexpected-status', trace, finalResources: inner.finalResources, operations };
       }
       case 'userRun': {
         // Runner without finaliser
@@ -1180,22 +1190,23 @@ export function evaluateUser(term: LambdaCoopUserComputationExtended, options: L
         // Evaluate computation under runner, then apply equations: run(return)=return, run(raise)=raise, run(kill)=kill, run(op)=kernel clause body.
         const inner = evaluateUser(current.computation, options); // treat as user-level first
         trace.push(...inner.trace);
+          operations.push(...inner.operations);
         if (inner.status === 'value') {
           // Equation: run (return V) finally F = return V (finaliser not executed here per Section 4.4 excerpt)
           const ret: LambdaCoopUserComputation = { kind: 'userReturn', value: inner.value ?? { kind: 'unitValue' } };
           const summary = summarizeUserComputationResources(ret);
           tracePush(trace, 'Run-Return', 'finaliser bypass (return)', current.kind, ret.kind, summary);
-          return { status: 'value', value: inner.value as LambdaCoopValue, trace, finalResources: summary };
+            return { status: 'value', value: inner.value as LambdaCoopValue, trace, finalResources: summary, operations };
         }
         if (inner.status === 'exception') {
           const summary = summarizeUserComputationResources(current.computation);
           tracePush(trace, 'Run-Raise', `propagate exception ${inner.exception}`, current.computation.kind, current.computation.kind, summary);
-          return { status: 'exception', exception: inner.exception as string, trace, finalResources: summary };
+            return { status: 'exception', exception: inner.exception as string, trace, finalResources: summary, operations };
         }
         if (inner.status === 'signal') {
           const summary = summarizeUserComputationResources(current.computation);
           tracePush(trace, 'Run-Kill', `propagate signal ${inner.signal}`, current.computation.kind, current.computation.kind, summary);
-          return { status: 'signal', signal: inner.signal as string, trace, finalResources: summary };
+            return { status: 'signal', signal: inner.signal as string, trace, finalResources: summary, operations };
         }
         break;
       }
@@ -1205,32 +1216,57 @@ export function evaluateUser(term: LambdaCoopUserComputationExtended, options: L
         current = expanded; continue;
       }
       default: {
-        const summary = summarizeUserComputationResources(current as LambdaCoopUserComputation);
-        tracePush(trace, 'User-Stuck', 'no rule applies', current.kind, current.kind, summary);
-        return { status: 'error', error: 'stuck', trace, finalResources: summary };
+          const summary = summarizeUserComputationResources(current as LambdaCoopUserComputation);
+          tracePush(trace, 'User-Stuck', 'no rule applies', current.kind, current.kind, summary);
+          return { status: 'error', error: 'stuck', trace, finalResources: summary, operations };
       }
     }
   }
-  const summary = summarizeUserComputationResources(current as LambdaCoopUserComputation);
-  tracePush(trace, 'User-StepLimit', 'step limit exceeded', current.kind, current.kind, summary);
-  return { status: 'error', error: 'stepLimit', trace, finalResources: summary };
+    const summary = summarizeUserComputationResources(current as LambdaCoopUserComputation);
+    tracePush(trace, 'User-StepLimit', 'step limit exceeded', current.kind, current.kind, summary);
+    return { status: 'error', error: 'stepLimit', trace, finalResources: summary, operations };
 }
 
 // Describe evaluation trace for oracle diagnostics.
 export function describeUserEval(result: LambdaCoopUserEvalResult): ReadonlyArray<string> {
   const lines: string[] = [];
-  lines.push(`user-eval status=${result.status}` + (result.value ? ` valueKind=${result.value.kind}` : '') + (result.exception ? ` exception=${result.exception}` : '') + (result.signal ? ` signal=${result.signal}` : '') + (result.error ? ` error=${result.error}` : ''));
+  lines.push(
+    `user-eval status=${result.status}` +
+      (result.value ? ` valueKind=${result.value.kind}` : "") +
+      (result.exception ? ` exception=${result.exception}` : "") +
+      (result.signal ? ` signal=${result.signal}` : "") +
+      (result.error ? ` error=${result.error}` : ""),
+  );
+  if (result.operations.length > 0) {
+    lines.push(`  operations=${result.operations.join(", ")}`);
+  }
   for (const t of result.trace) {
-    lines.push(`  rule=${t.rule} note=${t.note} before=${t.beforeKind} after=${t.afterKind} ops=${Array.from(t.resourcesSnapshot.signatures).join(',') || '∅'}`);
+    lines.push(
+      `  rule=${t.rule} note=${t.note} before=${t.beforeKind} after=${t.afterKind} ops=${Array.from(
+        t.resourcesSnapshot.signatures,
+      ).join(",") || "∅"}`,
+    );
   }
   return lines;
 }
 
 export function describeKernelEval(result: LambdaCoopKernelEvalResult): ReadonlyArray<string> {
   const lines: string[] = [];
-  lines.push(`kernel-eval status=${result.status}` + (result.value ? ` valueKind=${result.value.kind}` : '') + (result.exception ? ` exception=${result.exception}` : '') + (result.signal ? ` signal=${result.signal}` : ''));
+  lines.push(
+    `kernel-eval status=${result.status}` +
+      (result.value ? ` valueKind=${result.value.kind}` : "") +
+      (result.exception ? ` exception=${result.exception}` : "") +
+      (result.signal ? ` signal=${result.signal}` : ""),
+  );
+  if (result.operations.length > 0) {
+    lines.push(`  operations=${result.operations.join(", ")}`);
+  }
   for (const t of result.trace) {
-    lines.push(`  rule=${t.rule} note=${t.note} before=${t.beforeKind} after=${t.afterKind} ops=${Array.from(t.resourcesSnapshot.signatures).join(',') || '∅'}`);
+    lines.push(
+      `  rule=${t.rule} note=${t.note} before=${t.beforeKind} after=${t.afterKind} ops=${Array.from(
+        t.resourcesSnapshot.signatures,
+      ).join(",") || "∅"}`,
+    );
   }
   return lines;
 }
