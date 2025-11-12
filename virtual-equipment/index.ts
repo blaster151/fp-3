@@ -12,6 +12,7 @@ export * from "./limits";
 export * from "./absoluteness";
 export * from "./faithfulness";
 export * from "./skew-multicategory";
+export * from "./core-adjunction-bridge";
 export * from "../relative/relative-monad";
 export * from "./street-calculus";
 export * from "./bicategory";
