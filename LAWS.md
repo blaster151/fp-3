@@ -214,14 +214,17 @@ if (!report.holds) {
     - `runnerToSweedlerCoalgebraComponents(runner, law)` / `sweedlerCoalgebraComponentsToRunner(components, law)` expose the Sweedler-dual perspective using the interaction law’s cached dual data.
     - `buildExample12UpdateLensRunner(spec, { interaction? })` reconstructs Example 12’s update-lens runner from `(hp, upd)` data, and `buildExample12UpdateLensSuite()` packages the runner with its costate/coalgebra/`Cost^T` witnesses for comparisons.
     - `attachResidualHandlers(runner, law, specs, { sampleLimit?, objectFilter? })` samples θ-domain pairs to track partial residual handler coverage, emitting diagnostics and a per-object report; use `analyzeResidualHandlerCoverage` for analysis without mutating the runner.
-    - `makeResidualInteractionLaw(law, { residualMonadName?, notes? })` records TODO diagnostics for Section 5 residual diagrams while residual witnesses are still pending.
+    - `makeResidualInteractionLaw(law, { residualMonadName?, notes?, residualFunctor?, thetaWitness?, etaWitness?, muWitness? })` now accepts custom residual functors and precomputed θ/η/μ witnesses, threading them into `ResidualInteractionLawSummary` entries alongside optional notes.
+    - `getResidualThetaWitness(runner, sampleLimit?)`, `getResidualEtaWitness(runner, law, sampleLimit?)`, and `getResidualMuWitness(runner, law, sampleLimit?)` synthesise diagram witnesses when they are absent on the runner, while `compareResidualDiagramWitness(label, actual, expected?)` reports aggregate checked counts and mismatches for residual diagnostics.
   - **Oracles / Registry Paths:**
     - `runner.equivalence.coalgebra` → samples θ vs γ and γ→θ reconstruction.
     - `runner.equivalence.costate` → samples θ vs κ and κ→θ reconstruction.
     - `runner.equivalence.costT` → validates the Cost^T view via γ-inclusion.
     - `runner.equivalence.sweedler` → validates the Sweedler-dual coalgebra view.
     - `runner.equivalence.triangle` → checks γ → κ → γ round-trip.
-  - **Check:** `test/stateful-runner.spec.ts` exercises the equivalence oracles on Example 6 and the Example 12 update-lens suite against the Example 8 interaction.
+    - `runner.residual.morphism` → enforces residual Run(T) morphism squares, reporting sampled residual-square mismatches.
+    - `runner.residual.interaction` → replays θ/η/μ residual witnesses against `ResidualInteractionLawSummary`s, combining law-provided diagnostics with freshly sampled runner witnesses.
+  - **Check:** `test/stateful-runner.spec.ts` exercises the equivalence oracles on Example 6 and the Example 12 update-lens suite against the Example 8 interaction, while `test/residual-runner.spec.ts` covers residual morphism and residual interaction oracles (success and mismatch scenarios).
 
 ### Supervised kernel/user stack (Phase IV c / Final Integration)
 

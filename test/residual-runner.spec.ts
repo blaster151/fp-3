@@ -20,6 +20,7 @@ import type {
   ResidualThetaEvaluationContext,
   ResidualMorphismComponent,
   ResidualThetaComponent,
+  ResidualDiagramWitness,
 } from "../residual-stateful-runner";
 
 describe("ResidualStatefulRunner semantics", () => {
@@ -195,5 +196,59 @@ describe("ResidualStatefulRunner semantics", () => {
     expect(runnerFromLaw.thetaWitness).toBe(thetaWitness);
     expect(runnerFromLaw.etaWitness).toBe(etaWitness);
     expect(runnerFromLaw.muWitness).toBe(muWitness);
+  });
+
+  it("honors residual law witnesses via oracle", () => {
+    const thetaWitness = { diagram: "theta", objects: [], diagnostics: ["law theta witness"] } as const;
+    const etaWitness = { diagram: "eta", objects: [], diagnostics: ["law eta witness"] } as const;
+    const muWitness = { diagram: "mu", objects: [], diagnostics: ["law mu witness"] } as const;
+    const residualLaw = makeResidualInteractionLaw(law.law, {
+      residualMonadName: "ResidualOracleCheck",
+      residualFunctor,
+      thetaWitness,
+      etaWitness,
+      muWitness,
+    });
+    const runnerFromLaw = makeResidualRunnerFromInteractionLaw(baseRunner, law, residualLaw, {
+      diagnostics: ["oracle test runner"],
+    });
+    const oracle = RunnerOracles.residualInteraction(runnerFromLaw, law, residualLaw, {
+      sampleLimit: 4,
+    });
+    expect(oracle.registryPath).toBe("runner.residual.interaction");
+    expect(oracle.holds).toBe(true);
+    expect(
+      oracle.details.some((line) => line.includes("theta: mismatches=0") || line.includes("eta: mismatches=0")),
+    ).toBe(true);
+  });
+
+  it("flags residual interaction mismatches when law witnesses report failures", () => {
+    const badObject = law.law.kernel.base.objects[0] as Obj;
+    const etaWitness: ResidualDiagramWitness<Obj> = {
+      diagram: "eta",
+      objects: [
+        {
+          object: badObject,
+          checked: 1,
+          mismatches: 1,
+          diagnostics: ["forced eta mismatch"],
+        },
+      ],
+      diagnostics: ["law-provided eta witness reports mismatch"],
+    };
+    const residualLaw = makeResidualInteractionLaw(law.law, {
+      residualMonadName: "ResidualOracleMismatch",
+      residualFunctor,
+      etaWitness,
+    });
+    const runnerFromLaw = makeResidualRunnerFromInteractionLaw(baseRunner, law, residualLaw, {
+      diagnostics: ["oracle mismatch runner"],
+    });
+    const oracle = RunnerOracles.residualInteraction(runnerFromLaw, law, residualLaw, {
+      sampleLimit: 3,
+    });
+    expect(oracle.registryPath).toBe("runner.residual.interaction");
+    expect(oracle.holds).toBe(false);
+    expect(oracle.details.some((line) => line.includes("eta: mismatches="))).toBe(true);
   });
 });

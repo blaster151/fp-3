@@ -12,6 +12,7 @@ export interface ResidualInteractionLawSummary<Obj, Arr, Left, Right, Value> {
   readonly thetaWitness?: ResidualDiagramWitness<Obj>;
   readonly etaWitness?: ResidualDiagramWitness<Obj>;
   readonly muWitness?: ResidualDiagramWitness<Obj>;
+  readonly residualNotes?: ReadonlyArray<string>;
 }
 
 export interface ResidualInteractionLawOptions<
@@ -72,5 +73,6 @@ export const makeResidualInteractionLaw = <
     ...(options.thetaWitness ? { thetaWitness: options.thetaWitness } : {}),
     ...(options.etaWitness ? { etaWitness: options.etaWitness } : {}),
     ...(options.muWitness ? { muWitness: options.muWitness } : {}),
+    ...(options.notes ? { residualNotes: options.notes } : {}),
   };
 };

@@ -134,6 +134,7 @@ Progress:
 - Pass 3 documentation/test outline: drafted `RESIDUAL_RUNNER_PLAN.md` describing remaining milestones plus planned regression suites, and introduced `test/residual-runner.spec.ts` (skipped skeleton) to earmark upcoming coverage.
 - Pass 4 residual semantics: default residual θ components now lift base θ evaluations into residual carriers via `ResidualFunctorSummary.lift`, automatically synthesise per-object carriers, expose optional alignment witnesses through the new monad-map translators, and extend `checkResidualRunnerMorphism` with explicit residual-square sampling (backed by new regression tests).
 - Pass 5 residual oracles: exported `RunnerOracles.residualMorphism` so the residual square checks surface through the standard oracle registry, enriched `makeResidualInteractionLaw` with custom functor/witness support, bridged those summaries via `makeResidualRunnerFromInteractionLaw`, and exercised identity/mismatch/round-trip coverage in `test/residual-runner.spec.ts`.
+- Pass 6 residual law oracles: added `RunnerOracles.residualInteraction` to replay θ/η/μ witness comparisons against residual laws, introduced witness helpers (`getResidual{Theta,Eta,Mu}Witness`, `compareResidualDiagramWitness`), and extended `test/residual-runner.spec.ts` with success/failure coverage for the new oracle.
 
 1. **Introduce `ResidualStatefulRunner` Records**
    - Define `ResidualStatefulRunner<T,R>` that captures θ-components in `R(X×Y)` and caches ηᴿ/μᴿ diagram witnesses, degenerating to `StatefulRunner` when `R = Id`.
@@ -142,7 +143,7 @@ Progress:
 3. **Translate Residual Runners ⇔ Monad Maps**
    - Add `residualRunnerToMonadMap` and `monadMapToResidualRunner` adapters that replay η/μ compatibility triangles and log counterexamples.
 4. **Bridge Residual Runners to Residual Laws**
-   - Connect residual runners to the residual interaction-law API so `(F,G,ρ)` can instantiate `Run_R(T)` objects while preserving Kleisli-pure annotations and diagnostics.
+   - ✅ Residual laws now propagate functors and θ/η/μ witnesses into `ResidualStatefulRunner`s via `makeResidualRunnerFromInteractionLaw`; `RunnerOracles.residualInteraction` checks those witnesses against live samples.
 5. **Document and Test Residual Runner Support**
    - Add an “R-residual runners” entry in `LAWS.md`, regression examples (e.g., `R X = X + E`), and integrate into the law registry.
 

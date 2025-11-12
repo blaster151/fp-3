@@ -31,9 +31,14 @@ import {
 } from "./stateful-runner";
 import {
   checkResidualRunnerMorphism,
+  getResidualThetaWitness,
+  getResidualEtaWitness,
+  getResidualMuWitness,
+  compareResidualDiagramWitness,
   type ResidualRunnerMorphism,
   type ResidualStatefulRunner,
 } from "./residual-stateful-runner";
+import type { ResidualInteractionLawSummary } from "./residual-interaction-law";
 
 export interface RunnerOracleResult {
   readonly registryPath: string;
@@ -197,26 +202,63 @@ export const RunnerOracles = {
         diagnostics: report,
       };
     },
-    residualMorphism: <Obj, Arr, Left, Right, Value>(
-      morphism: ResidualRunnerMorphism<Obj, Left, Right, Value, unknown, unknown>,
-      runner: ResidualStatefulRunner<Obj, Left, Right, Value>,
-      law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-      options: RunnerOracleOptions<Obj> = {},
-    ): RunnerOracleResult => {
-      const checkOptions: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {};
-      if (options.sampleLimit !== undefined) checkOptions.sampleLimit = options.sampleLimit;
-      if (options.objectFilter) checkOptions.objectFilter = options.objectFilter;
-      const report = checkResidualRunnerMorphism(runner, morphism, law, checkOptions);
-      return {
-        registryPath: path("residual.morphism"),
-        holds: report.holds,
-        details: [
-          `residualSquare checked=${report.residualSquare.checked} mismatches=${report.residualSquare.mismatches}`,
-          ...report.diagnostics.slice(0, 8),
-        ],
-        diagnostics: report,
-      };
-    },
+  residualMorphism: <Obj, Arr, Left, Right, Value>(
+    morphism: ResidualRunnerMorphism<Obj, Left, Right, Value, unknown, unknown>,
+    runner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+    law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+    options: RunnerOracleOptions<Obj> = {},
+  ): RunnerOracleResult => {
+    const checkOptions: { sampleLimit?: number; objectFilter?: (object: Obj) => boolean } = {};
+    if (options.sampleLimit !== undefined) checkOptions.sampleLimit = options.sampleLimit;
+    if (options.objectFilter) checkOptions.objectFilter = options.objectFilter;
+    const report = checkResidualRunnerMorphism(runner, morphism, law, checkOptions);
+    return {
+      registryPath: path("residual.morphism"),
+      holds: report.holds,
+      details: [
+        `residualSquare checked=${report.residualSquare.checked} mismatches=${report.residualSquare.mismatches}`,
+        ...report.diagnostics.slice(0, 8),
+      ],
+      diagnostics: report,
+    };
+  },
+  residualInteraction: <Obj, Arr, Left, Right, Value>(
+    runner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+    interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+    residualLaw: ResidualInteractionLawSummary<Obj, Arr, Left, Right, Value>,
+    options: RunnerOracleOptions<Obj> = {},
+  ): RunnerOracleResult => {
+    const sampleLimit = Math.max(1, options.sampleLimit ?? 12);
+    const theta = getResidualThetaWitness(runner, sampleLimit);
+    const eta = getResidualEtaWitness(runner, interaction, sampleLimit);
+    const mu = getResidualMuWitness(runner, interaction, sampleLimit);
+    const thetaComparison = compareResidualDiagramWitness("theta", theta, residualLaw.thetaWitness);
+    const etaComparison = compareResidualDiagramWitness("eta", eta, residualLaw.etaWitness);
+    const muComparison = compareResidualDiagramWitness("mu", mu, residualLaw.muWitness);
+    const holds =
+      thetaComparison.mismatches === 0 &&
+      etaComparison.mismatches === 0 &&
+      muComparison.mismatches === 0;
+    const details: string[] = [
+      `${thetaComparison.label}: mismatches=${thetaComparison.mismatches}`,
+      `${etaComparison.label}: mismatches=${etaComparison.mismatches}`,
+      `${muComparison.label}: mismatches=${muComparison.mismatches}`,
+      ...thetaComparison.details.slice(0, 3),
+      ...etaComparison.details.slice(0, 3),
+      ...muComparison.details.slice(0, 3),
+    ];
+    return {
+      registryPath: path("residual.interaction"),
+      holds,
+      details,
+      diagnostics: {
+        theta: thetaComparison,
+        eta: etaComparison,
+        mu: muComparison,
+        law: residualLaw,
+      },
+    };
+  },
   handlers: <Obj, Arr, Left, Right, Value>(
     runner: StatefulRunner<Obj, Left, Right, Value>,
     law: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,

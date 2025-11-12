@@ -331,6 +331,85 @@ const buildResidualMultiplicationWitness = <
   };
 };
 
+export const getResidualThetaWitness = <
+  Obj,
+  Left,
+  Right,
+  Value
+>(
+  residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+  sampleLimit = 12,
+): ResidualDiagramWitness<Obj> =>
+  residualRunner.thetaWitness ?? checkResidualThetaAlignment(residualRunner, { sampleLimit });
+
+export const getResidualEtaWitness = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  sampleLimit = 12,
+): ResidualDiagramWitness<Obj> =>
+  residualRunner.etaWitness ?? buildResidualEtaWitness(residualRunner, interaction, sampleLimit);
+
+export const getResidualMuWitness = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  residualRunner: ResidualStatefulRunner<Obj, Left, Right, Value>,
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  sampleLimit = 12,
+): ResidualDiagramWitness<Obj> =>
+  residualRunner.muWitness ?? buildResidualMultiplicationWitness(residualRunner, interaction, sampleLimit);
+
+export interface ResidualWitnessComparison {
+  readonly label: string;
+  readonly checked: number;
+  readonly mismatches: number;
+  readonly details: ReadonlyArray<string>;
+}
+
+export const compareResidualDiagramWitness = <Obj>(
+  label: string,
+  actual: ResidualDiagramWitness<Obj>,
+  expected?: ResidualDiagramWitness<Obj>,
+): ResidualWitnessComparison => {
+  const actualChecked = actual.objects.reduce((acc, entry) => acc + entry.checked, 0);
+  const actualMismatches = actual.objects.reduce((acc, entry) => acc + entry.mismatches, 0);
+  if (!expected) {
+    return {
+      label,
+      checked: actualChecked,
+      mismatches: actualMismatches,
+      details: [
+        ...actual.diagnostics,
+        `${label}: no expected witness provided; using runner witness.`,
+      ],
+    };
+  }
+  const expectedChecked = expected.objects.reduce((acc, entry) => acc + entry.checked, 0);
+  const expectedMismatches = expected.objects.reduce((acc, entry) => acc + entry.mismatches, 0);
+  const mismatches = actualMismatches + expectedMismatches;
+  const details: string[] = [
+    ...expected.diagnostics,
+    ...actual.diagnostics,
+    `${label}: runner checked=${actualChecked} mismatches=${actualMismatches}`,
+    `${label}: law checked=${expectedChecked} mismatches=${expectedMismatches}`,
+  ];
+  return {
+    label,
+    checked: actualChecked + expectedChecked,
+    mismatches,
+    details,
+  };
+};
+
 const buildResidualThetaComponent = <
   Obj,
   Left,
@@ -1017,27 +1096,17 @@ export const residualRunnerToMonadMap = <
   const residualDiagnostics: string[] = [
     "residualRunnerToMonadMap: delegated to base runner.",
   ];
-  if (residualRunner.thetaWitness) {
-    residualDiagnostics.push(
-      summarizeResidualDiagramWitness(residualRunner.thetaWitness),
-    );
-  } else if (options.includeThetaWitness) {
-    const witness = checkResidualThetaAlignment(
-      residualRunner,
-      options.sampleLimit !== undefined ? { sampleLimit: options.sampleLimit } : {},
-    );
-    residualDiagnostics.push(summarizeResidualDiagramWitness(witness));
+  const sampleLimit = options.sampleLimit ?? 12;
+  if (options.includeThetaWitness) {
+    const theta = getResidualThetaWitness(residualRunner, sampleLimit);
+    residualDiagnostics.push(summarizeResidualDiagramWitness(theta));
+  } else if (residualRunner.thetaWitness) {
+    residualDiagnostics.push(summarizeResidualDiagramWitness(residualRunner.thetaWitness));
   }
-  if (residualRunner.etaWitness) {
-    residualDiagnostics.push(
-      summarizeResidualDiagramWitness(residualRunner.etaWitness),
-    );
-  }
-  if (residualRunner.muWitness) {
-    residualDiagnostics.push(
-      summarizeResidualDiagramWitness(residualRunner.muWitness),
-    );
-  }
+  const eta = residualRunner.etaWitness;
+  if (eta) residualDiagnostics.push(summarizeResidualDiagramWitness(eta));
+  const mu = residualRunner.muWitness;
+  if (mu) residualDiagnostics.push(summarizeResidualDiagramWitness(mu));
   return {
     ...base,
     residualDiagnostics,
@@ -1085,9 +1154,9 @@ export const monadMapToResidualRunner = <
   if (options.sampleLimit !== undefined && options.sampleLimit < 0) {
     return residualRunner;
   }
-  const thetaWitness = checkResidualThetaAlignment(residualRunner, { sampleLimit });
-  const etaWitness = buildResidualEtaWitness(residualRunner, interaction, sampleLimit);
-  const muWitness = buildResidualMultiplicationWitness(residualRunner, interaction, sampleLimit);
+  const thetaWitness = getResidualThetaWitness(residualRunner, sampleLimit);
+  const etaWitness = getResidualEtaWitness(residualRunner, interaction, sampleLimit);
+  const muWitness = getResidualMuWitness(residualRunner, interaction, sampleLimit);
   return withResidualDiagramWitnesses(residualRunner, {
     theta: thetaWitness,
     eta: etaWitness,
