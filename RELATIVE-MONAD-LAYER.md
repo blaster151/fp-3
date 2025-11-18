@@ -538,9 +538,9 @@
 - **CI hooks**
   - ✅ Confirmed the existing `tsconfig.*` entries include the `relative/`
     folder; no additional compiler plumbing required for the migration pass.
-  - ✅ Added `scripts/validate-relative-monads.mjs`, a placeholder CLI that
-    enumerates oracle output for the trivial relative monad so CI wiring is
-    ready when Street-action witnesses arrive.
+  - ✅ Promoted `scripts/validate-relative-monads.ts` to load the registered
+    Street harness, enumerate the aggregated roll-up entry, and emit the JSON
+    payload for downstream CI hooks.
 
 This roadmap keeps Step 2 grounded in the existing monad ecosystem while opening the door to the richer relative theory developed in the paper.
 
