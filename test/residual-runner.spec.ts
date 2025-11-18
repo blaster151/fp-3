@@ -8,12 +8,27 @@ import {
   makeResidualRunnerMorphism,
   checkResidualRunnerMorphism,
   RunnerOracles,
+  summarizeResidualRunnerOracles,
   monadMapToResidualRunner,
   runnerToMonadMap,
   makeResidualRunnerFromInteractionLaw,
   residualFunctorFromInteractionLaw,
   makeResidualInteractionLaw,
 } from "../allTS";
+import {
+  summarizeResidualInteractionLaw,
+  makeResidualInteractionLawFromRunner,
+  checkResidualInteractionLaw,
+  makeResidualMonadComonadInteraction,
+  makeResidualMonadComonadInteractionLaw,
+  constructResidualInteractionLaw,
+  liftInteractionLawToResidual,
+  type ResidualInteractionLawRho,
+  type ResidualInteractionLawRhoComponent,
+  makeExample13ResidualInteractionLaw,
+  residualLawCompatibilityWithF,
+  residualLawCompatibilityWithG,
+} from "../residual-interaction-law";
 import { getCarrierSemantics, SetCat } from "../set-cat";
 import type { SetObj } from "../set-cat";
 import type { IndexedElement } from "../chu-space";
@@ -25,6 +40,124 @@ import type {
   ResidualThetaComponent,
   ResidualDiagramWitness,
 } from "../residual-stateful-runner";
+
+const findIndexedElement = <Obj, Payload>(
+  carrier: SetObj<IndexedElement<Obj, Payload>>,
+  object: Obj,
+  predicate: (element: IndexedElement<Obj, Payload>) => boolean = () => true,
+): IndexedElement<Obj, Payload> => {
+  const semantics = getCarrierSemantics(carrier);
+  if (semantics?.iterate) {
+    for (const candidate of semantics.iterate()) {
+      if (Object.is(candidate.object, object) && predicate(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  if (typeof (carrier as Iterable<IndexedElement<Obj, Payload>>)[Symbol.iterator] === "function") {
+    for (const candidate of carrier as Iterable<IndexedElement<Obj, Payload>>) {
+      if (Object.is(candidate.object, object) && predicate(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  throw new Error(`No indexed element found for object=${String(object)}`);
+};
+
+const extractWriterWeight = (candidate: unknown): 0 | 1 => {
+  if (Array.isArray(candidate) && candidate.length > 0) {
+    const weight = candidate[0];
+    if (weight === 0 || weight === 1) {
+      return weight;
+    }
+  }
+  throw new Error(`Unsupported writer sample ${String(candidate)}`);
+};
+
+describe("Example13 residual interaction law", () => {
+  it("wraps writer weight 0 evaluations as return values", () => {
+    const residual = makeExample13ResidualInteractionLaw();
+    const baseLaw = residual.base;
+    const object = baseLaw.kernel.base.objects[0];
+    if (object === undefined) {
+      throw new Error("Example13 residual law lacks a kernel object");
+    }
+    const left = findIndexedElement(baseLaw.primalCarrier as SetObj<IndexedElement<typeof object, unknown>>, object, (candidate) =>
+      extractWriterWeight(candidate.element) === 0,
+    );
+    const right = findIndexedElement(baseLaw.dualCarrier as SetObj<IndexedElement<typeof object, unknown>>, object);
+    if (!residual.rho) {
+      throw new Error("Example13 residual law missing ρ evaluator");
+    }
+    const outcome = residual.rho.evaluate(object as any, [left as any, right as any]);
+    expect((outcome as { tag: string }).tag).toBe("example13.return");
+    expect((outcome as { value?: unknown }).value).not.toBeUndefined();
+  });
+
+  it("routes writer weight 1 into the exception branch", () => {
+    const residual = makeExample13ResidualInteractionLaw();
+    const baseLaw = residual.base;
+    const object = baseLaw.kernel.base.objects[0];
+    if (object === undefined) {
+      throw new Error("Example13 residual law lacks a kernel object");
+    }
+    const left = findIndexedElement(baseLaw.primalCarrier as SetObj<IndexedElement<typeof object, unknown>>, object, (candidate) =>
+      extractWriterWeight(candidate.element) === 1,
+    );
+    const right = findIndexedElement(baseLaw.dualCarrier as SetObj<IndexedElement<typeof object, unknown>>, object);
+    if (!residual.rho) {
+      throw new Error("Example13 residual law missing ρ evaluator");
+    }
+    const outcome = residual.rho.evaluate(object as any, [left as any, right as any]);
+    expect((outcome as { tag: string }).tag).toBe("example13.exception");
+    expect((outcome as { exception: { description: string } }).exception.description).toContain(
+      "Writer weight 1",
+    );
+  });
+
+  it("enumerates both return and exception carriers", () => {
+    const residual = makeExample13ResidualInteractionLaw();
+    const object = residual.base.kernel.base.objects[0];
+    if (object === undefined) {
+      throw new Error("Example13 residual law lacks a kernel object");
+    }
+    const carrier = residual.residualFunctor.objectCarrier(object);
+    const elements: Array<{ tag: string }> = (() => {
+      const semantics = getCarrierSemantics(carrier);
+      if (semantics?.iterate) {
+        return Array.from(semantics.iterate()) as Array<{ tag: string }>;
+      }
+      if (typeof (carrier as Iterable<unknown>)[Symbol.iterator] === "function") {
+        return Array.from(carrier as Iterable<{ tag: string }>);
+      }
+      return [];
+    })();
+    expect(elements.some((entry) => entry.tag === "example13.return")).toBe(true);
+    expect(elements.some((entry) => entry.tag === "example13.exception")).toBe(true);
+  });
+
+  it("satisfies the residual F-diagram compatibility checks", () => {
+    const residual = makeExample13ResidualInteractionLaw();
+    const witness = residualLawCompatibilityWithF(residual, { sampleLimit: 6 });
+    const checkedObjects = witness.objects.filter((entry) => entry.checked > 0);
+    expect(checkedObjects.length).toBeGreaterThan(0);
+    expect(checkedObjects.every((entry) => entry.mismatches === 0)).toBe(true);
+    expect(
+      witness.diagnostics.some((line) => line.includes("Residual compatibility diagram (F-path)")),
+    ).toBe(true);
+  });
+
+  it("satisfies the residual G-diagram compatibility checks", () => {
+    const residual = makeExample13ResidualInteractionLaw();
+    const witness = residualLawCompatibilityWithG(residual, { sampleLimit: 6 });
+    const checkedObjects = witness.objects.filter((entry) => entry.checked > 0);
+    expect(checkedObjects.length).toBeGreaterThan(0);
+    expect(checkedObjects.every((entry) => entry.mismatches === 0)).toBe(true);
+    expect(
+      witness.diagnostics.some((line) => line.includes("Residual compatibility diagram (G-path)")),
+    ).toBe(true);
+  });
+});
 
 describe("ResidualStatefulRunner semantics", () => {
   const law = makeExample6MonadComonadInteractionLaw();
@@ -155,6 +288,39 @@ describe("ResidualStatefulRunner semantics", () => {
     expect(oracle.details[0]).toContain("mismatches=");
   });
 
+  it("summarizes residual oracle results", () => {
+    const summary = summarizeResidualRunnerOracles([
+      {
+        registryPath: "runner.residual.morphism",
+        holds: true,
+        details: [],
+        diagnostics: { residualSquare: { checked: 2, mismatches: 0 } },
+      },
+      {
+        registryPath: "runner.residual.interaction",
+        holds: false,
+        details: [],
+        diagnostics: {
+          theta: { label: "θ", checked: 3, mismatches: 1, details: [] },
+          eta: { label: "η", checked: 2, mismatches: 0, details: [] },
+          mu: { label: "μ", checked: 1, mismatches: 0, details: [] },
+        },
+      },
+      { registryPath: "runner.costate", holds: true, details: [] },
+    ]);
+    expect(summary.total).toBe(2);
+    expect(summary.passed).toBe(1);
+    expect(summary.failed).toBe(1);
+    expect(summary.uniqueRegistryPaths).toEqual([
+      "runner.residual.interaction",
+      "runner.residual.morphism",
+    ]);
+    expect(summary.residualSquareTotals).toEqual({ checked: 2, mismatches: 0 });
+    expect(summary.diagramTotals?.theta.mismatches).toBe(1);
+    expect(summary.diagramTotals?.eta.checked).toBe(2);
+    expect(summary.notes.some((note) => note.includes("residual oracle"))).toBe(true);
+  });
+
   it("attaches residual eta and mu witnesses via monad-map round trip", () => {
     const morphism = runnerToMonadMap(baseRunner, law.monad, law.monad);
     const residualRunner = monadMapToResidualRunner(morphism, law, residualFunctor, {
@@ -166,9 +332,9 @@ describe("ResidualStatefulRunner semantics", () => {
   });
 
   it("bridges residual interaction laws into residual functors and runners", () => {
-    const thetaWitness = { diagram: "theta", objects: [], diagnostics: [] } as const;
-    const etaWitness = { diagram: "eta", objects: [], diagnostics: [] } as const;
-    const muWitness = { diagram: "mu", objects: [], diagnostics: [] } as const;
+    const thetaWitness = { diagram: "theta", objects: [], diagnostics: [], counterexamples: [] } as const;
+    const etaWitness = { diagram: "eta", objects: [], diagnostics: [], counterexamples: [] } as const;
+    const muWitness = { diagram: "mu", objects: [], diagnostics: [], counterexamples: [] } as const;
     const customResidualFunctor: ResidualFunctorSummary<any, any, any, any> = {
       name: "ResidualExample",
       description: "custom residual functor",
@@ -202,9 +368,9 @@ describe("ResidualStatefulRunner semantics", () => {
   });
 
   it("honors residual law witnesses via oracle", () => {
-    const thetaWitness = { diagram: "theta", objects: [], diagnostics: ["law theta witness"] } as const;
-    const etaWitness = { diagram: "eta", objects: [], diagnostics: ["law eta witness"] } as const;
-    const muWitness = { diagram: "mu", objects: [], diagnostics: ["law mu witness"] } as const;
+    const thetaWitness = { diagram: "theta", objects: [], diagnostics: ["law theta witness"], counterexamples: [] } as const;
+    const etaWitness = { diagram: "eta", objects: [], diagnostics: ["law eta witness"], counterexamples: [] } as const;
+    const muWitness = { diagram: "mu", objects: [], diagnostics: ["law mu witness"], counterexamples: [] } as const;
     const residualLaw = makeResidualInteractionLaw(law.law, {
       residualMonadName: "ResidualOracleCheck",
       residualFunctor,
@@ -238,6 +404,7 @@ describe("ResidualStatefulRunner semantics", () => {
         },
       ],
       diagnostics: ["law-provided eta witness reports mismatch"],
+      counterexamples: [],
     };
     const residualLaw = makeResidualInteractionLaw(law.law, {
       residualMonadName: "ResidualOracleMismatch",
@@ -253,6 +420,287 @@ describe("ResidualStatefulRunner semantics", () => {
     expect(oracle.registryPath).toBe("runner.residual.interaction");
     expect(oracle.holds).toBe(false);
     expect(oracle.details.some((line) => line.includes("eta: mismatches="))).toBe(true);
+    const aggregate = summarizeResidualInteractionLaw(residualLaw);
+    expect(aggregate.mismatches).toHaveLength(1);
+    expect(Array.isArray(aggregate.counterexamples)).toBe(true);
+    expect(aggregate.counterexamples.length).toBe(0);
+    expect(aggregate.counterexampleSummary.total).toBe(0);
+    expect(aggregate.counterexampleSummary.byOrigin.law).toBe(0);
+    expect(aggregate.counterexampleSummary.byOrigin.runner).toBe(0);
+    expect(aggregate.mismatches[0]).toEqual(
+      expect.objectContaining({
+        diagram: "eta",
+        object: String(badObject),
+        mismatches: 1,
+      }),
+    );
+    expect(
+      aggregate.diagnostics.some((line) =>
+        line.includes("Residual law mismatch diagram=eta"),
+      ),
+    ).toBe(true);
+    expect(aggregate.hasRho).toBe(false);
+  });
+
+  it("checks residual interaction laws and surfaces mismatch failures", () => {
+    const badObject = law.law.kernel.base.objects[0] as Obj;
+    const etaWitness: ResidualDiagramWitness<Obj> = {
+      diagram: "eta",
+      objects: [
+        {
+          object: badObject,
+          checked: 1,
+          mismatches: 2,
+          diagnostics: ["η comparison mismatch"],
+        },
+      ],
+      diagnostics: ["law eta witness mismatch"],
+      counterexamples: [],
+    };
+    const residualLaw = makeResidualInteractionLaw(law.law, {
+      residualMonadName: "ResidualCheckMismatch",
+      residualFunctor,
+      etaWitness,
+    });
+    const runnerFromLaw = makeResidualRunnerFromInteractionLaw(baseRunner, law, residualLaw);
+    const result = checkResidualInteractionLaw(residualLaw, {
+      runner: runnerFromLaw,
+      interaction: law,
+    });
+    expect(result.holds).toBe(false);
+    expect(result.aggregate.mismatches).toHaveLength(1);
+    const firstMismatch = result.aggregate.mismatches[0]!;
+    expect(firstMismatch.object).toBe(String(badObject));
+    expect(result.notes.some((note) => note.includes("holds=false"))).toBe(true);
+    expect(result.zeroResidual).toBeUndefined();
+  });
+
+  it("summarises residual law compatibility diagnostics", () => {
+    const residualLaw = makeResidualInteractionLaw(law.law, {
+      residualMonadName: "ResidualCompatibility",
+      residualFunctor,
+    });
+    const runnerFromLaw = makeResidualRunnerFromInteractionLaw(baseRunner, law, residualLaw);
+    const aggregate = summarizeResidualInteractionLaw(residualLaw, {
+      runner: runnerFromLaw,
+      interaction: law,
+      sampleLimit: 4,
+    });
+    expect(aggregate.compatibility).toBeDefined();
+    expect((aggregate.compatibility?.length ?? 0) > 0).toBe(true);
+    expect(aggregate.compatibilitySummary).toBeDefined();
+    expect(aggregate.compatibilitySummary?.total).toBeGreaterThan(0);
+    expect(
+      Object.keys(aggregate.compatibilitySummary?.byLabel ?? {}).length,
+    ).toBeGreaterThan(0);
+    expect(Array.isArray(aggregate.mismatches)).toBe(true);
+    expect(Array.isArray(aggregate.counterexamples)).toBe(true);
+    expect(aggregate.mismatches.length).toBe(0);
+    expect(aggregate.counterexampleSummary.total).toBe(0);
+    expect(
+      aggregate.diagnostics.some((line) =>
+        line.includes("Residual law compatibility theta mismatches"),
+      ),
+    ).toBe(true);
+    expect(
+      aggregate.diagnostics.some((line) =>
+        line.includes("Residual law compatibility summary total="),
+      ),
+    ).toBe(true);
+    expect(aggregate.hasRho).toBe(false);
+  });
+
+  it("packages residual monad–comonad interaction metadata", () => {
+    const residualLaw = makeResidualInteractionLaw(law.law, {
+      residualMonadName: "ResidualPackaged",
+      residualFunctor,
+      rho: {
+        description: "Test ρ matches residual lift",
+        evaluate: (
+          object: Obj,
+          sample: readonly [
+            IndexedElement<Obj, any>,
+            IndexedElement<Obj, any>,
+          ],
+        ) => ({
+          kind: "residual.lifted",
+          object,
+          baseValue: law.law.evaluate(sample[0] as never, sample[1] as never),
+          left: sample[0].element,
+          right: sample[1].element,
+        }),
+      },
+    });
+    const packaged = makeResidualMonadComonadInteractionLaw(law, residualLaw, {
+      metadata: ["ResidualMonadComonad"],
+      check: true,
+    });
+    expect(packaged.interaction).toBe(law);
+    expect(packaged.residual).toBe(residualLaw);
+    expect(packaged.aggregate.residualMonadName).toBe("ResidualPackaged");
+    expect(packaged.metadata).toBeDefined();
+    expect(packaged.metadata).toContain("ResidualMonadComonad");
+    expect(packaged.diagnostics.some((line) => line.includes("residual law check holds"))).toBe(
+      true,
+    );
+    expect(packaged.residualCheck?.holds).toBe(true);
+    expect(packaged.compatibilitySummary).toBeDefined();
+    expect(packaged.compatibilitySummary?.total).toBeGreaterThan(0);
+    expect(packaged.compatibility?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  it("derives residual ρ from runner samples", () => {
+    const residualRunner = makeResidualStatefulRunner(baseRunner, {
+      residualFunctor,
+    });
+    const derivedLaw = makeResidualInteractionLawFromRunner(
+      law.law,
+      residualRunner,
+      {
+        residualMonadName: "ResidualDerived",
+        includeRunnerDiagnostics: true,
+        rhoDescription: "derived from runner for regression",
+      },
+    );
+    expect(derivedLaw.rho).toBeDefined();
+    const iterator = residualRunner.residualThetas.entries().next();
+    if (iterator.done) throw new Error("residual θ components missing");
+    const [object, thetaComponent] = iterator.value as [
+      Obj,
+      ResidualThetaComponent<Obj, any, any, any>,
+    ];
+    const fiber = law.psiComponents.get(object);
+    if (!fiber) throw new Error("missing ψ fiber for residual law test");
+    const leftSemantics = getCarrierSemantics(fiber.primalFiber);
+    const rightSemantics = getCarrierSemantics(fiber.dualFiber);
+    const leftSample =
+      leftSemantics?.iterate().next().value ??
+      (() => {
+        if (typeof (fiber.primalFiber as Iterable<unknown>)[Symbol.iterator] === "function") {
+          for (const value of fiber.primalFiber as Iterable<unknown>) {
+            return value;
+          }
+        }
+        throw new Error("no left residual samples available");
+      })();
+    const rightSample =
+      rightSemantics?.iterate().next().value ??
+      (() => {
+        if (typeof (fiber.dualFiber as Iterable<unknown>)[Symbol.iterator] === "function") {
+          for (const value of fiber.dualFiber as Iterable<unknown>) {
+            return value;
+          }
+        }
+        throw new Error("no right residual samples available");
+      })();
+    const sample: readonly [
+      IndexedElement<Obj, any>,
+      IndexedElement<Obj, any>
+    ] = [
+      leftSample as IndexedElement<Obj, any>,
+      rightSample as IndexedElement<Obj, any>,
+    ];
+    const rhoValue = derivedLaw.rho?.evaluate(object, sample);
+    const thetaValue = thetaComponent.evaluate(sample);
+    expect(rhoValue).toEqual(thetaValue);
+    const aggregate = summarizeResidualInteractionLaw(derivedLaw, {
+      runner: residualRunner,
+      interaction: law,
+      sampleLimit: 4,
+    });
+    expect(aggregate.hasRho).toBe(true);
+    expect(aggregate.rhoDescription).toContain("derived from runner");
+    expect(
+      aggregate.diagnostics.some((line) =>
+        line.includes("Residual runner diagnostic") ||
+        line.includes("Residual law compatibility"),
+      ),
+    ).toBe(true);
+  });
+
+  it("records residual law counterexamples when runner evaluation fails", () => {
+    const failingFunctor: ResidualFunctorSummary<any, any, any, any> = {
+      ...residualFunctor,
+      name: "FailingResidual",
+      lift: () => {
+        throw new Error("forced residual evaluation failure");
+      },
+    };
+    const residualLaw = makeResidualInteractionLaw(law.law, {
+      residualMonadName: "ResidualCounterexample",
+      residualFunctor: failingFunctor,
+    });
+    const residualRunner = makeResidualRunnerFromInteractionLaw(baseRunner, law, residualLaw, {
+      diagnostics: ["counterexample residual runner"],
+    });
+    const aggregate = summarizeResidualInteractionLaw(residualLaw, {
+      runner: residualRunner,
+      interaction: law,
+      sampleLimit: 2,
+    });
+    expect(aggregate.counterexamples.length).toBeGreaterThan(0);
+    expect(
+      aggregate.counterexamples.some((entry) => entry.origin === "runner"),
+    ).toBe(true);
+    expect(
+      aggregate.counterexamples.some((entry) =>
+        entry.description.includes("evaluation error"),
+      ),
+    ).toBe(true);
+    expect(aggregate.counterexampleSummary.total).toBe(
+      aggregate.counterexamples.length,
+    );
+    expect(aggregate.counterexampleSummary.byOrigin.runner).toBe(
+      aggregate.counterexamples.filter((entry) => entry.origin === "runner").length,
+    );
+    expect(aggregate.counterexampleSummary.notes.some((note) =>
+      note.includes("total="),
+    )).toBe(true);
+    expect(aggregate.hasRho).toBe(false);
+  });
+
+  it("records residual ρ evaluator metadata when provided", () => {
+    const rho: ResidualInteractionLawRho<any, any, any, any> = {
+      description: "sample ρ evaluator",
+      evaluate: (object, sample) => ({
+        object,
+        left: sample[0].element,
+        right: sample[1].element,
+      }),
+      diagnostics: ["ρ evaluator registered"],
+    };
+    const residualLaw = makeResidualInteractionLaw(law.law, {
+      residualMonadName: "ResidualRho",
+      residualFunctor,
+      rho,
+    });
+    const aggregate = summarizeResidualInteractionLaw(residualLaw);
+    expect(aggregate.hasRho).toBe(true);
+    expect(aggregate.rhoDescription).toBe("sample ρ evaluator");
+    expect(aggregate.rhoDiagnostics).toEqual(
+      expect.arrayContaining(["ρ evaluator registered"]),
+    );
+    expect(
+      aggregate.diagnostics.some((line) =>
+        line.includes("Residual ρ description: sample ρ evaluator"),
+      ),
+    ).toBe(true);
+  });
+
+  it("tracks Kleisli-pure relaxation requests in residual aggregates", () => {
+    const residualLaw = makeResidualInteractionLaw(law.law, {
+      residualMonadName: "ResidualRelaxed",
+      residualFunctor,
+    });
+    const aggregate = summarizeResidualInteractionLaw(residualLaw, {
+      pureMapRelaxation: true,
+    });
+    expect(aggregate.pureMapRelaxation).toBe(true);
+    expect(
+      aggregate.diagnostics.some((line) =>
+        line.includes("Kleisli-pure relaxation"),
+      ),
+    ).toBe(true);
   });
 
   describe("Example 6 residual maybe functor (R X = X + E)", () => {
@@ -396,5 +844,122 @@ describe("ResidualStatefulRunner semantics", () => {
         }).theta.mismatches,
       ).toBe(0);
     });
+
+    it("detects zero residual carriers during residual law checks", () => {
+      const zeroResidualFunctor: ResidualFunctorSummary<any, any, any, any> = {
+        name: "ZeroResidual",
+        description: "residual functor collapsing to the initial object",
+        objectCarrier: () => SetCat.initial().object,
+      };
+      const zeroRunner = makeResidualStatefulRunner(baseRunner, {
+        residualFunctor: zeroResidualFunctor,
+      });
+      const zeroLaw = makeResidualInteractionLawFromRunner(law.law, zeroRunner, {
+        residualMonadName: "ZeroResidual",
+      });
+      const result = checkResidualInteractionLaw(zeroLaw, {
+        runner: zeroRunner,
+        interaction: law,
+        inspectObjects: zeroRunner.residualThetas.keys(),
+      });
+      expect(result.holds).toBe(true);
+      expect(result.zeroResidual).toBe(true);
+      expect(result.aggregate.residualFunctorName).toBe("ZeroResidual");
+      expect(result.notes.some((note) => note.includes("zero"))).toBe(true);
+    });
+  });
+});
+
+describe("Residual interaction law constructors", () => {
+  const interaction = makeExample6MonadComonadInteractionLaw();
+  const baseLaw = interaction.law;
+  type Obj = (typeof baseLaw.kernel.base.objects)[number];
+
+  const residualFunctor: ResidualFunctorSummary<any, any, any, any> = {
+    name: "ComponentResidual",
+    description: "Component-based residual functor",
+    objectCarrier: () => SetCat.obj([]),
+  };
+
+  it("constructs residual laws from explicit ρ components", () => {
+    const rhoComponents: ResidualInteractionLawRhoComponent<Obj, any, any, any>[] =
+      baseLaw.kernel.base.objects.map((object) => ({
+        object,
+        evaluate: (sample) => ({
+          tag: "constructed-rho",
+          object,
+          left: sample[0].object,
+          right: sample[1].object,
+        }),
+        diagnostics: [`ρ component registered for ${String(object)}`],
+        metadata: ["explicit component"],
+      }));
+    const residual = constructResidualInteractionLaw({
+      law: baseLaw,
+      residualFunctor,
+      rhoComponents,
+      residualMonadName: "R_constructed",
+      notes: ["manual residual ρ components"],
+    });
+    expect(residual.residualMonadName).toBe("R_constructed");
+    if (!residual.rho) throw new Error("constructed residual law lacks ρ evaluator");
+    const [object] = baseLaw.kernel.base.objects;
+    if (!object) throw new Error("Example 6 kernel has no objects");
+    const left = findIndexedElement(baseLaw.primalCarrier, object);
+    const right = findIndexedElement(baseLaw.dualCarrier, object);
+    const value = residual.rho.evaluate(object, [left, right]) as Record<string, unknown>;
+    expect(value).toEqual(expect.objectContaining({ tag: "constructed-rho", object }));
+    expect(
+      residual.diagnostics.some((line) =>
+        line.includes("manual residual ρ components"),
+      ),
+    ).toBe(true);
+  });
+
+  it("lifts ordinary interaction laws to identity residuals", () => {
+    const lifted = liftInteractionLawToResidual(baseLaw, {
+      residualMonadName: "IdResidual",
+      notes: ["lifted from ψ"],
+    });
+    expect(lifted.residualFunctor.name).toBe("IdResidual");
+    const [object] = baseLaw.kernel.base.objects;
+    if (!object) throw new Error("Example 6 kernel has no objects");
+    const left = findIndexedElement(baseLaw.primalCarrier, object);
+    const right = findIndexedElement(baseLaw.dualCarrier, object);
+    if (!lifted.rho) throw new Error("lifted residual law lacks ρ evaluator");
+    const rhoValue = lifted.rho.evaluate(object, [left, right]);
+    const psiValue = baseLaw.evaluate(left, right);
+    expect(rhoValue).toEqual(psiValue);
+    expect(
+      lifted.diagnostics.some((line) =>
+        line.includes("Residual interaction law lifted from ordinary interaction law"),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("Residual monad–comonad interactions", () => {
+  const interaction = makeExample6MonadComonadInteractionLaw();
+
+  it("detects identity residuals as ordinary interactions", () => {
+    const residual = liftInteractionLawToResidual(interaction.law, {
+      residualMonadName: "IdentityResidual",
+    });
+    const packaged = makeResidualMonadComonadInteraction(interaction, residual);
+    expect(packaged.reducesToOrdinary).toBe(true);
+    expect(packaged.ordinaryInteraction).toBe(interaction);
+    expect(
+      packaged.diagnostics.some((line) =>
+        line.includes("residual functor identified as identity"),
+      ),
+    ).toBe(true);
+  });
+
+  it("retains non-identity residual diagnostics", () => {
+    const residual = makeExample13ResidualInteractionLaw();
+    const packaged = makeResidualMonadComonadInteraction(interaction, residual);
+    expect(packaged.reducesToOrdinary).toBe(false);
+    expect(packaged.ordinaryInteraction).toBeUndefined();
+    expect(packaged.aggregate.residualFunctorName).not.toContain("Identity");
   });
 });

@@ -10,7 +10,8 @@ import {
   type DayPairingData,
   type IndexedElement,
 } from "./chu-space";
-import { dayTensor } from "./day-convolution";
+import { dayTensor, dayUnit, dayUnitContravariant } from "./day-convolution";
+import type { DayConvolutionResult, DayUnitResult } from "./day-convolution";
 import {
   constructContravariantFunctorWithWitness,
   contravariantToOppositeFunctor,
@@ -19,12 +20,18 @@ import {
 } from "./contravariant";
 import {
   constructFunctorWithWitness,
+  identityFunctorWithWitness,
   type FunctorComposablePair,
   type FunctorWithWitness,
 } from "./functor";
+import {
+  contravariantRepresentableFunctorWithWitness,
+  covariantRepresentableFunctorWithWitness,
+} from "./functor-representable";
 import type { FiniteCategory } from "./finite-cat";
 import {
   constructNaturalTransformationWithWitness,
+  identityNaturalTransformation,
   type NaturalTransformationWithWitness,
 } from "./natural-transformation";
 import {
@@ -42,10 +49,16 @@ import {
 } from "./set-cat";
 import { setSimpleCategory } from "./set-simple-category";
 import type { SimpleCat } from "./simple-cat";
-import type { PromonoidalKernel, PromonoidalTensorValue } from "./promonoidal-structure";
+import type {
+  PromonoidalKernel,
+  PromonoidalTensorValue,
+  PromonoidalUnitValue,
+} from "./promonoidal-structure";
+import { makeTwoObjectPromonoidalKernel } from "./promonoidal-structure";
 import type {
   FunctorOperationDegeneracyReport,
 } from "./functor-interaction-law-degeneracy";
+import { TwoObjectCategory, nonIdentity, type TwoArrow, type TwoObject } from "./two-object-cat";
 
 export interface LawvereOperationWitness<LawObj, LawArr> {
   readonly domain: LawObj;
@@ -402,6 +415,87 @@ export type FunctorInteractionLawInput<Obj, Arr, Left, Right, Value> =
   & {
     readonly operations?: FunctorInteractionLawOperations<Obj, Arr>;
   };
+
+const buildBooleanObject = () => SetCat.obj<boolean>([false, true], { tag: "Ω" });
+
+const makeBooleanInteractionInputInternal = () => {
+  const kernel = makeTwoObjectPromonoidalKernel();
+  const leftToolkit = contravariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
+  const rightToolkit = covariantRepresentableFunctorWithWitness(TwoObjectCategory, "★");
+  const left = leftToolkit.functor;
+  const right = rightToolkit.functor;
+  const convolution = dayTensor(kernel, left, right);
+  const dualizing = buildBooleanObject();
+  const identity = identityFunctorWithWitness(TwoObjectCategory);
+  const operations = makeFunctorInteractionLawOperations<TwoObject, TwoArrow>({
+    metadata: ["SpecOperations"],
+    monadOperations: [
+      makeNullaryMonadOperation<TwoObject, TwoArrow>({
+        label: "TestNullary",
+        component: (object: TwoObject) => TwoObjectCategory.id(object),
+        dayReferences: [
+          {
+            fiber: "★" as const,
+            index: 0,
+            metadata: ["SampleFiber"],
+          },
+        ],
+        lawvereWitness: {
+          domain: "★" as const,
+          codomain: "★" as const,
+          morphism: TwoObjectCategory.id("★"),
+          metadata: ["NullaryLawvere"],
+        },
+        metadata: ["SampleMonadOperation"],
+        nullaryMetadata: ["IdentityNullary"],
+      }),
+      makeCommutativeBinaryMonadOperation<TwoObject, TwoArrow>({
+        label: "TestBinary",
+        component: (object: TwoObject) => TwoObjectCategory.id(object),
+        swapWitness: TwoObjectCategory.id("★"),
+        dayReferences: [
+          {
+            fiber: "★" as const,
+            index: 1,
+            metadata: ["BinaryFiber"],
+          },
+        ],
+        lawvereWitness: {
+          domain: "★" as const,
+          codomain: "★" as const,
+          morphism: TwoObjectCategory.id("★"),
+          metadata: ["BinaryLawvere"],
+        },
+        metadata: ["SampleBinaryOperation"],
+        commutativeMetadata: ["BinaryMetadata"],
+      }),
+    ],
+    monadStructure: {
+      unit: identityNaturalTransformation(identity),
+      metadata: ["IdentityMonadStructure"],
+    },
+  });
+
+  return {
+    kernel,
+    left,
+    right,
+    convolution,
+    dualizing,
+    pairing: (
+      _object: TwoObject,
+      carrier: ReturnType<typeof convolution.functor.functor.F0>,
+    ) =>
+      SetCat.hom(carrier, dualizing, (cls) => cls.witness.kernelLeft === cls.witness.kernelRight),
+    aggregate: (
+      contributions: ReadonlyArray<
+        DayPairingContribution<TwoObject, TwoArrow, unknown, unknown, boolean>
+      >,
+    ) => contributions.some((entry) => entry.evaluation),
+    tags: { primal: "LawPrimal", dual: "LawDual" },
+    operations,
+  } as const;
+};
 
 export interface StretchInteractionLawOptions<Obj, Arr, LeftPrime, RightPrime, Left, Right, Value> {
   readonly left: ContravariantFunctorWithWitness<Obj, Arr, SetObj<LeftPrime>, SetHom<LeftPrime, LeftPrime>>;
@@ -2810,6 +2904,2275 @@ export const productInteractionLaw = <
   return { law, projections };
 };
 
+const projectIndexedElementSecond = <Obj, First, Second>(
+  element: IndexedElement<Obj, readonly [First, Second]>,
+): IndexedElement<Obj, Second> => ({
+  object: element.object,
+  element: element.element[1],
+});
+
+const projectIndexedElementFirst = <Obj, First, Second>(
+  element: IndexedElement<Obj, readonly [First, Second]>,
+): IndexedElement<Obj, First> => ({
+  object: element.object,
+  element: element.element[0],
+});
+
+const rebracketAssociativityPrimal = <Obj, A, B, C>(
+  element: IndexedElement<Obj, readonly [readonly [A, B], C]>,
+): IndexedElement<Obj, readonly [A, readonly [B, C]]> => ({
+  object: element.object,
+  element: [element.element[0][0], [element.element[0][1], element.element[1]] as const] as const,
+});
+
+const rebracketAssociativityDual = <Obj, A, B, C>(
+  element: IndexedElement<Obj, readonly [readonly [A, B], C]>,
+): IndexedElement<Obj, readonly [A, readonly [B, C]]> => ({
+  object: element.object,
+  element: [element.element[0][0], [element.element[0][1], element.element[1]] as const] as const,
+});
+
+const rebracketAssociativityValue = <A, B, C>(
+  value: readonly [readonly [A, B], C],
+): readonly [A, readonly [B, C]] =>
+  [value[0][0], [value[0][1], value[1]] as const] as const;
+
+export interface InteractionLawDayUnitComponent<Obj, Arr> {
+  readonly object: Obj;
+  readonly values: ReadonlyArray<PromonoidalUnitValue<Obj, Arr>>;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayUnitSummary<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>;
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly unit: DayUnitResult<Obj, Arr>;
+  readonly unitContravariant: ContravariantFunctorWithWitness<
+    Obj,
+    Arr,
+    SetObj<PromonoidalUnitValue<Obj, Arr>>,
+    SetHom<PromonoidalUnitValue<Obj, Arr>, PromonoidalUnitValue<Obj, Arr>>
+  >;
+  readonly components: ReadonlyArray<InteractionLawDayUnitComponent<Obj, Arr>>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayUnitOptions {
+  readonly metadata?: ReadonlyArray<string>;
+  readonly unitMetadata?: ReadonlyArray<string>;
+  readonly contravariantMetadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayUnitTensorFiberSummary<Obj, Arr> {
+  readonly object: Obj;
+  readonly classCount: number;
+  readonly diagonalCount: number;
+  readonly relationCount: number;
+  readonly missingDiagonalCount: number;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayUnitTensorSummary<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>;
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly unit: InteractionLawDayUnitSummary<Obj, Arr, Left, Right, Value>;
+  readonly tensor: DayConvolutionResult<
+    Obj,
+    Arr,
+    PromonoidalUnitValue<Obj, Arr>,
+    PromonoidalUnitValue<Obj, Arr>
+  >;
+  readonly fibers: ReadonlyArray<InteractionLawDayUnitTensorFiberSummary<Obj, Arr>>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayUnitTensorOptions<Obj, Arr, Left, Right, Value> {
+  readonly unit?: InteractionLawDayUnitSummary<Obj, Arr, Left, Right, Value>;
+  readonly metadata?: ReadonlyArray<string>;
+  readonly tensorMetadata?: ReadonlyArray<string>;
+}
+
+export const summarizeInteractionLawDayUnit = <Obj, Arr, Left, Right, Value>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawDayUnitOptions = {},
+): InteractionLawDayUnitSummary<Obj, Arr, Left, Right, Value> => {
+  const unit = dayUnit(law.kernel, options.unitMetadata ?? []);
+  const unitContravariant = dayUnitContravariant(
+    law.kernel,
+    options.contravariantMetadata ?? [],
+  );
+
+  const components: InteractionLawDayUnitComponent<Obj, Arr>[] = [];
+  const diagnostics: string[] = [];
+
+  let witnessTotal = 0;
+
+  for (const object of law.kernel.base.objects) {
+    const values = law.kernel.unit.profunctor.evaluate(object);
+    witnessTotal += values.length;
+    const componentDiagnostics: string[] = [
+      `InteractionLawDayUnit(${String(object)}): enumerated ${values.length} promonoidal unit witness(es).`,
+    ];
+    if (values.length === 0) {
+      componentDiagnostics.push(
+        `InteractionLawDayUnit(${String(object)}): promonoidal unit provided no witnesses; downstream opmonoidal checks will report missing data.`,
+      );
+    }
+    components.push({ object, values, diagnostics: componentDiagnostics });
+  }
+
+  diagnostics.push(
+    components.length === 0
+      ? "summarizeInteractionLawDayUnit: promonoidal kernel supplied no objects for the Day unit."
+      : `summarizeInteractionLawDayUnit: recorded ${components.length} Day unit carrier(s) with ${witnessTotal} total witness(es).`,
+  );
+
+  const metadata = mergeMetadataList(
+    unit.functor.metadata,
+    unitContravariant.metadata,
+    options.metadata,
+  );
+
+  return {
+    law,
+    kernel: law.kernel,
+    unit,
+    unitContravariant,
+    components,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+const defaultDayUnitTensorMetadata = [
+  "Day unit tensor derived for opmonoidal diagnostics.",
+];
+
+export const summarizeInteractionLawDayUnitTensor = <Obj, Arr, Left, Right, Value>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawDayUnitTensorOptions<Obj, Arr, Left, Right, Value> = {},
+): InteractionLawDayUnitTensorSummary<Obj, Arr, Left, Right, Value> => {
+  const unit = options.unit ?? summarizeInteractionLawDayUnit(law);
+  const tensorMetadata =
+    mergeMetadataList(options.tensorMetadata, defaultDayUnitTensorMetadata) ??
+    defaultDayUnitTensorMetadata;
+  const tensor = dayTensor(
+    law.kernel,
+    unit.unitContravariant,
+    unit.unit.functor,
+    tensorMetadata,
+  );
+
+  const fibers: InteractionLawDayUnitTensorFiberSummary<Obj, Arr>[] = [];
+  const diagnostics: string[] = [];
+  let totalClasses = 0;
+
+  for (const fiber of tensor.fibers) {
+    totalClasses += fiber.classes.length;
+    const coendDiagnostics = fiber.coend.diagnostics;
+    const fiberDiagnostics: string[] = [
+      `InteractionLawDayUnitTensor(${String(fiber.output)}): classified ${fiber.classes.length} Day class(es) from ${coendDiagnostics.diagonalCount} diagonal witness(es) and ${coendDiagnostics.relationCount} relation(s).`,
+    ];
+    if (coendDiagnostics.missingDiagonalWitnesses.length > 0) {
+      fiberDiagnostics.push(
+        `InteractionLawDayUnitTensor(${String(fiber.output)}): promonoidal unit tensor reported ${coendDiagnostics.missingDiagonalWitnesses.length} missing diagonal witness(es); opmonoidal comparisons may be incomplete.`,
+      );
+    }
+    if (!coendDiagnostics.holds) {
+      fiberDiagnostics.push(
+        `InteractionLawDayUnitTensor(${String(fiber.output)}): coend computation marked as incomplete; check promonoidal kernel witnesses.`,
+      );
+    }
+    fibers.push({
+      object: fiber.output,
+      classCount: fiber.classes.length,
+      diagonalCount: coendDiagnostics.diagonalCount,
+      relationCount: coendDiagnostics.relationCount,
+      missingDiagonalCount: coendDiagnostics.missingDiagonalWitnesses.length,
+      diagnostics: fiberDiagnostics,
+    });
+  }
+
+  diagnostics.push(
+    fibers.length === 0
+      ? "summarizeInteractionLawDayUnitTensor: promonoidal kernel provided no objects for the Day unit tensor."
+      : `summarizeInteractionLawDayUnitTensor: recorded ${fibers.length} unit tensor fiber(s) with ${totalClasses} Day convolution class(es).`,
+  );
+
+  const metadata = mergeMetadataList(unit.metadata, options.metadata);
+
+  return {
+    law,
+    kernel: law.kernel,
+    unit,
+    tensor,
+    fibers,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export interface InteractionLawDayUnitOpmonoidalFiberSummary<Obj> {
+  readonly object: Obj;
+  readonly unitWitnesses: number;
+  readonly tensorClasses: number;
+  readonly hasUnitWitnesses: boolean;
+  readonly hasTensorFiber: boolean;
+  readonly hasTensorWitnesses: boolean;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayUnitOpmonoidalSummary<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>;
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly unit: InteractionLawDayUnitSummary<Obj, Arr, Left, Right, Value>;
+  readonly tensor: InteractionLawDayUnitTensorSummary<Obj, Arr, Left, Right, Value>;
+  readonly fibers: ReadonlyArray<InteractionLawDayUnitOpmonoidalFiberSummary<Obj>>;
+  readonly satisfied: number;
+  readonly missingUnit: number;
+  readonly missingTensor: number;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayUnitOpmonoidalOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly unit?: InteractionLawDayUnitSummary<Obj, Arr, Left, Right, Value>;
+  readonly tensor?: InteractionLawDayUnitTensorSummary<Obj, Arr, Left, Right, Value>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+const defaultDayUnitOpmonoidalMetadata = [
+  "Day unit opmonoidal coverage derived from promonoidal witnesses.",
+];
+
+export const summarizeInteractionLawDayUnitOpmonoidal = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawDayUnitOpmonoidalOptions<Obj, Arr, Left, Right, Value> = {},
+): InteractionLawDayUnitOpmonoidalSummary<Obj, Arr, Left, Right, Value> => {
+  const unit = options.unit ?? summarizeInteractionLawDayUnit(law);
+  const tensor =
+    options.tensor ?? summarizeInteractionLawDayUnitTensor(law, { unit });
+
+  const unitByObject = new Map(unit.components.map((component) => [component.object, component]));
+  const tensorByObject = new Map(
+    tensor.fibers.map((fiber) => [fiber.object, fiber]),
+  );
+
+  const fibers: InteractionLawDayUnitOpmonoidalFiberSummary<Obj>[] = [];
+  const diagnostics: string[] = [];
+
+  let satisfied = 0;
+  let missingUnit = 0;
+  let missingTensor = 0;
+
+  for (const object of law.kernel.base.objects) {
+    const component = unitByObject.get(object);
+    const fiber = tensorByObject.get(object);
+    const unitWitnesses = component?.values.length ?? 0;
+    const tensorClasses = fiber?.classCount ?? 0;
+    const hasUnitWitnesses = unitWitnesses > 0;
+    const hasTensorFiber = fiber !== undefined;
+    const hasTensorWitnesses = hasTensorFiber && tensorClasses > 0;
+    const entryDiagnostics: string[] = [
+      `InteractionLawDayUnitOpmonoidal(${String(
+        object,
+      )}): recorded ${unitWitnesses} unit witness(es) and ${tensorClasses} tensor class(es).`,
+    ];
+    if (!component) {
+      entryDiagnostics.push(
+        `InteractionLawDayUnitOpmonoidal(${String(
+          object,
+        )}): Day unit summary supplied no witnesses for this object; comparisons will short-circuit.`,
+      );
+      missingUnit += 1;
+    } else if (!hasUnitWitnesses) {
+      entryDiagnostics.push(
+        `InteractionLawDayUnitOpmonoidal(${String(
+          object,
+        )}): Day unit summary recorded zero witnesses; opmonoidal triangles cannot run.`,
+      );
+      missingUnit += 1;
+    }
+    if (!hasTensorFiber) {
+      entryDiagnostics.push(
+        `InteractionLawDayUnitOpmonoidal(${String(
+          object,
+        )}): Day unit tensor summary supplied no fiber; convolution-based comparisons are unavailable.`,
+      );
+      missingTensor += 1;
+    } else if (!hasTensorWitnesses) {
+      entryDiagnostics.push(
+        `InteractionLawDayUnitOpmonoidal(${String(
+          object,
+        )}): Day unit tensor fiber recorded zero Day classes; check promonoidal witnesses.`,
+      );
+      missingTensor += 1;
+    }
+
+    if (hasUnitWitnesses && hasTensorWitnesses) {
+      satisfied += 1;
+    }
+
+    fibers.push({
+      object,
+      unitWitnesses,
+      tensorClasses,
+      hasUnitWitnesses,
+      hasTensorFiber,
+      hasTensorWitnesses,
+      diagnostics: entryDiagnostics,
+    });
+  }
+
+  diagnostics.push(
+    `summarizeInteractionLawDayUnitOpmonoidal: recorded ${fibers.length} object(s) with ${satisfied} complete opmonoidal witness set(s), ${missingUnit} missing unit carrier(s), and ${missingTensor} missing tensor fiber(s).`,
+  );
+
+  const metadata =
+    mergeMetadataList(unit.metadata, tensor.metadata, options.metadata) ??
+    defaultDayUnitOpmonoidalMetadata;
+
+  return {
+    law,
+    kernel: law.kernel,
+    unit,
+    tensor,
+    fibers,
+    satisfied,
+    missingUnit,
+    missingTensor,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export interface InteractionLawDayUnitOpmonoidalTriangleEntry<Obj> {
+  readonly object: Obj;
+  readonly unitWitnesses: number;
+  readonly tensorClasses: number;
+  readonly hasTriangle: boolean;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayUnitOpmonoidalTrianglesSummary<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>;
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly unit: InteractionLawDayUnitSummary<Obj, Arr, Left, Right, Value>;
+  readonly tensor: InteractionLawDayUnitTensorSummary<Obj, Arr, Left, Right, Value>;
+  readonly opmonoidal: InteractionLawDayUnitOpmonoidalSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly entries: ReadonlyArray<InteractionLawDayUnitOpmonoidalTriangleEntry<Obj>>;
+  readonly satisfied: number;
+  readonly missing: number;
+  readonly laxComparisonAvailable: boolean;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayUnitOpmonoidalTrianglesOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly unit?: InteractionLawDayUnitSummary<Obj, Arr, Left, Right, Value>;
+  readonly tensor?: InteractionLawDayUnitTensorSummary<Obj, Arr, Left, Right, Value>;
+  readonly opmonoidal?: InteractionLawDayUnitOpmonoidalSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+const defaultDayUnitOpmonoidalTrianglesMetadata = [
+  "Day unit opmonoidal triangles derived from Day tensor coverage.",
+];
+
+export const summarizeInteractionLawDayUnitOpmonoidalTriangles = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawDayUnitOpmonoidalTrianglesOptions<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  > = {},
+): InteractionLawDayUnitOpmonoidalTrianglesSummary<Obj, Arr, Left, Right, Value> => {
+  const unit = options.unit ?? summarizeInteractionLawDayUnit(law);
+  const tensor = options.tensor ?? summarizeInteractionLawDayUnitTensor(law, { unit });
+  const opmonoidal =
+    options.opmonoidal ??
+    summarizeInteractionLawDayUnitOpmonoidal(law, { unit, tensor });
+
+  const unitByObject = new Map(unit.components.map((component) => [component.object, component]));
+  const tensorByObject = new Map(tensor.fibers.map((fiber) => [fiber.object, fiber]));
+
+  const entries: InteractionLawDayUnitOpmonoidalTriangleEntry<Obj>[] = [];
+  let satisfied = 0;
+  let missing = 0;
+
+  for (const object of law.kernel.base.objects) {
+    const unitComponent = unitByObject.get(object);
+    const tensorFiber = tensorByObject.get(object);
+    const unitWitnesses = unitComponent?.values.length ?? 0;
+    const tensorClasses = tensorFiber?.classCount ?? 0;
+    const hasTriangle = unitWitnesses > 0 && tensorClasses > 0;
+    const entryDiagnostics: string[] = [
+      `DayUnitOpmonoidalTriangles(${String(
+        object,
+      )}): recorded ${unitWitnesses} unit witness(es) and ${tensorClasses} convolution class(es).`,
+    ];
+    if (unitWitnesses === 0) {
+      entryDiagnostics.push(
+        `DayUnitOpmonoidalTriangles(${String(
+          object,
+        )}): Day unit summary supplied no witnesses; opmonoidal triangle short-circuits.`,
+      );
+    }
+    if (tensorClasses === 0) {
+      entryDiagnostics.push(
+        `DayUnitOpmonoidalTriangles(${String(
+          object,
+        )}): Day unit tensor summary recorded zero convolution classes; cannot instantiate triangle.`,
+      );
+    }
+    if (hasTriangle) {
+      entryDiagnostics.push(
+        `DayUnitOpmonoidalTriangles(${String(
+          object,
+        )}): coverage ready for the opmonoidal comparison JX ⊙ JY → J(X ⊗ Y).`,
+      );
+      satisfied += 1;
+    } else {
+      missing += 1;
+    }
+    entries.push({
+      object,
+      unitWitnesses,
+      tensorClasses,
+      hasTriangle,
+      diagnostics: entryDiagnostics,
+    });
+  }
+
+  const diagnostics = [
+    entries.length === 0
+      ? "DayUnitOpmonoidalTriangles: promonoidal kernel supplied no objects for triangle coverage."
+      : `DayUnitOpmonoidalTriangles: recorded ${entries.length} object(s) with ${satisfied} opmonoidal triangle coverage set(s) and ${missing} incomplete case(s).`,
+    `DayUnitOpmonoidalTriangles: opmonoidal coverage summary reports ${opmonoidal.satisfied} satisfied fiber(s); missing unit=${opmonoidal.missingUnit}, missing tensor=${opmonoidal.missingTensor}.`,
+    "DayUnitOpmonoidalTriangles: no lax-monoidal comparison J(X ⊗ Y) → JX ⊙ JY supplied; this witnesses the paper's failure of J to be lax monoidal.",
+  ];
+
+  const metadata =
+    mergeMetadataList(
+      unit.metadata,
+      tensor.metadata,
+      opmonoidal.metadata,
+      options.metadata,
+    ) ?? defaultDayUnitOpmonoidalTrianglesMetadata;
+
+  return {
+    law,
+    kernel: law.kernel,
+    unit,
+    tensor,
+    opmonoidal,
+    entries,
+    satisfied,
+    missing,
+    laxComparisonAvailable: false,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export interface InteractionLawDayUnitOpmonoidalTrianglesCheckReport<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly summary: InteractionLawDayUnitOpmonoidalTrianglesSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly holds: boolean;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayUnitOpmonoidalTrianglesCheckOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly summary?: InteractionLawDayUnitOpmonoidalTrianglesSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly summaryOptions?: InteractionLawDayUnitOpmonoidalTrianglesOptions<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+const defaultDayUnitOpmonoidalTrianglesCheckMetadata = [
+  "Day unit opmonoidal triangles check derived from cached coverage.",
+];
+
+export const checkInteractionLawDayUnitOpmonoidalTriangles = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawDayUnitOpmonoidalTrianglesCheckOptions<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  > = {},
+): InteractionLawDayUnitOpmonoidalTrianglesCheckReport<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+> => {
+  const summary =
+    options.summary ??
+    summarizeInteractionLawDayUnitOpmonoidalTriangles(
+      law,
+      options.summaryOptions,
+    );
+  const diagnostics = [
+    `checkInteractionLawDayUnitOpmonoidalTriangles: recorded ${summary.entries.length} triangle entry(ies) with ${summary.satisfied} ready case(s), ${summary.missing} incomplete case(s), and lax comparison available=${summary.laxComparisonAvailable}.`,
+    ...summary.diagnostics,
+  ];
+  const metadata =
+    mergeMetadataList(summary.metadata, options.metadata) ??
+    defaultDayUnitOpmonoidalTrianglesCheckMetadata;
+  const holds = summary.laxComparisonAvailable && summary.missing === 0;
+  return {
+    kernel: summary.kernel,
+    summary,
+    diagnostics,
+    holds,
+    ...(metadata ? { metadata } : {}),
+  } satisfies InteractionLawDayUnitOpmonoidalTrianglesCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+};
+
+export interface InteractionLawDayMonoidalSummary<
+  Obj,
+  Arr,
+> {
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly unitComparisons: {
+    readonly left: InteractionLawComparisonResult;
+    readonly right: InteractionLawComparisonResult;
+  };
+  readonly associativity: InteractionLawComparisonResult;
+  readonly pairingTraces: {
+    readonly leftUnit: ReadonlyArray<string>;
+    readonly rightUnit: ReadonlyArray<string>;
+    readonly associativity: ReadonlyArray<string>;
+  };
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly holds: boolean;
+}
+
+export interface InteractionLawDaySymmetrySummary<Obj, Arr> {
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly comparison: InteractionLawComparisonResult;
+  readonly pairingTraces: ReadonlyArray<string>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly holds: boolean;
+}
+
+export type InteractionLawDayReferenceRole = "monad" | "comonad";
+
+export interface InteractionLawDayInterchangeSample<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly primal: IndexedElement<Obj, Left>;
+  readonly dual: IndexedElement<Obj, Right>;
+  readonly contributions: ReadonlyArray<
+    DayPairingContribution<Obj, Arr, Left, Right, Value>
+  >;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayInterchangeDetail<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly role: InteractionLawDayReferenceRole;
+  readonly operation: string;
+  readonly reference: OperationDayReference<Obj>;
+  readonly fiberAvailable: boolean;
+  readonly pairingAvailable: boolean;
+  readonly contributions: ReadonlyArray<string>;
+  readonly samples: ReadonlyArray<
+    InteractionLawDayInterchangeSample<Obj, Arr, Left, Right, Value>
+  >;
+  readonly contributionCount: number;
+  readonly checkedPairs: number;
+  readonly missingPairs: number;
+  readonly sampledLeftCount: number;
+  readonly sampledRightCount: number;
+  readonly sampleEmpty: boolean;
+  readonly canonicalContributionCount: number;
+  readonly canonicalSatisfied: boolean;
+  readonly canonicalSample?: InteractionLawDayInterchangeSample<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export interface InteractionLawDayInterchangeSummary<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly details: ReadonlyArray<
+    InteractionLawDayInterchangeDetail<Obj, Arr, Left, Right, Value>
+  >;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly holds: boolean;
+}
+
+export interface InteractionLawDayInterchangeTotals {
+  readonly totalReferences: number;
+  readonly satisfiedReferences: number;
+  readonly missingFibers: number;
+  readonly missingPairings: number;
+  readonly emptySamples: number;
+  readonly zeroContributionReferences: number;
+  readonly referencesWithMissingPairs: number;
+  readonly totalMissingPairs: number;
+  readonly totalCheckedPairs: number;
+}
+
+export interface InteractionLawDayInterchangeReport<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly summary: InteractionLawDayInterchangeSummary<Obj, Arr, Left, Right, Value>;
+  readonly totals: InteractionLawDayInterchangeTotals;
+  readonly roleTotals: Record<
+    InteractionLawDayReferenceRole,
+    InteractionLawDayInterchangeTotals
+  >;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly holds: boolean;
+}
+
+export interface InteractionLawDayInterchangeOperationSummary<Obj, Arr> {
+  readonly label: string;
+  readonly arity: number;
+  readonly metadata?: ReadonlyArray<string>;
+  readonly lawvereWitness?: LawvereOperationWitness<Obj, Arr>;
+  readonly hasTransformation: boolean;
+  readonly hasGenericWitness: boolean;
+  readonly hasNullaryComponent: boolean;
+  readonly hasCommutativeComponent: boolean;
+  readonly dayReferenceCount: number;
+}
+
+export interface InteractionLawDayInterchangeInstantiationDetail<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly detail: InteractionLawDayInterchangeDetail<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly operation?: InteractionLawDayInterchangeOperationSummary<Obj, Arr>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly holds: boolean;
+}
+
+export interface InteractionLawDayInterchangeInstantiationTotals {
+  readonly totalReferences: number;
+  readonly instantiatedReferences: number;
+  readonly missingOperations: number;
+  readonly missingCanonicalSamples: number;
+  readonly unsatisfiedCanonicalSamples: number;
+}
+
+export interface InteractionLawDayInterchangeInstantiationReport<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly summary: InteractionLawDayInterchangeSummary<Obj, Arr, Left, Right, Value>;
+  readonly details: ReadonlyArray<
+    InteractionLawDayInterchangeInstantiationDetail<
+      Obj,
+      Arr,
+      Left,
+      Right,
+      Value
+    >
+  >;
+  readonly totals: InteractionLawDayInterchangeInstantiationTotals;
+  readonly roleTotals: Record<
+    InteractionLawDayReferenceRole,
+    InteractionLawDayInterchangeInstantiationTotals
+  >;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly holds: boolean;
+}
+
+const describeDiagnosticValue = (value: unknown): string => {
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint" ||
+    value === null ||
+    value === undefined
+  ) {
+    return String(value);
+  }
+  if (typeof value === "function") {
+    return `[Function${value.name ? ` ${value.name}` : ""}]`;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const describeDayContribution = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(contribution: DayPairingContribution<Obj, Arr, Left, Right, Value>): string => {
+  const base = `diag=${String(contribution.diagonal)} kernel=(${String(contribution.kernelLeft)}, ${String(contribution.kernelRight)})`;
+  const left = `left=${describeDiagnosticValue(contribution.left.element)}`;
+  const right = `right=${describeDiagnosticValue(contribution.right.element)}`;
+  const evaluation = `eval=${describeDiagnosticValue(contribution.evaluation)}`;
+  return `${base} ${left} ${right} ${evaluation}`;
+};
+
+const collectDayMonoidalPairingDiagnostics = <
+  Obj,
+  Arr,
+  LeftReference,
+  RightReference,
+  ValueReference,
+  LeftCandidate,
+  RightCandidate,
+  ValueCandidate,
+>(
+  label: string,
+  reference: FunctorInteractionLaw<Obj, Arr, LeftReference, RightReference, ValueReference>,
+  candidate: FunctorInteractionLaw<Obj, Arr, LeftCandidate, RightCandidate, ValueCandidate>,
+  mapping: InteractionLawComparisonMapping<
+    Obj,
+    LeftReference,
+    RightReference,
+    ValueReference,
+    LeftCandidate,
+    RightCandidate,
+    ValueCandidate
+  >,
+  sampleLimit = 2,
+): ReadonlyArray<string> => {
+  const traces: string[] = [];
+  const primals = enumerateCarrier(candidate.primalCarrier) as IndexedElement<
+    Obj,
+    LeftCandidate
+  >[];
+  const duals = enumerateCarrier(candidate.dualCarrier) as IndexedElement<
+    Obj,
+    RightCandidate
+  >[];
+
+  if (primals.length === 0 || duals.length === 0) {
+    traces.push(
+      `${label}: candidate carrier is empty (primals=${primals.length}, duals=${duals.length}).`,
+    );
+    return traces;
+  }
+
+  const primalLimit = Math.min(sampleLimit, primals.length);
+  const dualLimit = Math.min(sampleLimit, duals.length);
+
+  for (let primalIndex = 0; primalIndex < primalLimit; primalIndex += 1) {
+    const primal = primals[primalIndex]!;
+    for (let dualIndex = 0; dualIndex < dualLimit; dualIndex += 1) {
+      const dual = duals[dualIndex]!;
+      const contributions = candidate.collect(primal, dual);
+      const candidateValue = candidate.aggregate(contributions);
+      const mappedValue = mapping.mapValue
+        ? mapping.mapValue(candidateValue)
+        : (candidateValue as unknown as ValueReference);
+      const mappedPrimal = mapping.mapPrimal
+        ? mapping.mapPrimal(primal)
+        : (primal as unknown as IndexedElement<Obj, LeftReference>);
+      const mappedDual = mapping.mapDual
+        ? mapping.mapDual(dual)
+        : (dual as unknown as IndexedElement<Obj, RightReference>);
+      const referenceValue = reference.evaluate(mappedPrimal, mappedDual);
+      const matches = structuralValueEquals(referenceValue, mappedValue);
+      const contributionDescriptions = contributions
+        .slice(0, 3)
+        .map((entry) => describeDayContribution(entry))
+        .join("; ");
+      const extra = contributions.length > 3
+        ? ` (+${contributions.length - 3} more)`
+        : "";
+      traces.push(
+        `${label}: pair ${encodeIndexedElement(primal)} ? ${encodeIndexedElement(dual)} -> mapped value ${describeDiagnosticValue(mappedValue)} vs reference ${describeDiagnosticValue(referenceValue)} (${matches ? "match" : "mismatch"}); contributions=${contributions.length}${extra}${contributionDescriptions ? ` | witnesses: ${contributionDescriptions}` : ""}.`,
+      );
+    }
+  }
+
+  return traces;
+};
+
+const swapTuple = <Left0, Left1>(
+  value: readonly [Left0, Left1],
+): readonly [Left1, Left0] => [value[1], value[0]] as const;
+
+const swapIndexedElement = <Obj, Left0, Left1>(
+  element: IndexedElement<Obj, readonly [Left0, Left1]>,
+): IndexedElement<Obj, readonly [Left1, Left0]> => ({
+  object: element.object,
+  element: swapTuple(element.element),
+});
+
+export const checkInteractionLawDaySymmetry = <
+  Obj,
+  Arr,
+  Left0,
+  Right0,
+  Value0,
+  Left1,
+  Right1,
+  Value1,
+>(
+  leftLaw: FunctorInteractionLaw<Obj, Arr, Left0, Right0, Value0>,
+  rightLaw: FunctorInteractionLaw<Obj, Arr, Left1, Right1, Value1>,
+): InteractionLawDaySymmetrySummary<Obj, Arr> => {
+  if (leftLaw.kernel !== rightLaw.kernel) {
+    throw new Error(
+      "checkInteractionLawDaySymmetry: interaction laws must share the same promonoidal kernel.",
+    );
+  }
+
+  const leftRight = productInteractionLaw(leftLaw, rightLaw);
+  const rightLeft = productInteractionLaw(rightLaw, leftLaw);
+
+  const mapping: InteractionLawComparisonMapping<
+    Obj,
+    readonly [Left0, Left1],
+    readonly [Right0, Right1],
+    readonly [Value0, Value1],
+    readonly [Left1, Left0],
+    readonly [Right1, Right0],
+    readonly [Value1, Value0]
+  > = {
+    label: "DaySymmetry",
+    mapPrimal: (element) => swapIndexedElement(element),
+    mapDual: (element) => swapIndexedElement(element),
+    mapValue: (value) => swapTuple(value),
+  };
+
+  const comparison = compareInteractionLaws(leftRight.law, rightLeft.law, mapping);
+
+  const pairingTraces = collectDayMonoidalPairingDiagnostics(
+    "DayMonoidal.symmetry",
+    leftRight.law,
+    rightLeft.law,
+    mapping,
+  );
+
+  const diagnostics = [
+    `DayMonoidal.symmetry: ${comparison.matches ? "holds" : "fails"} (checked ${comparison.checkedPairs} pairs; mismatches ${comparison.mismatches}).`,
+    ...comparison.diagnostics,
+    ...pairingTraces,
+  ];
+
+  return {
+    kernel: leftLaw.kernel,
+    comparison,
+    pairingTraces,
+    diagnostics,
+    holds: comparison.matches,
+  };
+};
+
+export const checkInteractionLawDayMonoidal = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+): InteractionLawDayMonoidalSummary<Obj, Arr> => {
+  const unitLaw = finalInteractionLaw(law.kernel);
+
+  const leftUnitProduct = productInteractionLaw(unitLaw, law);
+  const leftUnit = compareInteractionLaws(law, leftUnitProduct.law, {
+    label: "DayLeftUnit",
+    mapPrimal: (element) => projectIndexedElementSecond(element),
+    mapDual: (element) => projectIndexedElementSecond(element),
+    mapValue: (value) => value[1],
+  });
+
+  const rightUnitProduct = productInteractionLaw(law, unitLaw);
+  const rightUnit = compareInteractionLaws(law, rightUnitProduct.law, {
+    label: "DayRightUnit",
+    mapPrimal: (element) => projectIndexedElementFirst(element),
+    mapDual: (element) => projectIndexedElementFirst(element),
+    mapValue: (value) => value[0],
+  });
+
+  const leftPair = productInteractionLaw(law, law);
+  const leftAssociative = productInteractionLaw(leftPair.law, law);
+  const rightPair = productInteractionLaw(law, law);
+  const rightAssociative = productInteractionLaw(law, rightPair.law);
+
+  const associativity = compareInteractionLaws(rightAssociative.law, leftAssociative.law, {
+    label: "DayAssociativity",
+    mapPrimal: (element) => rebracketAssociativityPrimal(element),
+    mapDual: (element) => rebracketAssociativityDual(element),
+    mapValue: (value) => rebracketAssociativityValue(value),
+  });
+
+  const leftUnitTraces = collectDayMonoidalPairingDiagnostics(
+    "DayMonoidal.leftUnit",
+    law,
+    leftUnitProduct.law,
+    {
+      label: "DayLeftUnit",
+      mapPrimal: (element) => projectIndexedElementSecond(element),
+      mapDual: (element) => projectIndexedElementSecond(element),
+      mapValue: (value) => value[1],
+    },
+  );
+
+  const rightUnitTraces = collectDayMonoidalPairingDiagnostics(
+    "DayMonoidal.rightUnit",
+    law,
+    rightUnitProduct.law,
+    {
+      label: "DayRightUnit",
+      mapPrimal: (element) => projectIndexedElementFirst(element),
+      mapDual: (element) => projectIndexedElementFirst(element),
+      mapValue: (value) => value[0],
+    },
+  );
+
+  const associativityTraces = collectDayMonoidalPairingDiagnostics<
+    Obj,
+    Arr,
+    readonly [Left, readonly [Left, Left]],
+    readonly [Right, readonly [Right, Right]],
+    readonly [Value, readonly [Value, Value]],
+    readonly [readonly [Left, Left], Left],
+    readonly [readonly [Right, Right], Right],
+    readonly [readonly [Value, Value], Value]
+  >(
+    "DayMonoidal.associativity",
+    rightAssociative.law,
+    leftAssociative.law,
+    {
+      label: "DayAssociativity",
+      mapPrimal: (element) => rebracketAssociativityPrimal(element),
+      mapDual: (element) => rebracketAssociativityDual(element),
+      mapValue: (value) => rebracketAssociativityValue(value),
+    },
+  );
+
+  const diagnostics = [
+    `DayMonoidal.leftUnit: ${leftUnit.matches ? "holds" : "fails"} (checked ${leftUnit.checkedPairs} pairs; mismatches ${leftUnit.mismatches}).`,
+    ...leftUnit.diagnostics,
+    `DayMonoidal.rightUnit: ${rightUnit.matches ? "holds" : "fails"} (checked ${rightUnit.checkedPairs} pairs; mismatches ${rightUnit.mismatches}).`,
+    ...rightUnit.diagnostics,
+    `DayMonoidal.associativity: ${associativity.matches ? "holds" : "fails"} (checked ${associativity.checkedPairs} pairs; mismatches ${associativity.mismatches}).`,
+    ...associativity.diagnostics,
+    ...leftUnitTraces,
+    ...rightUnitTraces,
+    ...associativityTraces,
+  ];
+
+  return {
+    kernel: law.kernel,
+    unitComparisons: { left: leftUnit, right: rightUnit },
+    associativity,
+    pairingTraces: {
+      leftUnit: leftUnitTraces,
+      rightUnit: rightUnitTraces,
+      associativity: associativityTraces,
+    },
+    diagnostics,
+    holds: leftUnit.matches && rightUnit.matches && associativity.matches,
+  };
+};
+
+interface DayReferenceContributionSample<Obj, Arr, Left, Right, Value> {
+  readonly primal: IndexedElement<Obj, Left>;
+  readonly dual: IndexedElement<Obj, Right>;
+  readonly contributions: ReadonlyArray<
+    DayPairingContribution<Obj, Arr, Left, Right, Value>
+  >;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+interface DayReferenceContributionData<Obj, Arr, Left, Right, Value> {
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly contributionCount: number;
+  readonly checkedPairs: number;
+  readonly missingPairs: number;
+  readonly sampledLeftCount: number;
+  readonly sampledRightCount: number;
+  readonly sampleEmpty: boolean;
+  readonly samples: ReadonlyArray<
+    DayReferenceContributionSample<Obj, Arr, Left, Right, Value>
+  >;
+}
+
+const collectDayReferenceContributionData = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  fiber: Obj,
+  sampleLimit: number,
+): DayReferenceContributionData<Obj, Arr, Left, Right, Value> => {
+  const leftCarrier = law.left.functor.F0(fiber) as SetObj<Left>;
+  const rightCarrier = law.right.functor.F0(fiber) as SetObj<Right>;
+
+  const leftElements = enumerateCarrier(leftCarrier).slice(0, sampleLimit);
+  const rightElements = enumerateCarrier(rightCarrier).slice(0, sampleLimit);
+
+  if (leftElements.length === 0 || rightElements.length === 0) {
+    return {
+      diagnostics: [
+        `DayInterchange.reference(${String(fiber)}): carrier sample empty (left=${leftElements.length}, right=${rightElements.length}).`,
+      ],
+      contributionCount: 0,
+      checkedPairs: 0,
+      missingPairs: 0,
+      sampledLeftCount: leftElements.length,
+      sampledRightCount: rightElements.length,
+      sampleEmpty: true,
+      samples: [],
+    };
+  }
+
+  const diagnostics: string[] = [];
+  let contributionCount = 0;
+  let checkedPairs = 0;
+  let missingPairs = 0;
+  const samples: Array<
+    DayReferenceContributionSample<Obj, Arr, Left, Right, Value>
+  > = [];
+
+  for (const leftElement of leftElements) {
+    const primal: IndexedElement<Obj, Left> = { object: fiber, element: leftElement as Left };
+    for (const rightElement of rightElements) {
+      const dual: IndexedElement<Obj, Right> = {
+        object: fiber,
+        element: rightElement as Right,
+      };
+      const contributions = law.collect(primal, dual).filter((contribution) =>
+        Object.is(contribution.diagonal, fiber),
+      );
+      checkedPairs += 1;
+      const sampleDiagnostics: string[] = [];
+      if (contributions.length === 0) {
+        missingPairs += 1;
+        sampleDiagnostics.push(
+          `DayInterchange.reference(${String(fiber)}): no contributions for sample left=${describeDiagnosticValue(
+            primal.element,
+          )}, right=${describeDiagnosticValue(dual.element)}.`,
+        );
+        diagnostics.push(...sampleDiagnostics);
+        samples.push({
+          primal,
+          dual,
+          contributions: [],
+          diagnostics: sampleDiagnostics,
+        });
+        continue;
+      }
+      contributionCount += contributions.length;
+      sampleDiagnostics.push(
+        ...contributions.map((contribution) =>
+          `DayInterchange.reference(${String(fiber)}): ${describeDayContribution(contribution)}`,
+        ),
+      );
+      diagnostics.push(...sampleDiagnostics);
+      samples.push({
+        primal,
+        dual,
+        contributions,
+        diagnostics: sampleDiagnostics,
+      });
+    }
+  }
+
+  return {
+    diagnostics,
+    contributionCount,
+    checkedPairs,
+    missingPairs,
+    sampledLeftCount: leftElements.length,
+    sampledRightCount: rightElements.length,
+    sampleEmpty: false,
+    samples,
+  };
+};
+
+const collectCanonicalDayReferenceSample = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  reference: OperationDayReference<Obj>,
+  fiber: (typeof law.convolution.fibers)[number] | undefined,
+): {
+  readonly sample?: InteractionLawDayInterchangeSample<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly totalContributions: number;
+  readonly satisfied: boolean;
+} => {
+  const diagnostics: string[] = [];
+  const fiberLabel = String(reference.fiber);
+  if (!fiber) {
+    diagnostics.push(
+      `DayInterchange.reference(${fiberLabel}): canonical sample unavailable (missing Day fiber).`,
+    );
+    return { diagnostics, totalContributions: 0, satisfied: false };
+  }
+
+  diagnostics.push(
+    `DayInterchange.reference(${fiberLabel}): canonical class index ${reference.index} of ${fiber.classes.length}.`,
+  );
+
+  const canonicalClass = fiber.classes[reference.index];
+  if (!canonicalClass) {
+    diagnostics.push(
+      `DayInterchange.reference(${fiberLabel}): canonical sample index ${reference.index} is out of range.`,
+    );
+    return { diagnostics, totalContributions: 0, satisfied: false };
+  }
+
+  const witness = canonicalClass.witness;
+  const diagonalLabel = String(canonicalClass.diagonalObject);
+  const kernelLeftLabel = String(witness.kernelLeft);
+  const kernelRightLabel = String(witness.kernelRight);
+
+  diagnostics.push(
+    `DayInterchange.reference(${fiberLabel}): canonical witness uses diagonal ${diagonalLabel} with kernel objects (${kernelLeftLabel}, ${kernelRightLabel}).`,
+  );
+
+  const witnessMatchesOutput = Object.is(witness.output, reference.fiber);
+  if (!witnessMatchesOutput) {
+    diagnostics.push(
+      `DayInterchange.reference(${fiberLabel}): canonical witness output ${String(witness.output)} differs from referenced fiber.`,
+    );
+  }
+
+  const canonicalPrimal: IndexedElement<Obj, Left> = {
+    object: witness.kernelLeft,
+    element: witness.leftElement as Left,
+  };
+  const canonicalDual: IndexedElement<Obj, Right> = {
+    object: witness.kernelRight,
+    element: witness.rightElement as Right,
+  };
+
+  const contributions = law.collect(canonicalPrimal, canonicalDual);
+  const totalContributions = contributions.length;
+  const matchingContributions = contributions.filter(
+    (contribution) =>
+      Object.is(contribution.output, reference.fiber) &&
+      Object.is(contribution.diagonal, canonicalClass.diagonalObject),
+  );
+
+  const evaluation = law.aggregate(contributions);
+  diagnostics.push(
+    `DayInterchange.reference(${fiberLabel}): canonical evaluation ${describeDiagnosticValue(evaluation)} from ${totalContributions} total contribution(s).`,
+  );
+  diagnostics.push(
+    `DayInterchange.reference(${fiberLabel}): canonical contributions targeting the referenced fiber ${matchingContributions.length}.`,
+  );
+
+  const sampleDiagnostics =
+    matchingContributions.length > 0
+      ? matchingContributions.map(
+          (contribution) =>
+            `DayInterchange.reference(${fiberLabel}): canonical ${describeDayContribution(contribution)}`,
+        )
+      : [
+          `DayInterchange.reference(${fiberLabel}): canonical sample produced no contributions for the referenced fiber.`,
+        ];
+
+  diagnostics.push(...sampleDiagnostics);
+
+  return {
+    sample: {
+      primal: canonicalPrimal,
+      dual: canonicalDual,
+      contributions: matchingContributions,
+      diagnostics: sampleDiagnostics,
+    },
+    diagnostics,
+    totalContributions,
+    satisfied:
+      matchingContributions.length > 0 &&
+      witnessMatchesOutput &&
+      totalContributions > 0,
+  };
+};
+
+export interface InteractionLawDayInterchangeOptions {
+  readonly sampleLimit?: number;
+}
+
+export const summarizeInteractionLawDayInterchangePreparation = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawDayInterchangeOptions = {},
+): InteractionLawDayInterchangeSummary<Obj, Arr, Left, Right, Value> => {
+  const sampleLimit = options.sampleLimit ?? 2;
+  const details: InteractionLawDayInterchangeDetail<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >[] = [];
+
+  const collectForOperation = (
+    role: InteractionLawDayReferenceRole,
+    operationLabel: string,
+    references: ReadonlyArray<OperationDayReference<Obj>> | undefined,
+  ) => {
+    if (!references || references.length === 0) {
+      return;
+    }
+    for (const reference of references) {
+      const fiberData = law.convolution.fibers.find((fiber) =>
+        Object.is(fiber.output, reference.fiber),
+      );
+      const pairingComponent = law.getPairingComponent(reference.fiber);
+      const fiberAvailable = Boolean(fiberData);
+      const pairingAvailable = Boolean(pairingComponent);
+      const contributionData = fiberAvailable
+        ? collectDayReferenceContributionData(law, reference.fiber, sampleLimit)
+        : {
+            diagnostics: [
+              `DayInterchange.reference(${String(
+                reference.fiber,
+              )}): missing Day fiber in convolution data.`,
+            ],
+            contributionCount: 0,
+            checkedPairs: 0,
+            missingPairs: 0,
+            sampledLeftCount: 0,
+            sampledRightCount: 0,
+            sampleEmpty: true,
+            samples: [],
+          } satisfies DayReferenceContributionData<
+            Obj,
+            Arr,
+            Left,
+            Right,
+            Value
+          >;
+      const contributionDiagnostics = contributionData.diagnostics;
+      const canonical = collectCanonicalDayReferenceSample(
+        law,
+        reference,
+        fiberData,
+      );
+      const detailDiagnostics = [
+        `${role} operation ${operationLabel} (index ${reference.index}) references fiber ${String(
+          reference.fiber,
+        )}.`,
+        fiberAvailable
+          ? `DayInterchange.reference(${String(reference.fiber)}): fiber located in convolution data.`
+          : `DayInterchange.reference(${String(reference.fiber)}): fiber missing from convolution data.`,
+        pairingAvailable
+          ? `DayInterchange.reference(${String(reference.fiber)}): pairing component available.`
+          : `DayInterchange.reference(${String(reference.fiber)}): pairing component missing.`,
+        `DayInterchange.reference(${String(
+          reference.fiber,
+        )}): sampled ${contributionData.sampledLeftCount} left × ${contributionData.sampledRightCount} right element(s) (${contributionData.checkedPairs} pair(s) checked; ${contributionData.missingPairs} missing).`,
+        `DayInterchange.reference(${String(
+          reference.fiber,
+        )}): recorded ${contributionData.contributionCount} Day contribution(s).`,
+        ...contributionDiagnostics,
+        ...canonical.diagnostics,
+      ];
+      details.push({
+        role,
+        operation: operationLabel,
+        reference,
+        fiberAvailable,
+        pairingAvailable,
+        contributions: contributionDiagnostics,
+        samples: contributionData.samples,
+        contributionCount: contributionData.contributionCount,
+        checkedPairs: contributionData.checkedPairs,
+        missingPairs: contributionData.missingPairs,
+        sampledLeftCount: contributionData.sampledLeftCount,
+        sampledRightCount: contributionData.sampledRightCount,
+        sampleEmpty: contributionData.sampleEmpty,
+        canonicalContributionCount: canonical.totalContributions,
+        canonicalSatisfied: canonical.satisfied,
+        ...(canonical.sample ? { canonicalSample: canonical.sample } : {}),
+        diagnostics: detailDiagnostics,
+      });
+    }
+  };
+
+  if (law.operations?.monadOperations) {
+    for (const operation of law.operations.monadOperations) {
+      collectForOperation("monad", operation.label, operation.dayReferences);
+    }
+  }
+
+  if (law.operations?.comonadCooperations) {
+    for (const operation of law.operations.comonadCooperations) {
+      collectForOperation("comonad", operation.label, operation.dayReferences);
+    }
+  }
+
+  const satisfied = details.filter(
+    (detail) =>
+      detail.fiberAvailable &&
+      detail.pairingAvailable &&
+      !detail.sampleEmpty &&
+      detail.checkedPairs > 0 &&
+      detail.missingPairs === 0 &&
+      detail.contributionCount > 0 &&
+      detail.canonicalSatisfied,
+  );
+
+  const diagnostics = [
+    details.length === 0
+      ? "summarizeInteractionLawDayInterchangePreparation: no operations supplied Day references."
+      : `summarizeInteractionLawDayInterchangePreparation: enumerated ${details.length} Day reference(s); ${satisfied.length} satisfied fiber/pairing/contribution checks.`,
+    ...details.flatMap((detail) => detail.diagnostics),
+  ];
+
+  const holds = satisfied.length === details.length;
+
+  return {
+    kernel: law.kernel,
+    details,
+    diagnostics,
+    holds,
+  };
+};
+
+interface MutableInteractionLawDayInterchangeTotals {
+  totalReferences: number;
+  satisfiedReferences: number;
+  missingFibers: number;
+  missingPairings: number;
+  emptySamples: number;
+  zeroContributionReferences: number;
+  referencesWithMissingPairs: number;
+  totalMissingPairs: number;
+  totalCheckedPairs: number;
+}
+
+const createMutableInteractionLawDayInterchangeTotals = () => ({
+  totalReferences: 0,
+  satisfiedReferences: 0,
+  missingFibers: 0,
+  missingPairings: 0,
+  emptySamples: 0,
+  zeroContributionReferences: 0,
+  referencesWithMissingPairs: 0,
+  totalMissingPairs: 0,
+  totalCheckedPairs: 0,
+});
+
+const finalizeInteractionLawDayInterchangeTotals = (
+  totals: MutableInteractionLawDayInterchangeTotals,
+): InteractionLawDayInterchangeTotals => ({
+  totalReferences: totals.totalReferences,
+  satisfiedReferences: totals.satisfiedReferences,
+  missingFibers: totals.missingFibers,
+  missingPairings: totals.missingPairings,
+  emptySamples: totals.emptySamples,
+  zeroContributionReferences: totals.zeroContributionReferences,
+  referencesWithMissingPairs: totals.referencesWithMissingPairs,
+  totalMissingPairs: totals.totalMissingPairs,
+  totalCheckedPairs: totals.totalCheckedPairs,
+});
+
+const accumulateDayInterchangeDetail = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  totals: MutableInteractionLawDayInterchangeTotals,
+  detail: InteractionLawDayInterchangeDetail<Obj, Arr, Left, Right, Value>,
+  satisfied: boolean,
+): void => {
+  totals.totalReferences += 1;
+  totals.totalCheckedPairs += detail.checkedPairs;
+  if (!detail.fiberAvailable) {
+    totals.missingFibers += 1;
+  }
+  if (!detail.pairingAvailable) {
+    totals.missingPairings += 1;
+  }
+  if (detail.sampleEmpty) {
+    totals.emptySamples += 1;
+  }
+  if (detail.contributionCount === 0) {
+    totals.zeroContributionReferences += 1;
+  }
+  if (detail.missingPairs > 0) {
+    totals.referencesWithMissingPairs += 1;
+    totals.totalMissingPairs += detail.missingPairs;
+  }
+  if (satisfied) {
+    totals.satisfiedReferences += 1;
+  }
+};
+
+const describeInteractionLawDayInterchangeTotals = (
+  label: string,
+  totals: InteractionLawDayInterchangeTotals,
+): string => {
+  if (totals.totalReferences === 0) {
+    return `DayInterchange.${label}: no Day references recorded.`;
+  }
+  const base =
+    `DayInterchange.${label}: ${totals.satisfiedReferences}/${totals.totalReferences} references satisfied.`;
+  const coverage =
+    totals.totalMissingPairs === 0
+      ? ""
+      : ` Missing ${totals.totalMissingPairs} pair(s) across ${totals.referencesWithMissingPairs} reference(s).`;
+  return (
+    `${base} Missing fibers=${totals.missingFibers}; missing pairings=${totals.missingPairings}; ` +
+    `empty samples=${totals.emptySamples}; zero contributions=${totals.zeroContributionReferences}; ` +
+    `checked pairs=${totals.totalCheckedPairs}.${coverage}`
+  );
+};
+
+export const summarizeInteractionLawDayInterchangeFromSummary = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  summary: InteractionLawDayInterchangeSummary<Obj, Arr, Left, Right, Value>,
+): InteractionLawDayInterchangeReport<Obj, Arr, Left, Right, Value> => {
+  const totals = createMutableInteractionLawDayInterchangeTotals();
+  const roleTotals: Record<
+    InteractionLawDayReferenceRole,
+    MutableInteractionLawDayInterchangeTotals
+  > = {
+    monad: createMutableInteractionLawDayInterchangeTotals(),
+    comonad: createMutableInteractionLawDayInterchangeTotals(),
+  };
+
+  for (const detail of summary.details) {
+    const satisfied =
+      detail.fiberAvailable &&
+      detail.pairingAvailable &&
+      !detail.sampleEmpty &&
+      detail.checkedPairs > 0 &&
+      detail.missingPairs === 0 &&
+      detail.contributionCount > 0 &&
+      detail.canonicalSatisfied;
+    accumulateDayInterchangeDetail(totals, detail, satisfied);
+    accumulateDayInterchangeDetail(roleTotals[detail.role], detail, satisfied);
+  }
+
+  const finalizedTotals = finalizeInteractionLawDayInterchangeTotals(totals);
+  const finalizedRoleTotals: Record<
+    InteractionLawDayReferenceRole,
+    InteractionLawDayInterchangeTotals
+  > = {
+    monad: finalizeInteractionLawDayInterchangeTotals(roleTotals.monad),
+    comonad: finalizeInteractionLawDayInterchangeTotals(roleTotals.comonad),
+  };
+
+  const diagnostics = [
+    describeInteractionLawDayInterchangeTotals("overall", finalizedTotals),
+    describeInteractionLawDayInterchangeTotals("monad", finalizedRoleTotals.monad),
+    describeInteractionLawDayInterchangeTotals("comonad", finalizedRoleTotals.comonad),
+    ...summary.diagnostics,
+  ];
+
+  return {
+    kernel: summary.kernel,
+    summary,
+    totals: finalizedTotals,
+    roleTotals: finalizedRoleTotals,
+    diagnostics,
+    holds: summary.holds,
+  };
+};
+
+export const summarizeInteractionLawDayInterchange = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawDayInterchangeOptions = {},
+): InteractionLawDayInterchangeReport<Obj, Arr, Left, Right, Value> =>
+  summarizeInteractionLawDayInterchangeFromSummary(
+    summarizeInteractionLawDayInterchangePreparation(law, options),
+  );
+
+const summarizeDayInterchangeOperation = <Obj, Arr>(
+  operation: MonadOperation<Obj, Arr> | ComonadCooperation<Obj, Arr>,
+): InteractionLawDayInterchangeOperationSummary<Obj, Arr> => {
+  let hasGenericWitness: boolean;
+  if ("kleisliOnGeneric" in operation) {
+    hasGenericWitness = Boolean(operation.kleisliOnGeneric);
+  } else {
+    const comonadOperation = operation as ComonadCooperation<Obj, Arr>;
+    hasGenericWitness = Boolean(
+      comonadOperation.genericDuplication ?? comonadOperation.counit,
+    );
+  }
+
+  return {
+    label: operation.label,
+    arity: operation.arity,
+    ...(operation.metadata ? { metadata: operation.metadata } : {}),
+    ...(operation.lawvereWitness
+      ? { lawvereWitness: operation.lawvereWitness as LawvereOperationWitness<Obj, Arr> }
+      : {}),
+    hasTransformation: Boolean(operation.transformation),
+    hasGenericWitness,
+    hasNullaryComponent: Boolean(operation.nullary),
+    hasCommutativeComponent: Boolean(operation.commutativeBinary),
+    dayReferenceCount: operation.dayReferences?.length ?? 0,
+  };
+};
+
+interface MutableInteractionLawDayInterchangeInstantiationTotals {
+  totalReferences: number;
+  instantiatedReferences: number;
+  missingOperations: number;
+  missingCanonicalSamples: number;
+  unsatisfiedCanonicalSamples: number;
+}
+
+const createMutableInteractionLawDayInterchangeInstantiationTotals = (): MutableInteractionLawDayInterchangeInstantiationTotals => ({
+  totalReferences: 0,
+  instantiatedReferences: 0,
+  missingOperations: 0,
+  missingCanonicalSamples: 0,
+  unsatisfiedCanonicalSamples: 0,
+});
+
+const finalizeInteractionLawDayInterchangeInstantiationTotals = (
+  totals: MutableInteractionLawDayInterchangeInstantiationTotals,
+): InteractionLawDayInterchangeInstantiationTotals => ({
+  totalReferences: totals.totalReferences,
+  instantiatedReferences: totals.instantiatedReferences,
+  missingOperations: totals.missingOperations,
+  missingCanonicalSamples: totals.missingCanonicalSamples,
+  unsatisfiedCanonicalSamples: totals.unsatisfiedCanonicalSamples,
+});
+
+const describeInteractionLawDayInterchangeInstantiationTotals = (
+  label: string,
+  totals: InteractionLawDayInterchangeInstantiationTotals,
+): string => {
+  if (totals.totalReferences === 0) {
+    return `DayInterchangeInstantiation.${label}: no Day references recorded.`;
+  }
+  const problems = [
+    `${totals.missingOperations} missing operation(s)`,
+    `${totals.missingCanonicalSamples} missing canonical sample(s)`,
+    `${totals.unsatisfiedCanonicalSamples} unsatisfied canonical witness(es)`,
+  ].join(", ");
+  return `DayInterchangeInstantiation.${label}: ${totals.instantiatedReferences}/${totals.totalReferences} reference(s) instantiated (${problems}).`;
+};
+
+const buildInstantiationDiagnostics = <Obj, Arr, Left, Right, Value>(
+  role: InteractionLawDayReferenceRole,
+  operationLabel: string,
+  operation: InteractionLawDayInterchangeOperationSummary<Obj, Arr> | undefined,
+  detail: InteractionLawDayInterchangeDetail<Obj, Arr, Left, Right, Value>,
+): string[] => {
+  const diagnostics: string[] = [];
+  const prefix = `DayInterchangeInstantiation.${role}.${operationLabel}`;
+  if (!operation) {
+    diagnostics.push(
+      `${prefix}: operation not found in interaction-law operations list.`,
+    );
+  } else {
+    diagnostics.push(
+      `${prefix}: located operation (arity=${operation.arity}, dayReferences=${operation.dayReferenceCount}).`,
+    );
+    diagnostics.push(
+      `${prefix}: transformation=${operation.hasTransformation}; genericWitness=${operation.hasGenericWitness}; nullaryComponent=${operation.hasNullaryComponent}; commutativeComponent=${operation.hasCommutativeComponent}.`,
+    );
+    if (operation.metadata?.length) {
+      diagnostics.push(
+        `${prefix}: operation metadata (${operation.metadata.length}) => ${operation.metadata.join(", ")}.`,
+      );
+    }
+    if (operation.lawvereWitness) {
+      diagnostics.push(
+        `${prefix}: Lawvere witness ${describeDiagnosticValue(operation.lawvereWitness.morphism)} : ${describeDiagnosticValue(operation.lawvereWitness.domain)} → ${describeDiagnosticValue(operation.lawvereWitness.codomain)}.`,
+      );
+    }
+  }
+  if (!detail.canonicalSample) {
+    diagnostics.push(`${prefix}: canonical sample missing.`);
+  }
+  if (!detail.canonicalSatisfied) {
+    diagnostics.push(`${prefix}: canonical Day witness did not satisfy referenced fiber.`);
+  }
+  return diagnostics;
+};
+
+export const instantiateInteractionLawDayInterchangeFromSummary = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  summary: InteractionLawDayInterchangeSummary<Obj, Arr, Left, Right, Value>,
+): InteractionLawDayInterchangeInstantiationReport<Obj, Arr, Left, Right, Value> => {
+  const overallTotals = createMutableInteractionLawDayInterchangeInstantiationTotals();
+  const roleTotals: Record<
+    InteractionLawDayReferenceRole,
+    MutableInteractionLawDayInterchangeInstantiationTotals
+  > = {
+    monad: createMutableInteractionLawDayInterchangeInstantiationTotals(),
+    comonad: createMutableInteractionLawDayInterchangeInstantiationTotals(),
+  };
+
+  const findOperation = (
+    role: InteractionLawDayReferenceRole,
+    label: string,
+  ): (MonadOperation<Obj, Arr> | ComonadCooperation<Obj, Arr>) | undefined => {
+    if (role === "monad") {
+      return law.operations?.monadOperations?.find((operation) => operation.label === label);
+    }
+    return law.operations?.comonadCooperations?.find((operation) => operation.label === label);
+  };
+
+  const details: InteractionLawDayInterchangeInstantiationDetail<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >[] = summary.details.map((detail) => {
+    const operation = findOperation(detail.role, detail.operation);
+    const operationSummary = operation
+      ? summarizeDayInterchangeOperation(operation)
+      : undefined;
+    const diagnostics = buildInstantiationDiagnostics(
+      detail.role,
+      detail.operation,
+      operationSummary,
+      detail,
+    );
+    const holds = Boolean(operationSummary) && detail.canonicalSatisfied && Boolean(detail.canonicalSample);
+
+    overallTotals.totalReferences += 1;
+    roleTotals[detail.role].totalReferences += 1;
+
+    if (!operationSummary) {
+      overallTotals.missingOperations += 1;
+      roleTotals[detail.role].missingOperations += 1;
+    }
+    if (!detail.canonicalSample) {
+      overallTotals.missingCanonicalSamples += 1;
+      roleTotals[detail.role].missingCanonicalSamples += 1;
+    }
+    if (!detail.canonicalSatisfied) {
+      overallTotals.unsatisfiedCanonicalSamples += 1;
+      roleTotals[detail.role].unsatisfiedCanonicalSamples += 1;
+    }
+    if (holds) {
+      overallTotals.instantiatedReferences += 1;
+      roleTotals[detail.role].instantiatedReferences += 1;
+    }
+
+    return {
+      detail,
+      ...(operationSummary ? { operation: operationSummary } : {}),
+      diagnostics,
+      holds,
+    };
+  });
+
+  const finalizedTotals = finalizeInteractionLawDayInterchangeInstantiationTotals(
+    overallTotals,
+  );
+  const finalizedRoleTotals: Record<
+    InteractionLawDayReferenceRole,
+    InteractionLawDayInterchangeInstantiationTotals
+  > = {
+    monad: finalizeInteractionLawDayInterchangeInstantiationTotals(roleTotals.monad),
+    comonad: finalizeInteractionLawDayInterchangeInstantiationTotals(roleTotals.comonad),
+  };
+
+  const diagnostics = [
+    describeInteractionLawDayInterchangeInstantiationTotals(
+      "overall",
+      finalizedTotals,
+    ),
+    describeInteractionLawDayInterchangeInstantiationTotals(
+      "monad",
+      finalizedRoleTotals.monad,
+    ),
+    describeInteractionLawDayInterchangeInstantiationTotals(
+      "comonad",
+      finalizedRoleTotals.comonad,
+    ),
+    ...details.flatMap((entry) => entry.diagnostics),
+  ];
+
+  return {
+    kernel: law.kernel,
+    summary,
+    details,
+    totals: finalizedTotals,
+    roleTotals: finalizedRoleTotals,
+    diagnostics,
+    holds:
+      finalizedTotals.totalReferences === finalizedTotals.instantiatedReferences &&
+      summary.holds,
+  };
+};
+
+export const instantiateInteractionLawDayInterchangeFromReport = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  report: InteractionLawDayInterchangeReport<Obj, Arr, Left, Right, Value>,
+): InteractionLawDayInterchangeInstantiationReport<Obj, Arr, Left, Right, Value> =>
+  instantiateInteractionLawDayInterchangeFromSummary(law, report.summary);
+
+export const instantiateInteractionLawDayInterchange = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawDayInterchangeOptions = {},
+): InteractionLawDayInterchangeInstantiationReport<Obj, Arr, Left, Right, Value> =>
+  instantiateInteractionLawDayInterchangeFromSummary(
+    law,
+    summarizeInteractionLawDayInterchangePreparation(law, options),
+  );
+
+export interface InteractionLawDayInterchangeInstantiationCheckDetail<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly instantiation: InteractionLawDayInterchangeInstantiationDetail<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly evaluation?: Value;
+  readonly aggregated?: Value;
+  readonly matches: boolean;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly holds: boolean;
+}
+
+export interface InteractionLawDayInterchangeInstantiationCheckTotals {
+  readonly totalReferences: number;
+  readonly matchedReferences: number;
+  readonly mismatchedReferences: number;
+  readonly missingCanonicalSamples: number;
+}
+
+export interface InteractionLawDayInterchangeInstantiationCheckReport<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly instantiation: InteractionLawDayInterchangeInstantiationReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly details: ReadonlyArray<
+    InteractionLawDayInterchangeInstantiationCheckDetail<
+      Obj,
+      Arr,
+      Left,
+      Right,
+      Value
+    >
+  >;
+  readonly totals: InteractionLawDayInterchangeInstantiationCheckTotals;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly holds: boolean;
+}
+
+export interface InteractionLawDayInterchangeInstantiationCheckOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> extends InteractionLawDayInterchangeOptions {
+  readonly instantiation?: InteractionLawDayInterchangeInstantiationReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+}
+
+export const verifyInteractionLawDayInterchangeInstantiationFromReport = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  instantiation: InteractionLawDayInterchangeInstantiationReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >,
+): InteractionLawDayInterchangeInstantiationCheckReport<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+> => {
+  const equals =
+    semanticsAwareEquals(law.dualizing) ?? ((left: Value, right: Value) => Object.is(left, right));
+
+  let matchedReferences = 0;
+  let mismatchedReferences = 0;
+  let missingCanonicalSamples = 0;
+
+  const details = instantiation.details.map((entry) => {
+    const { detail } = entry;
+    const prefix = `DayInterchangeInstantiationCheck.${detail.role}.${detail.operation}`;
+    const diagnostics: string[] = [];
+
+    const canonicalSample = detail.canonicalSample;
+    if (!canonicalSample) {
+      diagnostics.push(
+        `${prefix}: canonical sample unavailable for reference ${String(detail.reference.fiber)}.`,
+      );
+      diagnostics.push(
+        `${prefix}: prior instantiation diagnostics: ${entry.diagnostics.join(" | ")}.`,
+      );
+      missingCanonicalSamples += 1;
+      mismatchedReferences += 1;
+      return {
+        instantiation: entry,
+        matches: false,
+        diagnostics,
+        holds: false,
+      } satisfies InteractionLawDayInterchangeInstantiationCheckDetail<
+        Obj,
+        Arr,
+        Left,
+        Right,
+        Value
+      >;
+    }
+
+    const aggregated = law.aggregate(canonicalSample.contributions);
+    const evaluation = law.evaluate(canonicalSample.primal, canonicalSample.dual);
+    const matches = equals(aggregated, evaluation);
+
+    diagnostics.push(
+      `${prefix}: aggregated canonical contributions -> ${describeDiagnosticValue(aggregated)}; evaluation ${describeDiagnosticValue(evaluation)} (${matches ? "match" : "mismatch"}).`,
+    );
+    diagnostics.push(...entry.diagnostics);
+
+    const holds = entry.holds && matches;
+    if (holds) {
+      matchedReferences += 1;
+    } else {
+      mismatchedReferences += 1;
+    }
+
+    return {
+      instantiation: entry,
+      aggregated,
+      evaluation,
+      matches,
+      diagnostics,
+      holds,
+    } satisfies InteractionLawDayInterchangeInstantiationCheckDetail<
+      Obj,
+      Arr,
+      Left,
+      Right,
+      Value
+    >;
+  });
+
+  const totals: InteractionLawDayInterchangeInstantiationCheckTotals = {
+    totalReferences: instantiation.details.length,
+    matchedReferences,
+    mismatchedReferences,
+    missingCanonicalSamples,
+  };
+
+  const diagnostics = [
+    totals.totalReferences === 0
+      ? "DayInterchangeInstantiationCheck: no Day references to verify."
+      : `DayInterchangeInstantiationCheck: ${totals.matchedReferences}/${totals.totalReferences} canonical sample(s) matched aggregated evaluations (${totals.missingCanonicalSamples} missing samples).`,
+    ...details.flatMap((entry) => entry.diagnostics),
+  ];
+
+  return {
+    kernel: law.kernel,
+    instantiation,
+    details,
+    totals,
+    diagnostics,
+    holds:
+      totals.totalReferences === totals.matchedReferences && totals.missingCanonicalSamples === 0,
+  };
+};
+
+export const verifyInteractionLawDayInterchangeInstantiation = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawDayInterchangeInstantiationCheckOptions<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  > = {},
+): InteractionLawDayInterchangeInstantiationCheckReport<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+> =>
+  verifyInteractionLawDayInterchangeInstantiationFromReport(
+    law,
+    options.instantiation ?? instantiateInteractionLawDayInterchange(law, options),
+  );
+
+export interface InteractionLawDayInterchangeCheckOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> extends InteractionLawDayInterchangeInstantiationCheckOptions<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  > {
+  readonly report?: InteractionLawDayInterchangeReport<Obj, Arr, Left, Right, Value>;
+  readonly verification?: InteractionLawDayInterchangeInstantiationCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+}
+
+export interface InteractionLawDayInterchangeCheckReport<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly report: InteractionLawDayInterchangeReport<Obj, Arr, Left, Right, Value>;
+  readonly instantiation: InteractionLawDayInterchangeInstantiationReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly verification: InteractionLawDayInterchangeInstantiationCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly holds: boolean;
+}
+
+const buildDayInterchangeCheckDiagnostics = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  report: InteractionLawDayInterchangeReport<Obj, Arr, Left, Right, Value>,
+  instantiation: InteractionLawDayInterchangeInstantiationReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >,
+  verification: InteractionLawDayInterchangeInstantiationCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >,
+): ReadonlyArray<string> => {
+  const preface =
+    `checkInteractionLawDayInterchange: summary=${report.holds ? "holds" : "fails"}` +
+    `, instantiation=${instantiation.holds ? "holds" : "fails"}` +
+    `, verification=${verification.holds ? "holds" : "fails"}.`;
+  return [
+    preface,
+    ...report.diagnostics,
+    ...instantiation.diagnostics,
+    ...verification.diagnostics,
+  ];
+};
+
+export const checkInteractionLawDayInterchangeFromReport = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  report: InteractionLawDayInterchangeReport<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawDayInterchangeCheckOptions<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  > = {},
+): InteractionLawDayInterchangeCheckReport<Obj, Arr, Left, Right, Value> => {
+  const instantiation =
+    options.instantiation ??
+    instantiateInteractionLawDayInterchangeFromReport(law, report);
+  const verification =
+    options.verification ??
+    verifyInteractionLawDayInterchangeInstantiationFromReport(law, instantiation);
+  const diagnostics = buildDayInterchangeCheckDiagnostics(
+    report,
+    instantiation,
+    verification,
+  );
+  return {
+    kernel: report.kernel,
+    report,
+    instantiation,
+    verification,
+    diagnostics,
+    holds: report.holds && instantiation.holds && verification.holds,
+  } satisfies InteractionLawDayInterchangeCheckReport<Obj, Arr, Left, Right, Value>;
+};
+
+export const checkInteractionLawDayInterchange = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawDayInterchangeCheckOptions<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  > = {},
+): InteractionLawDayInterchangeCheckReport<Obj, Arr, Left, Right, Value> => {
+  const report =
+    options.report ?? summarizeInteractionLawDayInterchange(law, options);
+  return checkInteractionLawDayInterchangeFromReport(law, report, options);
+};
+
 export const coproductInteractionLaw = <
   Obj,
   Arr,
@@ -3351,6 +5714,719 @@ export const deriveInteractionLawCCCPresentation = <Obj, Arr, Left, Right, Value
   law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
 ): InteractionLawCurryingSummary<Obj, Arr, Left, Right, Value> =>
   deriveInteractionLawCurrying(law);
+
+const DEFAULT_MONOID_PREPARATION_SAMPLE_LIMIT = 24;
+
+export interface InteractionLawMonoidPreparationSample<Obj, Left, Right, Value> {
+  readonly object: Obj;
+  readonly parameter: Obj;
+  readonly tensorObject: Obj;
+  readonly primal: IndexedElement<Obj, Left>;
+  readonly dual: IndexedElement<Obj, Right>;
+  readonly value: Value;
+}
+
+export interface InteractionLawMonoidPreparationComponent<Obj, Left, Right, Value> {
+  readonly object: Obj;
+  readonly parameter: Obj;
+  readonly tensorObject: Obj;
+  readonly domain: SetObj<Left>;
+  readonly codomain: SetObj<Right>;
+  readonly codomainIndexed: SetObj<IndexedElement<Obj, Right>>;
+  readonly exponentialObject: SetObj<
+    ExponentialArrow<IndexedElement<Obj, Right>, Value>
+  >;
+  readonly hom: SetHom<Left, ExponentialArrow<IndexedElement<Obj, Right>, Value>>;
+  readonly domainSize: number;
+  readonly codomainSize: number;
+  readonly samples: ReadonlyArray<InteractionLawMonoidPreparationSample<Obj, Left, Right, Value>>;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export interface InteractionLawMonoidPreparationOptions<Obj, Arr, Left, Right, Value> {
+  readonly currying?: InteractionLawCurryingSummary<Obj, Arr, Left, Right, Value>;
+  readonly sampleLimit?: number;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawMonoidPreparationSummary<Obj, Arr, Left, Right, Value> {
+  readonly law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>;
+  readonly currying: InteractionLawCurryingSummary<Obj, Arr, Left, Right, Value>;
+  readonly components: ReadonlyArray<
+    InteractionLawMonoidPreparationComponent<Obj, Left, Right, Value>
+  >;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export const summarizeInteractionLawMonoidPreparation = <Obj, Arr, Left, Right, Value>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawMonoidPreparationOptions<Obj, Arr, Left, Right, Value> = {},
+): InteractionLawMonoidPreparationSummary<Obj, Arr, Left, Right, Value> => {
+  const currying = options.currying ?? deriveInteractionLawCurrying(law);
+  const sampleLimit = Math.max(0, options.sampleLimit ?? DEFAULT_MONOID_PREPARATION_SAMPLE_LIMIT);
+
+  const components: InteractionLawMonoidPreparationComponent<Obj, Left, Right, Value>[] = [];
+  const diagnostics: string[] = [];
+
+  for (const [object, fiber] of currying.fibers) {
+    const finalTransformation = fiber.finalTransformation;
+    if (!finalTransformation.implemented) {
+      diagnostics.push(
+        `InteractionLawMonoidPreparation(${String(object)}): final transformation not implemented; skipping Day tensor samples.`,
+      );
+      continue;
+    }
+
+    for (const component of finalTransformation.components) {
+      const { parameter, tensorObject, domain, codomain, evaluationTable } = component;
+
+      const samples: InteractionLawMonoidPreparationSample<Obj, Left, Right, Value>[] = [];
+
+      const codomainIndexed = buildIndexedFiberCarrier(
+        parameter,
+        codomain,
+        `InteractionLawMonoidPreparation.codomain(${String(object)}; ${String(parameter)})`,
+      );
+      const exponential = SetCat.exponential(
+        codomainIndexed,
+        law.dualizing,
+      );
+      const hom = SetCat.hom(
+        domain,
+        exponential.object,
+        (element: Left) =>
+          exponential.register((dual: IndexedElement<Obj, Right>) =>
+            law.evaluate(
+              { object: tensorObject, element },
+              dual,
+            ),
+          ),
+      );
+
+      outer: for (const row of evaluationTable) {
+        for (const entry of row.evaluations) {
+          samples.push({
+            object,
+            parameter,
+            tensorObject,
+            primal: row.primal,
+            dual: entry.dual,
+            value: entry.value,
+          });
+          if (samples.length >= sampleLimit) {
+            break outer;
+          }
+        }
+      }
+
+      const domainSize = evaluationTable.length;
+      const codomainSize = evaluationTable.reduce(
+        (count, row) => Math.max(count, row.evaluations.length),
+        0,
+      );
+
+      const componentDiagnostics: string[] = [
+        `InteractionLawMonoidPreparation(${String(object)}; parameter ${String(parameter)}): sampled ${samples.length} element(s) from F(${String(tensorObject)}) × G(${String(parameter)}).`,
+        `InteractionLawMonoidPreparation(${String(object)}; parameter ${String(parameter)}): built exponential hom F(${String(tensorObject)}) → [G(${String(parameter)}) ⇒ Ω] with ${domainSize} × ${codomainSize} support.`,
+        ...component.diagnostics,
+      ];
+
+      diagnostics.push(...componentDiagnostics);
+
+      components.push({
+        object,
+        parameter,
+        tensorObject,
+        domain,
+        codomain,
+        codomainIndexed,
+        exponentialObject: exponential.object,
+        hom,
+        domainSize,
+        codomainSize,
+        samples,
+        diagnostics: componentDiagnostics,
+      });
+    }
+  }
+
+  diagnostics.unshift(
+    `InteractionLawMonoidPreparation: analysed ${components.length} component(s) across ${currying.fibers.size} fiber(s) with sample limit ${sampleLimit}.`,
+  );
+
+  if (components.length === 0) {
+    diagnostics.push(
+      "InteractionLawMonoidPreparation: no Day tensor components were available for sampling.",
+    );
+  }
+
+  const metadata = mergeMetadataList(law.operations?.metadata, options.metadata);
+
+  return {
+    law,
+    currying,
+    components,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export interface InteractionLawMonoidMultiplicationTranslatorOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly preparation?: InteractionLawMonoidPreparationSummary<Obj, Arr, Left, Right, Value>;
+  readonly preparationOptions?: InteractionLawMonoidPreparationOptions<Obj, Arr, Left, Right, Value>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawMonoidMultiplicationTranslator<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>;
+  readonly preparation: InteractionLawMonoidPreparationSummary<Obj, Arr, Left, Right, Value>;
+  readonly components: ReadonlyMap<
+    Obj,
+    ReadonlyMap<Obj, InteractionLawMonoidPreparationComponent<Obj, Left, Right, Value>>
+  >;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export const makeInteractionLawMonoidMultiplicationTranslator = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawMonoidMultiplicationTranslatorOptions<Obj, Arr, Left, Right, Value> = {},
+): InteractionLawMonoidMultiplicationTranslator<Obj, Arr, Left, Right, Value> => {
+  const preparation =
+    options.preparation ??
+    summarizeInteractionLawMonoidPreparation(law, options.preparationOptions);
+
+  const components = new Map<
+    Obj,
+    Map<Obj, InteractionLawMonoidPreparationComponent<Obj, Left, Right, Value>>
+  >();
+  const diagnostics: string[] = [];
+
+  diagnostics.push(
+    options.preparation
+      ? "InteractionLawMonoidMultiplicationTranslator: reused supplied monoid preparation summary."
+      : "InteractionLawMonoidMultiplicationTranslator: derived monoid preparation summary from interaction law.",
+  );
+
+  for (const component of preparation.components) {
+    let objectComponents = components.get(component.object);
+    if (!objectComponents) {
+      objectComponents = new Map();
+      components.set(component.object, objectComponents);
+    }
+
+    if (objectComponents.has(component.parameter)) {
+      const existing = objectComponents.get(component.parameter)!;
+      diagnostics.push(
+        `InteractionLawMonoidMultiplicationTranslator(${String(component.object)}; parameter ${String(component.parameter)}): duplicate component encountered (tensor ${String(component.tensorObject)}); retaining previously registered tensor ${String(existing.tensorObject)}.`,
+      );
+      continue;
+    }
+
+    objectComponents.set(component.parameter, component);
+    diagnostics.push(
+      `InteractionLawMonoidMultiplicationTranslator(${String(component.object)}; parameter ${String(component.parameter)}): registered hom F(${String(component.tensorObject)}) → [G(${String(component.parameter)}) ⇒ Ω].`,
+    );
+  }
+
+  diagnostics.unshift(
+    `InteractionLawMonoidMultiplicationTranslator: indexed ${preparation.components.length} component(s) across ${components.size} object(s).`,
+  );
+
+  if (preparation.components.length === 0) {
+    diagnostics.push(
+      "InteractionLawMonoidMultiplicationTranslator: no Day tensor components were available to index.",
+    );
+  }
+
+  const metadata = mergeMetadataList(preparation.metadata, options.metadata);
+
+  return {
+    law,
+    preparation,
+    components,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export const lookupInteractionLawMonoidMultiplicationComponent = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  translator: InteractionLawMonoidMultiplicationTranslator<Obj, Arr, Left, Right, Value>,
+  object: Obj,
+  parameter: Obj,
+): InteractionLawMonoidPreparationComponent<Obj, Left, Right, Value> | undefined =>
+  translator.components.get(object)?.get(parameter);
+
+export interface InteractionLawMonoidMultiplicationRealizationComponent<
+  Obj,
+  Left,
+  Right,
+  Value,
+> {
+  readonly object: Obj;
+  readonly parameter: Obj;
+  readonly tensorObject: Obj;
+  readonly translatorComponent: InteractionLawMonoidPreparationComponent<Obj, Left, Right, Value>;
+  readonly hom: SetHom<Left, ExponentialArrow<Right, Value>>;
+  readonly evaluation: SetHom<readonly [Left, Right], Value>;
+  readonly evaluationProduct: ProductData<Left, Right>;
+  readonly samples: ReadonlyArray<InteractionLawMonoidPreparationSample<Obj, Left, Right, Value>>;
+  readonly checked: number;
+  readonly mismatches: number;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export interface InteractionLawMonoidMultiplicationRealization<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly translator: InteractionLawMonoidMultiplicationTranslator<Obj, Arr, Left, Right, Value>;
+  readonly components: ReadonlyMap<
+    Obj,
+    ReadonlyMap<Obj, InteractionLawMonoidMultiplicationRealizationComponent<Obj, Left, Right, Value>>
+  >;
+  readonly checked: number;
+  readonly mismatches: number;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawMonoidMultiplicationRealizationOptions {
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawMonoidPsiReconstructionComponent<
+  Obj,
+  Left,
+  Right,
+  Value,
+> {
+  readonly object: Obj;
+  readonly parameter: Obj;
+  readonly translatorComponent: InteractionLawMonoidPreparationComponent<Obj, Left, Right, Value>;
+  readonly realizationComponent: InteractionLawMonoidMultiplicationRealizationComponent<
+    Obj,
+    Left,
+    Right,
+    Value
+  >;
+  readonly checked: number;
+  readonly translatorMismatches: number;
+  readonly realizationMismatches: number;
+  readonly lawMismatches: number;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+export interface InteractionLawMonoidPsiReconstruction<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly translator: InteractionLawMonoidMultiplicationTranslator<Obj, Arr, Left, Right, Value>;
+  readonly realization: InteractionLawMonoidMultiplicationRealization<Obj, Arr, Left, Right, Value>;
+  readonly components: ReadonlyMap<
+    Obj,
+    ReadonlyMap<Obj, InteractionLawMonoidPsiReconstructionComponent<Obj, Left, Right, Value>>
+  >;
+  readonly checked: number;
+  readonly translatorMismatches: number;
+  readonly realizationMismatches: number;
+  readonly lawMismatches: number;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawMonoidPsiReconstructionOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly translator?: InteractionLawMonoidMultiplicationTranslator<Obj, Arr, Left, Right, Value>;
+  readonly realization?: InteractionLawMonoidMultiplicationRealization<Obj, Arr, Left, Right, Value>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export const realizeInteractionLawMonoidMultiplication = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  translator: InteractionLawMonoidMultiplicationTranslator<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawMonoidMultiplicationRealizationOptions = {},
+): InteractionLawMonoidMultiplicationRealization<Obj, Arr, Left, Right, Value> => {
+  const components = new Map<
+    Obj,
+    Map<Obj, InteractionLawMonoidMultiplicationRealizationComponent<Obj, Left, Right, Value>>
+  >();
+  const diagnostics: string[] = [];
+
+  let checkedTotal = 0;
+  let mismatchTotal = 0;
+  let componentTotal = 0;
+
+  for (const [object, parameterMap] of translator.components) {
+    let objectComponents = components.get(object);
+    if (!objectComponents) {
+      objectComponents = new Map();
+      components.set(object, objectComponents);
+    }
+
+    for (const [parameter, component] of parameterMap) {
+      componentTotal += 1;
+
+      const codomainExponential = SetCat.exponential(
+        component.codomain,
+        translator.law.dualizing,
+      );
+      const hom = SetCat.hom(
+        component.domain,
+        codomainExponential.object,
+        (element: Left) => {
+          const indexedArrow = component.hom.map(element);
+          return codomainExponential.register((right: Right) =>
+            indexedArrow({ object: parameter, element: right } as IndexedElement<Obj, Right>),
+          );
+        },
+      );
+
+      const evaluationProduct = SetCat.product(component.domain, component.codomain);
+      const evaluation = codomainExponential.uncurry({ morphism: hom, product: evaluationProduct });
+
+      let componentChecked = 0;
+      let componentMismatches = 0;
+      let firstMismatch: InteractionLawMonoidPreparationSample<Obj, Left, Right, Value> | undefined;
+
+      for (const sample of component.samples) {
+        componentChecked += 1;
+        const actual = evaluation.map([
+          sample.primal.element,
+          sample.dual.element,
+        ] as const);
+        if (!Object.is(actual, sample.value)) {
+          componentMismatches += 1;
+          if (!firstMismatch) {
+            firstMismatch = sample;
+          }
+        }
+      }
+
+      checkedTotal += componentChecked;
+      mismatchTotal += componentMismatches;
+
+      const componentDiagnostics: string[] = [
+        `InteractionLawMonoidMultiplicationRealization(${String(object)}; parameter ${String(
+          parameter,
+        )}): built canonical evaluation F(${String(component.tensorObject)}) × G(${String(
+          parameter,
+        )}) → Ω.`,
+      ];
+
+      if (componentChecked === 0) {
+        componentDiagnostics.push(
+          `InteractionLawMonoidMultiplicationRealization(${String(object)}; parameter ${String(
+            parameter,
+          )}): no recorded samples were available for verification.`,
+        );
+      } else {
+        componentDiagnostics.push(
+          componentMismatches === 0
+            ? `InteractionLawMonoidMultiplicationRealization(${String(object)}; parameter ${String(
+                parameter,
+              )}): verified ${componentChecked} recorded sample(s) with no mismatches.`
+            : `InteractionLawMonoidMultiplicationRealization(${String(object)}; parameter ${String(
+                parameter,
+              )}): detected ${componentMismatches} mismatch(es) across ${componentChecked} recorded sample(s).`,
+        );
+        if (firstMismatch) {
+          componentDiagnostics.push(
+            `InteractionLawMonoidMultiplicationRealization(${String(object)}; parameter ${String(
+              parameter,
+            )}): first mismatch encountered at F(${String(
+              component.tensorObject,
+            )}) element ${String(firstMismatch.primal.element)} with G(${String(
+              parameter,
+            )}) element ${String(firstMismatch.dual.element)} — expected ${String(
+              firstMismatch.value,
+            )} but observed ${String(
+              evaluation.map([
+                firstMismatch.primal.element,
+                firstMismatch.dual.element,
+              ] as const),
+            )}.`,
+          );
+        }
+      }
+
+      const realization: InteractionLawMonoidMultiplicationRealizationComponent<
+        Obj,
+        Left,
+        Right,
+        Value
+      > = {
+        object,
+        parameter,
+        tensorObject: component.tensorObject,
+        translatorComponent: component,
+        hom,
+        evaluation,
+        evaluationProduct,
+        samples: component.samples,
+        checked: componentChecked,
+        mismatches: componentMismatches,
+        diagnostics: componentDiagnostics,
+      };
+
+      objectComponents.set(parameter, realization);
+      diagnostics.push(...componentDiagnostics);
+    }
+  }
+
+  diagnostics.unshift(
+    `InteractionLawMonoidMultiplicationRealization: materialized ${componentTotal} canonical evaluation component(s) across ${components.size} object(s).`,
+    `InteractionLawMonoidMultiplicationRealization: verified ${checkedTotal} recorded sample(s) with ${mismatchTotal} mismatch(es).`,
+  );
+
+  if (componentTotal === 0) {
+    diagnostics.push(
+      "InteractionLawMonoidMultiplicationRealization: translator did not expose any Day tensor components to realise.",
+    );
+  }
+
+  const metadata = mergeMetadataList(translator.metadata, options.metadata);
+
+  return {
+    translator,
+    components,
+    checked: checkedTotal,
+    mismatches: mismatchTotal,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export const reconstructInteractionLawMonoidPsi = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawMonoidPsiReconstructionOptions<Obj, Arr, Left, Right, Value> = {},
+): InteractionLawMonoidPsiReconstruction<Obj, Arr, Left, Right, Value> => {
+  const translator =
+    options.translator ?? makeInteractionLawMonoidMultiplicationTranslator(law);
+  const realization =
+    options.realization ??
+    realizeInteractionLawMonoidMultiplication(translator);
+
+  const diagnostics: string[] = [];
+  diagnostics.push(
+    options.translator
+      ? "InteractionLawMonoidPsi: reused monoid multiplication translator supplied via options."
+      : "InteractionLawMonoidPsi: derived monoid multiplication translator from interaction law.",
+  );
+  diagnostics.push(
+    options.realization
+      ? "InteractionLawMonoidPsi: reused monoid multiplication realization supplied via options."
+      : "InteractionLawMonoidPsi: realized canonical monoid multiplication evaluations from translator components.",
+  );
+
+  const components = new Map<
+    Obj,
+    Map<Obj, InteractionLawMonoidPsiReconstructionComponent<Obj, Left, Right, Value>>
+  >();
+
+  let checkedTotal = 0;
+  let translatorMismatchTotal = 0;
+  let realizationMismatchTotal = 0;
+  let lawMismatchTotal = 0;
+
+  for (const [object, parameterMap] of translator.components) {
+    let objectComponents = components.get(object);
+    if (!objectComponents) {
+      objectComponents = new Map();
+      components.set(object, objectComponents);
+    }
+
+    const realizationParameterMap = realization.components.get(object);
+    if (!realizationParameterMap) {
+      diagnostics.push(
+        `InteractionLawMonoidPsi(${String(object)}): realization did not expose canonical evaluations for this object.`,
+      );
+      continue;
+    }
+
+    for (const [parameter, translatorComponent] of parameterMap) {
+      const realizationComponent = realizationParameterMap.get(parameter);
+      if (!realizationComponent) {
+        diagnostics.push(
+          `InteractionLawMonoidPsi(${String(object)}; parameter ${String(parameter)}): missing realization component; skipping ψ reconstruction.`,
+        );
+        continue;
+      }
+
+      const componentDiagnostics: string[] = [];
+      const samples =
+        translatorComponent.samples.length > 0
+          ? translatorComponent.samples
+          : realizationComponent.samples;
+
+      let componentChecked = 0;
+      let componentTranslatorMismatches = 0;
+      let componentRealizationMismatches = 0;
+      let componentLawMismatches = 0;
+
+      let firstTranslatorMismatch: InteractionLawMonoidPreparationSample<Obj, Left, Right, Value> | undefined;
+      let firstRealizationMismatch: InteractionLawMonoidPreparationSample<Obj, Left, Right, Value> | undefined;
+      let firstLawMismatch: InteractionLawMonoidPreparationSample<Obj, Left, Right, Value> | undefined;
+
+      for (const sample of samples) {
+        componentChecked += 1;
+        const translatorArrow = translatorComponent.hom.map(sample.primal.element);
+        const translatorValue = translatorArrow(sample.dual);
+
+        const realizationValue = realizationComponent.evaluation.map([
+          sample.primal.element,
+          sample.dual.element,
+        ] as const);
+
+        const lawValue = law.evaluate(sample.primal, sample.dual);
+
+        if (!Object.is(translatorValue, lawValue)) {
+          componentTranslatorMismatches += 1;
+          if (!firstTranslatorMismatch) {
+            firstTranslatorMismatch = sample;
+          }
+        }
+
+        if (!Object.is(realizationValue, lawValue)) {
+          componentRealizationMismatches += 1;
+          if (!firstRealizationMismatch) {
+            firstRealizationMismatch = sample;
+          }
+        }
+
+        if (!Object.is(sample.value, lawValue)) {
+          componentLawMismatches += 1;
+          if (!firstLawMismatch) {
+            firstLawMismatch = sample;
+          }
+        }
+      }
+
+      checkedTotal += componentChecked;
+      translatorMismatchTotal += componentTranslatorMismatches;
+      realizationMismatchTotal += componentRealizationMismatches;
+      lawMismatchTotal += componentLawMismatches;
+
+      componentDiagnostics.push(
+        `InteractionLawMonoidPsi(${String(object)}; parameter ${String(parameter)}): analysed ${componentChecked} canonical sample(s).`,
+      );
+
+      const mismatchSummary = (count: number, label: string, first?: InteractionLawMonoidPreparationSample<Obj, Left, Right, Value>) => {
+        if (componentChecked === 0) {
+          componentDiagnostics.push(
+            `InteractionLawMonoidPsi(${String(object)}; parameter ${String(parameter)}): no recorded samples available for ${label} verification.`,
+          );
+          return;
+        }
+        componentDiagnostics.push(
+          count === 0
+            ? `InteractionLawMonoidPsi(${String(object)}; parameter ${String(parameter)}): ${label} matches all recorded samples.`
+            : `InteractionLawMonoidPsi(${String(object)}; parameter ${String(parameter)}): detected ${count} ${label.toLowerCase()} mismatch(es) across ${componentChecked} sample(s).`,
+        );
+        if (count > 0 && first) {
+          componentDiagnostics.push(
+            `InteractionLawMonoidPsi(${String(object)}; parameter ${String(parameter)}): first ${label.toLowerCase()} mismatch at F(${String(translatorComponent.tensorObject)}) element ${String(first.primal.element)} with G(${String(parameter)}) element ${String(first.dual.element)} — expected ${String(first.value)} from ψ but reconstructed value differed.`,
+          );
+        }
+      };
+
+      mismatchSummary(componentTranslatorMismatches, "translator", firstTranslatorMismatch);
+      mismatchSummary(componentRealizationMismatches, "realization", firstRealizationMismatch);
+      mismatchSummary(componentLawMismatches, "sample", firstLawMismatch);
+
+      const componentResult: InteractionLawMonoidPsiReconstructionComponent<Obj, Left, Right, Value> = {
+        object,
+        parameter,
+        translatorComponent,
+        realizationComponent,
+        checked: componentChecked,
+        translatorMismatches: componentTranslatorMismatches,
+        realizationMismatches: componentRealizationMismatches,
+        lawMismatches: componentLawMismatches,
+        diagnostics: componentDiagnostics,
+      };
+
+      objectComponents.set(parameter, componentResult);
+    }
+  }
+
+  diagnostics.push(
+    `InteractionLawMonoidPsi: reconstructed ψ across ${components.size} object(s) covering ${checkedTotal} recorded sample(s).`,
+  );
+  diagnostics.push(
+    `InteractionLawMonoidPsi: translator mismatches=${translatorMismatchTotal}, realization mismatches=${realizationMismatchTotal}, recorded sample mismatches=${lawMismatchTotal}.`,
+  );
+
+  const metadata = mergeMetadataList(options.metadata, translator.metadata, realization.metadata);
+
+  const readonlyComponents = new Map<
+    Obj,
+    ReadonlyMap<Obj, InteractionLawMonoidPsiReconstructionComponent<Obj, Left, Right, Value>>
+  >();
+
+  for (const [object, parameterMap] of components) {
+    readonlyComponents.set(object, new Map(parameterMap));
+  }
+
+  return {
+    translator,
+    realization,
+    components: readonlyComponents,
+    checked: checkedTotal,
+    translatorMismatches: translatorMismatchTotal,
+    realizationMismatches: realizationMismatchTotal,
+    lawMismatches: lawMismatchTotal,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
 
 export interface InteractionLawCommaEvaluationFailure<Obj, Left, Right, Value> {
   readonly object: Obj;
@@ -4210,4 +7286,297 @@ export const buildFixedRightFinalObject = <Obj, Arr, Left, Right, Value>(
     sigma,
     mediator,
   };
+};
+
+export interface GlueingInteractionLawSubcategory<Obj, Arr> {
+  readonly label: string;
+  readonly objects: ReadonlyArray<Obj>;
+  readonly arrows: ReadonlyArray<Arr>;
+  readonly pullbackStable: boolean;
+  readonly diagnostics?: ReadonlyArray<string>;
+}
+
+export interface GlueingInteractionLawSpanComponent<Obj, Arr> {
+  readonly label: string;
+  readonly residualObject: Obj;
+  readonly leftArrow: Arr;
+  readonly rightArrow: Arr;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface GlueingInteractionLawEvaluation<Obj, Left, Right, Value> {
+  readonly object: Obj;
+  readonly primal: IndexedElement<Obj, Left>;
+  readonly dual: IndexedElement<Obj, Right>;
+  readonly value: Value;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface GlueingInteractionLawConstruction<Obj, Arr, Left, Right, Value> {
+  readonly law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>;
+  readonly category: FiniteCategory<Obj, Arr>;
+  readonly kernel: PromonoidalKernel<Obj, Arr>;
+  readonly leftSubcategory: GlueingInteractionLawSubcategory<Obj, Arr>;
+  readonly rightSubcategory: GlueingInteractionLawSubcategory<Obj, Arr>;
+  readonly span: ReadonlyArray<GlueingInteractionLawSpanComponent<Obj, Arr>>;
+  readonly evaluations?: ReadonlyArray<GlueingInteractionLawEvaluation<Obj, Left, Right, Value>>;
+  readonly metadata?: ReadonlyArray<string>;
+  readonly notes?: ReadonlyArray<string>;
+}
+
+export interface GlueingInteractionLawSummary<Obj, Arr, Left, Right, Value>
+  extends GlueingInteractionLawConstruction<Obj, Arr, Left, Right, Value> {
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly evaluations: ReadonlyArray<GlueingInteractionLawEvaluation<Obj, Left, Right, Value>>;
+}
+
+export interface GlueingInteractionLawCheckReport<Obj, Arr, Left, Right, Value> {
+  readonly summary: GlueingInteractionLawSummary<Obj, Arr, Left, Right, Value>;
+  readonly pullbackStable: boolean;
+  readonly spanConsistent: boolean;
+  readonly evaluationConsistent: boolean;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export const constructGlueingInteractionLaw = <Obj, Arr, Left, Right, Value>(
+  construction: GlueingInteractionLawConstruction<Obj, Arr, Left, Right, Value>,
+): GlueingInteractionLawSummary<Obj, Arr, Left, Right, Value> => {
+  const diagnostics: string[] = [];
+  if (construction.kernel !== construction.law.kernel) {
+    diagnostics.push(
+      "GlueingInteractionLaw: supplied kernel differs from the law's kernel; continuing with the law's kernel.",
+    );
+  }
+
+  diagnostics.push(
+    `GlueingInteractionLaw: recorded ${construction.span.length} span component(s) for ${construction.leftSubcategory.label}/${construction.rightSubcategory.label}.`,
+  );
+  const evaluations = construction.evaluations ?? [];
+  diagnostics.push(
+    `GlueingInteractionLaw: recorded ${evaluations.length} evaluation sample(s) for the glueing pairing.`,
+  );
+
+  if (!construction.leftSubcategory.pullbackStable || !construction.rightSubcategory.pullbackStable) {
+    diagnostics.push(
+      "GlueingInteractionLaw: one or both subcategories are not marked pullback-stable; downstream checks will surface mismatches.",
+    );
+  }
+
+  const metadata = mergeMetadataList(
+    construction.metadata,
+    construction.leftSubcategory.diagnostics,
+    construction.rightSubcategory.diagnostics,
+    construction.notes,
+    ...construction.span.map((component) => component.metadata),
+    ...evaluations.map((entry) => entry.metadata),
+  );
+
+  return {
+    ...construction,
+    diagnostics,
+    evaluations,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export const checkGlueingInteractionLaw = <Obj, Arr, Left, Right, Value>(
+  summary: GlueingInteractionLawSummary<Obj, Arr, Left, Right, Value>,
+): GlueingInteractionLawCheckReport<Obj, Arr, Left, Right, Value> => {
+  const diagnostics = [...summary.diagnostics];
+  let spanConsistent = true;
+  let spanFailures = 0;
+
+  for (const component of summary.span) {
+    const leftSource = summary.category.src(component.leftArrow);
+    const rightSource = summary.category.src(component.rightArrow);
+    const leftTarget = summary.category.dst(component.leftArrow);
+    const rightTarget = summary.category.dst(component.rightArrow);
+    if (!Object.is(leftSource, component.residualObject)) {
+      spanConsistent = false;
+      spanFailures += 1;
+      diagnostics.push(
+        `GlueingInteractionLaw: span ${component.label} left arrow source ${String(leftSource)} does not match residual object ${String(component.residualObject)}.`,
+      );
+    }
+    if (!Object.is(rightSource, component.residualObject)) {
+      spanConsistent = false;
+      spanFailures += 1;
+      diagnostics.push(
+        `GlueingInteractionLaw: span ${component.label} right arrow source ${String(rightSource)} does not match residual object ${String(component.residualObject)}.`,
+      );
+    }
+    if (!summary.leftSubcategory.objects.some((object) => Object.is(object, leftTarget))) {
+      spanConsistent = false;
+      spanFailures += 1;
+      diagnostics.push(
+        `GlueingInteractionLaw: span ${component.label} left arrow targets ${String(leftTarget)}, which is absent from the left subcategory.`,
+      );
+    }
+    if (!summary.rightSubcategory.objects.some((object) => Object.is(object, rightTarget))) {
+      spanConsistent = false;
+      spanFailures += 1;
+      diagnostics.push(
+        `GlueingInteractionLaw: span ${component.label} right arrow targets ${String(rightTarget)}, which is absent from the right subcategory.`,
+      );
+    }
+  }
+
+  diagnostics.push(
+    `GlueingInteractionLaw: span components checked=${summary.span.length}, mismatches=${spanFailures}.`,
+  );
+
+  let evaluationConsistent = true;
+  let evaluationMismatches = 0;
+  for (const evaluation of summary.evaluations) {
+    const actual = summary.law.evaluate(evaluation.primal, evaluation.dual);
+    if (!Object.is(actual, evaluation.value)) {
+      evaluationConsistent = false;
+      evaluationMismatches += 1;
+      diagnostics.push(
+        `GlueingInteractionLaw: evaluation mismatch for object ${String(evaluation.object)}; recorded ${String(
+          evaluation.value,
+        )}, actual ${String(actual)}.`,
+      );
+    }
+  }
+  diagnostics.push(
+    `GlueingInteractionLaw: evaluation samples checked=${summary.evaluations.length}, mismatches=${evaluationMismatches}.`,
+  );
+
+  const pullbackStable =
+    summary.leftSubcategory.pullbackStable && summary.rightSubcategory.pullbackStable;
+  if (!pullbackStable) {
+    diagnostics.push(
+      "GlueingInteractionLaw: pullback stability failed for at least one subcategory.",
+    );
+  }
+
+  return {
+    summary,
+    pullbackStable,
+    spanConsistent,
+    evaluationConsistent,
+    diagnostics,
+    ...(summary.metadata ? { metadata: summary.metadata } : {}),
+  };
+};
+
+export interface GlueingInteractionLawExampleSuite {
+  readonly law: FunctorInteractionLaw<TwoObject, TwoArrow, unknown, unknown, boolean>;
+  readonly identitySummary: GlueingInteractionLawSummary<TwoObject, TwoArrow, unknown, unknown, boolean>;
+  readonly tensorSummary: GlueingInteractionLawSummary<TwoObject, TwoArrow, unknown, unknown, boolean>;
+  readonly pullbackFailureSummary: GlueingInteractionLawSummary<
+    TwoObject,
+    TwoArrow,
+    unknown,
+    unknown,
+    boolean
+  >;
+}
+
+const makeGlueingEvaluationSample = (
+  law: FunctorInteractionLaw<TwoObject, TwoArrow, unknown, unknown, boolean>,
+  primal: IndexedElement<TwoObject, unknown>,
+  dual: IndexedElement<TwoObject, unknown>,
+  metadata: ReadonlyArray<string>,
+): GlueingInteractionLawEvaluation<TwoObject, unknown, unknown, boolean> => ({
+  object: primal.object,
+  primal,
+  dual,
+  value: law.evaluate(primal, dual),
+  metadata,
+});
+
+export const makeGlueingInteractionLawExampleSuite = (): GlueingInteractionLawExampleSuite => {
+  const law = makeFunctorInteractionLaw(makeBooleanInteractionInputInternal());
+  const primalSamples = Array.from(law.primalCarrier);
+  const dualSamples = Array.from(law.dualCarrier);
+  const firstPrimal = primalSamples[0];
+  const firstDual = dualSamples[0];
+  if (!firstPrimal || !firstDual) {
+    throw new Error("Glueing examples require non-empty carriers.");
+  }
+
+  const secondPrimal = primalSamples[1] ?? firstPrimal;
+  const secondDual = dualSamples[1] ?? firstDual;
+  const baseEvaluation = makeGlueingEvaluationSample(
+    law,
+    firstPrimal,
+    firstDual,
+    ["Identity evaluation sample"],
+  );
+  const secondEvaluation = makeGlueingEvaluationSample(
+    law,
+    secondPrimal,
+    secondDual,
+    ["Tensor evaluation sample"],
+  );
+
+  const identitySubcategory = {
+    label: "IdentityGlueing",
+    objects: TwoObjectCategory.objects,
+    arrows: TwoObjectCategory.arrows,
+    pullbackStable: true,
+    diagnostics: ["Identity inclusion preserves pullbacks."],
+  } as const;
+
+  const identitySpan = {
+    label: "identity-span",
+    residualObject: firstPrimal.object,
+    leftArrow: TwoObjectCategory.id(firstPrimal.object),
+    rightArrow: TwoObjectCategory.id(firstPrimal.object),
+    metadata: ["Identity glueing residual"],
+  } as const;
+
+  const identitySummary = constructGlueingInteractionLaw({
+    law,
+    category: TwoObjectCategory,
+    kernel: law.kernel,
+    leftSubcategory: identitySubcategory,
+    rightSubcategory: identitySubcategory,
+    span: [identitySpan],
+    evaluations: [baseEvaluation],
+    metadata: ["ExampleGlueingIdentity"],
+    notes: ["Matches the Example 6 residual glueing construction."],
+  });
+
+  const tensorSummary = constructGlueingInteractionLaw({
+    law,
+    category: TwoObjectCategory,
+    kernel: law.kernel,
+    leftSubcategory: identitySubcategory,
+    rightSubcategory: identitySubcategory,
+    span: [
+      identitySpan,
+      {
+        label: "nontrivial-span",
+        residualObject: secondPrimal.object,
+        leftArrow: TwoObjectCategory.id(secondPrimal.object),
+        rightArrow: nonIdentity,
+        metadata: ["Nontrivial Day tensor witness"],
+      },
+    ],
+    evaluations: [baseEvaluation, secondEvaluation],
+    metadata: ["ExampleGlueingTensor"],
+    notes: ["Witnesses the nontrivial glueing tensor evaluation from Section 6.2."],
+  });
+
+  const pullbackFailureSummary = constructGlueingInteractionLaw({
+    law,
+    category: TwoObjectCategory,
+    kernel: law.kernel,
+    leftSubcategory: {
+      ...identitySubcategory,
+      pullbackStable: false,
+      diagnostics: ["Pullback stability intentionally disabled."],
+    },
+    rightSubcategory: identitySubcategory,
+    span: [identitySpan],
+    evaluations: [baseEvaluation],
+    metadata: ["ExampleGlueingPullbackFailure"],
+    notes: ["Demonstrates the need for pullback-stable subcategories."],
+  });
+
+  return { law, identitySummary, tensorSummary, pullbackFailureSummary };
 };

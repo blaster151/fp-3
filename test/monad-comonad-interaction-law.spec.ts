@@ -11,18 +11,23 @@ import {
   deriveGreatestInteractingFunctorForMonadComonadLaw,
   interactionLawFromDualMap,
   interactionLawMonoidToMonadComonadLaw,
+  interactionLawToMonoidObject,
+  interactionLawMonoidToSweedlerDual,
+  sweedlerDualOfFreeMonoid,
   interactionLawToDualMap,
   verifySweedlerDualFactorization,
   nonemptyListFreeMonad,
   nonemptyListQuotient,
   type Example14CofreeElement,
   sweedlerDualNonemptyList,
+  nonemptyListSweedlerQuotientEqualizer,
   type Example14FreeTerm,
   type Example14ListOfLists,
   type Example14NestedTerm,
   type Example14NonemptyList,
   type Example14Symbol,
   type ComonadStructure,
+  type MonadComonadInteractionLaw,
   type MonadStructure,
   stretchMonadComonadInteractionLaw,
   tensorMonadComonadInteractionLaws,
@@ -32,6 +37,7 @@ import {
   deriveInitialMonadSliceObject,
   deriveFinalComonadSliceObject,
   type FreeMonadComonadCoproductWitness,
+  type FreeMonadComonadInteractionLawResult,
   type FreeMonadComonadUniversalComparison,
   type FreeMonadComonadUniversalComparisons,
   deriveNonemptyListCoequation,
@@ -42,10 +48,22 @@ import {
   makeFunctorInteractionLaw,
   makeFunctorInteractionLawOperations,
   type FunctorInteractionLawContribution,
+  checkInteractionLawDayMonoidal,
+  checkInteractionLawDaySymmetry,
+  checkInteractionLawDayInterchange,
+  summarizeInteractionLawDayUnit,
+  summarizeInteractionLawDayUnitTensor,
+  summarizeInteractionLawDayUnitOpmonoidal,
+  summarizeInteractionLawDayUnitOpmonoidalTriangles,
+  checkInteractionLawDayUnitOpmonoidalTriangles,
+  summarizeInteractionLawDayInterchange,
+  instantiateInteractionLawDayInterchangeFromReport,
+  verifyInteractionLawDayInterchangeInstantiationFromReport,
   deriveInteractionLawCurrying,
   deriveInteractionLawLeftCommaPresentation,
   deriveInteractionLawSweedlerSummary,
   deriveInteractionLawLeftCommaEquivalence,
+  dualInteractionLaw,
 } from "../functor-interaction-law";
 import { analyzeFunctorOperationDegeneracy } from "../functor-interaction-law-degeneracy";
 import { dayTensor } from "../day-convolution";
@@ -68,6 +86,10 @@ import {
   checkNonemptyListQuotient,
   checkNonemptyListSweedler,
 } from "../oracles";
+import {
+  makeExample13ResidualInteractionLaw,
+  makeResidualMonadComonadInteractionLaw,
+} from "../residual-interaction-law";
 
 const toUnknownSetHom = <Dom, Cod>(hom: SetHom<Dom, Cod>): SetHom<unknown, unknown> =>
   hom as unknown as SetHom<unknown, unknown>;
@@ -228,6 +250,83 @@ describe("makeMonadComonadInteractionLaw", () => {
       comma: commaEquivalence,
     });
     const degeneracy = analyzeFunctorOperationDegeneracy(law);
+    const dayMonoidal = checkInteractionLawDayMonoidal(law);
+    const dual = dualInteractionLaw(law);
+    const daySymmetry = checkInteractionLawDaySymmetry(dual.law, law);
+    const dayUnit = summarizeInteractionLawDayUnit(law);
+    const dayUnitTensor = summarizeInteractionLawDayUnitTensor(law, { unit: dayUnit });
+    const dayUnitOpmonoidal = summarizeInteractionLawDayUnitOpmonoidal(law, {
+      unit: dayUnit,
+      tensor: dayUnitTensor,
+    });
+    const dayUnitOpmonoidalTriangles =
+      summarizeInteractionLawDayUnitOpmonoidalTriangles(law, {
+        unit: dayUnit,
+        tensor: dayUnitTensor,
+        opmonoidal: dayUnitOpmonoidal,
+      });
+    const dayUnitOpmonoidalTrianglesCheck =
+      checkInteractionLawDayUnitOpmonoidalTriangles(law, {
+        summary: dayUnitOpmonoidalTriangles,
+        metadata: ["Example6DayUnitOpmonoidalTrianglesCheck"],
+      });
+    const dayInterchange = summarizeInteractionLawDayInterchange(law);
+    const dayInterchangeInstantiation =
+      instantiateInteractionLawDayInterchangeFromReport(law, dayInterchange);
+    const dayInterchangeInstantiationCheck =
+      verifyInteractionLawDayInterchangeInstantiationFromReport(
+        law,
+        dayInterchangeInstantiation,
+      );
+    const dayInterchangeCheck = checkInteractionLawDayInterchange(law, {
+      report: dayInterchange,
+      instantiation: dayInterchangeInstantiation,
+      verification: dayInterchangeInstantiationCheck,
+    });
+
+    expect(dayInterchange.holds).toBe(true);
+    expect(dayInterchange.summary.details.length).toBeGreaterThan(0);
+    expect(dayInterchangeInstantiation.holds).toBe(true);
+    expect(dayInterchangeInstantiation.details.length).toBe(
+      dayInterchange.summary.details.length,
+    );
+    expect(dayInterchangeInstantiationCheck.holds).toBe(true);
+    expect(dayInterchangeInstantiationCheck.details.length).toBe(
+      dayInterchangeInstantiation.details.length,
+    );
+    expect(dayInterchangeCheck.holds).toBe(true);
+    expect(dayInterchangeCheck.report).toBe(dayInterchange);
+    expect(dayInterchangeCheck.instantiation).toBe(
+      dayInterchangeInstantiation,
+    );
+    expect(dayInterchangeCheck.verification).toBe(
+      dayInterchangeInstantiationCheck,
+    );
+    for (const detail of dayInterchangeInstantiation.details) {
+      expect(detail.holds).toBe(true);
+      expect(detail.operation).toBeDefined();
+    }
+    for (const detail of dayInterchange.summary.details) {
+      expect(detail.fiberAvailable).toBe(true);
+      expect(detail.pairingAvailable).toBe(true);
+      expect(detail.sampleEmpty).toBe(false);
+      expect(detail.checkedPairs).toBeGreaterThan(0);
+      expect(detail.missingPairs).toBe(0);
+      expect(detail.contributionCount).toBeGreaterThan(0);
+      expect(detail.canonicalContributionCount).toBeGreaterThan(0);
+      expect(detail.canonicalSatisfied).toBe(true);
+      expect(detail.canonicalSample).toBeDefined();
+      expect(detail.canonicalSample?.contributions.length).toBeGreaterThan(0);
+      expect(detail.canonicalSample?.diagnostics.length).toBeGreaterThan(0);
+      expect(detail.samples.length).toBeGreaterThan(0);
+      expect(
+        detail.samples.some((sample) => sample.contributions.length > 0),
+      ).toBe(true);
+      for (const sample of detail.samples) {
+        expect(sample.diagnostics.length).toBeGreaterThan(0);
+      }
+    }
+    expect(dayInterchange.diagnostics[0]).toContain("DayInterchange.overall");
 
     const packaged = makeMonadComonadInteractionLaw({
       monad,
@@ -240,6 +339,16 @@ describe("makeMonadComonadInteractionLaw", () => {
         commaEquivalence,
         sweedler,
         degeneracy,
+        dayMonoidal,
+        daySymmetry,
+        dayUnit,
+        dayInterchange,
+        dayInterchangeInstantiation,
+        dayInterchangeCheck,
+        dual,
+        dayUnitOpmonoidal,
+        dayUnitOpmonoidalTriangles,
+        dayUnitOpmonoidalTrianglesCheck,
         metadata: ["Options"],
       },
     });
@@ -252,6 +361,26 @@ describe("makeMonadComonadInteractionLaw", () => {
     expect(packaged.psiComponents).toBe(currying.fibers);
     expect(packaged.monad).toBe(monad);
     expect(packaged.comonad).toBe(comonad);
+    expect(packaged.dayMonoidal).toBe(dayMonoidal);
+    expect(packaged.daySymmetry).toBe(daySymmetry);
+    expect(packaged.dayUnit).toBe(dayUnit);
+    expect(packaged.dayUnitTensor).toBe(dayUnitTensor);
+    expect(packaged.dayUnitOpmonoidal).toBe(dayUnitOpmonoidal);
+    expect(packaged.dayUnitOpmonoidalTriangles).toBe(
+      dayUnitOpmonoidalTriangles,
+    );
+    expect(packaged.dayUnitOpmonoidalTrianglesCheck).toBe(
+      dayUnitOpmonoidalTrianglesCheck,
+    );
+    expect(packaged.dayInterchange).toBe(dayInterchange);
+    expect(packaged.dayInterchangeInstantiation).toBe(
+      dayInterchangeInstantiation,
+    );
+    expect(packaged.dayInterchangeInstantiationCheck).toBe(
+      dayInterchangeInstantiationCheck,
+    );
+    expect(packaged.dayInterchangeCheck).toBe(dayInterchangeCheck);
+    expect(packaged.dual).toBe(dual);
 
     expect(packaged.metadata).toEqual([
       "Identity monad",
@@ -265,6 +394,18 @@ describe("makeMonadComonadInteractionLaw", () => {
       "makeMonadComonadInteractionLaw: reused supplied comma presentation.",
       "makeMonadComonadInteractionLaw: reused supplied Sweedler summary.",
       "makeMonadComonadInteractionLaw: reused supplied degeneracy analysis.",
+      "makeMonadComonadInteractionLaw: reused supplied Day monoidal summary.",
+      "makeMonadComonadInteractionLaw: reused supplied Day symmetry summary.",
+      "makeMonadComonadInteractionLaw: reused supplied Day unit summary.",
+      "makeMonadComonadInteractionLaw: reused supplied Day unit tensor summary.",
+      "makeMonadComonadInteractionLaw: reused supplied Day unit opmonoidal summary.",
+      "makeMonadComonadInteractionLaw: reused supplied Day unit opmonoidal triangle summary.",
+      "makeMonadComonadInteractionLaw: reused supplied Day unit opmonoidal triangle check.",
+      "makeMonadComonadInteractionLaw: reused supplied Day interchange coverage summary.",
+      "makeMonadComonadInteractionLaw: reused supplied Day interchange instantiation summary.",
+      "makeMonadComonadInteractionLaw: reused supplied Day interchange instantiation check.",
+      "makeMonadComonadInteractionLaw: reused supplied Day interchange check report.",
+      "makeMonadComonadInteractionLaw: reused supplied dual interaction law summary.",
       "makeMonadComonadInteractionLaw: reused supplied comma equivalence diagnostics.",
     ]);
   });
@@ -285,10 +426,64 @@ describe("makeMonadComonadInteractionLaw", () => {
     expect(packaged.diagnostics).toContain(
       "makeMonadComonadInteractionLaw: derived currying summary from interaction law.",
     );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: derived Day monoidal summary from interaction law.",
+    );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: derived Day symmetry summary from interaction law.",
+    );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: derived Day unit summary from promonoidal kernel.",
+    );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: derived Day unit tensor summary for opmonoidal diagnostics.",
+    );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: derived Day unit opmonoidal summary from Day unit tensor coverage.",
+    );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: derived Day unit opmonoidal triangle summary from cached coverage.",
+    );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: derived Day unit opmonoidal triangle check from cached coverage.",
+    );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: derived Day interchange coverage summary from interaction law.",
+    );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: derived Day interchange instantiation summary from interaction law.",
+    );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: verified Day interchange instantiations against aggregated evaluations.",
+    );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: assembled Day interchange summary, instantiation, and verification into a consolidated check.",
+    );
+    expect(packaged.diagnostics).toContain(
+      "makeMonadComonadInteractionLaw: derived dual interaction law summary from interaction law.",
+    );
+    expect(packaged.dayMonoidal.holds).toBe(true);
+    expect(packaged.daySymmetry.holds).toBe(true);
+    expect(packaged.dayInterchange.holds).toBe(true);
+    expect(packaged.dayInterchangeInstantiation.holds).toBe(true);
+    expect(packaged.dayInterchangeInstantiationCheck.holds).toBe(true);
+    expect(packaged.dayInterchangeCheck.holds).toBe(true);
+    expect(packaged.dual.law.kernel).toBe(law.kernel);
     expect(packaged.metadata).toEqual([
       "Identity monad",
       "Identity comonad",
     ]);
+  });
+
+  it("checks Day symmetry witnesses for the boolean law", () => {
+    const law = buildBooleanLaw();
+    const dual = dualInteractionLaw(law);
+
+    const symmetry = checkInteractionLawDaySymmetry(dual.law, law);
+
+    expect(symmetry.holds).toBe(true);
+    expect(symmetry.diagnostics[0]).toContain("DayMonoidal.symmetry");
+    expect(symmetry.pairingTraces.length).toBeGreaterThan(0);
   });
 });
 
@@ -309,6 +504,22 @@ describe("monadComonadInteractionLawToMonoid", () => {
     expect(monoid.comma).toBe(packaged.comma);
     expect(monoid.multiplication.components.size).toBeGreaterThan(0);
     expect(monoid.unit.components.size).toBeGreaterThan(0);
+    expect(monoid.monoidPreparation).toBeDefined();
+    expect(monoid.monoidMultiplicationTranslator).toBeDefined();
+    expect(monoid.monoidMultiplicationRealization).toBeDefined();
+    expect(monoid.monoidMultiplicationTranslator?.preparation).toBe(
+      monoid.monoidPreparation,
+    );
+    expect(
+      monoid.monoidMultiplicationRealization?.translator,
+    ).toBe(monoid.monoidMultiplicationTranslator);
+    expect(monoid.monoidPsi).toBeDefined();
+    expect(monoid.monoidPsi?.translator).toBe(monoid.monoidMultiplicationTranslator);
+    expect(monoid.monoidPsi?.realization).toBe(monoid.monoidMultiplicationRealization);
+    expect(monoid.monoidPsi?.checked).toBeGreaterThan(0);
+    expect(monoid.monoidPsi?.translatorMismatches).toBe(0);
+    expect(monoid.monoidPsi?.realizationMismatches).toBe(0);
+    expect(monoid.monoidPsi?.lawMismatches).toBe(0);
     for (const component of monoid.multiplication.components.values()) {
       expect(component.checked).toBeGreaterThan(0);
       expect(component.mismatches).toBe(0);
@@ -321,6 +532,14 @@ describe("monadComonadInteractionLawToMonoid", () => {
     }
     expect(monoid.diagnostics[0]).toContain(
       "monadComonadLawToInteractionLawMonoid: constructed interaction-law monoid",
+    );
+    expect(monoid.diagnostics).toEqual(
+      expect.arrayContaining([
+        "monadComonadLawToInteractionLawMonoid: derived monoid preparation summary for canonical Day witnesses.",
+        "monadComonadLawToInteractionLawMonoid: derived canonical monoid multiplication translator from interaction law.",
+        "monadComonadLawToInteractionLawMonoid: realized canonical monoid multiplication evaluations from translator components.",
+        "monadComonadLawToInteractionLawMonoid: reconstructed ψ from canonical monoid translator and realization.",
+      ]),
     );
 
     const rebuilt = interactionLawMonoidToMonadComonadLaw({
@@ -347,6 +566,101 @@ describe("monadComonadInteractionLawToMonoid", () => {
   });
 });
 
+describe("interactionLawToMonoidObject", () => {
+  it("wraps the monoid translator with canonical Day diagnostics", () => {
+    const law = buildBooleanLaw();
+    const monad = buildIdentityMonad();
+    const comonad = buildIdentityComonad();
+    const packaged = makeMonadComonadInteractionLaw({ monad, comonad, law });
+
+    const monoid = interactionLawToMonoidObject(packaged, {
+      sampleLimit: 5,
+      metadata: ["Translator wrapper"],
+    });
+
+    expect(monoid.law).toBe(law);
+    expect(monoid.currying).toBe(packaged.currying);
+    expect(monoid.comma).toBe(packaged.comma);
+    expect(monoid.diagnostics[0]).toContain("interactionLawToMonoidObject");
+    expect(monoid.diagnostics.slice(1)).toEqual(
+      expect.arrayContaining([
+        "monadComonadLawToInteractionLawMonoid: constructed interaction-law monoid with sample limit 5.",
+      ]),
+    );
+    expect(monoid.metadata).toEqual(
+      expect.arrayContaining([
+        "Identity monad",
+        "Identity comonad",
+        "Translator wrapper",
+      ]),
+    );
+    expect(monoid.multiplication.components.size).toBeGreaterThan(0);
+    expect(monoid.unit.components.size).toBeGreaterThan(0);
+  });
+});
+
+describe("interactionLawMonoidToSweedlerDual", () => {
+  it("derives the Sweedler dual functor metadata and opmonoidal summaries", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+    const monoid = interactionLawToMonoidObject(packaged);
+
+    const sweedlerDual = interactionLawMonoidToSweedlerDual(monoid);
+
+    expect(sweedlerDual.monoid).toBe(monoid);
+    expect(sweedlerDual.sweedler.law).toBe(monoid.law);
+    expect(sweedlerDual.triangles.law).toBe(monoid.law);
+    expect(sweedlerDual.trianglesCheck.summary).toBe(sweedlerDual.triangles);
+    expect(sweedlerDual.triangles.laxComparisonAvailable).toBe(false);
+    expect(sweedlerDual.greatest.sweedler).toBe(sweedlerDual.sweedler);
+    expect(sweedlerDual.metadata).toEqual(
+      expect.arrayContaining(["Interaction-law monoid Sweedler dual functor"]),
+    );
+    expect(sweedlerDual.diagnostics).toEqual(
+      expect.arrayContaining([
+        "Sweedler dual functor: derived Sweedler summary from interaction law for (-)^°.",
+        "Sweedler dual functor: derived opmonoidal triangle summary from ψ to expose diagram (8) witnesses.",
+        "Sweedler dual functor: triangles confirm J lacks a lax comparison, so (-)^° is logged as only lax monoidal.",
+      ]),
+    );
+  });
+
+  it("reuses supplied Sweedler summaries and triangle checks", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+    const monoid = interactionLawToMonoidObject(packaged);
+    const sweedler = monoid.sweedler ?? deriveInteractionLawSweedlerSummary(monoid.law);
+    const triangles = summarizeInteractionLawDayUnitOpmonoidalTriangles(monoid.law);
+    const trianglesCheck = checkInteractionLawDayUnitOpmonoidalTriangles(monoid.law, {
+      summary: triangles,
+      metadata: ["Precomputed triangle check"],
+    });
+    const greatest = deriveGreatestInteractingComonadForMonadComonadLaw(packaged).greatest;
+
+    const sweedlerDual = interactionLawMonoidToSweedlerDual(monoid, {
+      sweedler,
+      dayUnitOpmonoidalTriangles: triangles,
+      dayUnitOpmonoidalTrianglesCheck: trianglesCheck,
+      greatest,
+      metadata: ["Reused Sweedler dual"],
+    });
+
+    expect(sweedlerDual.sweedler).toBe(sweedler);
+    expect(sweedlerDual.triangles).toBe(triangles);
+    expect(sweedlerDual.trianglesCheck).toBe(trianglesCheck);
+    expect(sweedlerDual.greatest).toBe(greatest);
+    expect(sweedlerDual.diagnostics).toEqual(
+      expect.arrayContaining([
+        "Sweedler dual functor: reused Sweedler summary supplied via options.",
+        "Sweedler dual functor: reused opmonoidal triangle summary supplied via options.",
+        "Sweedler dual functor: reused cached opmonoidal triangle check supplied via options.",
+        "Sweedler dual functor: reused greatest interacting comonad witness supplied via options.",
+      ]),
+    );
+    expect(sweedlerDual.metadata).toEqual(
+      expect.arrayContaining(["Reused Sweedler dual", "Interaction-law monoid Sweedler dual functor"]),
+    );
+  });
+});
+
 describe("checkMonadComonadInteractionLaw", () => {
   it("confirms Example 6 satisfies the ψ coherence diagrams", () => {
     const packaged = makeExample6MonadComonadInteractionLaw();
@@ -356,6 +670,52 @@ describe("checkMonadComonadInteractionLaw", () => {
     expect(report.counit.holds).toBe(true);
     expect(report.multiplication.holds).toBe(true);
     expect(report.mixedAssociativity.holds).toBe(true);
+    expect(report.dayMonoidal).toBe(packaged.dayMonoidal);
+    expect(report.daySymmetry).toBe(packaged.daySymmetry);
+    expect(report.daySymmetry.holds).toBe(true);
+    expect(report.dayInterchange).toBe(packaged.dayInterchange);
+    expect(report.dayInterchange.holds).toBe(true);
+    expect(report.dayInterchangeInstantiation).toBe(
+      packaged.dayInterchangeInstantiation,
+    );
+    expect(report.dayInterchangeInstantiation.holds).toBe(true);
+    expect(report.dayInterchangeInstantiationCheck).toBe(
+      packaged.dayInterchangeInstantiationCheck,
+    );
+    expect(report.dayInterchangeInstantiationCheck.holds).toBe(true);
+    expect(report.dayInterchangeCheck).toBe(packaged.dayInterchangeCheck);
+    expect(report.dayInterchangeCheck.holds).toBe(true);
+    expect(report.dayUnitOpmonoidal).toBe(packaged.dayUnitOpmonoidal);
+    expect(report.dayUnitOpmonoidal.satisfied).toBeGreaterThan(0);
+    expect(report.dayUnitOpmonoidalTriangles).toBe(
+      packaged.dayUnitOpmonoidalTriangles,
+    );
+    expect(report.dayUnitOpmonoidalTriangles.satisfied).toBeGreaterThan(0);
+    expect(report.dayUnitOpmonoidalTrianglesCheck).toBe(
+      packaged.dayUnitOpmonoidalTrianglesCheck,
+    );
+    expect(report.dayUnitOpmonoidalTrianglesCheck.holds).toBe(false);
+  });
+
+  it("verifies the Example 6 Day tensor satisfies unit and associativity", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+    const summary = checkInteractionLawDayMonoidal(packaged.law);
+
+    expect(summary.holds).toBe(true);
+    expect(summary.unitComparisons.left.matches).toBe(true);
+    expect(summary.unitComparisons.right.matches).toBe(true);
+    expect(summary.associativity.matches).toBe(true);
+    expect(summary.pairingTraces.leftUnit.length).toBeGreaterThan(0);
+    expect(summary.pairingTraces.rightUnit.length).toBeGreaterThan(0);
+    expect(summary.pairingTraces.associativity.length).toBeGreaterThan(0);
+    expect(summary.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("DayMonoidal.leftUnit: holds"),
+        expect.stringContaining("DayMonoidal.rightUnit: holds"),
+        expect.stringContaining("DayMonoidal.associativity: holds"),
+        expect.stringContaining("DayMonoidal.leftUnit: pair"),
+      ]),
+    );
   });
 
   it("confirms Example 7 writer/comonad interaction obeys ψ coherence", () => {
@@ -404,6 +764,49 @@ describe("checkMonadComonadInteractionLaw", () => {
     expect(witness.theta).toBeDefined();
     expect(witness.details.length).toBeGreaterThan(0);
     expect(report.details.some((detail) => detail.includes("Theorem 3"))).toBe(true);
+  });
+
+  it("summarizes residual interaction laws when provided", () => {
+    const interaction = makeExample6MonadComonadInteractionLaw();
+    const residual = makeExample13ResidualInteractionLaw();
+    const report = checkMonadComonadInteractionLaw(interaction, {
+      residual,
+      residualCheck: true,
+    });
+    const residualReport = report.residual;
+    expect(residualReport).toBeDefined();
+    expect(residualReport?.aggregate.residualMonadName).toBe("ExceptionsResidual");
+    expect(
+      residualReport?.diagnostics.some((line) =>
+        line.includes("residual summary supplied via options"),
+      ),
+    ).toBe(true);
+    expect(residualReport?.check?.holds).toBe(true);
+  });
+
+  it("reuses packaged residual aggregates and checks", () => {
+    const interaction = makeExample6MonadComonadInteractionLaw();
+    const residual = makeExample13ResidualInteractionLaw();
+    const packagedResidual = makeResidualMonadComonadInteractionLaw(interaction, residual, {
+      check: true,
+    });
+    const report = checkMonadComonadInteractionLaw(interaction, {
+      residual: packagedResidual,
+    });
+    const residualReport = report.residual;
+    expect(residualReport).toBeDefined();
+    expect(residualReport?.aggregate).toBe(packagedResidual.aggregate);
+    expect(residualReport?.check).toBe(packagedResidual.residualCheck);
+    expect(
+      residualReport?.diagnostics.some((line) =>
+        line.includes("reusing packaged residual monad/comonad interaction aggregate"),
+      ),
+    ).toBe(true);
+    expect(
+      residualReport?.diagnostics.some((line) =>
+        line.includes("retained packaged residual law check"),
+      ),
+    ).toBe(true);
   });
 });
 
@@ -484,6 +887,21 @@ describe("sweedlerDualNonemptyList", () => {
     for (const sample of samples) {
       expect(data.cofree.carrier.has(inclusion.map(sample))).toBe(true);
     }
+  });
+});
+
+describe("sweedlerDualOfMonoidQuotient", () => {
+  it("records the Example 14 f_*°/g_*° equalizer summary", () => {
+    const result = nonemptyListSweedlerQuotientEqualizer();
+    expect(result.equalizer.checked).toBeGreaterThan(0);
+    expect(result.equalizer.mismatches).toBe(0);
+    expect(result.equalizer.diagnostics).toContain(
+      "Monoid quotient Sweedler equalizer: all sampled elements satisfied f_*° = g_*°.",
+    );
+    expect(result.diagnostics).toContain(
+      "Monoid quotient Sweedler equalizer: derived f_*°/g_*° equalizer summary from Sweedler data.",
+    );
+    expect(result.metadata).toContain("Example14 Sweedler quotient equalizer");
   });
 });
 
@@ -879,6 +1297,119 @@ describe("free monad–comonad interaction law", () => {
     expect(report.holds).toBe(true);
     expect(report.details).toContain("checkFreeInteractionLaw: recorded 1 initial comparison.");
     expect(report.details).toContain("checkFreeInteractionLaw: recorded 1 final comparison.");
+  });
+});
+
+describe("sweedlerDualOfFreeMonoid", () => {
+  const buildFreeLaw = () => {
+    const baseLaw = buildBooleanLaw();
+    const monad = buildIdentityMonad();
+    const comonad = buildIdentityComonad();
+    const baseInteraction = makeMonadComonadInteractionLaw({ monad, comonad, law: baseLaw });
+    return makeFreeMonadComonadInteractionLaw({
+      base: baseInteraction,
+      freeMonad: monad,
+      cofreeComonad: comonad,
+      law: baseInteraction.law,
+      coproductWitnesses: [
+        {
+          fiber: "★",
+          summands: [
+            { fiber: "★", label: "id × fst", metadata: ["Free coproduct left"] },
+            { fiber: "★", label: "id × snd", metadata: ["Free coproduct right"] },
+          ],
+        },
+      ],
+      universalComparisons: {
+        initial: [{ label: "ι_*", payload: { source: "Mon(F,UD)" }, metadata: ["Initial slice"] }],
+        final: [{ label: "e^F_{UD}", payload: { target: "Comon(F°,UD)" }, metadata: ["Final slice"] }],
+        metadata: ["Free Sweedler comparisons"],
+      },
+      metadata: ["Free Sweedler example"],
+    });
+  };
+
+  it("derives the Sweedler dual using the canonical translator and bijection metadata", () => {
+    const free = buildFreeLaw();
+
+    const typedFree = free as FreeMonadComonadInteractionLawResult<
+      TwoObject,
+      TwoArrow,
+      unknown,
+      unknown,
+      boolean,
+      TwoObject,
+      TwoArrow,
+      { source: string },
+      { target: string }
+    >;
+
+    const result = sweedlerDualOfFreeMonoid(typedFree);
+
+    expect(result.free).toBe(free);
+    expect(result.monoid.law).toBe(free.interaction.law);
+    expect(result.sweedler.monoid).toBe(result.monoid);
+    expect(result.comparisons.initialCount).toBe(1);
+    expect(result.comparisons.finalCount).toBe(1);
+    expect(result.bijection.holds).toBe(true);
+    expect(result.metadata).toEqual(
+      expect.arrayContaining(["Free monoid Sweedler dual comparison"]),
+    );
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        "Free monoid Sweedler dual: derived interaction-law monoid from the free law via the canonical ψ → Day translator.",
+        "Free monoid Sweedler dual: computed (-)^° using interactionLawMonoidToSweedlerDual, recording the diagram (8) diagnostics.",
+      ]),
+    );
+  });
+
+  it("reuses supplied monoid and Sweedler data", () => {
+    const free = buildFreeLaw();
+    const interactionForMonoid = free.interaction as unknown as MonadComonadInteractionLaw<
+      TwoObject,
+      TwoArrow,
+      unknown,
+      unknown,
+      boolean,
+      TwoObject,
+      TwoArrow
+    >;
+    const monoid = monadComonadInteractionLawToMonoid(interactionForMonoid, {
+      metadata: ["Free monoid wrapper"],
+    });
+    const sweedler = interactionLawMonoidToSweedlerDual(monoid, {
+      metadata: ["Reused Sweedler"],
+    });
+
+    const typedFree = free as FreeMonadComonadInteractionLawResult<
+      TwoObject,
+      TwoArrow,
+      unknown,
+      unknown,
+      boolean,
+      TwoObject,
+      TwoArrow,
+      { source: string },
+      { target: string }
+    >;
+
+    const result = sweedlerDualOfFreeMonoid(typedFree, {
+      monoid,
+      sweedler,
+      metadata: ["Supplied free Sweedler"],
+    });
+
+    expect(result.monoid).toBe(monoid);
+    expect(result.sweedler).toBe(sweedler);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        "Free monoid Sweedler dual: reused interaction-law monoid supplied via options.",
+        "Free monoid Sweedler dual: reused Sweedler dual functor supplied via options.",
+      ]),
+    );
+    expect(result.metadata).toEqual(
+      expect.arrayContaining(["Supplied free Sweedler", "Free monoid Sweedler dual comparison"]),
+    );
   });
 });
 

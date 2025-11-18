@@ -13,9 +13,12 @@ const loadManifest = (): Promise<ManifestModule> => {
   }
   return manifestPromise;
 };
-import type { RunnableRegistry, RunnableExample } from "./examples/runnable/types";
-import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import type {
+  RunnableExample,
+  RunnableExampleContext,
+  RunnableExampleFlag,
+  RunnableRegistry,
+} from "./examples/runnable/types";
 
 declare const process: {
   readonly argv: ReadonlyArray<string>;
@@ -30,12 +33,59 @@ async function main(): Promise<void> {
 
   const requestedTags: string[] = [];
   const requestedIds: string[] = [];
+  const exampleFlagEntries: RunnableExampleFlag[] = [];
 
   let listRequested = false;
+
+  const captureExampleFlag = (key: string | undefined, value?: string) => {
+    if (!key) {
+      console.warn("Ignoring example flag without a key.");
+      return;
+    }
+    const trimmed = key.trim();
+    if (trimmed.length === 0) {
+      console.warn("Ignoring example flag with an empty key.");
+      return;
+    }
+    if (value === undefined) {
+      exampleFlagEntries.push({ key: trimmed });
+    } else {
+      exampleFlagEntries.push({ key: trimmed, value });
+    }
+  };
+
+  const parseKeyValueToken = (token: string): [string, string | undefined] => {
+    const eqIndex = token.indexOf("=");
+    if (eqIndex === -1) {
+      return [token, undefined];
+    }
+    return [token.slice(0, eqIndex), token.slice(eqIndex + 1)];
+  };
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === undefined) {
+      continue;
+    }
+    if (token === "--example-arg") {
+      const value = argv[index + 1];
+      if (value && !value.startsWith("--")) {
+        const [key, parsedValue] = parseKeyValueToken(value);
+        captureExampleFlag(key, parsedValue);
+        index += 1;
+      } else {
+        console.warn("Ignoring --example-arg flag without a key/value payload.");
+      }
+      continue;
+    }
+    if (token.startsWith("--example-arg=")) {
+      const raw = token.slice("--example-arg=".length);
+      if (raw.length === 0) {
+        console.warn("Ignoring --example-arg= flag without a key/value payload.");
+      } else {
+        const [key, parsedValue] = parseKeyValueToken(raw);
+        captureExampleFlag(key, parsedValue);
+      }
       continue;
     }
     if (token === "--list") {
@@ -60,7 +110,23 @@ async function main(): Promise<void> {
       continue;
     }
     if (token.startsWith("--")) {
-      console.warn(`Ignoring unknown flag '${token}'.`);
+      const trimmed = token.slice(2);
+      if (trimmed.length === 0) {
+        console.warn("Ignoring malformed flag '--'.");
+        continue;
+      }
+      if (trimmed.includes("=")) {
+        const [key, parsedValue] = parseKeyValueToken(trimmed);
+        captureExampleFlag(key, parsedValue);
+      } else {
+        const value = argv[index + 1];
+        if (value && !value.startsWith("--")) {
+          captureExampleFlag(trimmed, value);
+          index += 1;
+        } else {
+          captureExampleFlag(trimmed);
+        }
+      }
       continue;
     }
     requestedIds.push(token);
@@ -68,16 +134,41 @@ async function main(): Promise<void> {
 
   const cachePath = resolve("dist/.cache/runnable-index.json");
 
+  const buildRunnableExampleContext = (
+    entries: ReadonlyArray<RunnableExampleFlag>,
+  ): RunnableExampleContext => {
+    const flags = new Map<string, string[]>();
+    for (const entry of entries) {
+      const key = entry.key.trim().toLowerCase();
+      if (key.length === 0) {
+        continue;
+      }
+      const bucket = flags.get(key) ?? [];
+      bucket.push(entry.value ?? "true");
+      flags.set(key, bucket);
+    }
+    return { rawFlags: entries, flags };
+  };
+
+  const runnableContext = buildRunnableExampleContext(exampleFlagEntries);
+
   // Fast path: if specific ids were requested and no tag filtering/listing is needed,
   // try to import only those example modules directly to avoid pulling the whole manifest graph.
   if (!listRequested && requestedIds.length > 0 && requestedTags.length === 0) {
     try {
       console.log("Fast path: attempting direct example imports for ids:", requestedIds.join(", "));
       const dir = resolve("examples/runnable");
-      const files = readdirSync(dir);
-  const loaded: Array<Promise<RunnableExample | undefined>> = [];
+      const fsModule = (await import("node:fs")) as unknown as {
+        readdirSync: (path: string) => string[];
+      };
+      const files = fsModule.readdirSync(dir);
+      const loaded: Array<Promise<RunnableExample | undefined>> = [];
       for (const id of requestedIds) {
-        const match = files.find((f) => f.startsWith(`${id}-`) && (f.endsWith(".ts") || f.endsWith(".tsx") || f.endsWith(".js") || f.endsWith(".mjs")));
+        const match = files.find(
+          (f: string) =>
+            f.startsWith(`${id}-`) &&
+            (f.endsWith(".ts") || f.endsWith(".tsx") || f.endsWith(".js") || f.endsWith(".mjs")),
+        );
         if (!match) {
           console.warn(`Fast path: no file matching pattern '${id}-*.ts' found; falling back to manifest later.`);
           continue;
@@ -121,7 +212,7 @@ async function main(): Promise<void> {
           console.log(example.summary);
           try {
             console.log(`About to run example id=${example.id}...`);
-            const outcome = await example.run();
+            const outcome = await example.run(runnableContext);
             console.log(`Example id=${example.id} completed. Log lines=${outcome.logs.length}.`);
             for (const line of outcome.logs) {
               console.log(` • ${line}`);
@@ -223,7 +314,7 @@ async function main(): Promise<void> {
     console.log(example.summary);
     try {
       console.log(`About to run example id=${example.id}...`);
-      const outcome = await example.run();
+      const outcome = await example.run(runnableContext);
       console.log(`Example id=${example.id} completed. Log lines=${outcome.logs.length}.`);
       for (const line of outcome.logs) {
         console.log(` • ${line}`);

@@ -31,6 +31,27 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Helper:** `productInteractionLaw(law0, law1)` forms the categorical product in `IL(𝒞)` by pairing the Day fibers of `law0` and `law1`, aggregating their witnesses with the underlying `collect`/`aggregate` logic, and returning evaluation pairs in the product dualising object.
 - **Helper:** `coproductInteractionLaw(law0, law1)` dualises the product construction, wiring coproduct injections for both functor witnesses, rerouting Day contributions through the matching summand, and returning evaluations in the coproduct dualising carrier.
 - **Witness Builder:** The result includes `projections.left/right` lookups together with the dualising product carrier so projection diagnostics and Day-fiber traversals can recover each factor’s contribution.
+- **Check:** `checkInteractionLawDayMonoidal(law)` replays the Day tensor left/right unitors and associator by composing `productInteractionLaw`, projecting the paired witnesses back to the original law, reporting comparison diagnostics (checked pairs, mismatches, notes), and logging representative Day fiber traces so the Example 6 regression can assert the recorded witnesses.
+- **Check:** `checkInteractionLawDaySymmetry(left, right)` compares the Day tensor `left ⊙ right` against `right ⊙ left` using the symmetric swap on primals, duals, and evaluation values, reporting comparison results and sampled Day fiber traces so diagnostics capture the conjugate symmetry highlighted in Section 6.
+- **Check (update):** `summarizeInteractionLawDayInterchangePreparation(law)` enumerates every monad/comonad operation’s Day fiber references, confirms the fiber and pairing components exist, samples carrier pairs, and now reports missing Day contributions, checked-pair counts, and recorded contributions so interchange diagnostics fail fast when witnesses are absent.
+- **Check (new):** `summarizeInteractionLawDayInterchange(law)` folds the preparation details into aggregate coverage totals, tracking satisfied references, missing fibers, empty samples, zero-contribution sites, and checked-pair counts for both monad and comonad operations while emitting the consolidated diagnostics consumed by packaging and coherence oracles.
+- **Check (update):** The interchange summary now retains structured samples (primal/dual witnesses plus contribution lists) for every referenced Day fiber, so future ζ/δ/μ comparisons can replay the recorded witnesses directly instead of scraping log strings.
+- **Check (update):** Canonical Day witnesses indexed by each operation reference are recovered and threaded through the interchange summary, packaging pipeline, and coherence oracles so downstream ζ/δ/μ proofs can compose the exact recorded representatives with the composition monoidal structure.
+- **Check (new):** `instantiateInteractionLawDayInterchange(law)` composes the canonical Day witnesses with their associated monad/comonad operations, producing an instantiation summary that records Lawvere data, aggregated coverage, and composition-side diagnostics for reuse by packaging, coherence reports, and upcoming ζ/δ/μ comparisons.
+- **Check (new):** `verifyInteractionLawDayInterchangeInstantiationFromReport(law, instantiation)` compares the aggregated canonical contributions against the interaction-law evaluation, recording match diagnostics, totals, and missing-sample failures so packaging and coherence reports surface evaluation-side verification alongside composition-side instantiation data.
+- **Check (new):** `checkInteractionLawDayInterchange(law, options?)` packages the Day interchange summary, instantiation, and verification into a single report, combining diagnostics and holds flags so downstream packaging/oracles consume one consolidated interchange verdict.
+- **Helper (new):** `summarizeInteractionLawMonoidPreparation(law, { currying?, sampleLimit?, metadata? })` extracts the `F(X ⊗ Y)`/`G(Y)` evaluation tables from the currying summary, records sampled coend witnesses for each tensor object, builds the canonical exponential homs `F(X ⊗ Y) → [G(Y) ⇒ Ω]`, and emits diagnostics noting the captured Day representatives so monoid-object translators can replay the exact witnesses.
+- **Helper (new):** `makeInteractionLawMonoidMultiplicationTranslator(law, { preparation?, preparationOptions?, metadata? })` indexes the recorded Day exponential homs by object/parameter, reusing supplied monoid-preparation summaries when present, deriving them when omitted, and emitting diagnostics that log every registered map together with duplicate-component warnings.
+- **Helper (new):** `realizeInteractionLawMonoidMultiplication(translator, { metadata? })` materialises the canonical evaluations `F(X ⊗ Y) × G(Y) → Ω` from the indexed translator components, verifies every recorded sample against the interaction-law pairing, and aggregates diagnostics/metadata so downstream monoid ↔ ψ translators can reuse the realised homs without recomputing Day witnesses.
+- **Helper (new):** `reconstructInteractionLawMonoidPsi(law, { translator?, realization?, metadata? })` replays the cached Day monoid translator and realization against the underlying ψ-evaluation, aggregating per-object diagnostics and mismatch counts while exposing the reconstructed ψ summary so monoid objects can rebuild the interaction law directly from stored Day data.
+- **Helper (new):** `monoidObjectToInteractionLaw(monoid, { metadata?, monoidPreparation?, monoidTranslator?, monoidRealization?, monoidPsi? })` rebuilds the ψ-evaluation for an interaction-law monoid from its cached Day translator/realization data, reports coverage/mismatch totals (including fallback counts when canonical witnesses are missing), and returns a reconstructed functor interaction law together with merged metadata/diagnostics.
+- **Helper (new):** `interactionLawToMonoidObject(interaction, { sampleLimit?, metadata?, monoidPreparation?, monoidTranslator?, monoidRealization?, monoidPsi?, monoidPsiOptions? })` wraps the canonical Day monoid construction, reusing the cached `F(X × Y)` and `G(Y)` comparison maps, appending wrapper diagnostics, and returning the packaged monoid with metadata that records the ψ-derived origin.
+- **Helper (new):** `summarizeInteractionLawDayUnit(law, { metadata?, unitMetadata?, contravariantMetadata? })` enumerates the promonoidal unit witnesses for each kernel object, merges metadata from the Day unit and its contravariant companion, and emits diagnostics used by `makeMonadComonadInteractionLaw` and the regression suite to keep the cached `J` data available for opmonoidal checks.
+- **Helper (new):** `summarizeInteractionLawDayUnitTensor(law, { unit?, tensorMetadata?, metadata? })` convolve the Day unit contravariant/covariant pair, record per-object fiber coverage, missing diagonal witnesses, and coend diagnostics, and thread the resulting tensor summary through `makeMonadComonadInteractionLaw` so opmonoidal/unit triangles reuse the cached convolution witnesses.
+- **Helper (new):** `summarizeInteractionLawDayUnitOpmonoidal(law, { unit?, tensor?, metadata? })` cross-references the cached Day unit witnesses with their convolution fibers, counts missing carriers, records diagnostic notes per kernel object, and stores the aggregated opmonoidal coverage summary on monad–comonad interaction laws and coherence reports.
+- **Helper (new):** `summarizeInteractionLawDayUnitOpmonoidalTriangles(law, { unit?, tensor?, opmonoidal?, metadata? })` replays the cached Day unit/tensor coverage, logs per-object triangle readiness, threads the summary through packaging/oracle flows, and emits diagnostics that explicitly flag the missing lax-monoidal comparison for `J`’s diagram (7) triangles.
+- **Check (new):** `checkInteractionLawDayUnitOpmonoidalTriangles(law, { summary?, summaryOptions?, metadata? })` wraps the triangle summary into a consolidated diagnostic report that records satisfied/missing counts, exposes the `J` opmonoidal-but-not-lax witness, and now lives on monad–comonad packages plus the coherence oracle so downstream Sweedler passes can cite the canonical failure evidence.
+- **Helper:** `lookupInteractionLawMonoidMultiplicationComponent(translator, object, parameter)` retrieves the stored component so downstream translators can access the cached hom `F(X ⊗ Y) → [G(Y) ⇒ Ω]` without recomputing Day witnesses.
 - **Witness Builder (update):** `checkInteractionLawProductUniversalProperty(result, law0, law1)` samples Day witnesses, applies the recorded projections, and confirms both factor evaluations agree with the projected product value; `checkInteractionLawCoproductUniversalProperty(result, law0, law1)` mirrors the argument for coproduct injections and value inclusions.
 - **Check:** `test/functor-interaction-law.spec.ts` (“forms categorical products of interaction laws”) validates the paired evaluation, confirms `collect`/`aggregate` compatibility, and inspects the recorded projection data for both functor components and the dualising carrier.
 - **Check (update):** The same regression suite now executes the universal-property oracles for both the product and coproduct helpers, asserting that they succeed without emitting diagnostic details.
@@ -44,6 +65,14 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Helper:** `dualInteractionLaw(law, options?)` packages the self-dual law obtained from `dualChuSpace`, threading the Sweedler summary and cached degeneracy metadata through the result while logging whether existing CCC or comma data were supplied.
 - **Witness Builder:** `deriveInteractionLawCCCPresentation(law)` (see below) consumes the same summary to expose φ̂/φ̌ diagnostics and δ^X_Y tables, giving oracles a single entry point for CCC and Sweedler analyses.
 - **Check:** `test/functor-interaction-law.spec.ts` (“derives Sweedler summaries and dual interaction laws”) asserts that the Sweedler maps evaluate to the original Day pairing on sampled witnesses, confirms provenance diagnostics mention reused caches, and verifies that `dualInteractionLaw`’s output agrees with `selfDualInteractionLaw` when supplied the cached Chu space.
+- **Helper:** `interactionLawMonoidToSweedlerDual(monoid, options?)` realises the functor `(-)^° : (Mon(ℱ))^{op} → Comon(ℱ)` directly from a Day monoid object, reusing the cached Sweedler summary plus the Day unit/tensor/opmonoidal triangle data, logging when those summaries/checks come from caller overrides, and recording diagnostics that explain why the absence of a lax comparison for `J` constrains the dual to the lax-monoidal structure from diagram (8).
+- **Helper (new):** `constructGlueingInteractionLaw({ law, category, kernel, leftSubcategory, rightSubcategory, span, evaluations, ... })` packages the pullback-stable subcategory metadata, the glueing span `I ← R → I`, and representative `F^e_{X,Y}` evaluation samples into a canonical summary with diagnostics for downstream Hasegawa glueing workflows.
+- **Oracle (new):** `checkGlueingInteractionLaw(summary)` replays the recorded span arrows inside the base category, verifies the cached evaluations agree with the interaction law, and emits aggregated diagnostics covering pullback stability, span mismatches, and evaluation coverage; the functor interaction-law regression suite now exercises both success and failure cases.
+- **Examples (new):** `makeGlueingInteractionLawExampleSuite()` materialises the Section 6.2 fixtures—identity glueing (matching the residual construction), a nontrivial tensor witness, and a pullback-instability counterexample—so the helper/oracle have canonical positive/negative instances under test.
+- **Bridge (new):** `bridgeGlueingSummaryToResidualRunner(summary, options?)` instantiates Example 6’s runner and residual runner from a glueing summary, feeds them through the runner/residual oracles, and returns the aggregated summaries plus metadata so λ₍coop₎ alignment and residual-runner diagnostics can ingest Section 6 glueing telemetry directly.
+- **Alignment injection (new):** `analyzeSupervisedStackLambdaCoopAlignment(stack, law, { alignmentMetadata?, alignmentNotes?, … })` threads precomputed telemetry (e.g., from `bridgeGlueingSummaryToResidualRunner`) into `λ₍coop₎.alignment.*` metadata/notes via `LambdaCoopAlignmentSummary`, so the glueing span/evaluation coverage now surfaces in the aggregated alignment report and Example 6 regression.
+- **Bridge helper (new):** `analyzeSupervisedStackLambdaCoopAlignmentWithGlueingBridge(law, stack, bridge, options?)` runs the λ₍coop₎ alignment while automatically appending the bridge metadata/notes to the aggregated summary. The Example 6 regression now uses the helper to confirm Glueing.* telemetry lands in the `λ₍coop₎.alignment.*` diagnostics without wiring options manually.
+- **Supervised-stack suite (new):** `makeGlueingSupervisedStackExampleSuite()` combines the glueing example summaries, shared kernel/user specs, and the supervised-stack adapter so identity/tensor/pullback fixtures emit `Glueing.supervisedStackExample=*` metadata together with the bridge/alignment payloads, giving downstream tests/notes a ready-made corpus.
 - **Implementation Notes:** `deriveInteractionLawSweedlerSummary` falls back to the law’s stored operation metadata when explicit degeneracy notes are absent, ensuring collapse traces flow automatically into Sweedler diagnostics and into the `greatestInteractingFunctor`/`greatestInteractingComonad` helpers.
 
 ### Specialized dual constructors
@@ -111,8 +140,8 @@ This document catalogs the algebraic laws that our functional programming constr
 
 ### Monad–comonad interaction law packaging
 
-- **Helper:** `makeMonadComonadInteractionLaw({ monad, comonad, law, options? })` packages a monad–comonad pair together with a base functor interaction law, reusing cached degeneracy analyses, CCC currying tables, comma presentations, and Sweedler summaries whenever they are supplied. The helper exposes the resulting `ψ` fiber map so downstream coherence checks can iterate over Day witnesses without recomputing the pairing.
-- **Helper:** `monadComonadInteractionLawToMonoid(law, { sampleLimit?, metadata? })` captures the Day/ψ composites that present a monad–comonad interaction law as a monoid object in `IL(𝒞)`, tabulating multiplication/unit composites via the comma presentation and recording any sampled mismatches. `interactionLawMonoidToMonadComonadLaw({ monoid, monad, comonad, metadata? })` performs the inverse construction, reusing cached currying/comma/Sweedler data to rebuild the packaged interaction law.
+- **Helper:** `makeMonadComonadInteractionLaw({ monad, comonad, law, options? })` packages a monad–comonad pair together with a base functor interaction law, reusing cached degeneracy analyses, CCC currying tables, comma presentations, Sweedler summaries, Day-monoidal comparison data, and Day-interchange reference summaries whenever they are supplied. The helper exposes the resulting `ψ` fiber map together with the recorded Day monoidal, symmetry, and interchange-preparation summaries so downstream coherence checks can iterate over witnesses without recomputing the pairing and can inspect which monad/comonad operations reference each Day fiber.
+- **Helper:** `monadComonadInteractionLawToMonoid(law, { sampleLimit?, metadata?, monoidPreparation?, monoidTranslator?, monoidRealization? })` captures the Day/ψ composites that present a monad–comonad interaction law as a monoid object in `IL(𝒞)`, tabulating multiplication/unit composites via the comma presentation, threading the canonical Day monoid preparation/translator/realization caches, and recording any sampled mismatches. The result now retains the derived preparation, translator, and realized evaluations so downstream passes can reuse the cached witnesses without re-running the Day coends. `interactionLawMonoidToMonadComonadLaw({ monoid, monad, comonad, metadata? })` performs the inverse construction, reusing cached currying/comma/Sweedler data to rebuild the packaged interaction law.
 - **Helper:** `makeExample6MonadComonadInteractionLaw()` realises the Section 3 Example 6 construction where the monad is the writer functor on a two-point monoid and the comonad is its reader dual.  The helper assembles the Day pairing, writer/unit/multiplication data, and the reader counit/comultiplication witnesses into a ready-to-use monad–comonad interaction law.
 - **Helper:** `makeExample7MonadComonadInteractionLaw()` implements the Section 3 Example 7 writer/comonad pairing where `TX = B × X` and `DY = B × Y` for the two-point monoid acting on a two-point set, recording the action `ψ((b, x), (b', y)) = (x, b ⋅ y)`. It reuses the stored Day pairing, monad/comonad witnesses, and ψ-evaluation caches while surfacing the same diagnostics exercised by the Example 7 regression.
 - **Helper:** `makeExample8MonadComonadInteractionLaw()` packages the Section 3 Example 8 update monad/comonad interaction where updates are functions `A ⇒ (B × X)` and environments are `A × Y`. The helper materialises the action of `B` on both states and observations, flattens nested updates via the recorded multiplication witness, and exposes the resulting ψ family for the coherence oracle.
@@ -122,6 +151,8 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Helper:** `tensorMonadComonadInteractionLaws({ left, right, monad, comonad, metadata?, packageOptions? })` composes two interaction laws via the Day product of their functor pairings before repackaging them with the requested monad/comonad structures.  The helper surfaces the product projections for later use and records diagnostics indicating that the Day product was applied.  Regression coverage confirms the resulting evaluations produce paired booleans on the two-object kernel.
 - **Helper:** `composeMonadComonadInteractionLaws({ inner, outer, monad, comonad, law, metadata?, compatibilityDiagnostics?, packageOptions? })` packages a caller-supplied composite interaction law while stitching together the provenance metadata from the inner and outer laws.  Optional compatibility diagnostics are threaded into the returned report so subsequent passes can replay the distributive-law checks highlighted in Section 3.3.
 - **Helper:** `makeFreeMonadComonadInteractionLaw({ base?, freeMonad, cofreeComonad, law, coproductWitnesses, universalComparisons, options? })` records the Section 3 coproduct recipe for the free/cofree interaction law, reusing cached currying/comma/Sweedler data when supplied and persisting the inclusion labels such as `id × fst` and `id × snd`.  `deriveInitialMonadSliceObject` and `deriveFinalComonadSliceObject` surface the universal arrows for the slice categories.  `test/monad-comonad-interaction-law.spec.ts` exercises the helper and confirms that the coproduct witnesses and slice comparisons match the expected metadata.
+- **Helper (new):** `sweedlerDualOfFreeMonoid(freeResult, { monoid?, sweedler?, metadata? })` composes the ψ→Day monoid translator with `interactionLawMonoidToSweedlerDual`, records the `ι_*`/`e^F_{UD}` universal comparisons from the free law, and emits comparison/bijection summaries that certify the Section 6.3 identification `Comon(F°, UD) ≅ Mon(F, UD)`.  The Example 6 regression asserts the recorded counts, the bijection flag, and the reuse diagnostics when callers supply precomputed monoids or Sweedler data.
+- **Helper (new):** `sweedlerDualOfMonoidQuotient(equalizerInput, options?)` bundles the Example 14-style cofree inclusion with the recorded relation map to sample the `f_*°`/`g_*°` composites, logging equalizer witnesses and mismatch diagnostics.  `nonemptyListSweedlerQuotientEqualizer()` instantiates the helper for the nonempty-list quotient so tests confirm the Sweedler subcomonad realises the coequaliser dual described in Section 6.3.
 - **Oracle:** `checkFreeInteractionLaw(freeResult)` verifies that coproduct witnesses contain inclusions and that the universal comparisons provide arrows into/out of the free law for the slice categories, emitting descriptive diagnostics when any component is missing.  The regression suite invokes the oracle alongside the helper to certify the recorded data.
 - **Report:** `checkAssociativeBinaryDegeneracy(law, { operationLabel? })` replays the Theorem 3 collapse diagnostics for a monad–comonad interaction law. It threads the commutative-binary degeneracy traces through the ψ fibers, logs the distributivity injections `ι_Y` and `κ_Y`, and records the witnesses `h_Y`, `δ'_Y`, `k'_Y`, and `k_Y` from the proof. `test/monad-comonad-interaction-law.spec.ts` exercises the report on Example 7, asserting that the Theorem 3 detail message is present and that each witness retains the ψ component and coproduct injections.
 - **Helper:** `analyzeExample9FreeSemigroupDegeneracy()` encodes Example 9’s free-semigroup operation `db : X × X → X⁺`, attaches its commutative binary metadata to a Day pairing, and runs the degeneracy analyzer to exhibit the constant-zero collapse together with the coproduct/pullback witnesses demanded by Theorem 3.
@@ -132,12 +163,254 @@ This document catalogs the algebraic laws that our functional programming constr
 - **Check:** `checkRectangularityFromCoequation(data)` enumerates the Example 14 Sweedler elements, verifies that the recorded coequation agrees with the restricted comultiplication, and confirms every image lies in the rectangular subcomonad; `test/monad-comonad-interaction-law.spec.ts` exercises the oracle (“derives partition data and confirms rectangularity witnesses”).
 - **Oracle:** `checkNonemptyListQuotient(options?)` replays the Example 14 quotient diagram by flattening sampled free terms and list-of-lists, reporting counterexamples when the quotient or multiplication deviates from concatenation.
 - **Oracle:** `checkNonemptyListSweedler(options?)` compares the Sweedler counit/comultiplication against the cofree inclusion on sampled elements, surfacing discrepancies in the Example 14 subcomonad embedding.
-- **Oracle:** `checkMonadComonadInteractionLaw(law, options?)` evaluates the four ψ-coherence diagrams (unit/counit, comultiplication, monad multiplication, and the mixed associativity square) using the cached Day fibers.  The optional `project`/`build` hooks let callers describe how to decompose/reconstruct the interaction-law value when it is not a plain pair.
+- **Oracle:** `checkMonadComonadInteractionLaw(law, options?)` evaluates the four ψ-coherence diagrams (unit/counit, comultiplication, monad multiplication, and the mixed associativity square) using the cached Day fibers.  The optional `project`/`build` hooks let callers describe how to decompose/reconstruct the interaction-law value when it is not a plain pair, the `residual`/`residualCheck` options reuse packaged `ResidualInteractionLaw` aggregates (or run `checkResidualInteractionLaw`) so residual monad/comonad witnesses surface alongside the ψ diagnostics, and the returned report now includes the packaged Day monoidal, symmetry, and interchange-preparation summaries for the law.
 - **Witness Builder:** The returned record stores the combined metadata of the monad, comonad, and packaging call, plus a diagnostics array describing which caches were reused versus recomputed. Degeneracy reports and Sweedler summaries flow directly from the underlying `FunctorInteractionLaw`, ensuring later oracles can quote the same constant-zero witnesses and dual evaluations.
 - **Check:** `test/monad-comonad-interaction-law.spec.ts` verifies that cached inputs are reused when provided and that the helper derives currying/degeneracy data when no options are supplied, while also asserting that the packaged metadata aggregates contributions from both structures.
  - **Helper:** `deriveMonadComonadRunnerTranslation(law, { sampleLimit?, metadata? })` repackages each interaction law’s ψ fibers, δ tables, and Sweedler maps into θ, costate, and coalgebra translators ready for runner construction. Diagnostics confirm that the sampled δ tables match ψ evaluations and that the Sweedler-derived coalgebra agrees with the curried θ witnesses.
  - **Check:** `test/monad-comonad-interaction-law.spec.ts` exercises the helper on Example 6, asserting that all θ/costate/coalgebra components report consistent evaluations and that custom sampling bounds appear in the recorded diagnostics.
- - **Module:** `lambda-coop.ts` codifies the λ_{coop} syntax with explicit value, user, and kernel computation categories, resource annotations, and summarizers.  Helpers such as `summarizeUserComputationResources`, `summarizeKernelComputationResources`, and `summarizeValueResources` aggregate the operations, exceptions, signals, and state carriers demanded by a term while emitting provenance traces for each syntactic node.  `test/lambda-coop.spec.ts` exercises the collectors on a supervised file runner, confirming that signatures, state objects, and signal metadata are preserved across runner, kernel, and user layers.
+- **Module:** `lambda-coop.ts` codifies the λ_{coop} syntax with explicit value, user, and kernel computation categories, resource annotations, and summarizers.  Helpers such as `summarizeUserComputationResources`, `summarizeKernelComputationResources`, and `summarizeValueResources` aggregate the operations, exceptions, signals, and state carriers demanded by a term while emitting provenance traces for each syntactic node.  `test/lambda-coop.spec.ts` exercises the collectors on a supervised file runner, confirming that signatures, state objects, and signal metadata are preserved across runner, kernel, and user layers.
+- **Example (new):** `makeExample4RunnerCalculusScenario()` captures the Example 4 file-runner workload with open/write/close/warn clauses, a shared finaliser bundle, and constructors for the return/exception/signal programs.  The λ₍coop₎ tests now assert that double writes trigger a single close, exceptions still reclaim the handle, and the signal finaliser records the handled branch plus one-shot close counts via `summarizeUserEvaluation`.
+- **Closure harness (new):** `summarizeRunnerCalculusRewrites(harness)` runs every Section 4.4 equation checker, aggregates missing/failing law counts, and records totals so the Phase VI closure review has an executable inventory. `makeRunnerCalculusRewriteHarnessFromExample4()` builds the harness directly from the Example 4 scenario, and `test/lambda-coop.spec.ts` asserts the summary reports full coverage with zero missing/failing laws.
+- **Closure review (new):** The Example 4 harness summary now underpins the Phase VI closure note; running `summarizeRunnerCalculusRewrites(makeRunnerCalculusRewriteHarnessFromExample4())` confirms that all nine laws (run-return/exception/signal plus the six kernel clauses) report zero missing/failing entries.
+- **Rewrite harness (new):** `checkRunFinallyEquation(term, options?)` evaluates a `run … finally …` computation alongside the reconstructed finaliser branch, confirming the Section 4.4 run/return/raise/signal equalities and emitting notes about which branch handled the outcome.  The Example 4 rewrite regressions substitute the opened handle literal so the checker operates on a closed term and assert the run-return, run-exception, and run-signal laws.
+- **Kernel rewrite harness (new):** `checkKernelFinallyEquation(kernel, F, options?)` packages the kernel-side clauses of Section 4.4 by instantiating the matching return/exception/signal branch from a `LambdaCoopKernelFinaliserBundle`, reporting whether the branch handled or propagated the outcome.  The Example 4 tests cover the handled laws and the missing-signal case so future runner-calculus passes can cite the kernel witness alongside the user-level checker.
+- **Environment & propagation rewrites (new):** `evaluateKernel(term, { kernelEnvironment })` now threads the kernel environment through every recursive evaluation so `getenv` and `setenv` clauses mutate/read the shared state, and the new helpers `checkKernelGetEnvEquation`, `checkKernelSetEnvEquation`, and `checkKernelOperationPropagationEquation` certify the remaining Section 4.4 kernel equations (environment access, state mutation, kernel operation propagation).  The Example 4 regressions assert these reports, including observable environment swaps via a `getenv` continuation, and the Day–Chu roadmap/Cursor tracker now cite the helpers so downstream readers know every Section 4.4 rewrite has executable coverage.
+- **Session-type telemetry (new):** `checkSessionTypeRunnerEvaluationAgainstInteraction`, `analyzeSessionTypeSupervisedStackLambdaCoopAlignment`, and `docs/day-chu-future-work.md` are the canonical sources for λ₍coop₎ session-type alignment notes, so supervised-stack planning and law references share the same diagnostics when translating Section 8 specifications into runnable stacks.
+
+### Session-type grammar scaffolding (Phase VII)
+
+- **Module (new):** `session-type.ts` captures the Section 8 session-type
+  grammar as an algebraic data type with constructors for `1`, `0`, base types,
+  the distinguished channel `Y`, binary product, linear function space, and the
+  `G₀`/`G₀^{∘}` functor actions. The unicode-aware parser accepts both the paper
+  notation (`G₀^{∘}`, `×`, `⇒`) and ASCII fallbacks (`G0^o`, `*`, `->`), supports
+  `G₀` applications without parentheses, and lets callers configure which
+  identifiers should be treated as channel variables. The matching formatter can
+  emit unicode or ASCII presentations while inserting parentheses according to
+  the grammar’s associativity rules.
+- **Checks:** `test/session-type.spec.ts` exercises unicode parsing, ASCII
+  round-trips, configurable channel identifiers, and descriptive error
+  reporting, ensuring that downstream duality/runner tooling can rely on
+  deterministic session-type literals when interpreting the Day–Chu plan.
+- **Operators:** `dualSessionType` implements the recursive syntactic dual
+  `(-)°`, swapping `1/0`, reversing the product and lollipop inputs, toggling
+  `G₀`/`G₀^{∘}`, and acting as an involution so callers can compare session types
+  against semantic duals.
+- **Interpreters:** `interpretSessionTypePrimal`/
+  `interpretSessionTypeDual` evaluate a session type against a
+  `SessionTypeSemanticEnvironment`, threading arbitrary functor/comonad
+  semantics through the grammar with separate contexts for primal and dual
+  interpretations.
+- **Oracle:** `checkSessionTypeDuality` compares the syntactic dual interpreted
+  under the dual context with a caller-supplied semantic dual (e.g., from
+  `dualInteractionLaw`), returning structured notes for matching and mismatching
+  cases. `test/session-type.spec.ts` covers both scenarios so downstream passes
+  can rely on the oracle’s diagnostics.
+- **Runner check (new):** `checkSessionTypeRunnerEvaluationAgainstInteraction`
+  maps the channel names that appear in a session type to ψ fibres and samples
+  the referenced θ clauses against the canonical `ev_Y` evaluation witnesses.
+  The Example 8 regression asserts that the canonical runner passes the check
+  while a deliberately mutated θ witness produces recorded mismatches.
+- **Registry (new):** `docs/day-chu-future-work.md` records the Section 8 open
+  problems, observable λ₍coop₎ signals, and review cadence so session-type
+  runner diagnostics stay visible to the supervised-stack roadmap and the law
+  digest.
+- **Adapter (new):** `session-type-supervised-stack.ts` provides
+  `makeSessionTypeSupervisedStack`, composing `makeSupervisedStack`, the
+  session-type runner oracle, and `evaluateSupervisedStackWithLambdaCoop` so
+  each generated stack exports canonical `sessionType.*` metadata alongside the
+  λ₍coop₎ stack-run summaries. `test/session-type-supervised-stack.spec.ts`
+  exercises both the successful Example 8 assignments and the missing-channel
+  diagnostics to keep the adapter under regression coverage.
+- **Alignment helper (new):** `analyzeSessionTypeSupervisedStackLambdaCoopAlignment`
+  threads the `sessionType.*` metadata/notes into the λ₍coop₎ alignment summary
+  so Example 8 regressions now assert that `alignmentSummary.metadata` and
+  `alignmentSummary.notes` expose the same diagnostics as the generator.
+- **Glueing adapter (new):** `makeSessionTypeGlueingSupervisedStack` composes the
+  session-type stack generator with the glueing bridge so Example 8 stacks emit
+  both `sessionType.*` and `Glueing.*` diagnostics inside the λ₍coop₎ alignment
+  report. The session-type supervised-stack tests assert that the combined helper
+  records glueing bridge metadata/notes alongside the existing session-type
+  telemetry.
+- **Example fixtures (new):** `session-type-glueing.examples.ts` publishes
+  `makeExample8GlueingSummary`/`makeExample8GlueingBridge` so the Example 8
+  glueing summary and residual bridge can be imported outside the regression
+  harness. The helpers are re-exported via `allTS.ts`, consumed by
+  `test/session-type-supervised-stack.spec.ts`, and referenced by the future-work
+  registry as the canonical FW-4 telemetry fixture.
+- **Runnable helper (new):** `examples/runnable/104-session-type-glueing-stack.ts`
+  exposes the Example 8 session-type + glueing workflow through the runnable
+  examples CLI (`npm run examples:runnable -- 104`), now honouring
+  `--session-type`, `--assignment` / `--assignment-json`, and
+  `--glueing-span` flags so FW-4 experiments can reconfigure the stack without
+  touching the source. The command emits the combined `sessionType.*`,
+  `Glueing.*`, and λ₍coop₎ alignment metadata, and the future-work registry plus
+  Day–Chu roadmap reference the helper when describing FW-4 diagnostics.
+- **Sweep harness (new):** `session-type-glueing-cli.ts`,
+  `session-type-glueing-sweep.ts`, and
+  `examples/runnable/105-session-type-glueing-sweep.ts` provide a CLI sweep
+  runner (`npm run examples:runnable -- 105`) that accepts `--sweep`,
+  `--sweep-file`, and `--sweep-record` inputs, replaying multiple
+  session-type/glueing configurations and capturing per-run λ₍coop₎ metadata
+  together with the normalized sweep manifests for FW-4 mismatch hunts.
+
+- **Dashboard (new):** `session-type-glueing-dashboard.ts` collects
+  sweep-run snapshots, writes/reads sweep records, and exposes
+  `summarizeSessionTypeGlueingSweepRecord` so FW-4 can diff recorded
+  configurations against λ₍coop₎ alignment metadata without re-running the
+  runnable helper.
+- **Consumer (new):** `session-type-glueing-consumer.ts` replays recorded
+  sweep manifests directly against the λ₍coop₎ alignment helpers,
+  highlighting alignment metadata/note differences and runner mismatches
+  without invoking the CLI. The dedicated regression suite covers both the
+  matching baseline and mutated payloads so the FW-4 dashboard can import
+  recorded manifests and inspect divergences immediately. The consumer now
+  reuses the dashboard’s manifest parser so diff summaries expose
+  `manifestSource` data, and Example 105 appends `manifest{…}` annotations to
+  each `--sweep-diff` log line when a mismatch came from a manifest replay.
+- **Manifest generator (new):** `session-type-glueing-manifest.ts` converts
+  sweep snapshots or diff summaries into deterministic manifest entries, and
+  runnable Example 105 now accepts `--sweep-manifest` so filtered telemetry
+  (e.g., from `--sweep-focus`) can be written back out as replayable JSON
+  without editing CLI arguments. `test/session-type-glueing-sweep.spec.ts`
+  and the manifest-specific spec assert the helper and CLI flag.
+- **Manifest replay (new):** `readSessionTypeGlueingManifestEntriesFromFile`,
+  `sessionTypeGlueingManifestEntryToSweepEntry`, and
+  `readSessionTypeGlueingSweepEntriesFromManifest` allow those manifests to be
+  ingested directly, and Example 105 now honours `--sweep-manifest-input` so
+  manifest-driven runs sit alongside inline/file/diff sweeps. The manifest and
+  sweep Vitest suites cover the new helpers and runnable flag so replays stay
+  under regression coverage.
+- **Manifest telemetry (new):** Example 105 now records the manifest path,
+  entry count, and replay timestamp for every manifest replay, emits
+  `sessionType.manifest.*` metadata inside each sweep snapshot, and
+  `session-type-glueing-dashboard.ts` surfaces the same data as a structured
+  `manifestSource` field so FW-4 dashboards and `--sweep-diff` reviews can cite
+  the originating manifest without reading the raw sweep files. The consumer
+  diff summaries reuse the same metadata so `consumerDiffs` logs and CLI output
+  highlight the manifest provenance alongside the runner/alignment issues, and
+  the sweep tests assert both the CLI metadata injection and the dashboard
+  summaries.
+- **Manifest-source totals (new):** `session-type-glueing-consumer.ts` now
+  aggregates manifest-source mismatched/total counts, and Example 105 prints a
+  "Manifest totals" section for every `--sweep-diff` invocation so reviewers can
+  immediately see which manifest path produced the majority of mismatches
+  before cutting new targeted manifests.
+- **Manifest-target suggestions (new):** `examples/runnable/105-session-type-
+  glueing-sweep.ts` filters `--sweep-manifest` payloads to the manifest sources
+  that reported mismatches, logs a dedicated "Suggested manifest targets"
+  section, and records the proposals as `manifestTargetSuggestions` metadata so
+  FW-4 dashboards and consumers know which manifests to regenerate.
+- **Automatic manifest outputs (new):** When no explicit `--sweep-manifest`
+  targets are provided, Example 105 now writes one manifest per suggested
+  source path (using the default `.issues.json` suffix), logs an
+  "Automatically generated suggested manifests" section, and records both the
+  consolidated `generatedManifests` (tagged with `mode: "suggested"`) and a
+  `suggestedManifestWrites` array so dashboards/consumers know which files were
+  emitted. `test/session-type-glueing-sweep.spec.ts` covers the automatic flow to
+  ensure the CLI metadata stays in sync with the generated files.
+- **Manifest queue (new):** `session-type-glueing-manifest-queue.ts` captures
+  every auto-generated manifest path, Example 105 consumes the queue as implicit
+  `--sweep-manifest-input` entries on the next run (logging
+  `queuedManifestInputs`/`queuedManifestReplays` metadata), and the sweep
+  record/dashboard/consumer summaries now persist both the generated manifests
+  and the queued inputs/outputs so FW-4 reviewers can replay the focused
+  manifests without retyping the suggested paths. The latest pass also surfaces
+  the queue status directly in the dashboard/consumer summaries via the new
+  `manifestQueue` payload, records `queuedManifestReplayErrors` when a suggested
+  manifest goes missing, and clears/logs those failures instead of crashing the
+  CLI. The sweep regression suite exercises the queue lifecycle and the
+  missing-manifest scenario end-to-end, and `test/session-type-glueing-manifest-queue.spec.ts`
+  now covers the standalone queue helpers (peek/enqueue/consume/clear) so their
+  normalization, deduplication, and FIFO behaviour remain under direct unit
+  coverage. Pass 27 adds the queue test sentinel plus the
+  `sessionType.manifestQueue.tested=*` metadata entries so every sweep log and
+  recorded manifest explicitly states whether the queue helpers were exercised,
+  when the last run occurred, and which revision of the coverage harness wrote
+  the sentinel.
+- **Manifest queue gating (new):**
+  `session-type-glueing-manifest-queue-test-status.ts` now evaluates the queue
+  sentinel against a 14-day freshness threshold, emits
+  `sessionType.manifestQueue.issue=*` metadata for missing/stale timestamps,
+  logs the warnings in Example 105, and threads the resulting
+  `testIssues`/`testWarnings` fields through the sweep record, dashboard
+  summary, and consumer diff outputs. The manifest-queue and dashboard/consumer
+  Vitest suites assert both the evaluation helper and the new metadata exports
+  so FW-4 reviewers can gate sweeps that rely on stale coverage.
+- **Manifest queue gating enforcement (new):** Example 105 now refuses
+  `--sweep-manifest` writes whenever the sentinel reports blocking issues and
+  exposes an explicit `--allow-manifest-queue-issues` override flag for the rare
+  cases where reviewers intentionally bypass the guard. When the override is
+  engaged the CLI logs a dedicated warning, records
+  `manifestQueueTestOverride` metadata, and the sweep regression suite exercises
+  both the failure and override paths so stale coverage cannot silently emit new
+  manifests.
+- **Suggested manifest & queue gating (new):** The same coverage gate now applies
+  to the automatic `.issues.json` manifests and queued manifest replays:
+  Example 105 skips suggested outputs when the sentinel is missing/stale,
+  records the skipped files as `blockedSuggestedManifestWrites`, requeues and
+  logs blocked manifest replays via `blockedQueuedManifestInputs` /
+  `manifestQueue.blockedInputs`, and still permits the override flag to proceed
+  (logging the reasons) when FW-4 reviewers explicitly request it. The vitest
+  suite covers both the blocked and override paths.
+- **Blocked-manifest telemetry (new):** The sweep record schema, dashboard
+  summary, and consumer diff outputs now retain the `blockedSuggested*` and
+  `blockedQueued*` arrays so FW-4 dashboards highlight skipped suggestions and
+  queued replays even when reviewers only inspect recorded artifacts. The Vitest
+  suites assert the new metadata exports end to end.
+- **Blocked-manifest refresh plans (new):** When manifest-queue gating prevents
+  suggested manifests, Example 105 records the would-be entries under
+  `blockedManifestPlans`, logs the refresh plan in the CLI output, and propagates
+  the entries through the dashboard summary and FW-4 consumer diffs so the next
+  sweep can regenerate those manifests as soon as the sentinel rerun completes.
+- **Blocked-manifest plan replay (new):** Example 105 accepts
+  `--sweep-blocked-plan-input` paths, replays the recorded `blockedManifestPlans`
+  once the sentinel is fresh, logs the regenerated manifests as
+  `generatedManifests` entries (`mode: "plan"`), emits
+  `appliedBlockedManifestPlans` metadata, and includes the same notes in the CLI
+  output so dashboards and FW-4 consumers can audit which blocked plans were
+  materialised.
+- **Blocked-manifest plan sweep integration (new):** The CLI now normalises each
+  blocked-plan entry into a sweep configuration so
+  `--sweep-blocked-plan-input` immediately executes those configurations,
+  records them inside the sweep/diff dashboards, and logs
+  `appliedBlockedManifestPlanSweeps` metadata alongside the regenerated
+  manifests. The Vitest suite asserts the new metadata while the CLI output
+  highlights both the executed plan entries and the refreshed `.issues.json`
+  files.
+- **Blocked-plan composition (new):** The sweep regression now exercises `--sweep-blocked-plan-input` together with `--sweep-manifest` and `--sweep-diff`, ensuring manual manifest writes, diff reviews, and blocked-plan refreshes can run in the same CLI invocation while still exporting `generatedManifests`, `appliedBlockedManifestPlanSweeps`, and `consumerDiffs` metadata. The README and future-work registry also document the `session-type:manifest-queue:test` helper so FW‑4 reviewers know how to refresh the manifest-queue sentinel before invoking the combined workflow.
+- **Blocked-plan manifest-input combos (new):** `test/session-type-glueing-sweep.spec.ts` now covers running `--sweep-blocked-plan-input` alongside `--sweep-manifest-input`, verifying that recorded manifests replay in the same sweep as blocked-plan refreshes and that the metadata captures both the manifest replay summaries and the regenerated `.issues.json` files. The Example 105 runnable summary and README explicitly describe the manifest-queue gate plus the supported flag combinations so reviewers see the workflow before launching the CLI.
+- **Source coverage + CLI help (new):** Example 105 now records `sourceCoverage.manifestInputs`
+  and `sourceCoverage.blockedPlans` inside every sweep summary and CLI metadata
+  payload so reviewers can see, at a glance, whether manifest inputs and blocked
+  plans ran together. Providing `--help` prints the manifest-queue workflow and
+  supported flag combinations before any sweep executes, reinforcing the
+  sentinel reminder without re-reading the roadmap.
+- **Dashboard/consumer coverage display (new):** The FW‑4 dashboard summary and
+  diff consumer outputs now surface the same `sourceCoverage` counts plus derived
+  totals, and the Example 105 CLI logs those values in both the sweep and diff
+  sections so reviewers can tell when manifest-input and blocked-plan sources
+  ran—even when they are only replaying recorded JSON.
+- **Manifest queue sentinel refresh helper (new):** `npm run
+  session-type:manifest-queue:test` runs the manifest-queue unit tests and writes
+  the sentinel so reviewers can refresh coverage before invoking
+  `--sweep-manifest` or the new blocked-plan replay flag.
+- **Sweep diff integration (new):** Runnable Example 105 now accepts a
+  `--sweep-diff` flag that pipes recorded sweep manifests through the
+  consumer, logs the mismatched counts, and emits the diff summaries as
+  `consumerDiffs` metadata so FW-4 reviewers can inspect recorded
+  manifests without re-running the sweeps.
+- **Sweep focus filters (new):** Example 105 also accepts `--sweep-focus`
+  values (`issues` or `diff`) so CLI sweeps and diff replays can emit
+  issue-only logs/metadata; the dashboard module exports
+  `filterSessionTypeGlueingDashboardEntries`, and the runnable records
+  `filteredSweep`/`filteredConsumerDiffs` arrays so FW-4 tooling can focus on
+  mismatched configurations before launching new experiments.
+
+- **Integration test (new):** `test/session-type-glueing-sweep.spec.ts` now
+  executes runnable Example 105 via the context helpers, combining inline
+  sweeps, manifest inputs, and `--sweep-record` outputs so the CLI workflow is
+  covered end-to-end alongside the parser/dashboard helpers.
 
 ### Stateful runner laws and diagnostics (Phase IV)
 
@@ -177,6 +450,7 @@ This document catalogs the algebraic laws that our functional programming constr
     - `runner.equivalence.sweedler` → `RunnerOracles.equivalenceSweedler`
     - Use `enumerateRunnerOracles(runner, law, { sampleLimit? })` to collect all reports.
     - Use `evaluateRunnerEquivalences(runner, law, { sampleLimit?, objectFilter? })` to retrieve the focused equivalence suite (state handler, coalgebra, costate, Cost^T, Sweedler, triangle).
+    - `summarizeRunnerOracles(results)` collapses the collected reports into totals, pass/fail counts, unique registry paths, and failure detail summaries; λ₍coop₎ alignment reports surface this aggregation alongside the raw oracle list.
  - **Optional holds flags:** Pass to `buildRunnerLawReport`:
    - `includeCategoryInHolds: true` to require identity + associativity success.
    - `includeHandlersInHolds: true` to fail on handler mismatches.
@@ -215,6 +489,8 @@ if (!report.holds) {
     - `buildExample12UpdateLensRunner(spec, { interaction? })` reconstructs Example 12’s update-lens runner from `(hp, upd)` data, and `buildExample12UpdateLensSuite()` packages the runner with its costate/coalgebra/`Cost^T` witnesses for comparisons.
     - `attachResidualHandlers(runner, law, specs, { sampleLimit?, objectFilter? })` samples θ-domain pairs to track partial residual handler coverage, emitting diagnostics and a per-object report; use `analyzeResidualHandlerCoverage` for analysis without mutating the runner.
     - `makeResidualInteractionLaw(law, { residualMonadName?, notes?, residualFunctor?, thetaWitness?, etaWitness?, muWitness? })` now accepts custom residual functors and precomputed θ/η/μ witnesses, threading them into `ResidualInteractionLawSummary` entries alongside optional notes.
+    - `makeResidualInteractionLawFromRunner(law, residualRunner, { residualMonadName?, notes?, includeWitnesses?, includeRunnerDiagnostics?, rhoDescription?, rhoDiagnostics? })` derives a residual law directly from a residual runner, synthesising ρ-evaluators from the stored θ-components and optionally recording the runner’s diagnostics/metadata as roadmap notes.
+    - `constructResidualInteractionLaw({ law, residualFunctor, rhoComponents, ... })` assembles residual laws from explicit ρ-component families while `liftInteractionLawToResidual(law, options?)` adapts ordinary interaction laws to the identity residual, threading component diagnostics into the summary metadata.
     - `getResidualThetaWitness(runner, sampleLimit?)`, `getResidualEtaWitness(runner, law, sampleLimit?)`, and `getResidualMuWitness(runner, law, sampleLimit?)` synthesise diagram witnesses when they are absent on the runner, while `compareResidualDiagramWitness(label, actual, expected?)` reports aggregate checked counts and mismatches for residual diagnostics.
   - **Oracles / Registry Paths:**
     - `runner.equivalence.coalgebra` → samples θ vs γ and γ→θ reconstruction.
@@ -224,6 +500,7 @@ if (!report.holds) {
     - `runner.equivalence.triangle` → checks γ → κ → γ round-trip.
     - `runner.residual.morphism` → enforces residual Run(T) morphism squares, reporting sampled residual-square mismatches.
     - `runner.residual.interaction` → replays θ/η/μ residual witnesses against `ResidualInteractionLawSummary`s, combining law-provided diagnostics with freshly sampled runner witnesses.
+    - `summarizeResidualRunnerOracles(results)` folds the `runner.residual.*` outcomes into consolidated pass/fail counts plus residual-square and θ/η/μ mismatch totals for dashboards, and the λ₍coop₎ alignment tooling now emits the aggregated summary as metadata/notes for both standalone runner reports and supervised stacks.
   - **Check:** `test/stateful-runner.spec.ts` exercises the equivalence oracles on Example 6 and the Example 12 update-lens suite against the Example 8 interaction, while `test/residual-runner.spec.ts` covers residual morphism and residual interaction oracles (success and mismatch scenarios).
 
 ### Residual runners (Phase IV b)
@@ -238,11 +515,33 @@ if (!report.holds) {
 
 ### Supervised kernel/user stack (Phase IV c / Final Integration)
 
-- **Status:** Kernel/user constructors implemented; λ₍coop₎ alignment and inverse translation remain TODO (see `SUPERVISED_STACK_PLAN.md` for the longer roadmap).
-- **Constructors:** `makeKernelMonad` classifies each kernel operation (state/exception/signal/external) into a structured `KernelOperationResult` with default fallbacks, handler integration, and per-operation diagnostics. `makeUserMonad` maps declared user operations into the kernel, reporting unsupported/unused signatures via `UserKernelComparison` and exposing an `invoke` helper that delegates to the kernel semantics.
-- **Stack builder:** `makeSupervisedStack(interaction, kernelSpec, userSpec, options?)` enriches the ψ-derived runner with kernel state carriers, promotes operation-level residual handlers, attaches residual diagnostics (`attachResidualHandlers`/`analyzeResidualHandlerCoverage`), and packages comparison metadata (`userToKernel`, `unsupportedByKernel`, `unacknowledgedByUser`). `stackToRunner` reuses these builders; `runnerToStack` reconstructs the embedded λ₍coop₎ artifacts (runner literal, alignment status, issues) alongside residual witness summaries.
-- **λ₍coop₎ comparison:** `buildLambdaCoopComparisonArtifacts` translates kernel operations into λ₍coop₎ runner literals and aligns the user boundary, emitting comparison diagnostics (`aligned` flag plus `issues`) and embedding the summary in stack metadata so `runnerToStack` and `lambda-coop.runner-alignment.ts` can reconstruct the λ₍coop₎ view. `analyzeSupervisedStackLambdaCoopAlignment` runs the standard runner oracles alongside the embedded λ₍coop₎ metadata, reporting equivalence results, resource summaries, and alignment notes ready for interpreter integration.
-- **Tests:** `test/stateful-runner.spec.ts` now executes the supervised scenario (state read, exception fallback, residual coverage, λ₍coop₎ comparison wiring) with diagnostics asserted; this replaces the earlier planning placeholder.
+- **Status:** Kernel/user constructors implemented; λ₍coop₎ alignment and inverse translation remain TODO with the expanded pass plan in `SUPERVISED_STACK_PLAN.md` (Pass 1 — clause enrichment metadata wiring → Pass 2 — alignment diagnostics & interpreter traces → Pass 3 — inverse translation round-trips).
+- **Planning updates:** `DAY_CHU_IMPLEMENTATION_PLAN.md` now records Phase XVII trace-driven handler execution guidance and the Phase XVIII kernel stabilisation patch, codifying canonical processor interfaces, operational stepping laws, and finaliser discipline ahead of the supervised-stack hardening work.
+- **Constructors:** `makeKernelMonad` classifies each kernel operation (state/exception/signal/external) into a structured `KernelOperationResult` with default fallbacks, handler integration, and per-operation diagnostics. `makeUserMonad` maps declared user operations into the kernel, reporting unsupported/unused signatures via `UserKernelComparison`, exposing an `invoke` helper that delegates to the kernel semantics, and synthesising boundary descriptions when specifications omit them so diagnostics list acknowledged kernel operations, missing delegates, and kernel-only clauses.
+- **Stack builder:** `makeSupervisedStack(interaction, kernelSpec, userSpec, options?)` enriches the ψ-derived runner with kernel state carriers, promotes operation-level residual handlers, attaches residual diagnostics (`attachResidualHandlers`/`analyzeResidualHandlerCoverage`), and packages comparison metadata (`userToKernel`, `unsupportedByKernel`, `unacknowledgedByUser`). `stackToRunner` reuses these builders; `runnerToStack` now replays the embedded λ₍coop₎ clause bundles to reconstruct kernel operation specs (parameter/result types, residual/default flags, state carriers) alongside comparison notes and residual witness summaries, falling back to literal clauses when bundle metadata is absent and synthesising the literal/kernel-clause metadata from clause bundles when the runner drops those entries so parameter names/types, result kinds, and state carriers stay observable. Clause bundles also carry canonical λ₍coop₎ argument/result witnesses, and the metadata/Example 6 regressions assert those samples so interpreter passes can quote concrete values beyond unit defaults; the inverse translation retains those witnesses when replaying clause bundles and infers canonical samples from parameter/result types whenever it must rely solely on the literal so reconstructed summaries keep presenting concrete witnesses. `replaySupervisedStackRoundTrip` executes the build → literal → reconstruction loop so regressions can diff the recovered specs and flag mismatches automatically.
+- **λ₍coop₎ comparison:** `buildLambdaCoopComparisonArtifacts` translates kernel operations into λ₍coop₎ runner literals and aligns the user boundary, emitting comparison diagnostics (`aligned` flag plus `issues`) together with boundary witness metadata (supported/unsupported/unacknowledged operation lists), expected interpreter operation plans, residual coverage digests, and per-clause provenance strings plus parameter/result type metadata so `runnerToStack` and `lambda-coop.runner-alignment.ts` can reconstruct the λ₍coop₎ view. `analyzeSupervisedStackLambdaCoopAlignment` runs the standard runner oracles alongside the embedded λ₍coop₎ metadata, appends interpreter status/trace excerpts, surfaces boundary summary notes, and reports equivalence results, resource summaries, and alignment notes ready for interpreter integration.
+- **Glueing adapter:** `analyzeSupervisedStackLambdaCoopAlignmentWithGlueingBridge` wires glueing bridge metadata/notes into the λ₍coop₎ report, and `makeGlueingSupervisedStack` packages the bridge, Example 6 kernel/user specs, and the alignment in a single helper that records canonical `Glueing.supervisedStack.*` metadata/notes for downstream consumers.
+- **λ₍coop₎ stack runner helper:** `evaluateSupervisedStackWithLambdaCoop` runs any supervised stack with λ₍coop₎ metadata through the interpreter using the embedded runner literal, emitting canonical `λ₍coop₎.stackRun.*` metadata (operation plan, status, trace length, finaliser summary, and error/exception/signal tags). Example 6 tests assert both the successful `getenv` run and the missing-operation error path.
+- **Tests:** `test/stateful-runner.spec.ts` now executes the supervised scenario (state read, exception fallback, residual coverage, λ₍coop₎ comparison wiring) plus alignment-negative fixtures (unsupported user operations, exception clauses, signal clauses) with the emitted diagnostics asserted; additional regressions cover the literal-fallback path for missing clause bundles, the synthesised literal/kernel-clause metadata when runner entries are stripped, and the auto-generated user boundary summary when the specification omits one.
+- **Interpreter coverage:** `test/lambda-coop.spec.ts` exercises the λ₍coop₎ evaluator’s runner dispatch so return clauses deliver continuation values, kernel raises surface user exceptions, kernel signals terminate the run with the expected status, and `run … finally …` bundles trigger their return/exception/signal branches exactly once with regressions covering value preservation, exception recovery, and signal propagation when handlers are missing. Linear finaliser tokens guard the branches, so nested `run … finally …` invocations report a `finaliser-reentrancy` error and repeated branches surface a `finaliser-already-run` diagnostic; the tests assert each finaliser operation appears exactly once in the trace.
+- **Finalisation outcomes:** Each `run … finally …` evaluation now records the pre-finaliser outcome (return/exception/signal/error), the handler branch (or propagation reason), and any guard failures so the interpreter trace factors through a single finaliser map. The λ₍coop₎ regression suite asserts these snapshots for successful runs, recovered exceptions, propagated signals, and re-entrant guards.
+- **Finaliser summaries:** Deterministic run identifiers are attached to every `run … finally …` invocation and `summarizeFinaliserOutcomes` aggregates handled/propagated/error counts per run. Interpreter metadata now exports the summary (including exactly-once flags), and the regression suite checks the per-run aggregation for handled and propagated branches.
+- **Interpreter summaries:** `summarizeUserEvaluation` packages λ₍coop₎ interpreter status, trace length, operations, and finaliser notes into a canonical record so alignment metadata and diagnostics surface the same structured view that the Example 6 regressions assert.
+- **Kernel clause summaries:** `summarizeKernelEvaluation` replays each λ₍coop₎ clause body (using bundle witnesses or canonical values) so metadata exposes per-clause status, operations, and trace lengths alongside the interpreter notes that the Example 6 suite now checks.
+- **Kernel summary aggregation:** `summarizeKernelEvaluations` folds the per-clause summaries into a single digest counting value/exception/signal outcomes, unioning operation names, and recording trace totals so Example 6 asserts the aggregated line next to the individual clause entries emitted by the alignment report.
+- **Residual handler aggregation:** `summarizeResidualHandlers` collapses per-object coverage into handler/unhandled totals and range metadata so the alignment report emits `λ₍coop₎.alignment.residualHandlers` entries and notes; Example 6 now asserts the aggregated handler summary alongside the oracle/interpreter metadata.
+- **Residual law aggregation:** `makeResidualInteractionLaw`, `makeResidualInteractionLawFromRunner`, and `makeResidualRunnerFromInteractionLaw` now feed residual runners into `RunnerOracles.residualMorphism`/`residualInteraction`, with `summarizeResidualInteractionLaw` exporting `λ₍coop₎.alignment.residualLaw*` metadata/notes (including the `counterexampleSummary` totals and new `compatibilitySummary` aggregates); Example 6 checks the residual law entry, witness totals, residual-oracle counts, and both the structured counterexample arrays and aggregated summaries within the supervised-stack report.
+- **Residual law checks:** `checkResidualInteractionLaw` collapses witness mismatches, counterexamples, and compatibility totals into a single verdict, detecting zero-residual carriers and exposing `λ₍coop₎.alignment.residualLaw.holds`/`zeroResidual` metadata now asserted by residual-runner and Example 6 regressions.
+- **Residual monad–comonad packaging:** `makeResidualMonadComonadInteractionLaw` merges interaction metadata with residual summaries, optionally runs the zero-collapse check, and now forwards the θ/η/μ comparison witnesses plus their aggregate summaries so Example 6 regressions and λ₍coop₎ alignment metadata retain the ψ/ρ compatibility diagnostics. `makeResidualMonadComonadInteraction` wraps those packages with identity-residual detection and feeds the fallback diagnostics directly into `checkMonadComonadInteractionLaw`.
+- **Residual law compatibility:** `summarizeResidualInteractionLaw` compares runner-derived residual witnesses against the law-provided diagrams, emitting `λ₍coop₎.alignment.residualLaw.compatibility.*` metadata/notes that Example 6 and residual-runner tests now assert.
+- **Residual ρ metadata:** Residual interaction laws accept an explicit ρ evaluator (`ResidualInteractionLawRho`), and `summarizeResidualInteractionLaw` records whether ρ is supplied together with its description/diagnostics. λ₍coop₎ alignment metadata now reports `λ₍coop₎.alignment.residualLaw.hasRho` plus optional `rho.description`/`rho.diagnostic[*]` entries, and the Example 6/residual-runner suites assert the new metadata and notes.
+- **Kleisli-pure relaxation flag:** When RX × GY compatibility relies on the Kleisli-pure relaxation, `summarizeResidualInteractionLaw` and the λ₍coop₎ alignment reporters emit `pureMapRelaxation` metadata/notes so Example 6 and residual-runner regressions confirm the relaxed check alongside the standard residual diagnostics.
+- **Example 13 helper:** `makeExample13ResidualInteractionLaw()` instantiates the paper’s exception-monad residual law (`R X = X + E`, `D Y = Δ × Y`), enumerating return/exception carriers and exercising both branches in the residual-runner regression harness.
+- **Residual compatibility diagrams:** `residualLawCompatibilityWithF`/`residualLawCompatibilityWithG` replay the Section 5.1 composites, pipe their witnesses through `summarizeResidualInteractionLaw`, and extend the Example 13 regressions with F- and G-diagram assertions.
+- **Residual law mismatches:** `summarizeResidualInteractionLaw` also records per-diagram/object mismatch entries, exporting `λ₍coop₎.alignment.residualLaw.mismatches` metadata and notes so Example 6 and residual-runner regressions confirm both the absence and presence of failing witnesses.
+- **Interpreter summary aggregation:** `summarizeUserEvaluations` now condenses per-run interpreter diagnostics so the alignment metadata exports consolidated status, trace lengths, and finaliser totals with Example 6 checking the new summary line alongside the detailed interpreter notes.
+- **Payload metadata:** λ₍coop₎ alignment reports surface interpreter and kernel exception/signal payload histograms (per-run hints plus aggregated counts) so diagnostics capture the payload-aware rewrite semantics; Example 6 asserts the emitted metadata entries.
+- **Alignment summary:** `LambdaCoopAlignmentSummary` collapses oracle pass/fail counts, interpreter/kernel collection summaries, boundary witnesses, and residual coverage into consolidated `λ₍coop₎.alignment.*` metadata and notes. Example 6 checks the aggregated summary against the raw diagnostics, and the roadmap/tracker entries now mark Phase III as complete.
 
 ## Coalgebra and Hopf law diagnostics
 

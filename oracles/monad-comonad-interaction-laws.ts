@@ -14,6 +14,36 @@ import {
   type FreeMonadComonadUniversalComparison,
   type MonadComonadInteractionLaw,
 } from "../monad-comonad-interaction-law";
+import {
+  checkInteractionLawDayMonoidal,
+  checkInteractionLawDaySymmetry,
+  type InteractionLawDayMonoidalSummary,
+  type InteractionLawDaySymmetrySummary,
+  summarizeInteractionLawDayUnitOpmonoidal,
+  type InteractionLawDayUnitOpmonoidalSummary,
+  summarizeInteractionLawDayUnitOpmonoidalTriangles,
+  type InteractionLawDayUnitOpmonoidalTrianglesSummary,
+  checkInteractionLawDayUnitOpmonoidalTriangles,
+  type InteractionLawDayUnitOpmonoidalTrianglesCheckReport,
+  summarizeInteractionLawDayInterchange,
+  type InteractionLawDayInterchangeReport,
+  instantiateInteractionLawDayInterchangeFromReport,
+  type InteractionLawDayInterchangeInstantiationReport,
+  verifyInteractionLawDayInterchangeInstantiationFromReport,
+  type InteractionLawDayInterchangeInstantiationCheckReport,
+  checkInteractionLawDayInterchange,
+  type InteractionLawDayInterchangeCheckReport,
+} from "../functor-interaction-law";
+import {
+  checkResidualInteractionLaw,
+  summarizeResidualInteractionLaw,
+  type ResidualInteractionLawAggregate,
+  type ResidualInteractionLawCheckOptions,
+  type ResidualInteractionLawCheckResult,
+  type ResidualInteractionLawSummary,
+  type ResidualMonadComonadInteraction,
+  type ResidualMonadComonadInteractionLaw,
+} from "../residual-interaction-law";
 import type { IndexedElement } from "../chu-space";
 
 const DEFAULT_SAMPLE_LIMIT = 64;
@@ -63,9 +93,21 @@ export interface MonadComonadValueProjector<Value> {
   readonly equals?: (left: Value, right: Value) => boolean;
 }
 
-export interface MonadComonadInteractionLawCheckOptions<Value>
-  extends Partial<MonadComonadValueProjector<Value>> {
+export interface MonadComonadInteractionLawCheckOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> extends Partial<MonadComonadValueProjector<Value>> {
   readonly sampleLimit?: number;
+  readonly residual?:
+    | ResidualInteractionLawSummary<Obj, Arr, Left, Right, Value>
+    | ResidualMonadComonadInteractionLaw<Obj, Arr, Left, Right, Value>
+    | ResidualMonadComonadInteraction<Obj, Arr, Left, Right, Value>;
+  readonly residualCheck?:
+    | boolean
+    | ResidualInteractionLawCheckOptions<Obj, Arr, Left, Right, Value>;
 }
 
 interface DiagramCounterexample<Obj, Left, Right, Value> {
@@ -85,12 +127,77 @@ export interface MonadComonadDiagramReport<Obj, Left, Right, Value> {
   readonly details: ReadonlyArray<string>;
 }
 
-export interface MonadComonadCoherenceReport<Obj, Left, Right, Value> {
+export interface MonadComonadCoherenceReport<Obj, Arr, Left, Right, Value> {
   readonly unit: MonadComonadDiagramReport<Obj, unknown, unknown, Value>;
   readonly counit: MonadComonadDiagramReport<Obj, unknown, unknown, Value>;
   readonly multiplication: MonadComonadDiagramReport<Obj, unknown, unknown, Value>;
   readonly mixedAssociativity: MonadComonadDiagramReport<Obj, unknown, unknown, Value>;
   readonly holds: boolean;
+  readonly residual?: MonadComonadResidualReport<Obj, Arr, Left, Right, Value>;
+  readonly dayMonoidal: InteractionLawDayMonoidalSummary<Obj, Arr>;
+  readonly daySymmetry: InteractionLawDaySymmetrySummary<Obj, Arr>;
+  readonly dayInterchange: InteractionLawDayInterchangeReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayInterchangeInstantiation: InteractionLawDayInterchangeInstantiationReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayInterchangeInstantiationCheck: InteractionLawDayInterchangeInstantiationCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayInterchangeCheck: InteractionLawDayInterchangeCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayUnitOpmonoidal: InteractionLawDayUnitOpmonoidalSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayUnitOpmonoidalTriangles: InteractionLawDayUnitOpmonoidalTrianglesSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayUnitOpmonoidalTrianglesCheck: InteractionLawDayUnitOpmonoidalTrianglesCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+}
+
+export interface MonadComonadResidualReport<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly residual: ResidualInteractionLawSummary<Obj, Arr, Left, Right, Value>;
+  readonly aggregate: ResidualInteractionLawAggregate;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly check?: ResidualInteractionLawCheckResult<Obj, Arr, Left, Right, Value>;
 }
 
 export interface FreeInteractionLawReport<
@@ -121,16 +228,101 @@ const normalizeLimit = (limit: number | undefined): number =>
 
 export const checkMonadComonadInteractionLaw = <Obj, Arr, Left, Right, Value>(
   input: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-  options: MonadComonadInteractionLawCheckOptions<Value> = {},
-): MonadComonadCoherenceReport<Obj, Left, Right, Value> => {
+  options: MonadComonadInteractionLawCheckOptions<Obj, Arr, Left, Right, Value> = {},
+): MonadComonadCoherenceReport<Obj, Arr, Left, Right, Value> => {
+  const {
+    sampleLimit: requestedSampleLimit,
+    residual: residualOption,
+    residualCheck: residualCheckOption,
+    project,
+    build,
+    equals: equalsOverride,
+  } = options;
+
   const projector = {
     ...defaultProjector<Value>(),
-    ...("project" in options || "build" in options || "equals" in options
-      ? options
-      : {}),
+    ...(project !== undefined ? { project } : {}),
+    ...(build !== undefined ? { build } : {}),
+    ...(equalsOverride !== undefined ? { equals: equalsOverride } : {}),
   } as MonadComonadValueProjector<Value>;
   const equals = projector.equals ?? structuralEquals;
-  const sampleLimit = normalizeLimit(options.sampleLimit);
+  const sampleLimit = normalizeLimit(requestedSampleLimit);
+
+  const residualDiagnostics: string[] = [];
+  let residualSummary:
+    | ResidualInteractionLawSummary<Obj, Arr, Left, Right, Value>
+    | undefined;
+  let residualAggregate: ResidualInteractionLawAggregate | undefined;
+  let residualCheck:
+    | ResidualInteractionLawCheckResult<Obj, Arr, Left, Right, Value>
+    | undefined;
+
+  if (residualOption) {
+    if ("residual" in residualOption) {
+      residualSummary = residualOption.residual;
+      residualAggregate = residualOption.aggregate;
+      residualDiagnostics.push(
+        "checkMonadComonadInteractionLaw: reusing packaged residual monad/comonad interaction aggregate.",
+      );
+      if (residualOption.residualCheck) {
+        residualCheck = residualOption.residualCheck;
+        residualDiagnostics.push(
+          "checkMonadComonadInteractionLaw: reusing packaged residual monad/comonad interaction check result.",
+        );
+      }
+      if ("reducesToOrdinary" in residualOption) {
+        residualDiagnostics.push(
+          residualOption.reducesToOrdinary
+            ? "checkMonadComonadInteractionLaw: packaged residual interaction reduces to the ordinary monad/comonad law (R = Id)."
+            : "checkMonadComonadInteractionLaw: packaged residual interaction preserves a non-identity residual functor.",
+        );
+      }
+    } else {
+      residualSummary = residualOption;
+      residualDiagnostics.push(
+        "checkMonadComonadInteractionLaw: residual summary supplied via options.",
+      );
+    }
+  }
+
+  if (residualSummary && !residualAggregate) {
+    residualAggregate = summarizeResidualInteractionLaw(residualSummary, {
+      interaction: input,
+    });
+    residualDiagnostics.push(
+      `checkMonadComonadInteractionLaw: summarised residual interaction law ${residualAggregate.residualFunctorName}.`,
+    );
+  }
+
+  if (residualSummary) {
+    const shouldCheck =
+      residualCheckOption === true ||
+      (typeof residualCheckOption === "object" && residualCheckOption !== null);
+    if (shouldCheck) {
+      const normalizedOptions: ResidualInteractionLawCheckOptions<
+        Obj,
+        Arr,
+        Left,
+        Right,
+        Value
+      > =
+        residualCheckOption === true
+          ? { interaction: input }
+          : {
+              ...residualCheckOption,
+              interaction:
+                residualCheckOption.interaction ?? input,
+            };
+      residualCheck = checkResidualInteractionLaw(residualSummary, normalizedOptions);
+      residualDiagnostics.push(
+        `checkMonadComonadInteractionLaw: executed residual law check holds=${residualCheck.holds}.`,
+      );
+    } else if (residualCheck) {
+      residualDiagnostics.push(
+        `checkMonadComonadInteractionLaw: retained packaged residual law check holds=${residualCheck.holds}.`,
+      );
+    }
+  }
 
   const objects = new Set<Obj>();
   for (const object of input.monad.functor.witness.objectGenerators) {
@@ -338,17 +530,81 @@ export const checkMonadComonadInteractionLaw = <Obj, Arr, Left, Right, Value>(
     ],
   };
 
-  return {
+  const dayMonoidal =
+    input.dayMonoidal ?? checkInteractionLawDayMonoidal(input.law);
+  const daySymmetry =
+    input.daySymmetry ?? checkInteractionLawDaySymmetry(input.dual.law, input.law);
+  const dayUnitOpmonoidal =
+    input.dayUnitOpmonoidal ??
+    summarizeInteractionLawDayUnitOpmonoidal(input.law, {
+      unit: input.dayUnit,
+      tensor: input.dayUnitTensor,
+    });
+  const dayUnitOpmonoidalTriangles =
+    input.dayUnitOpmonoidalTriangles ??
+    summarizeInteractionLawDayUnitOpmonoidalTriangles(input.law, {
+      unit: input.dayUnit,
+      tensor: input.dayUnitTensor,
+      opmonoidal: dayUnitOpmonoidal,
+    });
+  const dayUnitOpmonoidalTrianglesCheck =
+    input.dayUnitOpmonoidalTrianglesCheck ??
+    checkInteractionLawDayUnitOpmonoidalTriangles(input.law, {
+      summary: dayUnitOpmonoidalTriangles,
+    });
+  const dayInterchange =
+    input.dayInterchange ?? summarizeInteractionLawDayInterchange(input.law);
+  const dayInterchangeInstantiation =
+    input.dayInterchangeInstantiation ??
+    instantiateInteractionLawDayInterchangeFromReport(input.law, dayInterchange);
+  const dayInterchangeInstantiationCheck =
+    input.dayInterchangeInstantiationCheck ??
+    verifyInteractionLawDayInterchangeInstantiationFromReport(
+      input.law,
+      dayInterchangeInstantiation,
+    );
+  const dayInterchangeCheck =
+    input.dayInterchangeCheck ??
+    checkInteractionLawDayInterchange(input.law, {
+      report: dayInterchange,
+      instantiation: dayInterchangeInstantiation,
+      verification: dayInterchangeInstantiationCheck,
+    });
+
+  const baseReport: MonadComonadCoherenceReport<Obj, Arr, Left, Right, Value> = {
     unit: unitReport,
     counit: counitReport,
     multiplication: multiplicationReport,
     mixedAssociativity: mixedReport,
+    dayMonoidal,
+    daySymmetry,
+    dayInterchange,
+    dayInterchangeInstantiation,
+    dayInterchangeInstantiationCheck,
+    dayInterchangeCheck,
+    dayUnitOpmonoidal,
+    dayUnitOpmonoidalTriangles,
+    dayUnitOpmonoidalTrianglesCheck,
     holds:
       unitReport.holds &&
       counitReport.holds &&
       multiplicationReport.holds &&
-      mixedReport.holds,
+      mixedReport.holds &&
+      dayInterchangeCheck.holds,
   };
+  if (residualSummary && residualAggregate) {
+    return {
+      ...baseReport,
+      residual: {
+        residual: residualSummary,
+        aggregate: residualAggregate,
+        diagnostics: residualDiagnostics,
+        ...(residualCheck ? { check: residualCheck } : {}),
+      },
+    };
+  }
+
+  return baseReport;
 };
 
 export const checkFreeInteractionLaw = <

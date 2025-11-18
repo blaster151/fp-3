@@ -73,6 +73,84 @@ export interface ResidualHandlerSummary<Obj, Left, Right> {
   readonly diagnostics: ReadonlyArray<string>;
 }
 
+export interface ResidualHandlerAggregateSummary {
+  readonly reports: number;
+  readonly handledSamples: number;
+  readonly unhandledSamples: number;
+  readonly fullyHandledObjects: number;
+  readonly objectsWithUnhandled: number;
+  readonly configuredSampleLimit: number;
+  readonly sampleLimitRange?: { readonly min: number; readonly max: number };
+  readonly notes: ReadonlyArray<string>;
+}
+
+export const summarizeResidualHandlers = <Obj, Left, Right>(
+  summary: ResidualHandlerSummary<Obj, Left, Right>,
+): ResidualHandlerAggregateSummary => {
+  const reports = summary.reports.length;
+  let handledSamples = 0;
+  let unhandledSamples = 0;
+  let fullyHandledObjects = 0;
+  let objectsWithUnhandled = 0;
+  let minSampleLimit: number | undefined;
+  let maxSampleLimit: number | undefined;
+
+  for (const report of summary.reports) {
+    handledSamples += report.handledSamples;
+    unhandledSamples += report.unhandledSamples;
+    if (report.unhandledSamples === 0) {
+      fullyHandledObjects += 1;
+    } else {
+      objectsWithUnhandled += 1;
+    }
+    if (minSampleLimit === undefined || report.sampleLimit < minSampleLimit) {
+      minSampleLimit = report.sampleLimit;
+    }
+    if (maxSampleLimit === undefined || report.sampleLimit > maxSampleLimit) {
+      maxSampleLimit = report.sampleLimit;
+    }
+  }
+
+  const notes: string[] = [];
+  if (reports === 0) {
+    notes.push("residual handler summary: no objects were sampled");
+  } else {
+    notes.push(
+      `residual handler summary: reports=${reports} handled=${handledSamples} unhandled=${unhandledSamples}` +
+        ` fullyHandled=${fullyHandledObjects} withUnhandled=${objectsWithUnhandled} sampleLimit=${summary.sampleLimit}`,
+    );
+    if (objectsWithUnhandled === 0) {
+      notes.push("residual handler coverage handled all sampled inputs");
+    } else {
+      notes.push(
+        `residual handler uncovered samples on ${objectsWithUnhandled}/${reports} object(s)`,
+      );
+    }
+    if (
+      minSampleLimit !== undefined &&
+      maxSampleLimit !== undefined &&
+      (minSampleLimit !== maxSampleLimit || reports === 1)
+    ) {
+      notes.push(
+        `residual handler sample coverage range: min=${minSampleLimit} max=${maxSampleLimit}`,
+      );
+    }
+  }
+
+  return {
+    reports,
+    handledSamples,
+    unhandledSamples,
+    fullyHandledObjects,
+    objectsWithUnhandled,
+    configuredSampleLimit: summary.sampleLimit,
+    ...(minSampleLimit !== undefined && maxSampleLimit !== undefined
+      ? { sampleLimitRange: { min: minSampleLimit, max: maxSampleLimit } }
+      : {}),
+    notes,
+  };
+};
+
 export interface MonadMapToRunnerOptions<Obj> {
   readonly sampleLimit?: number;
   readonly objectFilter?: (object: Obj) => boolean;
