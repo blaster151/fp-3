@@ -12,9 +12,21 @@ import {
 } from "./stateful-runner";
 import {
   buildLambdaCoopComparisonArtifacts,
+  canonicalValueForType,
   type LambdaCoopComparisonArtifacts,
+  type LambdaCoopKernelOperationDescriptor,
+  type LambdaCoopClauseBundle,
+  type LambdaCoopClauseResidualFallback,
+  type LambdaCoopResidualCoverageDigest,
+  type LambdaCoopBoundaryWitnesses,
 } from "./supervised-stack-lambda-coop";
-import type { LambdaCoopRunnerLiteral } from "./lambda-coop";
+import type {
+  LambdaCoopKernelComputation,
+  LambdaCoopRunnerClause,
+  LambdaCoopRunnerLiteral,
+  LambdaCoopValue,
+  LambdaCoopValueType,
+} from "./lambda-coop";
 
 export type KernelEffectKind = "state" | "exception" | "signal" | "external";
 
@@ -23,6 +35,9 @@ export interface KernelOperationSpec<Obj, Left, Right> {
   readonly kind: KernelEffectKind;
   readonly description?: string;
   readonly residualHandler?: ResidualHandlerSpec<Obj, Left, Right>;
+  readonly parameterName?: string;
+  readonly parameterType?: LambdaCoopValueType;
+  readonly resultValueType?: LambdaCoopValueType;
   readonly handle?: (
     state: unknown,
     input: unknown,
@@ -98,6 +113,35 @@ export interface UserMonadSpec<Obj> {
   readonly allowedKernelOperations?: ReadonlyArray<string>;
   readonly metadata?: ReadonlyArray<string>;
 }
+
+const synthesiseUserBoundaryDescription = (
+  explicitDescription: string | undefined,
+  allowedOperations: ReadonlyArray<string>,
+  kernelOperations: ReadonlyArray<string>,
+  missingInKernel: ReadonlyArray<string>,
+  kernelOnlyOperations: ReadonlyArray<string>,
+): string => {
+  if (explicitDescription) return explicitDescription;
+  if (allowedOperations.length === 0) {
+    if (kernelOperations.length === 0) {
+      return "No kernel operations declared; boundary defaults to empty interface.";
+    }
+    return `Defaults to kernel boundary (${kernelOperations.length} operation(s): ${kernelOperations.join(", ")}).`;
+  }
+
+  const segments = [
+    `User boundary expects ${allowedOperations.length} operation(s): ${allowedOperations.join(", ")}`,
+  ];
+  if (missingInKernel.length > 0) {
+    segments.push(`missing in kernel: ${missingInKernel.join(", ")}`);
+  } else {
+    segments.push("all expected operations present in kernel");
+  }
+  if (kernelOnlyOperations.length > 0) {
+    segments.push(`kernel-only operations: ${kernelOnlyOperations.join(", ")}`);
+  }
+  return segments.join(" — ");
+};
 
 export interface UserKernelComparison<Obj, Left, Right> {
   readonly userToKernel: ReadonlyMap<string, KernelOperationImplementation<Obj, Left, Right>>;
@@ -377,11 +421,6 @@ export const makeUserMonad = <Obj, Left, Right>(
     `User monad "${spec.name}": building kernel comparison.`,
   ];
   if (spec.description) diagnostics.push(`Description: ${spec.description}`);
-  if (spec.boundaryDescription) {
-    diagnostics.push(`Boundary: ${spec.boundaryDescription}`);
-  } else {
-    diagnostics.push("Boundary: TODO — provide explicit comparison morphism description.");
-  }
   if (spec.allowedKernelOperations && spec.allowedKernelOperations.length > 0) {
     diagnostics.push(
       `User boundary expectations (${spec.allowedKernelOperations.length} operation(s)): ${spec.allowedKernelOperations.join(
@@ -399,6 +438,10 @@ export const makeUserMonad = <Obj, Left, Right>(
   const kernelOperationLookup =
     kernel?.operationLookup ??
     new Map<string, KernelOperationImplementation<Obj, Left, Right>>();
+  const kernelOperationOrder =
+    kernel?.monad?.operations?.map((op) => op.name) ??
+    [...kernelOperationLookup.keys()];
+  const allowedOperationList = [...allowedKernelOperations];
 
   const userToKernel = new Map<string, KernelOperationImplementation<Obj, Left, Right>>();
   const missingInKernel: string[] = [];
@@ -410,8 +453,23 @@ export const makeUserMonad = <Obj, Left, Right>(
       missingInKernel.push(opName);
     }
   }
-  const unusedKernelOperations = [...kernelOperationLookup.keys()].filter(
-    (name) => !allowedKernelOperations.has(name),
+  const unusedKernelOperations: string[] = [];
+  const recordKernelOnly = (name: string) => {
+    if (!allowedKernelOperations.has(name) && !unusedKernelOperations.includes(name)) {
+      unusedKernelOperations.push(name);
+    }
+  };
+  for (const name of kernelOperationOrder) recordKernelOnly(name);
+  for (const name of kernelOperationLookup.keys()) recordKernelOnly(name);
+
+  diagnostics.push(
+    `Boundary: ${synthesiseUserBoundaryDescription(
+      spec.boundaryDescription,
+      allowedOperationList,
+      kernelOperationOrder,
+      missingInKernel,
+      unusedKernelOperations,
+    )}`,
   );
 
   const comparisonDiagnostics: string[] = [];
@@ -585,6 +643,10 @@ export const makeSupervisedStack = <
 
   const kernelOperationNames = new Set<string>(kernel.operationLookup.keys());
   const boundarySet = user.monad?.allowedKernelOperations ?? new Set<string>();
+  const expectedOperations =
+    userSpec.allowedKernelOperations && userSpec.allowedKernelOperations.length > 0
+      ? [...userSpec.allowedKernelOperations]
+      : (kernel.monad?.operations ?? []).map((op) => op.name);
   const unsupportedByKernel =
     user.comparison?.missingInKernel ??
     [...boundarySet].filter((name) => !kernelOperationNames.has(name));
@@ -611,37 +673,94 @@ export const makeSupervisedStack = <
     `supervised-stack.${key}=${JSON.stringify(value)}`;
   metadataEntries.add(metadataJson("kernel", { name: kernelSpec.name }));
   metadataEntries.add(metadataJson("user", { name: userSpec.name }));
+  const kernelOperationDescriptors = (kernel.monad?.operations ?? []).map(
+    (op): LambdaCoopKernelOperationDescriptor => ({
+      name: op.name,
+      kind: op.kind,
+      ...(op.description ? { description: op.description } : {}),
+      ...(op.diagnostics.length > 0 ? { diagnostics: op.diagnostics } : {}),
+      ...(op.parameterName ? { parameterName: op.parameterName } : {}),
+      ...(op.parameterType ? { parameterType: op.parameterType } : {}),
+      ...(op.resultValueType ? { resultValueType: op.resultValueType } : {}),
+      ...(op.defaultResidual ? { defaultResidual: op.defaultResidual } : {}),
+      ...(op.residualHandler?.description
+        ? { handlerDescription: op.residualHandler.description }
+        : {}),
+      ...(op.residualHandler ? { hasHandler: true } : {}),
+    }),
+  );
   metadataEntries.add(
     metadataJson(
       "kernel.operations",
-      (kernel.monad?.operations ?? []).map((op) => ({ name: op.name, kind: op.kind })),
+      kernelOperationDescriptors.map((op) => ({ name: op.name, kind: op.kind })),
     ),
   );
   metadataEntries.add(metadataJson("user.allowed", [...boundarySet]));
   metadataEntries.add(metadataJson("comparison.unsupportedByKernel", unsupportedByKernel));
   metadataEntries.add(metadataJson("comparison.unacknowledgedByUser", unacknowledgedByUser));
+
+  const residualSummaryDigest: (LambdaCoopResidualCoverageDigest & {
+    readonly diagnostics: ReadonlyArray<string>;
+  }) | undefined = runner.residualHandlers
+    ? (() => {
+        let handled = 0;
+        let unhandled = 0;
+        for (const report of runner.residualHandlers?.reports ?? []) {
+          handled += report.handledSamples;
+          unhandled += report.unhandledSamples;
+        }
+        return {
+          handled,
+          unhandled,
+          sampleLimit: runner.residualHandlers.sampleLimit,
+          diagnostics: [...runner.residualHandlers.diagnostics],
+        };
+      })()
+    : undefined;
+
   if (runner.residualHandlers) {
     metadataEntries.add(
       metadataJson("residual.summary", {
         reports: runner.residualHandlers.reports.length,
         sampleLimit: runner.residualHandlers.sampleLimit,
+        handled: residualSummaryDigest?.handled ?? 0,
+        unhandled: residualSummaryDigest?.unhandled ?? 0,
       }),
     );
   }
+
   const lambdaCoopArtifacts = buildLambdaCoopComparisonArtifacts(
-    (kernel.monad?.operations ?? []).map((op) => ({
-      name: op.name,
-      kind: op.kind,
-    })),
+    kernelOperationDescriptors,
     boundarySet,
-    { stateCarrierName: kernelSpec.name },
+    {
+      stateCarrierName: kernelSpec.name,
+      ...(expectedOperations.length > 0 ? { expectedOperations } : {}),
+      ...(residualSummaryDigest ? { residualSummary: residualSummaryDigest } : {}),
+    },
   );
   metadataEntries.add(
     metadataJson("lambdaCoop.kernelClauses", lambdaCoopArtifacts.kernelClauses),
   );
   metadataEntries.add(metadataJson("lambdaCoop.userAllowed", lambdaCoopArtifacts.userAllowed));
   metadataEntries.add(metadataJson("lambdaCoop.runnerLiteral", lambdaCoopArtifacts.runnerLiteral));
-  const lambdaCoopMetadata = [...lambdaCoopArtifacts.diagnostics];
+  metadataEntries.add(metadataJson("lambdaCoop.stateCarrier", lambdaCoopArtifacts.stateCarrier));
+  metadataEntries.add(metadataJson("lambdaCoop.clauseBundles", lambdaCoopArtifacts.clauseBundles));
+  metadataEntries.add(metadataJson("lambdaCoop.aligned", lambdaCoopArtifacts.aligned));
+  metadataEntries.add(metadataJson("lambdaCoop.issues", lambdaCoopArtifacts.issues));
+  metadataEntries.add(
+    metadataJson("lambdaCoop.boundary", lambdaCoopArtifacts.boundaryWitnesses),
+  );
+  if (lambdaCoopArtifacts.residualCoverage) {
+    metadataEntries.add(
+      metadataJson("lambdaCoop.residualCoverage", lambdaCoopArtifacts.residualCoverage),
+    );
+  }
+  const lambdaCoopMetadata = [
+    ...lambdaCoopArtifacts.metadata,
+    ...lambdaCoopArtifacts.diagnostics,
+    ...lambdaCoopArtifacts.clauseBundles.flatMap((bundle) => bundle.diagnostics),
+    `λ₍coop₎ boundary supported=${lambdaCoopArtifacts.boundaryWitnesses.supported.join(",") || "∅"} unsupported=${lambdaCoopArtifacts.boundaryWitnesses.unsupported.join(",") || "∅"} unacknowledged=${lambdaCoopArtifacts.boundaryWitnesses.unacknowledged.join(",") || "∅"}`,
+  ];
 
   const annotatedRunner: StatefulRunner<Obj, Left, Right, Value> = {
     ...runner,
@@ -719,12 +838,69 @@ export const stackToRunner = <
 ): StatefulRunner<Obj, Left, Right, Value> =>
   makeSupervisedStack(interaction, kernelSpec, userSpec, options).runner;
 
+export interface RunnerToStackKernelOperationSummary {
+  readonly name: string;
+  readonly kind: KernelEffectKind;
+  readonly description?: string;
+  readonly parameterName?: string;
+  readonly parameterType?: LambdaCoopValueType;
+  readonly argumentWitness?: LambdaCoopValue;
+  readonly resultKind?: "return" | "raise" | "signal";
+  readonly resultValueType?: LambdaCoopValueType;
+  readonly resultWitness?: LambdaCoopValue;
+  readonly residual?: LambdaCoopClauseResidualFallback;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
+const summariseKernelOperationSpec = <Obj, Left, Right>(
+  operation: KernelOperationSpec<Obj, Left, Right>,
+): RunnerToStackKernelOperationSummary => {
+  const residualNotes: string[] = [];
+  if (operation.defaultResidual) {
+    residualNotes.push("runnerToStack: metadata marks operation as default residual fallback.");
+  }
+  if (operation.residualHandler) {
+    residualNotes.push(
+      operation.residualHandler.description
+        ? `runnerToStack: metadata references residual handler "${operation.residualHandler.description}".`
+        : "runnerToStack: metadata references a residual handler without description.",
+    );
+  }
+  const residual =
+    residualNotes.length > 0
+      ? ({
+          defaulted: Boolean(operation.defaultResidual),
+          ...(operation.residualHandler?.description
+            ? { handlerDescription: operation.residualHandler.description }
+            : {}),
+          notes: residualNotes,
+        } satisfies LambdaCoopClauseResidualFallback)
+      : undefined;
+
+  const resultKind: "return" | "raise" | "signal" =
+    operation.kind === "exception"
+      ? "raise"
+      : operation.kind === "signal"
+      ? "signal"
+      : "return";
+
+  return {
+    name: operation.name,
+    kind: operation.kind,
+    ...(operation.description ? { description: operation.description } : {}),
+    ...(operation.parameterName ? { parameterName: operation.parameterName } : {}),
+    ...(operation.parameterType ? { parameterType: operation.parameterType } : {}),
+    ...(resultKind ? { resultKind } : {}),
+    ...(operation.resultValueType ? { resultValueType: operation.resultValueType } : {}),
+    ...(residual ? { residual } : {}),
+    diagnostics: [],
+  } satisfies RunnerToStackKernelOperationSummary;
+};
+
 export interface RunnerToStackKernelSummary {
   readonly name?: string;
-  readonly operations: ReadonlyArray<{
-    readonly name: string;
-    readonly kind: KernelEffectKind;
-  }>;
+  readonly stateCarrier?: string;
+  readonly operations: ReadonlyArray<RunnerToStackKernelOperationSummary>;
 }
 
 export interface RunnerToStackUserSummary {
@@ -735,6 +911,7 @@ export interface RunnerToStackUserSummary {
 export interface RunnerToStackComparisonSummary {
   readonly unsupportedByKernel: ReadonlyArray<string>;
   readonly unacknowledgedByUser: ReadonlyArray<string>;
+  readonly notes: ReadonlyArray<string>;
 }
 
 export interface RunnerToStackLambdaCoopSummary {
@@ -743,6 +920,10 @@ export interface RunnerToStackLambdaCoopSummary {
   readonly runnerLiteral?: LambdaCoopRunnerLiteral;
   readonly aligned?: boolean;
   readonly issues?: ReadonlyArray<string>;
+  readonly clauseBundles?: ReadonlyArray<LambdaCoopClauseBundle>;
+  readonly stateCarrier?: string;
+  readonly residualCoverage?: LambdaCoopResidualCoverageDigest;
+  readonly boundaryWitnesses?: LambdaCoopBoundaryWitnesses;
 }
 
 export interface RunnerToStackResult<Obj, Left, Right> {
@@ -753,6 +934,295 @@ export interface RunnerToStackResult<Obj, Left, Right> {
   readonly lambdaCoop?: RunnerToStackLambdaCoopSummary;
   readonly diagnostics: ReadonlyArray<string>;
 }
+
+const LAMBDA_COOP_UNIT_TYPE: LambdaCoopValueType = { kind: "unit" };
+
+const inferLambdaCoopValueType = (
+  value: LambdaCoopValue,
+): LambdaCoopValueType | undefined => {
+  switch (value.kind) {
+    case "unitValue":
+      return LAMBDA_COOP_UNIT_TYPE;
+    case "constant":
+      return { kind: "base", name: value.label };
+    default:
+      return undefined;
+  }
+};
+
+const inferClauseResultKind = (
+  body: LambdaCoopKernelComputation,
+): "return" | "raise" | "signal" | undefined => {
+  switch (body.kind) {
+    case "kernelReturn":
+      return "return";
+    case "kernelRaise":
+      return "raise";
+    case "kernelSignal":
+      return "signal";
+    default:
+      return undefined;
+  }
+};
+
+const inferClauseResultValueType = (
+  body: LambdaCoopKernelComputation,
+): LambdaCoopValueType | undefined => {
+  if (body.kind !== "kernelReturn") return undefined;
+  return inferLambdaCoopValueType(body.value);
+};
+
+const inferClauseEffectKind = (
+  fallback: KernelEffectKind | undefined,
+  body: LambdaCoopKernelComputation,
+): KernelEffectKind => {
+  if (fallback) return fallback;
+  switch (body.kind) {
+    case "kernelRaise":
+      return "exception";
+    case "kernelSignal":
+      return "signal";
+    default:
+      return "state";
+  }
+};
+
+const augmentKernelOperationsFromLiteral = (
+  operations: ReadonlyArray<RunnerToStackKernelOperationSummary>,
+  literal: LambdaCoopRunnerLiteral | undefined,
+  clauseKinds: ReadonlyMap<string, KernelEffectKind>,
+  clauseBundles: ReadonlyArray<LambdaCoopClauseBundle>,
+): {
+  readonly operations: ReadonlyArray<RunnerToStackKernelOperationSummary>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly notes: ReadonlyArray<string>;
+} => {
+  if (!literal && clauseBundles.length === 0) {
+    return { operations, diagnostics: [], notes: [] };
+  }
+
+  const bundleMap = new Map(clauseBundles.map((bundle) => [bundle.operation, bundle]));
+  const clauseMap = new Map<string, LambdaCoopRunnerClause>();
+  for (const bundle of clauseBundles) {
+    clauseMap.set(bundle.operation, bundle.clause);
+  }
+  if (literal) {
+    for (const clause of literal.clauses) {
+      if (!clauseMap.has(clause.operation)) clauseMap.set(clause.operation, clause);
+    }
+  }
+  let updateCount = 0;
+  const augmented = operations.map((operation) => {
+    const bundle = bundleMap.get(operation.name);
+    const clause = clauseMap.get(operation.name) ?? bundle?.clause;
+    if (!clause && !bundle) return operation;
+    const additions: string[] = [];
+    let description = operation.description;
+    if (!description && bundle?.description) {
+      description = bundle.description;
+      additions.push(
+        `runnerToStack: description recovered from λ₍coop₎ clause bundle for ${operation.name}.`,
+      );
+    }
+    let argumentWitness = operation.argumentWitness;
+    if (!argumentWitness && bundle?.argumentWitness) {
+      argumentWitness = bundle.argumentWitness;
+      additions.push(
+        `runnerToStack: argument witness recovered from λ₍coop₎ clause bundle for ${operation.name}.`,
+      );
+    }
+    let residual = operation.residual;
+    if (bundle?.residual) {
+      const combinedResidualNotes = Array.from(
+        new Set([...bundle.residual.notes, ...(residual?.notes ?? [])]),
+      );
+      residual = {
+        ...bundle.residual,
+        notes: combinedResidualNotes,
+      } satisfies LambdaCoopClauseResidualFallback;
+      if (!operation.residual) {
+        additions.push(
+          `runnerToStack: residual metadata recovered from λ₍coop₎ clause bundle for ${operation.name}.`,
+        );
+      }
+    }
+    let resultWitness = operation.resultWitness;
+    if (!resultWitness && bundle?.resultWitness) {
+      resultWitness = bundle.resultWitness;
+      additions.push(
+        `runnerToStack: result witness recovered from λ₍coop₎ clause bundle for ${operation.name}.`,
+      );
+    }
+
+    if (!clause) {
+      const clauseDiagnostics = bundle?.diagnostics ?? [];
+      const changed = additions.length > 0;
+      if (!changed && clauseDiagnostics.length === 0) return operation;
+      if (changed) updateCount += 1;
+      const mergedDiagnostics = Array.from(
+        new Set([...operation.diagnostics, ...clauseDiagnostics, ...additions]),
+      );
+      return {
+        ...operation,
+        ...(description ? { description } : {}),
+        ...(argumentWitness ? { argumentWitness } : {}),
+        ...(residual ? { residual } : {}),
+        ...(resultWitness ? { resultWitness } : {}),
+        diagnostics: mergedDiagnostics,
+      } satisfies RunnerToStackKernelOperationSummary;
+    }
+
+    let parameterName = operation.parameterName;
+    if (!parameterName && clause.parameter) {
+      parameterName = clause.parameter;
+      additions.push(
+        `runnerToStack: parameter name recovered from λ₍coop₎ literal for ${operation.name}.`,
+      );
+    }
+    let parameterType = operation.parameterType;
+    if (!parameterType) {
+      parameterType = clause.parameterType;
+      additions.push(
+        `runnerToStack: parameter type recovered from λ₍coop₎ literal for ${operation.name}.`,
+      );
+    }
+    let resultKind = operation.resultKind;
+    if (!resultKind) {
+      const inferredKind = inferClauseResultKind(clause.body);
+      if (inferredKind) {
+        resultKind = inferredKind;
+        additions.push(
+          `runnerToStack: result kind inferred from λ₍coop₎ literal for ${operation.name}.`,
+        );
+      }
+    }
+    let resultValueType = operation.resultValueType;
+    if (!resultValueType) {
+      const inferredType = inferClauseResultValueType(clause.body);
+      if (inferredType) {
+        resultValueType = inferredType;
+        additions.push(
+          `runnerToStack: result type inferred from λ₍coop₎ literal for ${operation.name}.`,
+        );
+      }
+    }
+    if (!argumentWitness) {
+      const inferredArgument = canonicalValueForType(clause.parameterType);
+      if (inferredArgument) {
+        argumentWitness = inferredArgument;
+        additions.push(
+          `runnerToStack: argument witness inferred from λ₍coop₎ literal for ${operation.name}.`,
+        );
+      }
+    }
+    if (!resultWitness && clause.body.kind === "kernelReturn") {
+      resultWitness = clause.body.value;
+      additions.push(
+        `runnerToStack: result witness recovered from λ₍coop₎ literal for ${operation.name}.`,
+      );
+    }
+    const clauseDiagnostics = bundle?.diagnostics ?? [];
+    const changed = additions.length > 0;
+    if (!changed && clauseDiagnostics.length === 0) return operation;
+    if (changed) updateCount += 1;
+    const mergedDiagnostics = Array.from(
+      new Set([...operation.diagnostics, ...clauseDiagnostics, ...additions]),
+    );
+    return {
+      ...operation,
+      ...(description ? { description } : {}),
+      ...(parameterName ? { parameterName } : {}),
+      ...(parameterType ? { parameterType } : {}),
+      ...(argumentWitness ? { argumentWitness } : {}),
+      ...(resultKind ? { resultKind } : {}),
+      ...(resultValueType ? { resultValueType } : {}),
+      ...(resultWitness ? { resultWitness } : {}),
+      ...(residual ? { residual } : {}),
+      diagnostics: mergedDiagnostics,
+    } satisfies RunnerToStackKernelOperationSummary;
+  });
+
+  const existingNames = new Set(operations.map((operation) => operation.name));
+  const added: RunnerToStackKernelOperationSummary[] = [];
+  const registerClause = (
+    name: string,
+    clause: LambdaCoopRunnerClause | undefined,
+    bundle: LambdaCoopClauseBundle | undefined,
+    source: "bundle" | "literal",
+  ): void => {
+    if (!clause || existingNames.has(name)) return;
+    const effectKind =
+      clauseKinds.get(name) ?? bundle?.kind ?? inferClauseEffectKind(undefined, clause.body);
+    const inferredKind = inferClauseResultKind(clause.body);
+    const inferredType = inferClauseResultValueType(clause.body);
+    const residual = bundle?.residual;
+    const description = bundle?.description;
+    const argumentWitness = bundle?.argumentWitness ?? canonicalValueForType(clause.parameterType);
+    const resultWitness =
+      bundle?.resultWitness ?? (clause.body.kind === "kernelReturn" ? clause.body.value : undefined);
+    const diagnostics = [
+      `runnerToStack: synthesized kernel operation ${name} from λ₍coop₎ ${source} (metadata missing).`,
+      ...(bundle?.diagnostics ?? []),
+    ];
+    added.push({
+      name,
+      kind: effectKind,
+      parameterName: clause.parameter,
+      parameterType: clause.parameterType,
+      ...(description ? { description } : {}),
+      ...(argumentWitness ? { argumentWitness } : {}),
+      ...(inferredKind ? { resultKind: inferredKind } : {}),
+      ...(inferredType ? { resultValueType: inferredType } : {}),
+      ...(resultWitness ? { resultWitness } : {}),
+      ...(residual ? { residual } : {}),
+      diagnostics,
+    });
+  };
+
+  for (const [name, bundle] of bundleMap) {
+    registerClause(name, bundle.clause, bundle, "bundle");
+  }
+
+  if (literal) {
+    for (const clause of literal.clauses) {
+      if (bundleMap.has(clause.operation)) continue;
+      registerClause(clause.operation, clause, undefined, "literal");
+    }
+  }
+
+  const summaryDiagnostics: string[] = [];
+  const summaryNotes: string[] = [];
+  if (updateCount > 0 || added.length > 0) {
+    summaryDiagnostics.push(
+      `runnerToStack: λ₍coop₎ literal augmentation applied (updates=${updateCount} additions=${added.length}).`,
+    );
+  }
+  if (updateCount > 0) {
+    summaryNotes.push(
+      `λ₍coop₎ reconstruction: supplemented ${updateCount} operations with literal parameter/result details.`,
+    );
+  }
+  if (added.length > 0) {
+    summaryNotes.push(
+      `λ₍coop₎ reconstruction: introduced ${added.length} operations missing from metadata using literal clauses.`,
+    );
+  }
+
+  return {
+    operations: [...augmented, ...added],
+    diagnostics: summaryDiagnostics,
+    notes: summaryNotes,
+  };
+};
+
+const valueTypesEqual = (
+  left: LambdaCoopValueType | undefined,
+  right: LambdaCoopValueType | undefined,
+): boolean => {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return JSON.stringify(left) === JSON.stringify(right);
+};
 
 export const runnerToStack = <
   Obj,
@@ -795,15 +1265,25 @@ export const runnerToStack = <
     parseMetadata<ReadonlyArray<string>>("comparison.unsupportedByKernel") ?? [];
   const comparisonUnacknowledged =
     parseMetadata<ReadonlyArray<string>>("comparison.unacknowledgedByUser") ?? [];
-  const lambdaCoopKernelClauses =
+  let lambdaCoopKernelClauses =
     parseMetadata<ReadonlyArray<{ name: string; kind: KernelEffectKind }>>(
       "lambdaCoop.kernelClauses",
     ) ?? [];
   const lambdaCoopUserAllowed =
     parseMetadata<ReadonlyArray<string>>("lambdaCoop.userAllowed") ?? [];
-  const lambdaCoopRunnerLiteral = parseMetadata<LambdaCoopRunnerLiteral>(
+  let lambdaCoopRunnerLiteral = parseMetadata<LambdaCoopRunnerLiteral>(
     "lambdaCoop.runnerLiteral",
   );
+  const lambdaCoopClauseBundles =
+    parseMetadata<ReadonlyArray<LambdaCoopClauseBundle>>("lambdaCoop.clauseBundles") ?? [];
+  let lambdaCoopStateCarrier = parseMetadata<string>("lambdaCoop.stateCarrier");
+  const lambdaCoopResidualCoverage = parseMetadata<LambdaCoopResidualCoverageDigest>(
+    "lambdaCoop.residualCoverage",
+  );
+  const lambdaCoopBoundary = parseMetadata<LambdaCoopBoundaryWitnesses>("lambdaCoop.boundary");
+  const lambdaCoopAligned = parseMetadata<boolean>("lambdaCoop.aligned");
+  const lambdaCoopIssues =
+    parseMetadata<ReadonlyArray<string>>("lambdaCoop.issues") ?? [];
 
   const residualSummaryMeta = parseMetadata<{ reports?: number; sampleLimit?: number }>(
     "residual.summary",
@@ -833,14 +1313,159 @@ export const runnerToStack = <
       `runnerToStack: λ₍coop₎ runner clauses=${lambdaCoopRunnerLiteral.clauses.length} state=${lambdaCoopRunnerLiteral.stateCarrier}`,
     );
   }
+  if (lambdaCoopClauseBundles.length > 0) {
+    diagnostics.push(
+      `runnerToStack: λ₍coop₎ clause bundles=${lambdaCoopClauseBundles.length}.`,
+    );
+  }
+  if (lambdaCoopStateCarrier) {
+    diagnostics.push(`runnerToStack: λ₍coop₎ state carrier=${lambdaCoopStateCarrier}.`);
+  }
+  if (lambdaCoopResidualCoverage) {
+    diagnostics.push(
+      `runnerToStack: residual coverage handled=${lambdaCoopResidualCoverage.handled} unhandled=${lambdaCoopResidualCoverage.unhandled} sampleLimit=${lambdaCoopResidualCoverage.sampleLimit}.`,
+    );
+  }
+  if (lambdaCoopBoundary) {
+    diagnostics.push(
+      `runnerToStack: λ₍coop₎ boundary supported=${lambdaCoopBoundary.supported.length} unsupported=${lambdaCoopBoundary.unsupported.length} unacknowledged=${lambdaCoopBoundary.unacknowledged.length}.`,
+    );
+  }
+
+  const comparisonNotes: string[] = [];
+  if (lambdaCoopClauseBundles.length > 0) {
+    comparisonNotes.push(
+      `λ₍coop₎ reconstruction: recovered ${lambdaCoopClauseBundles.length} clause bundles from embedded literal.`,
+    );
+  }
+  if (lambdaCoopStateCarrier) {
+    comparisonNotes.push(`λ₍coop₎ reconstruction: state carrier ${lambdaCoopStateCarrier}.`);
+  }
+
+  const clauseKindMap = new Map(lambdaCoopKernelClauses.map((clause) => [clause.name, clause.kind]));
+
+  if (!lambdaCoopStateCarrier && lambdaCoopClauseBundles.length > 0) {
+    const inferredCarrier = lambdaCoopClauseBundles[0]?.stateCarrier;
+    if (inferredCarrier) {
+      lambdaCoopStateCarrier = inferredCarrier;
+      diagnostics.push(
+        `runnerToStack: λ₍coop₎ state carrier derived from clause bundles (${inferredCarrier}).`,
+      );
+      comparisonNotes.push(`λ₍coop₎ reconstruction: inferred state carrier ${inferredCarrier} from clause bundles.`);
+    }
+  }
+
+  if (lambdaCoopKernelClauses.length === 0 && lambdaCoopClauseBundles.length > 0) {
+    lambdaCoopKernelClauses = lambdaCoopClauseBundles.map((bundle) => ({
+      name: bundle.operation,
+      kind: bundle.kind,
+    }));
+    diagnostics.push(
+      `runnerToStack: λ₍coop₎ kernel clauses synthesised from clause bundles (count=${lambdaCoopKernelClauses.length}).`,
+    );
+  }
+
+  if (!lambdaCoopRunnerLiteral && lambdaCoopClauseBundles.length > 0) {
+    const literalStateCarrier =
+      lambdaCoopStateCarrier ?? lambdaCoopClauseBundles[0]?.stateCarrier ?? "state";
+    if (!lambdaCoopStateCarrier) {
+      lambdaCoopStateCarrier = literalStateCarrier;
+      diagnostics.push(
+        `runnerToStack: λ₍coop₎ state carrier defaulted to ${literalStateCarrier} for synthesised literal.`,
+      );
+    }
+    lambdaCoopRunnerLiteral = {
+      kind: "runnerLiteral",
+      stateCarrier: literalStateCarrier,
+      clauses: lambdaCoopClauseBundles.map((bundle) => bundle.clause),
+    };
+    diagnostics.push(
+      `runnerToStack: λ₍coop₎ runner literal synthesised from clause bundles (clauses=${lambdaCoopRunnerLiteral.clauses.length}).`,
+    );
+  }
+
+  let reconstructedKernelOperations: RunnerToStackKernelOperationSummary[] =
+    lambdaCoopClauseBundles.length > 0
+      ? lambdaCoopClauseBundles.map((bundle) => ({
+          name: bundle.operation,
+          kind: bundle.kind,
+          ...(bundle.description ? { description: bundle.description } : {}),
+          parameterName: bundle.clause.parameter,
+          parameterType: bundle.argumentType,
+          ...(bundle.argumentWitness ? { argumentWitness: bundle.argumentWitness } : {}),
+          resultKind: bundle.resultKind,
+          ...(bundle.resultValueType ? { resultValueType: bundle.resultValueType } : {}),
+          ...(bundle.resultWitness ? { resultWitness: bundle.resultWitness } : {}),
+          ...(bundle.residual ? { residual: bundle.residual } : {}),
+          diagnostics: bundle.diagnostics,
+        }))
+      : kernelOperations.map((operation) => summariseKernelOperationSpec(operation));
+
+  if (lambdaCoopClauseBundles.length > 0 && kernelOperations.length > 0) {
+    const bundleNames = new Set(lambdaCoopClauseBundles.map((bundle) => bundle.operation));
+    for (const operation of kernelOperations) {
+      if (bundleNames.has(operation.name)) continue;
+      const metadataSummary = summariseKernelOperationSpec(operation);
+      const metadataDiagnostics = [
+        ...metadataSummary.diagnostics,
+        `runnerToStack: kernel metadata preserved operation ${operation.name} missing λ₍coop₎ clause bundle.`,
+      ];
+      diagnostics.push(
+        `runnerToStack: kernel metadata operation ${operation.name} lacks λ₍coop₎ clause bundle; preserving metadata summary.`,
+      );
+      reconstructedKernelOperations = [
+        ...reconstructedKernelOperations,
+        { ...metadataSummary, diagnostics: metadataDiagnostics },
+      ];
+    }
+  }
+
+  if (lambdaCoopClauseBundles.length === 0 && lambdaCoopRunnerLiteral?.clauses.length) {
+    diagnostics.push(
+      "runnerToStack: λ₍coop₎ clause bundles unavailable; augmenting reconstruction with runner literal clauses.",
+    );
+  }
+
+  const augmentation = augmentKernelOperationsFromLiteral(
+    reconstructedKernelOperations,
+    lambdaCoopRunnerLiteral,
+    clauseKindMap,
+    lambdaCoopClauseBundles,
+  );
+  reconstructedKernelOperations = [...augmentation.operations];
+  if (augmentation.diagnostics.length > 0) diagnostics.push(...augmentation.diagnostics);
+  if (augmentation.notes.length > 0) comparisonNotes.push(...augmentation.notes);
+
+  if (lambdaCoopClauseBundles.length > 0 && kernelOperations.length > 0) {
+    const literalNames = new Set(lambdaCoopClauseBundles.map((bundle) => bundle.operation));
+    const metadataNames = new Set(kernelOperations.map((operation) => operation.name));
+    for (const name of literalNames) {
+      if (!metadataNames.has(name)) {
+        comparisonNotes.push(`λ₍coop₎ reconstruction: operation ${name} missing from kernel metadata.`);
+      }
+    }
+    for (const name of metadataNames) {
+      if (!literalNames.has(name)) {
+        comparisonNotes.push(`λ₍coop₎ reconstruction: metadata references operation ${name} absent from literal.`);
+      }
+    }
+  }
+
+  if (reconstructedKernelOperations.length > 0) {
+    diagnostics.push(
+      `runnerToStack: reconstructed λ₍coop₎ kernel operations=${reconstructedKernelOperations.length}.`,
+    );
+  }
 
   const kernelSummary: RunnerToStackKernelSummary = {
     ...(kernelMeta?.name ? { name: kernelMeta.name } : {}),
-    operations: kernelOperations,
+    ...(lambdaCoopStateCarrier ? { stateCarrier: lambdaCoopStateCarrier } : {}),
+    operations: reconstructedKernelOperations,
   };
   const userSummary: RunnerToStackUserSummary = {
     ...(userMeta?.name ? { name: userMeta.name } : {}),
-    allowedOperations: userAllowed,
+    allowedOperations:
+      lambdaCoopUserAllowed.length > 0 ? lambdaCoopUserAllowed : userAllowed,
   };
 
   return {
@@ -849,6 +1474,7 @@ export const runnerToStack = <
     comparison: {
       unsupportedByKernel: comparisonUnsupported,
       unacknowledgedByUser: comparisonUnacknowledged,
+      notes: comparisonNotes,
     },
     ...(runner.residualHandlers
       ? { residualSummary: runner.residualHandlers as ResidualHandlerSummary<Obj, Left, Right> }
@@ -861,9 +1487,157 @@ export const runnerToStack = <
             kernelClauses: lambdaCoopKernelClauses,
             userAllowed: lambdaCoopUserAllowed,
             ...(lambdaCoopRunnerLiteral ? { runnerLiteral: lambdaCoopRunnerLiteral } : {}),
+            ...(lambdaCoopClauseBundles.length > 0
+              ? { clauseBundles: lambdaCoopClauseBundles }
+              : {}),
+            ...(lambdaCoopStateCarrier ? { stateCarrier: lambdaCoopStateCarrier } : {}),
+            ...(lambdaCoopResidualCoverage
+              ? { residualCoverage: lambdaCoopResidualCoverage }
+              : {}),
+            ...(lambdaCoopBoundary ? { boundaryWitnesses: lambdaCoopBoundary } : {}),
+            ...(lambdaCoopAligned !== undefined ? { aligned: lambdaCoopAligned } : {}),
+            ...(lambdaCoopIssues.length > 0 ? { issues: lambdaCoopIssues } : {}),
           },
         }
       : {}),
     diagnostics,
   };
+};
+
+export interface SupervisedStackRoundTripResult<Obj, Arr, Left, Right, Value> {
+  readonly stack: SupervisedStack<Obj, Arr, Left, Right, Value>;
+  readonly reconstructed: RunnerToStackResult<Obj, Left, Right>;
+  readonly mismatches: ReadonlyArray<string>;
+}
+
+export const replaySupervisedStackRoundTrip = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value
+>(
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  kernelSpec: KernelMonadSpec<Obj, Left, Right>,
+  userSpec: UserMonadSpec<Obj>,
+  options: SupervisedStackOptions<Obj> = {},
+): SupervisedStackRoundTripResult<Obj, Arr, Left, Right, Value> => {
+  const stack = makeSupervisedStack(interaction, kernelSpec, userSpec, options);
+  const reconstructed = runnerToStack(stack.runner, interaction);
+  const mismatches: string[] = [];
+
+  if (!reconstructed.kernel?.name) {
+    mismatches.push("Kernel name missing from reconstruction.");
+  } else if (reconstructed.kernel.name !== kernelSpec.name) {
+    mismatches.push(
+      `Kernel name mismatch: expected ${kernelSpec.name} but reconstructed ${reconstructed.kernel.name}.`,
+    );
+  }
+
+  if (!reconstructed.user?.name) {
+    mismatches.push("User name missing from reconstruction.");
+  } else if (reconstructed.user.name !== userSpec.name) {
+    mismatches.push(
+      `User name mismatch: expected ${userSpec.name} but reconstructed ${reconstructed.user.name}.`,
+    );
+  }
+
+  const expectedOperations = kernelSpec.operations ?? [];
+  const reconstructedOperations = reconstructed.kernel?.operations ?? [];
+  const reconstructedByName = new Map(
+    reconstructedOperations.map((operation) => [operation.name, operation]),
+  );
+
+  for (const spec of expectedOperations) {
+    const reconstructedOp = reconstructedByName.get(spec.name);
+    if (!reconstructedOp) {
+      mismatches.push(`Missing reconstructed operation for ${spec.name}.`);
+      continue;
+    }
+    if (reconstructedOp.kind !== spec.kind) {
+      mismatches.push(
+        `Kind mismatch for ${spec.name}: expected ${spec.kind} but found ${reconstructedOp.kind}.`,
+      );
+    }
+    if (spec.parameterName && reconstructedOp.parameterName && spec.parameterName !== reconstructedOp.parameterName) {
+      mismatches.push(
+        `Parameter name mismatch for ${spec.name}: expected ${spec.parameterName} but found ${reconstructedOp.parameterName}.`,
+      );
+    }
+    if (spec.parameterType && !valueTypesEqual(spec.parameterType, reconstructedOp.parameterType)) {
+      mismatches.push(
+        `Parameter type mismatch for ${spec.name}.`,
+      );
+    }
+    if (spec.resultValueType && !valueTypesEqual(spec.resultValueType, reconstructedOp.resultValueType)) {
+      mismatches.push(
+        `Result type mismatch for ${spec.name}.`,
+      );
+    }
+    const expectedResultKind = (() => {
+      switch (spec.kind) {
+        case "exception":
+          return "raise" as const;
+        case "signal":
+          return "signal" as const;
+        default:
+          return "return" as const;
+      }
+    })();
+    if (reconstructedOp.resultKind && reconstructedOp.resultKind !== expectedResultKind) {
+      mismatches.push(
+        `Result kind mismatch for ${spec.name}: expected ${expectedResultKind} but found ${reconstructedOp.resultKind}.`,
+      );
+    }
+    const expectsDefaultResidual = spec.defaultResidual === true;
+    const reconstructedDefaultResidual = reconstructedOp.residual?.defaulted === true;
+    if (expectsDefaultResidual !== reconstructedDefaultResidual) {
+      mismatches.push(
+        `Default residual mismatch for ${spec.name}: expected ${expectsDefaultResidual ? "enabled" : "disabled"}.`,
+      );
+    }
+    const expectsHandler = spec.residualHandler !== undefined;
+    const reconstructedHandler = reconstructedOp.residual?.handlerDescription !== undefined;
+    if (expectsHandler !== reconstructedHandler) {
+      mismatches.push(
+        `Residual handler mismatch for ${spec.name}: expected handler=${expectsHandler}.`,
+      );
+    }
+  }
+
+  for (const operation of reconstructedOperations) {
+    if (!expectedOperations.some((spec) => spec.name === operation.name)) {
+      mismatches.push(`Unexpected reconstructed operation ${operation.name}.`);
+    }
+  }
+
+  if (expectedOperations.length !== reconstructedOperations.length) {
+    mismatches.push(
+      `Kernel operation count mismatch: expected ${expectedOperations.length} but reconstructed ${reconstructedOperations.length}.`,
+    );
+  }
+
+  const expectedAllowed = new Set(userSpec.allowedKernelOperations ?? []);
+  const reconstructedAllowed = new Set(reconstructed.user?.allowedOperations ?? []);
+  for (const name of expectedAllowed) {
+    if (!reconstructedAllowed.has(name)) {
+      mismatches.push(`Missing reconstructed user allowance for operation ${name}.`);
+    }
+  }
+  for (const name of reconstructedAllowed) {
+    if (!expectedAllowed.has(name)) {
+      mismatches.push(`Unexpected reconstructed user allowance for operation ${name}.`);
+    }
+  }
+
+  if (
+    reconstructed.kernel?.stateCarrier !== undefined &&
+    reconstructed.kernel.stateCarrier !== kernelSpec.name
+  ) {
+    mismatches.push(
+      `State carrier mismatch: expected ${kernelSpec.name} but reconstructed ${reconstructed.kernel.stateCarrier}.`,
+    );
+  }
+
+  return { stack, reconstructed, mismatches };
 };

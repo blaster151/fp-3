@@ -28,18 +28,34 @@ import {
   deriveInteractionLawLeftCommaPresentation,
   deriveInteractionLawLeftCommaEquivalence,
   deriveInteractionLawSweedlerSummary,
+  constructGlueingInteractionLaw,
+  checkGlueingInteractionLaw,
+  makeGlueingInteractionLawExampleSuite,
   makeFixedLeftInteractionMorphism,
   makeFixedRightInteractionMorphism,
   buildFixedLeftInitialObject,
   buildFixedRightInitialObject,
   buildFixedRightFinalObject,
+  lookupInteractionLawMonoidMultiplicationComponent,
+  makeInteractionLawMonoidMultiplicationTranslator,
+  realizeInteractionLawMonoidMultiplication,
+  summarizeInteractionLawMonoidPreparation,
+  summarizeInteractionLawDayUnit,
+  summarizeInteractionLawDayUnitOpmonoidal,
+  summarizeInteractionLawDayUnitOpmonoidalTriangles,
+  checkInteractionLawDayUnitOpmonoidalTriangles,
   type FunctorInteractionLawContribution,
-    type FunctorInteractionLaw,
-    type FunctorInteractionLawElement,
+  type FunctorInteractionLaw,
+  type FunctorInteractionLawElement,
 } from "../functor-interaction-law";
 import { identityNaturalTransformation } from "../natural-transformation";
 import { contravariantToOppositeFunctor, constructContravariantFunctorWithWitness } from "../contravariant";
 import { constructFunctorWithWitness, identityFunctorWithWitness } from "../functor";
+import {
+  makeExample6MonadComonadInteractionLaw,
+  monadComonadInteractionLawToMonoid,
+  monoidObjectToInteractionLaw,
+} from "../monad-comonad-interaction-law";
 import {
   analyzeFunctorOperationDegeneracy,
   checkCommutativeBinaryDegeneracy,
@@ -60,7 +76,8 @@ import {
   covariantRepresentableFunctorWithWitness,
 } from "../functor-representable";
 import { makeTwoObjectPromonoidalKernel } from "../promonoidal-structure";
-import { TwoObjectCategory, type TwoArrow, type TwoObject } from "../two-object-cat";
+import { TwoObjectCategory, nonIdentity, type TwoArrow, type TwoObject } from "../two-object-cat";
+import { bridgeGlueingSummaryToResidualRunner } from "../glueing-runner-bridge";
 
 const buildBoolean = () => SetCat.obj([false, true], { tag: "Ω" });
 
@@ -77,7 +94,7 @@ const makeBooleanInteractionInput = () => {
   const dualizing = buildBoolean();
   const identity = identityFunctorWithWitness(TwoObjectCategory);
   const operations = makeFunctorInteractionLawOperations<TwoObject, TwoArrow>({
-      metadata: ["SpecOperations"],
+    metadata: ["SpecOperations"],
     monadOperations: [
       makeNullaryMonadOperation<TwoObject, TwoArrow>({
         label: "TestNullary",
@@ -145,6 +162,7 @@ const makeBooleanInteractionInput = () => {
   } as const;
 };
 
+
 const makeTerminalFunctorInteractionLaw = () => {
   const kernel = makeTwoObjectPromonoidalKernel();
   const terminal = SetCat.terminal().object;
@@ -205,10 +223,10 @@ const makeInitialFunctorInteractionLaw = () => {
   const convolution = dayTensor(kernel, left, right);
   const dualizing = buildBoolean();
 
-    return makeFunctorInteractionLaw({
-      kernel,
-      left,
-      right,
+  return makeFunctorInteractionLaw({
+    kernel,
+    left,
+    right,
     convolution,
     dualizing,
     pairing: (
@@ -216,7 +234,9 @@ const makeInitialFunctorInteractionLaw = () => {
       carrier: ReturnType<typeof convolution.functor.functor.F0>,
     ) => SetCat.hom(carrier, dualizing, () => false),
     aggregate: () => false,
-      operations: makeFunctorInteractionLawOperations<TwoObject, TwoArrow>({ metadata: ["InitialFunctor"] }),
+    operations: makeFunctorInteractionLawOperations<TwoObject, TwoArrow>({
+      metadata: ["InitialFunctor"],
+    }),
   });
 };
 
@@ -1123,5 +1143,428 @@ describe("Functor interaction laws", () => {
 
     expect(Array.from(finalLaw.dualCarrier).length).toBe(0);
     expect(finalLaw.aggregate([])).toBe(false);
+  });
+});
+
+describe("summarizeInteractionLawMonoidPreparation", () => {
+  it("records Day tensor samples for Example 6", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+    const summary = summarizeInteractionLawMonoidPreparation(packaged.law, {
+      currying: packaged.currying,
+      sampleLimit: 5,
+      metadata: ["Example6MonoidPreparation"],
+    });
+
+    expect(summary.law).toBe(packaged.law);
+    expect(summary.currying).toBe(packaged.currying);
+    expect(summary.components.length).toBeGreaterThan(0);
+    expect(summary.diagnostics[0]).toContain("InteractionLawMonoidPreparation");
+    for (const component of summary.components) {
+      expect(component.samples.length).toBeLessThanOrEqual(5);
+      expect(component.hom.dom).toBe(component.domain);
+      expect(component.hom.cod).toBe(component.exponentialObject);
+      expect(component.codomainIndexed.size).toBeGreaterThanOrEqual(0);
+      if (component.samples.length > 0) {
+        const sample = component.samples[0]!;
+        const value = packaged.law.evaluate(sample.primal, sample.dual);
+        expect(sample.value).toBe(value);
+      }
+      const domainElement = Array.from(component.domain)[0];
+      const codomainElement = Array.from(component.codomain)[0];
+      if (domainElement !== undefined && codomainElement !== undefined) {
+        const arrow = component.hom.map(domainElement);
+        const dual = { object: component.parameter, element: codomainElement } as const;
+        const primal = { object: component.tensorObject, element: domainElement } as const;
+        expect(arrow(dual)).toBe(packaged.law.evaluate(primal, dual));
+      }
+      expect(component.diagnostics[0]).toContain("F(");
+    }
+    expect(summary.metadata).toEqual(
+      expect.arrayContaining(["Example6MonoidPreparation"]),
+    );
+  });
+});
+
+describe("makeInteractionLawMonoidMultiplicationTranslator", () => {
+  it("indexes exponential homs from the preparation summary", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+    const summary = summarizeInteractionLawMonoidPreparation(packaged.law, {
+      currying: packaged.currying,
+      sampleLimit: 4,
+      metadata: ["Example6MonoidPreparation"],
+    });
+
+    const translator = makeInteractionLawMonoidMultiplicationTranslator(packaged.law, {
+      preparation: summary,
+      metadata: ["Example6MonoidMultiplicationTranslator"],
+    });
+
+    expect(translator.law).toBe(packaged.law);
+    expect(translator.preparation).toBe(summary);
+    expect(translator.components.size).toBeGreaterThan(0);
+    expect(translator.diagnostics[0]).toContain("InteractionLawMonoidMultiplicationTranslator");
+    expect(translator.diagnostics).toContain(
+      "InteractionLawMonoidMultiplicationTranslator: reused supplied monoid preparation summary.",
+    );
+    expect(translator.metadata).toEqual(
+      expect.arrayContaining([
+        "Example6MonoidPreparation",
+        "Example6MonoidMultiplicationTranslator",
+      ]),
+    );
+
+    for (const [object, componentMap] of translator.components) {
+      expect(componentMap.size).toBeGreaterThan(0);
+      for (const [parameter, component] of componentMap) {
+        const lookup = lookupInteractionLawMonoidMultiplicationComponent(
+          translator,
+          object,
+          parameter,
+        );
+        expect(lookup).toBe(component);
+
+        const domainElement = Array.from(component.domain)[0];
+        const codomainElement = Array.from(component.codomain)[0];
+        if (domainElement !== undefined && codomainElement !== undefined) {
+          const arrow = component.hom.map(domainElement);
+          const dual = { object: parameter, element: codomainElement } as const;
+          const primal = { object: component.tensorObject, element: domainElement } as const;
+          expect(arrow(dual)).toBe(packaged.law.evaluate(primal, dual));
+        }
+      }
+    }
+  });
+
+  it("derives a preparation summary when none is supplied", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+
+    const translator = makeInteractionLawMonoidMultiplicationTranslator(packaged.law, {
+      metadata: ["Example6MonoidMultiplicationTranslatorDerived"],
+    });
+
+    expect(translator.preparation.law).toBe(packaged.law);
+    expect(translator.components.size).toBeGreaterThan(0);
+    expect(translator.diagnostics).toContain(
+      "InteractionLawMonoidMultiplicationTranslator: derived monoid preparation summary from interaction law.",
+    );
+    expect(translator.metadata).toEqual(
+      expect.arrayContaining(["Example6MonoidMultiplicationTranslatorDerived"]),
+    );
+  });
+});
+
+describe("summarizeInteractionLawDayUnit", () => {
+  it("records promonoidal unit witnesses for each kernel object", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+
+    const summary = summarizeInteractionLawDayUnit(packaged.law, {
+      metadata: ["Example6DayUnitSummary"],
+      unitMetadata: ["Example6DayUnitFunctor"],
+      contravariantMetadata: ["Example6DayUnitContravariant"],
+    });
+
+    expect(summary.kernel).toBe(packaged.law.kernel);
+    expect(summary.components).toHaveLength(packaged.law.kernel.base.objects.length);
+    expect(
+      summary.components.every((component) =>
+        component.diagnostics[0]?.includes("InteractionLawDayUnit"),
+      ),
+    ).toBe(true);
+    expect(summary.diagnostics[0]).toContain("summarizeInteractionLawDayUnit");
+    expect(summary.metadata).toEqual(
+      expect.arrayContaining([
+        "Example6DayUnitSummary",
+        "Example6DayUnitFunctor",
+        "Example6DayUnitContravariant",
+        "Day convolution unit derived from promonoidal kernel.",
+      ]),
+    );
+    expect(summary.unit.functor.metadata).toEqual(
+      expect.arrayContaining(["Example6DayUnitFunctor"]),
+    );
+    expect(summary.unitContravariant.metadata).toEqual(
+      expect.arrayContaining(["Example6DayUnitContravariant"]),
+    );
+  });
+});
+
+describe("summarizeInteractionLawDayUnitOpmonoidal", () => {
+  it("cross-references Day unit and tensor data for opmonoidal coverage", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+
+    const summary = summarizeInteractionLawDayUnitOpmonoidal(packaged.law, {
+      unit: packaged.dayUnit,
+      tensor: packaged.dayUnitTensor,
+      metadata: ["Example6DayUnitOpmonoidal"],
+    });
+
+    expect(summary.unit).toBe(packaged.dayUnit);
+    expect(summary.tensor).toBe(packaged.dayUnitTensor);
+    expect(summary.fibers).toHaveLength(packaged.law.kernel.base.objects.length);
+    expect(summary.satisfied).toBeGreaterThan(0);
+    expect(summary.diagnostics[0]).toContain(
+      "summarizeInteractionLawDayUnitOpmonoidal",
+    );
+    expect(summary.metadata).toEqual(
+      expect.arrayContaining(["Example6DayUnitOpmonoidal"]),
+    );
+    for (const fiber of summary.fibers) {
+      expect(fiber.diagnostics.length).toBeGreaterThan(0);
+      expect(fiber.hasUnitWitnesses || !fiber.hasTensorWitnesses).toBe(true);
+    }
+  });
+});
+
+describe("summarizeInteractionLawDayUnitOpmonoidalTriangles", () => {
+  it("records opmonoidal triangle coverage and lax failure diagnostics", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+
+    const summary = summarizeInteractionLawDayUnitOpmonoidalTriangles(packaged.law, {
+      unit: packaged.dayUnit,
+      tensor: packaged.dayUnitTensor,
+      opmonoidal: packaged.dayUnitOpmonoidal,
+      metadata: ["Example6DayUnitOpmonoidalTriangles"],
+    });
+
+    expect(summary.entries).toHaveLength(packaged.law.kernel.base.objects.length);
+    expect(summary.satisfied).toBeGreaterThan(0);
+    expect(summary.laxComparisonAvailable).toBe(false);
+    expect(summary.diagnostics.some((line) => line.includes("lax-monoidal"))).toBe(true);
+    expect(summary.metadata).toEqual(
+      expect.arrayContaining(["Example6DayUnitOpmonoidalTriangles"]),
+    );
+  });
+});
+
+describe("checkInteractionLawDayUnitOpmonoidalTriangles", () => {
+  it("wraps the triangle summary with consolidated diagnostics", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+    const summary = summarizeInteractionLawDayUnitOpmonoidalTriangles(packaged.law, {
+      unit: packaged.dayUnit,
+      tensor: packaged.dayUnitTensor,
+      opmonoidal: packaged.dayUnitOpmonoidal,
+    });
+
+    const report = checkInteractionLawDayUnitOpmonoidalTriangles(packaged.law, {
+      summary,
+      metadata: ["Example6DayUnitOpmonoidalTrianglesCheck"],
+    });
+
+    expect(report.summary).toBe(summary);
+    expect(report.kernel).toBe(packaged.law.kernel);
+    expect(report.holds).toBe(false);
+    expect(report.diagnostics[0]).toContain(
+      "checkInteractionLawDayUnitOpmonoidalTriangles",
+    );
+    expect(report.metadata).toEqual(
+      expect.arrayContaining(["Example6DayUnitOpmonoidalTrianglesCheck"]),
+    );
+  });
+});
+
+describe("realizeInteractionLawMonoidMultiplication", () => {
+  it("materialises canonical evaluations over G-parameters", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+    const summary = summarizeInteractionLawMonoidPreparation(packaged.law, {
+      currying: packaged.currying,
+      sampleLimit: 6,
+      metadata: ["Example6MonoidPreparation"],
+    });
+
+    const translator = makeInteractionLawMonoidMultiplicationTranslator(packaged.law, {
+      preparation: summary,
+      metadata: ["Example6MonoidMultiplicationTranslator"],
+    });
+
+    const realization = realizeInteractionLawMonoidMultiplication(translator, {
+      metadata: ["Example6MonoidMultiplicationRealization"],
+    });
+
+    expect(realization.translator).toBe(translator);
+    expect(realization.components.size).toBeGreaterThan(0);
+    expect(realization.checked).toBeGreaterThan(0);
+    expect(realization.mismatches).toBe(0);
+    expect(realization.diagnostics[0]).toContain(
+      "InteractionLawMonoidMultiplicationRealization",
+    );
+    expect(realization.metadata).toEqual(
+      expect.arrayContaining([
+        "Example6MonoidPreparation",
+        "Example6MonoidMultiplicationTranslator",
+        "Example6MonoidMultiplicationRealization",
+      ]),
+    );
+
+    for (const [object, parameterMap] of translator.components) {
+      const realizedMap = realization.components.get(object);
+      expect(realizedMap).toBeDefined();
+      for (const [parameter, component] of parameterMap) {
+        const realized = realizedMap!.get(parameter);
+        expect(realized).toBeDefined();
+        if (!realized) {
+          continue;
+        }
+
+        expect(realized.checked).toBe(component.samples.length);
+        expect(realized.mismatches).toBe(0);
+        expect(realized.samples).toBe(component.samples);
+
+        for (const sample of component.samples) {
+          const translatorArrow = component.hom.map(sample.primal.element);
+          const realizedArrow = realized.hom.map(sample.primal.element);
+          const arrowValue = realizedArrow(sample.dual.element);
+          expect(arrowValue).toBe(sample.value);
+          expect(
+            translatorArrow({
+              object: parameter,
+              element: sample.dual.element,
+            } as const),
+          ).toBe(sample.value);
+          expect(
+            realized.evaluation.map([
+              sample.primal.element,
+              sample.dual.element,
+            ] as const),
+          ).toBe(sample.value);
+        }
+      }
+    }
+  });
+});
+
+describe("monoidObjectToInteractionLaw", () => {
+  it("rebuilds ψ evaluation from cached monoid translators", () => {
+    const packaged = makeExample6MonadComonadInteractionLaw();
+    const monoid = monadComonadInteractionLawToMonoid(packaged);
+
+    const rebuilt = monoidObjectToInteractionLaw(monoid, {
+      metadata: ["Example6MonoidRebuild"],
+    });
+
+    expect(rebuilt.law).not.toBe(monoid.law);
+    expect(rebuilt.law.evaluate).not.toBe(monoid.law.evaluate);
+    expect(rebuilt.checked).toBeGreaterThan(0);
+    expect(rebuilt.mismatches).toBe(0);
+    expect(rebuilt.missing).toBe(0);
+    expect(rebuilt.diagnostics[0]).toContain("monoidObjectToInteractionLaw");
+    expect(rebuilt.metadata).toEqual(
+      expect.arrayContaining(["Example6MonoidRebuild"]),
+    );
+
+    const psi = monoid.monoidPsi;
+    expect(psi).toBeDefined();
+    if (!psi) {
+      return;
+    }
+
+    const firstComponentMap = psi.components.values().next().value;
+    expect(firstComponentMap).toBeDefined();
+    if (!firstComponentMap) {
+      return;
+    }
+
+    const firstComponent = firstComponentMap.values().next().value;
+    expect(firstComponent).toBeDefined();
+    if (!firstComponent) {
+      return;
+    }
+
+    const sample = firstComponent.translatorComponent.samples[0];
+    expect(sample).toBeDefined();
+    if (!sample) {
+      return;
+    }
+
+    const rebuiltValue = rebuilt.law.evaluate(sample.primal, sample.dual);
+    expect(rebuiltValue).toBe(sample.value);
+  });
+});
+
+describe("constructGlueingInteractionLaw", () => {
+  it("records glueing metadata and passes the aggregated check", () => {
+    const { identitySummary } = makeGlueingInteractionLawExampleSuite();
+    expect(
+      identitySummary.diagnostics.some((line) => line.includes("span component")),
+    ).toBe(true);
+    const report = checkGlueingInteractionLaw(identitySummary);
+    expect(report.pullbackStable).toBe(true);
+    expect(report.spanConsistent).toBe(true);
+    expect(report.evaluationConsistent).toBe(true);
+    expect(report.diagnostics.some((line) => line.includes("evaluation samples"))).toBe(
+      true,
+    );
+  });
+
+  it("provides tensor and failure examples", () => {
+    const { tensorSummary, pullbackFailureSummary } = makeGlueingInteractionLawExampleSuite();
+    expect(tensorSummary.span).toHaveLength(2);
+    expect(tensorSummary.evaluations).toHaveLength(2);
+    const tensorReport = checkGlueingInteractionLaw(tensorSummary);
+    expect(tensorReport.spanConsistent).toBe(true);
+    expect(tensorReport.pullbackStable).toBe(true);
+    const failureReport = checkGlueingInteractionLaw(pullbackFailureSummary);
+    expect(failureReport.pullbackStable).toBe(false);
+    expect(
+      failureReport.diagnostics.some((line) =>
+        line.includes("Pullback stability intentionally disabled"),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags inconsistent spans and evaluation mismatches", () => {
+    const { tensorSummary } = makeGlueingInteractionLawExampleSuite();
+    const summary = tensorSummary;
+    const firstSpan = summary.span[0]!;
+    const inconsistentSummary: typeof summary = {
+      ...summary,
+      span: [
+        {
+          ...firstSpan,
+          leftArrow: TwoObjectCategory.id("★"),
+        },
+      ],
+    };
+    const spanReport = checkGlueingInteractionLaw(inconsistentSummary);
+    expect(spanReport.spanConsistent).toBe(false);
+
+    const firstEvaluation = summary.evaluations[0]!;
+    const mismatchedSummary: typeof summary = {
+      ...summary,
+      evaluations: [
+        {
+          ...firstEvaluation,
+          value: !firstEvaluation.value,
+        },
+      ],
+    };
+    const evaluationReport = checkGlueingInteractionLaw(mismatchedSummary);
+    expect(evaluationReport.evaluationConsistent).toBe(false);
+  });
+});
+
+describe("bridgeGlueingSummaryToResidualRunner", () => {
+  it("summarizes runner and residual diagnostics for the identity glueing", () => {
+    const { identitySummary } = makeGlueingInteractionLawExampleSuite();
+    const interaction = makeExample6MonadComonadInteractionLaw();
+    const report = bridgeGlueingSummaryToResidualRunner(identitySummary, { interaction });
+    expect(report.runnerSummary.failed).toBe(0);
+    expect(report.runnerSummary.total).toBeGreaterThan(10);
+    expect(report.residualSummary.total).toBe(2);
+    expect(report.residualSummary.failed).toBe(0);
+    expect(report.metadata).toEqual(
+      expect.arrayContaining([
+        "Glueing.residualBridge.spanCount=1",
+        "Glueing.residualBridge.pullbackStable=true",
+      ]),
+    );
+  });
+
+  it("records pullback instability in the residual bridge metadata", () => {
+    const { pullbackFailureSummary } = makeGlueingInteractionLawExampleSuite();
+    const interaction = makeExample6MonadComonadInteractionLaw();
+    const report = bridgeGlueingSummaryToResidualRunner(pullbackFailureSummary, { interaction });
+    expect(report.metadata).toEqual(
+      expect.arrayContaining(["Glueing.residualBridge.pullbackStable=false"]),
+    );
   });
 });

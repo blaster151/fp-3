@@ -37,6 +37,7 @@ import {
   compareResidualDiagramWitness,
   type ResidualRunnerMorphism,
   type ResidualStatefulRunner,
+  type ResidualWitnessComparison,
 } from "./residual-stateful-runner";
 import type { ResidualInteractionLawSummary } from "./residual-interaction-law";
 
@@ -45,6 +46,25 @@ export interface RunnerOracleResult {
   readonly holds: boolean;
   readonly details: ReadonlyArray<string>;
   readonly diagnostics?: unknown;
+}
+
+export interface RunnerOracleSummary {
+  readonly total: number;
+  readonly passed: number;
+  readonly failed: number;
+  readonly uniqueRegistryPaths: ReadonlyArray<string>;
+  readonly passing: ReadonlyArray<string>;
+  readonly failing: ReadonlyArray<{ readonly registryPath: string; readonly details: ReadonlyArray<string> }>;
+  readonly notes: ReadonlyArray<string>;
+}
+
+export interface ResidualRunnerOracleSummary extends RunnerOracleSummary {
+  readonly residualSquareTotals?: { readonly checked: number; readonly mismatches: number };
+  readonly diagramTotals?: {
+    readonly theta: { readonly checked: number; readonly mismatches: number };
+    readonly eta: { readonly checked: number; readonly mismatches: number };
+    readonly mu: { readonly checked: number; readonly mismatches: number };
+  };
 }
 
 export interface RunnerOracleOptions<Obj> {
@@ -481,6 +501,129 @@ export const RunnerOracles = {
     };
   },
 };
+
+export function summarizeRunnerOracles(results: ReadonlyArray<RunnerOracleResult>): RunnerOracleSummary {
+  const uniquePaths = new Set<string>();
+  const passing: string[] = [];
+  const failing: Array<{ readonly registryPath: string; readonly details: ReadonlyArray<string> }> = [];
+  for (const result of results) {
+    uniquePaths.add(result.registryPath);
+    if (result.holds) {
+      passing.push(result.registryPath);
+    } else {
+      failing.push({ registryPath: result.registryPath, details: result.details });
+    }
+  }
+  const total = results.length;
+  const passed = passing.length;
+  const failed = failing.length;
+  const notes: string[] = [];
+  if (total === 0) {
+    notes.push("runner oracle summary: no oracles were evaluated");
+  } else if (failed === 0) {
+    notes.push(`runner oracle summary: all ${total} oracles passed`);
+  } else {
+    notes.push(`runner oracle summary: ${failed}/${total} failing oracles`);
+  }
+  return {
+    total,
+    passed,
+    failed,
+    uniqueRegistryPaths: Array.from(uniquePaths).sort(),
+    passing,
+    failing,
+    notes,
+  };
+}
+
+const isResidualSquareStats = (value: unknown): value is { checked: number; mismatches: number } =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as { checked?: unknown }).checked === "number" &&
+  typeof (value as { mismatches?: unknown }).mismatches === "number";
+
+const isResidualMorphismDiagnostics = (
+  diagnostics: unknown,
+): diagnostics is { residualSquare: { checked: number; mismatches: number } } =>
+  typeof diagnostics === "object" &&
+  diagnostics !== null &&
+  isResidualSquareStats((diagnostics as { residualSquare?: unknown }).residualSquare);
+
+const isResidualWitnessComparison = (value: unknown): value is ResidualWitnessComparison =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as ResidualWitnessComparison).checked === "number" &&
+  typeof (value as ResidualWitnessComparison).mismatches === "number";
+
+const isResidualInteractionDiagnostics = (
+  diagnostics: unknown,
+): diagnostics is {
+  theta: ResidualWitnessComparison;
+  eta: ResidualWitnessComparison;
+  mu: ResidualWitnessComparison;
+} =>
+  typeof diagnostics === "object" &&
+  diagnostics !== null &&
+  isResidualWitnessComparison((diagnostics as { theta?: unknown }).theta) &&
+  isResidualWitnessComparison((diagnostics as { eta?: unknown }).eta) &&
+  isResidualWitnessComparison((diagnostics as { mu?: unknown }).mu);
+
+export function summarizeResidualRunnerOracles(
+  results: ReadonlyArray<RunnerOracleResult>,
+): ResidualRunnerOracleSummary {
+  const residualResults = results.filter((result) => result.registryPath.startsWith("runner.residual."));
+  const base = summarizeRunnerOracles(residualResults);
+  let residualSquareTotals: { checked: number; mismatches: number } | undefined;
+  let diagramTotals: ResidualRunnerOracleSummary["diagramTotals"];
+  const notes = [...base.notes];
+
+  for (const result of residualResults) {
+    if (result.registryPath === "runner.residual.morphism" && isResidualMorphismDiagnostics(result.diagnostics)) {
+      const square = result.diagnostics.residualSquare;
+      residualSquareTotals = {
+        checked: (residualSquareTotals?.checked ?? 0) + square.checked,
+        mismatches: (residualSquareTotals?.mismatches ?? 0) + square.mismatches,
+      };
+      continue;
+    }
+    if (result.registryPath === "runner.residual.interaction" && isResidualInteractionDiagnostics(result.diagnostics)) {
+      const theta = result.diagnostics.theta;
+      const eta = result.diagnostics.eta;
+      const mu = result.diagnostics.mu;
+      diagramTotals = {
+        theta: {
+          checked: (diagramTotals?.theta?.checked ?? 0) + theta.checked,
+          mismatches: (diagramTotals?.theta?.mismatches ?? 0) + theta.mismatches,
+        },
+        eta: {
+          checked: (diagramTotals?.eta?.checked ?? 0) + eta.checked,
+          mismatches: (diagramTotals?.eta?.mismatches ?? 0) + eta.mismatches,
+        },
+        mu: {
+          checked: (diagramTotals?.mu?.checked ?? 0) + mu.checked,
+          mismatches: (diagramTotals?.mu?.mismatches ?? 0) + mu.mismatches,
+        },
+      };
+    }
+  }
+
+  if (residualResults.length === 0) {
+    notes.push("residual runner oracle summary: no residual oracles were evaluated");
+  } else if (base.failed === 0) {
+    notes.push(`residual runner oracle summary: all ${base.total} residual oracles passed`);
+  } else {
+    notes.push(
+      `residual runner oracle summary: ${base.failed}/${base.total} residual oracle(s) reported mismatches`,
+    );
+  }
+
+  return {
+    ...base,
+    notes,
+    ...(residualSquareTotals ? { residualSquareTotals } : {}),
+    ...(diagramTotals ? { diagramTotals } : {}),
+  };
+}
 
 export const enumerateRunnerOracles = <Obj, Arr, Left, Right, Value>(
   runner: StatefulRunner<Obj, Left, Right, Value>,

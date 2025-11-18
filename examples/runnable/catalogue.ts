@@ -106,6 +106,9 @@ import { stage100HopfModuleComoduleGallery } from "./100-hopf-module-comodule-ga
 import { stage101CoordinatewiseVectorRelativeMonad } from "./101-mnne-coordinatewise-vector-relative-monad";
 import { stage102LazyLambdaRelativeMonad } from "./102-mnne-lambda-relative-monad";
 import { statefulRunnerLawReport } from "./103-stateful-runner-law-report";
+import { sessionTypeGlueingStackRunnable } from "./104-session-type-glueing-stack";
+import { sessionTypeGlueingSweepRunnable } from "./105-session-type-glueing-sweep";
+import { sessionTypeGlueingConsumerRunnable } from "./106-session-type-glueing-consumer";
 
 export const registry: RunnableRegistry = [
   optionResultBasics,
@@ -215,4 +218,7 @@ export const registry: RunnableRegistry = [
   stage101CoordinatewiseVectorRelativeMonad,
   stage102LazyLambdaRelativeMonad,
   statefulRunnerLawReport,
+  sessionTypeGlueingStackRunnable,
+  sessionTypeGlueingSweepRunnable,
+  sessionTypeGlueingConsumerRunnable,
 ];

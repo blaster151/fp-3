@@ -1,4 +1,6 @@
 import {
+  checkInteractionLawDayMonoidal,
+  checkInteractionLawDaySymmetry,
   deriveInteractionLawCurrying,
   deriveInteractionLawLeftCommaPresentation,
   deriveInteractionLawLeftCommaEquivalence,
@@ -6,12 +8,43 @@ import {
   dualInteractionLaw,
   productInteractionLaw,
   stretchInteractionLaw,
+  summarizeInteractionLawMonoidPreparation,
+  makeInteractionLawMonoidMultiplicationTranslator,
+  realizeInteractionLawMonoidMultiplication,
+  reconstructInteractionLawMonoidPsi,
   greatestInteractingComonad,
   greatestInteractingFunctor,
   makeCommutativeBinaryMonadOperation,
   makeFunctorInteractionLaw,
   makeFunctorInteractionLawOperations,
   type FunctorInteractionLawOperations,
+  type InteractionLawDayMonoidalSummary,
+  type InteractionLawDaySymmetrySummary,
+  summarizeInteractionLawDayInterchange,
+  type InteractionLawDayInterchangeReport,
+  instantiateInteractionLawDayInterchangeFromReport,
+  type InteractionLawDayInterchangeInstantiationReport,
+  verifyInteractionLawDayInterchangeInstantiationFromReport,
+  type InteractionLawDayInterchangeInstantiationCheckReport,
+  checkInteractionLawDayInterchange,
+  type InteractionLawDayInterchangeCheckReport,
+  summarizeInteractionLawDayUnit,
+  type InteractionLawDayUnitSummary,
+  summarizeInteractionLawDayUnitTensor,
+  type InteractionLawDayUnitTensorSummary,
+  summarizeInteractionLawDayUnitOpmonoidal,
+  type InteractionLawDayUnitOpmonoidalSummary,
+  summarizeInteractionLawDayUnitOpmonoidalTriangles,
+  type InteractionLawDayUnitOpmonoidalTrianglesSummary,
+  checkInteractionLawDayUnitOpmonoidalTriangles,
+  type InteractionLawDayUnitOpmonoidalTrianglesCheckReport,
+  type InteractionLawMonoidPreparationSummary,
+  type InteractionLawMonoidMultiplicationTranslator,
+  type InteractionLawMonoidMultiplicationRealization,
+  type InteractionLawMonoidPreparationSample,
+  type InteractionLawMonoidPsiReconstruction,
+  type InteractionLawMonoidPsiReconstructionOptions,
+  type InteractionLawMonoidPsiReconstructionComponent,
   type InteractionLawProductProjections,
   type DualInteractionLawResult,
   type FunctorInteractionLaw,
@@ -118,6 +151,59 @@ export interface MonadComonadInteractionLawOptions<
   readonly degeneracy?: FunctorOperationDegeneracyReport<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
   readonly commaEquivalence?: InteractionLawLeftCommaEquivalence<Obj, Arr, Left, Right, Value>;
   readonly dual?: DualInteractionLawResult<Obj, Arr, Left, Right, Value>;
+  readonly dayMonoidal?: InteractionLawDayMonoidalSummary<Obj, Arr>;
+  readonly daySymmetry?: InteractionLawDaySymmetrySummary<Obj, Arr>;
+  readonly dayUnit?: InteractionLawDayUnitSummary<Obj, Arr, Left, Right, Value>;
+  readonly dayUnitTensor?: InteractionLawDayUnitTensorSummary<Obj, Arr, Left, Right, Value>;
+  readonly dayUnitOpmonoidal?: InteractionLawDayUnitOpmonoidalSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayUnitOpmonoidalTriangles?: InteractionLawDayUnitOpmonoidalTrianglesSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayUnitOpmonoidalTrianglesCheck?: InteractionLawDayUnitOpmonoidalTrianglesCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayInterchange?: InteractionLawDayInterchangeReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayInterchangeInstantiation?: InteractionLawDayInterchangeInstantiationReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayInterchangeInstantiationCheck?: InteractionLawDayInterchangeInstantiationCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayInterchangeCheck?: InteractionLawDayInterchangeCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
   readonly metadata?: ReadonlyArray<string>;
 }
 
@@ -138,23 +224,101 @@ export interface MonadComonadInteractionLaw<
   readonly comma: InteractionLawLeftCommaPresentation<Obj, Arr, Left, Right, Value>;
   readonly sweedler: InteractionLawSweedlerSummary<Obj, Arr, Left, Right, Value>;
   readonly degeneracy: FunctorOperationDegeneracyReport<Obj, Arr, Left, Right, Value, LawObj, LawArr>;
+  readonly dayMonoidal: InteractionLawDayMonoidalSummary<Obj, Arr>;
+  readonly daySymmetry: InteractionLawDaySymmetrySummary<Obj, Arr>;
+  readonly dayUnit: InteractionLawDayUnitSummary<Obj, Arr, Left, Right, Value>;
+  readonly dayUnitTensor: InteractionLawDayUnitTensorSummary<Obj, Arr, Left, Right, Value>;
+  readonly dayUnitOpmonoidal: InteractionLawDayUnitOpmonoidalSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayUnitOpmonoidalTriangles: InteractionLawDayUnitOpmonoidalTrianglesSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayUnitOpmonoidalTrianglesCheck: InteractionLawDayUnitOpmonoidalTrianglesCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayInterchange: InteractionLawDayInterchangeReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayInterchangeInstantiation: InteractionLawDayInterchangeInstantiationReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayInterchangeInstantiationCheck: InteractionLawDayInterchangeInstantiationCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayInterchangeCheck: InteractionLawDayInterchangeCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
   readonly diagnostics: ReadonlyArray<string>;
   readonly metadata?: ReadonlyArray<string>;
   readonly commaEquivalence?: InteractionLawLeftCommaEquivalence<Obj, Arr, Left, Right, Value>;
-  readonly dual?: DualInteractionLawResult<Obj, Arr, Left, Right, Value>;
+  readonly dual: DualInteractionLawResult<Obj, Arr, Left, Right, Value>;
 }
 
 const buildDiagnostics = <Obj, Arr, Left, Right, Value, LawObj, LawArr>(
   input: Required<
     Pick<
       MonadComonadInteractionLawOptions<Obj, Arr, Left, Right, Value, LawObj, LawArr>,
-      "currying" | "comma" | "sweedler" | "degeneracy"
+      | "currying"
+      | "comma"
+      | "sweedler"
+      | "degeneracy"
+      | "dayMonoidal"
+      | "daySymmetry"
+      | "dayUnit"
+      | "dayUnitTensor"
+      | "dayUnitOpmonoidal"
+      | "dayUnitOpmonoidalTriangles"
+      | "dayUnitOpmonoidalTrianglesCheck"
+      | "dayInterchange"
+      | "dayInterchangeInstantiation"
+      | "dayInterchangeInstantiationCheck"
+      | "dayInterchangeCheck"
     >
   > & {
     readonly suppliedCurrying: boolean;
     readonly suppliedComma: boolean;
     readonly suppliedSweedler: boolean;
     readonly suppliedDegeneracy: boolean;
+    readonly suppliedDayMonoidal: boolean;
+    readonly suppliedDaySymmetry: boolean;
+    readonly suppliedDayUnit: boolean;
+    readonly suppliedDayUnitTensor: boolean;
+    readonly suppliedDayUnitOpmonoidal: boolean;
+    readonly suppliedDayUnitOpmonoidalTriangles: boolean;
+    readonly suppliedDayUnitOpmonoidalTrianglesCheck: boolean;
+    readonly suppliedDayInterchange: boolean;
+    readonly suppliedDayInterchangeInstantiation: boolean;
+    readonly suppliedDayInterchangeInstantiationCheck: boolean;
+    readonly suppliedDayInterchangeCheck: boolean;
     readonly suppliedCommaEquivalence: boolean;
     readonly suppliedDual: boolean;
   },
@@ -180,19 +344,81 @@ const buildDiagnostics = <Obj, Arr, Left, Right, Value, LawObj, LawArr>(
       ? "makeMonadComonadInteractionLaw: reused supplied degeneracy analysis."
       : "makeMonadComonadInteractionLaw: analyzed degeneracy witnesses from interaction law operations.",
   );
+  details.push(
+    input.suppliedDayMonoidal
+      ? "makeMonadComonadInteractionLaw: reused supplied Day monoidal summary."
+      : "makeMonadComonadInteractionLaw: derived Day monoidal summary from interaction law.",
+  );
+  details.push(
+    input.suppliedDaySymmetry
+      ? "makeMonadComonadInteractionLaw: reused supplied Day symmetry summary."
+      : "makeMonadComonadInteractionLaw: derived Day symmetry summary from interaction law.",
+  );
+  details.push(
+    input.suppliedDayUnit
+      ? "makeMonadComonadInteractionLaw: reused supplied Day unit summary."
+      : "makeMonadComonadInteractionLaw: derived Day unit summary from promonoidal kernel.",
+  );
+  details.push(
+    input.suppliedDayUnitTensor
+      ? "makeMonadComonadInteractionLaw: reused supplied Day unit tensor summary."
+      : "makeMonadComonadInteractionLaw: derived Day unit tensor summary for opmonoidal diagnostics.",
+  );
+  details.push(
+    input.suppliedDayUnitOpmonoidal
+      ? "makeMonadComonadInteractionLaw: reused supplied Day unit opmonoidal summary."
+      : "makeMonadComonadInteractionLaw: derived Day unit opmonoidal summary from Day unit tensor coverage.",
+  );
+  details.push(
+    input.suppliedDayUnitOpmonoidalTriangles
+      ? "makeMonadComonadInteractionLaw: reused supplied Day unit opmonoidal triangle summary."
+      : "makeMonadComonadInteractionLaw: derived Day unit opmonoidal triangle summary from cached coverage.",
+  );
+  details.push(
+    input.suppliedDayUnitOpmonoidalTrianglesCheck
+      ? "makeMonadComonadInteractionLaw: reused supplied Day unit opmonoidal triangle check."
+      : "makeMonadComonadInteractionLaw: derived Day unit opmonoidal triangle check from cached coverage.",
+  );
+  if (input.dayInterchange) {
+    details.push(
+      input.suppliedDayInterchange
+        ? "makeMonadComonadInteractionLaw: reused supplied Day interchange coverage summary."
+        : "makeMonadComonadInteractionLaw: derived Day interchange coverage summary from interaction law.",
+    );
+  }
+  if (input.dayInterchangeInstantiation) {
+    details.push(
+      input.suppliedDayInterchangeInstantiation
+        ? "makeMonadComonadInteractionLaw: reused supplied Day interchange instantiation summary."
+        : "makeMonadComonadInteractionLaw: derived Day interchange instantiation summary from interaction law.",
+    );
+  }
+  if (input.dayInterchangeInstantiationCheck) {
+    details.push(
+      input.suppliedDayInterchangeInstantiationCheck
+        ? "makeMonadComonadInteractionLaw: reused supplied Day interchange instantiation check."
+        : "makeMonadComonadInteractionLaw: verified Day interchange instantiations against aggregated evaluations.",
+    );
+  }
+  if (input.dayInterchangeCheck) {
+    details.push(
+      input.suppliedDayInterchangeCheck
+        ? "makeMonadComonadInteractionLaw: reused supplied Day interchange check report."
+        : "makeMonadComonadInteractionLaw: assembled Day interchange summary, instantiation, and verification into a consolidated check.",
+    );
+  }
+  details.push(
+    input.suppliedDual
+      ? "makeMonadComonadInteractionLaw: reused supplied dual interaction law summary."
+      : "makeMonadComonadInteractionLaw: derived dual interaction law summary from interaction law.",
+  );
   if (input.suppliedCommaEquivalence) {
     details.push(
       "makeMonadComonadInteractionLaw: reused supplied comma equivalence diagnostics.",
     );
   }
-  if (input.suppliedDual) {
-    details.push(
-      "makeMonadComonadInteractionLaw: reused supplied dual interaction law summary.",
-    );
-  }
   return details;
 };
-
 const mergeMetadata = (
   existing: ReadonlyArray<string> | undefined,
   addition: ReadonlyArray<string> | undefined,
@@ -269,9 +495,38 @@ export interface InteractionLawMonoidUnit<Obj, Right, Value> {
   readonly diagnostics: ReadonlyArray<string>;
 }
 
-export interface InteractionLawMonoidOptions {
+export interface InteractionLawMonoidOptions<Obj, Arr, Left, Right, Value> {
   readonly sampleLimit?: number;
   readonly metadata?: ReadonlyArray<string>;
+  readonly monoidPreparation?: InteractionLawMonoidPreparationSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly monoidTranslator?: InteractionLawMonoidMultiplicationTranslator<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly monoidRealization?: InteractionLawMonoidMultiplicationRealization<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly monoidPsi?: InteractionLawMonoidPsiReconstruction<Obj, Arr, Left, Right, Value>;
+  readonly monoidPsiOptions?: InteractionLawMonoidPsiReconstructionOptions<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
 }
 
 export interface InteractionLawMonoid<Obj, Arr, Left, Right, Value> {
@@ -280,10 +535,67 @@ export interface InteractionLawMonoid<Obj, Arr, Left, Right, Value> {
   readonly comma: InteractionLawLeftCommaPresentation<Obj, Arr, Left, Right, Value>;
   readonly multiplication: InteractionLawMonoidMultiplication<Obj, Right, Value>;
   readonly unit: InteractionLawMonoidUnit<Obj, Right, Value>;
+  readonly monoidPreparation?: InteractionLawMonoidPreparationSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly monoidMultiplicationTranslator?: InteractionLawMonoidMultiplicationTranslator<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly monoidMultiplicationRealization?: InteractionLawMonoidMultiplicationRealization<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly monoidPsi?: InteractionLawMonoidPsiReconstruction<Obj, Arr, Left, Right, Value>;
   readonly sweedler?: InteractionLawSweedlerSummary<Obj, Arr, Left, Right, Value>;
   readonly degeneracy?: FunctorOperationDegeneracyReport<Obj, Arr, Left, Right, Value, Obj, Arr>;
   readonly commaEquivalence?: InteractionLawLeftCommaEquivalence<Obj, Arr, Left, Right, Value>;
   readonly dual?: DualInteractionLawResult<Obj, Arr, Left, Right, Value>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface MonoidObjectToInteractionLawOptions<Obj, Arr, Left, Right, Value> {
+  readonly metadata?: ReadonlyArray<string>;
+  readonly monoidPreparation?: InteractionLawMonoidPreparationSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly monoidTranslator?: InteractionLawMonoidMultiplicationTranslator<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly monoidRealization?: InteractionLawMonoidMultiplicationRealization<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly monoidPsi?: InteractionLawMonoidPsiReconstruction<Obj, Arr, Left, Right, Value>;
+}
+
+export interface MonoidObjectToInteractionLawResult<Obj, Arr, Left, Right, Value> {
+  readonly law: FunctorInteractionLaw<Obj, Arr, Left, Right, Value>;
+  readonly checked: number;
+  readonly mismatches: number;
+  readonly missing: number;
   readonly diagnostics: ReadonlyArray<string>;
   readonly metadata?: ReadonlyArray<string>;
 }
@@ -322,16 +634,89 @@ export const makeMonadComonadInteractionLaw = <
     options.sweedler ?? deriveInteractionLawSweedlerSummary(law, { currying, comma: commaEquivalence });
   const degeneracy =
     options.degeneracy ?? analyzeFunctorOperationDegeneracy<Obj, Arr, Left, Right, Value, LawObj, LawArr>(law);
+  const dayMonoidal =
+    options.dayMonoidal ?? checkInteractionLawDayMonoidal(law);
+  const dual = options.dual ?? dualInteractionLaw(law);
+  const daySymmetry =
+    options.daySymmetry ?? checkInteractionLawDaySymmetry(dual.law, law);
+  const dayUnit =
+    options.dayUnit ?? summarizeInteractionLawDayUnit(law);
+  const dayUnitTensor =
+    options.dayUnitTensor ??
+    summarizeInteractionLawDayUnitTensor(law, { unit: dayUnit });
+  const dayUnitOpmonoidal =
+    options.dayUnitOpmonoidal ??
+    summarizeInteractionLawDayUnitOpmonoidal(law, {
+      unit: dayUnit,
+      tensor: dayUnitTensor,
+    });
+  const dayUnitOpmonoidalTriangles =
+    options.dayUnitOpmonoidalTriangles ??
+    summarizeInteractionLawDayUnitOpmonoidalTriangles(law, {
+      unit: dayUnit,
+      tensor: dayUnitTensor,
+      opmonoidal: dayUnitOpmonoidal,
+    });
+  const dayUnitOpmonoidalTrianglesCheck =
+    options.dayUnitOpmonoidalTrianglesCheck ??
+    checkInteractionLawDayUnitOpmonoidalTriangles(law, {
+      summary: dayUnitOpmonoidalTriangles,
+    });
+  const dayInterchange =
+    options.dayInterchange ?? summarizeInteractionLawDayInterchange(law);
+  const dayInterchangeInstantiation =
+    options.dayInterchangeInstantiation ??
+    instantiateInteractionLawDayInterchangeFromReport(law, dayInterchange);
+  const dayInterchangeInstantiationCheck =
+    options.dayInterchangeInstantiationCheck ??
+    verifyInteractionLawDayInterchangeInstantiationFromReport(
+      law,
+      dayInterchangeInstantiation,
+    );
+  const dayInterchangeCheck =
+    options.dayInterchangeCheck ??
+    checkInteractionLawDayInterchange(law, {
+      report: dayInterchange,
+      instantiation: dayInterchangeInstantiation,
+      verification: dayInterchangeInstantiationCheck,
+    });
 
   const diagnostics = buildDiagnostics({
     currying,
     comma,
     sweedler,
     degeneracy,
+    dayMonoidal,
+    daySymmetry,
+    dayUnit,
+    dayUnitTensor,
+    dayUnitOpmonoidal,
+    dayUnitOpmonoidalTriangles,
+    dayUnitOpmonoidalTrianglesCheck,
+    dayInterchange,
+    dayInterchangeInstantiation,
+    dayInterchangeInstantiationCheck,
+    dayInterchangeCheck,
     suppliedCurrying: options.currying !== undefined,
     suppliedComma: options.comma !== undefined,
     suppliedSweedler: options.sweedler !== undefined,
     suppliedDegeneracy: options.degeneracy !== undefined,
+    suppliedDayMonoidal: options.dayMonoidal !== undefined,
+    suppliedDaySymmetry: options.daySymmetry !== undefined,
+    suppliedDayUnit: options.dayUnit !== undefined,
+    suppliedDayUnitTensor: options.dayUnitTensor !== undefined,
+    suppliedDayUnitOpmonoidal: options.dayUnitOpmonoidal !== undefined,
+    suppliedDayUnitOpmonoidalTriangles:
+      options.dayUnitOpmonoidalTriangles !== undefined,
+    suppliedDayUnitOpmonoidalTrianglesCheck:
+      options.dayUnitOpmonoidalTrianglesCheck !== undefined,
+    suppliedDayInterchange: options.dayInterchange !== undefined,
+    suppliedDayInterchangeInstantiation:
+      options.dayInterchangeInstantiation !== undefined,
+    suppliedDayInterchangeInstantiationCheck:
+      options.dayInterchangeInstantiationCheck !== undefined,
+    suppliedDayInterchangeCheck:
+      options.dayInterchangeCheck !== undefined,
     suppliedCommaEquivalence: options.commaEquivalence !== undefined,
     suppliedDual: options.dual !== undefined,
   });
@@ -355,9 +740,20 @@ export const makeMonadComonadInteractionLaw = <
     commaEquivalence,
     sweedler,
     degeneracy,
+    dayMonoidal,
+    daySymmetry,
+    dayUnit,
+    dayUnitTensor,
+    dayUnitOpmonoidal,
+    dayUnitOpmonoidalTriangles,
+    dayUnitOpmonoidalTrianglesCheck,
+    dayInterchange,
+    dayInterchangeInstantiation,
+    dayInterchangeInstantiationCheck,
+    dayInterchangeCheck,
     diagnostics,
     ...(metadata.length > 0 ? { metadata } : {}),
-    ...(options.dual ? { dual: options.dual } : {}),
+    dual,
   };
 };
 
@@ -369,9 +765,60 @@ export const monadComonadInteractionLawToMonoid = <
   Value,
 >(
   interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
-  options: InteractionLawMonoidOptions = {},
+  options: InteractionLawMonoidOptions<Obj, Arr, Left, Right, Value> = {},
 ): InteractionLawMonoid<Obj, Arr, Left, Right, Value> => {
   const sampleLimit = Math.max(0, options.sampleLimit ?? DEFAULT_MONOID_SAMPLE_LIMIT);
+  const law = interaction.law;
+
+  const monoidPreparation =
+    options.monoidPreparation ??
+    options.monoidTranslator?.preparation ??
+    summarizeInteractionLawMonoidPreparation(interaction.law, {
+      currying: interaction.currying,
+      sampleLimit,
+    });
+
+  const monoidTranslator =
+    options.monoidTranslator ??
+    makeInteractionLawMonoidMultiplicationTranslator(interaction.law, {
+      preparation: monoidPreparation,
+    });
+
+  const monoidRealization =
+    options.monoidRealization ??
+    realizeInteractionLawMonoidMultiplication(monoidTranslator);
+
+  const monoidPsi =
+    options.monoidPsi ??
+    reconstructInteractionLawMonoidPsi(law, {
+      translator: monoidTranslator,
+      realization: monoidRealization,
+      ...(options.monoidPsiOptions ?? {}),
+    });
+
+  const translatorDiagnostics: string[] = [];
+  translatorDiagnostics.push(
+    options.monoidPreparation
+      ? "monadComonadLawToInteractionLawMonoid: reused monoid preparation summary supplied via options."
+      : options.monoidTranslator
+      ? "monadComonadLawToInteractionLawMonoid: reused monoid preparation summary from supplied translator."
+      : "monadComonadLawToInteractionLawMonoid: derived monoid preparation summary for canonical Day witnesses.",
+  );
+  translatorDiagnostics.push(
+    options.monoidTranslator
+      ? "monadComonadLawToInteractionLawMonoid: reused canonical monoid multiplication translator supplied via options."
+      : "monadComonadLawToInteractionLawMonoid: derived canonical monoid multiplication translator from interaction law.",
+  );
+  translatorDiagnostics.push(
+    options.monoidRealization
+      ? "monadComonadLawToInteractionLawMonoid: reused canonical monoid multiplication realization supplied via options."
+      : "monadComonadLawToInteractionLawMonoid: realized canonical monoid multiplication evaluations from translator components.",
+  );
+  translatorDiagnostics.push(
+    options.monoidPsi
+      ? "monadComonadLawToInteractionLawMonoid: reused canonical ψ reconstruction summary supplied via options."
+      : "monadComonadLawToInteractionLawMonoid: reconstructed ψ from canonical monoid translator and realization.",
+  );
 
   const multiplicationComponents = new Map<
     Obj,
@@ -559,6 +1006,9 @@ export const monadComonadInteractionLawToMonoid = <
     interaction.metadata,
     interaction.monad.metadata,
     interaction.comonad.metadata,
+    monoidPreparation.metadata,
+    monoidTranslator.metadata,
+    monoidRealization.metadata,
     options.metadata,
   );
 
@@ -571,18 +1021,45 @@ export const monadComonadInteractionLawToMonoid = <
         } mismatch(es) across multiplication/unit composites.`,
   ];
 
+  diagnostics.push(...translatorDiagnostics);
+
   return {
     law: interaction.law,
     currying: interaction.currying,
     comma: interaction.comma,
     multiplication: { components: multiplicationComponents, diagnostics: multiplicationDiagnostics },
     unit: { components: unitComponents, diagnostics: unitDiagnostics },
+    monoidPreparation,
+    monoidMultiplicationTranslator: monoidTranslator,
+    monoidMultiplicationRealization: monoidRealization,
+    monoidPsi,
     ...(interaction.sweedler ? { sweedler: interaction.sweedler } : {}),
     ...(interaction.degeneracy ? { degeneracy: interaction.degeneracy } : {}),
     ...(interaction.commaEquivalence ? { commaEquivalence: interaction.commaEquivalence } : {}),
     ...(interaction.dual ? { dual: interaction.dual } : {}),
     diagnostics,
     ...(metadata ? { metadata } : {}),
+  };
+};
+
+export const interactionLawToMonoidObject = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  options: InteractionLawMonoidOptions<Obj, Arr, Left, Right, Value> = {},
+): InteractionLawMonoid<Obj, Arr, Left, Right, Value> => {
+  const monoid = monadComonadInteractionLawToMonoid(interaction, options);
+
+  return {
+    ...monoid,
+    diagnostics: [
+      "interactionLawToMonoidObject: built canonical Day monoid multiplication and unit from ψ using the recorded F(X × Y) and G(Y) comparison maps.",
+      ...monoid.diagnostics,
+    ],
   };
 };
 
@@ -632,6 +1109,674 @@ export const interactionLawMonoidToMonadComonadLaw = <
     ...(metadata ? { metadata } : {}),
     options,
   });
+};
+
+export const monoidObjectToInteractionLaw = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  monoid: InteractionLawMonoid<Obj, Arr, Left, Right, Value>,
+  options: MonoidObjectToInteractionLawOptions<Obj, Arr, Left, Right, Value> = {},
+): MonoidObjectToInteractionLawResult<Obj, Arr, Left, Right, Value> => {
+  const monoidPreparation =
+    options.monoidPreparation ??
+    monoid.monoidPreparation ??
+    summarizeInteractionLawMonoidPreparation(monoid.law, {
+      currying: monoid.currying,
+    });
+
+  const monoidTranslator =
+    options.monoidTranslator ??
+    monoid.monoidMultiplicationTranslator ??
+    makeInteractionLawMonoidMultiplicationTranslator(monoid.law, {
+      preparation: monoidPreparation,
+    });
+
+  const monoidRealization =
+    options.monoidRealization ??
+    monoid.monoidMultiplicationRealization ??
+    realizeInteractionLawMonoidMultiplication(monoidTranslator);
+
+  const monoidPsi =
+    options.monoidPsi ??
+    monoid.monoidPsi ??
+    reconstructInteractionLawMonoidPsi(monoid.law, {
+      translator: monoidTranslator,
+      realization: monoidRealization,
+    });
+
+  const diagnostics: string[] = [];
+
+  diagnostics.push(
+    options.monoidPreparation
+      ? "monoidObjectToInteractionLaw: reused monoid preparation supplied via options."
+      : monoid.monoidPreparation
+      ? "monoidObjectToInteractionLaw: reused monoid preparation stored on the monoid object."
+      : "monoidObjectToInteractionLaw: derived monoid preparation summary from packaged law.",
+  );
+
+  diagnostics.push(
+    options.monoidTranslator
+      ? "monoidObjectToInteractionLaw: reused monoid multiplication translator supplied via options."
+      : monoid.monoidMultiplicationTranslator
+      ? "monoidObjectToInteractionLaw: reused monoid multiplication translator stored on the monoid object."
+      : "monoidObjectToInteractionLaw: derived canonical monoid multiplication translator from packaged law.",
+  );
+
+  diagnostics.push(
+    options.monoidRealization
+      ? "monoidObjectToInteractionLaw: reused monoid multiplication realization supplied via options."
+      : monoid.monoidMultiplicationRealization
+      ? "monoidObjectToInteractionLaw: reused monoid multiplication realization stored on the monoid object."
+      : "monoidObjectToInteractionLaw: realized canonical monoid multiplication evaluations from translator components.",
+  );
+
+  diagnostics.push(
+    options.monoidPsi
+      ? "monoidObjectToInteractionLaw: reused ψ reconstruction supplied via options."
+      : monoid.monoidPsi
+      ? "monoidObjectToInteractionLaw: reused ψ reconstruction stored on the monoid object."
+      : "monoidObjectToInteractionLaw: reconstructed ψ from canonical translator and realization components.",
+  );
+
+  const tensorComponentIndex = new Map<
+    Obj,
+    Map<Obj, InteractionLawMonoidPsiReconstructionComponent<Obj, Left, Right, Value>>
+  >();
+
+  for (const parameterMap of monoidPsi.components.values()) {
+    for (const component of parameterMap.values()) {
+      const tensorObject = component.translatorComponent.tensorObject;
+      let parameterComponents = tensorComponentIndex.get(tensorObject);
+      if (!parameterComponents) {
+        parameterComponents = new Map();
+        tensorComponentIndex.set(tensorObject, parameterComponents);
+      }
+      if (!parameterComponents.has(component.parameter)) {
+        parameterComponents.set(component.parameter, component);
+      }
+    }
+  }
+
+  const fallbackEvaluate = monoid.law.evaluate;
+  let missing = 0;
+  const missingDiagnostics: string[] = [];
+
+  const lookupComponent = (
+    tensorObject: Obj,
+    parameter: Obj,
+  ): InteractionLawMonoidPsiReconstructionComponent<Obj, Left, Right, Value> | undefined => {
+    const parameterComponents = tensorComponentIndex.get(tensorObject);
+    return parameterComponents?.get(parameter);
+  };
+
+  const evaluateFromPsi = (
+    primal: IndexedElement<Obj, Left>,
+    dual: IndexedElement<Obj, Right>,
+    recordMissing: boolean,
+  ): Value => {
+    const component = lookupComponent(primal.object, dual.object);
+    if (!component) {
+      if (recordMissing) {
+        missing += 1;
+        if (missingDiagnostics.length < 5) {
+          missingDiagnostics.push(
+            `monoidObjectToInteractionLaw: missing canonical ψ component for F(${String(
+              primal.object,
+            )}) × G(${String(dual.object)}); falling back to packaged evaluation.`,
+          );
+        }
+      }
+      return fallbackEvaluate(primal, dual);
+    }
+    return component.realizationComponent.evaluation.map([
+      primal.element as Left,
+      dual.element as Right,
+    ]);
+  };
+
+  let checked = 0;
+  let mismatches = 0;
+  let firstMismatch: InteractionLawMonoidPsiReconstructionComponent<
+    Obj,
+    Left,
+    Right,
+    Value
+  > | undefined;
+  let firstMismatchSample:
+    | InteractionLawMonoidPreparationSample<Obj, Left, Right, Value>
+    | undefined;
+
+  for (const parameterMap of monoidPsi.components.values()) {
+    for (const component of parameterMap.values()) {
+      for (const sample of component.translatorComponent.samples) {
+        checked += 1;
+        const rebuilt = evaluateFromPsi(sample.primal, sample.dual, false);
+        if (!Object.is(rebuilt, sample.value)) {
+          mismatches += 1;
+          if (!firstMismatch) {
+            firstMismatch = component;
+            firstMismatchSample = sample;
+          }
+        }
+      }
+    }
+  }
+
+  const rebuiltLaw: FunctorInteractionLaw<Obj, Arr, Left, Right, Value> = {
+    ...monoid.law,
+    evaluate: (primal, dual) => evaluateFromPsi(primal, dual, true),
+  };
+
+  diagnostics.push(
+    `monoidObjectToInteractionLaw: indexed ${tensorComponentIndex.size} tensor object(s) covering ${monoidPsi.checked} canonical sample(s).`,
+  );
+  diagnostics.push(
+    `monoidObjectToInteractionLaw: translator mismatches=${monoidPsi.translatorMismatches}, realization mismatches=${monoidPsi.realizationMismatches}, ψ mismatches=${monoidPsi.lawMismatches}.`,
+  );
+
+  if (checked === 0) {
+    diagnostics.push("monoidObjectToInteractionLaw: no recorded samples available to verify reconstructed evaluation.");
+  } else if (mismatches === 0) {
+    diagnostics.push(
+      "monoidObjectToInteractionLaw: reconstructed evaluation matches all recorded canonical samples.",
+    );
+  } else {
+    diagnostics.push(
+      `monoidObjectToInteractionLaw: detected ${mismatches} mismatch(es) across ${checked} recorded sample(s).`,
+    );
+    if (firstMismatch && firstMismatchSample) {
+      diagnostics.push(
+        `monoidObjectToInteractionLaw: first mismatch at tensor ${String(
+          firstMismatch.translatorComponent.tensorObject,
+        )}) parameter ${String(firstMismatch.parameter)} on sample F(${String(
+          firstMismatch.translatorComponent.tensorObject,
+        )}) element ${String(firstMismatchSample.primal.element)} with G(${String(
+          firstMismatch.parameter,
+        )}) element ${String(firstMismatchSample.dual.element)} — expected ${String(
+          firstMismatchSample.value,
+        )}.`,
+      );
+    }
+  }
+
+  diagnostics.push(
+    missing === 0
+      ? "monoidObjectToInteractionLaw: reconstructed evaluation provided values for all requested tensor/parameter pairs."
+      : `monoidObjectToInteractionLaw: fell back to packaged ψ evaluation for ${missing} pair(s) lacking canonical components.`,
+  );
+
+  diagnostics.push(...monoidPsi.diagnostics);
+  diagnostics.push(...missingDiagnostics);
+
+  const metadata = mergeMetadataList(
+    monoid.metadata,
+    monoid.monoidPreparation?.metadata,
+    monoid.monoidMultiplicationTranslator?.metadata,
+    monoid.monoidMultiplicationRealization?.metadata,
+    monoid.monoidPsi?.metadata,
+    monoidPreparation.metadata,
+    monoidTranslator.metadata,
+    monoidRealization.metadata,
+    monoidPsi.metadata,
+    options.metadata,
+  );
+
+  return {
+    law: rebuiltLaw,
+    checked,
+    mismatches,
+    missing,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export interface InteractionLawMonoidSweedlerDualOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly sweedler?: InteractionLawSweedlerSummary<Obj, Arr, Left, Right, Value>;
+  readonly dayUnitOpmonoidalTriangles?: InteractionLawDayUnitOpmonoidalTrianglesSummary<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly dayUnitOpmonoidalTrianglesCheck?: InteractionLawDayUnitOpmonoidalTrianglesCheckReport<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value
+  >;
+  readonly greatest?: GreatestInteractingComonadResult<Obj, Arr, Left, Right, Value>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface InteractionLawMonoidSweedlerDualResult<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+> {
+  readonly monoid: InteractionLawMonoid<Obj, Arr, Left, Right, Value>;
+  readonly sweedler: InteractionLawSweedlerSummary<Obj, Arr, Left, Right, Value>;
+  readonly triangles: InteractionLawDayUnitOpmonoidalTrianglesSummary<Obj, Arr, Left, Right, Value>;
+  readonly trianglesCheck: InteractionLawDayUnitOpmonoidalTrianglesCheckReport<Obj, Arr, Left, Right, Value>;
+  readonly greatest: GreatestInteractingComonadResult<Obj, Arr, Left, Right, Value>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface FreeMonoidSweedlerComparisonSummary<InitialComparison, FinalComparison> {
+  readonly initialCount: number;
+  readonly finalCount: number;
+  readonly initialLabels: ReadonlyArray<string>;
+  readonly finalLabels: ReadonlyArray<string>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface FreeMonoidSweedlerBijectionReport {
+  readonly holds: boolean;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+const summarizeFreeMonoidSweedlerComparisons = <InitialComparison, FinalComparison>(
+  comparisons: FreeMonadComonadUniversalComparisons<InitialComparison, FinalComparison>,
+  metadata?: ReadonlyArray<string>,
+): FreeMonoidSweedlerComparisonSummary<InitialComparison, FinalComparison> => {
+  const initialCount = comparisons.initial.length;
+  const finalCount = comparisons.final.length;
+  const initialLabels = comparisons.initial.slice(0, 3).map((entry) => entry.label);
+  const finalLabels = comparisons.final.slice(0, 3).map((entry) => entry.label);
+  const diagnostics: string[] = [];
+  diagnostics.push(
+    `Free monoid Sweedler comparisons: recorded ${initialCount} initial universal comparison(s) (Mon(F, UD) ↠) with sample label(s) ${initialLabels.join(
+      ", ",
+    ) || "<none>"}.`,
+  );
+  diagnostics.push(
+    `Free monoid Sweedler comparisons: recorded ${finalCount} final universal comparison(s) (Comon(F°, UD) ↩) with sample label(s) ${finalLabels.join(
+      ", ",
+    ) || "<none>"}.`,
+  );
+  return {
+    initialCount,
+    finalCount,
+    initialLabels,
+    finalLabels,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+const checkFreeMonoidSweedlerBijection = (
+  summary: FreeMonoidSweedlerComparisonSummary<unknown, unknown>,
+  metadata?: ReadonlyArray<string>,
+): FreeMonoidSweedlerBijectionReport => {
+  const holds = summary.initialCount > 0 && summary.finalCount > 0 && summary.initialCount === summary.finalCount;
+  const diagnostics: string[] = [];
+  diagnostics.push(
+    holds
+      ? `Free monoid Sweedler bijection: initial/final comparison counts agree (${summary.initialCount}), supporting Comon(F°, UD) ≅ Mon(F, UD).`
+      : `Free monoid Sweedler bijection: comparison counts differ (initial=${summary.initialCount}, final=${summary.finalCount}), highlighting missing universal comparisons.`,
+  );
+  if (summary.initialCount === 0 || summary.finalCount === 0) {
+    diagnostics.push(
+      "Free monoid Sweedler bijection: at least one side lacks universal witnesses; Section 6.3 bijection cannot be certified.",
+    );
+  }
+  return {
+    holds,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export const interactionLawMonoidToSweedlerDual = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  monoid: InteractionLawMonoid<Obj, Arr, Left, Right, Value>,
+  options: InteractionLawMonoidSweedlerDualOptions<Obj, Arr, Left, Right, Value> = {},
+): InteractionLawMonoidSweedlerDualResult<Obj, Arr, Left, Right, Value> => {
+  const sweedler = options.sweedler ?? deriveInteractionLawSweedlerSummary(monoid.law);
+  const triangles =
+    options.dayUnitOpmonoidalTriangles ?? summarizeInteractionLawDayUnitOpmonoidalTriangles(monoid.law);
+  const trianglesCheck =
+    options.dayUnitOpmonoidalTrianglesCheck
+      ?? checkInteractionLawDayUnitOpmonoidalTriangles(monoid.law, { summary: triangles });
+  const metadata =
+    mergeMetadataList(
+      monoid.metadata,
+      monoid.monoidPreparation?.metadata,
+      monoid.monoidMultiplicationTranslator?.metadata,
+      monoid.monoidMultiplicationRealization?.metadata,
+      sweedler.degeneracyMetadata,
+      triangles.metadata,
+      trianglesCheck.metadata,
+      options.metadata,
+      ["Interaction-law monoid Sweedler dual functor"],
+    ) ?? ["Interaction-law monoid Sweedler dual functor"];
+  const greatest =
+    options.greatest
+    ?? greatestInteractingComonad(monoid.law, {
+      sweedler,
+      ...(metadata ? { metadata } : {}),
+    });
+
+  const diagnostics: string[] = [];
+  diagnostics.push(
+    options.sweedler
+      ? "Sweedler dual functor: reused Sweedler summary supplied via options."
+      : "Sweedler dual functor: derived Sweedler summary from interaction law for (-)^°.",
+  );
+  diagnostics.push(
+    options.dayUnitOpmonoidalTriangles
+      ? "Sweedler dual functor: reused opmonoidal triangle summary supplied via options."
+      : "Sweedler dual functor: derived opmonoidal triangle summary from ψ to expose diagram (8) witnesses.",
+  );
+  diagnostics.push(
+    options.dayUnitOpmonoidalTrianglesCheck
+      ? "Sweedler dual functor: reused cached opmonoidal triangle check supplied via options."
+      : "Sweedler dual functor: rechecked opmonoidal triangles to log the lax-but-not-oplax structure of J.",
+  );
+  diagnostics.push(
+    options.greatest
+      ? "Sweedler dual functor: reused greatest interacting comonad witness supplied via options."
+      : "Sweedler dual functor: constructed greatest interacting comonad to present (-)^°.",
+  );
+  diagnostics.push(
+    `Sweedler dual functor: opmonoidal triangle coverage satisfied ${triangles.satisfied} object(s) with ${triangles.missing} incomplete case(s).`,
+  );
+  diagnostics.push(
+    triangles.laxComparisonAvailable
+      ? "Sweedler dual functor: recorded lax comparison witnesses for J; Sweedler dual metadata stores them for downstream use."
+      : "Sweedler dual functor: triangles confirm J lacks a lax comparison, so (-)^° is logged as only lax monoidal.",
+  );
+  diagnostics.push(
+    trianglesCheck.holds
+      ? "Sweedler dual functor: opmonoidal triangle check recorded readiness diagnostics for diagram (8)."
+      : "Sweedler dual functor: opmonoidal triangle check flagged missing witnesses; metadata cites the failure.",
+  );
+  diagnostics.push(
+    `Sweedler dual functor: greatest interacting comonad helper emitted ${greatest.diagnostics.length} diagnostic entries.`,
+  );
+
+  return {
+    monoid,
+    sweedler,
+    triangles,
+    trianglesCheck,
+    greatest,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export interface SweedlerDualOfFreeMonoidOptions<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+> {
+  readonly monoid?: InteractionLawMonoid<Obj, Arr, Left, Right, Value>;
+  readonly monoidOptions?: InteractionLawMonoidOptions<Obj, Arr, Left, Right, Value>;
+  readonly sweedler?: InteractionLawMonoidSweedlerDualResult<Obj, Arr, Left, Right, Value>;
+  readonly sweedlerOptions?: InteractionLawMonoidSweedlerDualOptions<Obj, Arr, Left, Right, Value>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface SweedlerDualOfFreeMonoidResult<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+  InitialComparison,
+  FinalComparison,
+> {
+  readonly free: FreeMonadComonadInteractionLawResult<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value,
+    LawObj,
+    LawArr,
+    InitialComparison,
+    FinalComparison
+  >;
+  readonly monoid: InteractionLawMonoid<Obj, Arr, Left, Right, Value>;
+  readonly sweedler: InteractionLawMonoidSweedlerDualResult<Obj, Arr, Left, Right, Value>;
+  readonly comparisons: FreeMonoidSweedlerComparisonSummary<InitialComparison, FinalComparison>;
+  readonly bijection: FreeMonoidSweedlerBijectionReport;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export const sweedlerDualOfFreeMonoid = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+  InitialComparison,
+  FinalComparison,
+>(
+  free: FreeMonadComonadInteractionLawResult<
+    Obj,
+    Arr,
+    Left,
+    Right,
+    Value,
+    LawObj,
+    LawArr,
+    InitialComparison,
+    FinalComparison
+  >,
+  options: SweedlerDualOfFreeMonoidOptions<Obj, Arr, Left, Right, Value, LawObj, LawArr> = {},
+): SweedlerDualOfFreeMonoidResult<
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+  LawObj,
+  LawArr,
+  InitialComparison,
+  FinalComparison
+> => {
+  const interactionForMonoid =
+    free.interaction as unknown as MonadComonadInteractionLaw<
+      Obj,
+      Arr,
+      Left,
+      Right,
+      Value,
+      Obj,
+      Arr
+    >;
+  const monoid =
+    options.monoid ?? interactionLawToMonoidObject(interactionForMonoid, options.monoidOptions ?? {});
+  const sweedler =
+    options.sweedler ?? interactionLawMonoidToSweedlerDual(monoid, options.sweedlerOptions ?? {});
+  const comparisons = summarizeFreeMonoidSweedlerComparisons(
+    free.universalComparisons,
+    free.universalComparisons.metadata,
+  );
+  const bijection = checkFreeMonoidSweedlerBijection(comparisons);
+  const metadata =
+    mergeMetadataList(
+      free.interaction.metadata,
+      monoid.metadata,
+      sweedler.metadata,
+      comparisons.metadata,
+      bijection.metadata,
+      options.metadata,
+      ["Free monoid Sweedler dual comparison"],
+    ) ?? ["Free monoid Sweedler dual comparison"];
+
+  const diagnostics: string[] = [];
+  diagnostics.push(
+    options.monoid
+      ? "Free monoid Sweedler dual: reused interaction-law monoid supplied via options."
+      : "Free monoid Sweedler dual: derived interaction-law monoid from the free law via the canonical ψ → Day translator.",
+  );
+  diagnostics.push(
+    options.sweedler
+      ? "Free monoid Sweedler dual: reused Sweedler dual functor supplied via options."
+      : "Free monoid Sweedler dual: computed (-)^° using interactionLawMonoidToSweedlerDual, recording the diagram (8) diagnostics.",
+  );
+  diagnostics.push(
+    `Free monoid Sweedler dual: universal comparison summary recorded ${comparisons.initialCount} initial and ${comparisons.finalCount} final arrow(s) witnessing ι_* and e^F_{UD}.`,
+  );
+  diagnostics.push(...comparisons.diagnostics);
+  diagnostics.push(...bijection.diagnostics);
+  diagnostics.push(...sweedler.diagnostics);
+
+  return {
+    free,
+    monoid,
+    sweedler,
+    comparisons,
+    bijection,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export interface MonoidQuotientSweedlerEqualizerInput<Element, Ambient, Codomain> {
+  readonly sweedlerCarrier: SetObj<Element>;
+  readonly inclusion: SetHom<Element, Ambient>;
+  readonly first: SetHom<Ambient, Codomain>;
+  readonly second: SetHom<Element, Codomain>;
+  readonly codomain: SetObj<Codomain>;
+  readonly sampleLimit?: number;
+  readonly metadata?: ReadonlyArray<string>;
+  readonly firstLabel?: string;
+  readonly secondLabel?: string;
+}
+
+export interface MonoidQuotientSweedlerEqualizerWitness<Element, Codomain> {
+  readonly element: Element;
+  readonly firstValue: Codomain;
+  readonly secondValue: Codomain;
+}
+
+export interface MonoidQuotientSweedlerEqualizerSummary<Element, Codomain> {
+  readonly checked: number;
+  readonly mismatches: number;
+  readonly witnesses: ReadonlyArray<MonoidQuotientSweedlerEqualizerWitness<Element, Codomain>>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export const summarizeMonoidQuotientSweedlerEqualizer = <
+  Element,
+  Ambient,
+  Codomain,
+>(
+  input: MonoidQuotientSweedlerEqualizerInput<Element, Ambient, Codomain>,
+): MonoidQuotientSweedlerEqualizerSummary<Element, Codomain> => {
+  const {
+    sweedlerCarrier,
+    inclusion,
+    first,
+    second,
+    codomain,
+    sampleLimit = DEFAULT_MONOID_SAMPLE_LIMIT,
+    metadata,
+    firstLabel = "f_*°",
+    secondLabel = "g_*°",
+  } = input;
+  const equals = semanticsAwareEquals(codomain);
+  const samples = enumerateCarrier(sweedlerCarrier, sampleLimit);
+  const witnesses: MonoidQuotientSweedlerEqualizerWitness<Element, Codomain>[] = [];
+  let mismatches = 0;
+  for (const value of samples) {
+    const included = inclusion.map(value);
+    const firstValue = first.map(included);
+    const secondValue = second.map(value);
+    if (!equals(firstValue, secondValue)) {
+      mismatches += 1;
+      witnesses.push({ element: value, firstValue, secondValue });
+    }
+  }
+  const diagnostics: string[] = [];
+  diagnostics.push(
+    `Monoid quotient Sweedler equalizer: checked ${samples.length} Sweedler element(s).`,
+  );
+  diagnostics.push(
+    mismatches === 0
+      ? `Monoid quotient Sweedler equalizer: all sampled elements satisfied ${firstLabel} = ${secondLabel}.`
+      : `Monoid quotient Sweedler equalizer: detected ${mismatches} mismatch(es) between ${firstLabel} and ${secondLabel}.`,
+  );
+  return {
+    checked: samples.length,
+    mismatches,
+    witnesses,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
+};
+
+export interface SweedlerDualOfMonoidQuotientOptions<Element, Ambient, Codomain> {
+  readonly equalizer?: MonoidQuotientSweedlerEqualizerSummary<Element, Codomain>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export interface SweedlerDualOfMonoidQuotientResult<Element, Codomain> {
+  readonly equalizer: MonoidQuotientSweedlerEqualizerSummary<Element, Codomain>;
+  readonly diagnostics: ReadonlyArray<string>;
+  readonly metadata?: ReadonlyArray<string>;
+}
+
+export const sweedlerDualOfMonoidQuotient = <Element, Ambient, Codomain>(
+  input: MonoidQuotientSweedlerEqualizerInput<Element, Ambient, Codomain>,
+  options: SweedlerDualOfMonoidQuotientOptions<Element, Ambient, Codomain> = {},
+): SweedlerDualOfMonoidQuotientResult<Element, Codomain> => {
+  const equalizer = options.equalizer ?? summarizeMonoidQuotientSweedlerEqualizer(input);
+  const metadata =
+    mergeMetadataList(
+      input.metadata,
+      equalizer.metadata,
+      options.metadata,
+      ["Monoid quotient Sweedler equalizer"],
+    ) ?? ["Monoid quotient Sweedler equalizer"];
+  const diagnostics: string[] = [];
+  diagnostics.push(
+    options.equalizer
+      ? "Monoid quotient Sweedler equalizer: reused equalizer summary supplied via options."
+      : "Monoid quotient Sweedler equalizer: derived f_*°/g_*° equalizer summary from Sweedler data.",
+  );
+  diagnostics.push(...equalizer.diagnostics);
+  return {
+    equalizer,
+    diagnostics,
+    ...(metadata ? { metadata } : {}),
+  };
 };
 
 export interface MonadComonadGreatestFunctorResult<
@@ -2600,6 +3745,39 @@ export const sweedlerDualNonemptyList = (): NonemptyListSweedlerData => {
     },
     metadata: ["Example14 Sweedler dual data"],
   };
+};
+
+export const nonemptyListSweedlerQuotientEqualizer = (): SweedlerDualOfMonoidQuotientResult<
+  Example14CofreeElement,
+  Example14CofreeDoubleElement
+> => {
+  const sweedler = sweedlerDualNonemptyList();
+  const sweedlerCarrier = sweedler.sweedler.functor.functor.F0(
+    "\u2605",
+  ) as SetObj<Example14CofreeElement>;
+  const inclusion = sweedler.sweedler.inclusion.transformation.component(
+    "\u2605",
+  ) as SetHom<Example14CofreeElement, Example14CofreeElement>;
+  const cofreeComultiplication = sweedler.cofree.comonad.comultiplication.transformation.component(
+    "\u2605",
+  ) as SetHom<Example14CofreeElement, Example14CofreeDoubleElement>;
+  const cofreeCoequation = SetCat.compose(
+    sweedler.sweedler.doubleInclusion,
+    sweedler.sweedler.coequation,
+  ) as SetHom<Example14CofreeElement, Example14CofreeDoubleElement>;
+  return sweedlerDualOfMonoidQuotient(
+    {
+      sweedlerCarrier,
+      inclusion,
+      first: cofreeComultiplication,
+      second: cofreeCoequation,
+      codomain: sweedler.cofree.doubleCarrier,
+      metadata: ["Example14 Sweedler quotient equalizer"],
+      firstLabel: "f_*°",
+      secondLabel: "g_*°",
+    },
+    { metadata: ["Example14 Sweedler quotient equalizer"] },
+  );
 };
 
 export interface NonemptyListCoequationData {

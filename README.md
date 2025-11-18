@@ -45,6 +45,41 @@ the new fold/filter/wither capabilities stay easy to discover.
 Both coverage commands place their artifacts inside the `coverage/` directory so
 you can inspect the combined reports or archive them for later analysis.
 
+### Session-type glueing sweeps & manifest workflow
+
+- `npm run examples:runnable -- 105` drives the Example 8 session-type glueing
+  sweep helper. Combine flags such as `--sweep`, `--sweep-file`, and
+  `--sweep-record` to replay saved configurations, `--sweep-diff` to compare
+  recorded manifests against the latest λ₍coop₎ alignment reports, and
+  `--sweep-manifest` / `--sweep-manifest-input` to regenerate or replay
+  `.issues.json` manifests. The CLI also accepts
+  `--sweep-blocked-plan-input=<record.json>` so blocked manifest refresh plans
+  are replayed automatically; this flag now composes cleanly with
+  `--sweep-diff`, `--sweep-manifest`, and `--sweep-manifest-input`, letting FW‑4
+  reviewers regenerate, replay, and audit manifests in a single run. Pass
+  `--help` to print the manifest-queue workflow, supported flag combinations,
+  and sentinel reminders before running the sweep.
+- `npm run examples:runnable -- 106` replays a curated manifest diff record via
+  the FW‑4 consumer so you can inspect manifest-source totals, queue telemetry,
+  and source-coverage metadata without editing JSON files. Use
+  `--manifest-path=/tmp/custom.json` to change the recorded manifest location
+  or `--skip-mismatch` when you want to demonstrate a clean sweep with no
+  forced alignment issues.
+- Always run `npm run session-type:manifest-queue:test` before writing manifests
+  or replaying blocked plans. The script refreshes the manifest-queue sentinel
+  used by the sweep CLI and records the coverage timestamp so Example 105 can
+  gate manifest writes, replay queued manifests, and explain any overrides in
+  its log/metadata output.
+- The sweep summary (`metadata.sweepSummary` and the recorded sweep file) now
+  exposes `sourceCoverage.manifestInputs` and `sourceCoverage.blockedPlans`, and
+  those counts propagate through the FW‑4 dashboard JSON plus the diff consumer
+  outputs. Reviewers can confirm that manifest-input and blocked-plan sources
+  both ran in a given sweep without combing through the CLI log.
+- Suggested manifest targets, queue telemetry, and blocked-plan metadata from
+  the CLI are also written into the recorded sweep files, dashboard summaries,
+  and FW‑4 diff consumer reports. Review those JSON artifacts when you need to
+  share results without re-running the CLI.
+
 ### **System 1: Pattern Discovery & Integration (PDI)**
 - **Purpose**: "Remember these handy shortcuts exist now"
 - **Value**: Discover existing patterns, integrate them into new code

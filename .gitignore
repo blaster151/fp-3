@@ -6,3 +6,5 @@ dist/
 .idea/
 *.tsbuildinfo
 coverage/
+session-type-glueing-manifest-queue.json
+session-type-glueing-manifest-queue-test-status.json

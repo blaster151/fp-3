@@ -99,10 +99,20 @@ export interface ResidualDiagramObjectWitness<Obj> {
   readonly diagnostics: ReadonlyArray<string>;
 }
 
+export interface ResidualDiagramCounterexample<Obj> {
+  readonly diagram: string;
+  readonly object: Obj;
+  readonly description: string;
+  readonly sample?: unknown;
+  readonly error?: string;
+  readonly diagnostics: ReadonlyArray<string>;
+}
+
 export interface ResidualDiagramWitness<Obj> {
   readonly diagram: string;
   readonly objects: ReadonlyArray<ResidualDiagramObjectWitness<Obj>>;
   readonly diagnostics: ReadonlyArray<string>;
+  readonly counterexamples: ReadonlyArray<ResidualDiagramCounterexample<Obj>>;
 }
 
 export const summarizeResidualDiagramWitness = <Obj>(
@@ -110,7 +120,8 @@ export const summarizeResidualDiagramWitness = <Obj>(
 ): string => {
   const checked = witness.objects.reduce((acc, entry) => acc + entry.checked, 0);
   const mismatches = witness.objects.reduce((acc, entry) => acc + entry.mismatches, 0);
-  return `Residual diagram ${witness.diagram}: checked=${checked} mismatches=${mismatches}`;
+  const counterexamples = witness.counterexamples.length;
+  return `Residual diagram ${witness.diagram}: checked=${checked} mismatches=${mismatches} counterexamples=${counterexamples}`;
 };
 
 const selectRepresentativeState = (carrier?: SetObj<unknown>): unknown | undefined => {
@@ -207,6 +218,7 @@ const buildResidualEtaWitness = <
   sampleLimit = 12,
 ): ResidualDiagramWitness<Obj> => {
   const objects: ResidualDiagramObjectWitness<Obj>[] = [];
+  const counterexamples: ResidualDiagramCounterexample<Obj>[] = [];
   let totalChecked = 0;
   let totalMismatches = 0;
   for (const [object, residualTheta] of residualRunner.residualThetas.entries()) {
@@ -237,9 +249,18 @@ const buildResidualEtaWitness = <
       } catch (error) {
         mismatches += 1;
         totalMismatches += 1;
-        objectDiagnostics.push(
-          `residual-unit: evaluation error object=${String(object)} input=${JSON.stringify(sample.input)} error=${String(error)}`,
-        );
+        const description = `residual-unit: evaluation error object=${String(object)} input=${JSON.stringify(sample.input)} error=${String(
+          error,
+        )}`;
+        objectDiagnostics.push(description);
+        counterexamples.push({
+          diagram: "eta",
+          object,
+          description,
+          sample: sample.input,
+          error: error instanceof Error ? error.message : String(error),
+          diagnostics: [description],
+        });
       }
     }
     objectDiagnostics.push(
@@ -259,6 +280,7 @@ const buildResidualEtaWitness = <
     diagram: "eta",
     objects,
     diagnostics,
+    counterexamples,
   };
 };
 
@@ -274,6 +296,7 @@ const buildResidualMultiplicationWitness = <
   sampleLimit = 12,
 ): ResidualDiagramWitness<Obj> => {
   const objects: ResidualDiagramObjectWitness<Obj>[] = [];
+  const counterexamples: ResidualDiagramCounterexample<Obj>[] = [];
   let totalChecked = 0;
   let totalMismatches = 0;
   for (const [object, residualTheta] of residualRunner.residualThetas.entries()) {
@@ -306,9 +329,18 @@ const buildResidualMultiplicationWitness = <
       } catch (error) {
         mismatches += 1;
         totalMismatches += 1;
-        objectDiagnostics.push(
-          `residual-multiplication: evaluation error object=${String(object)} sample=${JSON.stringify(sample.input)} error=${String(error)}`,
-        );
+        const description = `residual-multiplication: evaluation error object=${String(object)} sample=${JSON.stringify(
+          sample.input,
+        )} error=${String(error)}`;
+        objectDiagnostics.push(description);
+        counterexamples.push({
+          diagram: "mu",
+          object,
+          description,
+          sample: sample.input,
+          error: error instanceof Error ? error.message : String(error),
+          diagnostics: [description],
+        });
       }
     }
     objectDiagnostics.push(
@@ -328,6 +360,7 @@ const buildResidualMultiplicationWitness = <
     diagram: "mu",
     objects,
     diagnostics,
+    counterexamples,
   };
 };
 
@@ -870,6 +903,7 @@ export const checkResidualThetaAlignment = <
   }
   const objects: ResidualDiagramObjectWitness<Obj>[] = [];
   const diagnostics: string[] = [];
+  const counterexamples: ResidualDiagramCounterexample<Obj>[] = [];
   for (const object of objectSet) {
     const objectDiagnostics: string[] = [];
     const residualTheta = residualRunner.residualThetas.get(object);
@@ -927,9 +961,18 @@ export const checkResidualThetaAlignment = <
         residualResult = residualTheta.evaluate(sample);
       } catch (error) {
         mismatches += 1;
-        objectDiagnostics.push(
-          `Residual θ alignment: evaluation error object=${String(object)} sample=${JSON.stringify(sample)} error=${String(error)}`,
-        );
+        const description = `Residual θ alignment: evaluation error object=${String(object)} sample=${JSON.stringify(
+          sample,
+        )} error=${String(error)}`;
+        objectDiagnostics.push(description);
+        counterexamples.push({
+          diagram: "theta-alignment",
+          object,
+          description,
+          sample,
+          error: error instanceof Error ? error.message : String(error),
+          diagnostics: [description],
+        });
         continue;
       }
       let baseResult: Value;
@@ -937,9 +980,18 @@ export const checkResidualThetaAlignment = <
         baseResult = baseTheta.map(sample);
       } catch (error) {
         mismatches += 1;
-        objectDiagnostics.push(
-          `Residual θ alignment: base θ evaluation error object=${String(object)} sample=${JSON.stringify(sample)} error=${String(error)}`,
-        );
+        const description = `Residual θ alignment: base θ evaluation error object=${String(object)} sample=${JSON.stringify(
+          sample,
+        )} error=${String(error)}`;
+        objectDiagnostics.push(description);
+        counterexamples.push({
+          diagram: "theta-alignment",
+          object,
+          description,
+          sample,
+          error: error instanceof Error ? error.message : String(error),
+          diagnostics: [description],
+        });
         continue;
       }
       const comparison = options.compare?.({
@@ -957,12 +1009,19 @@ export const checkResidualThetaAlignment = <
           typeof comparison === "boolean"
             ? undefined
             : comparison?.message;
-        objectDiagnostics.push(
+        const description =
           message ??
-            `Residual θ alignment: mismatch object=${String(object)} sample=${JSON.stringify(sample)} base=${String(
-              baseResult,
-            )} residual=${String(residualResult)}`,
-        );
+          `Residual θ alignment: mismatch object=${String(object)} sample=${JSON.stringify(sample)} base=${String(
+            baseResult,
+          )} residual=${String(residualResult)}`;
+        objectDiagnostics.push(description);
+        counterexamples.push({
+          diagram: "theta-alignment",
+          object,
+          description,
+          sample,
+          diagnostics: [description],
+        });
       }
     }
     if (checked === 0) {
@@ -977,11 +1036,19 @@ export const checkResidualThetaAlignment = <
       diagnostics: objectDiagnostics,
     });
   }
-  diagnostics.push(summarizeResidualDiagramWitness({ diagram: "theta-alignment", objects, diagnostics: [] }));
+  diagnostics.push(
+    summarizeResidualDiagramWitness({
+      diagram: "theta-alignment",
+      objects,
+      diagnostics: [],
+      counterexamples,
+    }),
+  );
   return {
     diagram: "theta-alignment",
     objects,
     diagnostics,
+    counterexamples,
   };
 };
 
