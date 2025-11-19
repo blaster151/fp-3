@@ -291,6 +291,18 @@ export const sessionTypeGlueingConsumerRunnable: RunnableExample = {
           coverageGate.warnings.forEach((warning) => logs.push(`    warning: ${warning}`));
         }
       }
+      if (
+        summary.manifestQueue.blockedManifestPlanInputs &&
+        summary.manifestQueue.blockedManifestPlanInputs.length > 0
+      ) {
+        logs.push("  sentinel blocked blocked-plan refresh entries:");
+        summary.manifestQueue.blockedManifestPlanInputs.forEach((entry) => {
+          const recordedAtNote = entry.recordedAt ? ` recordedAt=${entry.recordedAt}` : "";
+          logs.push(
+            `    ${entry.sourcePath} → ${entry.path} planIndex=${entry.planIndex} plan=${entry.planRecordPath}${recordedAtNote} issues=${entry.issues.length}`,
+          );
+        });
+      }
     }
     if (summary.blockedManifestInputs && summary.blockedManifestInputs.length > 0) {
       logs.push("Sentinel coverage gate blocked manifest replays:");

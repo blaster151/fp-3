@@ -776,6 +776,9 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
         ? { blockedInputs: blockedQueuedManifestInputPaths }
         : {}),
       ...(blockedManifestInputs.length > 0 ? { blockedManifestInputs } : {}),
+      ...(blockedManifestPlanInputGateEntries.length > 0
+        ? { blockedManifestPlanInputs: blockedManifestPlanInputGateEntries }
+        : {}),
       ...(enqueuedSuggestedManifestPaths.length > 0 ? { outputs: enqueuedSuggestedManifestPaths } : {}),
       ...(manifestReplayErrors.length > 0 ? { replayErrors: manifestReplayErrors } : {}),
       ...(manifestQueueCoverageIssues.length > 0

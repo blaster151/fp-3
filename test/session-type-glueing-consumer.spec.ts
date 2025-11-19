@@ -288,6 +288,18 @@ describe("session-type glueing consumer diffs", () => {
           warnings: ["refresh sentinel"],
         },
       ],
+      manifestQueue: {
+        blockedManifestPlanInputs: [
+          {
+            ...planEntry,
+            planRecordPath: "/tmp/plan-record.json",
+            planIndex: 0,
+            reason: "manifest-queue-sentinel",
+            issues: ["coverageGate:missingCoverage"],
+            warnings: ["refresh sentinel"],
+          },
+        ],
+      },
     });
     const summary = diffSessionTypeGlueingSweepRecord(record);
     expect(summary.blockedSuggestedManifestWrites).toEqual([
@@ -304,6 +316,16 @@ describe("session-type glueing consumer diffs", () => {
       planEntry,
     ]);
     expect(summary.blockedManifestPlanInputs).toEqual([
+      {
+        ...planEntry,
+        planRecordPath: "/tmp/plan-record.json",
+        planIndex: 0,
+        reason: "manifest-queue-sentinel",
+        issues: ["coverageGate:missingCoverage"],
+        warnings: ["refresh sentinel"],
+      },
+    ]);
+    expect(summary.manifestQueue?.blockedManifestPlanInputs).toEqual([
       {
         ...planEntry,
         planRecordPath: "/tmp/plan-record.json",

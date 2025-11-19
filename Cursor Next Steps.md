@@ -1709,6 +1709,27 @@ Next:
 
 ------
 
+### **Phase IV Pass 22 — Manifest queue telemetry for sentinel-blocked plans**
+Status: COMPLETED
+
+- SessionTypeGlueingManifestQueueSummary now records `blockedManifestPlanInputs`, and
+  the Example 105 sweep writes the sentinel-blocked entries into the manifest queue
+  summary so queue dashboards, FW‑4 diffs, and Example 106 logs show which plan
+  refresh inputs were skipped by the coverage gate.
+- The Example 106 consumer manifest-queue log prints each sentinel-blocked plan entry,
+  making the queue refresh dashboards call out blocked-plan coverage gaps alongside
+  the existing sentinel issues without relying on the top-level metadata arrays.
+- The sweep and consumer regression suites assert the new manifest-queue payloads so
+  both the dashboard summary and diff pipeline keep the queue-level telemetry under
+  automation.
+
+Next:
+- Use the queue-level blocked-plan metadata to drive the follow-up rerun tooling so
+  `session-type:manifest-queue:test` reminders and requeue steps can target the
+  skipped plan inputs automatically once the sentinel coverage is refreshed.
+
+------
+
 ### **Phase IV Pass 7 — Residual law counterexample exports**
 Status: COMPLETED
 

@@ -58,6 +58,7 @@ export interface SessionTypeGlueingManifestQueueSummary {
   readonly outputs?: ReadonlyArray<string>;
   readonly blockedInputs?: ReadonlyArray<string>;
   readonly blockedManifestInputs?: ReadonlyArray<string>;
+  readonly blockedManifestPlanInputs?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanInputMetadata>;
   readonly replayErrors?: ReadonlyArray<SessionTypeGlueingManifestQueueReplayError>;
   readonly coverageIssues?: ReadonlyArray<string>;
   readonly coverageDriftIssues?: ReadonlyArray<string>;
@@ -465,6 +466,9 @@ const normalizeManifestQueueSummary = (
     ...(summary.blockedManifestInputs && summary.blockedManifestInputs.length > 0
       ? { blockedManifestInputs: Array.from(summary.blockedManifestInputs) }
       : {}),
+    ...(summary.blockedManifestPlanInputs && summary.blockedManifestPlanInputs.length > 0
+      ? { blockedManifestPlanInputs: Array.from(summary.blockedManifestPlanInputs) }
+      : {}),
     ...(summary.replayErrors && summary.replayErrors.length > 0
       ? { replayErrors: Array.from(summary.replayErrors) }
       : {}),
@@ -538,6 +542,9 @@ const asManifestQueueSummary = (value: unknown): SessionTypeGlueingManifestQueue
     outputs: asStringArray(record.outputs),
     blockedInputs: asStringArray(record.blockedInputs),
     blockedManifestInputs: asStringArray(record.blockedManifestInputs),
+    ...(record.blockedManifestPlanInputs
+      ? { blockedManifestPlanInputs: asBlockedManifestPlanInputArray(record.blockedManifestPlanInputs) }
+      : {}),
     replayErrors: asManifestQueueReplayErrorArray(record.replayErrors),
     coverageIssues: asStringArray(record.coverageIssues),
     coverageDriftIssues: asStringArray(record.coverageDriftIssues),
