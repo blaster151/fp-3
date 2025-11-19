@@ -7,15 +7,23 @@ export const SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_PATH = resolve(
 
 export const SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_REVISION = 1 as const;
 
+export interface SessionTypeGlueingManifestQueueCoverageGateStatus {
+  readonly checkedAt: string;
+  readonly issues: ReadonlyArray<string>;
+  readonly warnings: ReadonlyArray<string>;
+}
+
 export interface SessionTypeGlueingManifestQueueTestStatusRecord {
   readonly testedAt: string;
   readonly revision: number;
+  readonly coverageGate?: SessionTypeGlueingManifestQueueCoverageGateStatus | undefined;
 }
 
 export interface SessionTypeGlueingManifestQueueTestStatus {
   readonly tested: boolean;
   readonly testedAt?: string;
   readonly revision?: number;
+  readonly coverageGate?: SessionTypeGlueingManifestQueueCoverageGateStatus | undefined;
 }
 
 export const SESSION_TYPE_MANIFEST_QUEUE_TEST_MAX_AGE_DAYS = 14 as const;
@@ -38,6 +46,25 @@ export interface SessionTypeGlueingManifestQueueTestEvaluation {
   readonly ageMs?: number;
 }
 
+const asCoverageGateStatus = (
+  value: unknown,
+): SessionTypeGlueingManifestQueueCoverageGateStatus | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Partial<SessionTypeGlueingManifestQueueCoverageGateStatus> & Record<string, unknown>;
+  if (typeof record.checkedAt !== "string") {
+    return undefined;
+  }
+  const issues = Array.isArray(record.issues)
+    ? record.issues.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  const warnings = Array.isArray(record.warnings)
+    ? record.warnings.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  return { checkedAt: record.checkedAt, issues, warnings } satisfies SessionTypeGlueingManifestQueueCoverageGateStatus;
+};
+
 const readStatusRecord = (): SessionTypeGlueingManifestQueueTestStatusRecord | undefined => {
   try {
     const raw = readFileSync(SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_PATH, "utf8");
@@ -48,8 +75,16 @@ const readStatusRecord = (): SessionTypeGlueingManifestQueueTestStatusRecord | u
       typeof (parsed as { testedAt?: unknown }).testedAt === "string" &&
       typeof (parsed as { revision?: unknown }).revision === "number"
     ) {
-      const record = parsed as { testedAt: string; revision: number };
-      return { testedAt: record.testedAt, revision: record.revision };
+      const record = parsed as {
+        testedAt: string;
+        revision: number;
+        coverageGate?: unknown;
+      };
+      return {
+        testedAt: record.testedAt,
+        revision: record.revision,
+        ...(record.coverageGate ? { coverageGate: asCoverageGateStatus(record.coverageGate) } : {}),
+      } satisfies SessionTypeGlueingManifestQueueTestStatusRecord;
     }
     return undefined;
   } catch (error) {
@@ -66,17 +101,30 @@ export const readSessionTypeGlueingManifestQueueTestStatus = (): SessionTypeGlue
     tested: true,
     testedAt: record.testedAt,
     revision: record.revision,
+    ...(record.coverageGate ? { coverageGate: record.coverageGate } : {}),
   };
 };
 
 export const markSessionTypeGlueingManifestQueueTested = (options?: {
   readonly testedAt?: string;
   readonly revision?: number;
+  readonly coverageGate?: Partial<SessionTypeGlueingManifestQueueCoverageGateStatus>;
 }): SessionTypeGlueingManifestQueueTestStatusRecord => {
   const testedAt = options?.testedAt ?? new Date().toISOString();
   const revision =
     options?.revision ?? SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_REVISION;
-  const record: SessionTypeGlueingManifestQueueTestStatusRecord = { testedAt, revision };
+  const coverageGate = options?.coverageGate
+    ? {
+        checkedAt: options.coverageGate.checkedAt ?? testedAt,
+        issues: Array.from(options.coverageGate.issues ?? []),
+        warnings: Array.from(options.coverageGate.warnings ?? []),
+      }
+    : undefined;
+  const record: SessionTypeGlueingManifestQueueTestStatusRecord = {
+    testedAt,
+    revision,
+    ...(coverageGate ? { coverageGate } : {}),
+  };
   const resolved = SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_PATH;
   mkdirSync(dirname(resolved), { recursive: true });
   writeFileSync(resolved, `${JSON.stringify(record, null, 2)}\n`, "utf8");
@@ -91,6 +139,12 @@ export const SESSION_TYPE_MANIFEST_QUEUE_TEST_REVISION_PREFIX =
   "sessionType.manifestQueue.testRevision=" as const;
 export const SESSION_TYPE_MANIFEST_QUEUE_TEST_ISSUE_PREFIX =
   "sessionType.manifestQueue.issue=" as const;
+export const SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_CHECKED_AT_PREFIX =
+  "sessionType.manifestQueue.coverageGate.checkedAt=" as const;
+export const SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_ISSUE_PREFIX =
+  "sessionType.manifestQueue.coverageGate.issue=" as const;
+export const SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_WARNING_PREFIX =
+  "sessionType.manifestQueue.coverageGate.warning=" as const;
 
 export const formatSessionTypeManifestQueueTestMetadataEntries = (
   status: SessionTypeGlueingManifestQueueTestStatus,
@@ -111,6 +165,24 @@ export const formatSessionTypeManifestQueueTestIssueEntries = (
   issues: ReadonlyArray<SessionTypeManifestQueueTestIssue>,
 ): ReadonlyArray<string> =>
   issues.map((issue) => `${SESSION_TYPE_MANIFEST_QUEUE_TEST_ISSUE_PREFIX}${issue}`);
+
+export const formatSessionTypeManifestQueueCoverageGateMetadataEntries = (
+  coverageGate?: SessionTypeGlueingManifestQueueCoverageGateStatus,
+): ReadonlyArray<string> => {
+  if (!coverageGate) {
+    return [];
+  }
+  const entries: string[] = [
+    `${SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_CHECKED_AT_PREFIX}${coverageGate.checkedAt}`,
+  ];
+  coverageGate.issues.forEach((issue) =>
+    entries.push(`${SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_ISSUE_PREFIX}${issue}`),
+  );
+  coverageGate.warnings.forEach((warning) =>
+    entries.push(`${SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_WARNING_PREFIX}${warning}`),
+  );
+  return entries;
+};
 
 const ISSUE_MESSAGES: Record<SessionTypeManifestQueueTestIssue, string> = {
   missing: "Manifest queue coverage sentinel missing; rerun the manifest queue tests.",

@@ -127,6 +127,7 @@ export * from "./update-lens";
 export * from "./supervised-stack";
 export * from "./supervised-stack-lambda-coop";
 export * from "./lambda-coop-supervised-stack";
+export * from "./lambda-coop.alignment-coverage";
 export * from "./lambda-coop.runner-alignment";
 export * from "./glueing-runner-bridge";
 export * from "./glueing-supervised-stack";
