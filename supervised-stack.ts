@@ -27,6 +27,12 @@ import type {
   LambdaCoopValue,
   LambdaCoopValueType,
 } from "./lambda-coop";
+import {
+  collectLambdaCoopAlignmentCoverageIssues,
+  compareLambdaCoopCoverageReports,
+  type LambdaCoopAlignmentCoverageReport,
+  type LambdaCoopKernelClauseSkip,
+} from "./lambda-coop.alignment-coverage";
 
 export type KernelEffectKind = "state" | "exception" | "signal" | "external";
 
@@ -696,6 +702,11 @@ export const makeSupervisedStack = <
     ),
   );
   metadataEntries.add(metadataJson("user.allowed", [...boundarySet]));
+  if (expectedOperations.length > 0) {
+    metadataEntries.add(
+      metadataJson("lambdaCoop.expectedOperations", expectedOperations),
+    );
+  }
   metadataEntries.add(metadataJson("comparison.unsupportedByKernel", unsupportedByKernel));
   metadataEntries.add(metadataJson("comparison.unacknowledgedByUser", unacknowledgedByUser));
 
@@ -738,6 +749,17 @@ export const makeSupervisedStack = <
       ...(residualSummaryDigest ? { residualSummary: residualSummaryDigest } : {}),
     },
   );
+  const structuralLambdaCoopCoverage: LambdaCoopAlignmentCoverageReport | undefined =
+    expectedOperations.length > 0
+      ? collectLambdaCoopAlignmentCoverageIssues({
+          expectedInterpreterOperations: expectedOperations,
+          interpreterOperations: expectedOperations,
+          kernelTotalClauses: lambdaCoopArtifacts.clauseBundles.length,
+          kernelEvaluatedClauses: lambdaCoopArtifacts.clauseBundles.length,
+          skippedKernelClauses: [],
+          clauseBundles: lambdaCoopArtifacts.clauseBundles,
+        })
+      : undefined;
   metadataEntries.add(
     metadataJson("lambdaCoop.kernelClauses", lambdaCoopArtifacts.kernelClauses),
   );
@@ -753,6 +775,11 @@ export const makeSupervisedStack = <
   if (lambdaCoopArtifacts.residualCoverage) {
     metadataEntries.add(
       metadataJson("lambdaCoop.residualCoverage", lambdaCoopArtifacts.residualCoverage),
+    );
+  }
+  if (structuralLambdaCoopCoverage) {
+    metadataEntries.add(
+      metadataJson("lambdaCoop.coverage", structuralLambdaCoopCoverage),
     );
   }
   const lambdaCoopMetadata = [
@@ -924,6 +951,8 @@ export interface RunnerToStackLambdaCoopSummary {
   readonly stateCarrier?: string;
   readonly residualCoverage?: LambdaCoopResidualCoverageDigest;
   readonly boundaryWitnesses?: LambdaCoopBoundaryWitnesses;
+  readonly expectedOperations?: ReadonlyArray<string>;
+  readonly coverage?: LambdaCoopAlignmentCoverageReport;
 }
 
 export interface RunnerToStackResult<Obj, Left, Right> {
@@ -1280,6 +1309,11 @@ export const runnerToStack = <
   const lambdaCoopResidualCoverage = parseMetadata<LambdaCoopResidualCoverageDigest>(
     "lambdaCoop.residualCoverage",
   );
+  const lambdaCoopCoverage = parseMetadata<LambdaCoopAlignmentCoverageReport>(
+    "lambdaCoop.coverage",
+  );
+  const lambdaCoopExpectedOperations =
+    parseMetadata<ReadonlyArray<string>>("lambdaCoop.expectedOperations") ?? [];
   const lambdaCoopBoundary = parseMetadata<LambdaCoopBoundaryWitnesses>("lambdaCoop.boundary");
   const lambdaCoopAligned = parseMetadata<boolean>("lambdaCoop.aligned");
   const lambdaCoopIssues =
@@ -1313,9 +1347,19 @@ export const runnerToStack = <
       `runnerToStack: λ₍coop₎ runner clauses=${lambdaCoopRunnerLiteral.clauses.length} state=${lambdaCoopRunnerLiteral.stateCarrier}`,
     );
   }
+  if (lambdaCoopExpectedOperations.length > 0) {
+    diagnostics.push(
+      `runnerToStack: λ₍coop₎ expected interpreter operations=${lambdaCoopExpectedOperations.length}.`,
+    );
+  }
   if (lambdaCoopClauseBundles.length > 0) {
     diagnostics.push(
       `runnerToStack: λ₍coop₎ clause bundles=${lambdaCoopClauseBundles.length}.`,
+    );
+  }
+  if (lambdaCoopCoverage) {
+    diagnostics.push(
+      `runnerToStack: λ₍coop₎ coverage operations=${lambdaCoopCoverage.operations.length}.`,
     );
   }
   if (lambdaCoopStateCarrier) {
@@ -1497,6 +1541,10 @@ export const runnerToStack = <
             ...(lambdaCoopBoundary ? { boundaryWitnesses: lambdaCoopBoundary } : {}),
             ...(lambdaCoopAligned !== undefined ? { aligned: lambdaCoopAligned } : {}),
             ...(lambdaCoopIssues.length > 0 ? { issues: lambdaCoopIssues } : {}),
+            ...(lambdaCoopExpectedOperations.length > 0
+              ? { expectedOperations: lambdaCoopExpectedOperations }
+              : {}),
+            ...(lambdaCoopCoverage ? { coverage: lambdaCoopCoverage } : {}),
           },
         }
       : {}),
@@ -1640,4 +1688,59 @@ export const replaySupervisedStackRoundTrip = <
   }
 
   return { stack, reconstructed, mismatches };
+};
+
+const SUPERVISED_STACK_LAMBDA_COOP_COVERAGE_PREFIX =
+  "supervised-stack.lambdaCoop.coverage=" as const;
+
+export const getSupervisedStackLambdaCoopCoverageFromMetadata = (
+  metadata: ReadonlyArray<string> | undefined,
+): LambdaCoopAlignmentCoverageReport | undefined => {
+  if (!metadata) return undefined;
+  const entry = metadata.find((value) =>
+    value.startsWith(SUPERVISED_STACK_LAMBDA_COOP_COVERAGE_PREFIX),
+  );
+  if (!entry) return undefined;
+  const payload = entry.slice(SUPERVISED_STACK_LAMBDA_COOP_COVERAGE_PREFIX.length);
+  try {
+    return JSON.parse(payload) as LambdaCoopAlignmentCoverageReport;
+  } catch (error) {
+    return undefined;
+  }
+};
+
+export interface SupervisedStackRoundTripCoverageComparison {
+  readonly recorded?: LambdaCoopAlignmentCoverageReport;
+  readonly reconstructed?: LambdaCoopAlignmentCoverageReport;
+  readonly issues: ReadonlyArray<string>;
+}
+
+export const compareSupervisedStackRoundTripCoverage = <
+  Obj,
+  Arr,
+  Left,
+  Right,
+  Value,
+>(
+  roundTrip: SupervisedStackRoundTripResult<Obj, Arr, Left, Right, Value>,
+): SupervisedStackRoundTripCoverageComparison => {
+  const recorded = getSupervisedStackLambdaCoopCoverageFromMetadata(
+    roundTrip.stack.runner.metadata,
+  );
+  const reconstructed = roundTrip.reconstructed.lambdaCoop?.coverage;
+  const issues: string[] = [];
+  if (!recorded) {
+    issues.push("Recorded runner metadata is missing λ₍coop₎ coverage information.");
+  }
+  if (!reconstructed) {
+    issues.push("runnerToStack reconstruction is missing λ₍coop₎ coverage information.");
+  }
+  if (recorded && reconstructed) {
+    issues.push(...compareLambdaCoopCoverageReports(recorded, reconstructed));
+  }
+  return {
+    ...(recorded ? { recorded } : {}),
+    ...(reconstructed ? { reconstructed } : {}),
+    issues,
+  } satisfies SupervisedStackRoundTripCoverageComparison;
 };

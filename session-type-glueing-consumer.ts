@@ -19,15 +19,22 @@ import {
   readSessionTypeGlueingSweepRecord,
   SESSION_TYPE_GLUEING_SWEEP_RECORD_SCHEMA_VERSION,
   getManifestSourceFromMetadata,
+  getSessionTypeGlueingCoverageForRun,
+  getSessionTypeGlueingCoverageSnapshots,
+  collectSessionTypeGlueingAlignmentCoverageIssues,
+  compareSessionTypeGlueingCoverageSnapshots,
   type SessionTypeGlueingSweepRecord,
   type SessionTypeGlueingSweepRunSnapshot,
   type SessionTypeGlueingDashboardManifestSource,
   type SessionTypeGlueingSuggestedManifestWriteMetadata,
   type SessionTypeGlueingBlockedSuggestedManifestWriteMetadata,
   type SessionTypeGlueingBlockedManifestPlanEntry,
+  type SessionTypeGlueingBlockedManifestPlanInputMetadata,
   type SessionTypeGlueingManifestQueueSummary,
+  type SessionTypeGlueingManifestQueueCoverageGateSummary,
   type SessionTypeGlueingSweepSourceCoverage,
   summarizeSessionTypeGlueingSourceCoverage,
+  collectSessionTypeGlueingSourceCoverageIssues,
   type SessionTypeGlueingSourceCoverageTotals,
 } from "./session-type-glueing-dashboard";
 import type { SessionTypeGlueingSweepConfig } from "./session-type-glueing-sweep";
@@ -189,6 +196,8 @@ export interface SessionTypeGlueingConsumerDiffEntry {
   readonly alignmentMetadataDiff: MetadataDiff;
   readonly alignmentNotesDiff: MetadataDiff;
   readonly manifestSource?: SessionTypeGlueingDashboardManifestSource;
+  readonly alignmentCoverageIssues?: ReadonlyArray<string>;
+  readonly coverageComparisonIssues?: ReadonlyArray<string>;
   readonly runnerDiff?: {
     readonly recordedHolds?: boolean;
     readonly recordedMismatches?: number;
@@ -211,16 +220,23 @@ export interface SessionTypeGlueingConsumerDiffSummary {
   readonly totalRuns: number;
   readonly mismatchedRuns: number;
   readonly entries: ReadonlyArray<SessionTypeGlueingConsumerDiffEntry>;
+  readonly alignmentCoverageIssues?: ReadonlyArray<string>;
   readonly manifestSourceTotals?: ReadonlyArray<SessionTypeGlueingConsumerManifestSourceTotalsEntry>;
   readonly suggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingSuggestedManifestWriteMetadata>;
   readonly blockedSuggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingBlockedSuggestedManifestWriteMetadata>;
   readonly blockedQueuedManifestInputs?: ReadonlyArray<string>;
+  readonly blockedManifestInputs?: ReadonlyArray<string>;
   readonly blockedManifestPlans?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanEntry>;
+  readonly blockedManifestPlanInputs?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanInputMetadata>;
   readonly manifestQueue?: SessionTypeGlueingManifestQueueSummary;
   readonly manifestQueueIssues?: ReadonlyArray<string>;
   readonly manifestQueueWarnings?: ReadonlyArray<string>;
+  readonly manifestQueueCoverageGate?: SessionTypeGlueingManifestQueueCoverageGateSummary;
+  readonly manifestQueueCoverageGateIssues?: ReadonlyArray<string>;
+  readonly manifestQueueCoverageGateWarnings?: ReadonlyArray<string>;
   readonly sourceCoverage?: SessionTypeGlueingSweepSourceCoverage;
   readonly sourceCoverageTotals: SessionTypeGlueingSourceCoverageTotals;
+  readonly sourceCoverageIssues?: ReadonlyArray<string>;
 }
 
 const buildManifestSourceKey = (source: SessionTypeGlueingDashboardManifestSource): string =>
@@ -291,6 +307,23 @@ export const diffSessionTypeGlueingSweepRunSnapshot = (
       )}→${recomputed.runnerMismatches}`,
     );
   }
+  const coverageSnapshots = getSessionTypeGlueingCoverageSnapshots(snapshot);
+  const { coverage, source: coverageSource } = getSessionTypeGlueingCoverageForRun(snapshot);
+  const coverageIssues = collectSessionTypeGlueingAlignmentCoverageIssues(coverage);
+  if (coverageIssues.length > 0) {
+    coverageIssues.forEach((issue) => {
+      issues.push(`${coverageSource === "runner" ? "runner" : "alignment"}.coverage:${issue}`);
+    });
+  }
+  const coverageComparisonIssues = compareSessionTypeGlueingCoverageSnapshots(
+    coverageSnapshots.runner,
+    coverageSnapshots.alignment,
+  );
+  if (coverageComparisonIssues.length > 0) {
+    coverageComparisonIssues.forEach((issue) => {
+      issues.push(`coverage.drift:${issue}`);
+    });
+  }
   return {
     config: snapshot.config,
     recorded: snapshot,
@@ -299,6 +332,8 @@ export const diffSessionTypeGlueingSweepRunSnapshot = (
     alignmentNotesDiff,
     ...(manifestSource ? { manifestSource } : {}),
     ...(runnerDiff ? { runnerDiff } : {}),
+    ...(coverageIssues.length > 0 ? { alignmentCoverageIssues: coverageIssues } : {}),
+    ...(coverageComparisonIssues.length > 0 ? { coverageComparisonIssues } : {}),
     issues,
   };
 };
@@ -310,7 +345,20 @@ export const diffSessionTypeGlueingSweepRecord = (
   const entries = record.runs.map((run) => diffSessionTypeGlueingSweepRunSnapshot(run, options));
   const mismatchedRuns = entries.filter((entry) => entry.issues.length > 0).length;
   const manifestSourceTotals = summarizeManifestSourceTotals(entries);
+  const alignmentCoverageIssues: string[] = [];
+  for (const entry of entries) {
+    entry.alignmentCoverageIssues?.forEach((issue) => {
+      alignmentCoverageIssues.push(`${entry.config.label}: ${issue}`);
+    });
+    entry.coverageComparisonIssues?.forEach((issue) => {
+      alignmentCoverageIssues.push(`${entry.config.label}: Coverage drift: ${issue}`);
+    });
+  }
   const sourceCoverageTotals = summarizeSessionTypeGlueingSourceCoverage(record.sourceCoverage);
+  const sourceCoverageIssues = collectSessionTypeGlueingSourceCoverageIssues(record.sourceCoverage, {
+    requireManifestInputs: true,
+    requireBlockedPlans: true,
+  });
   return {
     schemaVersion: SESSION_TYPE_GLUEING_SWEEP_RECORD_SCHEMA_VERSION,
     ...(record.recordedAt ? { recordedAt: record.recordedAt } : {}),
@@ -318,6 +366,7 @@ export const diffSessionTypeGlueingSweepRecord = (
     totalRuns: record.runs.length,
     mismatchedRuns,
     entries,
+    ...(alignmentCoverageIssues.length > 0 ? { alignmentCoverageIssues } : {}),
     ...(manifestSourceTotals.length > 0 ? { manifestSourceTotals } : {}),
     ...(record.suggestedManifestWrites ? { suggestedManifestWrites: record.suggestedManifestWrites } : {}),
     ...(record.blockedSuggestedManifestWrites
@@ -326,7 +375,9 @@ export const diffSessionTypeGlueingSweepRecord = (
     ...(record.blockedQueuedManifestInputs
       ? { blockedQueuedManifestInputs: record.blockedQueuedManifestInputs }
       : {}),
+    ...(record.blockedManifestInputs ? { blockedManifestInputs: record.blockedManifestInputs } : {}),
     ...(record.blockedManifestPlans ? { blockedManifestPlans: record.blockedManifestPlans } : {}),
+    ...(record.blockedManifestPlanInputs ? { blockedManifestPlanInputs: record.blockedManifestPlanInputs } : {}),
     ...(record.manifestQueue ? { manifestQueue: record.manifestQueue } : {}),
     ...(record.manifestQueue?.testIssues && record.manifestQueue.testIssues.length > 0
       ? { manifestQueueIssues: record.manifestQueue.testIssues }
@@ -334,8 +385,20 @@ export const diffSessionTypeGlueingSweepRecord = (
     ...(record.manifestQueue?.testWarnings && record.manifestQueue.testWarnings.length > 0
       ? { manifestQueueWarnings: record.manifestQueue.testWarnings }
       : {}),
+    ...(record.manifestQueue?.testCoverageGate
+      ? { manifestQueueCoverageGate: record.manifestQueue.testCoverageGate }
+      : {}),
+    ...(record.manifestQueue?.testCoverageGate?.issues &&
+    record.manifestQueue.testCoverageGate.issues.length > 0
+      ? { manifestQueueCoverageGateIssues: record.manifestQueue.testCoverageGate.issues }
+      : {}),
+    ...(record.manifestQueue?.testCoverageGate?.warnings &&
+    record.manifestQueue.testCoverageGate.warnings.length > 0
+      ? { manifestQueueCoverageGateWarnings: record.manifestQueue.testCoverageGate.warnings }
+      : {}),
     ...(record.sourceCoverage ? { sourceCoverage: record.sourceCoverage } : {}),
     sourceCoverageTotals,
+    ...(sourceCoverageIssues.length > 0 ? { sourceCoverageIssues } : {}),
   };
 };
 

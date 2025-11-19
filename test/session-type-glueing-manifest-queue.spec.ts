@@ -12,6 +12,7 @@ import {
   markSessionTypeGlueingManifestQueueTested,
   evaluateSessionTypeGlueingManifestQueueTestStatus,
   SESSION_TYPE_MANIFEST_QUEUE_TEST_MAX_AGE_MS,
+  formatSessionTypeManifestQueueCoverageGateMetadataEntries,
 } from "../session-type-glueing-manifest-queue-test-status";
 
 const readPersistedQueue = (): ReadonlyArray<string> => {
@@ -67,7 +68,27 @@ describe("session-type glueing manifest queue helpers", () => {
     expect(peekSessionTypeGlueingManifestQueue()).toEqual([]);
     expect(readPersistedQueue()).toEqual([]);
     clearSessionTypeGlueingManifestQueue();
-    markSessionTypeGlueingManifestQueueTested();
+    const record = markSessionTypeGlueingManifestQueueTested({
+      coverageGate: {
+        checkedAt: "2024-03-03T00:00:00.000Z",
+        issues: ["alignment.coverage:missing"],
+        warnings: ["Refresh queued manifest coverage"],
+      },
+    });
+    expect(record.coverageGate?.issues).toEqual(["alignment.coverage:missing"]);
+  });
+
+  it("formats coverage gate metadata entries", () => {
+    const entries = formatSessionTypeManifestQueueCoverageGateMetadataEntries({
+      checkedAt: "2024-03-04T00:00:00.000Z",
+      issues: ["alignment.coverage:alpha"],
+      warnings: ["Resolve λ₍coop₎ coverage drift"],
+    });
+    expect(entries).toEqual([
+      "sessionType.manifestQueue.coverageGate.checkedAt=2024-03-04T00:00:00.000Z",
+      "sessionType.manifestQueue.coverageGate.issue=alignment.coverage:alpha",
+      "sessionType.manifestQueue.coverageGate.warning=Resolve λ₍coop₎ coverage drift",
+    ]);
   });
 });
 

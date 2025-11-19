@@ -8,6 +8,13 @@ import {
   type ResidualHandlerAggregateSummary,
   type StatefulRunner,
 } from "./stateful-runner";
+import {
+  collectLambdaCoopAlignmentCoverageIssues,
+  type CollectLambdaCoopAlignmentCoverageIssuesInput,
+  type LambdaCoopAlignmentCoverageOperationLink,
+  type LambdaCoopAlignmentCoverageReport,
+  type LambdaCoopKernelClauseSkip,
+} from "./lambda-coop.alignment-coverage";
 import type { GlueingRunnerBridgeResult } from "./glueing-runner-bridge";
 import {
   RunnerOracles,
@@ -54,11 +61,15 @@ import type { SupervisedStack } from "./supervised-stack";
 import {
   buildLambdaCoopComparisonArtifacts,
   type LambdaCoopBoundaryWitnesses,
+  type LambdaCoopClauseBundle,
+  type LambdaCoopClauseResidualFallback,
   type LambdaCoopComparisonArtifacts,
+  type LambdaCoopKernelEffectKind,
   type LambdaCoopKernelOperationDescriptor,
   type LambdaCoopResidualCoverageDigest,
   canonicalValueForType,
 } from "./supervised-stack-lambda-coop";
+
 
 const UNIT_VALUE: LambdaCoopValue = { kind: "unitValue" };
 
@@ -90,6 +101,7 @@ export interface LambdaCoopAlignmentSummary {
   readonly residualOracles: ResidualRunnerOracleSummary;
   readonly interpreter: LambdaCoopUserEvalCollectionSummary;
   readonly kernel: LambdaCoopKernelEvalCollectionSummary;
+  readonly coverage?: LambdaCoopAlignmentCoverageReport;
   readonly residualHandlers?: ResidualHandlerAggregateSummary;
   readonly residualLaw?: ResidualInteractionLawAggregate;
   readonly residualLawCheck?: ResidualInteractionLawCheckResult<
@@ -117,6 +129,7 @@ interface LambdaCoopAlignmentSummaryExtras {
     unknown,
     unknown
   >;
+  readonly coverage?: LambdaCoopAlignmentCoverageReport;
   readonly additionalMetadata?: ReadonlyArray<string>;
   readonly additionalNotes?: ReadonlyArray<string>;
 }
@@ -139,6 +152,7 @@ const buildLambdaCoopAlignmentSummary = (
     residualHandlerSummary,
     residualLawAggregate,
     residualLawCheck,
+    coverage,
     additionalMetadata,
     additionalNotes,
   } = extras;
@@ -278,6 +292,30 @@ const buildLambdaCoopAlignmentSummary = (
       }
     }
   }
+  if (coverage) {
+    metadata.push(
+      `λ₍coop₎.alignment.coverage.interpreter.expected=${coverage.interpreterExpectedOperations}`,
+    );
+    metadata.push(
+      `λ₍coop₎.alignment.coverage.interpreter.covered=${coverage.interpreterCoveredOperations}`,
+    );
+    metadata.push(
+      `λ₍coop₎.alignment.coverage.interpreter.missing=${JSON.stringify(
+        coverage.interpreterMissingOperations,
+      )}`,
+    );
+    metadata.push(
+      `λ₍coop₎.alignment.coverage.kernel.total=${coverage.kernelTotalClauses}`,
+    );
+    metadata.push(
+      `λ₍coop₎.alignment.coverage.kernel.evaluated=${coverage.kernelEvaluatedClauses}`,
+    );
+    metadata.push(
+      `λ₍coop₎.alignment.coverage.kernel.skipped=${JSON.stringify(
+        coverage.kernelSkippedClauses,
+      )}`,
+    );
+  }
   if (additionalMetadata && additionalMetadata.length > 0) {
     metadata.push(...additionalMetadata);
   }
@@ -317,6 +355,63 @@ const buildLambdaCoopAlignmentSummary = (
       `λ₍coop₎ alignment residual oracles=${residualOracleSummary.passed}/${residualOracleSummary.total}` +
         ` failing=${residualOracleSummary.failed}`,
     );
+  }
+  if (coverage) {
+    notes.push(
+      `λ₍coop₎ alignment interpreter coverage expected=${coverage.interpreterExpectedOperations}` +
+        ` covered=${coverage.interpreterCoveredOperations}`,
+    );
+    if (coverage.interpreterMissingOperations.length > 0) {
+      notes.push(
+        `λ₍coop₎ alignment interpreter missing operations=${coverage.interpreterMissingOperations.join(",")}`,
+      );
+    }
+    notes.push(
+      `λ₍coop₎ alignment kernel coverage total=${coverage.kernelTotalClauses}` +
+        ` evaluated=${coverage.kernelEvaluatedClauses}`,
+    );
+    if (coverage.kernelSkippedClauses.length > 0) {
+      for (const skip of coverage.kernelSkippedClauses) {
+        notes.push(
+          `λ₍coop₎ alignment kernel skipped clause=${skip.operation} reason=${skip.reason}`,
+        );
+      }
+    }
+    notes.push(
+      `λ₍coop₎ alignment coverage operations total=${coverage.operationSummary.total}` +
+        ` missingInterpreter=${coverage.operationSummary.missingInterpreter}` +
+        ` missingKernel=${coverage.operationSummary.missingKernelClause}` +
+        ` skipped=${coverage.operationSummary.skippedKernelClauses}`,
+    );
+    if (coverage.operationSummary.residualDefaulted > 0) {
+      notes.push(
+        `λ₍coop₎ alignment coverage residual defaulted=${coverage.operationSummary.residualDefaulted}`,
+      );
+    }
+    if (coverage.operationSummary.residualHandlers > 0) {
+      notes.push(
+        `λ₍coop₎ alignment coverage residual handlers=${coverage.operationSummary.residualHandlers}`,
+      );
+    }
+    if (coverage.operations.length > 0) {
+      coverage.operations.forEach((link) => {
+        if (!link.interpreterCovered || !link.kernelClause || link.kernelClauseSkipped) {
+          notes.push(
+            `λ₍coop₎ alignment coverage op=${link.operation} interpreter=${link.interpreterCovered ? "covered" : "missing"}` +
+              ` kernel=${link.kernelClause ? link.kernelClause.kind : "missing"}` +
+              (link.kernelClauseSkipped ? ` skipped=${link.kernelClauseSkipped.reason}` : ""),
+          );
+        }
+        if (link.residual?.defaulted) {
+          notes.push(`λ₍coop₎ alignment coverage residual defaulted op=${link.operation}`);
+        }
+        if (link.residual?.handlerDescription) {
+          notes.push(
+            `λ₍coop₎ alignment coverage residual handler op=${link.operation}: ${link.residual.handlerDescription}`,
+          );
+        }
+      });
+    }
   }
   if (residualLawAggregate) {
     notes.push(
@@ -461,6 +556,7 @@ const buildLambdaCoopAlignmentSummary = (
     ...(residualHandlerSummary ? { residualHandlers: residualHandlerSummary } : {}),
     ...(residualLawAggregate ? { residualLaw: residualLawAggregate } : {}),
     ...(residualLawCheck ? { residualLawCheck } : {}),
+    ...(coverage ? { coverage } : {}),
     boundary,
     ...(artifacts.residualCoverage ? { residual: artifacts.residualCoverage } : {}),
     unsupportedByKernel: artifacts.unsupportedByKernel,
@@ -898,12 +994,17 @@ export function analyzeSupervisedStackLambdaCoopAlignment<
     );
   const kernelClauseMetadata: string[] = [];
   const kernelClauseSummaries: ReturnType<typeof summarizeKernelEvaluation>[] = [];
+  const skippedKernelClauses: LambdaCoopKernelClauseSkip[] = [];
   lambdaCoopBase.clauseBundles.forEach((bundle) => {
     const argument =
       bundle.argumentWitness ??
       canonicalValueForType(bundle.argumentType) ??
       undefined;
     if (!argument) {
+      skippedKernelClauses.push({
+        operation: bundle.operation,
+        reason: "missing-argument-witness",
+      });
       kernelClauseMetadata.push(
         `λ₍coop₎.kernel[${bundle.operation}].summary=skipped:no-argument-witness`,
       );
@@ -952,6 +1053,14 @@ export function analyzeSupervisedStackLambdaCoopAlignment<
     );
   });
   const kernelCollectionSummary = summarizeKernelEvaluations(kernelClauseSummaries);
+  const coverageSummary = collectLambdaCoopAlignmentCoverageIssues({
+    expectedInterpreterOperations: evaluationOperations,
+    interpreterOperations: interpreterSummary.operations,
+    kernelTotalClauses: lambdaCoopBase.clauseBundles.length,
+    kernelEvaluatedClauses: kernelClauseSummaries.length,
+    skippedKernelClauses,
+    clauseBundles: lambdaCoopBase.clauseBundles,
+  });
   kernelClauseMetadata.push(
     `λ₍coop₎.kernel.summary.total=${kernelCollectionSummary.totalEvaluations}`,
   );
@@ -987,6 +1096,7 @@ export function analyzeSupervisedStackLambdaCoopAlignment<
   const alignmentExtras: LambdaCoopAlignmentSummaryExtras = {
     residualLawAggregate,
     residualLawCheck,
+    coverage: coverageSummary,
     ...(residualHandlerSummary ? { residualHandlerSummary } : {}),
     ...(options.alignmentMetadata
       ? { additionalMetadata: options.alignmentMetadata }

@@ -86,12 +86,12 @@
   prints per-manifest mismatch counts before listing the individual issues.
 
 Next:
-- Surface manifest-input and blocked-plan coverage counts inside the sweep
-  record/dashboard summaries so FW-4 reviewers can confirm both data sources ran
-  together without parsing the CLI logs.
-- Add a dedicated `--help`/usage flag (or equivalent runnable output) that
-  prints the manifest-queue workflow and sentinel reminder before running
-  Example 105.
+- Escalate the remaining **Phase IV c** work—alignment diagnostics, interpreter
+  coverage, and inverse-translation round-trips—so the λ₍coop₎ stack runner is
+  feature-complete before layering additional session-type automation.
+- Close out the **Phase IV b** residual-runner backlog (documented translators,
+  regression suites, and Run₍R₎(T) adapters) ahead of any new Phase VII or
+  λ₍coop₎ instrumentation.
 
 ### **Phase VII Pass 1 — Session-type grammar scaffolding**
 
@@ -847,6 +847,26 @@ Next:
 - Extend the README/future-work quick reference once the coverage filters land so
   FW-4 reviewers know how to focus on under-covered sweeps from the CLI output.
 
+### **Phase VII Pass 39 — Source-coverage filters and warnings**
+
+- ✅ Added `collectSessionTypeGlueingSourceCoverageIssues` plus
+  `sourceCoverageIssues` fields on dashboard and consumer summaries so sweeps
+  that skip manifest-input or blocked-plan runs now emit canonical warnings that
+  downstream tooling can filter.
+- ✅ Updated `examples/runnable/105-session-type-glueing-sweep.ts` to reuse the
+  coverage filter, log "Sweep source coverage warnings" blocks ahead of manifest
+  writes, and thread the warning arrays into runnable metadata so FW-4 reviewers
+  see missing coverage before generating manifests.
+- ✅ Extended the session-type sweep and consumer regressions to expect the new
+  warning arrays (including positive/negative cases) so the coverage filters stay
+  under automated tests.
+
+Next:
+- Carry the Phase IV backlog forward—wire the λ₍coop₎ coverage warnings into
+  dashboards/CLI consumers and close the remaining residual-runner and
+  interpreter inverse-translation tasks—before scheduling the next round of
+  session-type CLI enhancements.
+
 ### **Phase VI Pass 43 — Runner-calculus closure review**
 
 - ✅ Ran `summarizeRunnerCalculusRewrites` on the Example 4 harness and
@@ -1378,6 +1398,355 @@ Progress:
 
 Next:
 - Continue Phase IV residual-law instrumentation by plumbing the summary into any planned counterexample dashboards and analysis tooling for subsequent passes.
+
+------
+
+### **Phase IV Pass 9 — λ₍coop₎ coverage warnings**
+Status: COMPLETED
+
+- Added `collectLambdaCoopAlignmentCoverageIssues`, comparing the scripted λ₍coop₎
+  interpreter operation chain against the observed trace and recording any
+  kernel clauses skipped because canonical witnesses are missing, so coverage
+  gaps surface as structured diagnostics.
+- Extended `LambdaCoopAlignmentSummary` with a `coverage` payload and canonical
+  `λ₍coop₎.alignment.coverage.*` metadata/notes, ensuring supervised-stack
+  alignments emit deterministic coverage summaries that dashboards and runners
+  can consume before generating manifests.
+- Updated the Example 6 supervised-stack regression suite to assert the new
+  coverage metadata plus a helper-focused unit test so both the empty-path and
+  warning-path remain under automation.
+
+Next:
+- Propagate the coverage summary into the λ₍coop₎ dashboards and runnable CLI
+  metadata so coverage warnings block manifest creation before the remaining
+  Phase IV inverse-translation tasks close.
+
+------
+
+### **Phase IV Pass 10 — λ₍coop₎ coverage gating for dashboards and CLI**
+Status: COMPLETED
+
+- Parsed the new `λ₍coop₎.alignment.coverage.*` metadata inside the sweep
+  dashboard helpers, recording per-run coverage snapshots, surfacing
+  `alignmentCoverageIssues` alongside runner/alignment flags, and exporting the
+  aggregated warnings so FW-4 dashboards report missing interpreter operations
+  or skipped kernel clauses explicitly.
+- Extended the Example 105 sweep CLI to display the coverage summaries on every
+  run, persist the warning arrays in sweep metadata, and gate both
+  `--sweep-manifest` writes and diff-sourced manifest suggestions whenever λ₍coop₎
+  coverage issues remain so manifests cannot be created while interpreter/kernel
+  traces are incomplete.
+- Added regression coverage that exercises the new dashboard metadata and mocks
+  CLI sweeps with forced coverage gaps to prove the λ₍coop₎ coverage gate blocks
+  manifest writes until the outstanding interpreter/kernel witnesses are
+  repaired.
+
+Next:
+- Feed the recorded coverage diagnostics into the remaining Phase IV c
+  inverse-translation tasks by cross-referencing each interpreter operation with
+  its residual runner clauses so we can prove the lifted translations cover the
+  entire λ₍coop₎ execution chain before shipping the residual alignment suite.
+
+------
+
+### **Phase IV Pass 11 — λ₍coop₎ coverage/residual cross-reference**
+Status: COMPLETED
+
+- Cross-reference every expected λ₍coop₎ interpreter operation against the recorded
+  kernel clause bundles and residual fallbacks so coverage summaries expose whether
+  a missing interpreter step is paired with a missing clause, a skipped clause, or
+  a defaulted residual handler.
+- Emit structured `λ₍coop₎.alignment.coverage.operations.*` metadata plus alignment
+  notes documenting per-operation coverage, residual-handler descriptions, and
+  residual coverage digests so dashboards and automation inherit the full
+  cross-reference without recomputing the joins.
+- Update the session-type glueing dashboards, sweep CLI, and regression suite to
+  parse the new metadata, log per-operation coverage lines, and surface kernel
+  missing-clause/residual-default warnings alongside the existing interpreter and
+  kernel skip notices.
+
+Progress:
+- `collectLambdaCoopAlignmentCoverageIssues` now returns per-operation link objects
+  and aggregate summaries, ensuring λ₍coop₎ alignment reports emit metadata and
+  notes for interpreter coverage, kernel clauses, and residual status in a single
+  pass.
+- `session-type-glueing-dashboard.ts` parses the new metadata into
+  `alignmentCoverage.operations` snapshots, reports kernel-missing and
+  residual-defaulted operations as explicit issues, and formats the new per-op
+  diagnostics in the sweep and CLI logs.
+- Example 105 sweep tests assert the expanded metadata payloads and verify that
+  alignment coverage issues list the interpreter gaps, skipped clauses, missing
+  kernel clauses, and residual default warnings required by the new gate.
+
+Next:
+- Carry the cross-referenced coverage data into the remaining Phase IV inverse
+  translation tasks by wiring the per-operation diagnostics into the runner ⇔
+  λ₍coop₎ translators.
+
+------
+
+### **Phase IV Pass 12 — λ₍coop₎ coverage metadata in runner translators**
+Status: COMPLETED
+
+- Extracted the λ₍coop₎ coverage helper into `lambda-coop.alignment-coverage.ts`
+  so both the alignment analyzer and the runner translators reuse the same
+  per-operation link logic without circular imports.
+- Updated `makeSupervisedStack` to record structural coverage expectations and
+  store the serialized coverage report (including operation links and
+  summaries) alongside the λ₍coop₎ metadata emitted with every runner.
+- Taught `runnerToStack` to parse the expected-operations/coverage metadata,
+  surface them in the λ₍coop₎ reconstruction summary, and log the recovered
+  coverage counts so inverse-translation diagnostics inherit the structural
+  cross-reference.
+- Extended the Example 6 regression to assert the new metadata (runner strings,
+  reconstructed `expectedOperations`, and coverage operation summaries) so the
+  translators stay under automation.
+
+Next:
+- Feed the serialized coverage metadata into the CLI/dashboards consuming the
+  runner-to-stack reconstructions so Phase IV inverse-translation tooling can
+  reuse the stored λ₍coop₎ operation links without recomputing them per sweep.
+
+------
+
+### **Phase IV Pass 13 — Runner coverage metadata in CLI/dashboards**
+Status: COMPLETED
+
+- Threaded the serialized `supervised-stack.lambdaCoop.coverage` payload through
+  the session-type sweep snapshots, sweep-record reader, and dashboard summary
+  helpers so recorded runs preserve the λ₍coop₎ coverage report even when the
+  alignment metadata is unavailable.
+- Added runner-coverage parsers plus a `getSessionTypeGlueingCoverageForRun`
+  helper that exposes whether coverage data originated from the active
+  alignment run or from stored runner metadata, letting dashboards and CLI logs
+  surface the correct source while reusing the same issue collectors.
+- Updated the Example 105 sweep CLI and regression suite to log whichever
+  coverage source is present, emit warnings for runner-sourced coverage gaps,
+  and assert that runner-only coverage metadata still blocks manifest writes
+  via the dashboard summaries.
+
+Next:
+- Wire the persisted coverage metadata into the upcoming runner-to-stack round-
+  trip dashboards so coverage diffs and manifest tooling can compare the stored
+  λ₍coop₎ operation links without re-running the interpreter pipeline.
+
+------
+
+### **Phase IV Pass 14 — Runner-to-stack coverage comparison helpers**
+Status: COMPLETED
+
+- Added `getSupervisedStackLambdaCoopCoverageFromMetadata` plus coverage
+  comparison helpers so round-trip dashboards can parse the serialized
+  `supervised-stack.lambdaCoop.coverage` payloads directly from runner metadata
+  and diff them against the reconstructed λ₍coop₎ summaries without invoking the
+  interpreter.
+- Recorded structured coverage comparison issues when recorded metadata is
+  missing or diverges from the reconstructed payload, flagging mismatched
+  interpreter counts, skipped clauses, or per-operation diagnostics so manifest
+  tooling can block stale runners.
+- Extended the Example 6 round-trip regression suite with coverage assertions
+  and drift harnesses to ensure both the metadata reader and comparison helper
+  stay under automation for future dashboards.
+
+Next:
+- Feed the new coverage comparison helpers into the runner-to-stack dashboard
+  and manifest tooling planned for the remaining Phase IV c passes so coverage
+  drift surfaces before manifests are queued.
+
+------
+
+### **Phase IV Pass 15 — Runner/alignment coverage drift detectors**
+Status: COMPLETED
+
+- Added coverage snapshot comparison helpers that convert parsed
+  `λ₍coop₎.alignment.coverage.*` metadata back into
+  `LambdaCoopAlignmentCoverageReport`s and diff the runner metadata against the
+  freshly computed alignment coverage so dashboards don’t rely on recomputing the
+  interpreter traces.
+- Threaded the coverage drift results through the sweep dashboards, CLI logs, and
+  manifest gate so every run reports `coverage.drift:*` issues, aggregates them
+  into the sweep summary, and blocks manifest creation whenever recorded runner
+  metadata diverges from the latest alignment pass.
+- Extended the Example 105 sweep regression suite with runner/alignment drift
+  fixtures to prove that coverage mismatch strings appear in the summary,
+  per-entry issues, and CLI logs, keeping the new helpers under automation.
+
+Next:
+- Carry the new coverage-drift metadata into the manifest queue replays and FW-4
+  consumer diffs so suggested manifests and diff-only runs surface stale coverage
+  before enqueueing λ₍coop₎ traces.
+
+------
+
+### **Phase IV Pass 16 — Manifest queue + consumer coverage drift surfacing**
+Status: COMPLETED
+
+- Surfaced queued-manifest λ₍coop₎ coverage warnings (alignment gaps and drift) in the
+  sweep CLI by parsing recorded coverage snapshots, logging the issues alongside
+  manifest-queue status, and persisting them in the `manifestQueue` summary so FW-4
+  reviewers see stale traces before enqueuing suggested manifests.
+- Extended the FW-4 consumer diffs with coverage readers/comparators so diff-only
+  runs emit `alignment.coverage:*` and `coverage.drift:*` issues, log aggregated
+  warnings, and expose them via metadata/summary fields for dashboards and CLI
+  consumers.
+- Added regression coverage for the new manifest-queue fields plus consumer diff
+  coverage assertions, keeping both the summary helpers and Example 106 runnable
+  logs under automation.
+
+Next:
+- Gate manifest queue consumption/writes on the queued-manifest coverage warnings so
+  λ₍coop₎ coverage drift automatically blocks enqueues until the stale traces are
+  regenerated.
+
+------
+
+### **Phase IV Pass 17 — Queued manifest coverage gating**
+Status: COMPLETED
+
+- Blocked manifest queue consumption whenever queued manifest replays report
+  λ₍coop₎ coverage issues or runner/alignment coverage drift, logging the
+  gating reason, re-enqueuing the queued paths, and persisting the blocked
+  input list/coverage warnings inside the sweep metadata and
+  `SessionTypeGlueingManifestQueueSummary`.
+- Extended the sweep CLI manifest writers so explicit targets, diff-sourced
+  suggestions, and blocked-plan replays throw or convert to blocked-plan
+  entries when queued manifest coverage issues remain, with
+  `--allow-manifest-queue-issues` now tracking override reasons for both the
+  sentinel and coverage gates.
+- Added regression coverage that proves queued manifest coverage warnings
+  requeue inputs, surface metadata warnings, and prevent
+  `--sweep-manifest` writes until the λ₍coop₎ coverage drift is repaired.
+
+Next:
+- Extend the manifest queue smoke tests so the sentinel explicitly records
+  the coverage-gating results, allowing CLI consumers to detect lingering
+  coverage drift before the queued manifest runner executes.
+
+------
+
+### **Phase IV Pass 18 — Manifest queue coverage gate sentinel telemetry**
+Status: COMPLETED
+
+- Updated the manifest-queue smoke tests and sentinel helpers to record
+  coverage-gate results (checkedAt timestamp, issues, warnings) alongside
+  the existing tested/timestamp metadata, and exposed the serialized entries
+  via `sessionType.manifestQueue.coverageGate.*` session metadata.
+- Threaded the new sentinel data through the Example 105 sweep CLI so logs,
+  run metadata, and manifest-queue summaries report the most recent coverage
+  gate issues before queued manifest replays execute, and propagated the
+  fields into the dashboards/consumer diffs so FW‑4 reviews surface the
+  sentinel warnings without scraping local files.
+- Expanded the manifest-queue unit and sweep regressions to exercise the
+  coverage-gate metadata, ensuring both the sentinel helper and downstream
+  manifests preserve the recorded issues/warnings.
+
+Next:
+- Teach the manifest-queue CLI gate to incorporate the sentinel coverage-gate
+  issues directly (blocking or requiring overrides when the smoke tests record
+  stale drift) so queued manifest replays can be short-circuited before the
+  λ₍coop₎ stack reruns.
+
+------
+
+### **Phase IV Pass 19 — Manifest queue sentinel coverage gating**
+Status: COMPLETED
+
+- Combined manifest-queue test-status issues with the sentinel’s
+  coverage-gate results so the sweep CLI now blocks queued manifest replays
+  whenever the smoke tests recorded λ₍coop₎ alignment coverage gaps or drift,
+  logs the specific `coverageGate:*` reasons, and requires
+  `--allow-manifest-queue-issues` overrides before replaying affected traces.
+- Logged the sentinel gating metadata inside the queue summary, appended the
+  blocked input paths to the CLI output, and added a regression that proves
+  queued manifests remain enqueued (with blocked-input metadata) whenever the
+  sentinel reports outstanding coverage issues.
+
+Next:
+- Extend the manifest-queue CLI and dashboards so sentinel coverage-gate
+  issues also block direct manifest replays and diff-sourced manifest
+  suggestions (not just queued inputs), keeping FW‑4 reviewers from writing or
+  consuming manifests until the sentinel coverage is refreshed.
+
+------
+
+### **Phase IV Pass 20 — Sentinel gating for direct manifest replays**
+Status: COMPLETED
+
+- Blocked `--sweep-manifest-input` replays whenever the manifest-queue sentinel
+  reports coverage-gate issues, logging the skipped manifest paths, recording
+  them in sweep metadata, and surfacing the blocklist inside the manifest-queue
+  summary so FW‑4 reviews show why direct manifest replays stayed disabled.
+- Threaded the blocked manifest-input metadata through sweep records,
+  dashboards, consumer diffs, and the Example 106 logs so downstream tools
+  highlight sentinel-gated manifests alongside the existing queued-input and
+  coverage-drift warnings.
+- Added regression coverage that proves the CLI logs the sentinel gate, that the
+  new metadata fields capture the blocked paths, and that dashboards/consumers
+  persist the sentinel blocklist for reviewers.
+
+Next:
+- Extend the blocked-manifest plan refresh pipeline so sentinel coverage-gate
+  issues halt blocked-plan sweeps as well, logging the gating reasons next to
+  the recorded plan entries before regenerating manifests.
+
+------
+
+### **Phase IV Pass 21 — Sentinel gating for blocked manifest plans**
+Status: COMPLETED
+
+- Sentinel coverage-gate issues now block `--sweep-blocked-plan-input` runs just
+  like direct manifest replays, logging the skipped plan entries, recording the
+  gating reasons in the sweep metadata, and surfacing the new telemetry across
+  dashboards, manifest-queue summaries, and FW‑4 consumers.
+- Added `blockedManifestPlanInputs` records to sweep files so reviewers can see
+  which recorded plans were skipped (and why) before regenerating manifests, and
+  updated the Example 105/106 regressions to exercise the new gating path.
+
+Next:
+- Thread the sentinel-blocked plan metadata into the blocked-plan queue refresh
+  dashboards so Phase IV c telemetry can distinguish between skipped plan inputs
+  and stale manifests when reporting coverage gaps.
+
+------
+
+### **Phase IV Pass 22 — Manifest queue telemetry for sentinel-blocked plans**
+Status: COMPLETED
+
+- SessionTypeGlueingManifestQueueSummary now records `blockedManifestPlanInputs`, and
+  the Example 105 sweep writes the sentinel-blocked entries into the manifest queue
+  summary so queue dashboards, FW‑4 diffs, and Example 106 logs show which plan
+  refresh inputs were skipped by the coverage gate.
+- The Example 106 consumer manifest-queue log prints each sentinel-blocked plan entry,
+  making the queue refresh dashboards call out blocked-plan coverage gaps alongside
+  the existing sentinel issues without relying on the top-level metadata arrays.
+- The sweep and consumer regression suites assert the new manifest-queue payloads so
+  both the dashboard summary and diff pipeline keep the queue-level telemetry under
+  automation.
+
+Next:
+- Use the queue-level blocked-plan metadata to drive the follow-up rerun tooling so
+  `session-type:manifest-queue:test` reminders and requeue steps can target the
+  skipped plan inputs automatically once the sentinel coverage is refreshed.
+
+------
+
+### **Phase IV Pass 23 — Blocked-plan rerun queue automation**
+Status: COMPLETED
+
+- Added `session-type-glueing-blocked-manifest-plan-queue.ts` so sentinel-blocked plan
+  records persist to disk, letting the sweep CLI enqueue skipped plan inputs for a
+  rerun immediately after `npm run session-type:manifest-queue:test` refreshes the
+  coverage gate.
+- Example 105 now loads queued plan inputs automatically, records queue actions in
+  logs/metadata, and consumes the rerun queue once the blocked plans are re-applied,
+  ensuring rerun steps always target the skipped plan records.
+- Regression coverage exercises both the enqueue and replay paths, proving that the
+  rerun queue metadata (`blockedManifestPlanQueue`) and manifest-queue reminders stay
+  under automation.
+
+Next:
+- Surface the rerun queue status inside the dashboards/consumer summaries so FW‑4
+  reviewers can see remaining queued plan records without replaying the CLI logs.
 
 ------
 

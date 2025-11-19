@@ -277,6 +277,49 @@ export const sessionTypeGlueingConsumerRunnable: RunnableExample = {
       if (summary.manifestQueue.testWarnings && summary.manifestQueue.testWarnings.length > 0) {
         logs.push(`  warnings: ${summary.manifestQueue.testWarnings.join(", ")}`);
       }
+      if (summary.manifestQueue.testCoverageGate) {
+        const coverageGate = summary.manifestQueue.testCoverageGate;
+        logs.push(
+          `  coverageGate.checkedAt=${coverageGate.checkedAt} issues=${coverageGate.issues?.length ?? 0} warnings=${
+            coverageGate.warnings?.length ?? 0
+          }`,
+        );
+        if (coverageGate.issues && coverageGate.issues.length > 0) {
+          coverageGate.issues.forEach((issue) => logs.push(`    issue: ${issue}`));
+        }
+        if (coverageGate.warnings && coverageGate.warnings.length > 0) {
+          coverageGate.warnings.forEach((warning) => logs.push(`    warning: ${warning}`));
+        }
+      }
+      if (
+        summary.manifestQueue.blockedManifestPlanInputs &&
+        summary.manifestQueue.blockedManifestPlanInputs.length > 0
+      ) {
+        logs.push("  sentinel blocked blocked-plan refresh entries:");
+        summary.manifestQueue.blockedManifestPlanInputs.forEach((entry) => {
+          const recordedAtNote = entry.recordedAt ? ` recordedAt=${entry.recordedAt}` : "";
+          logs.push(
+            `    ${entry.sourcePath} → ${entry.path} planIndex=${entry.planIndex} plan=${entry.planRecordPath}${recordedAtNote} issues=${entry.issues.length}`,
+          );
+        });
+      }
+    }
+    if (summary.blockedManifestInputs && summary.blockedManifestInputs.length > 0) {
+      logs.push("Sentinel coverage gate blocked manifest replays:");
+      summary.blockedManifestInputs.forEach((path) => logs.push(`  ${path}`));
+    }
+    if (summary.blockedManifestPlanInputs && summary.blockedManifestPlanInputs.length > 0) {
+      logs.push("Sentinel coverage gate blocked blocked-plan refresh entries:");
+      summary.blockedManifestPlanInputs.forEach((entry) => {
+        const recordedAtNote = entry.recordedAt ? ` recordedAt=${entry.recordedAt}` : "";
+        logs.push(
+          `  ${entry.sourcePath} → ${entry.path} planIndex=${entry.planIndex} plan=${entry.planRecordPath}${recordedAtNote} issues=${entry.issues.length}`,
+        );
+      });
+    }
+    if (summary.alignmentCoverageIssues && summary.alignmentCoverageIssues.length > 0) {
+      logs.push("λ₍coop₎ coverage issues detected:");
+      summary.alignmentCoverageIssues.forEach((issue) => logs.push(`  - ${issue}`));
     }
     logs.push(...formatSessionTypeGlueingSourceCoverageLines(summary.sourceCoverage));
 
@@ -288,8 +331,11 @@ export const sessionTypeGlueingConsumerRunnable: RunnableExample = {
         manifestSourceTotals: summary.manifestSourceTotals ?? [],
         manifestQueue: summary.manifestQueue,
         sourceCoverage: summary.sourceCoverageTotals,
+        alignmentCoverageIssues: summary.alignmentCoverageIssues ?? [],
         blockedSuggestedManifestWrites: summary.blockedSuggestedManifestWrites ?? [],
+        blockedManifestInputs: summary.blockedManifestInputs ?? [],
         blockedManifestPlans: summary.blockedManifestPlans ?? [],
+        blockedManifestPlanInputs: summary.blockedManifestPlanInputs ?? [],
       },
     };
   },
