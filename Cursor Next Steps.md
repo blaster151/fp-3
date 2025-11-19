@@ -1730,6 +1730,26 @@ Next:
 
 ------
 
+### **Phase IV Pass 23 — Blocked-plan rerun queue automation**
+Status: COMPLETED
+
+- Added `session-type-glueing-blocked-manifest-plan-queue.ts` so sentinel-blocked plan
+  records persist to disk, letting the sweep CLI enqueue skipped plan inputs for a
+  rerun immediately after `npm run session-type:manifest-queue:test` refreshes the
+  coverage gate.
+- Example 105 now loads queued plan inputs automatically, records queue actions in
+  logs/metadata, and consumes the rerun queue once the blocked plans are re-applied,
+  ensuring rerun steps always target the skipped plan records.
+- Regression coverage exercises both the enqueue and replay paths, proving that the
+  rerun queue metadata (`blockedManifestPlanQueue`) and manifest-queue reminders stay
+  under automation.
+
+Next:
+- Surface the rerun queue status inside the dashboards/consumer summaries so FW‑4
+  reviewers can see remaining queued plan records without replaying the CLI logs.
+
+------
+
 ### **Phase IV Pass 7 — Residual law counterexample exports**
 Status: COMPLETED
 

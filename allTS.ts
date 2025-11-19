@@ -143,6 +143,7 @@ export * from "./session-type-glueing-consumer";
 export * from "./session-type-glueing-manifest";
 export * from "./session-type-glueing-manifest-queue";
 export * from "./session-type-glueing-manifest-queue-test-status";
+export * from "./session-type-glueing-blocked-manifest-plan-queue";
 export * from "./reader-task-option"
 export * from "./json-canonical"
 export * from "./decoder"

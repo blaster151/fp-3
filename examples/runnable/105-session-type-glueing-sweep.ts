@@ -71,6 +71,11 @@ import {
   enqueueSessionTypeGlueingManifestQueue,
 } from "../../session-type-glueing-manifest-queue";
 import {
+  enqueueSessionTypeGlueingBlockedManifestPlanQueue,
+  peekSessionTypeGlueingBlockedManifestPlanQueue,
+  removeSessionTypeGlueingBlockedManifestPlanQueueEntries,
+} from "../../session-type-glueing-blocked-manifest-plan-queue";
+import {
   formatSessionTypeManifestQueueTestMetadataEntries,
   formatSessionTypeManifestQueueTestIssueEntries,
   formatSessionTypeManifestQueueCoverageGateMetadataEntries,
@@ -375,7 +380,23 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
     const fileSweeps = getRunnableFlagValues(context, SWEEP_FILE_FLAG);
     let manifestSweepsFromFlags = getRunnableFlagValues(context, SWEEP_MANIFEST_INPUT_FLAG);
     const manifestTargets = getRunnableFlagValues(context, SWEEP_MANIFEST_FLAG);
-    const blockedManifestPlanInputs = getRunnableFlagValues(context, SWEEP_BLOCKED_PLAN_INPUT_FLAG);
+    const blockedManifestPlanInputsFromFlags = getRunnableFlagValues(
+      context,
+      SWEEP_BLOCKED_PLAN_INPUT_FLAG,
+    );
+    const blockedManifestPlanInputsFromQueue = peekSessionTypeGlueingBlockedManifestPlanQueue();
+    const queuedBlockedManifestPlanInputSet = new Set(
+      blockedManifestPlanInputsFromQueue.map((path) => resolve(path)),
+    );
+    const blockedManifestPlanInputs = Array.from(
+      new Set(
+        [...blockedManifestPlanInputsFromFlags, ...blockedManifestPlanInputsFromQueue].map((path) =>
+          resolve(path),
+        ),
+      ),
+    );
+    const blockedManifestPlanQueueActions: Array<{ path: string; action: "queued" | "consumed" }> = [];
+    const consumedQueuedBlockedManifestPlanInputs = new Set<string>();
     const allowManifestQueueIssues = flagValueIsTruthy(
       getRunnableFlag(context, SWEEP_MANIFEST_OVERRIDE_FLAG),
     );
@@ -559,6 +580,20 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
           }. ` +
             `Rerun 'npm run session-type:manifest-queue:test' or pass --${SWEEP_MANIFEST_OVERRIDE_FLAG}=true to override.`,
         );
+        const planRecordPathsForQueue = Array.from(
+          new Set(blockedManifestPlanSummaries.map((summary) => summary.planRecordPath)),
+        );
+        if (planRecordPathsForQueue.length > 0) {
+          enqueueSessionTypeGlueingBlockedManifestPlanQueue(planRecordPathsForQueue);
+          planRecordPathsForQueue.forEach((path) =>
+            blockedManifestPlanQueueActions.push({ path, action: "queued" }),
+          );
+          blockedManifestPlanSentinelLogs.push(
+            `  Queued ${planRecordPathsForQueue.length} blocked-plan record${
+              planRecordPathsForQueue.length === 1 ? "" : "s"
+            } for rerun after 'npm run session-type:manifest-queue:test'.`,
+          );
+        }
         blockedManifestPlanSummaries.forEach((summary) => {
           const recordedAtNote = summary.recordedAt ? ` recordedAt=${summary.recordedAt}` : "";
           blockedManifestPlanSentinelLogs.push(
@@ -597,6 +632,9 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
         );
       }
       manifestPlanSummariesForReplay.forEach((summary) => {
+        if (queuedBlockedManifestPlanInputSet.has(summary.planRecordPath)) {
+          consumedQueuedBlockedManifestPlanInputs.add(summary.planRecordPath);
+        }
         const planEntries = buildSessionTypeGlueingManifestEntriesFromBlockedManifestPlan(summary.plan);
         if (planEntries.length === 0) {
           return;
@@ -624,6 +662,21 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
           });
         });
       });
+      if (consumedQueuedBlockedManifestPlanInputs.size > 0) {
+        const consumedPaths = Array.from(consumedQueuedBlockedManifestPlanInputs);
+        removeSessionTypeGlueingBlockedManifestPlanQueueEntries(consumedPaths);
+        consumedPaths.forEach((path) =>
+          blockedManifestPlanQueueActions.push({ path, action: "consumed" }),
+        );
+        blockedManifestPlanSentinelLogs.push(
+          `Replayed ${consumedPaths.length} queued blocked-plan record${
+            consumedPaths.length === 1 ? "" : "s"
+          } after refreshing 'npm run session-type:manifest-queue:test'.`,
+        );
+        consumedPaths.forEach((path) =>
+          blockedManifestPlanSentinelLogs.push(`  replayed-queued-plan=${path}`),
+        );
+      }
     }
 
     const recordPath = getRunnableFlag(context, SWEEP_RECORD_FLAG);
@@ -1408,6 +1461,9 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
         : {}),
       ...(blockedManifestPlanInputGateEntries.length > 0
         ? { blockedManifestPlanInputs: blockedManifestPlanInputGateEntries }
+        : {}),
+      ...(blockedManifestPlanQueueActions.length > 0
+        ? { blockedManifestPlanQueue: blockedManifestPlanQueueActions }
         : {}),
       ...(blockedSuggestedManifestWrites.length > 0
         ? {

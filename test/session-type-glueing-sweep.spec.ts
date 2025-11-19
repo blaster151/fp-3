@@ -42,6 +42,11 @@ import {
   enqueueSessionTypeGlueingManifestQueue,
 } from "../session-type-glueing-manifest-queue";
 import {
+  clearSessionTypeGlueingBlockedManifestPlanQueue,
+  enqueueSessionTypeGlueingBlockedManifestPlanQueue,
+  peekSessionTypeGlueingBlockedManifestPlanQueue,
+} from "../session-type-glueing-blocked-manifest-plan-queue";
+import {
   markSessionTypeGlueingManifestQueueTested,
   SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_PATH,
 } from "../session-type-glueing-manifest-queue-test-status";
@@ -118,6 +123,11 @@ const markFreshManifestQueueCoverage = () =>
 
 const removeManifestQueueTestStatus = () =>
   rmSync(SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_PATH, { force: true });
+
+const clearManifestQueues = () => {
+  clearSessionTypeGlueingManifestQueue();
+  clearSessionTypeGlueingBlockedManifestPlanQueue();
+};
 
 describe("session-type glueing dashboard helpers", () => {
   it("collects runner coverage metadata from session entries", () => {
@@ -809,7 +819,7 @@ describe("session-type glueing sweep runnable", () => {
   });
 
   it("auto-generates suggested manifests when no explicit targets are provided", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-auto-"));
     const recordPath = join(dir, "record.json");
     const manifestIssuePath = join(dir, "manifest-issue.json");
@@ -873,11 +883,11 @@ describe("session-type glueing sweep runnable", () => {
     expect(suggestedWrites?.some((entry) => entry?.["sourcePath"] === manifestIssuePath)).toBe(true);
     const queued = peekSessionTypeGlueingManifestQueue();
     expect(queued).toContain(suggestedPath);
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 
   it("blocks automatic suggested manifests when manifest queue coverage is missing", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-blocked-"));
     const recordPath = join(dir, "record.json");
     const manifestIssuePath = join(dir, "manifest-issue.json");
@@ -921,11 +931,11 @@ describe("session-type glueing sweep runnable", () => {
     expect(typeof entry?.["entryCount"]).toBe("number");
     expect(Array.isArray(entry?.["entries"])).toBe(true);
     expect(peekSessionTypeGlueingManifestQueue()).not.toContain(suggestedPath);
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 
   it("allows automatic suggested manifests when the override flag is provided", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-override-"));
     const recordPath = join(dir, "record.json");
     const manifestIssuePath = join(dir, "manifest-issue.json");
@@ -961,11 +971,11 @@ describe("session-type glueing sweep runnable", () => {
     expect(existsSync(suggestedPath)).toBe(true);
     const metadata = outcome.metadata as Record<string, unknown> | undefined;
     expect(metadata?.["manifestQueueTestOverride"]).toBeDefined();
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 
   it("applies blocked manifest plan inputs once the sentinel is fresh", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     markFreshManifestQueueCoverage();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-plan-"));
     const planRecordPath = join(dir, "plan-record.json");
@@ -1052,7 +1062,7 @@ describe("session-type glueing sweep runnable", () => {
   });
 
   it("applies blocked plan inputs while writing explicit manifests", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     markFreshManifestQueueCoverage();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-plan-combo-"));
     const manifestPath = join(dir, "manual.json");
@@ -1108,7 +1118,7 @@ describe("session-type glueing sweep runnable", () => {
   });
 
   it("blocks blocked manifest plan inputs when the sentinel is stale", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     removeManifestQueueTestStatus();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-plan-blocked-"));
     const planRecordPath = join(dir, "plan-record.json");
@@ -1141,7 +1151,7 @@ describe("session-type glueing sweep runnable", () => {
   });
 
   it("skips blocked manifest plan inputs when the sentinel coverage gate reports issues", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     markSessionTypeGlueingManifestQueueTested({
       testedAt: "2024-07-01T00:00:00.000Z",
       coverageGate: {
@@ -1195,11 +1205,77 @@ describe("session-type glueing sweep runnable", () => {
       | ReadonlyArray<Record<string, unknown>>
       | undefined;
     expect(queueBlockedPlans).toEqual([expectedBlockedPlanInput]);
+    expect(peekSessionTypeGlueingBlockedManifestPlanQueue()).toEqual([planRecordPath]);
+    const blockedPlanQueue = metadata?.["blockedManifestPlanQueue"] as
+      | ReadonlyArray<Record<string, unknown>>
+      | undefined;
+    expect(blockedPlanQueue).toEqual([
+      {
+        path: planRecordPath,
+        action: "queued",
+      },
+    ]);
     markFreshManifestQueueCoverage();
+    clearSessionTypeGlueingBlockedManifestPlanQueue();
+  });
+
+  it("replays queued blocked plan inputs once sentinel coverage is refreshed", async () => {
+    clearManifestQueues();
+    markFreshManifestQueueCoverage();
+    const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-plan-queue-"));
+    const planRecordPath = join(dir, "plan-record.json");
+    const blockedManifestPath = join(dir, "blocked.issues.json");
+    const planEntry: SessionTypeGlueingBlockedManifestPlanEntry = {
+      path: blockedManifestPath,
+      sourcePath: "manifest:/tmp/issues.json",
+      mismatchedRuns: 1,
+      totalRuns: 1,
+      entryCount: 1,
+      entries: [
+        {
+          label: "queued-plan-entry",
+          sessionTypeLiteral: "Y",
+          assignments: { Y: "•" },
+          glueingSpan: "identity",
+        },
+      ],
+    };
+    writeSessionTypeGlueingSweepRecord(planRecordPath, [], { blockedManifestPlans: [planEntry] });
+    enqueueSessionTypeGlueingBlockedManifestPlanQueue([planRecordPath]);
+
+    const context = createRunnableExampleContext([
+      { key: SWEEP_FLAG, value: "session-type:Y;assignment:Y=•;glueing-span:identity;label:inline" },
+    ]);
+    const outcome = await sessionTypeGlueingSweepRunnable.run(context);
+
+    expect(existsSync(blockedManifestPath)).toBe(true);
+    expect(peekSessionTypeGlueingBlockedManifestPlanQueue()).toEqual([]);
+    const metadata = outcome.metadata as Record<string, unknown> | undefined;
+    expect(metadata).toBeDefined();
+    const appliedPlanSweeps = metadata?.["appliedBlockedManifestPlanSweeps"] as
+      | ReadonlyArray<Record<string, unknown>>
+      | undefined;
+    expect(
+      appliedPlanSweeps?.some(
+        (entry) =>
+          entry?.["path"] === blockedManifestPath &&
+          entry?.["planRecordPath"] === planRecordPath &&
+          entry?.["entryCount"] === 1,
+      ),
+    ).toBe(true);
+    const blockedPlanQueue = metadata?.["blockedManifestPlanQueue"] as
+      | ReadonlyArray<Record<string, unknown>>
+      | undefined;
+    expect(blockedPlanQueue).toEqual([
+      {
+        path: planRecordPath,
+        action: "consumed",
+      },
+    ]);
   });
 
   it("replays blocked plan inputs during diff sweeps", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     markFreshManifestQueueCoverage();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-plan-diff-"));
     const recordPath = join(dir, "record.json");
@@ -1278,7 +1354,7 @@ describe("session-type glueing sweep runnable", () => {
   });
 
   it("replays manifest inputs while refreshing blocked plans", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     markFreshManifestQueueCoverage();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-input-plan-"));
     const manifestPath = join(dir, "recorded.json");
@@ -1348,7 +1424,7 @@ describe("session-type glueing sweep runnable", () => {
   });
 
   it("consumes queued manifests as --sweep-manifest-input on the next run", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-queue-"));
     const recordPath = join(dir, "record.json");
     const manifestIssuePath = join(dir, "manifest-issue.json");
@@ -1393,11 +1469,11 @@ describe("session-type glueing sweep runnable", () => {
     const queuedReplays = metadata["queuedManifestReplays"] as ReadonlyArray<string> | undefined;
     expect(queuedReplays).toContain(suggestedPath);
     expect(peekSessionTypeGlueingManifestQueue()).not.toContain(suggestedPath);
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 
   it("skips queued manifest replays when manifest queue coverage is missing", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-gating-"));
     const recordPath = join(dir, "record.json");
     const manifestIssuePath = join(dir, "manifest-issue.json");
@@ -1441,11 +1517,11 @@ describe("session-type glueing sweep runnable", () => {
       resolve(suggestedPath),
     );
     expect(peekSessionTypeGlueingManifestQueue()).toContain(suggestedPath);
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 
   it("skips queued manifest replays when the sentinel coverage gate reports issues", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-gate-sentinel-"));
     const manifestPath = join(dir, "queued.json");
     writeFileSync(
@@ -1494,7 +1570,7 @@ describe("session-type glueing sweep runnable", () => {
     );
     expect(peekSessionTypeGlueingManifestQueue()).toContain(manifestPath);
     markFreshManifestQueueCoverage();
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 
   it("blocks direct manifest replays when the sentinel coverage gate reports issues", async () => {
@@ -1543,7 +1619,7 @@ describe("session-type glueing sweep runnable", () => {
   });
 
   it("requeues queued manifests when λ₍coop₎ coverage issues remain", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-coverage-"));
     const manifestPath = join(dir, "queued.json");
     writeFileSync(
@@ -1593,12 +1669,12 @@ describe("session-type glueing sweep runnable", () => {
       expect(peekSessionTypeGlueingManifestQueue()).toContain(manifestPath);
     } finally {
       sessionTypeGlueingStackRunnable.run = originalRun;
-      clearSessionTypeGlueingManifestQueue();
+      clearManifestQueues();
     }
   });
 
   it("rejects manifest writes when queued manifest coverage issues remain", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-coverage-write-"));
     const manifestPath = join(dir, "queued.json");
     const manifestTarget = join(dir, "next.json");
@@ -1642,12 +1718,12 @@ describe("session-type glueing sweep runnable", () => {
       expect(peekSessionTypeGlueingManifestQueue()).toContain(manifestPath);
     } finally {
       sessionTypeGlueingStackRunnable.run = originalRun;
-      clearSessionTypeGlueingManifestQueue();
+      clearManifestQueues();
     }
   });
 
   it("logs and clears missing queued manifests without throwing", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-missing-"));
     const missingPath = join(dir, "missing.json");
     enqueueSessionTypeGlueingManifestQueue([missingPath]);
@@ -1669,6 +1745,6 @@ describe("session-type glueing sweep runnable", () => {
     expect(errors[0]?.path).toBe(resolve(missingPath));
     expect(typeof errors[0]?.error).toBe("string");
     expect(peekSessionTypeGlueingManifestQueue()).toHaveLength(0);
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 });
