@@ -29,6 +29,8 @@ import {
   stackToRunner,
   runnerToStack,
   replaySupervisedStackRoundTrip,
+  getSupervisedStackLambdaCoopCoverageFromMetadata,
+  compareSupervisedStackRoundTripCoverage,
   summarizeRunnerOracles,
   type ResidualHandlerSpec,
   type KernelMonadSpec,
@@ -37,6 +39,7 @@ import {
   analyzeSupervisedStackLambdaCoopAlignment,
   analyzeSupervisedStackLambdaCoopAlignmentWithGlueingBridge,
   evaluateSupervisedStackWithLambdaCoop,
+  collectLambdaCoopAlignmentCoverageIssues,
 } from "../allTS";
 import { makeGlueingInteractionLawExampleSuite } from "../functor-interaction-law";
 import { bridgeGlueingSummaryToResidualRunner } from "../glueing-runner-bridge";
@@ -47,6 +50,7 @@ import {
 } from "../glueing-supervised-stack.examples";
 import { makeGlueingSupervisedStack } from "../glueing-supervised-stack";
 import { SetCat, type SetObj } from "../set-cat";
+import type { LambdaCoopClauseBundle } from "../supervised-stack-lambda-coop";
 
 const UNIT_TYPE = { kind: "unit" } as const;
 const ENV_TYPE = { kind: "base", name: "Env" } as const;
@@ -603,6 +607,24 @@ describe("stateful runner", () => {
           entry.startsWith("supervised-stack.lambdaCoop.boundary"),
         ),
       ).toBe(true);
+      expect(
+        runner.metadata?.some((entry) =>
+          entry.startsWith("supervised-stack.lambdaCoop.expectedOperations"),
+        ),
+      ).toBe(true);
+      expect(
+        runner.metadata?.some((entry) =>
+          entry.startsWith("supervised-stack.lambdaCoop.coverage"),
+        ),
+      ).toBe(true);
+      const coverageFromMetadata = getSupervisedStackLambdaCoopCoverageFromMetadata(
+        runner.metadata,
+      );
+      expect(coverageFromMetadata).toBeDefined();
+      expect(coverageFromMetadata?.operationSummary.total).toBeGreaterThan(0);
+      expect(coverageFromMetadata?.operations.map((link) => link.operation)).toContain(
+        "getenv",
+      );
 
       const back = runnerToStack(runner as any, law as unknown as any);
       expect(back.kernel?.name).toBe("ExampleKernel");
@@ -649,6 +671,11 @@ describe("stateful runner", () => {
       expect(back.lambdaCoop?.runnerLiteral?.stateCarrier).toBe("ExampleKernel");
       expect(back.lambdaCoop?.runnerLiteral?.clauses.length).toBe(2);
       expect(back.lambdaCoop?.residualCoverage?.sampleLimit).toBeGreaterThan(0);
+      expect(back.lambdaCoop?.expectedOperations).toEqual(["getenv"]);
+      expect(back.lambdaCoop?.coverage?.operations.map((link) => link.operation)).toEqual([
+        "getenv",
+      ]);
+      expect(back.lambdaCoop?.coverage?.operationSummary.total).toBe(1);
       expect(back.lambdaCoop?.aligned).toBe(false);
       expect(back.lambdaCoop?.issues).toContain(
         "λ₍coop₎ comparison note: kernel exposes operations not acknowledged by user (raise).",
@@ -846,10 +873,154 @@ describe("stateful runner", () => {
         { name: "getenv", kind: "state" },
         { name: "raise", kind: "exception" },
       ]);
+      expect(result.coverageComparison?.issues).toEqual([]);
+      expect(result.diagnostics?.some((note) => note === "roundTrip: mismatches=0")).toBe(true);
       const raiseSummary = result.reconstructed.kernel?.operations.find((op) => op.name === "raise");
       expect(raiseSummary?.residual?.defaulted).toBe(true);
       expect(result.reconstructed.user?.allowedOperations).toEqual(["getenv"]);
       expect(result.reconstructed.kernel?.stateCarrier).toBe("RoundTripKernel");
+    });
+
+    it("round-trips kernel-only stacks with mixed residual defaults", () => {
+      const law = makeExample6MonadComonadInteractionLaw();
+      const kernelObjects = law.law.kernel.base.objects;
+      type Obj = (typeof kernelObjects)[number];
+      const primaryObject = kernelObjects[0];
+      if (!primaryObject) {
+        throw new Error("Expected at least one kernel object for the round-trip fixture.");
+      }
+      const residualSpecs = new Map<Obj, ResidualHandlerSpec<Obj, unknown, unknown>>(
+        kernelObjects.map((object) => [
+          object,
+          {
+            description: "kernel-only residual",
+            predicate: () => true,
+          },
+        ]),
+      );
+      const kernelSpec: KernelMonadSpec<Obj, unknown, unknown> = {
+        name: "KernelOnlySpec",
+        initialState: { env: "kernel" },
+        operations: [
+          {
+            name: "stateOp",
+            kind: "state",
+            parameterName: "_",
+            parameterType: UNIT_TYPE,
+            resultValueType: ENV_TYPE,
+            residualHandler: residualSpecs.get(primaryObject)!,
+          },
+          {
+            name: "alarm",
+            kind: "signal",
+            parameterName: "alarm",
+            parameterType: ALARM_PAYLOAD_TYPE,
+            defaultResidual: true,
+          },
+          {
+            name: "raise",
+            kind: "exception",
+            parameterName: "error",
+            parameterType: ERROR_PAYLOAD_TYPE,
+          },
+        ],
+        residualHandlers: residualSpecs,
+      };
+      const userSpec: UserMonadSpec<Obj> = {
+        name: "KernelOnlyUser",
+      };
+      const result = replaySupervisedStackRoundTrip(
+        law as unknown as any,
+        kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
+        userSpec as UserMonadSpec<Obj>,
+        { sampleLimit: 4 },
+      );
+      expect(result.mismatches).toEqual([]);
+      const reconstructed = result.reconstructed.kernel?.operations ?? [];
+      const reconstructedByName = new Map(reconstructed.map((entry) => [entry.name, entry]));
+      expect(reconstructedByName.get("stateOp")?.kind).toBe("state");
+      expect(reconstructedByName.get("alarm")?.resultKind).toBe("signal");
+      expect(reconstructedByName.get("alarm")?.residual?.defaulted).toBe(true);
+      expect(reconstructedByName.get("raise")?.resultKind).toBe("raise");
+      expect(result.reconstructed.user?.allowedOperations).toEqual([]);
+      expect(result.reconstructed.kernel?.stateCarrier).toBe("KernelOnlySpec");
+    });
+
+    it("surfaces λ₍coop₎ coverage for round-trip dashboards", () => {
+      const law = makeExample6MonadComonadInteractionLaw();
+      const kernelObjects = law.law.kernel.base.objects;
+      type Obj = (typeof kernelObjects)[number];
+      const kernelSpec = buildExampleKernelSpec(kernelObjects);
+      const userSpec = buildExampleUserSpec<Obj>();
+      const roundTrip = replaySupervisedStackRoundTrip(
+        law as unknown as any,
+        kernelSpec as unknown as KernelMonadSpec<Obj, unknown, unknown>,
+        userSpec as UserMonadSpec<Obj>,
+        { sampleLimit: 4 },
+      );
+      const recordedCoverage = getSupervisedStackLambdaCoopCoverageFromMetadata(
+        roundTrip.stack.runner.metadata,
+      );
+      expect(recordedCoverage).toBeDefined();
+      expect(recordedCoverage?.operations.map((link) => link.operation)).toContain("getenv");
+      const comparison = compareSupervisedStackRoundTripCoverage(roundTrip);
+      expect(comparison.issues).toEqual([]);
+      expect(comparison.recorded?.operationSummary.total).toBeGreaterThan(0);
+      expect(comparison.reconstructed?.operationSummary.total).toBeGreaterThan(0);
+
+      const missingMetadataResult: typeof roundTrip = {
+        ...roundTrip,
+        stack: {
+          ...roundTrip.stack,
+          runner: { ...roundTrip.stack.runner, metadata: [] },
+        },
+      };
+      const missingCoverage = compareSupervisedStackRoundTripCoverage(missingMetadataResult);
+      expect(missingCoverage.issues).toContain(
+        "Recorded runner metadata is missing λ₍coop₎ coverage information.",
+      );
+
+      const lambdaCoopSummary = roundTrip.reconstructed.lambdaCoop;
+      expect(lambdaCoopSummary?.coverage).toBeDefined();
+      const driftRoundTrip: typeof roundTrip = lambdaCoopSummary?.coverage
+        ? {
+            ...roundTrip,
+            reconstructed: {
+              ...roundTrip.reconstructed,
+              lambdaCoop: {
+                ...lambdaCoopSummary,
+                coverage: {
+                  ...lambdaCoopSummary.coverage,
+                  interpreterCoveredOperations:
+                    lambdaCoopSummary.coverage.interpreterCoveredOperations === 0
+                      ? 1
+                      : lambdaCoopSummary.coverage.interpreterCoveredOperations - 1,
+                },
+              },
+            },
+          }
+        : roundTrip;
+      const driftComparison = compareSupervisedStackRoundTripCoverage(driftRoundTrip);
+      expect(
+        driftComparison.issues.some((issue) =>
+          issue.startsWith("Interpreter covered operations mismatch"),
+        ),
+      ).toBe(true);
+      const driftResult = {
+        ...roundTrip,
+        reconstructed: driftRoundTrip.reconstructed,
+        coverageComparison: driftComparison,
+      };
+      const driftDiagnostics = driftResult.coverageComparison
+        ? driftResult.coverageComparison.issues.map(
+            (issue) => `roundTrip: coverage issue=${issue}`,
+          )
+        : [];
+      expect(
+        driftDiagnostics.some((note) =>
+          note.includes("Interpreter covered operations mismatch"),
+        ),
+      ).toBe(true);
     });
 
     it("recovers λ₍coop₎ metadata from runner literal when clause bundles are missing", () => {
@@ -1315,6 +1486,12 @@ describe("stateful runner", () => {
       expect(
         (report.alignmentSummary.residualLaw?.compatibility?.length ?? 0) > 0,
       ).toBe(true);
+      expect(report.alignmentSummary.coverage?.interpreterExpectedOperations).toBeGreaterThan(0);
+      expect(report.alignmentSummary.coverage?.interpreterCoveredOperations).toBeGreaterThan(0);
+      expect(report.alignmentSummary.coverage?.interpreterMissingOperations).toEqual([]);
+      expect(report.alignmentSummary.coverage?.kernelTotalClauses).toBeGreaterThan(0);
+      expect(report.alignmentSummary.coverage?.kernelEvaluatedClauses).toBeGreaterThan(0);
+      expect(report.alignmentSummary.coverage?.kernelSkippedClauses).toEqual([]);
       expect(report.alignmentSummary.boundary.unsupported).toContain("mystery");
       expect(report.alignmentSummary.aligned).toBe(report.lambdaCoop.aligned);
       expect(
@@ -1330,6 +1507,16 @@ describe("stateful runner", () => {
       expect(
         report.lambdaCoop.metadata.some((entry) =>
           entry.startsWith('λ₍coop₎.interpreter.summary.exceptionPayloadKinds='),
+        ),
+      ).toBe(true);
+      expect(
+        report.alignmentSummary.metadata.some((entry) =>
+          entry.startsWith('λ₍coop₎.alignment.coverage.interpreter.expected='),
+        ),
+      ).toBe(true);
+      expect(
+        report.alignmentSummary.metadata.some((entry) =>
+          entry.startsWith('λ₍coop₎.alignment.coverage.kernel.total='),
         ),
       ).toBe(true);
       expect(
@@ -1523,6 +1710,69 @@ describe("stateful runner", () => {
           entry.startsWith("Glueing.residualBridge.spanCount="),
         ),
       ).toBe(true);
+    });
+
+    describe("λ₍coop₎ coverage helper", () => {
+      it("highlights missing interpreter operations and skipped kernel clauses", () => {
+        const clauseBundles: LambdaCoopClauseBundle[] = [
+          {
+            operation: "getenv",
+            kind: "state",
+            clause: {
+              operation: "getenv",
+              parameter: "arg",
+              parameterType: UNIT_TYPE,
+              body: { kind: "kernelReturn", value: UNIT_VALUE_WITNESS },
+            },
+            stateCarrier: "EnvState",
+            argumentType: UNIT_TYPE,
+            argumentWitness: UNIT_VALUE_WITNESS,
+            resultKind: "return",
+            resultValueType: UNIT_TYPE,
+            resultWitness: UNIT_VALUE_WITNESS,
+            description: "Read environment",
+            residual: {
+              defaulted: true,
+              handlerDescription: "default env residual",
+              coverage: { handled: 0, unhandled: 1, sampleLimit: 1 },
+              notes: ["residual note"],
+            },
+            diagnostics: [],
+          },
+        ];
+        const coverage = collectLambdaCoopAlignmentCoverageIssues({
+          expectedInterpreterOperations: ["getenv", "setenv"],
+          interpreterOperations: ["getenv"],
+          kernelTotalClauses: 2,
+          kernelEvaluatedClauses: 1,
+          skippedKernelClauses: [
+            { operation: "setenv", reason: "missing-argument-witness" },
+          ],
+          clauseBundles,
+        });
+        expect(coverage.interpreterExpectedOperations).toBe(2);
+        expect(coverage.interpreterCoveredOperations).toBe(1);
+        expect(coverage.interpreterMissingOperations).toEqual(["setenv"]);
+        expect(coverage.kernelTotalClauses).toBe(2);
+        expect(coverage.kernelEvaluatedClauses).toBe(1);
+        expect(coverage.kernelSkippedClauses).toEqual([
+          { operation: "setenv", reason: "missing-argument-witness" },
+        ]);
+        expect(coverage.operationSummary.missingInterpreter).toBe(1);
+        expect(coverage.operationSummary.missingKernelClause).toBe(1);
+        expect(coverage.operations.map((link) => link.operation)).toEqual(["getenv", "setenv"]);
+        const getenvLink = coverage.operations.find((link) => link.operation === "getenv");
+        expect(getenvLink?.interpreterCovered).toBe(true);
+        expect(getenvLink?.kernelClause?.kind).toBe("state");
+        expect(getenvLink?.residual?.defaulted).toBe(true);
+        const setenvLink = coverage.operations.find((link) => link.operation === "setenv");
+        expect(setenvLink?.interpreterCovered).toBe(false);
+        expect(setenvLink?.kernelClause).toBeUndefined();
+        expect(setenvLink?.kernelClauseSkipped).toEqual({
+          operation: "setenv",
+          reason: "missing-argument-witness",
+        });
+      });
     });
   });
 });

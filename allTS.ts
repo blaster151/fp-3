@@ -127,6 +127,7 @@ export * from "./update-lens";
 export * from "./supervised-stack";
 export * from "./supervised-stack-lambda-coop";
 export * from "./lambda-coop-supervised-stack";
+export * from "./lambda-coop.alignment-coverage";
 export * from "./lambda-coop.runner-alignment";
 export * from "./glueing-runner-bridge";
 export * from "./glueing-supervised-stack";
@@ -140,8 +141,11 @@ export * from "./session-type-glueing-sweep";
 export * from "./session-type-glueing-dashboard";
 export * from "./session-type-glueing-consumer";
 export * from "./session-type-glueing-manifest";
+export * from "./session-type-glueing-manifest-queue-test-hooks";
 export * from "./session-type-glueing-manifest-queue";
 export * from "./session-type-glueing-manifest-queue-test-status";
+export * from "./session-type-glueing-blocked-manifest-plan-queue";
+export * from "./day-chu-future-work";
 export * from "./reader-task-option"
 export * from "./json-canonical"
 export * from "./decoder"

@@ -11,11 +11,20 @@ import {
   type SessionTypeInterpreterContext,
   type SessionTypeSemanticEnvironment,
 } from '../session-type';
-import { checkSessionTypeRunnerEvaluationAgainstInteraction } from '../session-type-runner';
+import {
+  checkSessionTypeRunnerEvaluationAgainstInteraction,
+  buildSessionTypeRunnerSpecFromInterpreter,
+  makeSessionTypeRunner,
+} from '../session-type-runner';
 import { buildRunnerFromInteraction } from '../stateful-runner';
 import { makeExample8MonadComonadInteractionLaw } from '../monad-comonad-interaction-law';
 import { SetCat, getCarrierSemantics } from '../set-cat';
 import type { TwoObject } from '../two-object-cat';
+import {
+  DAY_CHU_FUTURE_WORK_REGISTRY,
+  getDayChuFutureWorkEntry,
+  summarizeDayChuFutureWorkRegistry,
+} from '../day-chu-future-work';
 
 interface SymbolicValue {
   readonly tag: 'primal' | 'dual';
@@ -207,5 +216,36 @@ describe('session-type runner helpers', () => {
     );
     expect(report.holds).toBe(false);
     expect(report.entries[0]?.mismatches ?? 0).toBeGreaterThan(0);
+  });
+
+  it('builds a session-type runner with metadata and notes', () => {
+    const result = makeSessionTypeRunner(interaction, parseSessionType('Y'), {
+      assignments,
+      evaluation: { sampleLimit: 2 },
+      metadata: ['SessionTypeRunner=Example8'],
+    });
+    expect(result.evaluation.holds).toBe(true);
+    expect(result.metadata).toContain('SessionTypeRunner=Example8');
+    expect(result.metadata.some((entry) => entry.startsWith('sessionType.runner.type='))).toBe(true);
+    expect(result.metadata.some((entry) => entry.startsWith('sessionType.runner.assignments='))).toBe(true);
+    expect(result.notes.some((note) => note.startsWith('sessionType.runner.note='))).toBe(true);
+  });
+
+  it('builds interpreter-driven runner specs with assignments', () => {
+    const spec = buildSessionTypeRunnerSpecFromInterpreter(parseSessionType('G0(Y)'), assignments);
+    expect(spec.channels).toEqual(['Y']);
+    expect(spec.metadata.some((entry) => entry.startsWith('sessionType.runnerSpec.type='))).toBe(true);
+    expect(spec.primal.kind).toBe('functorAction');
+    expect(spec.dual.kind).toBe('functorAction');
+  });
+});
+
+describe('day-chu future-work registry', () => {
+  it('exposes registry entries and summary counts', () => {
+    expect(DAY_CHU_FUTURE_WORK_REGISTRY.length).toBeGreaterThan(0);
+    const summary = summarizeDayChuFutureWorkRegistry();
+    expect(summary.total).toBe(DAY_CHU_FUTURE_WORK_REGISTRY.length);
+    const fw4 = getDayChuFutureWorkEntry('FW-4');
+    expect(fw4?.question).toContain('Session-type calculus');
   });
 });

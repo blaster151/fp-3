@@ -21,7 +21,10 @@ import {
   formatSessionTypeGlueingSourceCoverageLines,
   type SessionTypeGlueingSweepRunSnapshot,
 } from "../../session-type-glueing-dashboard";
-import { diffSessionTypeGlueingSweepRecord } from "../../session-type-glueing-consumer";
+import {
+  diffSessionTypeGlueingSweepRecord,
+  type SessionTypeGlueingConsumerDiffSummary,
+} from "../../session-type-glueing-consumer";
 import type { SessionTypeGlueingSweepConfig } from "../../session-type-glueing-sweep";
 
 const MANIFEST_PATH_FLAG = "manifest-path";
@@ -41,6 +44,10 @@ const DEFAULT_RUN_OPTIONS = {
   metadata: ["SessionTypeGlueingConsumer=Example106"],
   notes: ["Session-type glueing consumer runnable"],
 } as const;
+
+const shouldLogManifestQueueCoverageGateRollup = (
+  summary: SessionTypeGlueingConsumerDiffSummary,
+): boolean => Boolean(summary.manifestQueueCoverageGateRollup);
 
 interface RunnableManifestMetadata {
   readonly path: string;
@@ -277,6 +284,196 @@ export const sessionTypeGlueingConsumerRunnable: RunnableExample = {
       if (summary.manifestQueue.testWarnings && summary.manifestQueue.testWarnings.length > 0) {
         logs.push(`  warnings: ${summary.manifestQueue.testWarnings.join(", ")}`);
       }
+      if (summary.manifestQueue.testCoverageGate) {
+        const coverageGate = summary.manifestQueue.testCoverageGate;
+        logs.push(
+          `  coverageGate.checkedAt=${coverageGate.checkedAt} issues=${coverageGate.issues?.length ?? 0} warnings=${
+            coverageGate.warnings?.length ?? 0
+          }`,
+        );
+        if (coverageGate.queueSnapshotPaths) {
+          logs.push(
+            `    queues.manifest=${coverageGate.queueSnapshotPaths.manifestQueuePath} queues.blockedPlan=${coverageGate.queueSnapshotPaths.blockedManifestPlanQueuePath}`,
+          );
+        }
+        if (coverageGate.queueSnapshotPathsInferred) {
+          logs.push(
+            "    queue snapshot paths defaulted from live queues — rerun manifest-queue tests to record preserved snapshot files",
+          );
+        }
+        const consolidated = summary.manifestQueueCoverageGateRollup;
+        if (consolidated) {
+          const consolidatedQueueSnapshotPaths = consolidated.queueSnapshotPaths;
+          const coverageGateQueueSnapshotPaths = coverageGate.queueSnapshotPaths;
+          const coverageGateIssues = coverageGate.issues ?? [];
+          const coverageGateWarnings = coverageGate.warnings ?? [];
+          const consolidatedIssues = consolidated.issues ?? [];
+          const consolidatedWarnings = consolidated.warnings ?? [];
+          const coverageGateBlockedPlanIssues = coverageGate.blockedManifestPlanQueueIssues ?? [];
+          const consolidatedBlockedPlanIssues = consolidated.blockedManifestPlanQueueIssues ?? [];
+          const missingConsolidatedIssues = consolidatedIssues.filter(
+            (issue) => !coverageGateIssues.includes(issue),
+          );
+          const missingConsolidatedWarnings = consolidatedWarnings.filter(
+            (warning) => !coverageGateWarnings.includes(warning),
+          );
+          const missingConsolidatedBlockedPlanIssues = consolidatedBlockedPlanIssues.filter(
+            (issue) => !coverageGateBlockedPlanIssues.includes(issue),
+          );
+          if (
+            consolidatedQueueSnapshotPaths &&
+            (!coverageGateQueueSnapshotPaths ||
+              consolidatedQueueSnapshotPaths.manifestQueuePath !==
+                coverageGateQueueSnapshotPaths.manifestQueuePath ||
+              consolidatedQueueSnapshotPaths.blockedManifestPlanQueuePath !==
+                coverageGateQueueSnapshotPaths.blockedManifestPlanQueuePath)
+          ) {
+            logs.push(
+              `    consolidated queues.manifest=${consolidatedQueueSnapshotPaths.manifestQueuePath} queues.blockedPlan=${consolidatedQueueSnapshotPaths.blockedManifestPlanQueuePath}`,
+            );
+          }
+          if (consolidated.queueSnapshotPathsInferred && !coverageGate.queueSnapshotPathsInferred) {
+            logs.push(
+              "    consolidated queue snapshot paths defaulted from live queues — rerun manifest-queue tests to record preserved snapshot files",
+            );
+          }
+          if (missingConsolidatedIssues.length > 0) {
+            logs.push(`    consolidated coverage gate issues: ${missingConsolidatedIssues.join("; ")}`);
+          }
+          if (missingConsolidatedWarnings.length > 0) {
+            logs.push(
+              `    consolidated coverage gate warnings: ${missingConsolidatedWarnings.join("; ")}`,
+            );
+          }
+          if (missingConsolidatedBlockedPlanIssues.length > 0) {
+            logs.push(
+              `    consolidated rerun queue issues: ${missingConsolidatedBlockedPlanIssues.join("; ")}`,
+            );
+          }
+        }
+        if (coverageGate.issues && coverageGate.issues.length > 0) {
+          coverageGate.issues.forEach((issue) => logs.push(`    issue: ${issue}`));
+        }
+        if (coverageGate.warnings && coverageGate.warnings.length > 0) {
+          coverageGate.warnings.forEach((warning) => logs.push(`    warning: ${warning}`));
+        }
+        if (
+          coverageGate.blockedManifestPlanQueueIssues &&
+          coverageGate.blockedManifestPlanQueueIssues.length > 0
+        ) {
+          coverageGate.blockedManifestPlanQueueIssues.forEach((issue) =>
+            logs.push(`    rerun queue issue: ${issue}`),
+          );
+        }
+      }
+      if (
+        !summary.manifestQueue.testCoverageGate &&
+        shouldLogManifestQueueCoverageGateRollup(summary)
+      ) {
+        const consolidated = summary.manifestQueueCoverageGateRollup;
+        if (consolidated) {
+          logs.push("  consolidated manifest-queue coverage gate (recorded metadata):");
+          if (summary.manifestQueueCoverageGateQueueSnapshotPaths) {
+            logs.push(
+              `    queues.manifest=${summary.manifestQueueCoverageGateQueueSnapshotPaths.manifestQueuePath} queues.blockedPlan=${summary.manifestQueueCoverageGateQueueSnapshotPaths.blockedManifestPlanQueuePath}`,
+            );
+          }
+          if (summary.manifestQueueCoverageGateQueueSnapshotPathsInferred) {
+            logs.push(
+              "    queue snapshot paths defaulted from live queues — rerun manifest-queue tests to record preserved snapshot files",
+            );
+          }
+          if (consolidated.issues && consolidated.issues.length > 0) {
+            logs.push(`    issues: ${consolidated.issues.join("; ")}`);
+          }
+          if (consolidated.warnings && consolidated.warnings.length > 0) {
+            logs.push(`    warnings: ${consolidated.warnings.join("; ")}`);
+          }
+          if (
+            consolidated.blockedManifestPlanQueueIssues &&
+            consolidated.blockedManifestPlanQueueIssues.length > 0
+          ) {
+            logs.push(
+              `    rerun queue issues: ${consolidated.blockedManifestPlanQueueIssues.join("; ")}`,
+            );
+          }
+        }
+      }
+      if (
+        summary.manifestQueue.blockedManifestPlanInputs &&
+        summary.manifestQueue.blockedManifestPlanInputs.length > 0
+      ) {
+        logs.push("  sentinel blocked blocked-plan refresh entries:");
+        summary.manifestQueue.blockedManifestPlanInputs.forEach((entry) => {
+          const recordedAtNote = entry.recordedAt ? ` recordedAt=${entry.recordedAt}` : "";
+          logs.push(
+            `    ${entry.sourcePath} → ${entry.path} planIndex=${entry.planIndex} plan=${entry.planRecordPath}${recordedAtNote} issues=${entry.issues.length}`,
+          );
+        });
+      }
+    }
+    if (!summary.manifestQueue && shouldLogManifestQueueCoverageGateRollup(summary)) {
+      const consolidated = summary.manifestQueueCoverageGateRollup;
+      if (consolidated) {
+        logs.push("Manifest queue coverage gate (recorded metadata):");
+        logs.push(
+          `  issues=${consolidated.issues?.length ?? 0} warnings=${consolidated.warnings?.length ?? 0}`,
+        );
+        if (summary.manifestQueueCoverageGateQueueSnapshotPaths) {
+          logs.push(
+            `  queues.manifest=${summary.manifestQueueCoverageGateQueueSnapshotPaths.manifestQueuePath} queues.blockedPlan=${summary.manifestQueueCoverageGateQueueSnapshotPaths.blockedManifestPlanQueuePath}`,
+          );
+        }
+        if (summary.manifestQueueCoverageGateQueueSnapshotPathsInferred) {
+          logs.push(
+            "  queue snapshot paths defaulted from live queues — rerun manifest-queue tests to record preserved snapshot files",
+          );
+        }
+        if (consolidated.issues && consolidated.issues.length > 0) {
+          logs.push(`  consolidated coverage gate issues: ${consolidated.issues.join("; ")}`);
+        }
+        if (consolidated.warnings && consolidated.warnings.length > 0) {
+          logs.push(`  consolidated coverage gate warnings: ${consolidated.warnings.join("; ")}`);
+        }
+        if (
+          consolidated.blockedManifestPlanQueueIssues &&
+          consolidated.blockedManifestPlanQueueIssues.length > 0
+        ) {
+          logs.push(
+            `  consolidated rerun queue issues: ${consolidated.blockedManifestPlanQueueIssues.join("; ")}`,
+          );
+        }
+      }
+    }
+    if (summary.blockedManifestPlanQueue) {
+      const queueSummary = summary.blockedManifestPlanQueue;
+      if (queueSummary.remaining && queueSummary.remaining.length > 0) {
+        logs.push(
+          `Blocked manifest plan rerun queue pending entries=${queueSummary.remaining.length}:`,
+        );
+        queueSummary.remaining.forEach((path) => logs.push(`  pending rerun: ${path}`));
+      } else if (queueSummary.actions.length > 0) {
+        logs.push(
+          `Blocked manifest plan rerun queue processed queued=${queueSummary.queued?.length ?? queueSummary.actions.length} consumed=${queueSummary.consumed?.length ?? 0} entries.`,
+        );
+      }
+    }
+    if (summary.blockedManifestInputs && summary.blockedManifestInputs.length > 0) {
+      logs.push("Sentinel coverage gate blocked manifest replays:");
+      summary.blockedManifestInputs.forEach((path) => logs.push(`  ${path}`));
+    }
+    if (summary.blockedManifestPlanInputs && summary.blockedManifestPlanInputs.length > 0) {
+      logs.push("Sentinel coverage gate blocked blocked-plan refresh entries:");
+      summary.blockedManifestPlanInputs.forEach((entry) => {
+        const recordedAtNote = entry.recordedAt ? ` recordedAt=${entry.recordedAt}` : "";
+        logs.push(
+          `  ${entry.sourcePath} → ${entry.path} planIndex=${entry.planIndex} plan=${entry.planRecordPath}${recordedAtNote} issues=${entry.issues.length}`,
+        );
+      });
+    }
+    if (summary.alignmentCoverageIssues && summary.alignmentCoverageIssues.length > 0) {
+      logs.push("λ₍coop₎ coverage issues detected:");
+      summary.alignmentCoverageIssues.forEach((issue) => logs.push(`  - ${issue}`));
     }
     logs.push(...formatSessionTypeGlueingSourceCoverageLines(summary.sourceCoverage));
 
@@ -287,9 +484,18 @@ export const sessionTypeGlueingConsumerRunnable: RunnableExample = {
         mismatchedRuns: summary.mismatchedRuns,
         manifestSourceTotals: summary.manifestSourceTotals ?? [],
         manifestQueue: summary.manifestQueue,
+        ...(summary.blockedManifestPlanQueue
+          ? { blockedManifestPlanQueue: summary.blockedManifestPlanQueue }
+          : {}),
+        ...(summary.blockedManifestPlanQueueIssues
+          ? { blockedManifestPlanQueueIssues: summary.blockedManifestPlanQueueIssues }
+          : {}),
         sourceCoverage: summary.sourceCoverageTotals,
+        alignmentCoverageIssues: summary.alignmentCoverageIssues ?? [],
         blockedSuggestedManifestWrites: summary.blockedSuggestedManifestWrites ?? [],
+        blockedManifestInputs: summary.blockedManifestInputs ?? [],
         blockedManifestPlans: summary.blockedManifestPlans ?? [],
+        blockedManifestPlanInputs: summary.blockedManifestPlanInputs ?? [],
       },
     };
   },
