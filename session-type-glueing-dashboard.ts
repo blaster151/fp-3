@@ -2,6 +2,24 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import type { RunnableExampleFlag } from "./examples/runnable/types";
+import type {
+  LambdaCoopAlignmentCoverageReport,
+  LambdaCoopKernelClauseSkip,
+} from "./lambda-coop.alignment-coverage";
+import type { LambdaCoopResidualCoverageDigest } from "./supervised-stack-lambda-coop";
+import {
+  collectSessionTypeManifestQueueCoverageGateMetadataEntriesFromSessionMetadata,
+  collectSessionTypeManifestQueueTestCoverageGateIssues,
+  collectSessionTypeManifestQueueTestCoverageGateIssuesFromMetadataEntries,
+  extractSessionTypeManifestQueueCoverageGateQueueSnapshotPathsFromMetadataEntries,
+  SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_BLOCKED_PLAN_QUEUE_ISSUE_PREFIX,
+  type SessionTypeGlueingManifestQueueQueueSnapshotPaths,
+  type SessionTypeGlueingManifestQueueTestStatus,
+} from "./session-type-glueing-manifest-queue-test-status";
+import {
+  collectSessionTypeGlueingBlockedManifestPlanQueueIssues,
+  collectSessionTypeGlueingBlockedManifestPlanQueueIssuesFromPaths,
+} from "./session-type-glueing-blocked-manifest-plan-queue";
 import { describeSessionTypeGlueingAssignments, type SessionTypeGlueingSweepConfig } from "./session-type-glueing-sweep";
 
 export interface SessionTypeGlueingSweepRunSnapshot {
@@ -12,6 +30,8 @@ export interface SessionTypeGlueingSweepRunSnapshot {
   readonly glueingMetadata: ReadonlyArray<string>;
   readonly alignmentMetadata: ReadonlyArray<string>;
   readonly alignmentNotes: ReadonlyArray<string>;
+  readonly alignmentCoverage?: SessionTypeGlueingAlignmentCoverageSnapshot;
+  readonly runnerCoverage?: SessionTypeGlueingAlignmentCoverageSnapshot;
   readonly exampleArgs?: ReadonlyArray<RunnableExampleFlag>;
 }
 
@@ -50,7 +70,11 @@ export interface SessionTypeGlueingManifestQueueSummary {
   readonly replays?: ReadonlyArray<string>;
   readonly outputs?: ReadonlyArray<string>;
   readonly blockedInputs?: ReadonlyArray<string>;
+  readonly blockedManifestInputs?: ReadonlyArray<string>;
+  readonly blockedManifestPlanInputs?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanInputMetadata>;
   readonly replayErrors?: ReadonlyArray<SessionTypeGlueingManifestQueueReplayError>;
+  readonly coverageIssues?: ReadonlyArray<string>;
+  readonly coverageDriftIssues?: ReadonlyArray<string>;
   readonly tested?: boolean;
   readonly testedAt?: string;
   readonly testRevision?: number;
@@ -59,6 +83,7 @@ export interface SessionTypeGlueingManifestQueueSummary {
   readonly testStale?: boolean;
   readonly testIssues?: ReadonlyArray<string>;
   readonly testWarnings?: ReadonlyArray<string>;
+  readonly testCoverageGate?: SessionTypeGlueingManifestQueueCoverageGateSummary | undefined;
   readonly testOverride?: {
     readonly flag: string;
     readonly issues: ReadonlyArray<string>;
@@ -66,9 +91,55 @@ export interface SessionTypeGlueingManifestQueueSummary {
   };
 }
 
+export interface SessionTypeGlueingManifestQueueCoverageGateSummary {
+  readonly checkedAt: string;
+  readonly issues?: ReadonlyArray<string>;
+  readonly warnings?: ReadonlyArray<string>;
+  readonly blockedManifestPlanQueueIssues?: ReadonlyArray<string>;
+  readonly queueSnapshotPaths?: SessionTypeGlueingManifestQueueQueueSnapshotPaths;
+  readonly queueSnapshotPathsInferred?: boolean;
+}
+
 export interface SessionTypeGlueingSweepSourceCoverage {
   readonly manifestInputs?: number;
   readonly blockedPlans?: number;
+}
+
+export interface SessionTypeGlueingAlignmentCoverageSnapshot {
+  readonly interpreterExpectedOperations?: number;
+  readonly interpreterCoveredOperations?: number;
+  readonly interpreterMissingOperations: ReadonlyArray<string>;
+  readonly kernelTotalClauses?: number;
+  readonly kernelEvaluatedClauses?: number;
+  readonly kernelSkippedClauses: ReadonlyArray<LambdaCoopKernelClauseSkip>;
+  readonly operationSummary?: SessionTypeGlueingAlignmentCoverageOperationSummary;
+  readonly operations?: ReadonlyArray<SessionTypeGlueingAlignmentCoverageOperationLink>;
+}
+
+export interface SessionTypeGlueingAlignmentCoverageOperationSummary {
+  readonly total: number;
+  readonly missingInterpreter: number;
+  readonly missingKernelClause: number;
+  readonly skippedKernelClauses: number;
+  readonly residualDefaulted: number;
+  readonly residualHandlers: number;
+}
+
+export interface SessionTypeGlueingAlignmentCoverageResidualSnapshot {
+  readonly defaulted?: boolean;
+  readonly handlerDescription?: string;
+  readonly coverage?: LambdaCoopResidualCoverageDigest;
+  readonly notes: ReadonlyArray<string>;
+}
+
+export interface SessionTypeGlueingAlignmentCoverageOperationLink {
+  readonly operation: string;
+  readonly interpreterCovered: boolean;
+  readonly kernelClauseKind?: string;
+  readonly kernelClauseDescription?: string;
+  readonly kernelClauseSkipped?: LambdaCoopKernelClauseSkip;
+  readonly residual?: SessionTypeGlueingAlignmentCoverageResidualSnapshot;
+  readonly notes: ReadonlyArray<string>;
 }
 
 export interface SessionTypeGlueingBlockedManifestPlanEntryConfig {
@@ -87,6 +158,28 @@ export interface SessionTypeGlueingBlockedManifestPlanEntry {
   readonly entries: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanEntryConfig>;
 }
 
+export interface SessionTypeGlueingBlockedManifestPlanInputMetadata
+  extends SessionTypeGlueingBlockedManifestPlanEntry {
+  readonly planRecordPath: string;
+  readonly recordedAt?: string;
+  readonly planIndex: number;
+  readonly reason: string;
+  readonly issues: ReadonlyArray<string>;
+  readonly warnings?: ReadonlyArray<string>;
+}
+
+export interface SessionTypeGlueingBlockedManifestPlanQueueAction {
+  readonly path: string;
+  readonly action: "queued" | "consumed";
+}
+
+export interface SessionTypeGlueingBlockedManifestPlanQueueSummary {
+  readonly actions: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanQueueAction>;
+  readonly queued?: ReadonlyArray<string>;
+  readonly consumed?: ReadonlyArray<string>;
+  readonly remaining?: ReadonlyArray<string>;
+}
+
 export const SESSION_TYPE_GLUEING_SWEEP_RECORD_SCHEMA_VERSION = 1 as const;
 
 export interface SessionTypeGlueingSweepRecord {
@@ -98,7 +191,10 @@ export interface SessionTypeGlueingSweepRecord {
   readonly suggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingSuggestedManifestWriteMetadata>;
   readonly blockedSuggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingBlockedSuggestedManifestWriteMetadata>;
   readonly blockedQueuedManifestInputs?: ReadonlyArray<string>;
+  readonly blockedManifestInputs?: ReadonlyArray<string>;
   readonly blockedManifestPlans?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanEntry>;
+  readonly blockedManifestPlanInputs?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanInputMetadata>;
+  readonly blockedManifestPlanQueue?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanQueueAction>;
   readonly manifestQueue?: SessionTypeGlueingManifestQueueSummary;
   readonly sourceCoverage?: SessionTypeGlueingSweepSourceCoverage;
 }
@@ -206,6 +302,69 @@ const asBlockedSuggestedManifestWriteArray = (
     .filter((entry): entry is SessionTypeGlueingBlockedSuggestedManifestWriteMetadata => entry !== undefined);
 };
 
+const normalizeBlockedManifestPlanEntry = (
+  record: Partial<SessionTypeGlueingBlockedManifestPlanEntry>,
+): SessionTypeGlueingBlockedManifestPlanEntry | undefined => {
+  if (
+    typeof record.path !== "string" ||
+    typeof record.sourcePath !== "string" ||
+    typeof record.mismatchedRuns !== "number" ||
+    typeof record.totalRuns !== "number" ||
+    typeof record.entryCount !== "number" ||
+    !Array.isArray(record.entries)
+  ) {
+    return undefined;
+  }
+  const entries: SessionTypeGlueingBlockedManifestPlanEntryConfig[] = [];
+  let valid = true;
+  for (const config of record.entries) {
+    if (!config || typeof config !== "object" || Array.isArray(config)) {
+      valid = false;
+      break;
+    }
+    const normalized = config as Partial<SessionTypeGlueingBlockedManifestPlanEntryConfig>;
+    if (
+      typeof normalized.label !== "string" ||
+      typeof normalized.sessionTypeLiteral !== "string" ||
+      typeof normalized.glueingSpan !== "string" ||
+      !normalized.assignments ||
+      typeof normalized.assignments !== "object" ||
+      Array.isArray(normalized.assignments)
+    ) {
+      valid = false;
+      break;
+    }
+    const assignments: Record<string, string> = {};
+    for (const [channel, object] of Object.entries(normalized.assignments)) {
+      if (typeof channel !== "string" || typeof object !== "string") {
+        valid = false;
+        break;
+      }
+      assignments[channel] = object;
+    }
+    if (!valid) {
+      break;
+    }
+    entries.push({
+      label: normalized.label,
+      sessionTypeLiteral: normalized.sessionTypeLiteral,
+      glueingSpan: normalized.glueingSpan,
+      assignments,
+    });
+  }
+  if (!valid) {
+    return undefined;
+  }
+  return {
+    path: record.path,
+    sourcePath: record.sourcePath,
+    mismatchedRuns: record.mismatchedRuns,
+    totalRuns: record.totalRuns,
+    entryCount: record.entryCount,
+    entries,
+  } satisfies SessionTypeGlueingBlockedManifestPlanEntry;
+};
+
 const asBlockedManifestPlanArray = (
   value: unknown,
 ): SessionTypeGlueingBlockedManifestPlanEntry[] => {
@@ -217,67 +376,73 @@ const asBlockedManifestPlanArray = (
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       continue;
     }
-    const record = entry as Partial<SessionTypeGlueingBlockedManifestPlanEntry>;
+    const normalized = normalizeBlockedManifestPlanEntry(entry as Partial<SessionTypeGlueingBlockedManifestPlanEntry>);
+    if (normalized) {
+      plans.push(normalized);
+    }
+  }
+  return plans;
+};
+
+const asBlockedManifestPlanInputArray = (
+  value: unknown,
+): SessionTypeGlueingBlockedManifestPlanInputMetadata[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const inputs: SessionTypeGlueingBlockedManifestPlanInputMetadata[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const record = entry as Partial<SessionTypeGlueingBlockedManifestPlanInputMetadata>;
     if (
-      typeof record.path !== "string" ||
-      typeof record.sourcePath !== "string" ||
-      typeof record.mismatchedRuns !== "number" ||
-      typeof record.totalRuns !== "number" ||
-      typeof record.entryCount !== "number" ||
-      !Array.isArray(record.entries)
+      typeof record.planRecordPath !== "string" ||
+      typeof record.planIndex !== "number" ||
+      typeof record.reason !== "string"
     ) {
       continue;
     }
-    const entries: SessionTypeGlueingBlockedManifestPlanEntryConfig[] = [];
-    let valid = true;
-    for (const config of record.entries) {
-      if (!config || typeof config !== "object" || Array.isArray(config)) {
-        valid = false;
-        break;
-      }
-      const normalized = config as Partial<SessionTypeGlueingBlockedManifestPlanEntryConfig>;
-      if (
-        typeof normalized.label !== "string" ||
-        typeof normalized.sessionTypeLiteral !== "string" ||
-        typeof normalized.glueingSpan !== "string" ||
-        !normalized.assignments ||
-        typeof normalized.assignments !== "object" ||
-        Array.isArray(normalized.assignments)
-      ) {
-        valid = false;
-        break;
-      }
-      const assignments: Record<string, string> = {};
-      for (const [channel, object] of Object.entries(normalized.assignments)) {
-        if (typeof channel !== "string" || typeof object !== "string") {
-          valid = false;
-          break;
-        }
-        assignments[channel] = object;
-      }
-      if (!valid) {
-        break;
-      }
-      entries.push({
-        label: normalized.label,
-        sessionTypeLiteral: normalized.sessionTypeLiteral,
-        glueingSpan: normalized.glueingSpan,
-        assignments,
-      });
-    }
-    if (!valid) {
+    const plan = normalizeBlockedManifestPlanEntry(record);
+    if (!plan) {
       continue;
     }
-    plans.push({
-      path: record.path,
-      sourcePath: record.sourcePath,
-      mismatchedRuns: record.mismatchedRuns,
-      totalRuns: record.totalRuns,
-      entryCount: record.entryCount,
-      entries,
+    const issues = asStringArray(record.issues);
+    const warnings = asStringArray(record.warnings);
+    inputs.push({
+      ...plan,
+      planRecordPath: record.planRecordPath,
+      ...(typeof record.recordedAt === "string" ? { recordedAt: record.recordedAt } : {}),
+      planIndex: record.planIndex,
+      reason: record.reason,
+      issues,
+      ...(warnings.length > 0 ? { warnings } : {}),
     });
   }
-  return plans;
+  return inputs;
+};
+
+const asBlockedManifestPlanQueueActions = (
+  value: unknown,
+): SessionTypeGlueingBlockedManifestPlanQueueAction[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return undefined;
+      }
+      const record = entry as Partial<SessionTypeGlueingBlockedManifestPlanQueueAction>;
+      if (typeof record.path !== "string") {
+        return undefined;
+      }
+      if (record.action !== "queued" && record.action !== "consumed") {
+        return undefined;
+      }
+      return { path: record.path, action: record.action };
+    })
+    .filter((entry): entry is SessionTypeGlueingBlockedManifestPlanQueueAction => entry !== undefined);
 };
 
 const asManifestQueueReplayErrorArray = (
@@ -300,6 +465,77 @@ const asManifestQueueReplayErrorArray = (
     .filter((entry): entry is SessionTypeGlueingManifestQueueReplayError => entry !== undefined);
 };
 
+const normalizeManifestQueueCoverageGateSummary = (
+  coverageGate?: SessionTypeGlueingManifestQueueCoverageGateSummary,
+): SessionTypeGlueingManifestQueueCoverageGateSummary | undefined => {
+  if (!coverageGate || typeof coverageGate.checkedAt !== "string") {
+    return undefined;
+  }
+  const normalized: SessionTypeGlueingManifestQueueCoverageGateSummary = {
+    checkedAt: coverageGate.checkedAt,
+    ...(coverageGate.issues && coverageGate.issues.length > 0
+      ? { issues: Array.from(coverageGate.issues) }
+      : {}),
+    ...(coverageGate.warnings && coverageGate.warnings.length > 0
+      ? { warnings: Array.from(coverageGate.warnings) }
+      : {}),
+    ...(coverageGate.blockedManifestPlanQueueIssues &&
+    coverageGate.blockedManifestPlanQueueIssues.length > 0
+      ? { blockedManifestPlanQueueIssues: Array.from(coverageGate.blockedManifestPlanQueueIssues) }
+      : {}),
+    ...(coverageGate.queueSnapshotPaths
+      ? {
+          queueSnapshotPaths: {
+            manifestQueuePath: coverageGate.queueSnapshotPaths.manifestQueuePath,
+            blockedManifestPlanQueuePath: coverageGate.queueSnapshotPaths.blockedManifestPlanQueuePath,
+          },
+        }
+      : {}),
+    ...(coverageGate.queueSnapshotPathsInferred ? { queueSnapshotPathsInferred: true } : {}),
+  };
+  return normalized;
+};
+
+const asManifestQueueCoverageGateSummary = (
+  value: unknown,
+): SessionTypeGlueingManifestQueueCoverageGateSummary | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Partial<SessionTypeGlueingManifestQueueCoverageGateSummary> & Record<string, unknown>;
+  if (typeof record.checkedAt !== "string") {
+    return undefined;
+  }
+  const issues = record.issues ? asStringArray(record.issues) : [];
+  const warnings = record.warnings ? asStringArray(record.warnings) : [];
+  const blockedManifestPlanQueueIssues = record.blockedManifestPlanQueueIssues
+    ? asStringArray(record.blockedManifestPlanQueueIssues)
+    : [];
+  const queueSnapshotPathsInferred =
+    typeof record.queueSnapshotPathsInferred === "boolean" && record.queueSnapshotPathsInferred;
+  const queueSnapshotPaths = record.queueSnapshotPaths;
+  const manifestQueuePath =
+    queueSnapshotPaths && typeof queueSnapshotPaths === "object"
+      ? (queueSnapshotPaths as { manifestQueuePath?: unknown }).manifestQueuePath
+      : undefined;
+  const blockedManifestPlanQueuePath =
+    queueSnapshotPaths && typeof queueSnapshotPaths === "object"
+      ? (queueSnapshotPaths as { blockedManifestPlanQueuePath?: unknown }).blockedManifestPlanQueuePath
+      : undefined;
+  return normalizeManifestQueueCoverageGateSummary({
+    checkedAt: record.checkedAt,
+    ...(issues.length > 0 ? { issues } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
+    ...(blockedManifestPlanQueueIssues.length > 0 ? { blockedManifestPlanQueueIssues } : {}),
+    ...(typeof manifestQueuePath === "string" && typeof blockedManifestPlanQueuePath === "string"
+      ? {
+          queueSnapshotPaths: { manifestQueuePath, blockedManifestPlanQueuePath },
+        }
+      : {}),
+    ...(queueSnapshotPathsInferred ? { queueSnapshotPathsInferred: true } : {}),
+  });
+};
+
 const normalizeManifestQueueSummary = (
   summary?: SessionTypeGlueingManifestQueueSummary,
 ): SessionTypeGlueingManifestQueueSummary | undefined => {
@@ -313,8 +549,20 @@ const normalizeManifestQueueSummary = (
     ...(summary.blockedInputs && summary.blockedInputs.length > 0
       ? { blockedInputs: Array.from(summary.blockedInputs) }
       : {}),
+    ...(summary.blockedManifestInputs && summary.blockedManifestInputs.length > 0
+      ? { blockedManifestInputs: Array.from(summary.blockedManifestInputs) }
+      : {}),
+    ...(summary.blockedManifestPlanInputs && summary.blockedManifestPlanInputs.length > 0
+      ? { blockedManifestPlanInputs: Array.from(summary.blockedManifestPlanInputs) }
+      : {}),
     ...(summary.replayErrors && summary.replayErrors.length > 0
       ? { replayErrors: Array.from(summary.replayErrors) }
+      : {}),
+    ...(summary.coverageIssues && summary.coverageIssues.length > 0
+      ? { coverageIssues: Array.from(summary.coverageIssues) }
+      : {}),
+    ...(summary.coverageDriftIssues && summary.coverageDriftIssues.length > 0
+      ? { coverageDriftIssues: Array.from(summary.coverageDriftIssues) }
       : {}),
     ...(summary.tested !== undefined ? { tested: summary.tested } : {}),
     ...(summary.testedAt ? { testedAt: summary.testedAt } : {}),
@@ -328,8 +576,101 @@ const normalizeManifestQueueSummary = (
     ...(summary.testWarnings && summary.testWarnings.length > 0
       ? { testWarnings: Array.from(summary.testWarnings) }
       : {}),
+    ...(summary.testCoverageGate
+      ? { testCoverageGate: normalizeManifestQueueCoverageGateSummary(summary.testCoverageGate) }
+      : {}),
+    ...(summary.testOverride ? { testOverride: summary.testOverride } : {}),
   };
   return Object.keys(normalized).length > 0 ? normalized : undefined;
+};
+
+const collectManifestQueueCoverageGateRollup = (
+  record: SessionTypeGlueingSweepRecord,
+): SessionTypeGlueingManifestQueueCoverageGateSummary | undefined => {
+  const sessionMetadata = record.runs.flatMap((run) => run.sessionMetadata ?? []);
+  const manifestQueueCoverageGateMetadataEntries =
+    collectSessionTypeManifestQueueCoverageGateMetadataEntriesFromSessionMetadata(sessionMetadata);
+  const metadataCoverageGateCollection =
+    collectSessionTypeManifestQueueTestCoverageGateIssuesFromMetadataEntries(
+      manifestQueueCoverageGateMetadataEntries,
+    );
+  const metadataQueueSnapshotPaths =
+    extractSessionTypeManifestQueueCoverageGateQueueSnapshotPathsFromMetadataEntries(
+      manifestQueueCoverageGateMetadataEntries,
+    );
+  const manifestQueueCoverageGate = record.manifestQueue?.testCoverageGate;
+  const manifestQueueTestStatus: SessionTypeGlueingManifestQueueTestStatus | undefined =
+    record.manifestQueue
+      ? {
+          tested: record.manifestQueue.tested ?? false,
+          ...(record.manifestQueue.testedAt ? { testedAt: record.manifestQueue.testedAt } : {}),
+          ...(record.manifestQueue.testRevision !== undefined
+            ? { revision: record.manifestQueue.testRevision }
+            : {}),
+          ...(manifestQueueCoverageGate
+            ? {
+                coverageGate: {
+                  checkedAt: manifestQueueCoverageGate.checkedAt,
+                  issues: manifestQueueCoverageGate.issues ?? [],
+                  warnings: manifestQueueCoverageGate.warnings ?? [],
+                  ...(manifestQueueCoverageGate.blockedManifestPlanQueueIssues
+                    ? {
+                        blockedManifestPlanQueueIssues:
+                          manifestQueueCoverageGate.blockedManifestPlanQueueIssues,
+                      }
+                    : {}),
+                  ...(manifestQueueCoverageGate.queueSnapshotPaths
+                    ? { queueSnapshotPaths: manifestQueueCoverageGate.queueSnapshotPaths }
+                    : {}),
+                  ...(manifestQueueCoverageGate.queueSnapshotPathsInferred
+                    ? { queueSnapshotPathsInferred: true }
+                    : {}),
+                },
+              }
+            : {}),
+        }
+      : undefined;
+  const coverageGateCollection = manifestQueueTestStatus
+    ? collectSessionTypeManifestQueueTestCoverageGateIssues(manifestQueueTestStatus, {
+        sessionMetadata,
+      })
+    : metadataCoverageGateCollection;
+  const blockedManifestPlanQueueIssues = new Set(
+    manifestQueueCoverageGate?.blockedManifestPlanQueueIssues ?? [],
+  );
+  manifestQueueCoverageGateMetadataEntries.forEach((entry) => {
+    if (entry.startsWith(SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_BLOCKED_PLAN_QUEUE_ISSUE_PREFIX)) {
+      blockedManifestPlanQueueIssues.add(
+        entry.slice(SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_BLOCKED_PLAN_QUEUE_ISSUE_PREFIX.length),
+      );
+    }
+  });
+  const queueSnapshotPaths =
+    manifestQueueCoverageGate?.queueSnapshotPaths ?? metadataQueueSnapshotPaths.queueSnapshotPaths;
+  const queueSnapshotPathsInferred =
+    manifestQueueCoverageGate?.queueSnapshotPathsInferred ??
+    metadataQueueSnapshotPaths.queueSnapshotPathsInferred;
+  const issues = coverageGateCollection.issues;
+  const warnings = coverageGateCollection.warnings;
+  const blockedIssues = Array.from(blockedManifestPlanQueueIssues);
+  if (
+    issues.length === 0 &&
+    warnings.length === 0 &&
+    blockedIssues.length === 0 &&
+    !queueSnapshotPaths &&
+    !queueSnapshotPathsInferred
+  ) {
+    return undefined;
+  }
+  return {
+    checkedAt:
+      manifestQueueCoverageGate?.checkedAt ?? record.manifestQueue?.testedAt ?? "unspecified",
+    ...(issues.length > 0 ? { issues } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
+    ...(blockedIssues.length > 0 ? { blockedManifestPlanQueueIssues: blockedIssues } : {}),
+    ...(queueSnapshotPaths ? { queueSnapshotPaths } : {}),
+    ...(queueSnapshotPathsInferred ? { queueSnapshotPathsInferred: true } : {}),
+  } satisfies SessionTypeGlueingManifestQueueCoverageGateSummary;
 };
 
 const normalizeSourceCoverage = (
@@ -358,6 +699,25 @@ const normalizeSourceCoverage = (
     : undefined;
 };
 
+const normalizeBlockedManifestPlanQueueActions = (
+  actions?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanQueueAction>,
+): ReadonlyArray<SessionTypeGlueingBlockedManifestPlanQueueAction> | undefined => {
+  if (!actions || actions.length === 0) {
+    return undefined;
+  }
+  const normalized: SessionTypeGlueingBlockedManifestPlanQueueAction[] = [];
+  for (const action of actions) {
+    if (!action || typeof action.path !== "string") {
+      continue;
+    }
+    if (action.action !== "queued" && action.action !== "consumed") {
+      continue;
+    }
+    normalized.push({ path: action.path, action: action.action });
+  }
+  return normalized.length > 0 ? normalized : undefined;
+};
+
 const asManifestQueueSummary = (value: unknown): SessionTypeGlueingManifestQueueSummary | undefined => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -369,12 +729,19 @@ const asManifestQueueSummary = (value: unknown): SessionTypeGlueingManifestQueue
   const testAgeMs = asFiniteNumber(record.testAgeMs);
   const testThresholdMs = asFiniteNumber(record.testThresholdMs);
   const testStale = asBoolean(record.testStale);
+  const testCoverageGate = asManifestQueueCoverageGateSummary(record.testCoverageGate);
   return normalizeManifestQueueSummary({
     inputs: asStringArray(record.inputs),
     replays: asStringArray(record.replays),
     outputs: asStringArray(record.outputs),
     blockedInputs: asStringArray(record.blockedInputs),
+    blockedManifestInputs: asStringArray(record.blockedManifestInputs),
+    ...(record.blockedManifestPlanInputs
+      ? { blockedManifestPlanInputs: asBlockedManifestPlanInputArray(record.blockedManifestPlanInputs) }
+      : {}),
     replayErrors: asManifestQueueReplayErrorArray(record.replayErrors),
+    coverageIssues: asStringArray(record.coverageIssues),
+    coverageDriftIssues: asStringArray(record.coverageDriftIssues),
     ...(tested !== undefined ? { tested } : {}),
     ...(testedAt ? { testedAt } : {}),
     ...(testRevision !== undefined ? { testRevision } : {}),
@@ -383,6 +750,7 @@ const asManifestQueueSummary = (value: unknown): SessionTypeGlueingManifestQueue
     ...(testStale !== undefined ? { testStale } : {}),
     ...(record.testIssues ? { testIssues: asStringArray(record.testIssues) } : {}),
     ...(record.testWarnings ? { testWarnings: asStringArray(record.testWarnings) } : {}),
+    ...(testCoverageGate ? { testCoverageGate } : {}),
   });
 };
 
@@ -436,6 +804,227 @@ const parseNumberMetadata = (
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
+const parseJsonMetadataValue = (entries: ReadonlyArray<string>, prefix: string): unknown => {
+  const raw = extractMetadataValue(entries, prefix);
+  if (raw === undefined) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+};
+
+const parseStringArrayMetadata = (entries: ReadonlyArray<string>, prefix: string): string[] | undefined => {
+  const value = parseJsonMetadataValue(entries, prefix);
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.filter((entry): entry is string => typeof entry === "string");
+};
+
+const isLambdaCoopKernelClauseSkipReason = (
+  reason: string,
+): reason is LambdaCoopKernelClauseSkip["reason"] => reason === "missing-argument-witness";
+
+const parseKernelClauseSkipArrayMetadata = (
+  entries: ReadonlyArray<string>,
+  prefix: string,
+): LambdaCoopKernelClauseSkip[] | undefined => {
+  const value = parseJsonMetadataValue(entries, prefix);
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return undefined;
+      }
+      const record = entry as Partial<LambdaCoopKernelClauseSkip>;
+      if (typeof record.operation !== "string" || typeof record.reason !== "string") {
+        return undefined;
+      }
+      if (!isLambdaCoopKernelClauseSkipReason(record.reason)) {
+        return undefined;
+      }
+      return {
+        operation: record.operation,
+        reason: record.reason,
+      } satisfies LambdaCoopKernelClauseSkip;
+    })
+    .filter((entry): entry is LambdaCoopKernelClauseSkip => entry !== undefined);
+};
+
+const SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_OPERATION_SUMMARY_PREFIX =
+  "λ₍coop₎.alignment.coverage.operations.summary=" as const;
+const SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_OPERATION_LINKS_PREFIX =
+  "λ₍coop₎.alignment.coverage.operations.links=" as const;
+
+const parseCoverageOperationSummaryMetadata = (
+  entries: ReadonlyArray<string>,
+  prefix: string,
+): SessionTypeGlueingAlignmentCoverageOperationSummary | undefined => {
+  const value = parseJsonMetadataValue(entries, prefix);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Partial<SessionTypeGlueingAlignmentCoverageOperationSummary>;
+  const total = typeof record.total === "number" ? record.total : undefined;
+  const missingInterpreter =
+    typeof record.missingInterpreter === "number" ? record.missingInterpreter : undefined;
+  const missingKernelClause =
+    typeof record.missingKernelClause === "number" ? record.missingKernelClause : undefined;
+  const skippedKernelClauses =
+    typeof record.skippedKernelClauses === "number" ? record.skippedKernelClauses : undefined;
+  const residualDefaulted =
+    typeof record.residualDefaulted === "number" ? record.residualDefaulted : undefined;
+  const residualHandlers =
+    typeof record.residualHandlers === "number" ? record.residualHandlers : undefined;
+  if (
+    total === undefined &&
+    missingInterpreter === undefined &&
+    missingKernelClause === undefined &&
+    skippedKernelClauses === undefined &&
+    residualDefaulted === undefined &&
+    residualHandlers === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    total: total ?? 0,
+    missingInterpreter: missingInterpreter ?? 0,
+    missingKernelClause: missingKernelClause ?? 0,
+    skippedKernelClauses: skippedKernelClauses ?? 0,
+    residualDefaulted: residualDefaulted ?? 0,
+    residualHandlers: residualHandlers ?? 0,
+  } satisfies SessionTypeGlueingAlignmentCoverageOperationSummary;
+};
+
+const parseResidualCoverageDigestValue = (
+  value: unknown,
+): LambdaCoopResidualCoverageDigest | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Partial<LambdaCoopResidualCoverageDigest>;
+  if (
+    typeof record.handled !== "number" ||
+    typeof record.unhandled !== "number" ||
+    typeof record.sampleLimit !== "number"
+  ) {
+    return undefined;
+  }
+  return {
+    handled: record.handled,
+    unhandled: record.unhandled,
+    sampleLimit: record.sampleLimit,
+  } satisfies LambdaCoopResidualCoverageDigest;
+};
+
+const parseCoverageResidualMetadata = (
+  value: unknown,
+): SessionTypeGlueingAlignmentCoverageResidualSnapshot | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as {
+    readonly defaulted?: unknown;
+    readonly handlerDescription?: unknown;
+    readonly coverage?: unknown;
+    readonly notes?: unknown;
+  };
+  const coverage = record.coverage ? parseResidualCoverageDigestValue(record.coverage) : undefined;
+  const notes = asStringArray(record.notes ?? []);
+  if (
+    typeof record.defaulted !== "boolean" &&
+    typeof record.handlerDescription !== "string" &&
+    !coverage &&
+    notes.length === 0
+  ) {
+    return undefined;
+  }
+  return {
+    ...(typeof record.defaulted === "boolean" ? { defaulted: record.defaulted } : {}),
+    ...(typeof record.handlerDescription === "string"
+      ? { handlerDescription: record.handlerDescription }
+      : {}),
+    ...(coverage ? { coverage } : {}),
+    notes,
+  } satisfies SessionTypeGlueingAlignmentCoverageResidualSnapshot;
+};
+
+const parseCoverageOperationLinksMetadata = (
+  entries: ReadonlyArray<string>,
+  prefix: string,
+): SessionTypeGlueingAlignmentCoverageOperationLink[] | undefined => {
+  const value = parseJsonMetadataValue(entries, prefix);
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const links: SessionTypeGlueingAlignmentCoverageOperationLink[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const record = entry as { [key: string]: unknown };
+    const operationRaw = record["operation"];
+    const operation = typeof operationRaw === "string" ? operationRaw : undefined;
+    if (!operation) {
+      continue;
+    }
+    const interpreterCoveredRaw = record["interpreterCovered"];
+    const interpreterCovered =
+      interpreterCoveredRaw === undefined ? true : Boolean(interpreterCoveredRaw);
+    let kernelClauseKind: string | undefined;
+    let kernelClauseDescription: string | undefined;
+    const kernelClauseRaw = record["kernelClause"];
+    if (kernelClauseRaw && typeof kernelClauseRaw === "object" && !Array.isArray(kernelClauseRaw)) {
+      const clause = kernelClauseRaw as { [key: string]: unknown };
+      const kindRaw = clause["kind"];
+      if (typeof kindRaw === "string") {
+        kernelClauseKind = kindRaw;
+      }
+      const descriptionRaw = clause["description"];
+      if (typeof descriptionRaw === "string") {
+        kernelClauseDescription = descriptionRaw;
+      }
+    }
+    let kernelClauseSkipped: LambdaCoopKernelClauseSkip | undefined;
+    const kernelClauseSkippedRaw = record["kernelClauseSkipped"];
+    if (
+      kernelClauseSkippedRaw &&
+      typeof kernelClauseSkippedRaw === "object" &&
+      !Array.isArray(kernelClauseSkippedRaw)
+    ) {
+      const skip = kernelClauseSkippedRaw as { [key: string]: unknown };
+      const skipOperation = skip["operation"];
+      const skipReason = skip["reason"];
+      if (
+        typeof skipOperation === "string" &&
+        typeof skipReason === "string" &&
+        isLambdaCoopKernelClauseSkipReason(skipReason)
+      ) {
+        kernelClauseSkipped = { operation: skipOperation, reason: skipReason };
+      }
+    }
+    const residual = record["residual"]
+      ? parseCoverageResidualMetadata(record["residual"])
+      : undefined;
+    const notes = asStringArray(record["notes"] ?? []);
+    links.push({
+      operation,
+      interpreterCovered,
+      ...(kernelClauseKind ? { kernelClauseKind } : {}),
+      ...(kernelClauseDescription ? { kernelClauseDescription } : {}),
+      ...(kernelClauseSkipped ? { kernelClauseSkipped } : {}),
+      ...(residual ? { residual } : {}),
+      notes,
+    });
+  }
+  return links.length > 0 ? links : undefined;
+};
+
 export const getManifestSourceFromMetadata = (
   entries: ReadonlyArray<string>,
 ): SessionTypeGlueingDashboardManifestSource | undefined => {
@@ -452,6 +1041,415 @@ export const getManifestSourceFromMetadata = (
   } satisfies SessionTypeGlueingDashboardManifestSource;
 };
 
+const SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_INTERPRETER_EXPECTED_PREFIX =
+  "λ₍coop₎.alignment.coverage.interpreter.expected=" as const;
+const SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_INTERPRETER_COVERED_PREFIX =
+  "λ₍coop₎.alignment.coverage.interpreter.covered=" as const;
+const SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_INTERPRETER_MISSING_PREFIX =
+  "λ₍coop₎.alignment.coverage.interpreter.missing=" as const;
+const SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_KERNEL_TOTAL_PREFIX =
+  "λ₍coop₎.alignment.coverage.kernel.total=" as const;
+const SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_KERNEL_EVALUATED_PREFIX =
+  "λ₍coop₎.alignment.coverage.kernel.evaluated=" as const;
+const SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_KERNEL_SKIPPED_PREFIX =
+  "λ₍coop₎.alignment.coverage.kernel.skipped=" as const;
+const SESSION_TYPE_GLUEING_RUNNER_COVERAGE_PREFIX =
+  "supervised-stack.lambdaCoop.coverage=" as const;
+
+const coverageReportToSnapshot = (
+  report: LambdaCoopAlignmentCoverageReport | undefined,
+): SessionTypeGlueingAlignmentCoverageSnapshot | undefined => {
+  if (!report) {
+    return undefined;
+  }
+  return {
+    interpreterExpectedOperations: report.interpreterExpectedOperations,
+    interpreterCoveredOperations: report.interpreterCoveredOperations,
+    interpreterMissingOperations: [...report.interpreterMissingOperations],
+    kernelTotalClauses: report.kernelTotalClauses,
+    kernelEvaluatedClauses: report.kernelEvaluatedClauses,
+    kernelSkippedClauses: [...report.kernelSkippedClauses],
+    operationSummary: report.operationSummary,
+    operations: report.operations,
+  } satisfies SessionTypeGlueingAlignmentCoverageSnapshot;
+};
+
+export const getSessionTypeGlueingAlignmentCoverageFromMetadata = (
+  alignmentMetadata: ReadonlyArray<string>,
+): SessionTypeGlueingAlignmentCoverageSnapshot | undefined => {
+  const interpreterExpected = parseNumberMetadata(
+    alignmentMetadata,
+    SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_INTERPRETER_EXPECTED_PREFIX,
+  );
+  const interpreterCovered = parseNumberMetadata(
+    alignmentMetadata,
+    SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_INTERPRETER_COVERED_PREFIX,
+  );
+  const interpreterMissingOperations =
+    parseStringArrayMetadata(alignmentMetadata, SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_INTERPRETER_MISSING_PREFIX) ?? [];
+  const kernelTotal = parseNumberMetadata(
+    alignmentMetadata,
+    SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_KERNEL_TOTAL_PREFIX,
+  );
+  const kernelEvaluated = parseNumberMetadata(
+    alignmentMetadata,
+    SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_KERNEL_EVALUATED_PREFIX,
+  );
+  const kernelSkippedClauses =
+    parseKernelClauseSkipArrayMetadata(alignmentMetadata, SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_KERNEL_SKIPPED_PREFIX) ?? [];
+  const operationSummary = parseCoverageOperationSummaryMetadata(
+    alignmentMetadata,
+    SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_OPERATION_SUMMARY_PREFIX,
+  );
+  const operationLinks = parseCoverageOperationLinksMetadata(
+    alignmentMetadata,
+    SESSION_TYPE_GLUEING_ALIGNMENT_COVERAGE_OPERATION_LINKS_PREFIX,
+  );
+  if (
+    interpreterExpected === undefined &&
+    interpreterCovered === undefined &&
+    interpreterMissingOperations.length === 0 &&
+    kernelTotal === undefined &&
+    kernelEvaluated === undefined &&
+    kernelSkippedClauses.length === 0 &&
+    !operationSummary &&
+    (!operationLinks || operationLinks.length === 0)
+  ) {
+    return undefined;
+  }
+  return {
+    ...(interpreterExpected !== undefined ? { interpreterExpectedOperations: interpreterExpected } : {}),
+    ...(interpreterCovered !== undefined ? { interpreterCoveredOperations: interpreterCovered } : {}),
+    interpreterMissingOperations,
+    ...(kernelTotal !== undefined ? { kernelTotalClauses: kernelTotal } : {}),
+    ...(kernelEvaluated !== undefined ? { kernelEvaluatedClauses: kernelEvaluated } : {}),
+    kernelSkippedClauses,
+    ...(operationSummary ? { operationSummary } : {}),
+    ...(operationLinks ? { operations: operationLinks } : {}),
+  } satisfies SessionTypeGlueingAlignmentCoverageSnapshot;
+};
+
+export const getSessionTypeGlueingRunnerCoverageFromMetadata = (
+  sessionMetadata: ReadonlyArray<string>,
+): SessionTypeGlueingAlignmentCoverageSnapshot | undefined => {
+  const entry = sessionMetadata.find((value) =>
+    value.startsWith(SESSION_TYPE_GLUEING_RUNNER_COVERAGE_PREFIX),
+  );
+  if (!entry) {
+    return undefined;
+  }
+  const raw = entry.slice(SESSION_TYPE_GLUEING_RUNNER_COVERAGE_PREFIX.length);
+  try {
+    const parsed = JSON.parse(raw) as LambdaCoopAlignmentCoverageReport;
+    return coverageReportToSnapshot(parsed);
+  } catch {
+    return undefined;
+  }
+};
+
+const getAlignmentCoverageSnapshot = (
+  run: SessionTypeGlueingSweepRunSnapshot,
+): SessionTypeGlueingAlignmentCoverageSnapshot | undefined =>
+  run.alignmentCoverage ?? getSessionTypeGlueingAlignmentCoverageFromMetadata(run.alignmentMetadata);
+
+const getRunnerCoverageSnapshot = (
+  run: SessionTypeGlueingSweepRunSnapshot,
+): SessionTypeGlueingAlignmentCoverageSnapshot | undefined =>
+  run.runnerCoverage ?? getSessionTypeGlueingRunnerCoverageFromMetadata(run.sessionMetadata);
+
+export const getSessionTypeGlueingCoverageSnapshots = (
+  run: SessionTypeGlueingSweepRunSnapshot,
+): {
+  readonly alignment?: SessionTypeGlueingAlignmentCoverageSnapshot;
+  readonly runner?: SessionTypeGlueingAlignmentCoverageSnapshot;
+} => {
+  const alignment = getAlignmentCoverageSnapshot(run);
+  const runner = getRunnerCoverageSnapshot(run);
+  return {
+    ...(alignment ? { alignment } : {}),
+    ...(runner ? { runner } : {}),
+  };
+};
+
+export type SessionTypeGlueingCoverageSource = "alignment" | "runner";
+
+export const getSessionTypeGlueingCoverageForRun = (
+  run: SessionTypeGlueingSweepRunSnapshot,
+): {
+  readonly coverage?: SessionTypeGlueingAlignmentCoverageSnapshot;
+  readonly source?: SessionTypeGlueingCoverageSource;
+} => {
+  const { alignment: alignmentCoverage, runner: runnerCoverage } =
+    getSessionTypeGlueingCoverageSnapshots(run);
+  if (alignmentCoverage) {
+    return { coverage: alignmentCoverage, source: "alignment" };
+  }
+  if (runnerCoverage) {
+    return { coverage: runnerCoverage, source: "runner" };
+  }
+  return {};
+};
+
+const normalizeStringSet = (values: ReadonlyArray<string>): ReadonlyArray<string> => [...values].sort();
+
+const normalizeKernelSkippedClauses = (
+  values: ReadonlyArray<LambdaCoopKernelClauseSkip>,
+): ReadonlyArray<string> => values.map((skip) => `${skip.operation}|${skip.reason}`).sort();
+
+const normalizeCoverageOperationLink = (
+  link: SessionTypeGlueingAlignmentCoverageOperationLink,
+): string => {
+  const residual = link.residual
+    ? {
+        defaulted: link.residual.defaulted ?? false,
+        handler: link.residual.handlerDescription ?? null,
+        coverage: link.residual.coverage ?? null,
+      }
+    : undefined;
+  return JSON.stringify({
+    operation: link.operation,
+    interpreterCovered: link.interpreterCovered,
+    kernelClauseKind: link.kernelClauseKind ?? null,
+    kernelClauseDescription: link.kernelClauseDescription ?? null,
+    kernelClauseSkipped: link.kernelClauseSkipped?.reason ?? null,
+    residual,
+    notes: link.notes,
+  });
+};
+
+const normalizeCoverageOperationLinks = (
+  links: ReadonlyArray<SessionTypeGlueingAlignmentCoverageOperationLink> | undefined,
+): ReadonlyArray<string> => (!links || links.length === 0 ? [] : links.map(normalizeCoverageOperationLink).sort());
+
+const compareOptionalNumberField = (
+  label: string,
+  recorded: number | undefined,
+  reconstructed: number | undefined,
+  issues: string[],
+): void => {
+  if (recorded === undefined || reconstructed === undefined) {
+    return;
+  }
+  if (recorded !== reconstructed) {
+    issues.push(`${label} mismatch between recorded (${recorded}) and reconstructed (${reconstructed}).`);
+  }
+};
+
+const compareOptionalOperationSummaries = (
+  recorded: SessionTypeGlueingAlignmentCoverageOperationSummary | undefined,
+  reconstructed: SessionTypeGlueingAlignmentCoverageOperationSummary | undefined,
+  issues: string[],
+): void => {
+  if (!recorded || !reconstructed) {
+    return;
+  }
+  compareOptionalNumberField("Operation summary total", recorded.total, reconstructed.total, issues);
+  compareOptionalNumberField(
+    "Operation summary missing interpreter",
+    recorded.missingInterpreter,
+    reconstructed.missingInterpreter,
+    issues,
+  );
+  compareOptionalNumberField(
+    "Operation summary missing kernel clauses",
+    recorded.missingKernelClause,
+    reconstructed.missingKernelClause,
+    issues,
+  );
+  compareOptionalNumberField(
+    "Operation summary skipped kernel clauses",
+    recorded.skippedKernelClauses,
+    reconstructed.skippedKernelClauses,
+    issues,
+  );
+  compareOptionalNumberField(
+    "Operation summary residual defaults",
+    recorded.residualDefaulted,
+    reconstructed.residualDefaulted,
+    issues,
+  );
+  compareOptionalNumberField(
+    "Operation summary residual handlers",
+    recorded.residualHandlers,
+    reconstructed.residualHandlers,
+    issues,
+  );
+};
+
+export const compareSessionTypeGlueingCoverageSnapshots = (
+  runnerCoverage: SessionTypeGlueingAlignmentCoverageSnapshot | undefined,
+  alignmentCoverage: SessionTypeGlueingAlignmentCoverageSnapshot | undefined,
+): ReadonlyArray<string> => {
+  if (!runnerCoverage || !alignmentCoverage) {
+    return [];
+  }
+  const issues: string[] = [];
+  compareOptionalNumberField(
+    "Interpreter expected operations",
+    runnerCoverage.interpreterExpectedOperations,
+    alignmentCoverage.interpreterExpectedOperations,
+    issues,
+  );
+  compareOptionalNumberField(
+    "Interpreter covered operations",
+    runnerCoverage.interpreterCoveredOperations,
+    alignmentCoverage.interpreterCoveredOperations,
+    issues,
+  );
+  if (
+    normalizeStringSet(runnerCoverage.interpreterMissingOperations).join("|") !==
+    normalizeStringSet(alignmentCoverage.interpreterMissingOperations).join("|")
+  ) {
+    issues.push(
+      "Interpreter missing-operation set mismatch between recorded and reconstructed coverage.",
+    );
+  }
+  compareOptionalNumberField(
+    "Kernel total clauses",
+    runnerCoverage.kernelTotalClauses,
+    alignmentCoverage.kernelTotalClauses,
+    issues,
+  );
+  compareOptionalNumberField(
+    "Kernel evaluated clauses",
+    runnerCoverage.kernelEvaluatedClauses,
+    alignmentCoverage.kernelEvaluatedClauses,
+    issues,
+  );
+  if (
+    normalizeKernelSkippedClauses(runnerCoverage.kernelSkippedClauses).join("|") !==
+    normalizeKernelSkippedClauses(alignmentCoverage.kernelSkippedClauses).join("|")
+  ) {
+    issues.push(
+      "Kernel skipped-clause set mismatch between recorded and reconstructed coverage.",
+    );
+  }
+  const runnerOperationLinks = normalizeCoverageOperationLinks(runnerCoverage.operations);
+  const alignmentOperationLinks = normalizeCoverageOperationLinks(alignmentCoverage.operations);
+  if (runnerOperationLinks.join("|") !== alignmentOperationLinks.join("|")) {
+    issues.push("λ₍coop₎ operation link metadata diverges between recorded and reconstructed coverage.");
+  }
+  compareOptionalOperationSummaries(
+    runnerCoverage.operationSummary,
+    alignmentCoverage.operationSummary,
+    issues,
+  );
+  return issues;
+};
+
+export const collectSessionTypeGlueingAlignmentCoverageIssues = (
+  coverage: SessionTypeGlueingAlignmentCoverageSnapshot | undefined,
+): string[] => {
+  if (!coverage) {
+    return [];
+  }
+  const issues: string[] = [];
+  if (coverage.interpreterMissingOperations.length > 0) {
+    issues.push(`Interpreter missing operations: ${coverage.interpreterMissingOperations.join(", ")}`);
+  }
+  if (coverage.kernelSkippedClauses.length > 0) {
+    const clauseDescriptions = coverage.kernelSkippedClauses
+      .map((skip) => (skip.reason ? `${skip.operation} (${skip.reason})` : skip.operation))
+      .join(", ");
+    issues.push(`Kernel skipped clauses: ${clauseDescriptions}`);
+  }
+  const kernelMissingOperations = coverage.operations
+    ?.filter((link) => !link.kernelClauseKind)
+    .map((link) => link.operation);
+  if (kernelMissingOperations && kernelMissingOperations.length > 0) {
+    issues.push(`Kernel missing clauses: ${kernelMissingOperations.join(", ")}`);
+  }
+  const residualDefaultedOperations = coverage.operations
+    ?.filter((link) => link.residual?.defaulted)
+    .map((link) => link.operation);
+  if (residualDefaultedOperations && residualDefaultedOperations.length > 0) {
+    issues.push(`Residual defaulted operations: ${residualDefaultedOperations.join(", ")}`);
+  }
+  return issues;
+};
+
+export const formatSessionTypeGlueingAlignmentCoverageLines = (
+  coverage: SessionTypeGlueingAlignmentCoverageSnapshot | undefined,
+  options: { readonly indent?: string } = {},
+): string[] => {
+  if (!coverage) {
+    return [];
+  }
+  const indent = options.indent ?? "";
+  const lines: string[] = [];
+  lines.push(
+    `${indent}λ₍coop₎ coverage interpreter expected=${
+      coverage.interpreterExpectedOperations ?? "unknown"
+    } covered=${coverage.interpreterCoveredOperations ?? "unknown"}`,
+  );
+  if (coverage.interpreterMissingOperations.length > 0) {
+    lines.push(
+      `${indent}λ₍coop₎ coverage missing interpreter operations: ${coverage.interpreterMissingOperations.join(", ")}`,
+    );
+  }
+  lines.push(
+    `${indent}λ₍coop₎ coverage kernel total=${coverage.kernelTotalClauses ?? "unknown"}` +
+      ` evaluated=${coverage.kernelEvaluatedClauses ?? "unknown"}`,
+  );
+  if (coverage.kernelSkippedClauses.length > 0) {
+    const clauseDescriptions = coverage.kernelSkippedClauses
+      .map((skip) => (skip.reason ? `${skip.operation} (${skip.reason})` : skip.operation))
+      .join(", ");
+    lines.push(`${indent}λ₍coop₎ coverage skipped kernel clauses: ${clauseDescriptions}`);
+  }
+  if (coverage.operationSummary) {
+    lines.push(
+      `${indent}λ₍coop₎ coverage operations total=${coverage.operationSummary.total}` +
+        ` missingInterpreter=${coverage.operationSummary.missingInterpreter}` +
+        ` missingKernel=${coverage.operationSummary.missingKernelClause}` +
+        ` skipped=${coverage.operationSummary.skippedKernelClauses}`,
+    );
+    if (coverage.operationSummary.residualDefaulted > 0) {
+      lines.push(
+        `${indent}λ₍coop₎ coverage residual defaulted operations=${coverage.operationSummary.residualDefaulted}`,
+      );
+    }
+    if (coverage.operationSummary.residualHandlers > 0) {
+      lines.push(
+        `${indent}λ₍coop₎ coverage residual handlers=${coverage.operationSummary.residualHandlers}`,
+      );
+    }
+  }
+  if (coverage.operations && coverage.operations.length > 0) {
+    coverage.operations.forEach((link) => {
+      const parts = [
+        `${indent}λ₍coop₎ coverage op ${link.operation}:`,
+        `interpreter=${link.interpreterCovered ? "covered" : "missing"}`,
+        `kernel=${link.kernelClauseKind ?? "missing"}`,
+      ];
+      if (link.kernelClauseSkipped) {
+        parts.push(`skipped=${link.kernelClauseSkipped.reason}`);
+      }
+      if (link.kernelClauseDescription) {
+        parts.push(`desc=${link.kernelClauseDescription}`);
+      }
+      if (link.residual?.handlerDescription) {
+        parts.push(`residualHandler=${link.residual.handlerDescription}`);
+      }
+      if (link.residual?.defaulted) {
+        parts.push("residual=defaulted");
+      }
+      lines.push(parts.join(" "));
+      if (link.residual?.coverage) {
+        lines.push(
+          `${indent}  residual coverage handled=${link.residual.coverage.handled}` +
+            ` unhandled=${link.residual.coverage.unhandled}` +
+            ` sampleLimit=${link.residual.coverage.sampleLimit}`,
+        );
+      }
+      if (link.notes.length > 0) {
+        link.notes.forEach((note) => lines.push(`${indent}  note: ${note}`));
+      }
+    });
+  }
+  return lines;
+};
+
 export const collectSessionTypeGlueingSweepRunSnapshot = (
   config: SessionTypeGlueingSweepConfig,
   metadata: Record<string, unknown> | undefined,
@@ -463,6 +1461,8 @@ export const collectSessionTypeGlueingSweepRunSnapshot = (
   const alignmentNotes = asStringArray(metadata?.["alignmentNotes"]);
   const runnerHolds = parseBooleanMetadata(sessionMetadata, "sessionType.runner.holds=");
   const runnerMismatches = parseNumberMetadata(sessionMetadata, "sessionType.runner.mismatches=");
+  const alignmentCoverage = getSessionTypeGlueingAlignmentCoverageFromMetadata(alignmentMetadata);
+  const runnerCoverage = getSessionTypeGlueingRunnerCoverageFromMetadata(sessionMetadata);
   return {
     config,
     ...(runnerHolds !== undefined ? { runnerHolds } : {}),
@@ -471,6 +1471,8 @@ export const collectSessionTypeGlueingSweepRunSnapshot = (
     glueingMetadata,
     alignmentMetadata,
     alignmentNotes,
+    ...(alignmentCoverage ? { alignmentCoverage } : {}),
+    ...(runnerCoverage ? { runnerCoverage } : {}),
     ...(exampleArgs && exampleArgs.length > 0 ? { exampleArgs } : {}),
   };
 };
@@ -484,13 +1486,17 @@ export const buildSessionTypeGlueingSweepRecord = (
     suggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingSuggestedManifestWriteMetadata>;
     blockedSuggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingBlockedSuggestedManifestWriteMetadata>;
     blockedQueuedManifestInputs?: ReadonlyArray<string>;
+    blockedManifestInputs?: ReadonlyArray<string>;
     blockedManifestPlans?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanEntry>;
+    blockedManifestPlanInputs?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanInputMetadata>;
+    blockedManifestPlanQueue?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanQueueAction>;
     manifestQueue?: SessionTypeGlueingManifestQueueSummary;
     sourceCoverage?: SessionTypeGlueingSweepSourceCoverage;
   } = {},
 ): SessionTypeGlueingSweepRecord => {
   const manifestQueue = normalizeManifestQueueSummary(options.manifestQueue);
   const sourceCoverage = normalizeSourceCoverage(options.sourceCoverage);
+  const blockedManifestPlanQueue = normalizeBlockedManifestPlanQueueActions(options.blockedManifestPlanQueue);
   return {
     schemaVersion: SESSION_TYPE_GLUEING_SWEEP_RECORD_SCHEMA_VERSION,
     recordedAt: options.recordedAt ?? new Date().toISOString(),
@@ -508,9 +1514,16 @@ export const buildSessionTypeGlueingSweepRecord = (
     ...(options.blockedQueuedManifestInputs && options.blockedQueuedManifestInputs.length > 0
       ? { blockedQueuedManifestInputs: options.blockedQueuedManifestInputs }
       : {}),
+    ...(options.blockedManifestInputs && options.blockedManifestInputs.length > 0
+      ? { blockedManifestInputs: options.blockedManifestInputs }
+      : {}),
     ...(options.blockedManifestPlans && options.blockedManifestPlans.length > 0
       ? { blockedManifestPlans: options.blockedManifestPlans }
       : {}),
+    ...(options.blockedManifestPlanInputs && options.blockedManifestPlanInputs.length > 0
+      ? { blockedManifestPlanInputs: options.blockedManifestPlanInputs }
+      : {}),
+    ...(blockedManifestPlanQueue ? { blockedManifestPlanQueue } : {}),
     ...(manifestQueue ? { manifestQueue } : {}),
     ...(sourceCoverage ? { sourceCoverage } : {}),
   };
@@ -526,7 +1539,10 @@ export const writeSessionTypeGlueingSweepRecord = (
     suggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingSuggestedManifestWriteMetadata>;
     blockedSuggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingBlockedSuggestedManifestWriteMetadata>;
     blockedQueuedManifestInputs?: ReadonlyArray<string>;
+    blockedManifestInputs?: ReadonlyArray<string>;
     blockedManifestPlans?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanEntry>;
+    blockedManifestPlanInputs?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanInputMetadata>;
+    blockedManifestPlanQueue?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanQueueAction>;
     manifestQueue?: SessionTypeGlueingManifestQueueSummary;
     sourceCoverage?: SessionTypeGlueingSweepSourceCoverage;
   } = {},
@@ -575,14 +1591,22 @@ export const readSessionTypeGlueingSweepRecord = (path: string): SessionTypeGlue
       if (!snapshot.config) {
         throw new Error(`Sweep record '${resolved}' has a run entry without a config at index ${index}.`);
       }
+      const sessionMetadata = asStringArray(snapshot.sessionMetadata);
+      const glueingMetadata = asStringArray(snapshot.glueingMetadata);
+      const alignmentMetadata = asStringArray(snapshot.alignmentMetadata);
+      const alignmentNotes = asStringArray(snapshot.alignmentNotes);
+      const alignmentCoverage = getSessionTypeGlueingAlignmentCoverageFromMetadata(alignmentMetadata);
+      const runnerCoverage = getSessionTypeGlueingRunnerCoverageFromMetadata(sessionMetadata);
       return {
         config: snapshot.config,
-        sessionMetadata: asStringArray(snapshot.sessionMetadata),
-        glueingMetadata: asStringArray(snapshot.glueingMetadata),
-        alignmentMetadata: asStringArray(snapshot.alignmentMetadata),
-        alignmentNotes: asStringArray(snapshot.alignmentNotes),
+        sessionMetadata,
+        glueingMetadata,
+        alignmentMetadata,
+        alignmentNotes,
         ...(snapshot.runnerHolds !== undefined ? { runnerHolds: snapshot.runnerHolds } : {}),
         ...(snapshot.runnerMismatches !== undefined ? { runnerMismatches: snapshot.runnerMismatches } : {}),
+        ...(alignmentCoverage ? { alignmentCoverage } : {}),
+        ...(runnerCoverage ? { runnerCoverage } : {}),
         ...(snapshot.exampleArgs ? { exampleArgs: snapshot.exampleArgs } : {}),
       } satisfies SessionTypeGlueingSweepRunSnapshot;
     }),
@@ -598,8 +1622,17 @@ export const readSessionTypeGlueingSweepRecord = (path: string): SessionTypeGlue
     ...(record.blockedQueuedManifestInputs && record.blockedQueuedManifestInputs.length > 0
       ? { blockedQueuedManifestInputs: asStringArray(record.blockedQueuedManifestInputs) }
       : {}),
+    ...(record.blockedManifestInputs && record.blockedManifestInputs.length > 0
+      ? { blockedManifestInputs: asStringArray(record.blockedManifestInputs) }
+      : {}),
     ...(record.blockedManifestPlans && record.blockedManifestPlans.length > 0
       ? { blockedManifestPlans: asBlockedManifestPlanArray(record.blockedManifestPlans) }
+      : {}),
+    ...(record.blockedManifestPlanInputs && record.blockedManifestPlanInputs.length > 0
+      ? { blockedManifestPlanInputs: asBlockedManifestPlanInputArray(record.blockedManifestPlanInputs) }
+      : {}),
+    ...(record.blockedManifestPlanQueue && record.blockedManifestPlanQueue.length > 0
+      ? { blockedManifestPlanQueue: asBlockedManifestPlanQueueActions(record.blockedManifestPlanQueue) }
       : {}),
     ...(manifestQueue ? { manifestQueue } : {}),
     ...(sourceCoverage ? { sourceCoverage } : {}),
@@ -621,6 +1654,9 @@ export interface SessionTypeGlueingDashboardEntry {
   readonly runnerMismatches?: number;
   readonly alignmentStatus?: string;
   readonly manifestSource?: SessionTypeGlueingDashboardManifestSource;
+  readonly alignmentCoverage?: SessionTypeGlueingAlignmentCoverageSnapshot;
+  readonly alignmentCoverageIssues?: ReadonlyArray<string>;
+  readonly coverageComparisonIssues?: ReadonlyArray<string>;
   readonly metadataCounts: {
     readonly session: number;
     readonly glueing: number;
@@ -651,12 +1687,19 @@ export interface SessionTypeGlueingDashboardSummary {
   readonly suggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingSuggestedManifestWriteMetadata>;
   readonly blockedSuggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingBlockedSuggestedManifestWriteMetadata>;
   readonly blockedQueuedManifestInputs?: ReadonlyArray<string>;
+  readonly blockedManifestInputs?: ReadonlyArray<string>;
   readonly blockedManifestPlans?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanEntry>;
+  readonly blockedManifestPlanInputs?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanInputMetadata>;
+  readonly blockedManifestPlanQueue?: SessionTypeGlueingBlockedManifestPlanQueueSummary;
+  readonly blockedManifestPlanQueueIssues?: ReadonlyArray<string>;
   readonly manifestQueue?: SessionTypeGlueingManifestQueueSummary;
   readonly manifestQueueIssues?: ReadonlyArray<string>;
   readonly manifestQueueWarnings?: ReadonlyArray<string>;
+  readonly manifestQueueCoverageGateRollup?: SessionTypeGlueingManifestQueueCoverageGateSummary;
   readonly sourceCoverage?: SessionTypeGlueingSweepSourceCoverage;
   readonly sourceCoverageTotals: SessionTypeGlueingSourceCoverageTotals;
+  readonly sourceCoverageIssues?: ReadonlyArray<string>;
+  readonly alignmentCoverageIssues?: ReadonlyArray<string>;
 }
 
 export interface SessionTypeGlueingDashboardFilterOptions {
@@ -761,6 +1804,67 @@ export const sessionTypeGlueingSourceCoverageMatchesFilter = (
   return true;
 };
 
+export const collectSessionTypeGlueingSourceCoverageIssues = (
+  coverage: SessionTypeGlueingSweepSourceCoverage | undefined,
+  filter?: SessionTypeGlueingSourceCoverageFilterOptions,
+): string[] => {
+  if (!filter) {
+    return [];
+  }
+  const issues: string[] = [];
+  const totals = summarizeSessionTypeGlueingSourceCoverage(coverage);
+  if (filter.requireManifestInputs && totals.manifestInputs === 0) {
+    issues.push("No manifest-input coverage was recorded in this sweep.");
+  }
+  if (filter.requireBlockedPlans && totals.blockedPlans === 0) {
+    issues.push("No blocked-plan coverage was recorded in this sweep.");
+  }
+  if (filter.requireAny && totals.total === 0) {
+    issues.push("No manifest-input or blocked-plan sources were exercised in this sweep.");
+  }
+  return issues;
+};
+
+export const summarizeSessionTypeGlueingBlockedManifestPlanQueue = (
+  actions?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanQueueAction>,
+): SessionTypeGlueingBlockedManifestPlanQueueSummary | undefined => {
+  if (!actions || actions.length === 0) {
+    return undefined;
+  }
+  const queued: string[] = [];
+  const consumed: string[] = [];
+  const queueCounts = new Map<string, number>();
+  const queuedSet = new Set<string>();
+  const consumedSet = new Set<string>();
+  for (const action of actions) {
+    if (action.action === "queued") {
+      queueCounts.set(action.path, (queueCounts.get(action.path) ?? 0) + 1);
+      if (!queuedSet.has(action.path)) {
+        queuedSet.add(action.path);
+        queued.push(action.path);
+      }
+    } else {
+      queueCounts.set(action.path, (queueCounts.get(action.path) ?? 0) - 1);
+      if (!consumedSet.has(action.path)) {
+        consumedSet.add(action.path);
+        consumed.push(action.path);
+      }
+    }
+  }
+  const remaining: string[] = [];
+  for (const [path, count] of queueCounts.entries()) {
+    if (count > 0) {
+      remaining.push(path);
+    }
+  }
+  return {
+    actions: Array.from(actions),
+    ...(queued.length > 0 ? { queued } : {}),
+    ...(consumed.length > 0 ? { consumed } : {}),
+    ...(remaining.length > 0 ? { remaining } : {}),
+  } satisfies SessionTypeGlueingBlockedManifestPlanQueueSummary;
+};
+
 export const summarizeSessionTypeGlueingSweepRecord = (
   record: SessionTypeGlueingSweepRecord,
 ): SessionTypeGlueingDashboardSummary => {
@@ -773,6 +1877,18 @@ export const summarizeSessionTypeGlueingSweepRecord = (
   let alignmentUnknown = 0;
 
   const sourceCoverageTotals = summarizeSessionTypeGlueingSourceCoverage(record.sourceCoverage);
+  const sourceCoverageIssues = collectSessionTypeGlueingSourceCoverageIssues(record.sourceCoverage, {
+    requireManifestInputs: true,
+    requireBlockedPlans: true,
+  });
+  const alignmentCoverageIssues: string[] = [];
+  const blockedManifestPlanQueueSummary = summarizeSessionTypeGlueingBlockedManifestPlanQueue(
+    record.blockedManifestPlanQueue,
+  );
+  const blockedManifestPlanQueueIssues = collectSessionTypeGlueingBlockedManifestPlanQueueIssues(
+    blockedManifestPlanQueueSummary,
+  );
+  const manifestQueueCoverageGateRollup = collectManifestQueueCoverageGateRollup(record);
   const entries = record.runs.map((run) => {
     if (run.runnerHolds === true) {
       runnerSuccesses += 1;
@@ -792,6 +1908,8 @@ export const summarizeSessionTypeGlueingSweepRecord = (
     } else {
       alignmentIssues += 1;
     }
+    const coverageSnapshots = getSessionTypeGlueingCoverageSnapshots(run);
+    const { coverage, source: coverageSource } = getSessionTypeGlueingCoverageForRun(run);
     const manifestSource = getManifestSourceFromMetadata(run.sessionMetadata);
     const issues: string[] = [];
     if (run.runnerHolds === false) {
@@ -802,6 +1920,24 @@ export const summarizeSessionTypeGlueingSweepRecord = (
     }
     if (alignmentStatus && alignmentStatus !== "aligned") {
       issues.push(`alignment.status=${alignmentStatus}`);
+    }
+    const coverageIssues = collectSessionTypeGlueingAlignmentCoverageIssues(coverage);
+    if (coverageIssues.length > 0) {
+      coverageIssues.forEach((issue) => {
+        alignmentCoverageIssues.push(`${run.config.label}: ${issue}`);
+        issues.push(`${coverageSource === "runner" ? "runner" : "alignment"}.coverage:${issue}`);
+      });
+    }
+    const coverageComparisonIssues = compareSessionTypeGlueingCoverageSnapshots(
+      coverageSnapshots.runner,
+      coverageSnapshots.alignment,
+    );
+    if (coverageComparisonIssues.length > 0) {
+      coverageComparisonIssues.forEach((issue) => {
+        const driftIssue = `Coverage drift: ${issue}`;
+        alignmentCoverageIssues.push(`${run.config.label}: ${driftIssue}`);
+        issues.push(`coverage.drift:${issue}`);
+      });
     }
     return {
       label: run.config.label,
@@ -817,6 +1953,11 @@ export const summarizeSessionTypeGlueingSweepRecord = (
         alignment: run.alignmentMetadata.length,
         notes: run.alignmentNotes.length,
       },
+      ...(coverage ? { alignmentCoverage: coverage } : {}),
+      ...(coverageIssues.length > 0 ? { alignmentCoverageIssues: coverageIssues } : {}),
+      ...(coverageComparisonIssues.length > 0
+        ? { coverageComparisonIssues }
+        : {}),
       ...(manifestSource ? { manifestSource } : {}),
       issues,
     } satisfies SessionTypeGlueingDashboardEntry;
@@ -847,7 +1988,15 @@ export const summarizeSessionTypeGlueingSweepRecord = (
     ...(record.blockedQueuedManifestInputs
       ? { blockedQueuedManifestInputs: record.blockedQueuedManifestInputs }
       : {}),
+    ...(record.blockedManifestInputs ? { blockedManifestInputs: record.blockedManifestInputs } : {}),
     ...(record.blockedManifestPlans ? { blockedManifestPlans: record.blockedManifestPlans } : {}),
+    ...(record.blockedManifestPlanInputs
+      ? { blockedManifestPlanInputs: record.blockedManifestPlanInputs }
+      : {}),
+    ...(blockedManifestPlanQueueSummary ? { blockedManifestPlanQueue: blockedManifestPlanQueueSummary } : {}),
+    ...(blockedManifestPlanQueueIssues.length > 0
+      ? { blockedManifestPlanQueueIssues }
+      : {}),
     ...(record.manifestQueue ? { manifestQueue: record.manifestQueue } : {}),
     ...(record.manifestQueue?.testIssues && record.manifestQueue.testIssues.length > 0
       ? { manifestQueueIssues: record.manifestQueue.testIssues }
@@ -855,7 +2004,10 @@ export const summarizeSessionTypeGlueingSweepRecord = (
     ...(record.manifestQueue?.testWarnings && record.manifestQueue.testWarnings.length > 0
       ? { manifestQueueWarnings: record.manifestQueue.testWarnings }
       : {}),
+    ...(manifestQueueCoverageGateRollup ? { manifestQueueCoverageGateRollup } : {}),
     ...(record.sourceCoverage ? { sourceCoverage: record.sourceCoverage } : {}),
     sourceCoverageTotals,
+    ...(sourceCoverageIssues.length > 0 ? { sourceCoverageIssues } : {}),
+    ...(alignmentCoverageIssues.length > 0 ? { alignmentCoverageIssues } : {}),
   };
 };

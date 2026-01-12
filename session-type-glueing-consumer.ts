@@ -19,19 +19,38 @@ import {
   readSessionTypeGlueingSweepRecord,
   SESSION_TYPE_GLUEING_SWEEP_RECORD_SCHEMA_VERSION,
   getManifestSourceFromMetadata,
+  getSessionTypeGlueingCoverageForRun,
+  getSessionTypeGlueingCoverageSnapshots,
+  collectSessionTypeGlueingAlignmentCoverageIssues,
+  compareSessionTypeGlueingCoverageSnapshots,
   type SessionTypeGlueingSweepRecord,
   type SessionTypeGlueingSweepRunSnapshot,
   type SessionTypeGlueingDashboardManifestSource,
   type SessionTypeGlueingSuggestedManifestWriteMetadata,
   type SessionTypeGlueingBlockedSuggestedManifestWriteMetadata,
   type SessionTypeGlueingBlockedManifestPlanEntry,
+  type SessionTypeGlueingBlockedManifestPlanInputMetadata,
+  type SessionTypeGlueingBlockedManifestPlanQueueSummary,
   type SessionTypeGlueingManifestQueueSummary,
+  type SessionTypeGlueingManifestQueueCoverageGateSummary,
   type SessionTypeGlueingSweepSourceCoverage,
   summarizeSessionTypeGlueingSourceCoverage,
+  summarizeSessionTypeGlueingBlockedManifestPlanQueue,
+  collectSessionTypeGlueingSourceCoverageIssues,
   type SessionTypeGlueingSourceCoverageTotals,
 } from "./session-type-glueing-dashboard";
+import {
+  collectSessionTypeManifestQueueCoverageGateMetadataEntriesFromSessionMetadata,
+  extractSessionTypeManifestQueueCoverageGateQueueSnapshotPathsFromMetadataEntries,
+  collectSessionTypeManifestQueueTestCoverageGateIssues,
+  collectSessionTypeManifestQueueTestCoverageGateIssuesFromSessionMetadata,
+  SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_BLOCKED_PLAN_QUEUE_ISSUE_PREFIX,
+  type SessionTypeGlueingManifestQueueTestStatus,
+  type SessionTypeGlueingManifestQueueQueueSnapshotPaths,
+} from "./session-type-glueing-manifest-queue-test-status";
 import type { SessionTypeGlueingSweepConfig } from "./session-type-glueing-sweep";
 import type { TwoObject } from "./two-object-cat";
+import { collectSessionTypeGlueingBlockedManifestPlanQueueIssues } from "./session-type-glueing-blocked-manifest-plan-queue";
 
 const DEFAULT_RUNNER_SAMPLE_LIMIT = 4;
 const DEFAULT_STACK_SAMPLE_LIMIT = 6;
@@ -189,6 +208,8 @@ export interface SessionTypeGlueingConsumerDiffEntry {
   readonly alignmentMetadataDiff: MetadataDiff;
   readonly alignmentNotesDiff: MetadataDiff;
   readonly manifestSource?: SessionTypeGlueingDashboardManifestSource;
+  readonly alignmentCoverageIssues?: ReadonlyArray<string>;
+  readonly coverageComparisonIssues?: ReadonlyArray<string>;
   readonly runnerDiff?: {
     readonly recordedHolds?: boolean;
     readonly recordedMismatches?: number;
@@ -211,17 +232,61 @@ export interface SessionTypeGlueingConsumerDiffSummary {
   readonly totalRuns: number;
   readonly mismatchedRuns: number;
   readonly entries: ReadonlyArray<SessionTypeGlueingConsumerDiffEntry>;
+  readonly alignmentCoverageIssues?: ReadonlyArray<string>;
   readonly manifestSourceTotals?: ReadonlyArray<SessionTypeGlueingConsumerManifestSourceTotalsEntry>;
   readonly suggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingSuggestedManifestWriteMetadata>;
   readonly blockedSuggestedManifestWrites?: ReadonlyArray<SessionTypeGlueingBlockedSuggestedManifestWriteMetadata>;
   readonly blockedQueuedManifestInputs?: ReadonlyArray<string>;
+  readonly blockedManifestInputs?: ReadonlyArray<string>;
   readonly blockedManifestPlans?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanEntry>;
+  readonly blockedManifestPlanInputs?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanInputMetadata>;
+  readonly blockedManifestPlanQueue?: SessionTypeGlueingBlockedManifestPlanQueueSummary;
+  readonly blockedManifestPlanQueueIssues?: ReadonlyArray<string>;
   readonly manifestQueue?: SessionTypeGlueingManifestQueueSummary;
   readonly manifestQueueIssues?: ReadonlyArray<string>;
   readonly manifestQueueWarnings?: ReadonlyArray<string>;
+  readonly manifestQueueCoverageGate?: SessionTypeGlueingManifestQueueCoverageGateSummary;
+  readonly manifestQueueCoverageGateQueueSnapshotPaths?: SessionTypeGlueingManifestQueueQueueSnapshotPaths;
+  readonly manifestQueueCoverageGateQueueSnapshotPathsInferred?: boolean;
+  readonly manifestQueueCoverageGateIssues?: ReadonlyArray<string>;
+  readonly manifestQueueCoverageGateWarnings?: ReadonlyArray<string>;
+  readonly manifestQueueCoverageGateBlockedManifestPlanQueueIssues?: ReadonlyArray<string>;
+  readonly manifestQueueCoverageGateRollup?: SessionTypeGlueingManifestQueueCoverageGateSummary;
   readonly sourceCoverage?: SessionTypeGlueingSweepSourceCoverage;
   readonly sourceCoverageTotals: SessionTypeGlueingSourceCoverageTotals;
+  readonly sourceCoverageIssues?: ReadonlyArray<string>;
 }
+
+export const collectSessionTypeGlueingManifestQueueCoverageGateRollup = (
+  input: {
+    readonly issues: ReadonlyArray<string>;
+    readonly warnings: ReadonlyArray<string>;
+    readonly blockedManifestPlanQueueIssues: ReadonlyArray<string>;
+    readonly queueSnapshotPaths?: SessionTypeGlueingManifestQueueQueueSnapshotPaths;
+    readonly queueSnapshotPathsInferred?: boolean;
+    readonly checkedAt?: string;
+  },
+): SessionTypeGlueingManifestQueueCoverageGateSummary | undefined => {
+  const hasSignals =
+    input.issues.length > 0 ||
+    input.warnings.length > 0 ||
+    input.blockedManifestPlanQueueIssues.length > 0 ||
+    Boolean(input.queueSnapshotPaths) ||
+    Boolean(input.queueSnapshotPathsInferred);
+  if (!hasSignals) {
+    return undefined;
+  }
+  return {
+    checkedAt: input.checkedAt ?? "unspecified",
+    ...(input.issues.length > 0 ? { issues: input.issues } : {}),
+    ...(input.warnings.length > 0 ? { warnings: input.warnings } : {}),
+    ...(input.blockedManifestPlanQueueIssues.length > 0
+      ? { blockedManifestPlanQueueIssues: input.blockedManifestPlanQueueIssues }
+      : {}),
+    ...(input.queueSnapshotPaths ? { queueSnapshotPaths: input.queueSnapshotPaths } : {}),
+    ...(input.queueSnapshotPathsInferred ? { queueSnapshotPathsInferred: true } : {}),
+  } satisfies SessionTypeGlueingManifestQueueCoverageGateSummary;
+};
 
 const buildManifestSourceKey = (source: SessionTypeGlueingDashboardManifestSource): string =>
   [source.path ?? "", source.entryCount ?? "", source.replayedAt ?? ""].join("|");
@@ -291,6 +356,23 @@ export const diffSessionTypeGlueingSweepRunSnapshot = (
       )}→${recomputed.runnerMismatches}`,
     );
   }
+  const coverageSnapshots = getSessionTypeGlueingCoverageSnapshots(snapshot);
+  const { coverage, source: coverageSource } = getSessionTypeGlueingCoverageForRun(snapshot);
+  const coverageIssues = collectSessionTypeGlueingAlignmentCoverageIssues(coverage);
+  if (coverageIssues.length > 0) {
+    coverageIssues.forEach((issue) => {
+      issues.push(`${coverageSource === "runner" ? "runner" : "alignment"}.coverage:${issue}`);
+    });
+  }
+  const coverageComparisonIssues = compareSessionTypeGlueingCoverageSnapshots(
+    coverageSnapshots.runner,
+    coverageSnapshots.alignment,
+  );
+  if (coverageComparisonIssues.length > 0) {
+    coverageComparisonIssues.forEach((issue) => {
+      issues.push(`coverage.drift:${issue}`);
+    });
+  }
   return {
     config: snapshot.config,
     recorded: snapshot,
@@ -299,6 +381,8 @@ export const diffSessionTypeGlueingSweepRunSnapshot = (
     alignmentNotesDiff,
     ...(manifestSource ? { manifestSource } : {}),
     ...(runnerDiff ? { runnerDiff } : {}),
+    ...(coverageIssues.length > 0 ? { alignmentCoverageIssues: coverageIssues } : {}),
+    ...(coverageComparisonIssues.length > 0 ? { coverageComparisonIssues } : {}),
     issues,
   };
 };
@@ -310,7 +394,107 @@ export const diffSessionTypeGlueingSweepRecord = (
   const entries = record.runs.map((run) => diffSessionTypeGlueingSweepRunSnapshot(run, options));
   const mismatchedRuns = entries.filter((entry) => entry.issues.length > 0).length;
   const manifestSourceTotals = summarizeManifestSourceTotals(entries);
+  const alignmentCoverageIssues: string[] = [];
+  for (const entry of entries) {
+    entry.alignmentCoverageIssues?.forEach((issue) => {
+      alignmentCoverageIssues.push(`${entry.config.label}: ${issue}`);
+    });
+    entry.coverageComparisonIssues?.forEach((issue) => {
+      alignmentCoverageIssues.push(`${entry.config.label}: Coverage drift: ${issue}`);
+    });
+  }
   const sourceCoverageTotals = summarizeSessionTypeGlueingSourceCoverage(record.sourceCoverage);
+  const sourceCoverageIssues = collectSessionTypeGlueingSourceCoverageIssues(record.sourceCoverage, {
+    requireManifestInputs: true,
+    requireBlockedPlans: true,
+  });
+  const blockedManifestPlanQueueSummary = record.blockedManifestPlanQueue
+    ? summarizeSessionTypeGlueingBlockedManifestPlanQueue(record.blockedManifestPlanQueue)
+    : undefined;
+  const blockedManifestPlanQueueIssues = collectSessionTypeGlueingBlockedManifestPlanQueueIssues(
+    blockedManifestPlanQueueSummary,
+  );
+  const sessionMetadata = record.runs.flatMap((run) => run.sessionMetadata ?? []);
+  const manifestQueueCoverageGateMetadataEntries =
+    collectSessionTypeManifestQueueCoverageGateMetadataEntriesFromSessionMetadata(sessionMetadata);
+  const manifestQueueCoverageGateMetadataQueueSnapshotPaths =
+    extractSessionTypeManifestQueueCoverageGateQueueSnapshotPathsFromMetadataEntries(
+      manifestQueueCoverageGateMetadataEntries,
+    );
+  const manifestQueueCoverageGateQueueSnapshotPaths =
+    record.manifestQueue?.testCoverageGate?.queueSnapshotPaths ??
+    manifestQueueCoverageGateMetadataQueueSnapshotPaths.queueSnapshotPaths;
+  const manifestQueueCoverageGateQueueSnapshotPathsInferred =
+    record.manifestQueue?.testCoverageGate?.queueSnapshotPathsInferred ??
+    manifestQueueCoverageGateMetadataQueueSnapshotPaths.queueSnapshotPathsInferred;
+  const manifestQueueTestStatus: SessionTypeGlueingManifestQueueTestStatus | undefined =
+    record.manifestQueue
+      ? {
+          tested: record.manifestQueue.tested ?? false,
+          ...(record.manifestQueue.testedAt ? { testedAt: record.manifestQueue.testedAt } : {}),
+          ...(record.manifestQueue.testRevision !== undefined
+            ? { revision: record.manifestQueue.testRevision }
+            : {}),
+          ...(record.manifestQueue.testCoverageGate
+            ? {
+                coverageGate: {
+                  checkedAt: record.manifestQueue.testCoverageGate.checkedAt,
+                  issues: record.manifestQueue.testCoverageGate.issues ?? [],
+                  warnings: record.manifestQueue.testCoverageGate.warnings ?? [],
+                  ...(record.manifestQueue.testCoverageGate.blockedManifestPlanQueueIssues
+                    ? {
+                        blockedManifestPlanQueueIssues:
+                          record.manifestQueue.testCoverageGate.blockedManifestPlanQueueIssues,
+                      }
+                    : {}),
+                  ...(manifestQueueCoverageGateQueueSnapshotPaths
+                    ? { queueSnapshotPaths: manifestQueueCoverageGateQueueSnapshotPaths }
+                    : {}),
+                  ...(manifestQueueCoverageGateQueueSnapshotPathsInferred
+                    ? { queueSnapshotPathsInferred: true }
+                    : {}),
+                },
+              }
+            : {}),
+        }
+      : undefined;
+  const manifestQueueCoverageGateCollection = manifestQueueTestStatus
+    ? collectSessionTypeManifestQueueTestCoverageGateIssues(manifestQueueTestStatus, {
+        sessionMetadata,
+      })
+    : collectSessionTypeManifestQueueTestCoverageGateIssuesFromSessionMetadata(sessionMetadata);
+  const manifestQueueCoverageGateIssues = new Set(manifestQueueCoverageGateCollection.issues);
+  const manifestQueueCoverageGateWarnings = new Set(manifestQueueCoverageGateCollection.warnings);
+  const manifestQueueCoverageGateBlockedManifestPlanQueueIssues = new Set(
+    record.manifestQueue?.testCoverageGate?.blockedManifestPlanQueueIssues ?? [],
+  );
+  manifestQueueCoverageGateMetadataEntries.forEach((entry) => {
+    if (entry.startsWith(SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_BLOCKED_PLAN_QUEUE_ISSUE_PREFIX)) {
+      manifestQueueCoverageGateBlockedManifestPlanQueueIssues.add(
+        entry.slice(SESSION_TYPE_MANIFEST_QUEUE_COVERAGE_GATE_BLOCKED_PLAN_QUEUE_ISSUE_PREFIX.length),
+      );
+    }
+  });
+  const manifestQueueCoverageGateIssuesArray = Array.from(manifestQueueCoverageGateIssues);
+  const manifestQueueCoverageGateWarningsArray = Array.from(manifestQueueCoverageGateWarnings);
+  const manifestQueueCoverageGateBlockedManifestPlanQueueIssuesArray = Array.from(
+    manifestQueueCoverageGateBlockedManifestPlanQueueIssues,
+  );
+  const manifestQueueCoverageGateRollup = collectSessionTypeGlueingManifestQueueCoverageGateRollup({
+    issues: manifestQueueCoverageGateIssuesArray,
+    warnings: manifestQueueCoverageGateWarningsArray,
+    blockedManifestPlanQueueIssues: manifestQueueCoverageGateBlockedManifestPlanQueueIssuesArray,
+    ...(manifestQueueCoverageGateQueueSnapshotPaths
+      ? { queueSnapshotPaths: manifestQueueCoverageGateQueueSnapshotPaths }
+      : {}),
+    ...(manifestQueueCoverageGateQueueSnapshotPathsInferred
+      ? { queueSnapshotPathsInferred: true }
+      : {}),
+    checkedAt:
+      record.manifestQueue?.testCoverageGate?.checkedAt ??
+      record.manifestQueue?.testedAt ??
+      "unspecified",
+  });
   return {
     schemaVersion: SESSION_TYPE_GLUEING_SWEEP_RECORD_SCHEMA_VERSION,
     ...(record.recordedAt ? { recordedAt: record.recordedAt } : {}),
@@ -318,6 +502,7 @@ export const diffSessionTypeGlueingSweepRecord = (
     totalRuns: record.runs.length,
     mismatchedRuns,
     entries,
+    ...(alignmentCoverageIssues.length > 0 ? { alignmentCoverageIssues } : {}),
     ...(manifestSourceTotals.length > 0 ? { manifestSourceTotals } : {}),
     ...(record.suggestedManifestWrites ? { suggestedManifestWrites: record.suggestedManifestWrites } : {}),
     ...(record.blockedSuggestedManifestWrites
@@ -326,7 +511,13 @@ export const diffSessionTypeGlueingSweepRecord = (
     ...(record.blockedQueuedManifestInputs
       ? { blockedQueuedManifestInputs: record.blockedQueuedManifestInputs }
       : {}),
+    ...(record.blockedManifestInputs ? { blockedManifestInputs: record.blockedManifestInputs } : {}),
     ...(record.blockedManifestPlans ? { blockedManifestPlans: record.blockedManifestPlans } : {}),
+    ...(record.blockedManifestPlanInputs ? { blockedManifestPlanInputs: record.blockedManifestPlanInputs } : {}),
+    ...(blockedManifestPlanQueueSummary ? { blockedManifestPlanQueue: blockedManifestPlanQueueSummary } : {}),
+    ...(blockedManifestPlanQueueIssues.length > 0
+      ? { blockedManifestPlanQueueIssues }
+      : {}),
     ...(record.manifestQueue ? { manifestQueue: record.manifestQueue } : {}),
     ...(record.manifestQueue?.testIssues && record.manifestQueue.testIssues.length > 0
       ? { manifestQueueIssues: record.manifestQueue.testIssues }
@@ -334,8 +525,28 @@ export const diffSessionTypeGlueingSweepRecord = (
     ...(record.manifestQueue?.testWarnings && record.manifestQueue.testWarnings.length > 0
       ? { manifestQueueWarnings: record.manifestQueue.testWarnings }
       : {}),
+    ...(record.manifestQueue?.testCoverageGate
+      ? { manifestQueueCoverageGate: record.manifestQueue.testCoverageGate }
+      : {}),
+    ...(manifestQueueCoverageGateQueueSnapshotPaths
+      ? { manifestQueueCoverageGateQueueSnapshotPaths }
+      : {}),
+    ...(manifestQueueCoverageGateQueueSnapshotPathsInferred
+      ? { manifestQueueCoverageGateQueueSnapshotPathsInferred: true }
+      : {}),
+    ...(manifestQueueCoverageGateIssuesArray.length > 0
+      ? { manifestQueueCoverageGateIssues: manifestQueueCoverageGateIssuesArray }
+      : {}),
+    ...(manifestQueueCoverageGateWarningsArray.length > 0
+      ? { manifestQueueCoverageGateWarnings: manifestQueueCoverageGateWarningsArray }
+      : {}),
+    ...(manifestQueueCoverageGateBlockedManifestPlanQueueIssuesArray.length > 0
+      ? { manifestQueueCoverageGateBlockedManifestPlanQueueIssues: manifestQueueCoverageGateBlockedManifestPlanQueueIssuesArray }
+      : {}),
+    ...(manifestQueueCoverageGateRollup ? { manifestQueueCoverageGateRollup } : {}),
     ...(record.sourceCoverage ? { sourceCoverage: record.sourceCoverage } : {}),
     sourceCoverageTotals,
+    ...(sourceCoverageIssues.length > 0 ? { sourceCoverageIssues } : {}),
   };
 };
 

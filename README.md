@@ -69,12 +69,94 @@ you can inspect the combined reports or archive them for later analysis.
   or replaying blocked plans. The script refreshes the manifest-queue sentinel
   used by the sweep CLI and records the coverage timestamp so Example 105 can
   gate manifest writes, replay queued manifests, and explain any overrides in
-  its log/metadata output.
+  its log/metadata output. The smoke tests now snapshot and restore both the
+  manifest queue and blocked-manifest plan queue so the rerun backlog survives
+  the test run while the sentinel captures the live queue counts automatically;
+  the snapshot/restore helper is shared across queue-focused smoke tests so the
+  backlog preservation logic stays consistent between suites. The snapshot hook
+  now logs the preserved manifest/blocked-plan queue paths when it installs,
+  and the FW‑4 consumer regression suite installs the same helper so queue
+  telemetry remains aligned across dashboards and diff runs. The manifest-queue
+  smoke-test output also prints the combined coverage-gate issue set (including
+  `queueSnapshotPathsInferred` and rerun-queue blocks) from the sentinel status
+  so CLI/test logs mirror the sweep metadata and dashboard gating reasons. The
+  consolidated manifest-queue test coverage issues/warnings now flow through
+  the shared snapshot helper as well, keeping non-sweep queue tooling aligned
+  with the same rerun/snapshot gate reasons.
 - The sweep summary (`metadata.sweepSummary` and the recorded sweep file) now
   exposes `sourceCoverage.manifestInputs` and `sourceCoverage.blockedPlans`, and
   those counts propagate through the FW‑4 dashboard JSON plus the diff consumer
   outputs. Reviewers can confirm that manifest-input and blocked-plan sources
   both ran in a given sweep without combing through the CLI log.
+- Recorded sweeps, dashboard summaries, and FW‑4 diff consumer reports now also
+  emit `blockedManifestPlanQueueIssues` whenever the rerun queue still contains
+  pending sentinel-blocked plan refreshes. Inspect
+  `metadata.blockedManifestPlanQueueIssues` (or the matching
+  `consumerDiffs.blockedManifestPlanQueueIssues`) before writing manifests or
+  sharing `consumerDiffs` payloads so any remaining rerun queue entries are
+  cleared or explicitly noted in review logs.
+- The manifest-queue sentinel metadata now records the queue snapshot paths via
+  `sessionType.manifestQueue.coverageGate.queue.manifest` and
+  `sessionType.manifestQueue.coverageGate.queue.blockedPlan`, letting sweeps,
+  dashboards, and consumer diffs trace the preserved backlog files referenced
+  by the shared snapshot helper.
+- Legacy manifest-queue sentinels now default queue snapshot paths to the live
+  manifest and blocked-plan queue files, so CLI logs, sweeps, dashboards, and
+  consumer diffs always expose the preserved queue locations even if earlier
+  coverage gates omitted them.
+- Whenever the queue snapshot paths are inferred from defaults instead of
+  preserved in the sentinel, the coverage gate now surfaces an explicit warning
+  and boolean flag so reviewers know to rerun the manifest-queue tests and
+  capture the preserved queue files.
+- That inference status is now treated as a manifest-queue coverage gate issue
+  inside the sweep metadata and manifest-queue summaries, so queued replays and
+  dashboards show the `queueSnapshotPathsInferred` blocker alongside other
+  sentinel issues instead of relying solely on the warning string.
+- Sentinel coverage gating now treats inferred snapshot paths as blocking
+  issues, so manifest replays/writes are paused (unless you pass
+  `--allow-manifest-queue-issues`) until the manifest-queue tests record
+  explicit snapshot locations.
+- FW‑4 dashboards and consumer diffs now surface those queue snapshot paths
+  alongside the manifest-queue coverage gate issues/warnings so reviewers can
+  chase the exact manifest and blocked-plan snapshots without re-running the
+  CLI.
+- Sweep records, dashboard summaries, consumer diffs, and CLI/queue sentinel
+  utilities now expose a consolidated `manifestQueueTestCoverageGateIssues`
+  array that merges rerun queue blockers, inferred snapshot gates, sentinel
+  coverage flags, and stale/missing test warnings into a single checklist so
+  backlog preservation signals stay visible even outside the session-type sweep
+  harness.
+- Manifest-queue test metadata now writes those consolidated gate issues and
+  warnings directly into `sessionMetadata` via
+  `sessionType.manifestQueue.coverageGate.consolidatedIssue=*` and
+  `sessionType.manifestQueue.coverageGate.consolidatedWarning=*`, so offline
+  consumers can read the merged gate results without re-running the collector
+  or recomputing stale/snapshot warnings.
+- Coverage-gate collectors and metadata formatters now accept session metadata
+  alongside explicit metadata entries, letting backlog-only utilities merge
+  recorded manifest-queue gate issues/warnings into consolidated checklists
+  even when they do not have access to the live sentinel objects.
+- Backlog and sentinel-only tooling can parse those consolidated
+  manifest-queue coverage gate metadata entries directly with
+  `collectSessionTypeManifestQueueTestCoverageGateIssuesFromMetadataEntries`,
+  keeping non-session-type queue utilities aligned with the same merged
+  rerun/snapshot gate reasons that sweeps and dashboards emit.
+- Manifest-queue coverage gate collectors and sentinel snapshot logging now
+  accept `coverageGateMetadataEntries`, so backlog reporters can merge the
+  consolidated gate issues/warnings from recorded metadata even when they are
+  not loading the live sentinel objects.
+- Backlog consumers now automatically fold `sessionType.manifestQueue.coverageGate.*`
+  entries from recorded session metadata into manifest-queue coverage gate
+  issues/warnings, so offline dashboards and diff summaries surface rerun/snapshot
+  blockers without reloading the sentinel status file.
+- Running `npm run session-type:manifest-queue:test` now records rerun queue
+  warnings—annotated with counts and sample paths pulled directly from
+  `session-type-glueing-blocked-manifest-plan-queue.json`—inside the sentinel
+  metadata via `sessionType.manifestQueue.coverageGate.blockedManifestPlanQueueIssue=*`
+  and the Example 105 sweep surfaces those warnings as
+  `manifestQueueTestCoverageGateBlockedManifestPlanQueueIssues` even before you
+  touch the queue. Re-run the sentinel helper whenever a rerun backlog clears so
+  downstream sweeps can trust the cached telemetry.
 - Suggested manifest targets, queue telemetry, and blocked-plan metadata from
   the CLI are also written into the recorded sweep files, dashboard summaries,
   and FW‑4 diff consumer reports. Review those JSON artifacts when you need to

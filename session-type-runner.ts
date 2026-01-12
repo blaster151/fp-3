@@ -1,7 +1,17 @@
 import { getCarrierSemantics } from './set-cat';
 import type { SetObj } from './set-cat';
-import type { SessionType } from './session-type';
-import type { StatefulRunner } from './stateful-runner';
+import type {
+  SessionType,
+  SessionTypeFunctorActionKind,
+  SessionTypeSemanticEnvironment,
+} from './session-type';
+import {
+  formatSessionType,
+  interpretSessionTypeDual,
+  interpretSessionTypePrimal,
+} from './session-type';
+import { buildRunnerFromInteraction } from './stateful-runner';
+import type { BuildRunnerOptions, StatefulRunner } from './stateful-runner';
 import type { MonadComonadInteractionLaw } from './monad-comonad-interaction-law';
 
 export interface SessionTypeRunnerEvaluationOptions<Obj> {
@@ -25,11 +35,253 @@ export interface SessionTypeRunnerEvaluationReport<Obj> {
   readonly metadata?: readonly string[];
 }
 
+export interface SessionTypeRunnerOptions<Obj> {
+  readonly assignments: ReadonlyMap<string, Obj>;
+  readonly runnerOptions?: BuildRunnerOptions;
+  readonly evaluation?: Omit<SessionTypeRunnerEvaluationOptions<Obj>, 'assignments'>;
+  readonly metadata?: readonly string[];
+  readonly notes?: readonly string[];
+}
+
+export interface SessionTypeRunnerResult<Obj, Left, Right, Value> {
+  readonly type: SessionType;
+  readonly assignments: ReadonlyMap<string, Obj>;
+  readonly runner: StatefulRunner<Obj, Left, Right, Value>;
+  readonly evaluation: SessionTypeRunnerEvaluationReport<Obj>;
+  readonly metadata: readonly string[];
+  readonly notes: readonly string[];
+}
+
+export type SessionTypeRunnerSpecNode =
+  | {
+      readonly kind: 'unit' | 'zero';
+      readonly channels: readonly string[];
+      readonly description: string;
+    }
+  | {
+      readonly kind: 'base';
+      readonly name: string;
+      readonly channels: readonly string[];
+      readonly description: string;
+    }
+  | {
+      readonly kind: 'channel';
+      readonly name: string;
+      readonly channels: readonly string[];
+      readonly description: string;
+    }
+  | {
+      readonly kind: 'product';
+      readonly left: SessionTypeRunnerSpecNode;
+      readonly right: SessionTypeRunnerSpecNode;
+      readonly channels: readonly string[];
+      readonly description: string;
+    }
+  | {
+      readonly kind: 'lollipop';
+      readonly domain: SessionTypeRunnerSpecNode;
+      readonly codomain: SessionTypeRunnerSpecNode;
+      readonly channels: readonly string[];
+      readonly description: string;
+    }
+  | {
+      readonly kind: 'functorAction';
+      readonly action: SessionTypeFunctorActionKind;
+      readonly operand: SessionTypeRunnerSpecNode;
+      readonly channels: readonly string[];
+      readonly description: string;
+    };
+
+export interface SessionTypeRunnerSpec<Obj> {
+  readonly type: SessionType;
+  readonly assignments: ReadonlyMap<string, Obj>;
+  readonly channels: readonly string[];
+  readonly primal: SessionTypeRunnerSpecNode;
+  readonly dual: SessionTypeRunnerSpecNode;
+  readonly metadata: readonly string[];
+  readonly notes: readonly string[];
+}
+
 export function collectSessionTypeChannelNames(type: SessionType): ReadonlySet<string> {
   const aggregate = new Set<string>();
   collectChannels(type, aggregate);
   return aggregate;
 }
+
+const summarizeRunnerEvaluation = <Obj>(
+  report: SessionTypeRunnerEvaluationReport<Obj>,
+): { checked: number; mismatches: number } => {
+  let checked = 0;
+  let mismatches = 0;
+  for (const entry of report.entries) {
+    checked += entry.checked;
+    mismatches += entry.mismatches;
+  }
+  return { checked, mismatches };
+};
+
+export function makeSessionTypeRunner<Obj, Arr, Left, Right, Value>(
+  interaction: MonadComonadInteractionLaw<Obj, Arr, Left, Right, Value, Obj, Arr>,
+  type: SessionType,
+  options: SessionTypeRunnerOptions<Obj>,
+): SessionTypeRunnerResult<Obj, Left, Right, Value> {
+  const runner = buildRunnerFromInteraction(interaction, options.runnerOptions ?? {});
+  const evaluation = checkSessionTypeRunnerEvaluationAgainstInteraction(
+    type,
+    runner,
+    interaction,
+    {
+      assignments: options.assignments,
+      ...(options.evaluation?.sampleLimit !== undefined
+        ? { sampleLimit: options.evaluation.sampleLimit }
+        : {}),
+      ...(options.evaluation?.metadata ? { metadata: options.evaluation.metadata } : {}),
+    },
+  );
+  const summary = summarizeRunnerEvaluation(evaluation);
+  const channels = Array.from(collectSessionTypeChannelNames(type)).sort();
+  const assignments = Array.from(options.assignments.entries()).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  const metadata: string[] = [
+    `sessionType.runner.type=${formatSessionType(type)}`,
+    `sessionType.runner.channels=${JSON.stringify(channels)}`,
+    `sessionType.runner.assignments=${JSON.stringify(assignments)}`,
+    `sessionType.runner.checked=${summary.checked}`,
+    `sessionType.runner.mismatches=${summary.mismatches}`,
+    `sessionType.runner.entries=${evaluation.entries.length}`,
+    `sessionType.runner.holds=${evaluation.holds}`,
+  ];
+  if (evaluation.metadata) {
+    metadata.push(...evaluation.metadata);
+  }
+  if (options.metadata) {
+    metadata.push(...options.metadata);
+  }
+
+  const notes: string[] = evaluation.notes.map((note) => `sessionType.runner.note=${note}`);
+  if (options.notes) {
+    notes.push(...options.notes);
+  }
+
+  return {
+    type,
+    assignments: options.assignments,
+    runner,
+    evaluation,
+    metadata,
+    notes,
+  };
+}
+
+const mergeChannels = (...groups: ReadonlyArray<readonly string[]>): string[] => {
+  const aggregate = new Set<string>();
+  for (const group of groups) {
+    for (const channel of group) aggregate.add(channel);
+  }
+  return Array.from(aggregate.values());
+};
+
+const makeRunnerSpecContext = (label: 'primal' | 'dual') => ({
+  unit: (): SessionTypeRunnerSpecNode => ({
+    kind: 'unit',
+    description: `${label}: unit`,
+    channels: [],
+  }),
+  zero: (): SessionTypeRunnerSpecNode => ({
+    kind: 'zero',
+    description: `${label}: zero`,
+    channels: [],
+  }),
+  base: (name: string) =>
+    ({
+      kind: 'base',
+      name,
+      description: `${label}: base ${name}`,
+      channels: [],
+    }) satisfies SessionTypeRunnerSpecNode,
+  channel: (name: string) =>
+    ({
+      kind: 'channel',
+      name,
+      description: `${label}: channel ${name}`,
+      channels: [name],
+    }) satisfies SessionTypeRunnerSpecNode,
+  product: (left: SessionTypeRunnerSpecNode, right: SessionTypeRunnerSpecNode) =>
+    ({
+      kind: 'product',
+      left,
+      right,
+      description: `${label}: product`,
+      channels: mergeChannels(left.channels, right.channels),
+    }) satisfies SessionTypeRunnerSpecNode,
+  lollipop: (domain: SessionTypeRunnerSpecNode, codomain: SessionTypeRunnerSpecNode) =>
+    ({
+      kind: 'lollipop',
+      domain,
+      codomain,
+      description: `${label}: lollipop`,
+      channels: mergeChannels(domain.channels, codomain.channels),
+    }) satisfies SessionTypeRunnerSpecNode,
+  g0: (operand: SessionTypeRunnerSpecNode) =>
+    ({
+      kind: 'functorAction',
+      action: 'g0',
+      operand,
+      description: `${label}: G0`,
+      channels: operand.channels,
+    }) satisfies SessionTypeRunnerSpecNode,
+  g0Dual: (operand: SessionTypeRunnerSpecNode) =>
+    ({
+      kind: 'functorAction',
+      action: 'g0Dual',
+      operand,
+      description: `${label}: G0^o`,
+      channels: operand.channels,
+    }) satisfies SessionTypeRunnerSpecNode,
+});
+
+export const buildSessionTypeRunnerSpecFromInterpreter = <Obj>(
+  type: SessionType,
+  assignments: ReadonlyMap<string, Obj>,
+  options?: { readonly metadata?: readonly string[]; readonly notes?: readonly string[] },
+): SessionTypeRunnerSpec<Obj> => {
+  const channelNames = Array.from(collectSessionTypeChannelNames(type)).sort();
+  const environment: SessionTypeSemanticEnvironment<SessionTypeRunnerSpecNode> = {
+    primal: makeRunnerSpecContext('primal'),
+    dual: makeRunnerSpecContext('dual'),
+  };
+  const primal = interpretSessionTypePrimal<SessionTypeRunnerSpecNode>(type, environment);
+  const dual = interpretSessionTypeDual<SessionTypeRunnerSpecNode>(type, environment);
+  const metadata: string[] = [
+    `sessionType.runnerSpec.type=${formatSessionType(type)}`,
+    `sessionType.runnerSpec.channels=${JSON.stringify(channelNames)}`,
+    `sessionType.runnerSpec.assignments=${JSON.stringify(
+      Array.from(assignments.entries()).sort(([a], [b]) => a.localeCompare(b)),
+    )}`,
+  ];
+  if (options?.metadata) {
+    metadata.push(...options.metadata);
+  }
+  const notes: string[] = [];
+  for (const channel of channelNames) {
+    if (!assignments.has(channel)) {
+      notes.push(`sessionType.runnerSpec.missingAssignment=${channel}`);
+    }
+  }
+  if (options?.notes) {
+    notes.push(...options.notes);
+  }
+  return {
+    type,
+    assignments,
+    channels: channelNames,
+    primal,
+    dual,
+    metadata,
+    notes,
+  };
+};
 
 export function checkSessionTypeRunnerEvaluationAgainstInteraction<
   Obj,

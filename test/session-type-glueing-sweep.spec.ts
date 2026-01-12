@@ -1,9 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createRunnableExampleContext } from "../examples/runnable/types";
 import { sessionTypeGlueingSweepRunnable } from "../examples/runnable/105-session-type-glueing-sweep";
+import { sessionTypeGlueingStackRunnable } from "../examples/runnable/104-session-type-glueing-stack";
 import {
   SWEEP_FILE_FLAG,
   SWEEP_FLAG,
@@ -25,12 +26,14 @@ import {
 import { writeSessionTypeGlueingManifest } from "../session-type-glueing-manifest";
 import {
   buildSessionTypeGlueingSweepRecord,
+  collectSessionTypeGlueingSweepRunSnapshot,
   filterSessionTypeGlueingDashboardEntries,
   summarizeSessionTypeGlueingSweepRecord,
   writeSessionTypeGlueingSweepRecord,
   type SessionTypeGlueingSweepRunSnapshot,
   readSessionTypeGlueingSweepRecord,
   type SessionTypeGlueingBlockedManifestPlanEntry,
+  type SessionTypeGlueingBlockedManifestPlanInputMetadata,
 } from "../session-type-glueing-dashboard";
 import {
   clearSessionTypeGlueingManifestQueue,
@@ -39,9 +42,19 @@ import {
   enqueueSessionTypeGlueingManifestQueue,
 } from "../session-type-glueing-manifest-queue";
 import {
+  clearSessionTypeGlueingBlockedManifestPlanQueue,
+  SESSION_TYPE_GLUEING_BLOCKED_MANIFEST_PLAN_QUEUE_PATH,
+  enqueueSessionTypeGlueingBlockedManifestPlanQueue,
+  peekSessionTypeGlueingBlockedManifestPlanQueue,
+} from "../session-type-glueing-blocked-manifest-plan-queue";
+import {
   markSessionTypeGlueingManifestQueueTested,
   SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_PATH,
+  SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_REVISION,
 } from "../session-type-glueing-manifest-queue-test-status";
+import { installSessionTypeGlueingManifestQueueSentinelSnapshotHooks } from "../session-type-glueing-manifest-queue-test-hooks";
+
+installSessionTypeGlueingManifestQueueSentinelSnapshotHooks();
 
 describe("session-type glueing sweep helpers", () => {
   it("parses inline sweep entries with multiple assignments", () => {
@@ -92,13 +105,48 @@ const makeSnapshot = (
   ...overrides,
 });
 
+const RUNNER_COVERAGE_METADATA_ENTRY =
+  'supervised-stack.lambdaCoop.coverage={"interpreterExpectedOperations":1,"interpreterCoveredOperations":0,"interpreterMissingOperations":["runnerOnly"],"kernelTotalClauses":1,"kernelEvaluatedClauses":0,"kernelSkippedClauses":[{"operation":"runnerOnly","reason":"missing-argument-witness"}],"operations":[{"operation":"runnerOnly","interpreterCovered":false,"notes":[]}],"operationSummary":{"total":1,"missingInterpreter":1,"missingKernelClause":1,"skippedKernelClauses":1,"residualDefaulted":0,"residualHandlers":0}}';
+
+const ALIGNMENT_COVERAGE_METADATA_ENTRIES: ReadonlyArray<string> = [
+  "λ₍coop₎.alignment.status=aligned",
+  "λ₍coop₎.alignment.coverage.interpreter.expected=2",
+  "λ₍coop₎.alignment.coverage.interpreter.covered=0",
+  'λ₍coop₎.alignment.coverage.interpreter.missing=["runnerOnly"]',
+  "λ₍coop₎.alignment.coverage.kernel.total=1",
+  "λ₍coop₎.alignment.coverage.kernel.evaluated=0",
+  'λ₍coop₎.alignment.coverage.kernel.skipped=[{"operation":"runnerOnly","reason":"missing-argument-witness"}]',
+  'λ₍coop₎.alignment.coverage.operations.summary={"total":1,"missingInterpreter":1,"missingKernelClause":1,"skippedKernelClauses":1,"residualDefaulted":0,"residualHandlers":0}',
+  'λ₍coop₎.alignment.coverage.operations.links=[{"operation":"runnerOnly","interpreterCovered":false,"notes":[]}]',
+];
+
 const markFreshManifestQueueCoverage = () =>
-  markSessionTypeGlueingManifestQueueTested({ testedAt: "2024-06-01T00:00:00.000Z" });
+  markSessionTypeGlueingManifestQueueTested({
+    testedAt: "2024-06-01T00:00:00.000Z",
+    coverageGate: { checkedAt: "2024-06-01T00:00:00.000Z", issues: [], warnings: [] },
+  });
 
 const removeManifestQueueTestStatus = () =>
   rmSync(SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_PATH, { force: true });
 
+const clearManifestQueues = () => {
+  clearSessionTypeGlueingManifestQueue();
+  clearSessionTypeGlueingBlockedManifestPlanQueue();
+};
+
 describe("session-type glueing dashboard helpers", () => {
+  it("collects runner coverage metadata from session entries", () => {
+    const snapshot = collectSessionTypeGlueingSweepRunSnapshot(makeSnapshot().config, {
+      sessionMetadata: [
+        "sessionType.runner.holds=true",
+        "sessionType.runner.mismatches=0",
+        RUNNER_COVERAGE_METADATA_ENTRY,
+      ],
+    });
+    expect(snapshot.runnerCoverage?.interpreterExpectedOperations).toBe(1);
+    expect(snapshot.runnerCoverage?.interpreterMissingOperations).toEqual(["runnerOnly"]);
+  });
+
   it("summarizes sweep records", () => {
     const snapshots: SessionTypeGlueingSweepRunSnapshot[] = [
       makeSnapshot(),
@@ -111,7 +159,17 @@ describe("session-type glueing dashboard helpers", () => {
           source: "cli[2]",
         },
         sessionMetadata: ["sessionType.runner.holds=false", "sessionType.runner.mismatches=2"],
-        alignmentMetadata: ["λ₍coop₎.alignment.status=issues"],
+        alignmentMetadata: [
+          "λ₍coop₎.alignment.status=issues",
+          "λ₍coop₎.alignment.coverage.interpreter.expected=2",
+          "λ₍coop₎.alignment.coverage.interpreter.covered=1",
+          'λ₍coop₎.alignment.coverage.interpreter.missing=["userEval"]',
+          "λ₍coop₎.alignment.coverage.kernel.total=1",
+          "λ₍coop₎.alignment.coverage.kernel.evaluated=0",
+          'λ₍coop₎.alignment.coverage.kernel.skipped=[{"operation":"kernelClause","reason":"missing-argument-witness"}]',
+          'λ₍coop₎.alignment.coverage.operations.summary={"total":3,"missingInterpreter":1,"missingKernelClause":1,"skippedKernelClauses":1,"residualDefaulted":1,"residualHandlers":1}',
+          'λ₍coop₎.alignment.coverage.operations.links=[{"operation":"userEval","interpreterCovered":false,"kernelClause":{"kind":"state"},"kernelClauseSkipped":{"operation":"userEval","reason":"missing-argument-witness"},"notes":[]},{"operation":"missingKernel","interpreterCovered":true,"notes":["Kernel exposes no clause for missingKernel."]},{"operation":"residualOp","interpreterCovered":true,"kernelClause":{"kind":"state","description":"residual"},"residual":{"defaulted":true,"handlerDescription":"fallback","coverage":{"handled":0,"unhandled":1,"sampleLimit":1},"notes":["Residual coverage handled=0 unhandled=1 sampleLimit=1"]},"notes":[]}]',
+        ],
         runnerHolds: false,
         runnerMismatches: 2,
       }),
@@ -126,6 +184,19 @@ describe("session-type glueing dashboard helpers", () => {
     expect(summary.alignment.issues).toBe(1);
     expect(summary.entries[1]?.issues).toContain("runner.holds=false");
     expect(summary.entries[1]?.issues).toContain("alignment.status=issues");
+    expect(summary.alignmentCoverageIssues).toEqual([
+      "beta: Interpreter missing operations: userEval",
+      "beta: Kernel skipped clauses: kernelClause (missing-argument-witness)",
+      "beta: Kernel missing clauses: missingKernel",
+      "beta: Residual defaulted operations: residualOp",
+    ]);
+    expect(summary.entries[1]?.alignmentCoverage?.interpreterExpectedOperations).toBe(2);
+    expect(summary.entries[1]?.alignmentCoverageIssues).toEqual([
+      "Interpreter missing operations: userEval",
+      "Kernel skipped clauses: kernelClause (missing-argument-witness)",
+      "Kernel missing clauses: missingKernel",
+      "Residual defaulted operations: residualOp",
+    ]);
   });
 
   it("surfaces manifest metadata in dashboard entries", () => {
@@ -155,29 +226,161 @@ describe("session-type glueing dashboard helpers", () => {
     });
   });
 
+  it("summarizes blocked manifest plan rerun queue actions", () => {
+    const snapshots = [makeSnapshot()];
+    const record = buildSessionTypeGlueingSweepRecord(snapshots, {
+      blockedManifestPlanQueue: [
+        { path: "/tmp/blocked-plan-a.json", action: "queued" },
+        { path: "/tmp/blocked-plan-a.json", action: "consumed" },
+        { path: "/tmp/blocked-plan-b.json", action: "queued" },
+      ],
+    });
+    const summary = summarizeSessionTypeGlueingSweepRecord(record);
+    expect(summary.blockedManifestPlanQueue?.queued).toEqual([
+      "/tmp/blocked-plan-a.json",
+      "/tmp/blocked-plan-b.json",
+    ]);
+    expect(summary.blockedManifestPlanQueue?.consumed).toEqual(["/tmp/blocked-plan-a.json"]);
+    expect(summary.blockedManifestPlanQueue?.remaining).toEqual(["/tmp/blocked-plan-b.json"]);
+    expect(summary.blockedManifestPlanQueueIssues).toEqual([
+      "blockedManifestPlanQueue.pending=1 (/tmp/blocked-plan-b.json)",
+    ]);
+  });
+
+  it("falls back to runner coverage metadata when alignment coverage is absent", () => {
+    const snapshots = [
+      makeSnapshot({
+        sessionMetadata: [
+          "sessionType.runner.holds=true",
+          "sessionType.runner.mismatches=0",
+          RUNNER_COVERAGE_METADATA_ENTRY,
+        ],
+        alignmentMetadata: ["λ₍coop₎.alignment.status=aligned"],
+      }),
+    ];
+    const summary = summarizeSessionTypeGlueingSweepRecord(
+      buildSessionTypeGlueingSweepRecord(snapshots, { recordedAt: "2024-03-03T00:00:00.000Z" }),
+    );
+    expect(summary.alignmentCoverageIssues).toEqual([
+      "alpha: Interpreter missing operations: runnerOnly",
+      "alpha: Kernel skipped clauses: runnerOnly (missing-argument-witness)",
+      "alpha: Kernel missing clauses: runnerOnly",
+    ]);
+    expect(summary.entries[0]?.alignmentCoverage?.interpreterMissingOperations).toEqual([
+      "runnerOnly",
+    ]);
+  });
+
+  it("detects coverage drift between runner and alignment coverage sources", () => {
+    const snapshots = [
+      makeSnapshot({
+        sessionMetadata: [
+          "sessionType.runner.holds=true",
+          "sessionType.runner.mismatches=0",
+          RUNNER_COVERAGE_METADATA_ENTRY,
+        ],
+        alignmentMetadata: ALIGNMENT_COVERAGE_METADATA_ENTRIES,
+      }),
+    ];
+    const summary = summarizeSessionTypeGlueingSweepRecord(
+      buildSessionTypeGlueingSweepRecord(snapshots, { recordedAt: "2024-04-04T00:00:00.000Z" }),
+    );
+    expect(summary.alignmentCoverageIssues).toContain(
+      "alpha: Coverage drift: Interpreter expected operations mismatch between recorded and reconstructed coverage.",
+    );
+    expect(summary.entries[0]?.coverageComparisonIssues).toEqual([
+      "Interpreter expected operations mismatch between recorded and reconstructed coverage.",
+    ]);
+    expect(summary.entries[0]?.issues).toContain(
+      "coverage.drift:Interpreter expected operations mismatch between recorded and reconstructed coverage.",
+    );
+  });
+
   it("records manifest queue metadata when present", () => {
     const snapshots = [makeSnapshot()];
+    const blockedPlanEntry = {
+      path: "/tmp/example.issues.json",
+      sourcePath: "/tmp/example.json",
+      mismatchedRuns: 1,
+      totalRuns: 1,
+      entryCount: 1,
+      entries: [
+        {
+          label: "manifest#1",
+          sessionTypeLiteral: "G₀",
+          glueingSpan: "identity",
+          assignments: { Y: "★" },
+        },
+      ],
+    } satisfies SessionTypeGlueingBlockedManifestPlanEntry;
+    const blockedPlanInput = {
+      ...blockedPlanEntry,
+      planRecordPath: "/tmp/plan-record.json",
+      planIndex: 0,
+      reason: "manifest-queue-sentinel",
+      issues: ["coverageGate:missingCoverage"],
+      warnings: ["refresh sentinel"],
+    } satisfies SessionTypeGlueingBlockedManifestPlanInputMetadata;
     const record = buildSessionTypeGlueingSweepRecord(snapshots, {
       manifestQueue: {
         inputs: ["/tmp/queued.json"],
         replays: ["/tmp/queued.json"],
         outputs: ["/tmp/generated.json"],
+        blockedManifestPlanInputs: [blockedPlanInput],
         replayErrors: [{ path: "/tmp/missing.json", error: "ENOENT" }],
+        coverageIssues: ["alpha: Interpreter missing operations: runnerOnly"],
+        coverageDriftIssues: [
+          "alpha: Coverage drift: Interpreter expected operations mismatch between recorded and reconstructed coverage.",
+        ],
         tested: true,
         testedAt: "2024-02-02T12:34:56.000Z",
         testRevision: 1,
+        testCoverageGate: {
+          checkedAt: "2024-02-02T12:34:57.000Z",
+          issues: ["alignment.coverage:alpha"],
+          warnings: ["Manifest queue coverage gate stale"],
+        },
       },
     });
     const summary = summarizeSessionTypeGlueingSweepRecord(record);
     expect(summary.manifestQueue?.inputs).toEqual(["/tmp/queued.json"]);
     expect(summary.manifestQueue?.replays).toEqual(["/tmp/queued.json"]);
     expect(summary.manifestQueue?.outputs).toEqual(["/tmp/generated.json"]);
+    expect(summary.manifestQueue?.blockedManifestPlanInputs).toEqual([blockedPlanInput]);
     expect(summary.manifestQueue?.replayErrors).toEqual([
       { path: "/tmp/missing.json", error: "ENOENT" },
+    ]);
+    expect(summary.manifestQueue?.coverageIssues).toEqual([
+      "alpha: Interpreter missing operations: runnerOnly",
+    ]);
+    expect(summary.manifestQueue?.coverageDriftIssues).toEqual([
+      "alpha: Coverage drift: Interpreter expected operations mismatch between recorded and reconstructed coverage.",
     ]);
     expect(summary.manifestQueue?.tested).toBe(true);
     expect(summary.manifestQueue?.testedAt).toBe("2024-02-02T12:34:56.000Z");
     expect(summary.manifestQueue?.testRevision).toBe(1);
+    expect(summary.manifestQueue?.testCoverageGate).toEqual({
+      checkedAt: "2024-02-02T12:34:57.000Z",
+      issues: ["alignment.coverage:alpha"],
+      warnings: ["Manifest queue coverage gate stale"],
+    });
+    expect(summary.manifestQueueCoverageGateRollup).toEqual({
+      checkedAt: "2024-02-02T12:34:57.000Z",
+      issues: ["alignment.coverage:alpha"],
+      warnings: ["Manifest queue coverage gate stale"],
+    });
+  });
+
+  it("records source coverage issues when manifest-input or blocked-plan runs are missing", () => {
+    const snapshots = [makeSnapshot()];
+    const record = buildSessionTypeGlueingSweepRecord(snapshots, {
+      sourceCoverage: { manifestInputs: 1 },
+    });
+    const summary = summarizeSessionTypeGlueingSweepRecord(record);
+    expect(summary.sourceCoverageTotals).toEqual({ manifestInputs: 1, blockedPlans: 0, total: 1 });
+    expect(summary.sourceCoverageIssues).toEqual([
+      "No blocked-plan coverage was recorded in this sweep.",
+    ]);
   });
 
   it("surfaces blocked manifest metadata", () => {
@@ -485,6 +688,38 @@ describe("session-type glueing sweep runnable", () => {
     );
   });
 
+  it("rejects manifest writes when λ₍coop₎ coverage issues remain", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-sweep-lambda-coverage-"));
+    const manifestPath = join(dir, "next.json");
+    markFreshManifestQueueCoverage();
+    const originalRun = sessionTypeGlueingStackRunnable.run;
+    sessionTypeGlueingStackRunnable.run = async () => ({
+      logs: [],
+      metadata: {
+        sessionMetadata: ["sessionType.runner.holds=true", "sessionType.runner.mismatches=0"],
+        glueingMetadata: [],
+        alignmentMetadata: [
+          "λ₍coop₎.alignment.status=aligned",
+          "λ₍coop₎.alignment.coverage.interpreter.expected=2",
+          "λ₍coop₎.alignment.coverage.interpreter.covered=1",
+          'λ₍coop₎.alignment.coverage.interpreter.missing=["userEval"]',
+        ],
+        alignmentNotes: [],
+      },
+    });
+    try {
+      const context = createRunnableExampleContext([
+        { key: SWEEP_FLAG, value: "session-type:Y;assignment:Y=•;glueing-span:identity;label:inline" },
+        { key: SWEEP_MANIFEST_FLAG, value: manifestPath },
+      ]);
+      await expect(() => sessionTypeGlueingSweepRunnable.run(context)).rejects.toThrow(
+        "coverage issues remain",
+      );
+    } finally {
+      sessionTypeGlueingStackRunnable.run = originalRun;
+    }
+  });
+
   it("allows manifest writes when the override flag is provided", async () => {
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-sweep-manifest-override-"));
     const manifestPath = join(dir, "next.json");
@@ -615,7 +850,7 @@ describe("session-type glueing sweep runnable", () => {
   });
 
   it("auto-generates suggested manifests when no explicit targets are provided", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-auto-"));
     const recordPath = join(dir, "record.json");
     const manifestIssuePath = join(dir, "manifest-issue.json");
@@ -679,11 +914,11 @@ describe("session-type glueing sweep runnable", () => {
     expect(suggestedWrites?.some((entry) => entry?.["sourcePath"] === manifestIssuePath)).toBe(true);
     const queued = peekSessionTypeGlueingManifestQueue();
     expect(queued).toContain(suggestedPath);
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 
   it("blocks automatic suggested manifests when manifest queue coverage is missing", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-blocked-"));
     const recordPath = join(dir, "record.json");
     const manifestIssuePath = join(dir, "manifest-issue.json");
@@ -727,11 +962,11 @@ describe("session-type glueing sweep runnable", () => {
     expect(typeof entry?.["entryCount"]).toBe("number");
     expect(Array.isArray(entry?.["entries"])).toBe(true);
     expect(peekSessionTypeGlueingManifestQueue()).not.toContain(suggestedPath);
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 
   it("allows automatic suggested manifests when the override flag is provided", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-override-"));
     const recordPath = join(dir, "record.json");
     const manifestIssuePath = join(dir, "manifest-issue.json");
@@ -767,11 +1002,11 @@ describe("session-type glueing sweep runnable", () => {
     expect(existsSync(suggestedPath)).toBe(true);
     const metadata = outcome.metadata as Record<string, unknown> | undefined;
     expect(metadata?.["manifestQueueTestOverride"]).toBeDefined();
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 
   it("applies blocked manifest plan inputs once the sentinel is fresh", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     markFreshManifestQueueCoverage();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-plan-"));
     const planRecordPath = join(dir, "plan-record.json");
@@ -849,14 +1084,16 @@ describe("session-type glueing sweep runnable", () => {
       | {
           sourceCoverage?: { manifestInputs?: number; blockedPlans?: number };
           sourceCoverageTotals?: { manifestInputs: number; blockedPlans: number; total: number };
+          sourceCoverageIssues?: ReadonlyArray<string>;
         }
       | undefined;
     expect(sweepSummary?.sourceCoverage).toEqual({ manifestInputs: 1, blockedPlans: 1 });
     expect(sweepSummary?.sourceCoverageTotals).toEqual({ manifestInputs: 1, blockedPlans: 1, total: 2 });
+    expect(sweepSummary?.sourceCoverageIssues).toEqual([]);
   });
 
   it("applies blocked plan inputs while writing explicit manifests", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     markFreshManifestQueueCoverage();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-plan-combo-"));
     const manifestPath = join(dir, "manual.json");
@@ -912,7 +1149,7 @@ describe("session-type glueing sweep runnable", () => {
   });
 
   it("blocks blocked manifest plan inputs when the sentinel is stale", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     removeManifestQueueTestStatus();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-plan-blocked-"));
     const planRecordPath = join(dir, "plan-record.json");
@@ -944,8 +1181,132 @@ describe("session-type glueing sweep runnable", () => {
     expect(existsSync(blockedManifestPath)).toBe(false);
   });
 
+  it("skips blocked manifest plan inputs when the sentinel coverage gate reports issues", async () => {
+    clearManifestQueues();
+    markSessionTypeGlueingManifestQueueTested({
+      testedAt: "2024-07-01T00:00:00.000Z",
+      coverageGate: {
+        checkedAt: "2024-07-01T00:00:00.000Z",
+        issues: ["missingCoverage"],
+        warnings: ["refresh lambda-coop traces"],
+      },
+    });
+    const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-plan-sentinel-"));
+    const planRecordPath = join(dir, "plan-record.json");
+    const blockedManifestPath = join(dir, "blocked.issues.json");
+    const planEntry: SessionTypeGlueingBlockedManifestPlanEntry = {
+      path: blockedManifestPath,
+      sourcePath: "manifest:/tmp/issues.json",
+      mismatchedRuns: 1,
+      totalRuns: 1,
+      entryCount: 1,
+      entries: [
+        {
+          label: "blocked-entry",
+          sessionTypeLiteral: "Y",
+          assignments: { Y: "•" },
+          glueingSpan: "identity",
+        },
+      ],
+    };
+    writeSessionTypeGlueingSweepRecord(planRecordPath, [], { blockedManifestPlans: [planEntry] });
+
+    const context = createRunnableExampleContext([
+      { key: SWEEP_BLOCKED_PLAN_INPUT_FLAG, value: planRecordPath },
+    ]);
+    const outcome = await sessionTypeGlueingSweepRunnable.run(context);
+
+    expect(existsSync(blockedManifestPath)).toBe(false);
+    const metadata = outcome.metadata as Record<string, unknown> | undefined;
+    expect(metadata).toBeDefined();
+    const blockedPlanInputs = metadata?.["blockedManifestPlanInputs"] as
+      | ReadonlyArray<Record<string, unknown>>
+      | undefined;
+    const expectedBlockedPlanInput = expect.objectContaining({
+      path: blockedManifestPath,
+      planRecordPath,
+      planIndex: 0,
+      reason: "manifest-queue-sentinel",
+      issues: ["coverageGate:missingCoverage"],
+      warnings: ["refresh lambda-coop traces"],
+    });
+    expect(blockedPlanInputs).toEqual([expectedBlockedPlanInput]);
+    const manifestQueue = metadata?.["manifestQueue"] as Record<string, unknown> | undefined;
+    const queueBlockedPlans = manifestQueue?.["blockedManifestPlanInputs"] as
+      | ReadonlyArray<Record<string, unknown>>
+      | undefined;
+    expect(queueBlockedPlans).toEqual([expectedBlockedPlanInput]);
+    expect(peekSessionTypeGlueingBlockedManifestPlanQueue()).toEqual([planRecordPath]);
+    const blockedPlanQueue = metadata?.["blockedManifestPlanQueue"] as
+      | ReadonlyArray<Record<string, unknown>>
+      | undefined;
+    expect(blockedPlanQueue).toEqual([
+      {
+        path: planRecordPath,
+        action: "queued",
+      },
+    ]);
+    markFreshManifestQueueCoverage();
+    clearSessionTypeGlueingBlockedManifestPlanQueue();
+  });
+
+  it("replays queued blocked plan inputs once sentinel coverage is refreshed", async () => {
+    clearManifestQueues();
+    markFreshManifestQueueCoverage();
+    const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-plan-queue-"));
+    const planRecordPath = join(dir, "plan-record.json");
+    const blockedManifestPath = join(dir, "blocked.issues.json");
+    const planEntry: SessionTypeGlueingBlockedManifestPlanEntry = {
+      path: blockedManifestPath,
+      sourcePath: "manifest:/tmp/issues.json",
+      mismatchedRuns: 1,
+      totalRuns: 1,
+      entryCount: 1,
+      entries: [
+        {
+          label: "queued-plan-entry",
+          sessionTypeLiteral: "Y",
+          assignments: { Y: "•" },
+          glueingSpan: "identity",
+        },
+      ],
+    };
+    writeSessionTypeGlueingSweepRecord(planRecordPath, [], { blockedManifestPlans: [planEntry] });
+    enqueueSessionTypeGlueingBlockedManifestPlanQueue([planRecordPath]);
+
+    const context = createRunnableExampleContext([
+      { key: SWEEP_FLAG, value: "session-type:Y;assignment:Y=•;glueing-span:identity;label:inline" },
+    ]);
+    const outcome = await sessionTypeGlueingSweepRunnable.run(context);
+
+    expect(existsSync(blockedManifestPath)).toBe(true);
+    expect(peekSessionTypeGlueingBlockedManifestPlanQueue()).toEqual([]);
+    const metadata = outcome.metadata as Record<string, unknown> | undefined;
+    expect(metadata).toBeDefined();
+    const appliedPlanSweeps = metadata?.["appliedBlockedManifestPlanSweeps"] as
+      | ReadonlyArray<Record<string, unknown>>
+      | undefined;
+    expect(
+      appliedPlanSweeps?.some(
+        (entry) =>
+          entry?.["path"] === blockedManifestPath &&
+          entry?.["planRecordPath"] === planRecordPath &&
+          entry?.["entryCount"] === 1,
+      ),
+    ).toBe(true);
+    const blockedPlanQueue = metadata?.["blockedManifestPlanQueue"] as
+      | ReadonlyArray<Record<string, unknown>>
+      | undefined;
+    expect(blockedPlanQueue).toEqual([
+      {
+        path: planRecordPath,
+        action: "consumed",
+      },
+    ]);
+  });
+
   it("replays blocked plan inputs during diff sweeps", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     markFreshManifestQueueCoverage();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-plan-diff-"));
     const recordPath = join(dir, "record.json");
@@ -1024,7 +1385,7 @@ describe("session-type glueing sweep runnable", () => {
   });
 
   it("replays manifest inputs while refreshing blocked plans", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     markFreshManifestQueueCoverage();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-input-plan-"));
     const manifestPath = join(dir, "recorded.json");
@@ -1094,7 +1455,7 @@ describe("session-type glueing sweep runnable", () => {
   });
 
   it("consumes queued manifests as --sweep-manifest-input on the next run", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-queue-"));
     const recordPath = join(dir, "record.json");
     const manifestIssuePath = join(dir, "manifest-issue.json");
@@ -1139,11 +1500,11 @@ describe("session-type glueing sweep runnable", () => {
     const queuedReplays = metadata["queuedManifestReplays"] as ReadonlyArray<string> | undefined;
     expect(queuedReplays).toContain(suggestedPath);
     expect(peekSessionTypeGlueingManifestQueue()).not.toContain(suggestedPath);
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 
   it("skips queued manifest replays when manifest queue coverage is missing", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-gating-"));
     const recordPath = join(dir, "record.json");
     const manifestIssuePath = join(dir, "manifest-issue.json");
@@ -1187,11 +1548,339 @@ describe("session-type glueing sweep runnable", () => {
       resolve(suggestedPath),
     );
     expect(peekSessionTypeGlueingManifestQueue()).toContain(suggestedPath);
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
+  });
+
+  it("skips queued manifest replays when the sentinel coverage gate reports issues", async () => {
+    clearManifestQueues();
+    const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-gate-sentinel-"));
+    const manifestPath = join(dir, "queued.json");
+    writeFileSync(
+      manifestPath,
+      `${
+        JSON.stringify(
+          [
+            {
+              label: "queued-entry",
+              sessionTypeLiteral: "Y",
+              assignments: { Y: "•" },
+              glueingSpan: "identity",
+            },
+          ],
+          null,
+          2,
+        )
+      }\n`,
+      "utf8",
+    );
+    enqueueSessionTypeGlueingManifestQueue([manifestPath]);
+    markSessionTypeGlueingManifestQueueTested({
+      testedAt: "2024-06-01T00:00:00.000Z",
+      coverageGate: {
+        checkedAt: "2024-06-01T00:00:00.000Z",
+        issues: ["alignment.coverage:missing"],
+        warnings: ["Resolve λ₍coop₎ coverage drift"],
+      },
+    });
+
+    const outcome = await sessionTypeGlueingSweepRunnable.run(createRunnableExampleContext([]));
+    expect(
+      outcome.logs.some(
+        (line) =>
+          line.includes("Manifest queue coverage gating active") &&
+          line.includes("coverageGate:alignment.coverage:missing"),
+      ),
+    ).toBe(true);
+    const metadata = outcome.metadata as Record<string, unknown> | undefined;
+    expect(metadata).toBeDefined();
+    const blocked = metadata?.["blockedQueuedManifestInputs"] as ReadonlyArray<string> | undefined;
+    expect(blocked).toContain(resolve(manifestPath));
+    const manifestQueue = metadata?.["manifestQueue"] as Record<string, unknown> | undefined;
+    expect((manifestQueue?.["blockedInputs"] as ReadonlyArray<string> | undefined)).toContain(
+      resolve(manifestPath),
+    );
+    expect(peekSessionTypeGlueingManifestQueue()).toContain(manifestPath);
+    markFreshManifestQueueCoverage();
+    clearManifestQueues();
+  });
+
+  it("treats inferred queue snapshot paths as manifest-queue gate issues", async () => {
+    clearManifestQueues();
+    const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-gate-inferred-"));
+    const manifestPath = join(dir, "queued.json");
+    writeFileSync(
+      manifestPath,
+      `${
+        JSON.stringify(
+          [
+            {
+              label: "queued-entry",
+              sessionTypeLiteral: "Y",
+              assignments: { Y: "•" },
+              glueingSpan: "identity",
+            },
+          ],
+          null,
+          2,
+        )
+      }\n`,
+      "utf8",
+    );
+
+    mkdirSync(dirname(SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_PATH), { recursive: true });
+    const now = new Date().toISOString();
+    const legacySentinelRecord = {
+      testedAt: now,
+      revision: SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_REVISION,
+      coverageGate: { checkedAt: now, issues: [], warnings: [] },
+    } satisfies Record<string, unknown>;
+    writeFileSync(
+      SESSION_TYPE_GLUEING_MANIFEST_QUEUE_TEST_STATUS_PATH,
+      `${JSON.stringify(legacySentinelRecord, null, 2)}\n`,
+      "utf8",
+    );
+
+    const outcome = await sessionTypeGlueingSweepRunnable.run(
+      createRunnableExampleContext([{ key: SWEEP_MANIFEST_INPUT_FLAG, value: manifestPath }]),
+    );
+    expect(
+      outcome.logs.some(
+        (line) =>
+          line.includes("Sentinel coverage gating active") &&
+          line.includes("coverageGate:queueSnapshotPathsInferred"),
+      ),
+    ).toBe(true);
+    const metadata = outcome.metadata as Record<string, unknown> | undefined;
+    expect(metadata).toBeDefined();
+    const blockedManifestInputs = metadata?.["blockedManifestInputs"] as ReadonlyArray<string> | undefined;
+    expect(blockedManifestInputs).toContain(resolve(manifestPath));
+    const manifestQueue = metadata?.["manifestQueue"] as Record<string, unknown> | undefined;
+    expect((manifestQueue?.["blockedManifestInputs"] as ReadonlyArray<string> | undefined)).toContain(
+      resolve(manifestPath),
+    );
+    expect(metadata?.["manifestQueueTestCoverageGateIssues"]).toEqual([
+      "queueSnapshotPathsInferred",
+    ]);
+    const manifestQueueTestCoverageGateIssues = (
+      manifestQueue?.["testCoverageGate"] as Record<string, unknown> | undefined
+    )?.["issues"] as ReadonlyArray<string> | undefined;
+    expect(manifestQueueTestCoverageGateIssues).toEqual(["queueSnapshotPathsInferred"]);
+    expect(metadata?.["manifestQueueTestCoverageGateWarnings"]).toEqual([
+      "Manifest-queue sentinel omitted queue snapshot paths; defaulted to live manifest/blocked-plan queue files. Refresh session-type manifest-queue tests to capture the preserved snapshots.",
+    ]);
+    expect(metadata?.["manifestQueueCoverageGateRollup"]).toEqual({
+      checkedAt: now,
+      issues: ["queueSnapshotPathsInferred"],
+      warnings: [
+        "Manifest-queue sentinel omitted queue snapshot paths; defaulted to live manifest/blocked-plan queue files. Refresh session-type manifest-queue tests to capture the preserved snapshots.",
+      ],
+      queueSnapshotPaths: {
+        manifestQueuePath: SESSION_TYPE_GLUEING_MANIFEST_QUEUE_PATH,
+        blockedManifestPlanQueuePath: SESSION_TYPE_GLUEING_BLOCKED_MANIFEST_PLAN_QUEUE_PATH,
+      },
+      queueSnapshotPathsInferred: true,
+    });
+
+    removeManifestQueueTestStatus();
+    clearManifestQueues();
+  });
+
+  it("surfaces sentinel rerun queue issues in logs, metadata, and manifest summaries", async () => {
+    clearManifestQueues();
+    markSessionTypeGlueingManifestQueueTested({
+      testedAt: "2024-07-15T00:00:00.000Z",
+      coverageGate: {
+        checkedAt: "2024-07-15T00:00:00.000Z",
+        issues: [],
+        warnings: [],
+        blockedManifestPlanQueueIssues: ["blockedManifestPlanQueue.pending=1 (/tmp/pending-plan.json)"],
+      },
+    });
+
+    const outcome = await sessionTypeGlueingSweepRunnable.run(createRunnableExampleContext([]));
+    expect(
+      outcome.logs.some((line) =>
+        line.includes("coverage gate rerun queue issues") &&
+        line.includes("blockedManifestPlanQueue.pending=1 (/tmp/pending-plan.json)"),
+      ),
+    ).toBe(true);
+    const metadata = outcome.metadata as Record<string, unknown> | undefined;
+    expect(metadata).toBeDefined();
+    expect(
+      metadata?.["manifestQueueTestCoverageGateBlockedManifestPlanQueueIssues"],
+    ).toEqual(["blockedManifestPlanQueue.pending=1 (/tmp/pending-plan.json)"]);
+    expect(metadata?.["manifestQueueTestCoverageGateQueueSnapshotPaths"]).toEqual({
+      manifestQueuePath: SESSION_TYPE_GLUEING_MANIFEST_QUEUE_PATH,
+      blockedManifestPlanQueuePath: SESSION_TYPE_GLUEING_BLOCKED_MANIFEST_PLAN_QUEUE_PATH,
+    });
+    const manifestQueue = metadata?.["manifestQueue"] as Record<string, unknown> | undefined;
+    const coverageGate = manifestQueue?.["testCoverageGate"] as Record<string, unknown> | undefined;
+    expect(
+      coverageGate?.["blockedManifestPlanQueueIssues"],
+    ).toEqual(["blockedManifestPlanQueue.pending=1 (/tmp/pending-plan.json)"]);
+    expect(metadata?.["manifestQueueCoverageGateRollup"]).toEqual({
+      checkedAt: "2024-07-15T00:00:00.000Z",
+      blockedManifestPlanQueueIssues: ["blockedManifestPlanQueue.pending=1 (/tmp/pending-plan.json)"],
+      queueSnapshotPaths: {
+        manifestQueuePath: SESSION_TYPE_GLUEING_MANIFEST_QUEUE_PATH,
+        blockedManifestPlanQueuePath: SESSION_TYPE_GLUEING_BLOCKED_MANIFEST_PLAN_QUEUE_PATH,
+      },
+    });
+    markFreshManifestQueueCoverage();
+    clearManifestQueues();
+  });
+
+  it("blocks direct manifest replays when the sentinel coverage gate reports issues", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-input-sentinel-"));
+    const manifestPath = join(dir, "manifest.json");
+    writeFileSync(
+      manifestPath,
+      `${
+        JSON.stringify(
+          [
+            {
+              label: "manifest-entry",
+              sessionTypeLiteral: "Y",
+              assignments: { Y: "•" },
+              glueingSpan: "identity",
+            },
+          ],
+          null,
+          2,
+        )
+      }\n`,
+      "utf8",
+    );
+    markSessionTypeGlueingManifestQueueTested({
+      testedAt: "2024-06-01T00:00:00.000Z",
+      coverageGate: { checkedAt: "2024-06-01T00:00:00.000Z", issues: ["alignment.coverage:missing"], warnings: [] },
+    });
+
+    const outcome = await sessionTypeGlueingSweepRunnable.run(
+      createRunnableExampleContext([{ key: SWEEP_MANIFEST_INPUT_FLAG, value: manifestPath }]),
+    );
+    expect(
+      outcome.logs.some(
+        (line) =>
+          line.includes("Sentinel coverage gating active") && line.includes(resolve(manifestPath)),
+      ),
+    ).toBe(true);
+    const metadata = outcome.metadata as Record<string, unknown> | undefined;
+    expect(metadata).toBeDefined();
+    const blockedManifestInputs = metadata?.["blockedManifestInputs"] as ReadonlyArray<string> | undefined;
+    expect(blockedManifestInputs).toContain(resolve(manifestPath));
+    const manifestQueue = metadata?.["manifestQueue"] as Record<string, unknown> | undefined;
+    expect((manifestQueue?.["blockedManifestInputs"] as ReadonlyArray<string> | undefined)).toContain(
+      resolve(manifestPath),
+    );
+  });
+
+  it("requeues queued manifests when λ₍coop₎ coverage issues remain", async () => {
+    clearManifestQueues();
+    const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-coverage-"));
+    const manifestPath = join(dir, "queued.json");
+    writeFileSync(
+      manifestPath,
+      `${
+        JSON.stringify(
+          [
+            {
+              label: "queued-entry",
+              sessionTypeLiteral: "Y",
+              assignments: { Y: "•" },
+              glueingSpan: "identity",
+            },
+          ],
+          null,
+          2,
+        )
+      }\n`,
+      "utf8",
+    );
+    enqueueSessionTypeGlueingManifestQueue([manifestPath]);
+    markFreshManifestQueueCoverage();
+
+    const originalRun = sessionTypeGlueingStackRunnable.run;
+    sessionTypeGlueingStackRunnable.run = async () => ({
+      logs: [],
+      metadata: {
+        sessionMetadata: ["sessionType.runner.holds=true", "sessionType.runner.mismatches=0"],
+        glueingMetadata: [],
+        alignmentMetadata: ALIGNMENT_COVERAGE_METADATA_ENTRIES,
+        alignmentNotes: [],
+      },
+    });
+
+    try {
+      const outcome = await sessionTypeGlueingSweepRunnable.run(createRunnableExampleContext([]));
+      expect(outcome.logs.some((line) => line.includes("coverage gating active"))).toBe(true);
+      const metadata = outcome.metadata as Record<string, unknown> | undefined;
+      expect(metadata).toBeDefined();
+      if (!metadata) {
+        throw new Error("Queue coverage metadata missing");
+      }
+      const blocked = metadata["blockedQueuedManifestInputs"] as ReadonlyArray<string> | undefined;
+      expect(blocked).toContain(resolve(manifestPath));
+      const coverageIssues = metadata["manifestQueueCoverageIssues"] as ReadonlyArray<string> | undefined;
+      expect(Array.isArray(coverageIssues) && coverageIssues.length > 0).toBe(true);
+      expect(peekSessionTypeGlueingManifestQueue()).toContain(manifestPath);
+    } finally {
+      sessionTypeGlueingStackRunnable.run = originalRun;
+      clearManifestQueues();
+    }
+  });
+
+  it("rejects manifest writes when queued manifest coverage issues remain", async () => {
+    clearManifestQueues();
+    const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-coverage-write-"));
+    const manifestPath = join(dir, "queued.json");
+    const manifestTarget = join(dir, "next.json");
+    writeFileSync(
+      manifestPath,
+      `${
+        JSON.stringify(
+          [
+            {
+              label: "queued-entry",
+              sessionTypeLiteral: "Y",
+              assignments: { Y: "•" },
+              glueingSpan: "identity",
+            },
+          ],
+          null,
+          2,
+        )
+      }\n`,
+      "utf8",
+    );
+    enqueueSessionTypeGlueingManifestQueue([manifestPath]);
+    markFreshManifestQueueCoverage();
+
+    const originalRun = sessionTypeGlueingStackRunnable.run;
+    sessionTypeGlueingStackRunnable.run = async () => ({
+      logs: [],
+      metadata: {
+        sessionMetadata: ["sessionType.runner.holds=true", "sessionType.runner.mismatches=0"],
+        glueingMetadata: [],
+        alignmentMetadata: ALIGNMENT_COVERAGE_METADATA_ENTRIES,
+        alignmentNotes: [],
+      },
+    });
+
+    try {
+      const context = createRunnableExampleContext([{ key: SWEEP_MANIFEST_FLAG, value: manifestTarget }]);
+      await expect(() => sessionTypeGlueingSweepRunnable.run(context)).rejects.toThrow(
+        "queued manifest coverage issues",
+      );
+      expect(peekSessionTypeGlueingManifestQueue()).toContain(manifestPath);
+    } finally {
+      sessionTypeGlueingStackRunnable.run = originalRun;
+      clearManifestQueues();
+    }
   });
 
   it("logs and clears missing queued manifests without throwing", async () => {
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
     const dir = mkdtempSync(join(tmpdir(), "session-type-glueing-manifest-missing-"));
     const missingPath = join(dir, "missing.json");
     enqueueSessionTypeGlueingManifestQueue([missingPath]);
@@ -1213,6 +1902,6 @@ describe("session-type glueing sweep runnable", () => {
     expect(errors[0]?.path).toBe(resolve(missingPath));
     expect(typeof errors[0]?.error).toBe("string");
     expect(peekSessionTypeGlueingManifestQueue()).toHaveLength(0);
-    clearSessionTypeGlueingManifestQueue();
+    clearManifestQueues();
   });
 });

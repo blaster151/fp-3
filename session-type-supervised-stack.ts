@@ -5,10 +5,12 @@ import {
   type LambdaCoopSupervisedStackRunResult,
 } from './lambda-coop-supervised-stack';
 import {
+  buildSessionTypeRunnerSpecFromInterpreter,
   checkSessionTypeRunnerEvaluationAgainstInteraction,
   collectSessionTypeChannelNames,
   type SessionTypeRunnerEvaluationOptions,
   type SessionTypeRunnerEvaluationReport,
+  type SessionTypeRunnerSpec,
 } from './session-type-runner';
 import { formatSessionType, type SessionType } from './session-type';
 import {
@@ -31,6 +33,7 @@ export interface SessionTypeSupervisedStackOptions<Obj> {
   readonly stack?: SupervisedStackOptions<Obj>;
   readonly runnerEvaluation?: Omit<SessionTypeRunnerEvaluationOptions<Obj>, 'assignments'>;
   readonly stackRun?: LambdaCoopSupervisedStackRunOptions;
+  readonly runnerSpec?: { readonly metadata?: ReadonlyArray<string>; readonly notes?: ReadonlyArray<string> };
   readonly metadata?: ReadonlyArray<string>;
   readonly notes?: ReadonlyArray<string>;
 }
@@ -46,6 +49,7 @@ export interface SessionTypeSupervisedStackResult<
   readonly assignments: ReadonlyMap<string, Obj>;
   readonly stack: SupervisedStack<Obj, Arr, Left, Right, Value>;
   readonly runnerEvaluation: SessionTypeRunnerEvaluationReport<Obj>;
+  readonly runnerSpec: SessionTypeRunnerSpec<Obj>;
   readonly stackRun?: LambdaCoopSupervisedStackRunResult;
   readonly metadata: ReadonlyArray<string>;
   readonly notes: ReadonlyArray<string>;
@@ -98,6 +102,7 @@ export const makeSessionTypeSupervisedStack = <
     interaction,
     buildRunnerEvaluationOptions(assignments, options.runnerEvaluation),
   );
+  const runnerSpec = buildSessionTypeRunnerSpecFromInterpreter(type, assignments, options.runnerSpec);
   const stackRun = options.stackRun
     ? evaluateSupervisedStackWithLambdaCoop(stack, options.stackRun)
     : undefined;
@@ -117,8 +122,12 @@ export const makeSessionTypeSupervisedStack = <
   metadata.push(`sessionType.runner.mismatches=${runnerSummary.mismatches}`);
   metadata.push(`sessionType.runner.entries=${runnerEvaluation.entries.length}`);
   metadata.push(`sessionType.runner.holds=${runnerEvaluation.holds}`);
+  metadata.push(`sessionType.runnerSpec.channels=${JSON.stringify(runnerSpec.channels)}`);
   if (runnerEvaluation.metadata) {
     metadata.push(...runnerEvaluation.metadata);
+  }
+  if (runnerSpec.metadata) {
+    metadata.push(...runnerSpec.metadata);
   }
   if (stackRun?.metadata) {
     metadata.push(...stackRun.metadata);
@@ -130,6 +139,9 @@ export const makeSessionTypeSupervisedStack = <
   const notes: string[] = [];
   for (const note of runnerEvaluation.notes) {
     notes.push(`sessionType.runner.note=${note}`);
+  }
+  for (const note of runnerSpec.notes) {
+    notes.push(`sessionType.runnerSpec.note=${note}`);
   }
   if (stackRun?.summary) {
     notes.push(...stackRun.summary.notes);
@@ -143,9 +155,10 @@ export const makeSessionTypeSupervisedStack = <
     assignments,
     stack,
     runnerEvaluation,
+    runnerSpec,
     ...(stackRun ? { stackRun } : {}),
     metadata,
-  notes,
+    notes,
   };
 };
 

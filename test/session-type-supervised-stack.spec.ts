@@ -33,6 +33,7 @@ describe('session-type supervised stack helper', () => {
         stack: { sampleLimit: 3 },
         runnerEvaluation: { sampleLimit: 2 },
         stackRun: { operations: ['getenv'], stepLimit: 24 },
+        runnerSpec: { notes: ['runnerSpec note'] },
         metadata: ['SessionType.stack.example=Example8'],
       },
     );
@@ -40,7 +41,9 @@ describe('session-type supervised stack helper', () => {
     expect(result.runnerEvaluation.holds).toBe(true);
     expect(result.metadata).toContain('SessionType.stack.example=Example8');
     expect(result.metadata.some((line) => line.startsWith('sessionType.runner.checked='))).toBe(true);
+    expect(result.metadata.some((line) => line.startsWith('sessionType.runnerSpec.channels='))).toBe(true);
     expect(result.stackRun?.summary.operations).toContain('getenv');
+    expect(result.notes.some((note) => note.includes('sessionType.runnerSpec.note=runnerSpec note'))).toBe(true);
   });
 
   it('records diagnostics when assignments are missing', () => {

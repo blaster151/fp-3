@@ -32,11 +32,18 @@ import {
 } from "../../session-type-glueing-sweep";
 import {
   buildSessionTypeGlueingSweepRecord,
+  collectSessionTypeGlueingAlignmentCoverageIssues,
   collectSessionTypeGlueingSweepRunSnapshot,
+  getSessionTypeGlueingCoverageForRun,
+  getSessionTypeGlueingCoverageSnapshots,
+  compareSessionTypeGlueingCoverageSnapshots,
   filterSessionTypeGlueingDashboardEntries,
   readSessionTypeGlueingSweepRecord,
   summarizeSessionTypeGlueingSweepRecord,
+  formatSessionTypeGlueingAlignmentCoverageLines,
   formatSessionTypeGlueingSourceCoverageLines,
+  collectSessionTypeGlueingSourceCoverageIssues,
+  type SessionTypeGlueingSourceCoverageFilterOptions,
   writeSessionTypeGlueingSweepRecord,
   type SessionTypeGlueingBlockedManifestPlanEntry,
   type SessionTypeGlueingDashboardEntry,
@@ -44,8 +51,10 @@ import {
   type SessionTypeGlueingManifestQueueSummary,
   type SessionTypeGlueingSweepRunSnapshot,
   type SessionTypeGlueingSweepSourceCoverage,
+  type SessionTypeGlueingBlockedManifestPlanInputMetadata,
 } from "../../session-type-glueing-dashboard";
 import {
+  collectSessionTypeGlueingManifestQueueCoverageGateRollup,
   diffSessionTypeGlueingSweepRecordFromPath,
   type SessionTypeGlueingConsumerDiffSummary,
 } from "../../session-type-glueing-consumer";
@@ -63,8 +72,18 @@ import {
   enqueueSessionTypeGlueingManifestQueue,
 } from "../../session-type-glueing-manifest-queue";
 import {
+  enqueueSessionTypeGlueingBlockedManifestPlanQueue,
+  peekSessionTypeGlueingBlockedManifestPlanQueue,
+  removeSessionTypeGlueingBlockedManifestPlanQueueEntries,
+  collectSessionTypeGlueingBlockedManifestPlanQueueIssues,
+  collectSessionTypeGlueingBlockedManifestPlanQueueIssuesFromPaths,
+} from "../../session-type-glueing-blocked-manifest-plan-queue";
+import {
   formatSessionTypeManifestQueueTestMetadataEntries,
   formatSessionTypeManifestQueueTestIssueEntries,
+  formatSessionTypeManifestQueueCoverageGateMetadataEntries,
+  formatSessionTypeManifestQueueTestCoverageGateMetadataEntries,
+  collectSessionTypeManifestQueueTestCoverageGateIssues,
   evaluateSessionTypeGlueingManifestQueueTestStatus,
   readSessionTypeGlueingManifestQueueTestStatus,
   type SessionTypeGlueingManifestQueueTestStatus,
@@ -108,6 +127,28 @@ const formatRunLog = (
   lines.push(
     `  metadataCounts session=${snapshot.sessionMetadata.length} glueing=${snapshot.glueingMetadata.length} alignment=${snapshot.alignmentMetadata.length}`,
   );
+  const coverageSnapshots = getSessionTypeGlueingCoverageSnapshots(snapshot);
+  const { coverage, source: coverageSource } = getSessionTypeGlueingCoverageForRun(snapshot);
+  if (coverage) {
+    lines.push(...formatSessionTypeGlueingAlignmentCoverageLines(coverage, { indent: "  " }));
+    const coverageIssues = collectSessionTypeGlueingAlignmentCoverageIssues(coverage);
+    if (coverageIssues.length > 0) {
+      lines.push(
+        coverageSource === "runner"
+          ? "  λ₍coop₎ runner coverage warnings:"
+          : "  λ₍coop₎ coverage warnings:",
+      );
+      coverageIssues.forEach((issue) => lines.push(`    - ${issue}`));
+    }
+  }
+  const coverageComparisonIssues = compareSessionTypeGlueingCoverageSnapshots(
+    coverageSnapshots.runner,
+    coverageSnapshots.alignment,
+  );
+  if (coverageComparisonIssues.length > 0) {
+    lines.push("  λ₍coop₎ coverage drift warnings:");
+    coverageComparisonIssues.forEach((issue) => lines.push(`    - ${issue}`));
+  }
   return lines;
 };
 
@@ -246,7 +287,16 @@ const appendManifestQueueTestMetadata = (
   metadata: Record<string, unknown> | undefined,
   status: SessionTypeGlueingManifestQueueTestStatus,
 ): Record<string, unknown> =>
-  appendSessionMetadataEntries(metadata, formatSessionTypeManifestQueueTestMetadataEntries(status));
+  appendSessionMetadataEntries(
+    appendSessionMetadataEntries(
+      appendSessionMetadataEntries(
+        metadata,
+        formatSessionTypeManifestQueueTestMetadataEntries(status),
+      ),
+      formatSessionTypeManifestQueueCoverageGateMetadataEntries(status.coverageGate),
+    ),
+    formatSessionTypeManifestQueueTestCoverageGateMetadataEntries(status),
+  );
 
 const buildSnapshotMetadata = (snapshot: SessionTypeGlueingSweepRunSnapshot) => ({
   label: snapshot.config.label,
@@ -336,36 +386,111 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
 
     const inlineSweeps = getRunnableFlagValues(context, SWEEP_FLAG);
     const fileSweeps = getRunnableFlagValues(context, SWEEP_FILE_FLAG);
-    const manifestSweepsFromFlags = getRunnableFlagValues(context, SWEEP_MANIFEST_INPUT_FLAG);
+    let manifestSweepsFromFlags = getRunnableFlagValues(context, SWEEP_MANIFEST_INPUT_FLAG);
     const manifestTargets = getRunnableFlagValues(context, SWEEP_MANIFEST_FLAG);
-    const blockedManifestPlanInputs = getRunnableFlagValues(context, SWEEP_BLOCKED_PLAN_INPUT_FLAG);
+    const blockedManifestPlanInputsFromFlags = getRunnableFlagValues(
+      context,
+      SWEEP_BLOCKED_PLAN_INPUT_FLAG,
+    );
+    const blockedManifestPlanInputsFromQueue = peekSessionTypeGlueingBlockedManifestPlanQueue();
+    const blockedManifestPlanInputsFromQueueResolved = blockedManifestPlanInputsFromQueue.map((path) =>
+      resolve(path),
+    );
+    const queuedBlockedManifestPlanInputSet = new Set(blockedManifestPlanInputsFromQueueResolved);
+    const blockedManifestPlanInputs = Array.from(
+      new Set(
+        [...blockedManifestPlanInputsFromFlags, ...blockedManifestPlanInputsFromQueue].map((path) =>
+          resolve(path),
+        ),
+      ),
+    );
+    const blockedManifestPlanQueueActions: Array<{ path: string; action: "queued" | "consumed" }> = [];
+    const consumedQueuedBlockedManifestPlanInputs = new Set<string>();
     const allowManifestQueueIssues = flagValueIsTruthy(
       getRunnableFlag(context, SWEEP_MANIFEST_OVERRIDE_FLAG),
     );
+    const sourceCoverageFilter: SessionTypeGlueingSourceCoverageFilterOptions = {
+      requireManifestInputs: true,
+      requireBlockedPlans: true,
+    };
     const manifestQueueTestStatus = readSessionTypeGlueingManifestQueueTestStatus();
     const manifestQueueTestEvaluation =
       evaluateSessionTypeGlueingManifestQueueTestStatus(manifestQueueTestStatus);
-    const manifestQueueGateIssues = manifestQueueTestEvaluation.issues;
-    const manifestQueueGateIssueList = manifestQueueGateIssues.join(", ") || "unspecified";
+    const manifestQueueTestCoverageGate = manifestQueueTestStatus.coverageGate;
+    const manifestQueueTestCoverageGateCollection =
+      collectSessionTypeManifestQueueTestCoverageGateIssues(manifestQueueTestStatus);
+    const manifestQueueCoverageGateSentinelIssues = manifestQueueTestCoverageGateCollection.issues;
+    const manifestQueueCoverageGateSentinelWarnings =
+      manifestQueueTestCoverageGateCollection.warnings;
+    const manifestQueueCoverageGateSentinelBlockedPlanQueueIssues =
+      manifestQueueTestCoverageGate?.blockedManifestPlanQueueIssues ?? [];
+    const manifestQueueGateSentinelIssues = Array.from(
+      new Set(
+        manifestQueueCoverageGateSentinelIssues.map((issue) => `coverageGate:${issue}`),
+      ),
+    );
+    const manifestQueueGateSentinelIssueList =
+      manifestQueueGateSentinelIssues.join(", ") || "unspecified sentinel coverage issues";
+    const blockedManifestPlanQueueGateIssues =
+      collectSessionTypeGlueingBlockedManifestPlanQueueIssuesFromPaths(
+        blockedManifestPlanInputsFromQueueResolved,
+      );
+    const manifestQueueSentinelIssues = Array.from(
+      new Set([...manifestQueueGateSentinelIssues]),
+    );
+    const manifestQueueSentinelIssueList =
+      manifestQueueSentinelIssues.join(", ") || "unspecified manifest-queue coverage issues";
+    const manifestQueueSentinelGateActive = manifestQueueSentinelIssues.length > 0;
+    const manifestQueueSentinelGateBlocked =
+      manifestQueueSentinelGateActive && !allowManifestQueueIssues;
+    const manifestQueueSentinelGateBypassed =
+      manifestQueueSentinelGateActive && allowManifestQueueIssues;
+    const manifestQueueGateIssues = [
+      ...manifestQueueSentinelIssues,
+      ...blockedManifestPlanQueueGateIssues,
+    ];
+    const manifestQueueGateIssueList =
+      manifestQueueGateIssues.join(", ") || "unspecified manifest-queue coverage issues";
     const manifestQueueGateActive = manifestQueueGateIssues.length > 0;
     const manifestQueueGateBlocked = manifestQueueGateActive && !allowManifestQueueIssues;
     const manifestQueueGateBypassed = manifestQueueGateActive && allowManifestQueueIssues;
     const manifestQueueOverrideReasons: string[] = [];
+    const blockedManifestInputs: string[] = [];
+    const manifestInputsFromFlags = manifestSweepsFromFlags.map((path) => resolve(path));
+    const sentinelCoverageGateActive = manifestQueueCoverageGateSentinelIssues.length > 0;
+    const manifestInputSentinelGateActive = sentinelCoverageGateActive && manifestInputsFromFlags.length > 0;
+    let manifestInputSentinelGateLog: string | undefined;
+    if (manifestInputSentinelGateActive && !allowManifestQueueIssues) {
+      blockedManifestInputs.push(...manifestInputsFromFlags);
+      manifestSweepsFromFlags = [];
+      manifestInputSentinelGateLog =
+        `Sentinel coverage gating active (${manifestQueueGateSentinelIssueList}) — skipped ${blockedManifestInputs.length} --${SWEEP_MANIFEST_INPUT_FLAG}` +
+        ` manifest replay${blockedManifestInputs.length === 1 ? "" : "s"}. ` +
+        `Rerun 'npm run session-type:manifest-queue:test' or pass --${SWEEP_MANIFEST_OVERRIDE_FLAG}=true to override.`;
+    } else if (manifestInputSentinelGateActive && allowManifestQueueIssues) {
+      manifestQueueOverrideReasons.push(
+        `replaying ${manifestInputsFromFlags.length} manifest input${
+          manifestInputsFromFlags.length === 1 ? "" : "s"
+        } despite sentinel coverage issues (${manifestQueueGateSentinelIssueList})`,
+      );
+    }
     const queuedManifestInputsRaw = consumeSessionTypeGlueingManifestQueue();
     const blockedQueuedManifestInputs: string[] = [];
     let queuedManifestInputs = queuedManifestInputsRaw;
     const manifestInputPathSet = new Set(manifestSweepsFromFlags.map((path) => resolve(path)));
     const manifestInputSourceKeys = new Set<string>();
     const blockedPlanSourceKeys = new Set<string>();
-    if (manifestQueueGateBlocked && queuedManifestInputsRaw.length > 0) {
+    const manifestQueueCoverageIssues: string[] = [];
+    const manifestQueueCoverageDriftIssues: string[] = [];
+    if (manifestQueueSentinelGateBlocked && queuedManifestInputsRaw.length > 0) {
       blockedQueuedManifestInputs.push(...queuedManifestInputsRaw);
       enqueueSessionTypeGlueingManifestQueue(queuedManifestInputsRaw);
       queuedManifestInputs = [];
-    } else if (manifestQueueGateBypassed && queuedManifestInputsRaw.length > 0) {
+    } else if (manifestQueueSentinelGateBypassed && queuedManifestInputsRaw.length > 0) {
       manifestQueueOverrideReasons.push(
         `replaying ${queuedManifestInputsRaw.length} queued manifest${
           queuedManifestInputsRaw.length === 1 ? "" : "s"
-        } despite issues (${manifestQueueGateIssueList})`,
+        } despite manifest-queue coverage issues (${manifestQueueSentinelIssueList})`,
       );
     }
     const resolvedQueuedManifestInputs = queuedManifestInputs.map((path) => resolve(path));
@@ -417,7 +542,13 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
       }
       entries.push(...manifestEntries);
     }
-    if (entries.length === 0 && diffSweeps.length === 0 && manifestReplayErrors.length === 0) {
+    if (
+      entries.length === 0 &&
+      diffSweeps.length === 0 &&
+      manifestReplayErrors.length === 0 &&
+      blockedManifestInputs.length === 0 &&
+      blockedQueuedManifestInputs.length === 0
+    ) {
       throw new Error("Provide at least one --sweep/--sweep-file entry or a --sweep-diff path.");
     }
     const configs = entries.map((entry, index) => {
@@ -450,6 +581,56 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
         }),
       );
     }
+    let manifestPlanSummariesForReplay: ReadonlyArray<BlockedManifestPlanInputEntry> =
+      blockedManifestPlanSummaries;
+    const blockedManifestPlanInputGateEntries: SessionTypeGlueingBlockedManifestPlanInputMetadata[] = [];
+    const blockedManifestPlanSentinelLogs: string[] = [];
+    if (blockedManifestPlanSummaries.length > 0 && sentinelCoverageGateActive) {
+      if (!allowManifestQueueIssues) {
+        manifestPlanSummariesForReplay = [];
+        blockedManifestPlanSummaries.forEach((summary) => {
+          blockedManifestPlanInputGateEntries.push({
+            ...summary.plan,
+            planRecordPath: summary.planRecordPath,
+            ...(summary.recordedAt ? { recordedAt: summary.recordedAt } : {}),
+            planIndex: summary.planIndex,
+            reason: "manifest-queue-sentinel",
+            issues: Array.from(manifestQueueGateSentinelIssues),
+            ...(manifestQueueCoverageGateSentinelWarnings.length > 0
+              ? { warnings: Array.from(manifestQueueCoverageGateSentinelWarnings) }
+              : {}),
+          });
+        });
+        blockedManifestPlanSentinelLogs.push(
+          `Sentinel coverage gating active (${manifestQueueGateSentinelIssueList}) — skipped ${
+            blockedManifestPlanSummaries.length
+          } --${SWEEP_BLOCKED_PLAN_INPUT_FLAG} plan${
+            blockedManifestPlanSummaries.length === 1 ? "" : "s"
+          }. ` +
+            `Rerun 'npm run session-type:manifest-queue:test' or pass --${SWEEP_MANIFEST_OVERRIDE_FLAG}=true to override.`,
+        );
+        const planRecordPathsForQueue = Array.from(
+          new Set(blockedManifestPlanSummaries.map((summary) => summary.planRecordPath)),
+        );
+        if (planRecordPathsForQueue.length > 0) {
+          enqueueSessionTypeGlueingBlockedManifestPlanQueue(planRecordPathsForQueue);
+          planRecordPathsForQueue.forEach((path) =>
+            blockedManifestPlanQueueActions.push({ path, action: "queued" }),
+          );
+          blockedManifestPlanSentinelLogs.push(
+            `  Queued ${planRecordPathsForQueue.length} blocked-plan record${
+              planRecordPathsForQueue.length === 1 ? "" : "s"
+            } for rerun after 'npm run session-type:manifest-queue:test'.`,
+          );
+        }
+        blockedManifestPlanSummaries.forEach((summary) => {
+          const recordedAtNote = summary.recordedAt ? ` recordedAt=${summary.recordedAt}` : "";
+          blockedManifestPlanSentinelLogs.push(
+            `  ${summary.plan.sourcePath} → ${summary.plan.path} planIndex=${summary.planIndex} plan=${summary.planRecordPath}${recordedAtNote}`,
+          );
+        });
+      }
+    }
 
     const preparedBlockedManifestPlanEntries: Array<{
       readonly summary: BlockedManifestPlanInputEntry;
@@ -465,21 +646,24 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
       readonly planMismatchedRuns?: number;
       readonly planTotalRuns?: number;
     }> = [];
-    if (blockedManifestPlanSummaries.length > 0) {
-      if (manifestQueueGateBlocked) {
+    if (manifestPlanSummariesForReplay.length > 0) {
+      if (manifestQueueSentinelGateBlocked) {
         throw new Error(
-          `Cannot apply --${SWEEP_BLOCKED_PLAN_INPUT_FLAG} entries while the manifest queue coverage is invalid (issues: ${manifestQueueGateIssueList}). ` +
+          `Cannot apply --${SWEEP_BLOCKED_PLAN_INPUT_FLAG} entries while the manifest queue coverage is invalid (issues: ${manifestQueueSentinelIssueList}). ` +
             `Rerun the manifest-queue tests or pass --${SWEEP_MANIFEST_OVERRIDE_FLAG}=true to override.`,
         );
       }
-      if (manifestQueueGateBypassed) {
+      if (manifestQueueSentinelGateBypassed) {
         manifestQueueOverrideReasons.push(
-          `applying ${blockedManifestPlanSummaries.length} blocked manifest plan${
-            blockedManifestPlanSummaries.length === 1 ? "" : "s"
-          } despite issues (${manifestQueueGateIssueList})`,
+          `applying ${manifestPlanSummariesForReplay.length} blocked manifest plan${
+            manifestPlanSummariesForReplay.length === 1 ? "" : "s"
+          } despite manifest-queue coverage issues (${manifestQueueSentinelIssueList})`,
         );
       }
-      blockedManifestPlanSummaries.forEach((summary) => {
+      manifestPlanSummariesForReplay.forEach((summary) => {
+        if (queuedBlockedManifestPlanInputSet.has(summary.planRecordPath)) {
+          consumedQueuedBlockedManifestPlanInputs.add(summary.planRecordPath);
+        }
         const planEntries = buildSessionTypeGlueingManifestEntriesFromBlockedManifestPlan(summary.plan);
         if (planEntries.length === 0) {
           return;
@@ -507,6 +691,21 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
           });
         });
       });
+      if (consumedQueuedBlockedManifestPlanInputs.size > 0) {
+        const consumedPaths = Array.from(consumedQueuedBlockedManifestPlanInputs);
+        removeSessionTypeGlueingBlockedManifestPlanQueueEntries(consumedPaths);
+        consumedPaths.forEach((path) =>
+          blockedManifestPlanQueueActions.push({ path, action: "consumed" }),
+        );
+        blockedManifestPlanSentinelLogs.push(
+          `Replayed ${consumedPaths.length} queued blocked-plan record${
+            consumedPaths.length === 1 ? "" : "s"
+          } after refreshing 'npm run session-type:manifest-queue:test'.`,
+        );
+        consumedPaths.forEach((path) =>
+          blockedManifestPlanSentinelLogs.push(`  replayed-queued-plan=${path}`),
+        );
+      }
     }
 
     const recordPath = getRunnableFlag(context, SWEEP_RECORD_FLAG);
@@ -526,14 +725,23 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
     let enqueuedSuggestedManifestPaths: string[] = [];
     const blockedQueuedManifestInputPaths = blockedQueuedManifestInputs.map((path) => resolve(path));
     let queueReplayGatingLog: string | undefined;
+    let blockedManifestPlanQueueGateLog: string | undefined;
     if (blockedQueuedManifestInputs.length > 0) {
       queueReplayGatingLog =
-        `Manifest queue coverage gating active — skipped ${blockedQueuedManifestInputs.length} queued manifest replay${
+        `Manifest queue coverage gating active (${manifestQueueSentinelIssueList}) — skipped ${
+          blockedQueuedManifestInputs.length
+        } queued manifest replay${
           blockedQueuedManifestInputs.length === 1 ? "" : "s"
         }. ` +
         `Rerun the manifest-queue tests or pass --${SWEEP_MANIFEST_OVERRIDE_FLAG}=true to override.`;
     }
+    if (blockedManifestPlanQueueGateIssues.length > 0) {
+      blockedManifestPlanQueueGateLog =
+        `Blocked manifest plan rerun queue active (${blockedManifestPlanQueueGateIssues.join(", ")}). ` +
+        "Replay the queued plan records after refreshing 'npm run session-type:manifest-queue:test'.";
+    }
     let manifestQueueOverrideLog: string | undefined;
+    let lambdaCoopCoverageGateLog: string | undefined;
 
     const snapshots: SessionTypeGlueingSweepRunSnapshot[] = [];
     for (const config of configs) {
@@ -553,6 +761,33 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
       );
     }
 
+    const queuedManifestReplaySourceKeys = new Set(
+      queuedManifestReplayPaths.map((path) => `manifest:${path}`),
+    );
+    if (queuedManifestReplaySourceKeys.size > 0) {
+      for (const snapshot of snapshots) {
+        const source = snapshot.config.source;
+        if (!source || !queuedManifestReplaySourceKeys.has(source)) {
+          continue;
+        }
+        const { coverage } = getSessionTypeGlueingCoverageForRun(snapshot);
+        if (coverage) {
+          const coverageIssues = collectSessionTypeGlueingAlignmentCoverageIssues(coverage);
+          coverageIssues.forEach((issue) => {
+            manifestQueueCoverageIssues.push(`${snapshot.config.label}: ${issue}`);
+          });
+        }
+        const coverageSnapshots = getSessionTypeGlueingCoverageSnapshots(snapshot);
+        const coverageComparisonIssues = compareSessionTypeGlueingCoverageSnapshots(
+          coverageSnapshots.runner,
+          coverageSnapshots.alignment,
+        );
+        coverageComparisonIssues.forEach((issue) => {
+          manifestQueueCoverageDriftIssues.push(`${snapshot.config.label}: Coverage drift: ${issue}`);
+        });
+      }
+    }
+
     const manifestInputRunCount = snapshots.filter((snapshot) =>
       manifestInputSourceKeys.has(snapshot.config.source),
     ).length;
@@ -566,6 +801,32 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
             ...(blockedPlanRunCount > 0 ? { blockedPlans: blockedPlanRunCount } : {}),
           }
         : undefined;
+
+    const manifestQueueCoverageGateIssues = [
+      ...manifestQueueCoverageIssues.map((issue) => `alignment.coverage:${issue}`),
+      ...manifestQueueCoverageDriftIssues.map((issue) => `coverage.drift:${issue}`),
+    ];
+    const manifestQueueCoverageGateIssueList =
+      manifestQueueCoverageGateIssues.join("; ") || "unspecified";
+    const manifestQueueCoverageGateActive = manifestQueueCoverageGateIssues.length > 0;
+    const manifestQueueCoverageGateBlocked = manifestQueueCoverageGateActive && !allowManifestQueueIssues;
+    const manifestQueueCoverageGateBypassed = manifestQueueCoverageGateActive && allowManifestQueueIssues;
+    let manifestQueueCoverageGateLog: string | undefined;
+    if (manifestQueueCoverageGateBlocked && resolvedQueuedManifestInputs.length > 0) {
+      manifestQueueCoverageGateLog =
+        `Queued manifest coverage gating active — ${manifestQueueCoverageGateIssueList}. ` +
+        `Rerun the queued manifest inputs to regenerate λ₍coop₎ coverage or pass --${SWEEP_MANIFEST_OVERRIDE_FLAG}=true to override.`;
+      enqueueSessionTypeGlueingManifestQueue(resolvedQueuedManifestInputs);
+      resolvedQueuedManifestInputs.forEach((path) => {
+        if (!blockedQueuedManifestInputs.includes(path)) {
+          blockedQueuedManifestInputs.push(path);
+        }
+      });
+    } else if (manifestQueueCoverageGateBypassed && resolvedQueuedManifestInputs.length > 0) {
+      manifestQueueOverrideReasons.push(
+        `using queued manifest coverage despite issues (${manifestQueueCoverageGateIssueList})`,
+      );
+    }
 
     const manifestQueueSummary: SessionTypeGlueingManifestQueueSummary = {
       tested: manifestQueueTestStatus.tested,
@@ -584,13 +845,48 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
       ...(manifestQueueTestEvaluation.warnings.length > 0
         ? { testWarnings: manifestQueueTestEvaluation.warnings }
         : {}),
+      ...(manifestQueueTestCoverageGate
+          ? {
+              testCoverageGate: {
+                checkedAt: manifestQueueTestCoverageGate.checkedAt,
+                ...(manifestQueueCoverageGateSentinelIssues.length > 0
+                  ? { issues: manifestQueueCoverageGateSentinelIssues }
+                  : {}),
+                ...(manifestQueueCoverageGateSentinelWarnings.length > 0
+                  ? { warnings: manifestQueueCoverageGateSentinelWarnings }
+                  : {}),
+                ...(manifestQueueCoverageGateSentinelBlockedPlanQueueIssues.length > 0
+                  ? {
+                      blockedManifestPlanQueueIssues:
+                        manifestQueueCoverageGateSentinelBlockedPlanQueueIssues,
+                    }
+                  : {}),
+                ...(manifestQueueTestCoverageGate.queueSnapshotPaths
+                  ? { queueSnapshotPaths: manifestQueueTestCoverageGate.queueSnapshotPaths }
+                  : {}),
+                ...(manifestQueueTestCoverageGate.queueSnapshotPathsInferred
+                  ? { queueSnapshotPathsInferred: true }
+                  : {}),
+              },
+            }
+          : {}),
       ...(resolvedQueuedManifestInputs.length > 0 ? { inputs: resolvedQueuedManifestInputs } : {}),
       ...(queuedManifestReplayPaths.length > 0 ? { replays: queuedManifestReplayPaths } : {}),
       ...(blockedQueuedManifestInputPaths.length > 0
         ? { blockedInputs: blockedQueuedManifestInputPaths }
         : {}),
+      ...(blockedManifestInputs.length > 0 ? { blockedManifestInputs } : {}),
+      ...(blockedManifestPlanInputGateEntries.length > 0
+        ? { blockedManifestPlanInputs: blockedManifestPlanInputGateEntries }
+        : {}),
       ...(enqueuedSuggestedManifestPaths.length > 0 ? { outputs: enqueuedSuggestedManifestPaths } : {}),
       ...(manifestReplayErrors.length > 0 ? { replayErrors: manifestReplayErrors } : {}),
+      ...(manifestQueueCoverageIssues.length > 0
+        ? { coverageIssues: manifestQueueCoverageIssues }
+        : {}),
+      ...(manifestQueueCoverageDriftIssues.length > 0
+        ? { coverageDriftIssues: manifestQueueCoverageDriftIssues }
+        : {}),
       ...(manifestQueueOverrideReasons.length > 0
         ? {
             testOverride: {
@@ -601,6 +897,19 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
           }
         : {}),
     };
+    const manifestQueueCoverageGateRollup = collectSessionTypeGlueingManifestQueueCoverageGateRollup({
+      issues: manifestQueueTestCoverageGateCollection.issues,
+      warnings: manifestQueueTestCoverageGateCollection.warnings,
+      blockedManifestPlanQueueIssues: manifestQueueCoverageGateSentinelBlockedPlanQueueIssues,
+      ...(manifestQueueTestCoverageGate?.queueSnapshotPaths
+        ? { queueSnapshotPaths: manifestQueueTestCoverageGate.queueSnapshotPaths }
+        : {}),
+      ...(manifestQueueTestCoverageGate?.queueSnapshotPathsInferred
+        ? { queueSnapshotPathsInferred: true }
+        : {}),
+      checkedAt:
+        manifestQueueTestCoverageGate?.checkedAt ?? manifestQueueTestStatus.testedAt ?? "unspecified",
+    });
 
     const sweepRecordOptions: {
       generatedManifests: typeof manifestWriteMetadata;
@@ -613,7 +922,9 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
         readonly entryCount?: number;
       }>;
       blockedQueuedManifestInputs?: ReadonlyArray<string>;
+      blockedManifestInputs?: ReadonlyArray<string>;
       blockedManifestPlans?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanEntry>;
+      blockedManifestPlanInputs?: ReadonlyArray<SessionTypeGlueingBlockedManifestPlanInputMetadata>;
       manifestQueue: SessionTypeGlueingManifestQueueSummary;
       sourceCoverage?: SessionTypeGlueingSweepSourceCoverage;
     } = {
@@ -633,6 +944,21 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
         sweepRecord = writeResult.record;
       }
       sweepSummary = summarizeSessionTypeGlueingSweepRecord(sweepRecord);
+    }
+
+    const sweepCoverageIssues =
+      sweepSummary?.sourceCoverageIssues ??
+      (sweepSummary ? collectSessionTypeGlueingSourceCoverageIssues(sweepSummary.sourceCoverage, sourceCoverageFilter) : []);
+    const lambdaCoopCoverageIssues = sweepSummary?.alignmentCoverageIssues ?? [];
+    const blockedPlanQueueIssues = sweepSummary?.blockedManifestPlanQueue
+      ? collectSessionTypeGlueingBlockedManifestPlanQueueIssues(sweepSummary.blockedManifestPlanQueue)
+      : [];
+    const lambdaCoopCoverageGateBlocked = lambdaCoopCoverageIssues.length > 0;
+    const lambdaCoopCoverageGateIssueList = lambdaCoopCoverageIssues.join("; ");
+    if (lambdaCoopCoverageGateBlocked) {
+      lambdaCoopCoverageGateLog =
+        `λ₍coop₎ coverage gating active — ${lambdaCoopCoverageGateIssueList}. ` +
+        `Resolve the missing interpreter operations or kernel clauses before writing manifests.`;
     }
 
     const snapshotFocusKeySet =
@@ -699,16 +1025,33 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
           }) before writing manifests.`
         : undefined;
 
+    if (manifestTargets.length > 0 && lambdaCoopCoverageGateBlocked) {
+      throw new Error(
+        `Cannot write --${SWEEP_MANIFEST_FLAG} outputs while λ₍coop₎ coverage issues remain (${lambdaCoopCoverageGateIssueList}). ` +
+          `Resolve the interpreter/kernel coverage warnings before generating manifests.`,
+      );
+    }
     if (manifestTargets.length > 0 && manifestQueueGateBlocked) {
       throw new Error(
         `Cannot write --${SWEEP_MANIFEST_FLAG} outputs while the manifest queue coverage is invalid (issues: ${manifestQueueGateIssueList}). ` +
           `Rerun the manifest-queue tests or pass --${SWEEP_MANIFEST_OVERRIDE_FLAG}=true to override.`,
       );
     }
+    if (manifestTargets.length > 0 && manifestQueueCoverageGateBlocked) {
+      throw new Error(
+        `Cannot write --${SWEEP_MANIFEST_FLAG} outputs while queued manifest coverage issues remain (${manifestQueueCoverageGateIssueList}). ` +
+          `Rerun the queued manifest inputs to clear λ₍coop₎ coverage drift or pass --${SWEEP_MANIFEST_OVERRIDE_FLAG}=true to override.`,
+      );
+    }
 
     if (manifestTargets.length > 0 && manifestQueueGateBypassed) {
       manifestQueueOverrideReasons.push(
         `proceeding with --${SWEEP_MANIFEST_FLAG} writes despite issues (${manifestQueueGateIssueList})`,
+      );
+    }
+    if (manifestTargets.length > 0 && manifestQueueCoverageGateBypassed) {
+      manifestQueueOverrideReasons.push(
+        `proceeding with --${SWEEP_MANIFEST_FLAG} writes despite queued manifest coverage issues (${manifestQueueCoverageGateIssueList})`,
       );
     }
 
@@ -734,7 +1077,9 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
     const blockedManifestPlans: SessionTypeGlueingBlockedManifestPlanEntry[] = [];
     enqueuedSuggestedManifestPaths = [];
     if (manifestTargets.length === 0 && manifestTargetSuggestions.length > 0 && diffSummaries.length > 0) {
-      if (manifestQueueGateBlocked) {
+      if (lambdaCoopCoverageGateBlocked) {
+        blockedSuggestedManifestWrites.push(...manifestTargetSuggestions);
+      } else if (manifestQueueGateBlocked || manifestQueueCoverageGateBlocked) {
         blockedSuggestedManifestWrites.push(...manifestTargetSuggestions);
         for (const suggestion of manifestTargetSuggestions) {
           const allowedPaths = new Set<string>([suggestion.sourcePath]);
@@ -754,6 +1099,13 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
             `generating ${manifestTargetSuggestions.length} suggested manifest${
               manifestTargetSuggestions.length === 1 ? "" : "s"
             } despite issues (${manifestQueueGateIssueList})`,
+          );
+        }
+        if (manifestQueueCoverageGateBypassed) {
+          manifestQueueOverrideReasons.push(
+            `generating ${manifestTargetSuggestions.length} suggested manifest${
+              manifestTargetSuggestions.length === 1 ? "" : "s"}
+            } despite queued manifest coverage issues (${manifestQueueCoverageGateIssueList})`,
           );
         }
         for (const suggestion of manifestTargetSuggestions) {
@@ -791,8 +1143,14 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
         ...(suggestion.entryCount !== undefined ? { entryCount: suggestion.entryCount } : {}),
       }));
     }
+    if (blockedManifestInputs.length > 0) {
+      sweepRecordOptions.blockedManifestInputs = blockedManifestInputs;
+    }
     if (blockedManifestPlans.length > 0) {
       sweepRecordOptions.blockedManifestPlans = blockedManifestPlans;
+    }
+    if (blockedManifestPlanInputGateEntries.length > 0) {
+      sweepRecordOptions.blockedManifestPlanInputs = blockedManifestPlanInputGateEntries;
     }
     if (preparedBlockedManifestPlanEntries.length > 0) {
       preparedBlockedManifestPlanEntries.forEach(({ summary, entries: planEntries }) => {
@@ -838,6 +1196,15 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
         logs.push(`  ${path}: ${error}`);
       });
     }
+    if (lambdaCoopCoverageIssues.length > 0) {
+      logs.push("λ₍coop₎ alignment coverage warnings:");
+      lambdaCoopCoverageIssues.forEach((issue) => {
+        logs.push(`  - ${issue}`);
+      });
+      logs.push(
+        "  Resolve the missing interpreter operations or kernel clauses before writing manifests.",
+      );
+    }
     if (snapshots.length > 0) {
       logs.push(
         `=== Session-type glueing sweep (${snapshots.length} configuration${snapshots.length === 1 ? "" : "s"}) ===`,
@@ -867,6 +1234,31 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
             label: "Sweep summary source coverage",
           }),
         );
+        if (sweepCoverageIssues.length > 0) {
+          logs.push("Sweep source coverage warnings:");
+          sweepCoverageIssues.forEach((issue) => {
+            logs.push(`  - ${issue}`);
+          });
+          logs.push(
+            "  Replay --sweep-manifest-input and --sweep-blocked-plan-input together before writing manifests.",
+          );
+        }
+        const blockedPlanQueueSummary = sweepSummary.blockedManifestPlanQueue;
+        if (blockedPlanQueueSummary?.remaining && blockedPlanQueueSummary.remaining.length > 0) {
+          logs.push(
+            `Blocked manifest plan rerun queue pending entries=${blockedPlanQueueSummary.remaining.length}:`,
+          );
+          blockedPlanQueueSummary.remaining.forEach((path) => {
+            logs.push(`  pending rerun: ${path}`);
+          });
+          logs.push("  Rerun 'npm run session-type:manifest-queue:test' and the queued plans before writing manifests.");
+        } else if (blockedPlanQueueSummary?.actions && blockedPlanQueueSummary.actions.length > 0) {
+          const consumedCount = blockedPlanQueueSummary.consumed?.length ?? 0;
+          const queuedCount = blockedPlanQueueSummary.queued?.length ?? blockedPlanQueueSummary.actions.length;
+          logs.push(
+            `Blocked manifest plan rerun queue processed queued=${queuedCount} consumed=${consumedCount} entries during this sweep.`,
+          );
+        }
       }
       if (recordedLocation) {
         logs.push(`Sweep configurations recorded to ${recordedLocation}`);
@@ -904,6 +1296,12 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
             indent: "  ",
           }),
         );
+        if (summary.sourceCoverageIssues && summary.sourceCoverageIssues.length > 0) {
+          logs.push("  Source coverage warnings:");
+          summary.sourceCoverageIssues.forEach((issue) => {
+            logs.push(`    - ${issue}`);
+          });
+        }
         let loggedIssue = false;
         summary.entries.forEach((entry) => {
           if (entry.issues.length > 0) {
@@ -991,6 +1389,10 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
       blockedManifestPlanInputWarnings.forEach((warning) => logs.push(`  ${warning}`));
     }
 
+    if (blockedManifestPlanSentinelLogs.length > 0) {
+      logs.push(...blockedManifestPlanSentinelLogs);
+    }
+
     if (enqueuedSuggestedManifestPaths.length > 0) {
       logs.push("=== Queued suggested manifests for next run ===");
       enqueuedSuggestedManifestPaths.forEach((path) => {
@@ -1002,6 +1404,21 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
       logs.push(queueReplayGatingLog);
       blockedQueuedManifestInputPaths.forEach((path) => {
         logs.push(`  ${path}`);
+      });
+    }
+    if (manifestInputSentinelGateLog) {
+      logs.push(manifestInputSentinelGateLog);
+      blockedManifestInputs.forEach((path) => {
+        logs.push(`  ${path}`);
+      });
+    }
+    if (manifestQueueCoverageGateLog) {
+      logs.push(manifestQueueCoverageGateLog);
+    }
+    if (blockedManifestPlanQueueGateLog) {
+      logs.push(blockedManifestPlanQueueGateLog);
+      blockedManifestPlanInputsFromQueueResolved.forEach((path) => {
+        logs.push(`  pending-blocked-plan=${path}`);
       });
     }
 
@@ -1024,8 +1441,54 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
         "Manifest queue coverage gating active — rerun the manifest-queue unit tests before trusting new sweep manifests.",
       );
     }
+    if (manifestQueueTestCoverageGate) {
+      logs.push(
+        `Manifest queue coverage gate sentinel checkedAt=${manifestQueueTestCoverageGate.checkedAt} issues=${manifestQueueCoverageGateSentinelIssues.length} warnings=${manifestQueueCoverageGateSentinelWarnings.length}`,
+      );
+      if (manifestQueueTestCoverageGate.queueSnapshotPaths) {
+        logs.push(
+          `Manifest queue coverage gate snapshot queues manifest=${manifestQueueTestCoverageGate.queueSnapshotPaths.manifestQueuePath} blockedPlan=${manifestQueueTestCoverageGate.queueSnapshotPaths.blockedManifestPlanQueuePath}`,
+        );
+      }
+      if (manifestQueueTestCoverageGate.queueSnapshotPathsInferred) {
+        logs.push(
+          "Manifest queue coverage gate snapshot paths defaulted from live queues — rerun manifest-queue tests to record preserved snapshot locations.",
+        );
+      }
+      if (manifestQueueCoverageGateSentinelIssues.length > 0) {
+        logs.push("Manifest queue coverage gate issues:");
+        manifestQueueCoverageGateSentinelIssues.forEach((issue) => logs.push(`  - ${issue}`));
+      }
+      if (manifestQueueCoverageGateSentinelWarnings.length > 0) {
+        logs.push("Manifest queue coverage gate warnings:");
+        manifestQueueCoverageGateSentinelWarnings.forEach((warning) => logs.push(`  - ${warning}`));
+      }
+      if (manifestQueueCoverageGateSentinelBlockedPlanQueueIssues.length > 0) {
+        logs.push("Manifest queue coverage gate rerun queue issues:");
+        manifestQueueCoverageGateSentinelBlockedPlanQueueIssues.forEach((issue) =>
+          logs.push(`  - ${issue}`),
+        );
+      }
+    }
     if (manifestQueueOverrideLog) {
       logs.push(manifestQueueOverrideLog);
+    }
+    if (manifestQueueCoverageIssues.length > 0) {
+      logs.push("Queued manifest λ₍coop₎ coverage issues detected:");
+      manifestQueueCoverageIssues.forEach((issue) => logs.push(`  - ${issue}`));
+      logs.push(
+        "  Rerun the queued manifest inputs to refresh λ₍coop₎ coverage or pass --${SWEEP_MANIFEST_OVERRIDE_FLAG}=true to override.",
+      );
+    }
+    if (manifestQueueCoverageDriftIssues.length > 0) {
+      logs.push("Queued manifest λ₍coop₎ coverage drift detected:");
+      manifestQueueCoverageDriftIssues.forEach((issue) => logs.push(`  - ${issue}`));
+      logs.push(
+        "  Resolve the coverage drift before writing or enqueuing manifests to avoid stale λ₍coop₎ traces.",
+      );
+    }
+    if (lambdaCoopCoverageGateLog) {
+      logs.push(lambdaCoopCoverageGateLog);
     }
 
     const manifestReplaySummaries =
@@ -1035,6 +1498,8 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
       sweep: snapshots.map(buildSnapshotMetadata),
       ...(recordedLocation ? { recordedSweepFile: recordedLocation } : {}),
       ...(sweepSummary ? { sweepSummary } : {}),
+      ...(sweepCoverageIssues.length > 0 ? { sourceCoverageIssues: sweepCoverageIssues } : {}),
+      ...(lambdaCoopCoverageIssues.length > 0 ? { lambdaCoopCoverageIssues } : {}),
       ...(sweepFocusModes.size > 0 ? { sweepFocus: Array.from(sweepFocusModes) } : {}),
       ...(focusIssues ? { filteredSweep: snapshotsForLog.map(buildSnapshotMetadata) } : {}),
       ...(diffSummaries.length > 0
@@ -1092,6 +1557,16 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
       ...(blockedManifestPlanInputWarnings.length > 0
         ? { blockedManifestPlanInputWarnings }
         : {}),
+      ...(blockedManifestInputs.length > 0
+        ? { blockedManifestInputs }
+        : {}),
+      ...(blockedManifestPlanInputGateEntries.length > 0
+        ? { blockedManifestPlanInputs: blockedManifestPlanInputGateEntries }
+        : {}),
+      ...(blockedManifestPlanQueueActions.length > 0
+        ? { blockedManifestPlanQueue: blockedManifestPlanQueueActions }
+        : {}),
+      ...(blockedPlanQueueIssues.length > 0 ? { blockedManifestPlanQueueIssues: blockedPlanQueueIssues } : {}),
       ...(blockedSuggestedManifestWrites.length > 0
         ? {
             blockedSuggestedManifestWrites: blockedSuggestedManifestWrites.map((suggestion) => ({
@@ -1107,6 +1582,12 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
         ? { blockedQueuedManifestInputs: blockedQueuedManifestInputPaths }
         : {}),
       ...(blockedManifestPlans.length > 0 ? { blockedManifestPlans } : {}),
+      ...(manifestQueueCoverageIssues.length > 0
+        ? { manifestQueueCoverageIssues }
+        : {}),
+      ...(manifestQueueCoverageDriftIssues.length > 0
+        ? { manifestQueueCoverageDriftIssues }
+        : {}),
       manifestQueue: manifestQueueSummary,
       manifestQueueTestStatus: {
         ...manifestQueueTestStatus,
@@ -1122,6 +1603,30 @@ export const sessionTypeGlueingSweepRunnable: RunnableExample = {
           ? { warnings: manifestQueueTestEvaluation.warnings }
           : {}),
       },
+      ...(manifestQueueTestCoverageGate
+        ? { manifestQueueTestCoverageGate: manifestQueueTestCoverageGate }
+        : {}),
+      ...(manifestQueueTestCoverageGate?.queueSnapshotPaths
+        ? {
+            manifestQueueTestCoverageGateQueueSnapshotPaths:
+              manifestQueueTestCoverageGate.queueSnapshotPaths,
+          }
+        : {}),
+      ...(manifestQueueCoverageGateRollup
+        ? { manifestQueueCoverageGateRollup }
+        : {}),
+      ...(manifestQueueCoverageGateSentinelIssues.length > 0
+        ? { manifestQueueTestCoverageGateIssues: manifestQueueCoverageGateSentinelIssues }
+        : {}),
+      ...(manifestQueueCoverageGateSentinelWarnings.length > 0
+        ? { manifestQueueTestCoverageGateWarnings: manifestQueueCoverageGateSentinelWarnings }
+        : {}),
+      ...(manifestQueueCoverageGateSentinelBlockedPlanQueueIssues.length > 0
+        ? {
+            manifestQueueTestCoverageGateBlockedManifestPlanQueueIssues:
+              manifestQueueCoverageGateSentinelBlockedPlanQueueIssues,
+          }
+        : {}),
       ...(manifestQueueTestEvaluation.issues.length > 0
         ? { manifestQueueTestIssues: manifestQueueTestEvaluation.issues }
         : {}),
